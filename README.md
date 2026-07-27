@@ -128,9 +128,11 @@ framework's own tree — a default roster of required agents (`decision-arbiter`
 `software-architect`, `git-operator`, `docs-writer`) must all be discovered. Both are
 configurable (`--required-agents`, `--no-verify-skill-refs`).
 
-> ⚠️ **Deploying replaces the target's `CLAUDE.md` with no backup.** If you already have a
-> personal `~/.claude/CLAUDE.md`, run `--dry-run` first and save a copy yourself before applying.
-> (An automatic-backup mechanism is a tracked, not-yet-implemented item.)
+> ℹ️ **An existing `CLAUDE.md` is backed up, not lost.** If the target already has a foreign
+> `CLAUDE.md` (a real file, or a symlink outside the framework), deploy first preserves it to a
+> timestamped `<target>/CLAUDE.md.backup.<UTC>` and then installs the framework's contract.
+> Re-deploys are idempotent — an already-deployed framework contract is left untouched (no
+> duplicate backups). Run `--dry-run` first to preview the `BACKUP` / `REPLACE` plan.
 
 Common flags: `--target`, `--source`, `--copy-agents`, `--no-prune`, `--only`,
 `--required-agents`, `--no-verify-skill-refs`. Run `./deploy/deploy.sh --help` for the full

@@ -56,6 +56,7 @@ SCRIPT_DIR=""
 FRAMEWORK_ROOT=""
 TARGET_DIR=""
 WORK=""
+RUN_TS=""
 
 # IS_OWN_TREE=1 when FRAMEWORK_ROOT is this deployer's own tree (default source); gates
 # whether DEFAULT_REQUIRED_AGENTS applies (see required_agents_list). Set in main().
@@ -109,6 +110,11 @@ Usage: $PROG [OPTIONS]
 Discover agents and skills by MARKER under a framework root and symlink them by name
 into a Claude Code config directory.
 
+An existing FOREIGN operating contract at the target (a real CLAUDE.md, or a symlink
+resolving outside the framework) is preserved to a timestamped
+"<target>/CLAUDE.md.backup.<UTC>" and then replaced with the framework's contract — never
+discarded. Agents, skills and contracts keep DIVERGED protection (left untouched).
+
 Options:
   --dry-run              Discover, plan and report only; change nothing on disk.
                          Run this first to preview CREATE/REPLACE/DIVERGED/PRUNE.
@@ -150,7 +156,7 @@ have() {
 
 check_deps() {
 	cd_missing=""
-	for cd_bin in awk cmp cp find ln mkdir mktemp readlink rm sort basename dirname; do
+	for cd_bin in awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname; do
 		have "$cd_bin" || cd_missing="$cd_missing $cd_bin"
 	done
 	[ -z "$cd_missing" ] || die "missing required commands:$cd_missing"
@@ -695,6 +701,30 @@ same_content() {
 # Deploy one item
 # ---------------------------------------------------------------------------
 
+# config_backup_and_replace TARGET_PATH SRC NAME RSRC
+# For the operating contract ONLY: an existing FOREIGN CLAUDE.md at the target — a real
+# file, or a symlink resolving outside the framework — is preserved to a timestamped
+# backup beside it ("<target>.backup.<RUN_TS>") and then replaced with the framework's
+# symlink, rather than left untouched as DIVERGED. Losing a hand-written operating
+# contract is not acceptable, so the replace is made non-destructive instead of refused.
+# The backup is faithful: `cp -RP` copies a regular file's content, and preserves a
+# symlink as-is (never dereferences it). Agents/skills/contracts keep DIVERGED protection;
+# only the config category routes here.
+config_backup_and_replace() {
+	cbr_tp=$1
+	cbr_src=$2
+	cbr_name=$3
+	cbr_rsrc=$4
+	cbr_bak="$cbr_tp.backup.$RUN_TS"
+	record backup config "$cbr_name" "$cbr_bak"
+	record replace config "$cbr_name" "$cbr_rsrc"
+	if [ "$APPLY" -eq 1 ]; then
+		cp -RP "$cbr_tp" "$cbr_bak" || die "failed to back up existing $cbr_tp to $cbr_bak"
+		rm -rf "$cbr_tp" || die "failed to remove $cbr_tp"
+		ln -sfn "$cbr_src" "$cbr_tp" || die "failed to link $cbr_tp"
+	fi
+}
+
 # deploy_symlink CATEGORY NAME SRC TARGET_PATH
 # Symlink deployment with idempotency, safe copy replacement and diverged protection.
 deploy_symlink() {
@@ -715,9 +745,15 @@ deploy_symlink() {
 			record skip "$dl_cat" "$dl_name" "$dl_rsrc"
 			return 0
 		fi
-		# An existing symlink that resolves OUTSIDE the framework root is a user artifact;
-		# protect it (DIVERGED) rather than clobbering. Only relink framework-owned links.
+		# An existing symlink that resolves OUTSIDE the framework root is a user artifact.
+		# For every category but the operating contract, protect it (DIVERGED) rather than
+		# clobbering. The contract is instead backed up then replaced (see
+		# config_backup_and_replace). Only relink framework-owned links.
 		if ! link_inside_framework "$dl_tp"; then
+			if [ "$dl_cat" = config ]; then
+				config_backup_and_replace "$dl_tp" "$dl_src" "$dl_name" "$dl_rsrc"
+				return 0
+			fi
 			record diverged "$dl_cat" "$dl_name" "$dl_rsrc"
 			return 0
 		fi
@@ -732,6 +768,8 @@ deploy_symlink() {
 				rm -rf "$dl_tp" || die "failed to remove $dl_tp"
 				ln -sfn "$dl_src" "$dl_tp" || die "failed to link $dl_tp"
 			fi
+		elif [ "$dl_cat" = config ]; then
+			config_backup_and_replace "$dl_tp" "$dl_src" "$dl_name" "$dl_rsrc"
 		else
 			record diverged "$dl_cat" "$dl_name" "$dl_rsrc"
 		fi
@@ -924,6 +962,7 @@ report() {
 	report_section CREATE "$WORK/act_create"
 	report_section SKIP "$WORK/act_skip"
 	report_section REPLACE "$WORK/act_replace"
+	report_section BACKUP "$WORK/act_backup"
 	report_section DIVERGED "$WORK/act_diverged"
 	report_section PRUNE "$WORK/act_prune"
 }
@@ -1107,10 +1146,14 @@ main() {
 	WORK=$(mktemp -d 2>/dev/null) || die "mktemp failed"
 	trap cleanup EXIT INT TERM
 
+	# One UTC stamp per run, used for any CLAUDE.md backup name so a dry-run preview and
+	# the applied backup path agree, and repeat deploys never clobber a prior backup.
+	RUN_TS=$(date -u +%Y%m%dT%H%M%SZ) || die "date failed"
+
 	# Initialize manifests and action files.
 	for f in agents.tsv skills.tsv config.tsv contracts.tsv collisions \
 		skill_ref_violations missing_required_agents \
-		act_create act_skip act_replace act_diverged act_prune; do
+		act_create act_skip act_replace act_backup act_diverged act_prune; do
 		: >"$WORK/$f"
 	done
 
