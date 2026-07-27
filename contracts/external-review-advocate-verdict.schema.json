@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/external-review-advocate-verdict.schema.json",
+  "title": "External-Review Advocate Verdict",
+  "description": "The payload a PRO / CON / single advocate returns for ONE finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the advocacy SEMANTICS (PRO argues real defect, CON argues false-positive, judge against the bound standard-*) live in flow-external-review + the advocate's bound review standards. `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "severity", "evidence", "recommended_action", "confidence"],
+  "properties": {
+    "verdict": {
+      "description": "The advocate's ruling on the finding.",
+      "$comment": "Documented 4-value SUBSET of finding-verdict.schema.json. Advocates CANNOT emit ALREADY_RESOLVED or ESCALATE — those are arbiter-only calls (see finding-verdict.schema.json). $ref is not used here precisely because the advocate domain is narrower than the full arbiter set.",
+      "enum": ["REAL", "FALSE_POSITIVE", "ACCEPT_SUPPRESS", "NEEDS_PRODUCT_DECISION"]
+    },
+    "severity": { "$ref": "severity.schema.json" },
+    "evidence": {
+      "description": "The advocate's file:line proof.",
+      "type": "string",
+      "minLength": 1
+    },
+    "recommended_action": {
+      "description": "The default to apply. REQUIRED for a technical call.",
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "description": "The advocate's stated confidence in its position.",
+      "enum": ["high", "medium", "low"]
+    }
+  }
+}

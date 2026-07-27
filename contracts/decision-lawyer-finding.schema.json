@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/decision-lawyer-finding.schema.json",
+  "title": "Decision Lawyer Finding",
+  "description": "The structured payload a single BLIND panel lawyer (trio or quartet seat) returns in the decision pattern, so the decision-arbiter can adjudicate multiple reviews without context dilution instead of parsing prose essays. This file defines the SHAPE and value domains only; the panel roles, briefings, arbiter mandate, and adjudication SEMANTICS live in the flow-decision skill + the decision-arbiter agent. Referenced co-located schemas: {\"$ref\": \"severity.schema.json\"}.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "recommendation"],
+  "properties": {
+    "findings": {
+      "description": "The seat's per-claim findings — one entry per structural/skeptic/operability claim it makes about the proposal.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "recommendation": {
+      "description": "The seat's ONE-LINE overall recommendation across all its findings — a single crisp judgment, not a prose summary.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "severity", "evidence", "verdict"],
+      "properties": {
+        "claim": {
+          "description": "ONE line: the specific assertion the lawyer makes about the proposal from its lens.",
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": { "$ref": "severity.schema.json" },
+        "evidence": {
+          "description": "A `file:line` (or `file:start-end`) site grounding the claim in the actual artifact, per the verify-against-the-code mandate.",
+          "type": "string",
+          "minLength": 1
+        },
+        "verdict": {
+          "description": "ONE line: the lawyer's per-claim judgment in its own words — a free-form disposition, NOT a fixed enum (e.g. \"sound\", \"drop it\", \"justification not shown — confirm premise Y\"). The value domain is deliberately open; the seat's lens shapes the phrasing.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "findings": [
+        {
+          "claim": "the 3-way split leaves order/mapper and order/api mutually recursive",
+          "severity": "HIGH",
+          "evidence": "order/mapper.rs:40-71",
+          "verdict": "structurally unsound — the split does not decouple the two modules"
+        },
+        {
+          "claim": "extracting the client is a pure win with no new coupling",
+          "severity": "LOW",
+          "evidence": "order/client.rs:12",
+          "verdict": "sound"
+        }
+      ],
+      "recommendation": "extract the client only; do not attempt the 3-way split until the recursion is broken"
+    }
+  ]
+}

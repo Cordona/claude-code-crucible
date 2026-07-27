@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/review-finding-report.schema.json",
+  "title": "Reviewer Finding Report",
+  "description": "The canonical wire contract every reviewer subagent EMITS to the primary agent (review-report-standards Rendering 2). The primary agent parses it to merge the swarm, compute the merged verdict, and track fixes across rounds. This file defines the SHAPE and value domains only; the SEMANTICS (severity anchoring, verdict arithmetic, ID stability, status lifecycle, the human rendering) live in the review-report-standards skill. Emit MINIFIED JSON conforming to this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer", "target", "round", "generated", "verdict", "summary", "findings"],
+  "properties": {
+    "schema_version": {
+      "description": "Contract version. Pinned so a consumer can detect a shape change.",
+      "const": "1.0"
+    },
+    "reviewer": {
+      "description": "The reviewer/lens name (e.g. \"clean-code-reviewer\", \"kotlin-reviewer\").",
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "description": "Files/dirs reviewed. Always a list, consistent with a finding's locations.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "round": {
+      "description": "1-based review round.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "generated": {
+      "description": "ISO 8601 date only (no wall-clock time), taken from the date provided in context.",
+      "type": "string",
+      "format": "date"
+    },
+    "verdict": { "$ref": "report-verdict.schema.json" },
+    "summary": {
+      "description": "Counts. `open` is by severity over UNRESOLVED findings (NEW/OPEN/REGRESSED); resolved/new/ack are orthogonal status counts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["open", "resolved", "new", "ack"],
+      "properties": {
+        "open": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["critical", "high", "medium", "low"],
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "high": { "type": "integer", "minimum": 0 },
+            "medium": { "type": "integer", "minimum": 0 },
+            "low": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "resolved": { "type": "integer", "minimum": 0 },
+        "new": { "type": "integer", "minimum": 0 },
+        "ack": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "status": {
+      "description": "Position in the cross-round iteration lifecycle.",
+      "enum": ["NEW", "OPEN", "RESOLVED", "REGRESSED", "ACK"]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
+      "properties": {
+        "id": {
+          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CC, SEC, TEST, CON, OBS, PERF, COMPAT, PERS, or a language tag e.g. RUST/JAVA).",
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3,}$"
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "severity": { "$ref": "severity.schema.json" },
+        "category": {
+          "description": "Sub-lens tag from the reviewer's OWN controlled vocabulary (not free text). The closed per-reviewer value set is owned by each reviewer agent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "locations": {
+          "description": "One or more `file:line` (or `file:start-end`) sites. An array because a finding may span sites (e.g. duplication).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "first_seen": {
+          "description": "ISO 8601 date only, frozen at creation; kept unchanged across rounds.",
+          "type": "string",
+          "format": "date"
+        },
+        "problem": {
+          "description": "ONE line: what is wrong. Never restate large code.",
+          "type": "string",
+          "minLength": 1
+        },
+        "fix": {
+          "description": "ONE line: the concrete remedy the implementer should apply.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "reviewer": "clean-code-reviewer",
+      "target": ["src/order/"],
+      "round": 2,
+      "generated": "2026-07-12",
+      "verdict": "CHANGES_REQUIRED",
+      "summary": { "open": { "critical": 0, "high": 1, "medium": 2, "low": 1 }, "resolved": 3, "new": 1, "ack": 0 },
+      "findings": [
+        {
+          "id": "CC-004",
+          "status": "NEW",
+          "severity": "MEDIUM",
+          "category": "dry",
+          "locations": ["order/mapper.rs:40-71", "order/api.rs:88", "order/batch.rs:22"],
+          "first_seen": "2026-07-12",
+          "problem": "dto->entity mapping duplicated across 3 sites; edits must be made in parallel",
+          "fix": "extract map_order(); call from all three"
+        }
+      ]
+    }
+  ]
+}

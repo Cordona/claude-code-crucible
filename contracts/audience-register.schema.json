@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/audience-register.schema.json",
+  "title": "Backlog Artifact Audience + Register",
+  "description": "The controlled vocabulary for the AUDIENCE of a backlog artifact — the required input the orchestrator supplies to the project-manager (never guessed). Two orthogonal dimensions: `audience` (who reads/acts on it) and, when a human reads it, `register` (their relationship to the work). The MATRIX semantics (how each audience changes the artifact; why business is a decider not merely 'less technical') live in the standard-backlog-artifacts skill. This file defines the value domains only. Reference a co-located consumer via {\"$ref\": \"audience-register.schema.json#/$defs/rendered\"}.",
+  "$defs": {
+    "audience": {
+      "description": "Who will read/act on the artifact.",
+      "enum": ["agent", "human", "both"]
+    },
+    "register": {
+      "description": "When a human reads it, their relationship to the work. Moot when audience is `agent`.",
+      "enum": ["technical", "non-technical", "business"]
+    },
+    "rendered": {
+      "description": "The composite audience+register token as written on an artifact and passed in a delegation.",
+      "enum": ["agent", "human:technical", "human:non-technical", "human:business", "both"]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/external-review-step-verifier.schema.json",
+  "title": "External-Review Step-Verifier Result",
+  "description": "The payload the general-purpose step-verifier returns after independently re-deriving a phase's acceptance criteria in the external-review pattern. This file defines the SHAPE and value domains ONLY; the verification SEMANTICS (re-derive ground truth, do not trust the orchestrator, the phase gate loop) live in flow-external-review. Return ONLY an object conforming to this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pass", "failures", "confidence"],
+  "properties": {
+    "pass": {
+      "description": "Whether every acceptance criterion for the phase was independently verified as met.",
+      "type": "boolean"
+    },
+    "failures": {
+      "description": "One entry per unmet criterion. Empty when pass is true.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion", "detail", "fix_hint"],
+        "properties": {
+          "criterion": {
+            "description": "The acceptance criterion that failed.",
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "description": "What was found instead — the evidence of the failure.",
+            "type": "string",
+            "minLength": 1
+          },
+          "fix_hint": {
+            "description": "What the orchestrator should remediate to satisfy the criterion.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "confidence": {
+      "description": "The verifier's stated confidence in the result. Same value domain as the arbiter/advocate confidence field, for cross-contract consistency.",
+      "enum": ["high", "medium", "low"]
+    }
+  }
+}

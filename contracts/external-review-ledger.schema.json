@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/external-review-ledger.schema.json",
+  "title": "External-Review Ledger Row",
+  "description": "One row of ledger.json — the canonical, frozen work-set + live status for a single finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the field SEMANTICS (provisional_severity feeds only the panel rule and never reaches a human, the verdict->disposition map, the tier/agreement/seat rules, the status lifecycle) live in flow-external-review (§3, §5). The row is written INCREMENTALLY across phases, so only id/title/status are required; every other field is filled in as its phase resolves. `verdict` is the FULL arbiter set (finding-verdict.schema.json); `provisional_severity` and `severity` are the ONE anchored scale (severity.schema.json).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "status"],
+  "properties": {
+    "id": {
+      "description": "Finding id (e.g. F-03, or a split sub-row F-03a/F-03b).",
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "description": "Short human-readable label for the finding.",
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "description": "Which review pass(es)/reviewer(s) raised it — merged on dedup.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "channel": {
+      "description": "Where the finding originated.",
+      "enum": ["inline", "issue"]
+    },
+    "comment_id": {
+      "description": "The originating inline/issue comment id, when applicable.",
+      "type": ["string", "integer"]
+    },
+    "locations": {
+      "description": "One or more cited file:line sites.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "passes": {
+      "description": "Per-pass provenance map (which passes carried this finding and their raw labels).",
+      "type": "object"
+    },
+    "agreement": {
+      "description": "Cross-source agreement classification set in Phase 1.",
+      "enum": ["AGREE", "CONFLICT", "SINGLE"]
+    },
+    "tier": {
+      "description": "Triage tier — A (style/lint, single advocate) or B (behavioural, panel rule).",
+      "enum": ["A", "B"]
+    },
+    "panel_required": {
+      "description": "Whether a PRO+CON panel (and possibly the arbiter) is required for this row.",
+      "type": "boolean"
+    },
+    "seat": {
+      "description": "The single routed adjudication seat (§2b). Scalar — a finding needing two seats was split into sub-rows.",
+      "type": "string",
+      "minLength": 1
+    },
+    "provisional_severity": {
+      "description": "Phase-1 triage hint mapped from the external label. Feeds ONLY the panel rule; NEVER reaches a human report.",
+      "$ref": "severity.schema.json"
+    },
+    "verdict": { "$ref": "finding-verdict.schema.json" },
+    "severity": {
+      "description": "Phase-2 evidence-based grade on the anchor scale — the only severity that reaches a human.",
+      "$ref": "severity.schema.json"
+    },
+    "disposition": {
+      "description": "The outcome derived from the verdict (§5.2).",
+      "enum": ["FIX", "NOT_AN_ISSUE", "ESCALATED", "TRACK_FOLLOWUP", "ALREADY_RESOLVED"]
+    },
+    "secondary_actions": {
+      "description": "Additional outcomes beyond the primary disposition, for a compound ruling (R13).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "detail"],
+        "properties": {
+          "type": { "enum": ["FIX", "TRACK_FOLLOWUP"] },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "resolved_by_commit": {
+      "description": "SHA that already fixed an ALREADY_RESOLVED row (R12).",
+      "type": "string",
+      "minLength": 1
+    },
+    "fix_commit": {
+      "description": "SHA of the commit that fixed this row in Phase 5.",
+      "type": "string",
+      "minLength": 1
+    },
+    "comment_url": {
+      "description": "URL of the posted PR response covering this finding.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Position in the run lifecycle. Typical values: PENDING (Phase 1), JUDGED (Phase 2), RESOLVED, BLOCKED. Kept as a string because the source does not fix a single closed set.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

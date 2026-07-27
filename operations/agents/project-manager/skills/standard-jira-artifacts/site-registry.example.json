@@ -1,0 +1,4 @@
+{
+  "example-team.atlassian.net": "standard-jira-acme",
+  "another-team.atlassian.net": "standard-jira-<client>"
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/severity.schema.json",
+  "title": "Severity",
+  "description": "The ONE cross-lens severity scale, anchored to consequence-if-shipped, shared by every finding, advocate, lawyer, and arbiter payload so a HIGH means the same thing everywhere. This file defines the value domain ONLY; the anchoring SEMANTICS (what each level means, the indirect-finding rule) live in the review-report-standards skill. Referenced by co-located schemas via {\"$ref\": \"severity.schema.json\"}.",
+  "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+}

@@ -1,0 +1,2 @@
+> [!SUCCESS]
+> success text
