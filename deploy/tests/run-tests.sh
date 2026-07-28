@@ -953,6 +953,177 @@ case_config_source_moved() {
 }
 
 # ===========================================================================
+# Case 3e: a pre-existing REAL, foreign CLAUDE.md whose content DIFFERS from the
+# framework contract is backed up (one timestamped copy preserving the ORIGINAL
+# bytes) and then REPLACED by the framework symlink — the config-only backup path.
+# ===========================================================================
+case_config_backup_real_foreign() {
+	printf '\n-- Case 3e: real foreign CLAUDE.md backed up then replaced --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	printf '# Claude Code Configuration\nframework contract v1\n' >"$src/CLAUDE.md"
+	# A hand-written operating contract already at the target, content DIFFERS.
+	printf '# Claude Code Configuration\nUSER LOCAL CONTRACT\n' >"$tgt/CLAUDE.md"
+	# Preserve the original bytes for a post-deploy content comparison.
+	origdir=$(new_dir)
+	cp "$tgt/CLAUDE.md" "$origdir/orig"
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3e: exit 0" 0 "$RC"
+	# The managed name is now the framework symlink, resolving to the source contract.
+	assert_symlink_live "case3e: CLAUDE.md is now the framework symlink" "$tgt/CLAUDE.md"
+	assert_content "case3e: deployed contract matches source" "$tgt/CLAUDE.md" "$src/CLAUDE.md"
+
+	# Exactly ONE timestamped backup exists beside it.
+	bak_count=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3e: exactly one backup file created" test "$bak_count" = 1
+	# The backup preserves the ORIGINAL bytes (not the new contract).
+	bak=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*')
+	assert_content "case3e: backup preserves the original bytes" "$bak" "$origdir/orig"
+
+	assert_grep "case3e: BACKUP section present" '^BACKUP (1):' "$OUT"
+	assert_grep "case3e: REPLACE section present" '^REPLACE (1):' "$OUT"
+}
+
+# ===========================================================================
+# Case 3f: --dry-run reports the BACKUP/REPLACE plan but writes NOTHING — no
+# backup file appears and the original real file is left untouched.
+# ===========================================================================
+case_config_backup_dry_run() {
+	printf '\n-- Case 3f: dry-run plans BACKUP/REPLACE but changes nothing --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	printf '# Claude Code Configuration\nframework contract v1\n' >"$src/CLAUDE.md"
+	printf '# Claude Code Configuration\nUSER LOCAL CONTRACT\n' >"$tgt/CLAUDE.md"
+	origdir=$(new_dir)
+	cp "$tgt/CLAUDE.md" "$origdir/orig"
+
+	run_deploy_no_required_check --dry-run --source "$src" --target "$tgt"
+	assert_rc "case3f: exit 0" 0 "$RC"
+	assert_grep "case3f: BACKUP planned in report" '^BACKUP (1):' "$OUT"
+	assert_grep "case3f: REPLACE planned in report" '^REPLACE (1):' "$OUT"
+
+	# Nothing on disk changed: no backup file, original still a real file with its bytes.
+	bak_count=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3f: no backup file created under dry-run" test "$bak_count" = 0
+	assert_regfile "case3f: original still a real file" "$tgt/CLAUDE.md"
+	assert_content "case3f: original content untouched" "$tgt/CLAUDE.md" "$origdir/orig"
+}
+
+# ===========================================================================
+# Case 3g: once the framework symlink is in place, a re-deploy is idempotent —
+# config SKIPs, and NO second backup is created (still exactly one).
+# ===========================================================================
+case_config_backup_idempotent() {
+	printf '\n-- Case 3g: re-deploy after a backup makes no second backup --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	printf '# Claude Code Configuration\nframework contract v1\n' >"$src/CLAUDE.md"
+	printf '# Claude Code Configuration\nUSER LOCAL CONTRACT\n' >"$tgt/CLAUDE.md"
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3g: first deploy exit 0" 0 "$RC"
+	bak_count1=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3g: exactly one backup after first deploy" test "$bak_count1" = 1
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3g: re-deploy exit 0" 0 "$RC"
+	# The only managed item is config, so SKIP (1) can only be the config row.
+	assert_grep "case3g: config now SKIPs" '^SKIP (1):' "$OUT"
+	assert_grep "case3g: no new backup planned on re-deploy" '^BACKUP (0):' "$OUT"
+	bak_count2=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3g: still exactly one backup after re-deploy" test "$bak_count2" = 1
+}
+
+# ===========================================================================
+# Case 3h: the foreign-SYMLINK variant (never manually tested). An existing
+# CLAUDE.md symlink resolving OUTSIDE the framework root is backed up AS a symlink
+# (cp -RP preserves it, still pointing at its external target), then replaced by
+# the framework symlink.
+# ===========================================================================
+case_config_backup_foreign_symlink() {
+	printf '\n-- Case 3h: foreign-symlink CLAUDE.md backed up as a symlink --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	printf '# Claude Code Configuration\nframework contract v1\n' >"$src/CLAUDE.md"
+	# An external file in its OWN dir, clearly outside the framework root ($src).
+	ext=$(new_dir)
+	printf 'external user contract\n' >"$ext/foreign.md"
+	ln -s "$ext/foreign.md" "$tgt/CLAUDE.md"
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3h: exit 0" 0 "$RC"
+	# The managed name is now the framework symlink, resolving to the source contract.
+	assert_symlink_live "case3h: CLAUDE.md is now the framework symlink" "$tgt/CLAUDE.md"
+	assert_content "case3h: deployed contract matches source (not the external file)" \
+		"$tgt/CLAUDE.md" "$src/CLAUDE.md"
+
+	# Exactly one backup, and it is ITSELF a symlink still pointing at the external target.
+	bak_count=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3h: exactly one backup file created" test "$bak_count" = 1
+	bak=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*')
+	assert_link "case3h: backup preserved as a symlink" "$bak"
+	t_true "case3h: backup symlink still points at the external target" \
+		test "$(readlink "$bak")" = "$ext/foreign.md"
+
+	assert_grep "case3h: BACKUP section present" '^BACKUP (1):' "$OUT"
+	assert_grep "case3h: REPLACE section present" '^REPLACE (1):' "$OUT"
+}
+
+# ===========================================================================
+# Case 3i: a pre-existing REAL CLAUDE.md whose content is IDENTICAL to the
+# framework contract is REPLACEd with NO backup — there is nothing to preserve.
+# ===========================================================================
+case_config_same_content_no_backup() {
+	printf '\n-- Case 3i: identical real CLAUDE.md replaced with no backup --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	printf '# Claude Code Configuration\nidentical contract\n' >"$src/CLAUDE.md"
+	# A real file whose content is byte-identical to the framework contract.
+	printf '# Claude Code Configuration\nidentical contract\n' >"$tgt/CLAUDE.md"
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3i: exit 0" 0 "$RC"
+	assert_symlink_live "case3i: identical real file replaced by the framework symlink" \
+		"$tgt/CLAUDE.md"
+	assert_content "case3i: deployed contract matches source" "$tgt/CLAUDE.md" "$src/CLAUDE.md"
+
+	# No backup: an identical file has nothing to preserve.
+	bak_count=$(find "$tgt" -maxdepth 1 -name 'CLAUDE.md.backup.*' | wc -l | tr -d ' ')
+	t_true "case3i: no backup file for identical content" test "$bak_count" = 0
+	assert_grep "case3i: reported as REPLACE" '^REPLACE (1):' "$OUT"
+	assert_grep "case3i: BACKUP section empty" '^BACKUP (0):' "$OUT"
+}
+
+# ===========================================================================
+# Case 3j: the backup path is CONFIG-ONLY. A divergent real AGENT file at the
+# target stays DIVERGED (untouched) and is NEVER backed up.
+# ===========================================================================
+case_config_backup_scoping() {
+	printf '\n-- Case 3j: backup is config-only; a diverged agent is not backed up --\n'
+	src=$(new_dir)
+	tgt=$(new_dir)
+	mk_agent "$src/a.md" scoping-agent
+	mkdir -p "$tgt/agents"
+	# A diverged real copy of the agent (locally edited).
+	cp "$src/a.md" "$tgt/agents/scoping-agent.md"
+	printf 'LOCAL EDIT\n' >>"$tgt/agents/scoping-agent.md"
+
+	run_deploy_no_required_check --source "$src" --target "$tgt"
+	assert_rc "case3j: exit 0" 0 "$RC"
+	# Agent keeps DIVERGED protection: left as a real file, content preserved.
+	assert_regfile "case3j: diverged agent left as a real file" "$tgt/agents/scoping-agent.md"
+	t_true "case3j: diverged agent content preserved" \
+		grep -q 'LOCAL EDIT' "$tgt/agents/scoping-agent.md"
+	assert_grep "case3j: reported as DIVERGED" '^DIVERGED (1):' "$OUT"
+
+	# No backup was created for the agent — the backup path is config-only.
+	agent_bak_count=$(find "$tgt/agents" -name '*.backup.*' | wc -l | tr -d ' ')
+	t_true "case3j: no backup created for the diverged agent" test "$agent_bak_count" = 0
+	assert_grep "case3j: BACKUP section empty" '^BACKUP (0):' "$OUT"
+}
+
+# ===========================================================================
 case_real_tree() {
 	printf '\n-- Case 24: real crucible tree passes both checks --\n'
 	real_root=$(cd "$TDIR/../.." && pwd -P) || {
@@ -1382,6 +1553,12 @@ main() {
 	case_nested_config
 	case_duplicate_config
 	case_config_source_moved
+	case_config_backup_real_foreign
+	case_config_backup_dry_run
+	case_config_backup_idempotent
+	case_config_backup_foreign_symlink
+	case_config_same_content_no_backup
+	case_config_backup_scoping
 	case_ignored
 	case_collision
 	case_idempotent
