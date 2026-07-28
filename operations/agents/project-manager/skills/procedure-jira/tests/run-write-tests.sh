@@ -1229,6 +1229,296 @@ expect_rc "vote 404 -> exit 1" 1
 stderr_has "vote 404: Jira's own error message surfaced" "Issue does not exist"
 
 # ===========================================================================
+# schedule — issue scheduling: move to sprint / backlog / epic (parent). Real
+# request/response shapes; curl stubbed. Ground truth (confirmed live):
+#   --to-sprint ID  POST /rest/agile/1.0/sprint/<ID>/issue      {"issues":[...]}
+#   --to-backlog    POST /rest/agile/1.0/backlog/<BOARD>/issue  {"issues":[...]}
+#   --to-epic KEY   PUT  /rest/api/3/issue/<K> {"fields":{"parent":{"key":KEY}}}
+#   --from-epic     PUT  /rest/api/3/issue/<K> {"fields":{"parent":null}}
+# NOTE: keys use a >=2-char project prefix (PROJ-1, not A-1) because the shared
+# validate_ticket_key allow-list is ^[A-Z][A-Z0-9]+-[0-9]+$ (a single-char
+# project prefix like "A-1" is deliberately rejected engine-wide).
+# ===========================================================================
+
+# --- argument parsing (all exit 2, all BEFORE any network call) ------------
+section "jira.sh — schedule: argument parsing (usage errors, exit 2, no network)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule missing target op -> exit 2" 2
+stderr_has "schedule missing target op: diagnostic" "exactly one target op"
+equals "schedule missing target op: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --from-epic --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule two target ops -> exit 2" 2
+stderr_has "schedule two target ops: diagnostic" "exactly one target op"
+equals "schedule two target ops: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --confirmed-site foo.atlassian.net
+expect_rc "schedule neither --keys nor --jql -> exit 2" 2
+stderr_has "schedule neither selector: diagnostic" "requires an issue selector"
+equals "schedule neither selector: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1" --jql "project = PROJ" --confirmed-site foo.atlassian.net
+expect_rc "schedule both --keys and --jql -> exit 2" 2
+stderr_has "schedule both selectors: diagnostic" "exactly one of --keys or --jql"
+equals "schedule both selectors: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-backlog --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-backlog without --board -> exit 2" 2
+stderr_has "schedule --to-backlog no --board: diagnostic" "requires --board"
+equals "schedule --to-backlog no --board: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --board 826 --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --board on a non-backlog op -> exit 2" 2
+stderr_has "schedule stray --board: diagnostic" "--board is only valid with schedule --to-backlog"
+
+# --- id / key validation (all exit 2, all BEFORE any network call) ---------
+section "jira.sh — schedule: id/key validation (rejected before any network call)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 01 --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-sprint 01 (leading zero) -> exit 2" 2
+stderr_has "schedule bad sprint id 01: diagnostic" "invalid --to-sprint"
+equals "schedule bad sprint id 01: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint x --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-sprint x (non-numeric) -> exit 2" 2
+stderr_has "schedule bad sprint id x: diagnostic" "invalid --to-sprint"
+equals "schedule bad sprint id x: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-backlog --board 0x --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-backlog bad board id -> exit 2" 2
+stderr_has "schedule bad board id: diagnostic" "invalid --board"
+equals "schedule bad board id: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic foo --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-epic foo (bad key shape) -> exit 2" 2
+stderr_has "schedule bad epic key foo: diagnostic" "invalid --to-epic"
+equals "schedule bad epic key foo: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic "A--1" --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-epic A--1 (bad key shape) -> exit 2" 2
+stderr_has "schedule bad epic key A--1: diagnostic" "invalid --to-epic"
+equals "schedule bad epic key A--1: ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1,not-a-key,PROJ-3" --confirmed-site foo.atlassian.net
+expect_rc "schedule invalid key in --keys -> exit 2" 2
+stderr_has "schedule invalid --keys entry: diagnostic" "invalid ticket key in --keys"
+equals "schedule invalid --keys entry: ZERO curl calls" "$(call_count)" "0"
+
+# --- move to sprint: endpoint/method/body ----------------------------------
+section "jira.sh — schedule --to-sprint: POST /agile/1.0/sprint/<id>/issue with the issues[] array"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1,PROJ-2" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-sprint --keys -> exit 0" 0
+equals "schedule --to-sprint: exactly ONE call (whole array in one POST)" "$(call_count)" "1"
+argv_log_has_token "schedule --to-sprint: method is POST" "POST"
+file_has "schedule --to-sprint: hits sprint/<id>/issue" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/agile/1.0/sprint/2212/issue"
+SENT_BODY=$(call_body 1)
+equals "schedule --to-sprint: issues array is exactly the selected keys, in order" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.issues')" '["PROJ-1","PROJ-2"]'
+stdout_has "schedule --to-sprint: PROJ-1 result ok" "JIRA_SCHEDULE_RESULT=PROJ-1:ok"
+stdout_has "schedule --to-sprint: PROJ-2 result ok" "JIRA_SCHEDULE_RESULT=PROJ-2:ok"
+stdout_has "schedule --to-sprint: summary" "JIRA_SCHEDULE_SUMMARY=2/2 succeeded"
+
+# --- move to backlog: endpoint/method/body ---------------------------------
+section "jira.sh — schedule --to-backlog: POST /agile/1.0/backlog/<board>/issue (board-scoped, REQUIRES --board)"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-backlog --board 826 --keys "PROJ-1,PROJ-2" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-backlog --keys -> exit 0" 0
+equals "schedule --to-backlog: exactly ONE call" "$(call_count)" "1"
+argv_log_has_token "schedule --to-backlog: method is POST" "POST"
+file_has "schedule --to-backlog: hits backlog/<board>/issue (board-scoped)" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/agile/1.0/backlog/826/issue"
+SENT_BODY=$(call_body 1)
+equals "schedule --to-backlog: issues array is exactly the selected keys" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.issues')" '["PROJ-1","PROJ-2"]'
+stdout_has "schedule --to-backlog: summary" "JIRA_SCHEDULE_SUMMARY=2/2 succeeded"
+
+# --- assign to epic: PUT parent per issue ----------------------------------
+section "jira.sh — schedule --to-epic: PUT /api/3/issue/<key> with fields.parent set (per issue)"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic EPIC-9 --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-epic --keys -> exit 0" 0
+equals "schedule --to-epic: one PUT per issue" "$(call_count)" "1"
+argv_log_has_token "schedule --to-epic: method is PUT" "PUT"
+file_has "schedule --to-epic: hits /api/3/issue/<key>" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/issue/PROJ-1"
+SENT_BODY=$(call_body 1)
+equals "schedule --to-epic: body sets fields.parent.key to the epic key" \
+	"$(printf '%s' "$SENT_BODY" | jq -r '.fields.parent.key')" "EPIC-9"
+stdout_has "schedule --to-epic: summary" "JIRA_SCHEDULE_SUMMARY=1/1 succeeded"
+
+# --- remove from epic: PUT parent:null per issue ---------------------------
+section "jira.sh — schedule --from-epic: PUT /api/3/issue/<key> with fields.parent = null"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --from-epic --keys "PROJ-1" --confirmed-site foo.atlassian.net
+expect_rc "schedule --from-epic --keys -> exit 0" 0
+argv_log_has_token "schedule --from-epic: method is PUT" "PUT"
+file_has "schedule --from-epic: hits /api/3/issue/<key>" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/issue/PROJ-1"
+SENT_BODY=$(call_body 1)
+equals "schedule --from-epic: fields.parent is JSON null (not absent, not a string)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.parent')" "null"
+equals "schedule --from-epic: the fields object HAS a parent key (set to null, not merely omitted)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields | has("parent")')" "true"
+
+# --- --jql selector: resolves via search, then moves -----------------------
+section "jira.sh — schedule --jql: resolves the set via /search/jql, then moves it"
+
+reset_curl_stub
+# call 1: the JQL resolve returns two keys; call 2: the sprint move.
+set_stub_response 1 '{"issues":[{"key":"PROJ-1","fields":{"summary":"a","status":{"name":"Open"}}},{"key":"PROJ-2","fields":{"summary":"b","status":{"name":"Open"}}}],"isLast":true}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --jql "project = PROJ AND status = Open" --confirmed-site foo.atlassian.net
+expect_rc "schedule --jql --to-sprint -> exit 0" 0
+equals "schedule --jql: 2 calls (1 search resolve + 1 sprint move)" "$(call_count)" "2"
+file_has "schedule --jql: call 1 is the /search/jql resolve" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/search/jql"
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-1.body")
+equals "schedule --jql: the resolve carried the caller's JQL verbatim" "$JQL_SENT" "project = PROJ AND status = Open"
+file_has "schedule --jql: call 2 is the sprint move" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/agile/1.0/sprint/2212/issue"
+argv_log_has_token "schedule --jql: the mutating move is a POST (method pinned, not just the URL)" "POST"
+SENT_BODY=$(call_body 2)
+equals "schedule --jql: the move's issues[] is the resolved set" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.issues')" '["PROJ-1","PROJ-2"]'
+
+# --- --jql --limit truncation disclosure -----------------------------------
+# An explicit --limit is an intentional cap: when the resolved set reaches it,
+# the truncation MUST be disclosed (never silently mutate a truncated set). The
+# search returns a FULL page of --limit issues with isLast:false (more exist
+# server-side), so the resolved set is capped at --limit and truncated=true.
+section "jira.sh — schedule --jql --limit: caps the set at N and discloses the truncation (dry-run: NOTE, real run: CAPPED)"
+
+# (a) dry-run: the warn fires AND the plan prints the NOTE disclosure.
+reset_curl_stub
+set_stub_response 1 '{"issues":[{"key":"PROJ-1","fields":{"summary":"a","status":{"name":"Open"}}},{"key":"PROJ-2","fields":{"summary":"b","status":{"name":"Open"}}}],"isLast":false}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --jql "project = PROJ" --limit 2 --dry-run --confirmed-site foo.atlassian.net
+expect_rc "schedule --jql --limit 2 --dry-run -> exit 0" 0
+# ONE call proves the sprint-move POST never fired (only the search resolve — a
+# POST to /search/jql — so a no-POST-token check would be a false negative here).
+equals "schedule --jql --limit dry-run: ONE call (the search resolve only, no writes)" "$(call_count)" "1"
+stderr_has "schedule --jql --limit dry-run: warn discloses the cap" "capped at --limit 2 — additional matches may exist"
+stdout_has "schedule --jql --limit dry-run: plan prints the NOTE cap disclosure" "NOTE: capped at --limit 2"
+
+# (b) real run: the same cap is disclosed in the summary as CAPPED ...
+reset_curl_stub
+set_stub_response 1 '{"issues":[{"key":"PROJ-1","fields":{"summary":"a","status":{"name":"Open"}}},{"key":"PROJ-2","fields":{"summary":"b","status":{"name":"Open"}}}],"isLast":false}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --jql "project = PROJ" --limit 2 --confirmed-site foo.atlassian.net
+expect_rc "schedule --jql --limit 2 real run -> exit 0" 0
+equals "schedule --jql --limit real run: 2 calls (search resolve + sprint move)" "$(call_count)" "2"
+stderr_has "schedule --jql --limit real run: warn discloses the cap" "capped at --limit 2 — additional matches may exist"
+stdout_has "schedule --jql --limit real run: summary discloses the cap as CAPPED" "CAPPED at --limit 2"
+
+# --- --jql resolves ZERO issues: fail closed, mutate nothing ---------------
+# A selector that resolves to an empty set is a fail-closed error (exit 1), not
+# a silent no-op success: only the single search read fires, never a write.
+section "jira.sh — schedule --jql resolves ZERO issues: exit 1, ZERO mutating calls"
+
+reset_curl_stub
+set_stub_response 1 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic EPIC-9 --jql "project = PROJ AND status = Nonexistent" --confirmed-site foo.atlassian.net
+expect_rc "schedule --jql zero issues -> exit 1" 1
+stderr_has "schedule --jql zero issues: diagnostic names the empty resolve" "resolved ZERO issues"
+# The epic op mutates via PUT; the ONLY call is the search read (itself a POST to
+# /search/jql), so call_count==1 + no-PUT together prove ZERO mutating calls fired.
+equals "schedule --jql zero issues: exactly ONE call (the search read, nothing more)" "$(call_count)" "1"
+argv_log_not_has_token "schedule --jql zero issues: no PUT (mutating call) recorded" "PUT"
+
+# --- dry-run: discloses the plan, makes NO mutating call -------------------
+section "jira.sh — schedule --dry-run: discloses the plan, writes NOTHING (--keys => ZERO calls)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1,PROJ-2" --dry-run --confirmed-site foo.atlassian.net
+expect_rc "schedule --dry-run --keys -> exit 0" 0
+equals "schedule --dry-run --keys: ZERO curl calls (no read, no write)" "$(call_count)" "0"
+argv_log_not_has_token "schedule --dry-run: no POST recorded" "POST"
+argv_log_not_has_token "schedule --dry-run: no PUT recorded" "PUT"
+stdout_has "schedule --dry-run: names the intended change" "would move to sprint 2212"
+stdout_has "schedule --dry-run: lists PROJ-1" "PROJ-1"
+stdout_has "schedule --dry-run: lists PROJ-2" "PROJ-2"
+stdout_has "schedule --dry-run: states nothing was written" "NOTHING WAS WRITTEN"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic EPIC-9 --keys "PROJ-1,PROJ-2" --dry-run --json --confirmed-site foo.atlassian.net
+expect_rc "schedule --dry-run --json -> exit 0" 0
+equals "schedule --dry-run --json: ZERO curl calls" "$(call_count)" "0"
+PLAN_JSON="$CUR_OUT"
+equals "schedule --dry-run --json: willWrite is false" "$(printf '%s' "$PLAN_JSON" | jq -r '.willWrite')" "false"
+equals "schedule --dry-run --json: op is to-epic" "$(printf '%s' "$PLAN_JSON" | jq -r '.op')" "to-epic"
+equals "schedule --dry-run --json: keys array is the resolved set" \
+	"$(printf '%s' "$PLAN_JSON" | jq -c '.keys')" '["PROJ-1","PROJ-2"]'
+
+# --- partial failure: one issue's PUT fails, others still attempted --------
+section "jira.sh — schedule --to-epic partial failure: #2 fails, #1 and #3 still attempted, exit non-zero"
+
+reset_curl_stub
+set_stub_response 1 '' 204                                            # PROJ-1 PUT ok
+set_stub_response 2 '{"errorMessages":["Field parent cannot be set"]}' 400  # PROJ-2 PUT fails
+set_stub_response 3 '' 204                                            # PROJ-3 PUT ok (still attempted)
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-epic EPIC-9 --keys "PROJ-1,PROJ-2,PROJ-3" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-epic partial failure -> exit 1 (any failure => non-zero)" 1
+equals "schedule partial failure: all 3 PUTs attempted (not aborted on #2)" "$(call_count)" "3"
+file_has "schedule partial failure: PROJ-3's PUT WAS still issued after #2 failed" "$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/issue/PROJ-3"
+stdout_has "schedule partial failure: PROJ-1 ok" "JIRA_SCHEDULE_RESULT=PROJ-1:ok"
+stdout_has "schedule partial failure: PROJ-2 failed" "JIRA_SCHEDULE_RESULT=PROJ-2:failed"
+stdout_has "schedule partial failure: PROJ-3 ok (processed despite #2 failing)" "JIRA_SCHEDULE_RESULT=PROJ-3:ok"
+stdout_has "schedule partial failure: accurate summary" "JIRA_SCHEDULE_SUMMARY=2/3 succeeded"
+stderr_has "schedule partial failure: Jira's own error surfaced for the failed issue" "Field parent cannot be set"
+
+# --- batch (sprint) failure: the whole call 4xx -> all keys reported failed -
+section "jira.sh — schedule --to-sprint batch failure: a non-2xx marks the whole set failed, exit non-zero"
+
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["Sprint does not exist"]}' 404
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --to-sprint 999 --keys "PROJ-1,PROJ-2" --confirmed-site foo.atlassian.net
+expect_rc "schedule --to-sprint batch 404 -> exit 1" 1
+stdout_has "schedule batch failure: PROJ-1 failed" "JIRA_SCHEDULE_RESULT=PROJ-1:failed"
+stdout_has "schedule batch failure: PROJ-2 failed" "JIRA_SCHEDULE_RESULT=PROJ-2:failed"
+stdout_has "schedule batch failure: summary 0/2" "JIRA_SCHEDULE_SUMMARY=0/2 succeeded"
+stderr_has "schedule batch failure: Jira's own error surfaced" "Sprint does not exist"
+
+# ===========================================================================
 # Token never on argv — across ALL write commands (Phase 2b + Phase 2c)
 # ===========================================================================
 section "jira.sh — token never on argv (create/comment/transition/update/link/worklog/watch/vote)"
@@ -1285,6 +1575,12 @@ set_stub_response 1 '' 204
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" vote PROJ-1 --confirmed-site foo.atlassian.net
 file_not_has "vote: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
+	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1" --confirmed-site foo.atlassian.net
+file_not_has "schedule: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
 
 # ===========================================================================
 # Summary
