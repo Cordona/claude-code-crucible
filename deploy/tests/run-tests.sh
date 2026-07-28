@@ -259,6 +259,27 @@ mk_bin_with() {
 	done
 }
 
+# mk_working_bin DIR -> populates DIR with real symlinked binaries for every tool
+# check_deps requires ($CHECK_DEPS_TOOLS), so a deploy run against this restricted PATH
+# can complete its own pipeline; the caller adds runtime tools (git/gh/jq/curl/
+# gpg/ssh-keygen) on top, selectively, via mk_stub_tool.
+mk_working_bin() {
+	# shellcheck disable=SC2086 # CHECK_DEPS_TOOLS is a fixed internal space-separated
+	# constant (not external/untrusted input); word-splitting into separate args here is
+	# intentional and required for mk_bin_with's "$@" tool-name loop.
+	mk_bin_with "$1" $CHECK_DEPS_TOOLS
+}
+
+# mk_stub_tool DIR NAME -> creates a trivial executable file DIR/NAME. It is never
+# actually invoked — only its PRESENCE on PATH is exercised by `have` (command -v) — so
+# this simulates a runtime tool (e.g. gpg, ssh-keygen) being installed without depending
+# on whether it is genuinely present on the host running these tests.
+mk_stub_tool() {
+	mkdir -p "$1"
+	printf '#!/bin/sh\nexit 0\n' >"$1/$2"
+	chmod +x "$1/$2"
+}
+
 # snapshot DIR FILE -> records a stable listing (paths + symlink targets) of DIR
 snapshot() {
 	{
@@ -1173,7 +1194,13 @@ case_real_tree() {
 		return
 	}
 	tgt=$(new_dir)
-	run_deploy --source "$real_root" --dry-run --target "$tgt"
+	# --required-tools "" disables Check 3 for this case (mirroring
+	# run_deploy_no_required_check's --required-agents "" pattern): this case exists to
+	# exercise Check 1 (skill-ref discovery) against the real tree, not Check 3, and
+	# --source is IS_OWN_TREE=1 here, so DEFAULT_REQUIRED_TOOLS would otherwise apply and
+	# make the result depend on which of git/gh/jq/curl/gpg/ssh-keygen happen to be
+	# installed on the host running the suite.
+	run_deploy --source "$real_root" --dry-run --target "$tgt" --required-tools ""
 	assert_rc "case24: real tree dry-run exits 0 (both checks pass)" 0 "$RC"
 	assert_grep "case24: dry-run report present" 'dry-run' "$OUT"
 }
@@ -1604,11 +1631,238 @@ case_check_deps_extended() {
 		cde_tgt=$(new_dir)
 		mk_agent "$cde_src/a.md" some-agent
 
-		run_deploy_with_path "$cde_bin" --required-agents "" \
+		run_deploy_with_path "$cde_bin" --required-agents "" --required-tools "" \
 			--source "$cde_src" --target "$cde_tgt"
 		assert_rc "case31: missing $cde_tool exits 1" 1 "$RC"
 		assert_grep "case31: missing $cde_tool is named in the diagnostic" "$cde_tool" "$ERR"
 	done
+}
+
+# ===========================================================================
+# Case 32: required-tools presence (Check 3) -> exit 6, ALL missing slots collected (not
+# just the first), nothing applied; --required-tools "" disables the check outright; the
+# report includes the consolidated agentic-install suggestion.
+# ===========================================================================
+case_required_tools_check() {
+	printf '\n-- Case 32: required-tools presence (Check 3) --\n'
+
+	# Two fabricated (guaranteed-absent, on ANY host) plain slots: BOTH must be reported,
+	# proving the check collects every miss rather than stopping at the first.
+	src=$(new_dir)
+	tgt=$(new_dir)
+	mk_agent "$src/a.md" some-agent
+	run_deploy --required-tools "definitely-not-a-real-tool-aaa,definitely-not-a-real-tool-bbb" \
+		--source "$src" --target "$tgt"
+	assert_rc "case32: two missing plain tools exits 6" 6 "$RC"
+	assert_grep "case32: names the 1st missing tool" 'definitely-not-a-real-tool-aaa' "$ERR"
+	assert_grep "case32: names the 2nd missing tool too (not just the first)" \
+		'definitely-not-a-real-tool-bbb' "$ERR"
+	assert_dir_empty "case32: nothing applied on failure" "$tgt"
+
+	# TEST-002: the joined "Install these missing dependencies..." line must contain
+	# EVERY simultaneously-missing plain tool together on the same line, not just one of
+	# them — a regression that only kept the last item or dropped the join entirely would
+	# not be caught by asserting each name in isolation (grep against the whole $ERR
+	# would still match, since each name is also printed on its own "missing required
+	# tool" line above). Asserted here, right after this $ERR is produced, since $ERR is
+	# overwritten by every later run_deploy call in this function. aaa sorts before bbb
+	# under the check's LC_ALL=C sort, so this also pins the join order.
+	assert_grep "case32: agentic suggestion joins ALL simultaneously-missing plain tools on one line" \
+		'Install these missing dependencies on my system: .*definitely-not-a-real-tool-aaa.*definitely-not-a-real-tool-bbb' \
+		"$ERR"
+
+	# Mixed: one satisfied slot ("cat", guaranteed present — it's one of check_deps'
+	# own hard dependencies) alongside two missing ones. Both missing ones are reported;
+	# the satisfied one is not.
+	src2=$(new_dir)
+	tgt2=$(new_dir)
+	mk_agent "$src2/a.md" some-agent
+	run_deploy --required-tools "definitely-not-a-real-tool-ccc,cat,definitely-not-a-real-tool-ddd" \
+		--source "$src2" --target "$tgt2"
+	assert_rc "case32: mixed present/missing exits 6" 6 "$RC"
+	assert_grep "case32: mixed - missing ccc reported" 'definitely-not-a-real-tool-ccc' "$ERR"
+	assert_grep "case32: mixed - missing ddd reported" 'definitely-not-a-real-tool-ddd' "$ERR"
+	assert_not_grep "case32: mixed - present cat is not reported as missing" \
+		'missing required tool: "cat"' "$ERR"
+
+	# --required-tools "" disables the check outright (same disabling convention as
+	# --required-agents ""), even though the fixture would otherwise fail it.
+	src3=$(new_dir)
+	tgt3=$(new_dir)
+	mk_agent "$src3/a.md" some-agent
+	run_deploy --required-tools "" --source "$src3" --target "$tgt3"
+	assert_rc "case32: empty string disables the check" 0 "$RC"
+	assert_symlink_live "case32: fixture still deploys with the check disabled" \
+		"$tgt3/agents/some-agent.md"
+
+	# The '=' CLI form works identically, including for the missing-tool case.
+	src4=$(new_dir)
+	tgt4=$(new_dir)
+	mk_agent "$src4/a.md" some-agent
+	run_deploy --required-tools=definitely-not-a-real-tool-eee --source "$src4" --target "$tgt4"
+	assert_rc "case32: --required-tools=LIST ('=' form) enforces the check" 6 "$RC"
+	assert_grep "case32: '=' form names the missing tool" 'definitely-not-a-real-tool-eee' "$ERR"
+
+	# The consolidated "agentic install" suggestion is present and names the actual
+	# missing command (not the OR-slot pipe notation — there is none to begin with here).
+	# NOTE: deploy.sh never runs an install itself (see tool_install_*'s doc comment) —
+	# there used to be an assert_not_grep here for '^brew install', but every install
+	# line is always printed with a fixed "install ... - macOS: %s" prefix, so that
+	# assertion was tautologically true by construction (it could never fail regardless
+	# of whether an install were actually shelled out) and is dropped rather than kept as
+	# false confidence (TEST-001).
+	assert_grep "case32: prints the agentic-install suggestion header" \
+		'Install these missing dependencies' "$ERR"
+	assert_grep "case32: agentic suggestion names the missing tool" \
+		'definitely-not-a-real-tool-eee' "$ERR"
+}
+
+# ===========================================================================
+# Case 33: the gpg|ssh-keygen OR-slot — passes when EITHER alternative is present, and
+# fails ONLY when BOTH are absent. Exercised against a restricted-but-working PATH (real
+# symlinks for check_deps' own tools, so the rest of the pipeline can actually complete)
+# with a controlled, host-independent presence of gpg/ssh-keygen via stub executables.
+# ===========================================================================
+case_required_tools_or_slot() {
+	printf '\n-- Case 33: gpg|ssh-keygen OR-slot logic --\n'
+
+	# Neither alternative present -> the slot fails; BOTH names appear in the report.
+	bin_none=$(new_dir)
+	mk_working_bin "$bin_none"
+	src1=$(new_dir)
+	tgt1=$(new_dir)
+	mk_agent "$src1/a.md" some-agent
+	run_deploy_with_path "$bin_none" --required-tools "gpg|ssh-keygen" \
+		--source "$src1" --target "$tgt1"
+	assert_rc "case33: OR-slot fails when both alternatives are absent" 6 "$RC"
+	assert_grep "case33: OR-slot names gpg" 'gpg' "$ERR"
+	assert_grep "case33: OR-slot names ssh-keygen" 'ssh-keygen' "$ERR"
+
+	# TEST-004 (SH-003 regression guard): the closing "agentic install" suggestion line
+	# must name exactly ONE representative alternative ("gpg", the first one in the slot),
+	# never both — flattening both into that line would tell an agent to install both
+	# when only one is needed. Both names legitimately appear elsewhere in the report (the
+	# per-alternative reason/install guidance above), so this must isolate the ONE line
+	# that carries the "Install these missing dependencies..." header rather than grep the
+	# whole report — a bare 'ssh-keygen' assert_not_grep here would be a false pass-through
+	# (it would fail even in the passing case, since ssh-keygen legitimately appears
+	# elsewhere) and would never catch a regression that flattened both names into the
+	# suggestion line itself.
+	assert_grep "case33: agentic suggestion names exactly one OR-slot alternative (gpg)" \
+		'Install these missing dependencies on my system: .*gpg' "$ERR"
+	assert_not_grep "case33: agentic suggestion does NOT also flatten in the other alternative (ssh-keygen)" \
+		'Install these missing dependencies on my system: .*ssh-keygen' "$ERR"
+
+	# Only ssh-keygen present -> the slot is satisfied.
+	bin_ssh=$(new_dir)
+	mk_working_bin "$bin_ssh"
+	mk_stub_tool "$bin_ssh" ssh-keygen
+	src2=$(new_dir)
+	tgt2=$(new_dir)
+	mk_agent "$src2/a.md" some-agent
+	run_deploy_with_path "$bin_ssh" --required-tools "gpg|ssh-keygen" \
+		--source "$src2" --target "$tgt2"
+	assert_rc "case33: OR-slot passes with only ssh-keygen present" 0 "$RC"
+
+	# Only gpg present -> the slot is also satisfied (order of the alternatives must not
+	# matter).
+	bin_gpg=$(new_dir)
+	mk_working_bin "$bin_gpg"
+	mk_stub_tool "$bin_gpg" gpg
+	src3=$(new_dir)
+	tgt3=$(new_dir)
+	mk_agent "$src3/a.md" some-agent
+	run_deploy_with_path "$bin_gpg" --required-tools "gpg|ssh-keygen" \
+		--source "$src3" --target "$tgt3"
+	assert_rc "case33: OR-slot passes with only gpg present" 0 "$RC"
+
+	# Both present -> obviously satisfied too.
+	bin_both=$(new_dir)
+	mk_working_bin "$bin_both"
+	mk_stub_tool "$bin_both" gpg
+	mk_stub_tool "$bin_both" ssh-keygen
+	src4=$(new_dir)
+	tgt4=$(new_dir)
+	mk_agent "$src4/a.md" some-agent
+	run_deploy_with_path "$bin_both" --required-tools "gpg|ssh-keygen" \
+		--source "$src4" --target "$tgt4"
+	assert_rc "case33: OR-slot passes with both alternatives present" 0 "$RC"
+
+	# SH-002: a slot with 2+ "|" characters (unsupported — an OR-slot supports exactly
+	# two alternatives) is rejected LOUDLY as a usage error (exit 2), rather than being
+	# silently mis-split into a bogus, never-resolvable second alternative.
+	src5=$(new_dir)
+	tgt5=$(new_dir)
+	mk_agent "$src5/a.md" some-agent
+	run_deploy --required-tools "gpg|ssh-keygen|definitely-not-a-real-tool-ggg" \
+		--source "$src5" --target "$tgt5"
+	assert_rc "case33: a slot with 2+ '|' is rejected as a usage error" 2 "$RC"
+	assert_grep "case33: malformed-slot diagnostic names the offending slot" \
+		'gpg|ssh-keygen|definitely-not-a-real-tool-ggg' "$ERR"
+
+	# SH-004: an OR-slot with an EMPTY side ("|foo", "foo|", or a bare "|") is equally
+	# malformed — `have ""` always fails, so an empty alternative can never resolve, and
+	# letting it through would either silently accept bogus syntax (when the non-empty
+	# side IS present) or print a garbled `missing required tool: "" or "foo"` line (when
+	# it's absent). Each form is rejected LOUDLY as a usage error (exit 2), never silently
+	# accepted.
+	src6=$(new_dir)
+	tgt6=$(new_dir)
+	mk_agent "$src6/a.md" some-agent
+	run_deploy --required-tools "|ssh-keygen" --source "$src6" --target "$tgt6"
+	assert_rc "case33: an OR-slot with an empty LEFT side (\"|foo\") is rejected as a usage error" 2 "$RC"
+	assert_grep "case33: empty-left-side diagnostic names the offending slot" \
+		'got "|ssh-keygen"' "$ERR"
+
+	src7=$(new_dir)
+	tgt7=$(new_dir)
+	mk_agent "$src7/a.md" some-agent
+	run_deploy --required-tools "gpg|" --source "$src7" --target "$tgt7"
+	assert_rc "case33: an OR-slot with an empty RIGHT side (\"foo|\") is rejected as a usage error" 2 "$RC"
+	assert_grep "case33: empty-right-side diagnostic names the offending slot" \
+		'got "gpg|"' "$ERR"
+
+	src8=$(new_dir)
+	tgt8=$(new_dir)
+	mk_agent "$src8/a.md" some-agent
+	run_deploy --required-tools "|" --source "$src8" --target "$tgt8"
+	assert_rc "case33: a bare \"|\" slot is rejected as a usage error" 2 "$RC"
+
+	# SH-004 also covers whitespace around the OR-slot pipe: split_csv_list (the shared
+	# tokenizer) splits on commas/whitespace, so "gpg | ssh-keygen" — a plausible
+	# readability choice given how the "gpg|ssh-keygen" syntax reads — fragments into
+	# THREE tokens ("gpg", "|", "ssh-keygen") rather than surviving as one OR-slot. The
+	# lone "|" token has both sides empty and is rejected by the same check above, rather
+	# than silently turning an "either one" requirement into "both mandatory, plus a bogus
+	# always-missing '|' slot".
+	src9=$(new_dir)
+	tgt9=$(new_dir)
+	mk_agent "$src9/a.md" some-agent
+	run_deploy --required-tools "gpg | ssh-keygen" --source "$src9" --target "$tgt9"
+	assert_rc "case33: spaces around the OR-slot pipe are rejected as a usage error, not silently fragmented" \
+		2 "$RC"
+}
+
+# ===========================================================================
+# Case 34: required-tools (Check 3) is enforced under --dry-run too (not gated behind
+# APPLY), and the new exit code 6 plus the --required-tools flag are documented in
+# --help.
+# ===========================================================================
+case_required_tools_dry_run_and_usage() {
+	printf '\n-- Case 34: required-tools under --dry-run + usage docs --\n'
+
+	src=$(new_dir)
+	tgt=$(new_dir)
+	mk_agent "$src/a.md" some-agent
+	run_deploy --required-tools "definitely-not-a-real-tool-fff" --dry-run \
+		--source "$src" --target "$tgt"
+	assert_rc "case34: dry-run missing required tool still exits 6" 6 "$RC"
+	assert_grep "case34: dry-run names the missing tool" 'definitely-not-a-real-tool-fff' "$ERR"
+
+	run_deploy --help
+	assert_rc "case34: --help exits 0" 0 "$RC"
+	assert_grep "case34: --help documents the required-tools flag" 'required-tools' "$OUT"
+	assert_grep "case34: --help documents exit code 6" 'missing required runtime tool' "$OUT"
 }
 
 # ===========================================================================
@@ -1658,6 +1912,9 @@ main() {
 	case_no_verify_skill_refs_flag
 	case_checks_dry_run
 	case_check_deps_extended
+	case_required_tools_check
+	case_required_tools_or_slot
+	case_required_tools_dry_run_and_usage
 
 	printf '\n===============================\n'
 	printf 'Total: %s  PASS: %s  FAIL: %s\n' "$RUN" "$PASSED" "$FAILED"
