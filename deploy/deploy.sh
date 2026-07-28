@@ -23,6 +23,8 @@
 #      or more than one qualifying CLAUDE.md under the root; nothing applied
 #   4  an agent's 'skills:' frontmatter references an undiscovered skill; nothing applied
 #   5  a required agent (see --required-agents) was not discovered; nothing applied
+#   6  a required runtime tool (see --required-tools) was not found on PATH; nothing
+#      applied
 #   1  other fatal error (missing dependency, bad source, fs failure)
 
 set -eu
@@ -40,6 +42,13 @@ TAB=$(printf '\t')
 # Default --required-agents list (space-separated; see check_required_agents).
 DEFAULT_REQUIRED_AGENTS="decision-arbiter review-arbiter software-architect git-operator docs-writer"
 
+# Default --required-tools list (space-separated "slots"; see check_required_tools). A
+# slot is either a single command name, or two alternatives joined by "|" meaning at
+# least one of them must be present (git's own gpg.format config picks openpgp/gpg vs
+# ssh at commit/tag-signing time, and deploy.sh cannot know at deploy time which the user
+# will configure — so neither alone is mandatory, but at least one must exist).
+DEFAULT_REQUIRED_TOOLS="git gh jq curl gpg|ssh-keygen"
+
 # Runtime configuration (set by parse_args)
 DRY_RUN=0
 NO_PRUNE=0
@@ -49,6 +58,8 @@ ARG_SOURCE=""
 ARG_TARGET=""
 ARG_REQUIRED_AGENTS=""
 ARG_REQUIRED_AGENTS_SET=0
+ARG_REQUIRED_TOOLS=""
+ARG_REQUIRED_TOOLS_SET=0
 SKIP_SKILL_REFS_CHECK=0
 
 # Resolved paths (set in main)
@@ -129,7 +140,9 @@ Options:
                          NOTE: this also skips the 'skills:' reference check (needs
                          both agents and skills in scope) and/or the required-agents
                          check (needs agents in scope) whenever they fall outside TYPE;
-                         a warning is printed when that happens.
+                         a warning is printed when that happens. The required-tools
+                         check (Check 3) is deliberately EXEMPT from --only scoping — it
+                         always runs regardless of TYPE (see --required-tools).
   --required-agents LIST Comma-separated agent names that MUST be discovered (checked
                          by frontmatter 'name:'). Applied by DEFAULT only when --source
                          is this deployer's own tree:
@@ -137,12 +150,28 @@ Options:
                          A foreign/forked/subset --source tree has NO required-agents
                          check by default; opt in with this flag. Pass an empty string
                          ("") to disable the check outright.
+  --required-tools LIST  Comma/space-separated runtime tool "slots" that MUST be present
+                         on PATH (checked via 'command -v') — the tools the DEPLOYED
+                         agents/skills need at RUNTIME, as opposed to --required-agents
+                         (deploy.sh's own roster) or check_deps (deploy.sh's own
+                         toolchain). A slot is a single command name, or two
+                         alternatives joined by "|" meaning at least one must be present
+                         (e.g. "gpg|ssh-keygen"). Applied by DEFAULT only when --source
+                         is this deployer's own tree:
+                         ${DEFAULT_REQUIRED_TOOLS}
+                         A foreign/forked/subset --source tree has NO required-tools
+                         check by default; opt in with this flag. Pass an empty string
+                         ("") to disable the check outright. This check is never
+                         narrowed by --only (it governs which tools are checked, not
+                         which artifact types are deployed) and never installs anything
+                         itself — it only detects, reports, and suggests.
   --no-verify-skill-refs Skip the 'skills:' frontmatter reference check (Check 1).
   -h, --help             Show this help and exit.
 
 Exit codes: 0 ok, 2 usage error, 3 ambiguous source (name collision, or >1 CLAUDE.md),
             4 unresolved 'skills:' reference,
-            5 missing required agent, 1 other error.
+            5 missing required agent,
+            6 missing required runtime tool, 1 other error.
 EOF
 }
 
@@ -156,7 +185,8 @@ have() {
 
 check_deps() {
 	cd_missing=""
-	for cd_bin in awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname; do
+	for cd_bin in awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname \
+		sed grep head cat; do
 		have "$cd_bin" || cd_missing="$cd_missing $cd_bin"
 	done
 	[ -z "$cd_missing" ] || die "missing required commands:$cd_missing"
@@ -576,8 +606,9 @@ detect_collisions() {
 
 # ---------------------------------------------------------------------------
 # Cross-reference validation (fail-fast, before any APPLY; also enforced under
-# --dry-run). Both checks run after collision detection and before agents/skills are
-# used to build links.
+# --dry-run). All three checks (CHECK 1: skill-ref resolution, CHECK 2: required-agents
+# presence, CHECK 3: required-tools presence) run after collision detection and before
+# agents/skills are used to build links.
 # ---------------------------------------------------------------------------
 
 # sanitize_for_report VALUE -> prints VALUE with TAB/CR/LF replaced by '?', so an
@@ -628,6 +659,21 @@ report_skill_ref_violations() {
 	printf '  skip this check with --no-verify-skill-refs\n' >&2
 }
 
+# split_csv_list RAW -> prints each non-empty token in RAW split on commas/whitespace, one
+# per line. Shared tokenizer for required_agents_list and required_tools_list — their
+# override/default precedence differs (see each), but the splitting itself is identical.
+# Splitting is delegated to awk (already a hard dependency) rather than a second parser.
+split_csv_list() {
+	printf '%s' "$1" | awk '
+		{
+			n = split($0, parts, /[,[:space:]]+/)
+			for (i = 1; i <= n; i++) {
+				if (parts[i] != "") print parts[i]
+			}
+		}
+	'
+}
+
 # required_agents_list -> prints the effective required-agent names, one per line:
 #   1. the --required-agents override (comma/space separated; an empty string disables
 #      the check), if the caller passed one; else
@@ -638,7 +684,6 @@ report_skill_ref_violations() {
 # NOT silently apply to an arbitrary/foreign/forked --source tree — a generic deployer's
 # default should never turn a legitimate foreign deploy into a hard failure. A foreign
 # tree opts in explicitly via --required-agents.
-# Splitting is delegated to awk (already a hard dependency) rather than a second parser.
 required_agents_list() {
 	if [ "$ARG_REQUIRED_AGENTS_SET" -eq 1 ]; then
 		ral_names=$ARG_REQUIRED_AGENTS
@@ -647,14 +692,7 @@ required_agents_list() {
 	else
 		ral_names=""
 	fi
-	printf '%s' "$ral_names" | awk '
-		{
-			n = split($0, parts, /[,[:space:]]+/)
-			for (i = 1; i <= n; i++) {
-				if (parts[i] != "") print parts[i]
-			}
-		}
-	'
+	split_csv_list "$ral_names"
 }
 
 # check_required_agents -> verify every name in the effective required-agents list is
@@ -678,6 +716,198 @@ report_missing_required_agents() {
 			printf '  required agent not discovered: "%s"\n' "$rma_name" >&2
 		done
 	printf '  override with --required-agents "a,b" or disable with --required-agents ""\n' >&2
+}
+
+# required_tools_list -> prints the effective required-tool SLOTS, one per line,
+# mirroring required_agents_list's override precedence exactly:
+#   1. the --required-tools override (comma/space separated; an empty string disables
+#      the check), if the caller passed one; else
+#   2. DEFAULT_REQUIRED_TOOLS, but ONLY when this run targets the deployer's OWN tree
+#      (IS_OWN_TREE=1); else
+#   3. empty (check disabled).
+# A slot is either a plain command name ("git") or two alternatives joined by "|" (an
+# OR-slot, e.g. "gpg|ssh-keygen") meaning at least one must be present — splitting on "|"
+# happens in check_required_tools, not here; this function only tokenizes the LIST on
+# commas/whitespace, so a bare "|" inside one token survives intact.
+required_tools_list() {
+	if [ "$ARG_REQUIRED_TOOLS_SET" -eq 1 ]; then
+		rtl_names=$ARG_REQUIRED_TOOLS
+	elif [ "$IS_OWN_TREE" -eq 1 ]; then
+		rtl_names=$DEFAULT_REQUIRED_TOOLS
+	else
+		rtl_names=""
+	fi
+	split_csv_list "$rtl_names"
+}
+
+# check_required_tools -> verify every slot in the effective required-tools list is
+# satisfied: a plain slot ("git") must resolve via `have`; an OR-slot ("gpg|ssh-keygen")
+# passes if EITHER alternative resolves and fails only when BOTH are absent. Populates
+# $WORK/missing_required_tools (one slot per line, in its original "a" or "a|b" form) with
+# EVERY unsatisfied slot — it does not stop at the first miss, so the report is complete.
+# A slot is a supported OR-slot only with EXACTLY one "|" between exactly two NON-EMPTY
+# alternatives:
+#   - two or more "|" characters cannot be split into a sensible pair (e.g.
+#     "gpg|ssh-keygen|foo" would yield a bogus alt2 of "ssh-keygen|foo" that can never
+#     resolve) and is rejected loudly via die_usage rather than silently mis-split.
+#   - a single "|" with an EMPTY side ("|foo", "foo|", or bare "|") is equally malformed:
+#     `have ""` always fails, so an empty alternative can never resolve and the slot could
+#     never mean anything but "the other side is mandatory" — reject it instead of letting
+#     it silently fall through with a garbled report line. This same check is what catches
+#     a spaced OR-slot like "gpg | ssh-keygen": split_csv_list's tokenizer splits on
+#     whitespace too, so the spaces fragment it into THREE tokens ("gpg", "|",
+#     "ssh-keygen") — the lone "|" token has both sides empty and dies right here, rather
+#     than silently turning an "either one" requirement into "both mandatory, plus a bogus
+#     always-missing slot".
+check_required_tools() {
+	required_tools_list >"$WORK/required_tools.tsv"
+	while IFS= read -r crt_slot; do
+		[ -n "$crt_slot" ] || continue
+		case $crt_slot in
+		*'|'*'|'*)
+			die_usage "malformed --required-tools slot (an OR-slot supports exactly one '|' between two alternatives): $crt_slot"
+			;;
+		*'|'*)
+			crt_alt1=${crt_slot%%|*}
+			crt_alt2=${crt_slot#*|}
+			if [ -z "$crt_alt1" ] || [ -z "$crt_alt2" ]; then
+				die_usage "malformed --required-tools slot (an OR-slot needs two non-empty alternatives, got \"$crt_slot\") - do not put spaces around the '|', e.g. use \"gpg|ssh-keygen\" not \"gpg | ssh-keygen\""
+			fi
+			have "$crt_alt1" || have "$crt_alt2" || printf '%s\n' "$crt_slot" >>"$WORK/missing_required_tools"
+			;;
+		*)
+			have "$crt_slot" || printf '%s\n' "$crt_slot" >>"$WORK/missing_required_tools"
+			;;
+		esac
+	done <"$WORK/required_tools.tsv"
+}
+
+# tool_reason NAME -> prints a one-line reason NAME is needed at runtime by the deployed
+# agents/skills (this is about what the DEPLOYED framework needs when it runs, never
+# about deploy.sh's own toolchain — that is check_deps).
+tool_reason() {
+	case $1 in
+	git)
+		printf 'needed for git-operator: branch/commit/push/tag and identity resolution (procedure-git-ops, procedure-git-identity)'
+		;;
+	gh)
+		printf 'needed for GitHub account confirmation (procedure-git-auth) and the project-manager GitHub issues/PR skills (procedure-gh-issues, procedure-gh-pr)'
+		;;
+	jq)
+		printf 'needed for the GTD inbox skills (flow-inbox, procedure-inbox-capture) and the entire Jira surface (procedure-jira, procedure-jira-auth)'
+		;;
+	curl)
+		printf 'needed for the Jira surface (procedure-jira, procedure-jira-auth) - every Jira REST call goes through it'
+		;;
+	gpg)
+		printf 'needed, as ONE of two alternatives (see ssh-keygen), for git commit/tag signing when gpg.format=openpgp (procedure-git-identity, procedure-git-ops)'
+		;;
+	ssh-keygen)
+		printf 'needed, as ONE of two alternatives (see gpg), for git commit/tag signing when gpg.format=ssh (procedure-git-identity, procedure-git-ops)'
+		;;
+	*)
+		printf 'required at runtime by the deployed agents/skills (see --required-tools)'
+		;;
+	esac
+}
+
+# tool_install_macos / tool_install_debian / tool_install_general NAME -> print accurate,
+# per-OS install guidance for NAME. deploy.sh never RUNS any of these commands itself —
+# it only detects, reports, and suggests; installing system packages is an outward,
+# system-mutating action left to a human (or an agent the human directs) to run.
+tool_install_macos() {
+	case $1 in
+	git) printf 'brew install git' ;;
+	gh) printf 'brew install gh' ;;
+	jq) printf 'brew install jq' ;;
+	curl) printf 'brew install curl (usually already present)' ;;
+	gpg) printf 'brew install gnupg' ;;
+	ssh-keygen) printf 'usually preinstalled; if missing, brew install openssh' ;;
+	*) printf 'use Homebrew: brew install <package>' ;;
+	esac
+}
+
+tool_install_debian() {
+	case $1 in
+	git) printf 'sudo apt-get install git' ;;
+	gh) printf 'needs GitHub own apt repository added first (a bare "apt-get install gh" does not work on stock Ubuntu) - see https://cli.github.com/' ;;
+	jq) printf 'sudo apt-get install jq' ;;
+	curl) printf 'sudo apt-get install curl' ;;
+	gpg) printf 'sudo apt-get install gnupg' ;;
+	ssh-keygen) printf 'sudo apt-get install openssh-client' ;;
+	*) printf 'use your distro package manager, e.g. apt-get install <package>' ;;
+	esac
+}
+
+tool_install_general() {
+	case $1 in
+	git) printf 'https://git-scm.com/downloads' ;;
+	gh) printf 'https://cli.github.com/' ;;
+	jq) printf 'https://jqlang.github.io/jq/' ;;
+	curl) printf 'https://curl.se/' ;;
+	gpg) printf 'https://gnupg.org/' ;;
+	ssh-keygen) printf 'https://www.openssh.com/' ;;
+	*) printf 'consult your OS package manager or the relevant official site' ;;
+	esac
+}
+
+# print_tool_guidance NAME -> print NAME's reason and per-OS install guidance to stderr
+# (the block shared by both the plain-slot and OR-slot arms of report_missing_required_tools).
+# Does NOT touch $WORK/missing_tools_flat — the caller decides what goes into that file,
+# since an OR-slot and a plain slot contribute to it differently (see SH-003 below).
+print_tool_guidance() {
+	ptg_name=$1
+	printf '    reason ("%s"): %s\n' "$ptg_name" "$(tool_reason "$ptg_name")" >&2
+	printf '    install "%s" - macOS: %s\n' "$ptg_name" "$(tool_install_macos "$ptg_name")" >&2
+	printf '    install "%s" - Debian/Ubuntu: %s\n' "$ptg_name" "$(tool_install_debian "$ptg_name")" >&2
+	printf '    install "%s" - general: %s\n' "$ptg_name" "$(tool_install_general "$ptg_name")" >&2
+}
+
+# report_missing_required_tools -> print every missing required-tool slot to stderr, each
+# with its reason and per-OS install guidance, then ONE consolidated "agentic install"
+# suggestion listing every actually-missing command name (never the "a|b" slot
+# notation) built dynamically from what is actually missing. deploy.sh NEVER executes an
+# install itself — see tool_install_*.
+#
+# Deliberate divergence from the CHECK1/CHECK2 one-line-per-violation convention (see
+# report_skill_ref_violations / report_missing_required_agents): a missing TOOL is
+# actionable in a way a missing agent name is not (there is somewhere concrete to go
+# install it), so this report enriches each violation with a reason plus per-OS install
+# guidance and a closing agentic-install paragraph. This is CHECK-3-only enrichment, not
+# drift from the shared convention.
+report_missing_required_tools() {
+	printf '=== %s: MISSING REQUIRED RUNTIME TOOLS ===\n' "$PROG" >&2
+	: >"$WORK/missing_tools_flat"
+	LC_ALL=C sort "$WORK/missing_required_tools" |
+		while IFS= read -r rmt_slot; do
+			[ -n "$rmt_slot" ] || continue
+			case $rmt_slot in
+			*'|'*)
+				rmt_alt1=${rmt_slot%%|*}
+				rmt_alt2=${rmt_slot#*|}
+				printf '  missing required tool: "%s" or "%s" (either one satisfies this requirement)\n' \
+					"$rmt_alt1" "$rmt_alt2" >&2
+				print_tool_guidance "$rmt_alt1"
+				print_tool_guidance "$rmt_alt2"
+				# Only ONE representative alternative goes into the agentic-install
+				# suggestion below — flattening BOTH would tell an agent to install both
+				# when only one is needed, contradicting the "either one satisfies this
+				# requirement" line above (SH-003).
+				printf '%s\n' "$rmt_alt1" >>"$WORK/missing_tools_flat"
+				;;
+			*)
+				printf '  missing required tool: "%s"\n' "$rmt_slot" >&2
+				print_tool_guidance "$rmt_slot"
+				printf '%s\n' "$rmt_slot" >>"$WORK/missing_tools_flat"
+				;;
+			esac
+		done
+	printf '  override with --required-tools "a,b" or disable with --required-tools ""\n' >&2
+
+	rmt_joined=$(awk '{printf "%s%s", (NR > 1 ? " " : ""), $0}' "$WORK/missing_tools_flat")
+	printf '\nTo install these automatically with an AI agent, run Claude Code (or another agent) and say:\n' >&2
+	printf '  "Install these missing dependencies on my system: %s. Use the appropriate package manager for my OS (Homebrew on macOS, apt on Debian/Ubuntu) and confirm each install succeeded."\n' \
+		"$rmt_joined" >&2
 }
 
 # ---------------------------------------------------------------------------
@@ -1041,6 +1271,20 @@ parse_args() {
 			ARG_REQUIRED_AGENTS_SET=1
 			shift
 			;;
+		--required-tools)
+			# Unlike --only/--source/--target, an EMPTY argument is valid here (it
+			# deliberately disables the required-tools check), so only the argument's
+			# presence is required, not its non-emptiness.
+			[ $# -ge 2 ] || die_usage "--required-tools requires an argument"
+			ARG_REQUIRED_TOOLS=$2
+			ARG_REQUIRED_TOOLS_SET=1
+			shift 2
+			;;
+		--required-tools=*)
+			ARG_REQUIRED_TOOLS=${1#--required-tools=}
+			ARG_REQUIRED_TOOLS_SET=1
+			shift
+			;;
 		-h | --help)
 			usage
 			exit 0
@@ -1152,7 +1396,7 @@ main() {
 
 	# Initialize manifests and action files.
 	for f in agents.tsv skills.tsv config.tsv contracts.tsv collisions \
-		skill_ref_violations missing_required_agents \
+		skill_ref_violations missing_required_agents missing_required_tools \
 		act_create act_skip act_replace act_backup act_diverged act_prune; do
 		: >"$WORK/$f"
 	done
@@ -1200,6 +1444,19 @@ main() {
 	if [ -s "$WORK/missing_required_agents" ]; then
 		report_missing_required_agents
 		exit 5
+	fi
+
+	# CHECK 3: every configured required runtime tool must be present (checked via PATH
+	# lookup; an OR-slot like "gpg|ssh-keygen" needs only one alternative). Disabled
+	# entirely by --required-tools "" (silent, intentional; also the default outcome for
+	# a foreign --source tree — see required_tools_list). Unlike CHECK 1/2 this is NOT
+	# gated by --only scope: --only controls WHICH ARTIFACT TYPES get deployed, not which
+	# OS-level tools the deployed agents/skills need at runtime, so this always runs when
+	# otherwise enabled, regardless of --only.
+	check_required_tools
+	if [ -s "$WORK/missing_required_tools" ]; then
+		report_missing_required_tools
+		exit 6
 	fi
 
 	# APPLY setup (create target dirs) — only when actually applying.

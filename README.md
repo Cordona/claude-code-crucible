@@ -122,11 +122,13 @@ Code config directory (`~/.claude` by default).
 ./deploy/deploy.sh             # apply
 ```
 
-Before it applies anything (including under `--dry-run`), it fails fast on two checks: every
-agent's `skills:` reference must resolve to a discovered skill, and — when deploying this
-framework's own tree — a default roster of required agents (`decision-arbiter`, `review-arbiter`,
-`software-architect`, `git-operator`, `docs-writer`) must all be discovered. Both are
-configurable (`--required-agents`, `--no-verify-skill-refs`).
+Before it applies anything (including under `--dry-run`), it fails fast on three checks: every
+agent's `skills:` reference must resolve to a discovered skill; when deploying this framework's
+own tree, a default roster of required agents (`decision-arbiter`, `review-arbiter`,
+`software-architect`, `git-operator`, `docs-writer`) must all be discovered; and, also only for
+this framework's own tree by default, a default set of required runtime tools (`git`, `gh`, `jq`,
+`curl`, and one of `gpg`/`ssh-keygen`) must be present on `PATH`. All three are configurable
+(`--required-agents`, `--required-tools`, `--no-verify-skill-refs`).
 
 > ℹ️ **An existing `CLAUDE.md` is backed up, not lost.** If the target already has a foreign
 > `CLAUDE.md` (a real file, or a symlink outside the framework), deploy first preserves it to a
@@ -135,12 +137,13 @@ configurable (`--required-agents`, `--no-verify-skill-refs`).
 > duplicate backups). Run `--dry-run` first to preview the `BACKUP` / `REPLACE` plan.
 
 Common flags: `--target`, `--source`, `--copy-agents`, `--no-prune`, `--only`,
-`--required-agents`, `--no-verify-skill-refs`. Run `./deploy/deploy.sh --help` for the full
-reference.
+`--required-agents`, `--required-tools`, `--no-verify-skill-refs`. Run `./deploy/deploy.sh --help`
+for the full reference.
 
 Exit codes: `0` success · `2` usage/argument error · `3` ambiguous source (a name collision, or
 more than one `CLAUDE.md` under the root) · `4` an unresolved `skills:` reference · `5` a missing
-required agent · `1` any other fatal error.
+required agent · `6` a missing required runtime tool (nothing applied) · `1` any other fatal
+error.
 
 ### Agentic setup
 
