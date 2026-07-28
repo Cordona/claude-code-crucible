@@ -156,7 +156,8 @@ have() {
 
 check_deps() {
 	cd_missing=""
-	for cd_bin in awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname; do
+	for cd_bin in awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname \
+		sed grep head cat; do
 		have "$cd_bin" || cd_missing="$cd_missing $cd_bin"
 	done
 	[ -z "$cd_missing" ] || die "missing required commands:$cd_missing"

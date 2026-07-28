@@ -223,6 +223,42 @@ run_deploy_no_required_check() {
 	RC=$?
 }
 
+# run_deploy_with_path PATHVAL ARGS... -> like run_deploy, but runs deploy.sh with PATH
+# restricted to PATHVAL (in a subshell, so the harness's own PATH is unaffected).
+# Used to deterministically simulate a missing check_deps/check_required_tools
+# dependency without depending on what happens to be installed on the host running
+# these tests.
+run_deploy_with_path() {
+	rdwp_path=$1
+	shift
+	(
+		PATH=$rdwp_path
+		export PATH
+		"$DEPLOY" "$@" >"$OUT" 2>"$ERR"
+	)
+	RC=$?
+}
+
+# The full set of tools check_deps() requires of deploy.sh itself (Task 1's four
+# additions — sed/grep/head/cat — included), used to build a restricted-but-WORKING PATH:
+# one that lets deploy.sh's own pipeline actually run to completion, so a test can
+# isolate a single missing/present RUNTIME tool (git/gh/jq/curl/gpg/ssh-keygen) without
+# also tripping check_deps.
+CHECK_DEPS_TOOLS="awk cmp cp date find ln mkdir mktemp readlink rm sort basename dirname sed grep head cat"
+
+# mk_bin_with DIR TOOL... -> populates DIR with symlinks to the HOST's real binaries for
+# exactly the given TOOL names (skipping any that do not exist on the host), producing a
+# restricted PATH used to deterministically exercise deploy.sh's tool-presence checks.
+mk_bin_with() {
+	mbw_dir=$1
+	shift
+	mkdir -p "$mbw_dir"
+	for mbw_tool in "$@"; do
+		mbw_real=$(command -v "$mbw_tool" 2>/dev/null) || continue
+		ln -s "$mbw_real" "$mbw_dir/$mbw_tool"
+	done
+}
+
 # snapshot DIR FILE -> records a stable listing (paths + symlink targets) of DIR
 snapshot() {
 	{
@@ -1543,6 +1579,39 @@ case_checks_dry_run() {
 }
 
 # ===========================================================================
+# Case 31: check_deps() now also requires sed, grep, head, cat (Task 1 fix). Each of
+# these 4 newly-added tools is removed from an otherwise-complete restricted PATH one at
+# a time, so a missing tool is diagnosed by NAME and the run dies with exit 1. NOTE: this
+# covers ONLY these 4 tools — the suite has no existing case exercising the original
+# 13-tool check_deps list (awk/cmp/cp/date/find/ln/mkdir/mktemp/readlink/rm/sort/
+# basename/dirname); this case does not claim or imply that coverage exists.
+# ===========================================================================
+case_check_deps_extended() {
+	printf '\n-- Case 31: check_deps() catches sed/grep/head/cat --\n'
+
+	for cde_tool in sed grep head cat; do
+		cde_bin=$(new_dir)
+		cde_others=""
+		for cde_candidate in $CHECK_DEPS_TOOLS; do
+			[ "$cde_candidate" = "$cde_tool" ] && continue
+			cde_others="$cde_others $cde_candidate"
+		done
+		# shellcheck disable=SC2086 # cde_others is built above from a fixed internal
+		# constant, one shell word per tool name; word-splitting is intentional here.
+		mk_bin_with "$cde_bin" $cde_others
+
+		cde_src=$(new_dir)
+		cde_tgt=$(new_dir)
+		mk_agent "$cde_src/a.md" some-agent
+
+		run_deploy_with_path "$cde_bin" --required-agents "" \
+			--source "$cde_src" --target "$cde_tgt"
+		assert_rc "case31: missing $cde_tool exits 1" 1 "$RC"
+		assert_grep "case31: missing $cde_tool is named in the diagnostic" "$cde_tool" "$ERR"
+	done
+}
+
+# ===========================================================================
 # Runner
 # ===========================================================================
 
@@ -1588,6 +1657,7 @@ main() {
 	case_only_scoping
 	case_no_verify_skill_refs_flag
 	case_checks_dry_run
+	case_check_deps_extended
 
 	printf '\n===============================\n'
 	printf 'Total: %s  PASS: %s  FAIL: %s\n' "$RUN" "$PASSED" "$FAILED"
