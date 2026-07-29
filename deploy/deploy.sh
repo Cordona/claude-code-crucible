@@ -486,12 +486,32 @@ record() {
 #   - any .git directory
 #   - any tests directory
 #   - the script's own deploy directory ($SCRIPT_DIR) and the framework-root deploy dir
+#   - the framework-root templates directory ($FRAMEWORK_ROOT/templates)
 # and never emit .DS_Store (naturally excluded by the -name filters).
+#
+# templates/ holds fill-in-the-blanks reference files (e.g. template-tech-developer.md)
+# that deliberately mimic real agent/skill/contract frontmatter shape, so a generator
+# agent can use them as a reference — which means they WOULD otherwise be picked up by
+# these marker-based scans. Guarded by directory location — $FRAMEWORK_ROOT/templates is
+# pruned, same as the deploy dir — plus, where it can actually bite, a second, independent
+# filename-prefix check:
+#   1. directory location — $FRAMEWORK_ROOT/templates is pruned, same as the deploy dir.
+#      This is the SOLE guard for discover_skills/discover_config below: their primary
+#      name test (-name SKILL.md / -name CLAUDE.md) is an exact-literal match, so a file
+#      whose basename is exactly "SKILL.md" or "CLAUDE.md" can never also start with
+#      "template-" — the "! -name 'template-*'" clause on those two is therefore dead
+#      code today, kept only for uniformity with the two functions below that need it.
+#   2. filename prefix — discover_agents (-name '*.md') and discover_contracts
+#      (-name '*.schema.json') use a WILDCARD primary name test, which a
+#      "template-*.md" / "template-*.schema.json" basename can also match. For those two,
+#      "! -name 'template-*'" is a genuine second, independent backstop: it still excludes
+#      such a file even if it ever ends up outside templates/ (a refactor, a mistake).
 
 discover_skills() {
 	find "$FRAMEWORK_ROOT" \
-		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \) -prune -o \
-		-type f -name SKILL.md -print >"$WORK/skills.raw" || die "find (skills) failed"
+		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \
+		-o -path "$FRAMEWORK_ROOT/templates" \) -prune -o \
+		-type f -name SKILL.md ! -name 'template-*' -print >"$WORK/skills.raw" || die "find (skills) failed"
 
 	while IFS= read -r ds_file; do
 		[ -n "$ds_file" ] || continue
@@ -505,8 +525,10 @@ discover_skills() {
 
 discover_agents() {
 	find "$FRAMEWORK_ROOT" \
-		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \) -prune -o \
-		-type f -name '*.md' ! -name SKILL.md -print >"$WORK/agents.raw" || die "find (agents) failed"
+		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \
+		-o -path "$FRAMEWORK_ROOT/templates" \) -prune -o \
+		-type f -name '*.md' ! -name SKILL.md ! -name 'template-*' -print >"$WORK/agents.raw" ||
+		die "find (agents) failed"
 
 	while IFS= read -r da_file; do
 		[ -n "$da_file" ] || continue
@@ -523,8 +545,10 @@ discover_agents() {
 # more than one is ambiguous and fatal rather than arbitrarily resolved.
 discover_config() {
 	find -L "$FRAMEWORK_ROOT" \
-		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \) -prune -o \
-		-type f -name CLAUDE.md -print >"$WORK/config.candidates" || die "find (config) failed"
+		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \
+		-o -path "$FRAMEWORK_ROOT/templates" \) -prune -o \
+		-type f -name CLAUDE.md ! -name 'template-*' -print >"$WORK/config.candidates" ||
+		die "find (config) failed"
 
 	# Qualify by CONTENT, not filename alone. An agent must carry name:+description:
 	# frontmatter and a skill must be a SKILL.md dir; before this, the operating contract —
@@ -572,8 +596,10 @@ discover_config() {
 # the tree are therefore an ambiguous-source collision, same as an agent/skill name clash.
 discover_contracts() {
 	find "$FRAMEWORK_ROOT" \
-		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \) -prune -o \
-		-type f -name '*.schema.json' -print >"$WORK/contracts.raw" || die "find (contracts) failed"
+		\( -name .git -o -name tests -o -path "$SCRIPT_DIR" -o -path "$FRAMEWORK_ROOT/deploy" \
+		-o -path "$FRAMEWORK_ROOT/templates" \) -prune -o \
+		-type f -name '*.schema.json' ! -name 'template-*' -print >"$WORK/contracts.raw" ||
+		die "find (contracts) failed"
 
 	while IFS= read -r dct_file; do
 		[ -n "$dct_file" ] || continue

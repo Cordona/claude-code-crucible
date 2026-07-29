@@ -33,6 +33,7 @@ the loop.
   - [Operational agents](#operational-agents)
   - [Skills](#skills)
   - [Patterns](#patterns)
+  - [Templates](#templates)
   - [Contracts](#contracts)
   - [Project management: GitHub and Jira](#project-management-github-and-jira)
   - [Authenticating Jira and GitHub](#authenticating-jira-and-github)
@@ -68,13 +69,13 @@ work.
 
 | | |
 |---|---|
-| **Entry modes** | 10 — implement, spec, review, test, direct, decision panel, external review, documentation, backlog, capture |
-| **Developers** | 7 `{tech}` pairs — Java, Kotlin, PHP, React, Rust, shell script, DevOps — plus 1 tech-agnostic `tests-developer` |
-| **Reviewers** | 15 total — **7 `{tech}`-reviewers** (correctness floor): Java, Kotlin, PHP, React, Rust, shell script, DevOps · **8 `lens-*`** (language-agnostic quality, on-demand only): clean-code, security, performance, observability, test-quality, consistency, persistence, compatibility |
+| **Entry modes** | 11 — implement, spec, review, test, direct, tech-pair, decision panel, external review, documentation, backlog, capture |
+| **Developers** | 8 `{tech}` pairs — Java, Kotlin, PHP, Python, React, Rust, shell script, DevOps — plus 1 tech-agnostic `tests-developer` |
+| **Reviewers** | 16 total — **8 `{tech}`-reviewers** (correctness floor): Java, Kotlin, PHP, Python, React, Rust, shell script, DevOps · **8 `lens-*`** (language-agnostic quality, on-demand only): clean-code, security, performance, observability, test-quality, consistency, persistence, compatibility |
 | **Specialists & arbiters** | 3 — `software-architect`, `decision-arbiter`, `review-arbiter` |
-| **Operational agents** | 4 — `git-operator`, `project-manager`, `gtd-inbox-writer`, `docs-writer` |
+| **Operational agents** | 6 — `git-operator`, `project-manager`, `gtd-inbox-writer`, `docs-writer`, `tech-developer-generator`, `tech-reviewer-generator` |
 | **Project management** | 2 active trackers — **GitHub** (issues + pull requests) and **Jira** (issues, components/versions, attachments, bulk, Agile) |
-| **Patterns** | Bounded tech-pair fix loop · on-demand lens review · cross-repo spec gate · blind decision panel · external-review adjudication |
+| **Patterns** | Bounded tech-pair fix loop · on-demand lens review · cross-repo spec gate · blind decision panel · external-review adjudication · on-demand tech-pair generation |
 | **Determinism** | Scripts are the sole writers for git, GitHub, Jira, and the GTD inbox |
 
 Headline capabilities:
@@ -96,13 +97,18 @@ Headline capabilities:
   GitHub and Jira, tuned to a declared audience, with every live write gated on consent.
 - **A GTD capture inbox** — park a thought mid-session with a leading `dump:` / `park:` /
   `inbox:` directive; a deterministic script appends it verbatim, never executes it.
+- **On-demand tech-pair generation** — ask for a new `{tech}` pair (e.g. "I need a new tech pair
+  for Python") and a parallel research swarm, two sequential generator agents, and a lens review —
+  capped at 3 rounds per seat, the same cap as the tech-pair fix loop — produce a permanent,
+  reviewed `{tech}-developer`/`{tech}-reviewer` pair before you're asked whether to deploy it.
 
 ## How it works
 
 A coding request flows through four separate, independently-gated procedures — not one, because
 their costs are wildly different and shouldn't all be paid on every build:
 
-1. **Spec** *(cross-repo or multi-tech-pair work only)* — `software-architect` drafts a contract,
+1. **Spec** *(cross-repo/multi-tech-pair work — closest to mandatory there — and equally available
+   for a single repo on an explicit spec-first ask)* — `software-architect` drafts a contract,
    a `flow-decision` panel resolves it first if the interface is genuinely contested (propose-only,
    never auto-fired), the human approves it, and every parallel tech pair builds against that same
    document.
@@ -182,7 +188,7 @@ never consults a hardcoded list — it reads each agent's frontmatter `descripti
 
 ### Entry modes
 
-Every request is routed into exactly one of ten modes, and the mode decides *who does the work*
+Every request is routed into exactly one of eleven modes, and the mode decides *who does the work*
 and *what safeguards apply* — a build gets the tech pair, a deep review is a separate deliberate
 ask, a costly decision gets a blind panel, an outward act gets a consent gate. You rarely name the
 mode: the orchestrator infers it from the request. **None of these fire from repository state
@@ -194,10 +200,11 @@ it. Modes are defined in [`main-thread/CLAUDE.md`](./main-thread/CLAUDE.md):
 | Mode | Trigger | What runs |
 |---|---|---|
 | **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer → `{tech}`-reviewer → gated fix loop — tech pair only, never a lens |
-| **Spec** | cross-repo work, multiple tech pairs in parallel, or a forked interface decision | `software-architect` drafts a contract → gate → durable artifact every parallel pair builds against |
+| **Spec** | cross-repo work, multiple tech pairs in parallel, a forked interface decision, or an explicit spec-first ask on any effort | `software-architect` drafts a contract → gate → durable artifact every parallel pair builds against |
 | **Review** | an explicit ask for a full/lens review — never automatic | On-demand lens swarm, derived from the diff → gate → durable, trackable report |
 | **Test** | the human's explicit confirmation an implementation is right | `tests-developer` (never the developer) writes tests against the approved code |
 | **Direct** | no subagent matches the stack | Orchestrator implements, self-checks via an execution test |
+| **Tech-pair** | "I need a new tech pair" (bare, or named — "...for Go") — the permanent alternative to living in Direct mode for an uncovered language | Poll for language + ecosystem → collision check (inform, never decide) → gate → research swarm → generate the pair in order → lens review before deploy (capped at 3/seat) → report → human deploys |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers + a neutral `decision-arbiter` |
 | **External review** | an external/automated PR review to address | Advocates + the `review-arbiter` judge → fix → one response |
 | **Documentation** | "document this", "write a README" | `docs-writer` drafts → fact-checked against the code → fix loop |
@@ -220,6 +227,7 @@ rubrics its reviewer later judges against — so developer and reviewer share on
 | `java-developer` | Enterprise JVM / Spring Boot implementer | Building or refactoring Java code |
 | `kotlin-developer` | Kotlin / coroutines / Ktor implementer | Building or refactoring Kotlin code |
 | `php-developer` | Laravel / Symfony implementer | Building or refactoring PHP code |
+| `python-developer` | General-purpose, stdlib-leaning Python implementer | Building or refactoring Python scripts, CLI tools, libraries |
 | `react-developer` | React + TypeScript (Next.js/Remix) implementer | Building or refactoring React UI |
 | `rust-developer` | Systems & async Rust implementer | Building or refactoring Rust code |
 | `shell-script-developer` | POSIX/Bash automation & CLI implementer | Writing shell scripts, entrypoints, CI steps |
@@ -246,7 +254,7 @@ an explicit, separate ask, on the diff already produced by the tech pair.
 
 | Reviewer | What it is | When it's used |
 |---|---|---|
-| `{tech}`-reviewer | Correctness + language-specific hazards for that stack (`java-reviewer`, `kotlin-reviewer`, `php-reviewer`, `react-reviewer`, `rust-reviewer`, `shell-script-reviewer`, `devops-reviewer`) | Every orchestrated change in that stack |
+| `{tech}`-reviewer | Correctness + language-specific hazards for that stack (`java-reviewer`, `kotlin-reviewer`, `php-reviewer`, `python-reviewer`, `react-reviewer`, `rust-reviewer`, `shell-script-reviewer`, `devops-reviewer`) | Every orchestrated change in that stack |
 
 **Quality lenses — seated by applicability:**
 
@@ -282,6 +290,8 @@ deterministic script makes it happen, so the outward record is reproducible and 
 | `project-manager` | Authors backlog artifacts + operates GitHub/Jira | Filing issues/tickets/epics/bugs, opening PRs |
 | `gtd-inbox-writer` | Appends one captured thought to the GTD inbox | A leading capture directive (`dump:`, `park:`, …) |
 | `docs-writer` | Writes minimal, single-purpose documentation | An explicit documentation request |
+| `tech-developer-generator` | Researches a language + authors its `standard-{tech}` rubric and `{tech}-developer` | Generating a new tech pair, always first |
+| `tech-reviewer-generator` | Authors the matching `{tech}-reviewer`, reading the just-written standard | Generating a new tech pair, always second |
 
 ### Skills
 
@@ -289,7 +299,7 @@ Skills are bound on demand, not memorized. Three kinds:
 
 | Kind | What it is | When it's used |
 |---|---|---|
-| `flow-*` | The orchestrator's playbooks — `flow-implementation`, `flow-spec`, `flow-review`, `flow-testing`, `flow-decision`, `flow-external-review`, `flow-documentation`, `flow-project-management`, `flow-git-operations`, `flow-inbox` | Bound by the main thread when a matching mode fires |
+| `flow-*` | The orchestrator's playbooks — `flow-implementation`, `flow-spec`, `flow-review`, `flow-testing`, `flow-tech-pair`, `flow-decision`, `flow-external-review`, `flow-documentation`, `flow-project-management`, `flow-git-operations`, `flow-inbox` | Bound by the main thread when a matching mode fires |
 | `standard-*` | Shared quality rubrics — developers build to them, reviewers judge against them (per-language `tech/`, per-lens, plus judging/documentation/backlog rubrics) | Referenced during build and review |
 | `procedure-*` | Script-backed deterministic procedures — `procedure-gh-issues`, `procedure-gh-pr`, `procedure-jira`, `procedure-git-ops`, `procedure-inbox-capture`, and their auth/identity helpers | Bound by an operational agent to run its scripts |
 
@@ -307,8 +317,18 @@ separate, explicitly-requested procedure.
 | **Cross-repo spec gate** | A `software-architect`-drafted, human-approved contract every parallel tech pair builds against, so independent repos can't quietly drift from each other or from intent. | Cross-repo or multi-tech-pair work (`flow-spec`) |
 | **Decision panel** | Neutralizes the orchestrator's own bias: reviewers with deliberately different lenses judge *blind*, then a neutral `decision-arbiter` resolves their disagreement by reasoning and evidence — never a vote. | A costly, hard-to-undo forked decision of any kind |
 | **External review** | Adjudicates each incoming review finding on its merits: PRO/CON advocates argue it, a `review-arbiter` judge rules real-or-not per finding — so you fix what's genuinely broken, refute what isn't, and respond once. | Addressing an external/automated PR review |
+| **On-demand tech-pair generation** | A parallel research swarm feeds one synthesis document; `tech-developer-generator` then `tech-reviewer-generator` author a permanent pair against fixed templates; a lens review runs BEFORE anything deploys, capped at 3 rounds/seat like the tech-pair fix loop itself. No functional/dogfood test — deliberately out of scope. | An uncovered language, on explicit request (`flow-tech-pair`) |
 
 The two arbiter-led patterns share `standard-judging`, the judge's constitution.
+
+### Templates
+
+`templates/tech-pair/` holds the fill-in-the-blanks reference files (`template-tech-developer.md`,
+`template-tech-reviewer.md`, `template-standard-tech.md`) the two generator agents build a new tech
+pair against — extracted from the real Kotlin/Rust/Shell pairs so a generated pair matches the
+established shape instead of reinventing it. **Never deployed**: `deploy.sh` excludes anything
+`template`-prefixed or living under `templates/`, by two independent checks (directory-path prune
+and filename-prefix match), so neither can accidentally reopen the other.
 
 ### Contracts
 
@@ -396,4 +416,6 @@ gh auth login
 - **`jq`** — JSON tooling for the Jira/GitHub/inbox procedures.
 - **`git`** — for the VCS operations.
 - **`gh`** (GitHub CLI) — for GitHub issues and pull requests.
+- **`curl`** — drives the Jira REST calls.
+- **`gpg` or `ssh-keygen`** (one of the two) — backs the signed commits `git-operator` produces.
 - A Jira instance and API token — only if you use the Jira project-management surface.
