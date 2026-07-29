@@ -33,9 +33,16 @@ preconditions below, not just the mechanics.)*
 1. **Consent** — the user explicitly asked for THIS commit/push/tag in this conversation. Neither a
    review nor an identity check can supply it. **If you are unsure whether they asked — they did
    not.** (The hard invariant below.)
-2. **Reviewed** — changes **you** made that `git status` shows uncommitted have been through a
-   review swarm (`flow-orchestration` §0). Pre-existing dirty work you did not author is not yours
-   to gate on; say it is there and leave it alone.
+2. **Reviewed** — changes **you** made that `git status` shows uncommitted have been through **at
+   least `flow-implementation`'s tech-pair loop** (the developer + `{tech}-reviewer` correctness
+   pass — NOT necessarily a `flow-review` lens swarm, which only ever runs on a separate, explicit
+   ask and is never a precondition for committing). This is the ONE state-based check surviving
+   from the previous design: it does not re-run anything and costs nothing beyond asking. If you
+   cannot positively recall this diff going through `flow-implementation` this session, **say so
+   and ask the human explicitly** — "these changes haven't been through the tech-pair review yet;
+   commit anyway, or run `flow-implementation`'s review-only variant first?" — rather than assuming
+   either answer. Pre-existing dirty work you did not author is not yours to gate on; say it is
+   there and leave it alone.
 3. **No open gating finding** — the merged verdict is not `CHANGES_REQUIRED`. **"It has been
    reviewed" is not "it passed."** Open CRITICAL/HIGH findings do not clear a commit; they document
    one. Shipping against an ignored report is worse than shipping unreviewed — it manufactures a
@@ -91,8 +98,8 @@ own turn**, *after* G3 exposed the messages + identity.
 - Approval of the *code* ("looks good", "ship it") is **not** approval to commit — ask the outward
   question explicitly.
 
-**Collect the consent via `AskUserQuestion`** — the same structured gate the orchestration plan uses
-(`flow-orchestration` §3). The full messages + identity stay in G3's live-markdown reveal *above* the
+**Collect the consent via `AskUserQuestion`** — the same structured gate `flow-implementation`'s
+plan uses (`flow-implementation` §3). The full messages + identity stay in G3's live-markdown reveal *above* the
 question (a commit body cannot fit a button label); the question only captures the choice + scope:
 - Header **"Commit"** · question *"Approve the commit(s) above? (messages + signing identity shown)"*
 - Options: **"Approve — commit only"** · **"Approve — commit + push to `origin/<branch>`"** (name the

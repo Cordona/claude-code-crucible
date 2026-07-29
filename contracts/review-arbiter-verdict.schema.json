@@ -29,16 +29,7 @@
     },
     "secondary_actions": {
       "description": "Additional outcomes beyond the primary verdict, for a genuinely compound ruling. OPTIONAL — omit when there are none.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["type", "detail"],
-        "properties": {
-          "type": { "enum": ["FIX", "TRACK_FOLLOWUP"] },
-          "detail": { "type": "string", "minLength": 1 }
-        }
-      }
+      "$ref": "secondary-actions.schema.json"
     },
     "already_resolved_by": {
       "description": "The SHA that already fixed the finding. OPTIONAL — present ONLY when verdict == ALREADY_RESOLVED.",
@@ -57,7 +48,7 @@
     },
     "confidence": {
       "description": "Standing duty 3: the arbiter's stated confidence in the ruling. REQUIRED every time.",
-      "enum": ["high", "medium", "low"]
+      "$ref": "confidence.schema.json"
     }
   }
 }

@@ -14,11 +14,16 @@ context to execute. Read the essentials first.
   marker**, and symlinks them into `~/.claude`. Runtime data + the deploy target namespace live
   under `~/.claude/crucible/…` regardless of the source repo's name. Run `deploy.sh --dry-run`
   first, always.
-- **How work is done (flow-orchestration):** for any code change → brief → derive a review roster
-  from empty → **gate the plan with the user** → `{tech}`-developer implements → parallel review
-  swarm (`{tech}`-reviewer + applicable `lens-*`) → bounded fix loop (round-1 fix gating findings,
-  round-2 verify, stop; a 3rd round only on an open CRITICAL/HIGH) → executive summary. Verdicts:
-  CHANGES_REQUIRED (any open CRITICAL/HIGH) / APPROVED_WITH_FOLLOWUPS (only MED/LOW) / APPROVED.
+- **How work is done — four separate, independently-gated procedures, not one:**
+  `flow-implementation` (build → `{tech}`-developer + `{tech}`-reviewer ONLY, never a lens →
+  bounded fix loop: round-1 fix, round-2 verify, stop; a 3rd round only on an open CRITICAL/HIGH),
+  `flow-review` (the lens swarm, **on-demand only, never automatic** — derives its roster from the
+  diff, persists a durable trackable report, runs no fix loop itself), `flow-spec` (cross-repo /
+  multi-tech-pair contract, gated before any parallel build), `flow-testing` (tests, last, only on
+  the human's explicit confirmation the implementation is right — written by `tests-developer`, never
+  the developer). Verdicts: CHANGES_REQUIRED (any open CRITICAL/HIGH) / APPROVED_WITH_FOLLOWUPS
+  (only MED/LOW) / APPROVED. `flow-orchestration` is retired — this is not a variant of it, it's
+  its replacement.
 - **Commit discipline:** author the message to a file; **expose it verbatim before committing**;
   commit **signed** with your own public identity (never a work/client email).
 - **Jira cycle rhythm:** ground-truth probe (read-only) → gate → build + offline mock tests →
@@ -66,10 +71,12 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
   only Jira). `deploy.sh` already has `--only TYPE`; extend to component/profile selection via a
   selection script/manifest. Keep the marker discovery + required-agent/skill-ref checks coherent
   under a partial roster.
-- **Independent test-author pattern** (inbox `20260726T065816Z-2751bc13`): a **generic test-writer
-  agent, separate from the `{tech}`-developer**, so tests aren't authored by the party motivated to
-  make them pass. Design a tech-agnostic `test-author` agent + wire it into flow-orchestration
-  (developer builds → test-author writes tests → swarm reviews).
+- **Independent tests-developer pattern** (inbox `20260726T065816Z-2751bc13`) — **DONE**, superseded by
+  the `flow-orchestration` retirement itself: `tests-developer` (`roles/developers/agents/`) is now the
+  sole test-writing agent, `build-core` structurally forbids the `{tech}`-developer from touching a
+  test file, `review-core` backstops it as a gating violation independent of content, and
+  `flow-testing` is the only place tests get written — on the human's explicit confirmation the
+  implementation is right, never automatically after a build or a review.
 - **Native-task progress pattern** (inbox `20260725T133509Z-28ec3911`): a skill that, on request,
   has the orchestrator use Claude Code's native tasks (`TaskCreate`/`TaskUpdate`) to track work and
   surface **live status**. New `main-thread` skill (or a CLAUDE.md addition) — contract-level, gate
@@ -77,10 +84,11 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 - **Trackable-plan pattern** (inbox `20260725T081715Z-59bfdd95`): introduce the "trackable plan"
   pattern as a new **main-thread skill** — a plan that stays linked to its execution as work
   proceeds.
-- **Deterministic MD rendering** (inbox `20260725T072634Z-b8ca8251`): extend the inbox's
-  determinism (a script renders user-facing markdown) to other outputs — e.g. **deterministic
-  rendering of an orchestration plan**. Mirror `flow-inbox`'s `render-md.sh` (the script is the
-  sole renderer; the agent relays its stdout verbatim).
+- **Deterministic MD rendering** (inbox `20260725T072634Z-b8ca8251`) — **DONE.** `flow-spec`'s
+  (`spec-create.sh`/`spec-approve.sh`/`render-md.sh`) and `flow-review`'s
+  (`review-create.sh`/`review-add-round.sh`/`review-update-status.sh`/`render-md.sh`) durable-artifact
+  scripts are built, tested, and reviewed, mirroring `flow-inbox`'s `render-md.sh` pattern (JSON
+  source of truth + a sole deterministic renderer).
 - **PM tracker disambiguation** (inbox `20260725T061121Z-b1ead236`): when a backlog request doesn't
   name Jira vs GitHub, the PM flow should **ask** rather than guess. In `flow-project-management`,
   mirror the existing mandatory audience-ask. Low-token, contained.

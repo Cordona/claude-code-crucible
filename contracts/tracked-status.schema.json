@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/tracked-status.schema.json",
+  "title": "Tracked-Component Workflow Status",
+  "description": "Where a finding's fix currently sits in the human/tech-pair workflow — PENDING (raised, untouched) -> IN_PROGRESS (the tech pair picked it up) -> APPROVED / APPROVED_WITH_FOLLOWUPS (the {tech}-reviewer signed off). Orthogonal to finding-status.schema.json (the cross-round identity lifecycle — is this finding still current) — never conflated into one enum; a finding can be REGRESSED (finding-status) and simultaneously back IN_PROGRESS (tracked-status) at once. Value domain only; the workflow SEMANTICS live in flow-review / flow-implementation.",
+  "enum": ["PENDING", "IN_PROGRESS", "APPROVED", "APPROVED_WITH_FOLLOWUPS"]
+}

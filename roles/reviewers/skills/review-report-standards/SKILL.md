@@ -32,8 +32,8 @@ Two field-level notes the schema deliberately leaves to this skill:
 
 ## Finding IDs (Stable Across Rounds)
 
-- Format: `PREFIX-NNN`, zero-padded sequence (e.g. `CC-001`, `CC-002`).
-- The `PREFIX` identifies the reviewer so IDs never collide when the primary agent merges reports from a review swarm. Recommended prefixes: `CC` (clean-code), `SEC` (security), `TEST` (test-quality), `CON` (consistency), `OBS` (observability), `PERF` (performance), `COMPAT` (compatibility), `PERS` (persistence); language reviewers use a short language tag (e.g. `RUST`, `JAVA`).
+- Format: `PREFIX-NNN`, zero-padded sequence (e.g. `CLEAN-001`, `CLEAN-002`).
+- The `PREFIX` identifies the reviewer so IDs never collide when the primary agent merges reports from a review swarm. Recommended prefixes — the natural, real-word form of the concept, never an artificial letter-drop: `CLEAN` (clean-code), `SEC` (security), `TEST` (test-quality), `CONS` (consistency), `OBS` (observability), `PERF` (performance), `COMPAT` (compatibility), `PERS` (persistence); language/tech reviewers use their actual full name (e.g. `RUST`, `JAVA`, `KOTLIN`, `PHP`, `REACT`, `SHELL`, `DEVOPS`).
 - An `id` is assigned once and **reused unchanged** in every later round for the same finding. Never renumber. Global uniqueness comes from composing the report header (`reviewer` + `target` + `round`) with the local `id` — do NOT bloat the `id` with names or timestamps.
 
 ## Status Lifecycle

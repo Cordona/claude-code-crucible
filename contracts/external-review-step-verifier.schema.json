@@ -39,7 +39,7 @@
     },
     "confidence": {
       "description": "The verifier's stated confidence in the result. Same value domain as the arbiter/advocate confidence field, for cross-contract consistency.",
-      "enum": ["high", "medium", "low"]
+      "$ref": "confidence.schema.json"
     }
   }
 }

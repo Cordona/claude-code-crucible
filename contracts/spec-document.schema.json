@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/spec-document.schema.json",
+  "title": "Spec Document",
+  "description": "The durable wire contract for a flow-spec artifact — the human-approved interface contract one or more flow-implementation tech pairs build against. This file defines the SHAPE only; the SEMANTICS (when a spec is required, the panel-then-draft procedure, the approval gate, the path+hint briefing discipline) live in the flow-spec skill. software-architect emits this shape as its draft; the orchestrator persists it and calls the deterministic renderer for the human-facing .md. One JSON object per file, at `.crucible/docs/specs/{year}/{month}/{day}/{slug}.json`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "title", "status", "created", "repos_in_scope", "goal", "interface_contracts"],
+  "properties": {
+    "schema_version": {
+      "description": "Contract version. Pinned so a consumer can detect a shape change. The document is durable and may outlive a revision.",
+      "const": "1.0"
+    },
+    "id": {
+      "description": "The effort slug — matches the filename (without extension) and the directory it lives under.",
+      "$ref": "artifact-slug.schema.json"
+    },
+    "title": {
+      "description": "Short human title, one line.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "draft: awaiting approval, not yet buildable-against. approved: the human approved it; every flow-implementation pair for this effort builds against it. superseded: a later spec replaced it (this file is kept for history, never edited in place).",
+      "enum": ["draft", "approved", "superseded"]
+    },
+    "created": {
+      "description": "ISO 8601 date only. Frozen at first draft; never changed on approval or later edits.",
+      "type": "string",
+      "format": "date"
+    },
+    "approved_by": {
+      "description": "Free-text identifying who approved it (the human in this conversation). OMITTED (never null) while status is draft.",
+      "type": "string",
+      "minLength": 1
+    },
+    "approved_at": {
+      "description": "UTC instant (ISO-8601) of approval. OMITTED (never null) while status is draft.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "repos_in_scope": {
+      "description": "One entry for a single-repo effort; one per repo for cross-repo work.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/repo_ref" },
+      "minItems": 1
+    },
+    "goal": {
+      "description": "One paragraph: the outcome this spec exists to produce.",
+      "type": "string",
+      "minLength": 1
+    },
+    "non_goals": {
+      "description": "Explicitly excluded scope, one line per item. The thing that stops silent scope creep.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "interface_contracts": {
+      "description": "One entry per repo in repos_in_scope, each becoming that pair's flow-implementation acceptance criterion.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/interface_contract" },
+      "minItems": 1
+    },
+    "constraints": {
+      "description": "Backward-compat requirements, perf budget, auth model, etc. — one line per item.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "decision_log": {
+      "description": "Populated ONLY if a flow-decision panel ran to resolve a genuinely forked interface question. Empty array otherwise — never omitted, so a reader can distinguish 'no fork existed' from 'the field wasn't filled in'.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision_entry" }
+    },
+    "open_questions": {
+      "description": "Explicitly deferred, non-blocking — things the spec deliberately does not resolve.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "repo_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "tech"],
+      "properties": {
+        "repo": { "type": "string", "minLength": 1, "description": "Repo name or path identifying it within the effort." },
+        "tech": { "type": "string", "minLength": 1, "description": "Primary stack, e.g. \"Kotlin\", \"Rust\", \"React\"." }
+      }
+    },
+    "interface_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "exposes", "consumes"],
+      "properties": {
+        "repo": { "type": "string", "minLength": 1, "description": "Must match a repo value in repos_in_scope." },
+        "exposes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "What this repo offers to other repos/consumers — free-text lines (an endpoint, a schema, a CLI flag); the contract's content is domain-specific, not itself schematized."
+        },
+        "consumes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "What this repo calls into / depends on from another repo in scope."
+        }
+      }
+    },
+    "decision_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fork", "decision", "why"],
+      "properties": {
+        "fork": { "type": "string", "minLength": 1, "description": "The decision point, framed as a question." },
+        "decision": { "type": "string", "minLength": 1, "description": "The option chosen." },
+        "why": { "type": "string", "minLength": 1, "description": "The reasoning, per the flow-decision panel's resolution." }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "cross-repo-job-submission",
+      "title": "Cross-repo job-submission contract",
+      "status": "approved",
+      "created": "2026-07-29",
+      "approved_by": "the user",
+      "approved_at": "2026-07-29T09:15:00Z",
+      "repos_in_scope": [
+        { "repo": "service-api", "tech": "Kotlin" },
+        { "repo": "core-engine", "tech": "Rust" },
+        { "repo": "web-client", "tech": "React" }
+      ],
+      "goal": "Let a user submit a long-running job from web-client and track its progress, with core-engine doing the work and service-api brokering between the two.",
+      "non_goals": ["Job cancellation (a later effort)", "Multi-tenant job quotas"],
+      "interface_contracts": [
+        {
+          "repo": "service-api",
+          "exposes": ["POST /v1/jobs — accepts {input}, returns {jobId, status}", "GET /v1/jobs/{jobId} — returns {status, progress, result?}"],
+          "consumes": ["core-engine's gRPC SubmitJob/GetJobStatus, per core-engine's own exposes entries"]
+        },
+        {
+          "repo": "core-engine",
+          "exposes": ["gRPC SubmitJob(input) -> {jobId}", "gRPC GetJobStatus(jobId) -> {status, progress, result?}"],
+          "consumes": []
+        },
+        {
+          "repo": "web-client",
+          "exposes": [],
+          "consumes": ["service-api's POST /v1/jobs and GET /v1/jobs/{jobId}, polled every 2s while status is \"running\""]
+        }
+      ],
+      "constraints": ["jobId is a UUID, generated by core-engine, never client-supplied", "status is one of: queued, running, done, failed"],
+      "decision_log": [],
+      "open_questions": ["Whether progress is a percentage or a step count — deferred to core-engine's implementation, not user-visible in v1"]
+    }
+  ]
+}

@@ -2,32 +2,63 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/inbox-entry.schema.json",
   "title": "GTD Inbox Entry",
-  "description": "One line of the GTD inbox log (append-then-flip). SEMANTICS — capture discipline, triage lifecycle — live in flow-inbox; this file is the wire shape only. Minified, one JSON object per line.",
+  "description": "One line of the GTD inbox log (append-then-flip). This file defines the SHAPE only; the SEMANTICS (capture discipline, triage lifecycle) live in flow-inbox. Minified, one JSON object per line.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "ts", "text", "is_processed"],
   "properties": {
-    "schema_version": { "const": "1.0",
-              "description": "Contract version; pinned so a consumer can detect a shape change. The log is durable and may outlive a revision, so every line carries the version it was written under." },
-    "id":   { "type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$",
-              "description": "UTC-stamp + random suffix; time-prefixed so `sort` is chronological." },
-    "ts":   { "type": "string", "format": "date-time",
-              "description": "UTC capture instant (ISO-8601)." },
-    "text": { "type": "string", "minLength": 1,
-              "description": "VERBATIM. Never summarized/reformatted at capture time." },
-    "project": { "type": "string",
-                 "description": "basename of the capture cwd (repo root). Omitted when not derivable." },
-    "is_processed": { "type": "boolean",
-                      "description": "false on capture; flipped by process.sh. Naturally reversible." },
-    "note": { "type": ["string", "null"],
-              "description": "Agent prose written at process time: what became of the item. null until processed." },
-    "session_id": { "type": "string",
-                    "description": "Claude Code session id that captured this entry (UUID). OMITTED (never null, matching the `project` precedent) for entries captured before session-id enrichment." },
-    "processed_ts": { "type": "string", "format": "date-time",
-                      "description": "UTC instant (ISO-8601) the entry was flipped to processed. OMITTED (never null) until processed; removed again on --unprocess." }
+    "schema_version": {
+      "description": "Contract version; pinned so a consumer can detect a shape change. The log is durable and may outlive a revision, so every line carries the version it was written under.",
+      "const": "1.0"
+    },
+    "id": {
+      "description": "UTC-stamp + random suffix; time-prefixed so `sort` is chronological.",
+      "type": "string",
+      "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+    },
+    "ts": {
+      "description": "UTC capture instant (ISO-8601).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "text": {
+      "description": "VERBATIM. Never summarized/reformatted at capture time.",
+      "type": "string",
+      "minLength": 1
+    },
+    "project": {
+      "description": "basename of the capture cwd (repo root). Omitted when not derivable.",
+      "type": "string"
+    },
+    "is_processed": {
+      "description": "false on capture; flipped by process.sh. Naturally reversible.",
+      "type": "boolean"
+    },
+    "note": {
+      "description": "Agent prose written at process time: what became of the item. null until processed.",
+      "type": ["string", "null"]
+    },
+    "session_id": {
+      "description": "Claude Code session id that captured this entry (UUID). OMITTED (never null, matching the `project` precedent) for entries captured before session-id enrichment.",
+      "type": "string"
+    },
+    "processed_ts": {
+      "description": "UTC instant (ISO-8601) the entry was flipped to processed. OMITTED (never null) until processed; removed again on --unprocess.",
+      "type": "string",
+      "format": "date-time"
+    }
   },
-  "examples": [ { "schema_version":"1.0","id":"20260722T140311Z-a1b2c3d4","ts":"2026-07-22T14:03:11Z",
-    "text":"turn the operator + pm into a local MCP server","project":"claude-code-foundry",
-    "is_processed":true,"note":"became ticket #42","session_id":"a794b0c6-1853-43f5-9177-dc2085a8c653",
-    "processed_ts":"2026-07-24T10:15:00Z" } ]
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "20260722T140311Z-a1b2c3d4",
+      "ts": "2026-07-22T14:03:11Z",
+      "text": "turn the operator + pm into a local MCP server",
+      "project": "claude-code-foundry",
+      "is_processed": true,
+      "note": "became ticket #42",
+      "session_id": "a794b0c6-1853-43f5-9177-dc2085a8c653",
+      "processed_ts": "2026-07-24T10:15:00Z"
+    }
+  ]
 }

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/review-artifact.schema.json",
+  "title": "Review Artifact",
+  "description": "The durable, persisted record of a flow-review effort for ONE repo — one JSON+MD pair per repo, never merged across repos (cross-repo work produces N sibling files). Unlike review-finding-report.schema.json (one reviewer's single-round emission to the orchestrator), this file AGGREGATES every reviewer's findings across every round into one evolving document, created once at first review and updated in place thereafter. This file defines the SHAPE only; the SEMANTICS (the swarm dispatch, the merge/verdict arithmetic, the fix-loop handoff to flow-implementation) live in flow-review and review-report-standards. The orchestrator is the sole writer — a reviewer never writes this file directly; it returns findings as review-finding-report.schema.json today, and the orchestrator merges them in here. One JSON object per file, at `.crucible/docs/reviews/{year}/{month}/{day}/{repo-or-effort-slug}.json`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "repo", "created", "last_updated", "rounds", "overall_verdict", "summary", "findings"],
+  "properties": {
+    "schema_version": {
+      "description": "Contract version. Pinned so a consumer can detect a shape change. The document is durable and may outlive a revision.",
+      "const": "1.0"
+    },
+    "id": {
+      "description": "The repo-or-effort slug — matches the filename (without extension) and the directory it lives under.",
+      "$ref": "artifact-slug.schema.json"
+    },
+    "repo": {
+      "description": "Which repo/component this artifact covers. Always exactly one — cross-repo work produces N sibling files, never a merged one.",
+      "type": "string",
+      "minLength": 1
+    },
+    "spec_ref": {
+      "description": "Path to the flow-spec artifact this effort's implementation was built against, if one governed it. OMITTED (never null) when no spec exists.",
+      "type": "string",
+      "minLength": 1
+    },
+    "created": {
+      "description": "ISO 8601 date only — when this review effort STARTED (round 1). Never changed by later rounds; the folder path shares this convention.",
+      "type": "string",
+      "format": "date"
+    },
+    "last_updated": {
+      "description": "ISO 8601 date only — the most recent round's date. Updated in place each round.",
+      "type": "string",
+      "format": "date"
+    },
+    "rounds": {
+      "description": "One entry per review round that has run, in order. A light history log for traceability — not a full per-finding change log (git history of this file already provides that if the file is committed).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/round_entry" },
+      "minItems": 1
+    },
+    "overall_verdict": { "$ref": "report-verdict.schema.json" },
+    "summary": { "$ref": "finding-summary.schema.json" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "round_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["round", "generated", "reviewers"],
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "generated": { "type": "string", "format": "date" },
+        "reviewers": {
+          "description": "Which reviewer/lens agents were dispatched this round.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "finding": {
+      "$comment": "Duplicates review-finding-report.schema.json's finding shape (id/category/locations/first_seen/problem/fix) rather than composing via allOf, plus adds reviewer/addressed_in_round: that base finding has additionalProperties:false, and allOf does not extend a closed schema cleanly (the base's additionalProperties:false evaluates against the whole instance, so a sibling allOf branch adding new properties fails validation). Same pattern — document-and-inline rather than compose — as external-review-advocate-verdict.schema.json vs finding-verdict.schema.json (there the reason is a narrower enum subset, not an additionalProperties/allOf conflict, but both cases choose to duplicate-and-explain over forcing a $ref).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reviewer", "status", "tracked_status", "severity", "category", "locations", "first_seen", "problem", "fix"],
+      "properties": {
+        "id": {
+          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. Same convention as review-finding-report.schema.json.",
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3,}$"
+        },
+        "reviewer": {
+          "description": "Which reviewer/lens agent raised this finding. Present here (unlike review-finding-report.schema.json, where it's a top-level field) because this document aggregates multiple reviewers.",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "Cross-round finding identity (is it still current) — shared with review-finding-report.schema.json.",
+          "$ref": "finding-status.schema.json"
+        },
+        "tracked_status": {
+          "description": "Where the fix currently sits in the human/tech-pair workflow. Orthogonal to `status` — see tracked-status.schema.json for why these are two fields, not one.",
+          "$ref": "tracked-status.schema.json"
+        },
+        "severity": { "$ref": "severity.schema.json" },
+        "category": {
+          "description": "Sub-lens tag from the reviewer's own controlled vocabulary.",
+          "type": "string",
+          "minLength": 1
+        },
+        "locations": {
+          "description": "One or more `file:line` (or `file:start-end`) sites. An array because a finding may span sites (e.g. duplication).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "first_seen": {
+          "description": "ISO 8601 date only, frozen at creation; kept unchanged across rounds.",
+          "type": "string",
+          "format": "date"
+        },
+        "problem": {
+          "description": "ONE line: what is wrong. Never restate large code.",
+          "type": "string",
+          "minLength": 1
+        },
+        "fix": {
+          "description": "ONE line: the concrete remedy the implementer should apply.",
+          "type": "string",
+          "minLength": 1
+        },
+        "addressed_in_round": {
+          "description": "Which round (per `rounds`) the tech pair's fix was verified. OMITTED (never null) while tracked_status is PENDING or IN_PROGRESS.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "service-api",
+      "repo": "service-api",
+      "spec_ref": ".crucible/docs/specs/2026/07/29/cross-repo-job-submission.json",
+      "created": "2026-07-29",
+      "last_updated": "2026-07-29",
+      "rounds": [
+        { "round": 1, "generated": "2026-07-29", "reviewers": ["kotlin-reviewer", "lens-security-reviewer", "lens-clean-code-reviewer"] }
+      ],
+      "overall_verdict": "APPROVED_WITH_FOLLOWUPS",
+      "summary": { "open": { "critical": 0, "high": 0, "medium": 1, "low": 1 }, "resolved": 0, "new": 2, "ack": 0 },
+      "findings": [
+        {
+          "id": "SEC-001",
+          "reviewer": "lens-security-reviewer",
+          "status": "NEW",
+          "tracked_status": "IN_PROGRESS",
+          "severity": "MEDIUM",
+          "category": "input-validation",
+          "locations": ["src/main/kotlin/JobController.kt:42"],
+          "first_seen": "2026-07-29",
+          "problem": "jobId path param not validated as UUID before the repository lookup",
+          "fix": "validate against a UUID regex before querying; return 400 on mismatch"
+        },
+        {
+          "id": "CLEAN-002",
+          "reviewer": "lens-clean-code-reviewer",
+          "status": "NEW",
+          "tracked_status": "PENDING",
+          "severity": "LOW",
+          "category": "naming",
+          "locations": ["src/main/kotlin/JobService.kt:18"],
+          "first_seen": "2026-07-29",
+          "problem": "parameter named `data` conveys nothing about its shape",
+          "fix": "rename to `jobInput`, matching the spec's `input` field"
+        }
+      ]
+    }
+  ]
+}

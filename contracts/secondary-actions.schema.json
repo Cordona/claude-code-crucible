@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/secondary-actions.schema.json",
+  "title": "Secondary Actions",
+  "description": "Additional outcomes beyond a primary verdict/disposition, for a genuinely compound ruling in the external-review pattern. Shared by review-arbiter-verdict.schema.json and external-review-ledger.schema.json so a compound ruling has one shape wherever it's recorded. Always OPTIONAL on the referencing property — omit when there are none. This file defines the SHAPE only; the compound-ruling SEMANTICS live in the review-arbiter agent + flow-external-review.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["type", "detail"],
+    "properties": {
+      "type": { "enum": ["FIX", "TRACK_FOLLOWUP"] },
+      "detail": { "type": "string", "minLength": 1 }
+    }
+  }
+}

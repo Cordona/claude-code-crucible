@@ -74,7 +74,7 @@ One artifact-set per delegation. The agent recommends the type/structure, author
     3. **Then take P4 consent** (below). P5 re-invokes the SAME command **without** `--plan` to execute, and does **not** re-run the gate (already cleared this turn).
 - **Draft-only** dispatches never reach this gate for a write — you report the draft and the proposed invocations, and stop.
 
-**Collect the consent via `AskUserQuestion`** — the same structured gate used for git commits (`flow-git-operations` G4, CLAUDE.md §8) and the orchestration plan (`flow-orchestration` §3). The full drafted body stays in P3's live-markdown reveal *above* the question; the question captures the write + its scope:
+**Collect the consent via `AskUserQuestion`** — the same structured gate used for git commits (`flow-git-operations` G4, CLAUDE.md §8) and the implementation plan (`flow-implementation` §3). The full drafted body stays in P3's live-markdown reveal *above* the question; the question captures the write + its scope:
 - Header **"Write"** · question *"Approve this tracker write? (draft shown above)"*
 - Options, each **naming the exact target**: e.g. **"Approve — create the issue in `owner/repo`"** · **"Approve — open the PR (`head` → `base`)"** · **"Approve — create the Jira ticket in `PROJ` on `<site>`"** · **"Approve — transition `PROJ-123` (path shown above)"** · **"Approve — save as draft only"** (no write) · **"Request changes"** → loop to P2. `ensure-labels.sh` (persistent repo labels) gets its OWN option/question even when bundled with a create. `AskUserQuestion`'s built-in **"Other"** captures a free-text change.
 

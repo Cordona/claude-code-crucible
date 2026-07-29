@@ -12,7 +12,7 @@
       "const": "1.0"
     },
     "reviewer": {
-      "description": "The reviewer/lens name (e.g. \"clean-code-reviewer\", \"kotlin-reviewer\").",
+      "description": "The reviewer/lens name (e.g. \"lens-clean-code-reviewer\", \"kotlin-reviewer\").",
       "type": "string",
       "minLength": 1
     },
@@ -33,49 +33,24 @@
       "format": "date"
     },
     "verdict": { "$ref": "report-verdict.schema.json" },
-    "summary": {
-      "description": "Counts. `open` is by severity over UNRESOLVED findings (NEW/OPEN/REGRESSED); resolved/new/ack are orthogonal status counts.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["open", "resolved", "new", "ack"],
-      "properties": {
-        "open": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["critical", "high", "medium", "low"],
-          "properties": {
-            "critical": { "type": "integer", "minimum": 0 },
-            "high": { "type": "integer", "minimum": 0 },
-            "medium": { "type": "integer", "minimum": 0 },
-            "low": { "type": "integer", "minimum": 0 }
-          }
-        },
-        "resolved": { "type": "integer", "minimum": 0 },
-        "new": { "type": "integer", "minimum": 0 },
-        "ack": { "type": "integer", "minimum": 0 }
-      }
-    },
+    "summary": { "$ref": "finding-summary.schema.json" },
     "findings": {
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     }
   },
   "$defs": {
-    "status": {
-      "description": "Position in the cross-round iteration lifecycle.",
-      "enum": ["NEW", "OPEN", "RESOLVED", "REGRESSED", "ACK"]
-    },
     "finding": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
-          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CC, SEC, TEST, CON, OBS, PERF, COMPAT, PERS, or a language tag e.g. RUST/JAVA).",
+          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CLEAN, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS, or the reviewer's full language/tech name e.g. RUST, JAVA, KOTLIN, PHP, REACT, SHELL, DEVOPS).",
           "type": "string",
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },
-        "status": { "$ref": "#/$defs/status" },
+        "status": { "$ref": "finding-status.schema.json" },
         "severity": { "$ref": "severity.schema.json" },
         "category": {
           "description": "Sub-lens tag from the reviewer's OWN controlled vocabulary (not free text). The closed per-reviewer value set is owned by each reviewer agent.",
@@ -109,7 +84,7 @@
   "examples": [
     {
       "schema_version": "1.0",
-      "reviewer": "clean-code-reviewer",
+      "reviewer": "lens-clean-code-reviewer",
       "target": ["src/order/"],
       "round": 2,
       "generated": "2026-07-12",
@@ -117,7 +92,7 @@
       "summary": { "open": { "critical": 0, "high": 1, "medium": 2, "low": 1 }, "resolved": 3, "new": 1, "ack": 0 },
       "findings": [
         {
-          "id": "CC-004",
+          "id": "CLEAN-004",
           "status": "NEW",
           "severity": "MEDIUM",
           "category": "dry",
