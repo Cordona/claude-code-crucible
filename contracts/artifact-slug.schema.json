@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/artifact-slug.schema.json",
+  "title": "Durable Artifact Slug",
+  "description": "The shared identifier shape for a durable, persisted artifact document (a flow-spec or flow-review artifact) — lowercase, hyphen-separated, matching both the filename (without extension) and the directory it lives under. This file defines the value domain ONLY; the naming/placement SEMANTICS live in flow-spec / flow-review. Referenced by co-located schemas via {\"$ref\": \"artifact-slug.schema.json\"}.",
+  "type": "string",
+  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+}

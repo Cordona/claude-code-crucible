@@ -2,11 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/external-review-ledger.schema.json",
   "title": "External-Review Ledger Row",
-  "description": "One row of ledger.json — the canonical, frozen work-set + live status for a single finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the field SEMANTICS (provisional_severity feeds only the panel rule and never reaches a human, the verdict->disposition map, the tier/agreement/seat rules, the status lifecycle) live in flow-external-review (§3, §5). The row is written INCREMENTALLY across phases, so only id/title/status are required; every other field is filled in as its phase resolves. `verdict` is the FULL arbiter set (finding-verdict.schema.json); `provisional_severity` and `severity` are the ONE anchored scale (severity.schema.json).",
+  "description": "One row of ledger.json — the canonical, frozen work-set + live status for a single finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the field SEMANTICS (provisional_severity feeds only the panel rule and never reaches a human, the verdict->disposition map, the tier/agreement/seat rules, the status lifecycle) live in flow-external-review (§3, §5). The row is written INCREMENTALLY across phases, so only schema_version/id/title/status are required; every other field is filled in as its phase resolves. `verdict` is the FULL arbiter set (finding-verdict.schema.json); `provisional_severity` and `severity` are the ONE anchored scale (severity.schema.json).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "title", "status"],
+  "required": ["schema_version", "id", "title", "status"],
   "properties": {
+    "schema_version": {
+      "description": "Contract version. Pinned so a consumer can detect a shape change. The row is durable (written incrementally across phases) and may outlive a revision.",
+      "const": "1.0"
+    },
     "id": {
       "description": "Finding id (e.g. F-03, or a split sub-row F-03a/F-03b).",
       "type": "string",
@@ -71,16 +75,7 @@
     },
     "secondary_actions": {
       "description": "Additional outcomes beyond the primary disposition, for a compound ruling (R13).",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["type", "detail"],
-        "properties": {
-          "type": { "enum": ["FIX", "TRACK_FOLLOWUP"] },
-          "detail": { "type": "string", "minLength": 1 }
-        }
-      }
+      "$ref": "secondary-actions.schema.json"
     },
     "resolved_by_commit": {
       "description": "SHA that already fixed an ALREADY_RESOLVED row (R12).",

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/finding-status.schema.json",
+  "title": "Finding Cross-Round Identity Status",
+  "description": "A finding's position in the cross-round iteration lifecycle — is it new, still open, fixed, came back, or acknowledged-not-fixed. Orthogonal to tracked-status.schema.json (where a fix currently sits in the human/tech-pair workflow) — a finding can be REGRESSED and simultaneously back IN_PROGRESS; these are two independent axes, never conflated into one enum. Extracted from review-finding-report.schema.json so every review/report contract shares one definition. Value domain only; the lifecycle SEMANTICS live in review-report-standards.",
+  "enum": ["NEW", "OPEN", "RESOLVED", "REGRESSED", "ACK"]
+}

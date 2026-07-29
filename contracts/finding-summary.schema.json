@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/finding-summary.schema.json",
+  "title": "Finding Summary Counts",
+  "description": "The shared count-of-findings shape, referenced by any report or persisted artifact that groups findings by severity plus resolved/new/ack. `open` is by severity over UNRESOLVED findings (NEW/OPEN/REGRESSED, per finding-status.schema.json); resolved/new/ack are orthogonal status counts over the same set. Extracted so review-finding-report.schema.json and review-artifact.schema.json share one definition instead of two copies. Value shape only; which findings count where is owned by review-report-standards.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["open", "resolved", "new", "ack"],
+  "properties": {
+    "open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["critical", "high", "medium", "low"],
+      "properties": {
+        "critical": { "type": "integer", "minimum": 0 },
+        "high": { "type": "integer", "minimum": 0 },
+        "medium": { "type": "integer", "minimum": 0 },
+        "low": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resolved": { "type": "integer", "minimum": 0 },
+    "new": { "type": "integer", "minimum": 0 },
+    "ack": { "type": "integer", "minimum": 0 }
+  }
+}

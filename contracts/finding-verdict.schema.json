@@ -2,6 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/finding-verdict.schema.json",
   "title": "Finding Verdict (external-review ruling)",
-  "description": "The ruling assigned to a SINGLE review finding in the external-review pattern (whether it is a genuine defect and what to do). This is the FULL set the review-arbiter may emit. ADVOCATES emit only a 4-value SUBSET (REAL, FALSE_POSITIVE, ACCEPT_SUPPRESS, NEEDS_PRODUCT_DECISION) — they cannot rule ALREADY_RESOLVED or ESCALATE, which are arbiter-only calls. Distinct from the review-report-level verdict (see report-verdict.schema.json). The ruling SEMANTICS live in the review-arbiter agent + the standard-judging constitution.",
+  "description": "The ruling assigned to a SINGLE review finding in the external-review pattern (whether it is a genuine defect and what to do). This file defines the value domain ONLY; the ruling SEMANTICS live in the review-arbiter agent + the standard-judging constitution. This is the FULL set the review-arbiter may emit. ADVOCATES emit only a 4-value SUBSET (REAL, FALSE_POSITIVE, ACCEPT_SUPPRESS, NEEDS_PRODUCT_DECISION) — they cannot rule ALREADY_RESOLVED or ESCALATE, which are arbiter-only calls. Distinct from the review-report-level verdict (see report-verdict.schema.json).",
   "enum": ["REAL", "FALSE_POSITIVE", "ACCEPT_SUPPRESS", "NEEDS_PRODUCT_DECISION", "ALREADY_RESOLVED", "ESCALATE"]
 }

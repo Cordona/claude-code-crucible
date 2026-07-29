@@ -25,7 +25,7 @@
     },
     "confidence": {
       "description": "The advocate's stated confidence in its position.",
-      "enum": ["high", "medium", "low"]
+      "$ref": "confidence.schema.json"
     }
   }
 }
