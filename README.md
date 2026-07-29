@@ -68,20 +68,28 @@ work.
 
 | | |
 |---|---|
-| **Entry modes** | 9 — orchestrate, review, direct, decision panel, external review, documentation, backlog, capture, unreviewed |
-| **Developers** | 7 — Java, Kotlin, PHP, React, Rust, shell script, DevOps |
-| **Reviewers** | 15 total — **7 `{tech}`-reviewers** (correctness floor): Java, Kotlin, PHP, React, Rust, shell script, DevOps · **8 `lens-*`** (language-agnostic quality): clean-code, security, performance, observability, test-quality, consistency, persistence, compatibility |
+| **Entry modes** | 10 — implement, spec, review, test, direct, decision panel, external review, documentation, backlog, capture |
+| **Developers** | 7 `{tech}` pairs — Java, Kotlin, PHP, React, Rust, shell script, DevOps — plus 1 tech-agnostic `tests-developer` |
+| **Reviewers** | 15 total — **7 `{tech}`-reviewers** (correctness floor): Java, Kotlin, PHP, React, Rust, shell script, DevOps · **8 `lens-*`** (language-agnostic quality, on-demand only): clean-code, security, performance, observability, test-quality, consistency, persistence, compatibility |
 | **Specialists & arbiters** | 3 — `software-architect`, `decision-arbiter`, `review-arbiter` |
 | **Operational agents** | 4 — `git-operator`, `project-manager`, `gtd-inbox-writer`, `docs-writer` |
 | **Project management** | 2 active trackers — **GitHub** (issues + pull requests) and **Jira** (issues, components/versions, attachments, bulk, Agile) |
-| **Patterns** | Orchestrated fix loop · blind decision panel · external-review adjudication |
+| **Patterns** | Bounded tech-pair fix loop · on-demand lens review · cross-repo spec gate · blind decision panel · external-review adjudication |
 | **Determinism** | Scripts are the sole writers for git, GitHub, Jira, and the GTD inbox |
 
 Headline capabilities:
 
-- **An orchestrated review swarm** — every non-trivial change is reviewed by the correctness
-  reviewer for its stack plus each quality lens whose declared applicability the change meets,
-  then a bounded fix loop drives gating findings to closure.
+- **A tech-pair safety net, always on** — every real build gets a correctness review from its
+  stack's `{tech}`-reviewer, bounded to 3 rounds, before it's called done. Never a lens, never
+  automatic beyond that: the deeper quality swarm is a separate, deliberate ask.
+- **An on-demand lens review** — explicitly requested, never triggered by a build finishing or by
+  how large a change looks. Derives its roster from the actual diff, then persists a durable,
+  trackable report — not just conversation output.
+- **A cross-repo spec gate** — before dispatching parallel tech pairs across repos, a
+  `software-architect`-drafted, human-approved contract they all build against, so independent
+  interpretation can't let three repos quietly drift from each other.
+- **Tests, always last** — authored only once the human confirms an implementation is right, by a
+  dedicated `tests-developer` agent that never wrote the code under test.
 - **A decision panel** — for costly, hard-to-undo forked decisions, blind reviewers with
   different lenses plus a neutral arbiter that resolves disagreement by reasoning, not vote.
 - **Dual-tracker project management** — author and file professional backlog artifacts on both
@@ -91,22 +99,28 @@ Headline capabilities:
 
 ## How it works
 
-A coding request flows through the orchestration procedure:
+A coding request flows through four separate, independently-gated procedures — not one, because
+their costs are wildly different and shouldn't all be paid on every build:
 
-1. **Brief** — read the request *and* the code it touches; size the work, identify the stack.
-2. **Derive the roster** — starting from empty, seat the `{tech}`-reviewer (correctness floor)
-   and each applicable `lens-*`; state every exclusion and what it accepts.
-3. **Gate** — present the plan and the *consequence* of getting it wrong; dispatch nothing
-   without explicit approval.
-4. **Build** — delegate to the `{tech}`-developer (or implement directly if no subagent fits).
-5. **Review** — dispatch the swarm in parallel; each reviewer is read-only and returns a
-   structured report.
-6. **Loop** — round 1 fixes gating findings, round 2 verifies; a 3rd round only on an open
-   CRITICAL/HIGH. MEDIUM/LOW become follow-ups.
-7. **Summarize** — stack, roster, cycles, files, final verdict.
+1. **Spec** *(cross-repo or multi-tech-pair work only)* — `software-architect` drafts a contract,
+   a `flow-decision` panel resolves it first if the interface is genuinely contested (propose-only,
+   never auto-fired), the human approves it, and every parallel tech pair builds against that same
+   document.
+2. **Implement** — brief → gate → the `{tech}-developer` builds → the `{tech}-reviewer` reviews for
+   correctness → a bounded fix loop (round 1 fixes gating findings, round 2 verifies, a 3rd round
+   only on an open CRITICAL/HIGH). **Never a lens.** This is the safety net every real build gets.
+3. **Review** *(on demand only)* — explicitly requested, never automatic. Derives the lens roster
+   from the actual diff, gates it, dispatches the swarm in parallel, and persists a durable,
+   trackable report (one per repo in cross-repo work). Runs no fix loop of its own — findings are
+   addressed by re-entering step 2.
+4. **Test** *(last, on demand only)* — fires only once the human confirms the implementation is
+   right. A dedicated `tests-developer` agent writes the tests — never the developer that wrote the
+   code under test.
 
-A change is not *done* until it has been reviewed — this binds to repository state (`git
-status`), not to how the request was phrased.
+**The only thing that still checks repository state is the commit gate**: before any commit, it
+asks whether the diff has been through at least step 2's tech-pair loop, and won't assume either
+answer if unsure. That's the whole surviving safety net for "nothing ships unreviewed" — a
+question, not a swarm.
 
 ## Deploying
 
@@ -168,27 +182,31 @@ never consults a hardcoded list — it reads each agent's frontmatter `descripti
 
 ### Entry modes
 
-Every request is routed into exactly one of nine modes, and the mode decides *who does the work*
-and *what safeguards apply* — a build gets the full developer-plus-swarm treatment, a costly
-decision gets a blind panel, an outward act gets a consent gate. You rarely name the mode: the
-orchestrator infers it from the request, and — critically — the `UNREVIEWED` mode keys off
-`git status` rather than any word, so changes can never quietly ship without a review. Modes are
-defined in [`main-thread/CLAUDE.md`](./main-thread/CLAUDE.md):
+Every request is routed into exactly one of ten modes, and the mode decides *who does the work*
+and *what safeguards apply* — a build gets the tech pair, a deep review is a separate deliberate
+ask, a costly decision gets a blind panel, an outward act gets a consent gate. You rarely name the
+mode: the orchestrator infers it from the request. **None of these fire from repository state
+except the commit gate** — a deliberate change from an earlier design that keyed the full review
+swarm off `git status`, discovered to be exactly how a misjudged cross-repo build could burn hours
+and millions of tokens polishing the wrong implementation before a human ever got a cheap look at
+it. Modes are defined in [`main-thread/CLAUDE.md`](./main-thread/CLAUDE.md):
 
 | Mode | Trigger | What runs |
 |---|---|---|
-| **Orchestrate** | "orchestrate", or any build/implement/refactor/fix request | Developer → review swarm → gated fix loop |
-| **Review** | "review" on existing code | Review swarm only, no developer |
-| **Direct** | no subagent matches the stack | Orchestrator implements, then independent lenses still review |
+| **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer → `{tech}`-reviewer → gated fix loop — tech pair only, never a lens |
+| **Spec** | cross-repo work, multiple tech pairs in parallel, or a forked interface decision | `software-architect` drafts a contract → gate → durable artifact every parallel pair builds against |
+| **Review** | an explicit ask for a full/lens review — never automatic | On-demand lens swarm, derived from the diff → gate → durable, trackable report |
+| **Test** | the human's explicit confirmation an implementation is right | `tests-developer` (never the developer) writes tests against the approved code |
+| **Direct** | no subagent matches the stack | Orchestrator implements, self-checks via an execution test |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers + a neutral `decision-arbiter` |
 | **External review** | an external/automated PR review to address | Advocates + the `review-arbiter` judge → fix → one response |
 | **Documentation** | "document this", "write a README" | `docs-writer` drafts → fact-checked against the code → fix loop |
 | **Backlog** | "file an issue/ticket", "carve an epic", "open a PR" | `project-manager` recommends + drafts → consent-gated tracker write |
 | **Capture** | a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:` directive | `gtd-inbox-writer` appends the thought verbatim (no gate) |
-| **Unreviewed** | `git status` shows unreviewed changes you made | Review swarm on your own changes |
 
 A cross-cutting **git/VCS flow** (commit, push, branch, tag) can fire off any mode: the
-`git-operator` plans, the orchestrator exposes the message verbatim and executes only on consent.
+`git-operator` plans, the orchestrator exposes the message verbatim and executes only on consent —
+and before any commit, checks whether the diff has been through at least the tech pair.
 
 ### Developers
 
@@ -207,13 +225,22 @@ rubrics its reviewer later judges against — so developer and reviewer share on
 | `shell-script-developer` | POSIX/Bash automation & CLI implementer | Writing shell scripts, entrypoints, CI steps |
 | `devops-engineer` | Infrastructure-as-code implementer | Terraform, Helm, K8s, Dockerfiles, pipelines |
 
+**Test authoring is deliberately separate from the above.** `tests-developer` is tech-agnostic — one
+agent, not a per-stack pair — because what makes a test good is a universal question; only test
+framework syntax is language-specific, and that's a briefing detail, not a reason for N more
+agents. It lives here under Developers, not among the operational agents, because it writes real
+executable code that ships and must run — but it is never the same agent that wrote the code under
+test, and `build-core` structurally forbids the `{tech}`-developer from touching a test file at
+all. It's dispatched only once the human explicitly confirms an implementation is right.
+
 ### Reviewers
 
 This independent swarm is the heart of Crucible — **the code's author is never its only judge.**
 All reviewers are read-only; they report, they never touch the code. The `{tech}`-reviewer is the
-**correctness floor** for its stack (logic no generic lens covers), and the `lens-*` reviewers are
-language-agnostic quality lenses, each seated only when its declared applicability matches the
-change — so a small change gets a small swarm and a risky one gets the scrutiny it earns.
+**correctness floor** for its stack (logic no generic lens covers) and runs as part of every build,
+bounded to 3 rounds. The `lens-*` reviewers are language-agnostic quality lenses — seated by
+declared applicability when they run, but **they never run automatically**: a lens pass is always
+an explicit, separate ask, on the diff already produced by the tech pair.
 
 **Correctness floor — one per stack:**
 
@@ -262,19 +289,22 @@ Skills are bound on demand, not memorized. Three kinds:
 
 | Kind | What it is | When it's used |
 |---|---|---|
-| `flow-*` | The orchestrator's playbooks — `flow-orchestration`, `flow-decision`, `flow-external-review`, `flow-documentation`, `flow-project-management`, `flow-git-operations`, `flow-inbox` | Bound by the main thread when a matching mode fires |
+| `flow-*` | The orchestrator's playbooks — `flow-implementation`, `flow-spec`, `flow-review`, `flow-testing`, `flow-decision`, `flow-external-review`, `flow-documentation`, `flow-project-management`, `flow-git-operations`, `flow-inbox` | Bound by the main thread when a matching mode fires |
 | `standard-*` | Shared quality rubrics — developers build to them, reviewers judge against them (per-language `tech/`, per-lens, plus judging/documentation/backlog rubrics) | Referenced during build and review |
 | `procedure-*` | Script-backed deterministic procedures — `procedure-gh-issues`, `procedure-gh-pr`, `procedure-jira`, `procedure-git-ops`, `procedure-inbox-capture`, and their auth/identity helpers | Bound by an operational agent to run its scripts |
 
 ### Patterns
 
-Crucible's multi-agent workflows. The **orchestrated fix loop** is the spine — the central
-pattern that runs on every build; the other two are on-demand judgment harnesses (under
-[`patterns/`](./patterns)) that resolve calls a single reviewer would get wrong.
+Crucible's multi-agent workflows. The **tech-pair fix loop** is the spine — the one pattern that
+runs on every build; the rest are on-demand — either a judgment harness (under
+[`patterns/`](./patterns)) that resolves calls a single reviewer would get wrong, or a deliberately
+separate, explicitly-requested procedure.
 
 | Pattern | What it is | When it's used |
 |---|---|---|
-| **Orchestrated fix loop** | The framework's spine: an independent swarm reviews the developer's work, and a bounded, seat-persistent loop drives every gating finding to closure before the change is called done — a reviewer that raised a blocker keeps its seat until *it* agrees the blocker is gone. | Every orchestrated build or review |
+| **Tech-pair fix loop** | The framework's spine: the `{tech}-reviewer` checks the developer's work for correctness, and a bounded, seat-persistent loop drives every gating finding to closure before the change is called done. Never includes a lens. | Every build (`flow-implementation`) |
+| **On-demand lens review** | A separate, explicitly-requested pass: quality lenses derived from the actual diff, gated, dispatched in parallel, persisted to a durable report. Never triggered by a build finishing. | Whenever a human asks for deeper scrutiny (`flow-review`) |
+| **Cross-repo spec gate** | A `software-architect`-drafted, human-approved contract every parallel tech pair builds against, so independent repos can't quietly drift from each other or from intent. | Cross-repo or multi-tech-pair work (`flow-spec`) |
 | **Decision panel** | Neutralizes the orchestrator's own bias: reviewers with deliberately different lenses judge *blind*, then a neutral `decision-arbiter` resolves their disagreement by reasoning and evidence — never a vote. | A costly, hard-to-undo forked decision of any kind |
 | **External review** | Adjudicates each incoming review finding on its merits: PRO/CON advocates argue it, a `review-arbiter` judge rules real-or-not per finding — so you fix what's genuinely broken, refute what isn't, and respond once. | Addressing an external/automated PR review |
 

@@ -53,7 +53,7 @@ that single rule resolves every case:
   its body — the body's content never changes that. This is what stops the capture flow from
   becoming an action flow.
 - **A capture word anywhere else → that other mode.** Embedded inside a build/review/backlog
-  sentence (`capture the flag logic in a test`), it is not a directive — it routes to ORCHESTRATE
+  sentence (`capture the flag logic in a test`), it is not a directive — it routes to IMPLEMENT
   etc. The "a real build request outranks CAPTURE" rule (CLAUDE.md §1) applies **only to an
   embedded capture word, never to a leading directive.**
 - **Only the leading directive is stripped.** A directive-looking line *inside* the body

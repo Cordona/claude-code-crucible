@@ -75,7 +75,7 @@ IF reviewer verdict == CHANGES_REQUIRED:
     4. Expose docs re-review report
     5. REPEAT until verdict == APPROVED or user intervenes
 
-LOOP POLICY (binds — same as `flow-orchestration` §5): fix → verify → stop.
+LOOP POLICY (binds — same as `flow-implementation` §5): fix → verify → stop.
     A 3rd round ONLY if a gating accuracy defect is still open. Exceeding it needs
     a new approval, not a counter.
 ```
