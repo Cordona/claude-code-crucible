@@ -60,12 +60,20 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 
 ### B. New framework capabilities
 
-- **On-demand tech pairs** (inbox `20260726T060101Z-fd2f70ff`): a skill + subagent that
-  **generates a new `{tech}`-developer + `{tech}`-reviewer pair on demand** (e.g. Python, Go). It
-  web-researches the language's clean-code/idioms, then authors the agent `.md` artifacts
-  following the established patterns of the existing agents (`roles/developers/agents/`,
-  `roles/reviewers/agents/tech/`) + the `standard-*` rubrics. The `{tech}`-reviewer must own the
-  correctness floor.
+- **On-demand tech pairs** (inbox `20260726T060101Z-fd2f70ff`) — **DONE.** New skill
+  `main-thread/skills/flow-tech-pair`: polls for language/ecosystem → collision check (inform,
+  never decide) → gate → a parallel research swarm (style guide, pitfalls/correctness, linters,
+  framework conventions if named) feeds one ephemeral synthesis document → two new meta-authoring
+  agents, `operations/agents/tech-developer-generator` then `tech-reviewer-generator`, generate the
+  pair in sequence against fixed reference templates (`templates/tech-pair/`, extracted from the
+  real Kotlin/Rust/Shell pairs — never deployed, `deploy.sh` excludes anything under `templates/`
+  or `template-`-prefixed, by two independent checks) → a lens review runs BEFORE anything deploys,
+  capped at 3 rounds/seat like the tech-pair fix loop → the human chooses whether to deploy. The
+  `{tech}`-reviewer's correctness floor is grounded in the research swarm's pitfalls findings, not
+  generic advice. Validated end-to-end by generating a real pair: `python-developer`/
+  `python-reviewer` + `standard-python`, now deployed — the review pass caught and fixed a real
+  security defect (a `bandit -ll` flag that silently excluded Bandit's own LOW-severity
+  hardcoded-credential checks) and a real severity miscalibration, not just template conformance.
 - **Modular / selective deploy** (inbox `20260726T060057Z-6e67c59c`): let `deploy.sh` deploy the
   **whole framework OR a selected subset** (some developers/reviewers, or only the GitHub flow, or
   only Jira). `deploy.sh` already has `--only TYPE`; extend to component/profile selection via a
