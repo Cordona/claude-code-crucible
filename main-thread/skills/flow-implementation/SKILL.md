@@ -32,7 +32,7 @@ Read the request AND the code it touches. Establish:
 1. **Is it trivial?** (the hatch above). Ask this first.
 2. The **primary stack** → the matching `{tech}-developer` and `{tech}-reviewer`. If none exists → §6 (direct implementation). **Naming exception:** DevOps uses `devops-engineer`.
 3. **What** is built/reviewed · the **scope** · the **consequence** (what it costs the user if this is wrong).
-4. **Does a `flow-spec` artifact govern this work?** If the task is cross-repo, multi-tech-pair, or you were handed a spec path — bind it as the acceptance criterion for both the developer and the reviewer (path + a short navigational hint pointing at the relevant section, never the full text pasted into the dispatch — see `flow-spec`'s token-efficiency note). If no spec exists and the task doesn't call for one, proceed without it.
+4. **Does a `flow-spec` artifact govern this work?** If the task is cross-repo, multi-tech-pair, or you were handed a spec path — bind it as the acceptance criterion for both the developer and the reviewer (path + a short navigational hint pointing at the relevant section, never the full text pasted into the dispatch — see `flow-spec`'s token-efficiency note). If no spec exists and the task doesn't call for one, proceed without it. **Exception (mandatory ask):** before dispatching 2+ parallel pairs on an unspecced effort, ask the human first — see `flow-spec` §0 for the full rule and rationale.
 
 **The consequence is your guess, and it is the weakest claim in the plan.** You can measure scope; you cannot know consequence. Put your guess where the user can correct it.
 
@@ -180,6 +180,7 @@ Present: the stack · the developer · the `{tech}-reviewer` · the cycle count 
 - **Expose every subagent report** as it completes.
 - **Direct-mode review is independent, never self-performed** (§6).
 - **A spec, when one governs the work, is handed by path + hint — never pasted verbatim** into a dispatch prompt (§1).
+- **2+ parallel pairs without a governing spec requires an explicit human ask, never a unilateral decision** (`flow-spec` §0 / §1).
 
 ---
 *Procedure Version: 1.0 — the narrowed build-only half of the retired `flow-orchestration`. The lens swarm lives in `flow-review`, on-demand only. The cross-repo contract lives in `flow-spec`. Test-authoring lives in `flow-testing`. Review conduct in review-core / review-report-standards; builder conduct in build-core; the quality rubrics in standard-*.*

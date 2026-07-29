@@ -323,6 +323,11 @@ so structured output is validated at the tool layer rather than parsed from pros
 | `review-arbiter-verdict.schema.json` · `external-review-*.schema.json` | External-review advocate/verifier/ledger verdicts |
 | `audience-register.schema.json` | The audience + register a backlog artifact is tuned to |
 | `inbox-entry.schema.json` | One line of the GTD inbox log |
+| `spec-document.schema.json` | A `flow-spec` durable artifact — the approved interface contract a build follows |
+| `review-artifact.schema.json` | A `flow-review` durable artifact — the cross-round aggregated findings record for one repo |
+| `finding-summary.schema.json` · `finding-status.schema.json` · `tracked-status.schema.json` | Shared finding-count/status-lifecycle shapes, referenced by report and durable-artifact contracts alike |
+| `artifact-slug.schema.json` | The shared slug shape for a durable spec/review artifact's id and filename |
+| `confidence.schema.json` · `secondary-actions.schema.json` | Shared value-domains for judging agents (arbiter/verifier confidence, follow-on actions) |
 
 ### Project management: GitHub and Jira
 

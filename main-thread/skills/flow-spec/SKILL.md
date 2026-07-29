@@ -19,6 +19,8 @@ The procedure the primary agent follows before implementation starts, whenever a
 - A **single-repo** interface decision is genuinely forked (multiple defensible designs) and costly to get wrong.
 - **The human explicitly asks for a spec-first approach**, for ANY effort — including a single repo, single tech pair. Nailing down the contract before implementation is a general risk-reduction tool, not solely an anti-drift mechanism for parallel pairs, and it is available on request regardless of scope.
 
+**For the first two bullets above (multi-repo / multi-tech-stack parallel work), asking is mandatory, not a judgment call.** If you are about to dispatch 2+ parallel `flow-implementation` pairs for the same effort and no spec governs it, you MUST explicitly ask the human whether one should be drafted first, before dispatching any of them — you may not decide unilaterally that this particular effort doesn't need one. This is the one place in the SPEC/IMPLEMENT/REVIEW/TEST family where the ask is enforced rather than left to judgment, mirroring `flow-git-operations` G1's "ask, don't assume" commit-gate mechanism — for the same reason: a silently self-served "doesn't need one" here is exactly the failure mode this skill exists to prevent.
+
 For a normal single-repo, single-stack build where nobody has asked for a spec, go straight to `flow-implementation` — this skill is never required there, only available.
 
 ---
@@ -81,9 +83,47 @@ Brief `software-architect` (it has no conversation history — give it the full 
 
 ## 4. Persist the durable artifact
 
-Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same-named `.json` alongside it), written once at approval time, referenced (never re-dated) by every downstream commit/PR/`flow-implementation` dispatch for the life of the effort.
+Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same-named `.json` alongside it, conforming to `spec-document.schema.json`), written once at approval time, referenced (never re-dated) by every downstream commit/PR/`flow-implementation` dispatch for the life of the effort.
 
-> **Not yet backed by a script.** Same status as `flow-review`'s artifact persistence — the design is agreed, the write mechanism is not yet script-backed. Persist by writing the file directly until the deterministic script exists.
+**The rendered MD — every field maps directly to the JSON schema, one-to-one:**
+
+```markdown
+# Spec: <title>
+
+**Status:** <status>
+**Created:** <created>
+**Approved by:** <approved_by>, <approved_at>
+**Repos in scope:** <repo> (<tech>) · <repo> (<tech>) · …
+
+## Goal
+<goal>
+
+## Non-goals
+- <non_goals[0]>
+- <non_goals[1]>
+
+## Interface contract
+
+### <repo> (<tech>)
+- Exposes:
+  - <interface_contracts[n].exposes[0]>
+- Consumes:
+  - <interface_contracts[n].consumes[0]>
+
+## Constraints
+- <constraints[0]>
+
+## Decision log
+(none — no flow-decision panel ran for this spec)
+*(or, one entry per decision_log item:)* **<fork>:** <decision> — <why>
+
+## Open questions
+- <open_questions[0]>
+```
+
+Omit the "Approved by" line entirely while `status` is `draft`. Render "Decision log" as the literal "(none — ...)" line when `decision_log` is empty — never a blank heading with nothing under it, same rendering-completeness rule the gate plan (§3) already follows.
+
+> **Script-backed.** `spec-create.sh` drafts and stamps the JSON artifact, `spec-approve.sh` flips it to `approved`, and `render-md.sh` renders the JSON to the Markdown template above — the same deterministic-script discipline as the GTD inbox scripts. Use them rather than writing the file directly.
 
 ---
 
@@ -97,9 +137,10 @@ Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same
 
 - **A panel is propose-only, never auto-fired** — same rule as a lens seat (§1).
 - **No parallel `flow-implementation` dispatch without the human's explicit approval of the spec** (§3).
+- **2+ parallel pairs without a governing spec requires an explicit human ask, never a unilateral decision** (§0).
 - **The spec is a durable, committed artifact, not conversational context** — every pair is briefed with a path, never a paraphrase (§4, §5).
 - **Never paste the spec verbatim into a dispatch prompt** — path + hint only (§5).
 - **Never price the review** — the gate asks about the contract's correctness, never tokens or time (§3).
 
 ---
-*Procedure Version: 1.0 — the cross-repo/multi-tech-pair gate that precedes `flow-implementation`. The panel itself lives in `flow-decision`; the drafting specialist is `software-architect`. Artifact persistence mechanism agreed but not yet script-backed (§4).*
+*Procedure Version: 1.0 — the cross-repo/multi-tech-pair gate that precedes `flow-implementation`. The panel itself lives in `flow-decision`; the drafting specialist is `software-architect`. The durable-artifact persistence mechanism is script-backed (§4): `spec-create.sh`, `spec-approve.sh`, and `render-md.sh`.*

@@ -84,12 +84,11 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 - **Trackable-plan pattern** (inbox `20260725T081715Z-59bfdd95`): introduce the "trackable plan"
   pattern as a new **main-thread skill** — a plan that stays linked to its execution as work
   proceeds.
-- **Deterministic MD rendering** (inbox `20260725T072634Z-b8ca8251`) — **design agreed, script not
-  yet written.** `flow-spec` and `flow-review` now describe exactly this pattern for their durable
-  artifacts (JSON source of truth + a sole deterministic renderer, mirroring `flow-inbox`'s
-  `render-md.sh`), but both skills currently persist by writing the file directly, explicitly
-  flagged in each as pending the actual script. Remaining work: the capture/status-update/render
-  scripts themselves, once the JSON schemas and rendered MD output are finalized with the human.
+- **Deterministic MD rendering** (inbox `20260725T072634Z-b8ca8251`) — **DONE.** `flow-spec`'s
+  (`spec-create.sh`/`spec-approve.sh`/`render-md.sh`) and `flow-review`'s
+  (`review-create.sh`/`review-add-round.sh`/`review-update-status.sh`/`render-md.sh`) durable-artifact
+  scripts are built, tested, and reviewed, mirroring `flow-inbox`'s `render-md.sh` pattern (JSON
+  source of truth + a sole deterministic renderer).
 - **PM tracker disambiguation** (inbox `20260725T061121Z-b1ead236`): when a backlog request doesn't
   name Jira vs GitHub, the PM flow should **ask** rather than guess. In `flow-project-management`,
   mirror the existing mandatory audience-ask. Low-token, contained.

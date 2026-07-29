@@ -44,6 +44,8 @@ You already know the available subagents from your Task tool. Select dynamically
 
 **Resolving lens names.** Match the user's plain-words request ("logging", "conventions", "tests") against the `lens-*` agents' own descriptions.
 
+**Naming a lens is a floor, not a ceiling.** When the human names specific lens(es) in their request, those named lenses are guaranteed a seat — but naming them does NOT cap the roster. The full diff-derivation process above still runs regardless, and any other lens whose Applicability genuinely fires is still seated too, exactly as if none had been named.
+
 ---
 
 ## 3. The gate (MANDATORY — before ANY dispatch)
@@ -96,9 +98,36 @@ Dedup by finding `id` internally, then render per `review-report-standards` **Re
 
 ### 4c. Persist to the durable artifact.
 
-Every review produces a durable, trackable record — not just conversation output. Location: `.crucible/docs/reviews/{year}/{month}/{day}/{repo-or-effort-slug}.md` (+ a same-named `.json` source of truth alongside it), created once per review effort and updated in place across rounds — the date reflects when the effort started, not the most recent update. The JSON carries the same stable IDs and status lifecycle `review-report-standards` already defines (open → in-progress → approved / approved-with-followups); the MD is the deterministically-rendered human-facing view. **The reviewer never writes this file directly** — it returns its findings as today, and the orchestrator is the one who persists/updates the artifact, the same division of labor already used for commits (`git-operator` plans, orchestrator executes) and Jira/GitHub writes (`project-manager` drafts, a script writes).
+Every review produces a durable, trackable record — not just conversation output. Location: `.crucible/docs/reviews/{year}/{month}/{day}/{repo-or-effort-slug}.md` (+ a same-named `.json` alongside it, conforming to `review-artifact.schema.json`), created once per review effort and updated in place across rounds — the date reflects when the effort started, not the most recent update. The JSON carries two SEPARATE tracked axes per finding — `status` (cross-round identity: NEW/OPEN/RESOLVED/REGRESSED/ACK, per `finding-status.schema.json`) and `tracked_status` (workflow position: PENDING/IN_PROGRESS/APPROVED/APPROVED_WITH_FOLLOWUPS, per `tracked-status.schema.json`) — never conflated into one, since a finding can be REGRESSED and simultaneously back IN_PROGRESS at once. **The reviewer never writes this file directly** — it returns its findings as today, and the orchestrator is the one who persists/updates the artifact, the same division of labor already used for commits (`git-operator` plans, orchestrator executes) and Jira/GitHub writes (`project-manager` drafts, a script writes).
 
-> **Not yet backed by a script.** The persist/render/status-update mechanism described here (mirroring the GTD inbox's `capture.sh`/`process.sh`/`render-md.sh` discipline) is the agreed design but is **not yet implemented** — this procedure currently persists by writing the file directly, pending the deterministic scripts. Do not treat the absence of the script as license to skip persisting the artifact; write it by hand until the script exists, then switch over without changing this procedure's shape.
+**The rendered MD — every field maps directly to the JSON schema, one-to-one:**
+
+```markdown
+# Review: <repo>
+
+**Repo:** <repo>
+**Spec:** <spec_ref>  *(omit this line entirely when no spec_ref exists)*
+**Started:** <created> · **Last updated:** <last_updated>
+**Round:** <rounds.length> (of 3 max)
+**Verdict:** <overall_verdict>
+
+## Round history
+- Round <round>: <reviewers[0]>, <reviewers[1]>, …
+
+## Findings
+
+### <id> — <severity>
+**Tracked status:** <tracked_status, lowercased> · **Finding status:** <status, lowercased>
+**Reviewer:** <reviewer>
+**File:** <locations[0]>
+
+<problem>
+→ Fix: <fix>
+```
+
+One `### <id>` block per finding, in the order they appear in `findings[]`. Render both status axes explicitly, side by side — that's the whole reason they're two fields now instead of one conflated enum (see `tracked-status.schema.json`'s own description for the REGRESSED-and-IN_PROGRESS case this exists to represent).
+
+> **Script-backed.** The persist/render/status-update mechanism described here (mirroring the GTD inbox's `capture.sh`/`process.sh`/`render-md.sh` discipline) is implemented: `review-create.sh` (round 1), `review-add-round.sh` (append a round), `review-update-status.sh` (flip one finding's status/tracked_status/addressed_in_round), and `render-md.sh` (the deterministic renderer — `render-md.sh --summary` emits only the verdict + open counts by severity, a cheap "is this blocking?" check that skips the full findings render). Persist and render through these scripts, never by hand.
 
 ### 4d. Expose.
 
@@ -122,7 +151,7 @@ When the effort spans multiple repos/tech stacks, this procedure runs **once per
 
 - **Never fires automatically** — not from state, not from build size, not as an auto-followup. Only an explicit human ask (§0).
 - **Never dispatch the swarm without approval of the roster** (§3).
-- **The roster starts from the lens battery only — the `{tech}-reviewer` is not re-seated here** (§2).
+- **The roster starts from the lens swarm only — the `{tech}-reviewer` is not re-seated here** (§2).
 - **Never price the review** — the gate asks about scope, never tokens or time (§3).
 - **Reviewers are read-only** and have no shell; materialize the diff for them (§4a).
 - **This skill never runs a fix loop** — findings are handed to `flow-implementation` (§5).
@@ -130,4 +159,4 @@ When the effort spans multiple repos/tech stacks, this procedure runs **once per
 - **Cross-repo work produces N separate artifacts, never one merged document** (§6).
 
 ---
-*Procedure Version: 1.0 — split out of the retired `flow-orchestration` as the on-demand-only half. The tech-pair build lives in `flow-implementation`. The durable-artifact persistence mechanism is agreed but not yet script-backed (§4c) — schemas and the exact rendered output are still being finalized before that script gets written.*
+*Procedure Version: 1.0 — split out of the retired `flow-orchestration` as the on-demand-only half. The tech-pair build lives in `flow-implementation`. The durable-artifact persistence mechanism is script-backed (§4c): `review-create.sh`, `review-add-round.sh`, `review-update-status.sh`, and `render-md.sh`.*
