@@ -1,6 +1,6 @@
 ---
 name: standard-git-tag
-description: The single definition of a good release TAG and versioning — the shared rubric the git-operator follows when tagging a release. Applies whenever a release is cut. Covers annotated + signed tags, SemVer-named tags, the Conventional-Commits→SemVer contract, changelog discipline, and release automation options. It does NOT define commit format (standard-git-commit), branches (standard-git-branch), PR policy (standard-git-pr), or how the signing identity is resolved (procedure-git-identity — bound alongside this for signing).
+description: The single definition of a good release TAG and versioning — the shared rubric the git-operator follows when tagging a release. Applies whenever a release is cut. Covers annotated + signed tags, SemVer-named tags, the Conventional-Commits→SemVer contract, changelog discipline, and release automation options. It does NOT define commit format (standard-git-commit), branches (standard-git-branch), or how the signing identity is resolved (procedure-git-identity — bound alongside this for signing).
 ---
 
 # Standard: Git Tag & Versioning

@@ -84,10 +84,6 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 - **PM tracker disambiguation** (inbox `20260725T061121Z-b1ead236`): when a backlog request doesn't
   name Jira vs GitHub, the PM flow should **ask** rather than guess. In `flow-project-management`,
   mirror the existing mandatory audience-ask. Low-token, contained.
-- **Deploy dependency check** (inbox `20260727T091344Z-158efc80`): `deploy.sh` should check for
-  required dependencies and **gracefully exit** if essential ones are missing. It already has
-  `check_deps` for its own utilities; the gap is the framework's **runtime** deps (jq, gh, git,
-  curl) — add a runtime-dep check/warning.
 - **Agent-description token trim** (inbox `20260728T054725Z-b4185fdb`): Claude Code warns that
   agent descriptions are **over the 15k-token limit (~23k)**. Trim the `{tech}`-developer/reviewer
   + `lens-*` + operational agent frontmatter `description:` fields so the deployed roster fits.
@@ -118,8 +114,7 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 
 ### D. Cleanup
 
-- **Retire `standard-git-pr`** — orphaned after PR ownership moved to the `project-manager`. Remove
-  it and any dangling references.
+(none pending)
 
 ---
 

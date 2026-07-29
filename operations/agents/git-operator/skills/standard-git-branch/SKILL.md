@@ -1,6 +1,6 @@
 ---
 name: standard-git-branch
-description: The single definition of a good git BRANCH and the branching workflow — the shared rubric the git-operator follows when creating or managing branches. Applies whenever a branch is created, named, kept current, or protected. Covers the Git Flow workflow (main/develop/feature/release/hotfix), branch naming (type/ticket-desc, lowercase-kebab, shell/URL-safe), one-concern-per-branch, branch hygiene (short-lived, rebased onto base, deleted after merge), and branch protection. It does NOT define commit format (standard-git-commit), PR/merge policy (standard-git-pr), or tags (standard-git-tag).
+description: The single definition of a good git BRANCH and the branching workflow — the shared rubric the git-operator follows when creating or managing branches. Applies whenever a branch is created, named, kept current, or protected. Covers the Git Flow workflow (main/develop/feature/release/hotfix), branch naming (type/ticket-desc, lowercase-kebab, shell/URL-safe), one-concern-per-branch, branch hygiene (short-lived, rebased onto base, deleted after merge), and branch protection. It does NOT define commit format (standard-git-commit) or tags (standard-git-tag).
 ---
 
 # Standard: Git Branch
@@ -33,12 +33,12 @@ This project uses **Git Flow**. Two long-lived branches, three supporting types:
 ## One concern per branch
 
 - A branch holds **one concrete concern** — one feature, one fix, one refactor — not a mixed bag.
-- **Exception:** a genuine cross-module **refactoring effort** may span many modules on one branch; prefer focused branches otherwise, and if a "feature" is really several concerns, split it into multiple branches (or a stack of PRs — see `standard-git-pr`).
+- **Exception:** a genuine cross-module **refactoring effort** may span many modules on one branch; prefer focused branches otherwise, and if a "feature" is really several concerns, split it into multiple branches (or a stack of PRs).
 
 ## Hygiene
 
 - **Short-lived** — hours to a few days. Branches older than ~2–3 days make conflicts inevitable.
-- **Keep current with the base** — rebase the branch onto its base branch regularly (rebase, not merge-in, to keep history linear — consistent with the rebase-merge policy in `standard-git-pr`).
+- **Keep current with the base** — rebase the branch onto its base branch regularly (rebase, not merge-in, to keep history linear).
 - **Delete after merge** — enable auto-delete on merge; don't accumulate stale branches.
 - **Pushing / staying current** — set the upstream on first push (`git push -u <remote> <branch>`; don't assume `origin` in a multi-remote repo). A rejected **non-fast-forward** push means fetch + rebase onto the base then re-push — never blind `--force`; use **`--force-with-lease`** only to overwrite your OWN un-shared branch after a rebase (never a shared/protected branch). Verify the tree is clean (`git status`) before switching branches or rebasing — stash or refuse rather than clobber uncommitted work.
 
@@ -58,4 +58,4 @@ Client-side branch discipline is advisory; the ruleset is what makes it an invar
 - Never put `#`, spaces, or uppercase in a branch name; never mix multiple concerns on one branch (bar the refactor exception).
 
 ---
-*Standard Version: 1.0 — the shared branch rubric. Followed by the git-operator. Workflow: Git Flow (by project choice). Commit format lives in standard-git-commit; PR/merge policy in standard-git-pr; tags in standard-git-tag.*
+*Standard Version: 1.0 — the shared branch rubric. Followed by the git-operator. Workflow: Git Flow (by project choice). Commit format lives in standard-git-commit; tags in standard-git-tag.*
