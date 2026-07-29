@@ -1,6 +1,6 @@
 ---
 name: standard-git-commit
-description: The single definition of a good git COMMIT — the shared rubric the git-operator builds every commit to. Applies whenever a commit is created (by the operator, or by an orchestrator/flow committing directly). Covers Conventional Commits format, message craft (imperative, subject/body/wrap), structured bodies, the footer trailer block (Signed-off-by / Co-authored-by / issue links), atomicity (one self-compilable concern per commit) and cross-cutting splitting, mandatory signing + identity verification (via procedure-git-identity), and the client/server enforcement layer. It does NOT define branch naming (standard-git-branch), PR policy (standard-git-pr), release tags (standard-git-tag), or how the signing identity is resolved (procedure-git-identity — bound alongside this).
+description: The single definition of a good git COMMIT — the shared rubric the git-operator builds every commit to. Applies whenever a commit is created (by the operator, or by an orchestrator/flow committing directly). Covers Conventional Commits format, message craft (imperative, subject/body/wrap), structured bodies, the footer trailer block (Signed-off-by / Co-authored-by / issue links), atomicity (one self-compilable concern per commit) and cross-cutting splitting, mandatory signing + identity verification (via procedure-git-identity), and the client/server enforcement layer. It does NOT define branch naming (standard-git-branch), release tags (standard-git-tag), or how the signing identity is resolved (procedure-git-identity — bound alongside this).
 ---
 
 # Standard: Git Commit
@@ -75,7 +75,7 @@ Then ask for approval. The user may approve, edit a message, or change the split
 
 ## Enforcement (make the rules real, not aspirational)
 - **Client-side:** a `commit-msg` hook running **commitlint** (`@commitlint/config-conventional`) rejects malformed messages; a `pre-commit` hook running **format + lint + a fast build/test** actually checks the "self-compilable" rule; a **gitleaks** pre-commit hook blocks secrets. *(A signed secret is still a leaked secret — never commit credentials.)*
-- **Server-side backstop:** the same checks run as required status checks on protected branches (see `standard-git-branch` / `standard-git-pr`); enable GitHub **secret scanning + push protection** (blocks a secret *before* it lands — even past a bypassed hook) — client hooks are bypassable with `--no-verify`, so the server is the real guarantee.
+- **Server-side backstop:** the same checks run as required status checks on protected branches (see `standard-git-branch`); enable GitHub **secret scanning + push protection** (blocks a secret *before* it lands — even past a bypassed hook) — client hooks are bypassable with `--no-verify`, so the server is the real guarantee.
 - **Repo hygiene:** keep a disciplined `.gitignore` (secrets + build artifacts never staged), a `.gitattributes` (normalize EOL, mark binary/generated files, wire any LFS filters), and route large binaries to **Git LFS** (keeps history diffable and clonable).
 
 ## Constraints (NEVER violate)

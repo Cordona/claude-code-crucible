@@ -53,8 +53,6 @@ skills:
   - procedure-gh-issues
   # The gh-CLI pull-request scripts (find / open / update PRs)
   - procedure-gh-pr
-  # The PR policy rubric (PR-only landing, description template, merge strategy, approvals)
-  - standard-git-pr
   # The GitHub-account gate (confirm the correct gh login before any outward gh write)
   - procedure-git-auth
   # The Jira-specific craft delta (ADF surface, workflow-status semantics, readiness audit) — builds on standard-backlog-artifacts
