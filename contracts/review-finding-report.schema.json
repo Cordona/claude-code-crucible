@@ -12,7 +12,7 @@
       "const": "1.0"
     },
     "reviewer": {
-      "description": "The reviewer/lens name (e.g. \"clean-code-reviewer\", \"kotlin-reviewer\").",
+      "description": "The reviewer/lens name (e.g. \"lens-clean-code-reviewer\", \"kotlin-reviewer\").",
       "type": "string",
       "minLength": 1
     },
@@ -46,7 +46,7 @@
       "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
-          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CC, SEC, TEST, CON, OBS, PERF, COMPAT, PERS, or a language tag e.g. RUST/JAVA).",
+          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CLEAN, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS, or the reviewer's full language/tech name e.g. RUST, JAVA, KOTLIN, PHP, REACT, SHELL, DEVOPS).",
           "type": "string",
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },
@@ -84,7 +84,7 @@
   "examples": [
     {
       "schema_version": "1.0",
-      "reviewer": "clean-code-reviewer",
+      "reviewer": "lens-clean-code-reviewer",
       "target": ["src/order/"],
       "round": 2,
       "generated": "2026-07-12",
@@ -92,7 +92,7 @@
       "summary": { "open": { "critical": 0, "high": 1, "medium": 2, "low": 1 }, "resolved": 3, "new": 1, "ack": 0 },
       "findings": [
         {
-          "id": "CC-004",
+          "id": "CLEAN-004",
           "status": "NEW",
           "severity": "MEDIUM",
           "category": "dry",
