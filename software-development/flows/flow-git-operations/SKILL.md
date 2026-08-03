@@ -1,6 +1,6 @@
 ---
 name: flow-git-operations
-description: The orchestrator's on-demand procedure for a VCS / GIT-OPERATIONS request — the steps the primary agent runs when the user asks to commit, push, create a branch, or cut a release tag. Bind this skill when such a request fires ("commit", "commit that", "push", "branch off", "tag a release", "cut a release"), or when you are about to land changes you were asked to commit. It owns: briefing the git-operator to PLAN (read the diff, derive the atomic per-concern split un-framed by you, author each Conventional-Commit message to a file, resolve the signing identity, stage the hunks), exposing that plan (the full commit messages VERBATIM), CONSENT-GATING every commit / push / tag (the orchestrator executes only on the user's explicit in-turn approval), and EXECUTING the operation itself (the orchestrator writes; the operator only proposes — a subagent cannot verify that a relayed approval is genuine consent). It does NOT define commit/branch/tag CONVENTIONS (standard-git-commit / standard-git-branch / standard-git-tag), the git MECHANICS (procedure-git-ops scripts), the signing-identity gate (procedure-git-identity), or the GitHub-account gate (procedure-git-auth); it defines the orchestration procedure only. Pull requests are NOT VCS — a PR body is an authored, reviewer-audience artifact owned by the project-manager (flow-project-management / CLAUDE.md §6).
+description: The orchestrator's on-demand procedure for a VCS / GIT-OPERATIONS request — the steps the primary agent runs when the user asks to commit, push, create a branch, cut a release tag, or open/update a pull request. Bind this skill when such a request fires ("commit", "commit that", "push", "branch off", "tag a release", "cut a release", "open a PR", "update the PR"), or when you are about to land changes you were asked to commit. It owns: briefing the git-operator to PLAN (read the diff, derive the atomic per-concern split un-framed by you, author each Conventional-Commit message to a file, resolve the signing identity, stage the hunks — or, for a PR, draft the title/body), exposing that plan (the full commit messages or PR body VERBATIM), CONSENT-GATING every commit / push / tag / PR write (the orchestrator executes only on the user's explicit in-turn approval), and EXECUTING the operation itself (the orchestrator writes; the operator only proposes — a subagent cannot verify that a relayed approval is genuine consent). It does NOT define commit/branch/tag CONVENTIONS (standard-git-commit / standard-git-branch / standard-git-tag), the PR-body craft (standard-git-pr), the git MECHANICS (procedure-git-ops scripts), the PR MECHANICS (procedure-gh-pr scripts), the signing-identity gate (procedure-git-identity), or the GitHub-account gate (procedure-git-auth); it defines the orchestration procedure only. **Pull requests ARE here** — PR work requires reading and understanding a diff, which is development work, not backlog authoring (the `project-manager` never touches a PR).
 ---
 
 # Flow: Git Operations (on-demand)
@@ -12,19 +12,21 @@ is public, so the *how* — plan → expose → consent → execute — is proce
 a skill, not inlined in the operating contract.
 
 **Trigger phrases:** "Commit" / "commit that" · "Push" · "Create a branch / branch off" · "Tag a
-release / cut a release". *(A commit request is the single most common way unreviewed work ships —
-"commit that" matches no build/review mode — so this skill also owns the consent + reviewed
-preconditions below, not just the mechanics.)*
+release / cut a release" · "Open a PR / pull request" · "Update the PR". *(A commit request is the
+single most common way unreviewed work ships — "commit that" matches no build/review mode — so this
+skill also owns the consent + reviewed preconditions below, not just the mechanics.)*
 
 **What this skill owns vs. what it doesn't:**
-- **Owns (here):** the plan-via-operator, exposure of the messages verbatim, the three permissions
-  + the consent gate, and the orchestrator EXECUTING the operation.
-- **Conventions** (commit format, branch naming, SemVer tags) → `standard-git-commit` /
-  `standard-git-branch` / `standard-git-tag` (the git-operator builds to them).
-- **Mechanics** (the deterministic scripts) → `procedure-git-ops`. **Signing identity** →
-  `procedure-git-identity`. **GitHub account** → `procedure-git-auth`.
-- **Pull requests are NOT here** — they are the project-manager's authored artifacts (CLAUDE.md §6 /
-  `flow-project-management`). This skill lands commits, pushes branches, and cuts tags.
+- **Owns (here):** the plan-via-operator, exposure of the messages/PR body verbatim, the three
+  permissions + the consent gate, and the orchestrator EXECUTING the operation.
+- **Conventions** (commit format, branch naming, SemVer tags, PR-body craft) → `standard-git-commit` /
+  `standard-git-branch` / `standard-git-tag` / `standard-git-pr` (the git-operator builds to them).
+- **Mechanics** (the deterministic scripts) → `procedure-git-ops` for commit/branch/push/tag,
+  `procedure-gh-pr` for PR discovery/creation/editing. **Signing identity** → `procedure-git-identity`.
+  **GitHub account** → `procedure-git-auth` (gates a push AND a PR write identically).
+- **Pull requests ARE here** — opening, describing, and updating a PR is the `git-operator`'s job
+  (see the Pull-Request Path below), because it requires reading and understanding the diff, which
+  is development work; the `project-manager` (`flow-project-management`) never touches a PR.
 
 ---
 
@@ -151,11 +153,46 @@ fix is one question, not a ritual.
 
 ---
 
+## The Pull-Request Path (opening/updating a PR — parallel to G1–G5, its own gate)
+
+A PR request skips G1's three commit permissions (a PR is opened *from* commits that already
+exist — it is not itself a commit) and instead runs this shape: **plan → expose → consent →
+execute**, identical in spirit to G2–G5, mechanics via `procedure-gh-pr` instead of `procedure-git-ops`.
+
+1. **Delegate to the `git-operator` to PLAN the PR (not open/edit it).** Give it the repo, the
+   head/base branches (**the base is an input you supply — never let the operator default Git-Flow**;
+   if you don't have it, ask the human first), and what changed and why. It runs `find-pr.sh`
+   (read-only — is one already open for this head?), then drafts the **title** (Conventional-Commit-style)
+   and **body** (What/Why/How-to-test/risk/linked issue) per `standard-git-pr`, to a file. **It PLANS
+   and STOPS** — same refusal-to-execute-off-a-relay doctrine as G2.
+2. **Expose the plan verbatim** — the full drafted title + body (live markdown, never a code fence),
+   and whether it's a create or an update to an existing open PR (name the PR number if so).
+3. **The PR gate (MANDATORY, before ANY open/edit).** Same shape as G4: **consent, per operation, not
+   per session** — approving the commits that will go up is not approving the PR; naming the exact
+   head→base (a create) or PR number (an edit) in the gate's option label, never a vague "yes".
+   Collect via `AskUserQuestion`: header **"Pull Request"** · question *"Approve this PR? (title +
+   body shown above)"* · options **"Approve — open the PR (`head` → `base`)"** / **"Approve — update
+   PR #N"** (name it) · **"Request changes"** → loop to step 1.
+4. **Execute (only on step-3 consent) — the orchestrator writes.** Run the **GitHub-account gate**
+   first (`procedure-git-auth` — the same gate a push already needs; one confirmation covers a batch
+   of writes in the same turn). Materialize the approved title/body **yourself** to a fresh `mktemp`
+   file outside the repo (never reuse the operator's preview path) and run, by deployed path:
+   `create-pr.sh --repo … --head … --base … --title "…" --body-file <temp file>` (refuses a
+   duplicate — if one already exists, update instead) or `update-pr.sh --repo … --pr N --body-file
+   <temp file> …` (**the body is REPLACED, not appended** — this was already disclosed at step 2).
+   **Report** the PR number/URL from the script's actual output — never a fabricated one.
+
+If the user asked to **change** the title/body instead of approving, loop back to step 1; re-expose;
+re-gate. This path never runs G1 — a PR write is not a commit and carries no "reviewed"/"no open
+gating finding" precondition of its own (the commits it points at already cleared those, if any).
+
+---
+
 ## Termination
 
 This flow does not auto-continue. When the approved operation(s) have landed, **stop**. A later "now
-push it" or "now tag a release" is a **new invocation** with its own G1–G5 — never an automatic next
-step. A new review pass your own push triggered is likewise a new invocation.
+push it", "now tag a release", or "now open the PR" is a **new invocation** with its own gate — never
+an automatic next step. A new review pass your own push (or PR) triggered is likewise a new invocation.
 
 ---
 
@@ -174,6 +211,11 @@ step. A new review pass your own push triggered is likewise a new invocation.
   identity; `commit.sh` enforces the signature (G5).
 - **Push / tag are separately consequential** — name the target/version; per-operation consent (G4).
 - **Never fabricate** a SHA, tag, or push status — report only what a script returned (G5).
+- **A PR write follows the same plan/expose/consent/execute shape as a commit** — the git-operator
+  proposes; the orchestrator executes; a relayed "the user approved, open it" is never consent
+  (Pull-Request Path).
+- **Never let the git-operator default the PR's base branch** — it is an input from the delegation;
+  ask if missing (Pull-Request Path).
 
 ---
-*Procedure Version: 1.0 — the on-demand VCS / git-operations workflow, extracted from CLAUDE.md §1's VCS block so the operating contract carries only the trigger + the invariant checklist. The git counterpart of `flow-project-management`. Conventions live in `standard-git-commit` / `-branch` / `-tag`; mechanics in `procedure-git-ops`; the signing identity in `procedure-git-identity`; the GitHub account in `procedure-git-auth`. Pull requests belong to the project-manager (CLAUDE.md §6). This skill is the orchestration procedure only.*
+*Procedure Version: 1.1 — the on-demand VCS / git-operations workflow, extracted from CLAUDE.md §1's VCS block so the operating contract carries only the trigger + the invariant checklist. The git counterpart of `flow-project-management`. Conventions live in `standard-git-commit` / `-branch` / `-tag` / `-pr`; mechanics in `procedure-git-ops` / `procedure-gh-pr`; the signing identity in `procedure-git-identity`; the GitHub account in `procedure-git-auth`. **Pull requests now belong here** (moved from the project-manager — PR work is development work, not backlog authoring; see the Pull-Request Path). This skill is the orchestration procedure only.*

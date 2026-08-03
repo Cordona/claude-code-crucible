@@ -6,7 +6,7 @@
 #
 # Purpose:
 #   Wraps `gh pr list --head ... --state open` so a caller (the
-#   project-manager, or create-pr.sh's own pre-check) can check for an
+#   git-operator, or create-pr.sh's own pre-check) can check for an
 #   existing PR BEFORE opening a new one, without hand-authoring the query.
 #
 # Usage:

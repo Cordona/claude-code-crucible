@@ -1,6 +1,6 @@
 ---
 name: standard-backlog-artifacts
-description: The single definition of an EXCELLENT backlog artifact — the shared rubric the project-manager BUILDS to. Applies whenever a GitHub issue, user story, epic, task, bug, or spike is authored, structured, or refactored — and to a PULL-REQUEST body (authored for technical-human reviewers: What / Why / How-to-test / risk / link the issue). Defines the artifact taxonomy (epic / story / task / bug / spike, each with what it MUST and MUST NOT contain), the decomposition & right-sizing rules (INVEST, vertical slicing, the epic-vs-story test), acceptance-criteria form (Given/When/Then), Definition of Ready / Definition of Done, the pull-request body section, and — the core differentiator — the AUDIENCE MATRIX: how the same work becomes a materially different artifact for an `agent` vs a `technical` / `non-technical` / `business` human, plus the layered `both` format. This is WHAT an excellent artifact looks like; it does NOT define the project-manager's working conduct, gates, or report envelope (those live in the agent body).
+description: The single definition of an EXCELLENT backlog artifact — the shared rubric the project-manager BUILDS to. Applies whenever a GitHub issue, user story, epic, task, bug, or spike is authored, structured, or refactored. Defines the artifact taxonomy (epic / story / task / bug / spike, each with what it MUST and MUST NOT contain), the decomposition & right-sizing rules (INVEST, vertical slicing, the epic-vs-story test), acceptance-criteria form (Given/When/Then), Definition of Ready / Definition of Done, and — the core differentiator — the AUDIENCE MATRIX: how the same work becomes a materially different artifact for an `agent` vs a `technical` / `non-technical` / `business` human, plus the layered `both` format. This is WHAT an excellent artifact looks like; it does NOT define the project-manager's working conduct, gates, or report envelope (those live in the agent body). Pull-request bodies are NOT here — that craft moved to `standard-git-pr` (git-operator's domain) when the PR lifecycle moved to development work.
 ---
 
 # Standard: Backlog Artifacts
@@ -82,16 +82,6 @@ Default the *language* of a business artifact to jargon-free, but keep the value
 
 ---
 
-## Pull request bodies
-
-A PR body is a backlog-adjacent artifact with a **fixed audience: technical-human reviewers** (agents read it fine too) — so it does not need the audience question. Author it to help them *review*, not just to restate the diff:
-- **Lead with What · Why · How-to-test** — what changed (the outcome, not a commit list), why it was needed, and exactly how a reviewer verifies it.
-- **Point at the risk** — name the files/areas that most deserve scrutiny, and any decision or trade-off a reviewer should sanity-check.
-- **Link the work** — `Closes #<n>` (or `Refs #<n>`), so the PR and its issue connect.
-- **Concise and scannable** — a reviewer skims; front-load, short sections, don't restate the diff.
-
-The title is a **Conventional-Commit-style** one-liner (`type(scope): summary`), matching the commit convention.
-
 ## Leave out (the anti-pattern catalogue)
 
 Solution-first framing (no problem/outcome) · horizontal slices · missing or untestable acceptance criteria ("works well") · no non-goals · an epic masquerading as a story (or the reverse) · a feature request filed as a bug · a spike with no time-box or deliverable · **wrong-audience calibration** (implementation detail in a business artifact; assumed context in an agent artifact; jargon at a non-technical reader) · gold-plating trivial work · fabricated estimates or priorities the user didn't ask for.
@@ -116,4 +106,4 @@ Solution-first framing (no problem/outcome) · horizontal slices · missing or u
 - Never invent priorities, estimates, or scope the user did not ask for; ask the one load-bearing question instead of guessing.
 
 ---
-*Standard Version: 1.0 — the shared backlog-artifact rubric. Built to by the project-manager. Grounded in INVEST, vertical slicing, Given/When/Then acceptance criteria, and Diátaxis-style audience calibration. Tracker-agnostic — the creation mechanics live in the project-manager's `procedure-gh-issues` / `procedure-gh-pr` scripts (GitHub today; Jira later), never in this rubric. It does not define the project-manager's conduct, gates, or report envelope (the agent body).*
+*Standard Version: 1.1 — the shared backlog-artifact rubric. Built to by the project-manager. Grounded in INVEST, vertical slicing, Given/When/Then acceptance criteria, and Diátaxis-style audience calibration. Tracker-agnostic — the creation mechanics live in the project-manager's `procedure-gh-issues` script (GitHub today; Jira later), never in this rubric. **Pull-request bodies moved to `standard-git-pr`** (git-operator's domain) along with the rest of the PR lifecycle. It does not define the project-manager's conduct, gates, or report envelope (the agent body).*

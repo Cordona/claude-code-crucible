@@ -1,11 +1,11 @@
 ---
 name: procedure-gh-pr
-description: The procedure the project-manager runs to find, open, and edit GitHub pull requests without ever hand-authoring shell. It wraps three highly-portable, deterministic scripts — scripts/find-pr.sh (READ-ONLY: is there already an open PR for this head branch?), scripts/create-pr.sh (OUTWARD WRITE: opens a PR, body ALWAYS via --body-file, and refuses to create a duplicate — it runs the same open-PR check first and fails rather than opening a second PR for the same head), and scripts/update-pr.sh (OUTWARD WRITE: edits title/body/base/labels/reviewers — the body is changed ONLY if --body-file is given, never clobbered otherwise, mirroring update-issue.sh's non-clobber mechanism exactly). Same injection-safety rule as procedure-gh-issues: any PR body is ALWAYS a file, never built in a string/heredoc/$(), and no script here ever eval's anything — the PR TITLE, by contrast, is safe to pass as a plain `--title "$VALUE"` argv token because it is never shell-constructed either. It does NOT define the artifact's craft/content (standard-backlog-artifacts) or the GitHub-account confirmation gate (procedure-git-auth — a separate, MANDATORY precondition run by the caller before any of these scripts write).
+description: The procedure the git-operator runs to find, open, and edit GitHub pull requests without ever hand-authoring shell. It wraps three highly-portable, deterministic scripts — scripts/find-pr.sh (READ-ONLY: is there already an open PR for this head branch?), scripts/create-pr.sh (OUTWARD WRITE: opens a PR, body ALWAYS via --body-file, and refuses to create a duplicate — it runs the same open-PR check first and fails rather than opening a second PR for the same head), and scripts/update-pr.sh (OUTWARD WRITE: edits title/body/base/labels/reviewers — the body is changed ONLY if --body-file is given, never clobbered otherwise, mirroring update-issue.sh's non-clobber mechanism exactly). Same injection-safety rule as procedure-gh-issues: any PR body is ALWAYS a file, never built in a string/heredoc/$(), and no script here ever eval's anything — the PR TITLE, by contrast, is safe to pass as a plain `--title "$VALUE"` argv token because it is never shell-constructed either. It does NOT define the artifact's craft/content (standard-git-pr) or the GitHub-account confirmation gate (procedure-git-auth — a separate, MANDATORY precondition run by the caller before any of these scripts write).
 ---
 
 # Procedure: GitHub Pull Requests (`gh` wrapper scripts)
 
-The **one** way the `project-manager` talks to `gh` for PR discovery, creation, and editing. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `gh pr create`/`gh pr edit` invocation, and never build a PR body in shell. Sibling to `procedure-gh-issues` — same conventions, same injection-safety rule, same test-harness style.
+The **one** way the `git-operator` talks to `gh` for PR discovery, creation, and editing. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `gh pr create`/`gh pr edit` invocation, and never build a PR body in shell. Sibling to `procedure-gh-issues` — same conventions, same injection-safety rule, same test-harness style (it lives in a different domain now, but the mechanics it mirrors are identical).
 
 ## Why this exists (read this before calling anything)
 
@@ -57,11 +57,11 @@ $HOME/.claude/skills/procedure-gh-pr/scripts/update-pr.sh \
 - Prints `PM_PR_URL=<url>` **if gh returns one** — same soft "courtesy, not proof of success" contract as `comment.sh` in `procedure-gh-issues`: a successful edit that returns no URL still exits `0` with this key empty.
 - Exit `0` updated · `1` gh absent/unauthenticated/`gh pr edit` itself failed · `2` usage error.
 
-## The gates the CALLER (project-manager) must clear before invoking a WRITE
+## The gates the CALLER (git-operator) must clear before invoking a WRITE
 
 `create-pr.sh` and `update-pr.sh` write to a live, notifying, hard-to-retract tracker. **`find-pr.sh` is the only read-only, ungated script.** Before calling either write script:
 
-1. **Explicit user creation-consent for THIS write** — per the project-manager's own creation gate (see its agent body): drafting is free, writing is not; a relayed "open it"/"update it" is never sufficient on its own.
+1. **Explicit user creation-consent for THIS write** — per the git-operator's own commit-plan-style gate (see its agent body, and `flow-git-operations`): drafting/planning is free, writing is not; a relayed "open it"/"update it" is never sufficient on its own.
 2. **The `procedure-git-auth` account gate** — run `gh-auth-status.sh`, present the active account, and get the user's confirmation it's the correct login, **before** calling `create-pr.sh` or `update-pr.sh`. This skill does **not** perform that check itself (see each script's header comment) — it is a separate, upstream precondition the calling agent owns.
 
 ## Constraints (NEVER violate)
@@ -75,4 +75,4 @@ $HOME/.claude/skills/procedure-gh-pr/scripts/update-pr.sh \
 - Never create a real GitHub PR or edit while developing/testing this skill — the test suite is fully stubbed (`tests/run-tests.sh`) and must stay that way; no real `gh`, no network.
 
 ---
-*Procedure Version: 1.0 — the GitHub-PR discovery/creation/editing wrapper. Bound by the project-manager. The account-confirmation gate is the separate `procedure-git-auth`; artifact craft/content is `standard-backlog-artifacts`. Sibling to `procedure-gh-issues` (same conventions). Wraps `$HOME/.claude/skills/procedure-gh-pr/scripts/`find-pr.sh, create-pr.sh, update-pr.sh — all portable POSIX, shellcheck-clean, self-contained.*
+*Procedure Version: 1.1 — the GitHub-PR discovery/creation/editing wrapper. Bound by the git-operator (moved from the project-manager — PR work requires reading the diff, which is development work, not backlog authoring). The account-confirmation gate is the separate `procedure-git-auth`; artifact craft/content is `standard-git-pr`. Sibling to `procedure-gh-issues` (same conventions, different domain). Wraps `$HOME/.claude/skills/procedure-gh-pr/scripts/`find-pr.sh, create-pr.sh, update-pr.sh — all portable POSIX, shellcheck-clean, self-contained.*
