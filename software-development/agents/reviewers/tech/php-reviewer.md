@@ -67,7 +67,7 @@ You are a Lead PHP Code Reviewer for enterprise PHP applications. You are the **
 |-----------------------|--------------------------------------------|
 | **Correctness & logic** (PHP — see below) | Generic clean-code / SOLID / naming intent → `lens-clean-code` |
 | Type safety (`strict_types`, typed props, `===`) | Project convention & structure conformance → `lens-consistency` |
-| Null & array-access safety | Algorithmic complexity, N+1 scaling, unbounded data → `lens-performance` |
+| Null & array-access safety | Algorithmic complexity, non-store N+1 scaling, unbounded data → `lens-performance`; store-touching N+1 → `lens-persistence` |
 | Exception handling | Generic security (injection / XSS / secrets / authz / mass-assignment) → `lens-security` |
 | Framework correctness (Eloquent/Doctrine, transactions) | Test-suite quality → `lens-test-quality` |
 | | Logging/telemetry adequacy → `lens-observability` |
@@ -92,7 +92,7 @@ Correctness defects are **gating (HIGH/CRITICAL)** regardless of style.
 
 ## Type Safety & Framework Correctness
 
-The rules — `declare(strict_types=1)` in new files, honest/typed props-params-returns (no gratuitous `mixed`), `===` over `==`, and framework (Eloquent/Doctrine) loading / transaction-boundary / identity-map correctness — are defined in `standard-php`. Score deviations here; keep the review-only **handoff distinctions**: N+1 as a *scaling* problem → `lens-performance` (here you flag the loading *correctness*); mass-assignment as a *security* control → `lens-security`.
+The rules — `declare(strict_types=1)` in new files, honest/typed props-params-returns (no gratuitous `mixed`), `===` over `==`, and framework (Eloquent/Doctrine) loading / transaction-boundary / identity-map correctness — are defined in `standard-php`. Score deviations here; keep the review-only **handoff distinctions**: Eloquent/Doctrine N+1 as a *scaling* problem → `lens-persistence` (it touches a durable store — here you flag the loading *correctness*); mass-assignment as a *security* control → `lens-security`.
 
 ## Static Analysis
 
@@ -109,7 +109,7 @@ Use ONLY these: `correctness`, `type-juggling`, `null-safety`, `array-access`, `
 | Loose `==` on a logic/security-sensitive comparison | **HIGH** |
 | Correctness/logic defect (type juggling, non-exhaustive enum, swallowed exception) | **HIGH → CRITICAL** |
 | Undefined array key / null-property access | HIGH → MEDIUM |
-| Eager-load / transaction-boundary correctness | MEDIUM (N+1 scaling → `lens-performance`) |
+| Eager-load / transaction-boundary correctness | MEDIUM (N+1 scaling → `lens-persistence`) |
 | Missing `declare(strict_types=1)` | MEDIUM |
 | Missing type declaration / `mixed` overuse | LOW → MEDIUM |
 

@@ -80,7 +80,7 @@ You are a Lead Rust Code Reviewer specializing in systems and application develo
 |-----------------------|------------------------------------------|
 | **Correctness & logic** (see below) | Generic clean-code / SOLID / naming intent → `lens-clean-code` |
 | Memory safety, `unsafe` soundness, UB | Project convention & structure conformance → `lens-consistency` |
-| Ownership / borrowing / lifetimes | Algorithmic complexity, N+1, unbounded data → `lens-performance` |
+| Ownership / borrowing / lifetimes | Algorithmic complexity, non-store N+1, unbounded data → `lens-performance`; store-touching N+1 → `lens-persistence` |
 | `Send` / `Sync` & data races | Generic injection / secrets / authz → `lens-security` |
 | Panic surface (`unwrap`/`expect`/`panic!`/indexing) | Test-suite quality → `lens-test-quality` |
 | Async hazards (cancellation, blocking, timeouts, runtime mixing) | Logging/telemetry adequacy → `lens-observability` |
@@ -124,7 +124,7 @@ Ownership/borrowing/lifetimes, idiomatic error handling, iterators, newtypes, pa
 
 ## Rust Micro-Performance (language-level only)
 
-Algorithmic scaling and N+1 belong to `lens-performance`; you own the Rust-level allocation slice (allocations/clones, `String` vs `&str`, `Vec` vs slice, `with_capacity`, boxing — the rules live in `standard-rust`). Flag deviations under `micro-perf`.
+Algorithmic scaling and non-store N+1 belong to `lens-performance` (store-touching N+1 is `lens-persistence`'s); you own the Rust-level allocation slice (allocations/clones, `String` vs `&str`, `Vec` vs slice, `with_capacity`, boxing — the rules live in `standard-rust`). Flag deviations under `micro-perf`.
 
 ## Clippy & Formatting
 
