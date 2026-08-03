@@ -117,7 +117,6 @@ ROW_TOTAL=$(hub_count_lines "$HUB_ROWS")
 HL_DOMAIN_TMP="$HUB_WORK/domain-rows.txt"
 HL_BS_TMP="$HUB_WORK/baseline-summary.tsv"
 HL_BS_KEYED="$HUB_WORK/baseline-keyed.tsv"
-HL_FEAT_TMP="$HUB_WORK/domain-feature-lines.txt"
 
 # hl_rows_of_state STATE -> the rows in one status group, canonical order.
 hl_rows_of_state() {
@@ -579,13 +578,8 @@ hl_print_status_group() {
 		# `= software-development` literal any more. See hl_lens_rows_build on why
 		# that literal was both a hardcoded name and a misattribution bug.
 		hl_domain_lens_rows "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
-		# THIS DOMAIN's named features, kept in a file of their own as well as
-		# appended to the row list: the atomicity hint below is printed only when a
-		# feature line was actually rendered in THIS status group, and that is the
-		# only thing that can answer it (a domain's features can land in two
-		# different status groups, and the hint belongs under each).
-		hl_domain_feature_lines "$hl_psg_domain" "$hl_psg_state" >"$HL_FEAT_TMP"
-		cat "$HL_FEAT_TMP" >>"$HL_DOMAIN_TMP"
+		# THIS DOMAIN's named features, appended to the row list like any other row.
+		hl_domain_feature_lines "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
 		hl_baseline_summary "$hl_psg_domain"
 		hl_psg_bs_line=""
 		if [ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
@@ -604,30 +598,8 @@ hl_print_status_group() {
 			printf '    %s %s\n' "$hl_psg_glyph" "$hl_psg_display"
 		done <"$HL_DOMAIN_TMP"
 		[ -z "$hl_psg_bs_line" ] || printf '    %s %s\n' "$hl_psg_glyph" "$hl_psg_bs_line"
-		hl_print_feature_hint "$hl_psg_domain"
 	done
 	hl_print_nondomain_groups "$hl_psg_state" "$hl_psg_glyph"
-}
-
-# hl_print_feature_hint DOMAIN -> the dimmed atomicity advisory under DOMAIN's
-# feature lines, or nothing when this status group rendered none of them.
-#
-# DIMMED, never plain: it is secondary to the lines above it — the same treatment
-# every advisory in this hub gets, through hub_dim (lib/hub-render.sh's
-# HUB_DIM_COLOR). Indented to the ITEM TEXT column, two past the item indent, so
-# it reads as an annotation on the lines above rather than as a third glyph-less
-# item.
-#
-# GUARDED ON HL_FEAT_TMP, not on "does this domain declare features": a featured
-# domain contributes lines to whichever status groups its features are actually in,
-# and the hint must appear under each of those and under none of the others. It is
-# guarded on the hint TEXT as well, so a future domain that declares features but
-# no advisory prints no blank dimmed line.
-hl_print_feature_hint() {
-	[ -s "$HL_FEAT_TMP" ] || return 0
-	hl_pfh_hint=$(hub_domain_feature_hint "$1")
-	[ -n "$hl_pfh_hint" ] || return 0
-	printf '      %s\n' "$(hub_dim "$hl_pfh_hint")"
 }
 
 # hl_print_nondomain_groups STATE GLYPH -> one sub-header plus its rows for every

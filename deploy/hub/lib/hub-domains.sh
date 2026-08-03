@@ -882,21 +882,21 @@ hub_domain_feature_of() {
 	esac
 }
 
-# hub_domain_feature_hint DOMAIN -> the one-line advisory a screen prints under
-# DOMAIN's feature lines, or nothing for a domain with no features.
+# hub_domain_feature_hint DOMAIN -> the one-line advisory printed under DOMAIN's
+# feature lines, or nothing for a domain with no features.
 #
 # WHY THE HINT EXISTS AT ALL: naming two features invites the reader to assume
 # they can pick one. They cannot — a featured domain is ONE group (GTD's is
 # `atomic:gtd`; see the GROUP KEY GRAMMAR above), so both features arrive and leave
-# together and neither is ever a checkbox of its own. The domain itself IS a
-# checkbox on the uninstall checklist, which is what makes the hint load-bearing
-# there rather than merely informative: ticking that one row takes both features
-# out. It is the only place a screen says so, and it is why splitting one line into
-# two is not a promise of finer control.
+# together and neither is ever a checkbox of its own.
 #
-# It is rendered DIMMED by every screen that shows it, and Doctor deliberately
-# does NOT show it: a health report states facts about what is broken and
-# carries no selection advice anywhere else either.
+# INSTALL'S PREVIEW ONLY — that is the one screen where the reader is about to
+# make a selection, which is exactly where "you can't pick one of these" is
+# load-bearing rather than merely informative. List, Uninstall, and Doctor all
+# render DIMMED, but none of them shows this hint: List and Doctor are reports of
+# what already is, with no selection to caveat, and Uninstall's checkbox already
+# IS the domain (ticking it takes both features out — nothing there invites the
+# "can I pick one" misreading Install's preview exists to head off).
 hub_domain_feature_hint() {
 	case $1 in
 	gtd) printf 'installs & uninstalls together' ;;
