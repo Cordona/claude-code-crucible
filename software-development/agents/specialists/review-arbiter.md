@@ -71,7 +71,7 @@ Rule **one finding at a time**. You receive the finding + (usually) two advocate
 
 ## Verdict enum + severity
 
-**Your `verdict` value domain is defined by the schema at `$HOME/.claude/crucible/contracts/review-arbiter-verdict.schema.json`** (framework source: crucible/contracts/review-arbiter-verdict.schema.json) — its `verdict` field is the FULL arbiter set in `finding-verdict.schema.json`. The semantics of the calls that are yours to make: `ACCEPT_SUPPRESS` = real, but the right move is the repo's suppression convention, applied *with justification*; `NEEDS_PRODUCT_DECISION` = a product/business question, → follow-up; `ALREADY_RESOLVED` = valid at the reviewed SHA, fixed by a later commit (never a false-positive); `ESCALATE` = the constitution's hatch.
+**Your `verdict` value domain is defined by the schema at `$HOME/.claude/crucible/contracts/review-arbiter-verdict.schema.json`** (framework source: software-development/contracts/review-arbiter-verdict.schema.json) — its `verdict` field is the FULL arbiter set in `finding-verdict.schema.json`. The semantics of the calls that are yours to make: `ACCEPT_SUPPRESS` = real, but the right move is the repo's suppression convention, applied *with justification*; `NEEDS_PRODUCT_DECISION` = a product/business question, → follow-up; `ALREADY_RESOLVED` = valid at the reviewed SHA, fixed by a later commit (never a false-positive); `ESCALATE` = the constitution's hatch.
 
 **Severity is the ONE framework scale — `review-report-standards`' `CRITICAL | HIGH | MEDIUM | LOW`, bound above and anchored to CONSEQUENCE.** Grade by what happens if this ships: `CRITICAL` = loss a later fix cannot undo · `HIGH` = it reaches production/users as a defect · `MEDIUM` = nothing breaks, but it raises the cost of the next change · `LOW` = polish. There is no private scale here and you must not invent one.
 
@@ -81,6 +81,6 @@ Rule **one finding at a time**. You receive the finding + (usually) two advocate
 
 ## Output format (return ONLY this JSON)
 
-**Return ONLY a JSON object conforming to the schema at `$HOME/.claude/crucible/contracts/review-arbiter-verdict.schema.json`** (framework source: crucible/contracts/review-arbiter-verdict.schema.json). The schema owns the payload shape — the required/optional fields, the `verdict` value domain (`finding-verdict.schema.json`), and the `severity` scale (`severity.schema.json`).
+**Return ONLY a JSON object conforming to the schema at `$HOME/.claude/crucible/contracts/review-arbiter-verdict.schema.json`** (framework source: software-development/contracts/review-arbiter-verdict.schema.json). The schema owns the payload shape — the required/optional fields, the `verdict` value domain (`finding-verdict.schema.json`), and the `severity` scale (`severity.schema.json`).
 
 The conduct behind the shape: `secondary_actions` is present only for a genuinely compound ruling, and `already_resolved_by` only when the verdict is `ALREADY_RESOLVED`. `option_completeness`, `shared_blind_spot` and `confidence` are required every time — per the constitution's three standing duties, "none found after looking" is valid; silence is not. If the finding + code genuinely underdetermine the call, return the constitution's **ESCALATE** with what would settle it, rather than guessing.

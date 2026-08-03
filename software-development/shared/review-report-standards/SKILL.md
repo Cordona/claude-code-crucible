@@ -22,7 +22,7 @@ Reviewer conduct (report-only, no code changes) is defined by the `review-core` 
 
 The machine wire format — the report envelope, the finding schema, and the controlled enums (`status`, `severity`, `verdict`) — is defined ONCE, as a JSON Schema, at the deployed path:
 
-**`$HOME/.claude/crucible/contracts/review-finding-report.schema.json`** *(framework source: `crucible/contracts/review-finding-report.schema.json`)*
+**`$HOME/.claude/crucible/contracts/review-finding-report.schema.json`** *(framework source: `software-development/contracts/review-finding-report.schema.json`)*
 
 Emit **minified JSON conforming to that schema** by default (Rendering 2 below). Read that file for the exact fields, types, and enum value sets, plus a worked example — this skill does not restate them, so the schema is the single source of truth for the *shape*. What this skill owns is everything the schema cannot express: the SEMANTICS that follow — how IDs stay stable, what each status means, how severity is anchored, and how the verdict is computed.
 

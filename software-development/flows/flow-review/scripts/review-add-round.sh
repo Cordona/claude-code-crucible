@@ -298,7 +298,7 @@ trap 'cleanup; exit 143' TERM
 #                          (caller-settable, defaulted below if absent).
 #   pick_known_update() — an update to an EXISTING finding: first_seen is
 #                          EXCLUDED, full stop. first_seen is "frozen at
-#                          creation" per contracts/review-artifact.schema.json
+#                          creation" per software-development/contracts/review-artifact.schema.json
 #                          — an update entry must never be able to overwrite
 #                          it, regardless of what value it supplies. This
 #                          mirrors review-create.sh's own precedent of never

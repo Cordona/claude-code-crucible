@@ -247,7 +247,7 @@ cycles** to blunt position bias), and the raw artifact paths (never the reviews 
 So the arbiter can adjudicate 3 reviews without context dilution, ask each seat to return its
 structured findings plus a one-line overall recommendation — not a prose essay — conforming to
 `$HOME/.claude/crucible/contracts/decision-lawyer-finding.schema.json` (framework source:
-crucible/contracts/decision-lawyer-finding.schema.json), which fixes the per-claim shape
+software-development/contracts/decision-lawyer-finding.schema.json), which fixes the per-claim shape
 (`claim`, `severity`, `evidence` at `file:line`, `verdict`) and the top-level recommendation.
 
 ---

@@ -28,7 +28,7 @@ A backlog artifact tuned for an agent, a technical human, a non-technical human,
 
 **If Q1 = Agent, Q2 is moot** — ignore its answer. If Q1 = Both, Q2 supplies the human layer's register.
 
-The audience/register values — `agent` / `human` / `both` and `technical` / `non-technical` / `business` — are the canonical set defined once in `audience-register.schema.json` (`$HOME/.claude/crucible/contracts/audience-register.schema.json` · framework source: `crucible/contracts/audience-register.schema.json`) — the single source of truth. (The Title-Case `Agent` / `Human` / `Both` above are the Q1/Q2 display labels.)
+The audience/register values — `agent` / `human` / `both` and `technical` / `non-technical` / `business` — are the canonical set defined once in `audience-register.schema.json` (`$HOME/.claude/crucible/contracts/audience-register.schema.json` · framework source: `project-management/contracts/audience-register.schema.json`) — the single source of truth. (The Title-Case `Agent` / `Human` / `Both` above are the Q1/Q2 display labels.)
 
 **Do NOT ask the artifact TYPE** (issue / story / epic / bug / spike) — that is the project-manager's *recommendation*, not a user input. The user can override it after seeing the draft.
 

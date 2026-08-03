@@ -6,7 +6,7 @@
 #
 # capture.sh is NOT under test here — it moved to the gtd-inbox-writer
 # agent's own procedure-inbox-capture skill
-# (operations/agents/gtd-inbox-writer/skills/procedure-inbox-capture/tests),
+# (gtd/agents/gtd-inbox-writer/skills/procedure-inbox-capture/tests),
 # which is colocated with the script the agent owns. Every fixture entry
 # this suite needs is written DIRECTLY as a JSONL line (see append_entry
 # below) — the same technique this suite already used for its

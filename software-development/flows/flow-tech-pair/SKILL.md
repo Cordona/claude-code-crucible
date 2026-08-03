@@ -1,6 +1,6 @@
 ---
 name: flow-tech-pair
-description: The orchestrator's procedure for generating a brand-new `{tech}-developer` + `{tech}-reviewer` pair on demand, for a language/ecosystem this framework doesn't yet have a pair for. Bind this on an explicit "I need a new tech pair" (named language, e.g. "for Go") or bare ("I need a new tech pair", language collected via a poll). Covers polling for the missing essentials, checking for an existing-pair collision (inform, never decide unilaterally), the approval gate, a parallel research swarm feeding one ephemeral synthesis document, dispatching the two generator agents in order, a lens review BEFORE anything deploys, a structured report to the human, and a final human choice on deployment. Does NOT run a functional/dogfood validation of the generated pair (deliberately not part of this procedure) and does NOT define the generator agents' own conduct (`tech-developer-generator`, `tech-reviewer-generator`) or the templates they build against (`templates/tech-pair/`).
+description: The orchestrator's procedure for generating a brand-new `{tech}-developer` + `{tech}-reviewer` pair on demand, for a language/ecosystem this framework doesn't yet have a pair for. Bind this on an explicit "I need a new tech pair" (named language, e.g. "for Go") or bare ("I need a new tech pair", language collected via a poll). Covers polling for the missing essentials, checking for an existing-pair collision (inform, never decide unilaterally), the approval gate, a parallel research swarm feeding one ephemeral synthesis document, dispatching the two generator agents in order, a lens review BEFORE anything deploys, a structured report to the human, and a final human choice on deployment. Does NOT run a functional/dogfood validation of the generated pair (deliberately not part of this procedure) and does NOT define the generator agents' own conduct (`tech-developer-generator`, `tech-reviewer-generator`) or the templates they build against (`software-development/templates/tech-pair/`).
 ---
 
 # Flow: Tech Pair Generation (on-demand)
@@ -46,7 +46,7 @@ If no overlap: proceed to §3 directly.
 >   - `software-development/shared/standards/tech/standard-{tech}/SKILL.md`
 >   - `software-development/agents/developers/{tech}-developer.md`
 >   - `software-development/agents/reviewers/tech/{tech}-reviewer.md`
-> - **Templates used:** `templates/tech-pair/template-{standard-tech, tech-developer, tech-reviewer}.md`
+> - **Templates used:** `software-development/templates/tech-pair/template-{standard-tech, tech-developer, tech-reviewer}.md`
 > - **Collision check:** [clean, or the human's resolution from §2]
 >
 > ### After generation
@@ -147,4 +147,4 @@ Ask: deploy now (you run `deploy/deploy.sh` from the repo root), or would they r
 - **Deploy is the human's explicit choice, every time** (§8) — never automatic on a clean review.
 
 ---
-*Procedure Version: 1.0 — generates a permanent tech pair, gated at three points (the plan, the lens review's cleanliness, and the deploy decision). The generator agents' own conduct lives in `tech-developer-generator`/`tech-reviewer-generator`; the templates they build against live in `templates/tech-pair/`.*
+*Procedure Version: 1.0 — generates a permanent tech pair, gated at three points (the plan, the lens review's cleanliness, and the deploy decision). The generator agents' own conduct lives in `tech-developer-generator`/`tech-reviewer-generator`; the templates they build against live in `software-development/templates/tech-pair/`.*
