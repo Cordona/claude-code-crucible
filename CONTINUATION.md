@@ -8,7 +8,8 @@ context to execute. Read the essentials first.
 ## Essentials — read first (needed to execute *any* task below)
 
 - **Repo layout:** `crucible/` is the repo **root** — README at top level, `deploy/deploy.sh`,
-  `operations/`, `main-thread/`, `roles/`, `patterns/`, `contracts/`.
+  and the domain folders `software-development/`, `project-management/`, `gtd/`, plus the tiny
+  cross-domain `accounts/`. Contracts live per-domain (`{domain}/contracts/`), not at the root.
 - **Deploy model:** `deploy.sh` discovers agents (`*.md` with `name:`+`description:` frontmatter),
   skills (dirs with `SKILL.md`), contracts (`*.schema.json`), and the one `CLAUDE.md` **by
   marker**, and symlinks them into `~/.claude`. Runtime data + the deploy target namespace live
@@ -61,11 +62,11 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 ### B. New framework capabilities
 
 - **On-demand tech pairs** (inbox `20260726T060101Z-fd2f70ff`) — **DONE.** New skill
-  `main-thread/skills/flow-tech-pair`: polls for language/ecosystem → collision check (inform,
+  `software-development/flows/flow-tech-pair`: polls for language/ecosystem → collision check (inform,
   never decide) → gate → a parallel research swarm (style guide, pitfalls/correctness, linters,
   framework conventions if named) feeds one ephemeral synthesis document → two new meta-authoring
-  agents, `operations/agents/tech-developer-generator` then `tech-reviewer-generator`, generate the
-  pair in sequence against fixed reference templates (`templates/tech-pair/`, extracted from the
+  agents, `software-development/agents/specialists/tech-developer-generator` then `tech-reviewer-generator`, generate the
+  pair in sequence against fixed reference templates (`software-development/templates/tech-pair/`, extracted from the
   real Kotlin/Rust/Shell pairs — never deployed, `deploy.sh` excludes anything under `templates/`
   or `template-`-prefixed, by two independent checks) → a lens review runs BEFORE anything deploys,
   capped at 3 rounds/seat like the tech-pair fix loop → the human chooses whether to deploy. The
@@ -80,7 +81,7 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
   selection script/manifest. Keep the marker discovery + required-agent/skill-ref checks coherent
   under a partial roster.
 - **Independent tests-developer pattern** (inbox `20260726T065816Z-2751bc13`) — **DONE**, superseded by
-  the `flow-orchestration` retirement itself: `tests-developer` (`roles/developers/agents/`) is now the
+  the `flow-orchestration` retirement itself: `tests-developer` (`software-development/agents/developers/`) is now the
   sole test-writing agent, `build-core` structurally forbids the `{tech}`-developer from touching a
   test file, `review-core` backstops it as a gating violation independent of content, and
   `flow-testing` is the only place tests get written — on the human's explicit confirmation the
