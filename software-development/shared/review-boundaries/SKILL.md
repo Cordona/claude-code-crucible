@@ -52,7 +52,7 @@ So: judge against your full standard, then **file only what you own**, and hand 
 - Reviewer conduct, diff scope, finding quality, the handoff mechanism → `review-core`.
 - Report format, finding schema, stable IDs, the severity scale → `review-report-standards`.
 - What good looks like in a domain → the matching `standard-*`.
-- Whether a lens gets a **seat** at all → the orchestrator, from each lens's declared Applicability (`flow-review` §2) — it reads **descriptions only** and cannot follow a pointer into this skill. So: **a territory's owner MUST advertise that territory in its own description.** Moving a row in this table is therefore never just a scoring change — if the new owner's description doesn't already cover it, the territory becomes unseatable and nobody reviews it.
+- Whether a lens gets a **seat** at all → the orchestrator, from each lens's declared Applicability (`flow-review` §3) — it reads **descriptions only** and cannot follow a pointer into this skill. So: **a territory's owner MUST advertise that territory in its own description.** Moving a row in this table is therefore never just a scoring change — if the new owner's description doesn't already cover it, the territory becomes unseatable and nobody reviews it.
 
 ## Constraints (NEVER violate)
 
