@@ -64,7 +64,7 @@
 #       group's role/domain/selkind/selkey/atomic and builds its label, so a new
 #       kind's groups fall through to the baseline arm without it and are never
 #       selectable at all. Its group-key prefix constant is passed in via -v like
-#       the existing four, never spelled as an awk literal.
+#       the existing five, never spelled as an awk literal.
 #
 #   hub-install.sh
 #     * A domain REUSING an existing selection kind: nothing. The selection walk,
@@ -116,12 +116,13 @@
 #   hub-doctor.sh, lib/hub-state.sh) is domain-agnostic and needs no edit.
 #
 #   * ONE SELECTIVE-UNINSTALL CONSEQUENCE, free of edits but not of behavior: a
-#     domain whose selection kind is `none` (today, GTD) cannot be removed
-#     selectively at all — only `--all` reaches it. hub-uninstall.sh's baseline
-#     cascade keys off "does this domain still have a selectable group present",
-#     and a domain with no selectable groups has an always-empty set that must not
-#     be read as "nothing needs this any more". A new `none` domain inherits that
-#     property automatically; a new domain on an existing kind does not have it.
+#     domain whose selection kind is `none` (today, GTD) is ONE atomic removable
+#     thing. Its walker registers its units under the `atomic:` prefix (see the
+#     GROUP KEY GRAMMAR below), so it is offered as a single checkbox on the
+#     uninstall checklist and ANY of its unit keys removes all of them —
+#     `--components=<one of its units>` takes the whole domain out. A new `none`
+#     domain inherits that property by using the same prefix; a new domain on an
+#     existing kind does not have it (each of its groups is removable on its own).
 #
 # ===========================================================================
 # GROUP KEY GRAMMAR
@@ -135,10 +136,26 @@
 #   tech:<key>             Software Development's per-technology fan-out; one
 #                          group per discovered developer agent.
 #   pm-backend:<key>       Project Management's backend fan-out (github|jira).
+#   atomic:<domain>        a domain whose ENTIRE footprint is ONE selectable
+#                          thing: the domain IS its own group, so it has no
+#                          baseline group distinct from its selectable content
+#                          and no sub-selection screen. Today: GTD.
 #   shared:<key>           cross-domain, installed once, removed only when no
 #                          consumer remains.
 #
-# The four prefixes are CONSTANTS below and the key is always built by
+# WHY `atomic:` EXISTS RATHER THAN GIVING GTD A `baseline:` GROUP THAT IS ALSO
+# SELECTABLE. The baseline cascade (hub-uninstall.sh's "THE DOMAIN BASELINE
+# RULE") removes a domain's baseline once NONE of that domain's own selectable
+# groups survives a removal. A domain whose selectable set is permanently EMPTY
+# satisfies that condition on every unrelated uninstall, so a baseline-shaped GTD
+# had to be excluded from selective uninstall altogether to stay installed at
+# all. Giving its one group `role=selectable` instead removes the premise: GTD
+# has no baseline distinct from its selectable content, so the cascade rule has
+# nothing to fire on and needs no carve-out for it. The prefix is `atomic:` and
+# NOT `domain:` deliberately — the group table already has a `domain` COLUMN, and
+# a `domain:` key would read as a synonym for the concept it replaces.
+#
+# The five prefixes are CONSTANTS below and the key is always built by
 # hub_group_key — never by string concatenation at a call site, and never parsed
 # by a magic substr() offset. Both were done by hand before this pass (~10 sites
 # and three offsets), which is exactly how a grammar documented in one place
@@ -201,14 +218,23 @@ hub_domain_blurb() {
 # needs after the onboarding checklist, or "none":
 #   technology  -> Software Development's technology multi-select (spec §3)
 #   pm-backend  -> Project Management's backend multi-select (spec §4)
-#   none        -> GTD: self-contained, no fan-out, no screen (spec §5). A `none`
-#                  domain is also UNREACHABLE BY SELECTIVE UNINSTALL — only
-#                  `--all` removes it. It has no selectable groups, so it has no
-#                  consumer set for hub-uninstall.sh's baseline cascade to key
-#                  off, and an always-empty set read as "nothing needs this any
-#                  more" would sweep the domain out on every unrelated uninstall.
-#                  A deliberate consequence, stated at hub-uninstall.sh's own
-#                  "THE DOMAIN BASELINE RULE".
+#   none        -> GTD: self-contained, no fan-out, no screen (spec §5).
+#
+# `none` MEANS "NO SUB-SELECTION SCREEN", AND NOTHING MORE. It used to also mean
+# "unreachable by selective uninstall", because a domain with no selectable groups
+# has an always-empty consumer set that the baseline cascade would read as
+# "nothing needs this any more" on every unrelated uninstall. That is no longer
+# true and the coupling is gone: a `none` domain is now registered under the
+# `atomic:` prefix (see the GROUP KEY GRAMMAR above), so its one group IS
+# selectable and it is removable by name — as ONE thing, whichever of its units a
+# caller names. The two facts were never the same question; they only shared a
+# cause.
+#
+# The asymmetry that remains is deliberate: such a domain is picked at the DOMAIN
+# checkbox on Install (it has no sub-selection screen to offer) and at a GROUP
+# checkbox on Uninstall (its one selectable group). Different granularity per
+# screen is exactly what "the domain is its one group" means; it is not a parity
+# gap, and Install must not grow a sub-selection screen to close it.
 hub_domain_selection_kind() {
 	case $1 in
 	software-development) printf 'technology' ;;
@@ -280,22 +306,36 @@ hub_domain_is_registered() {
 # 2. The group-key grammar — constructed and parsed in one place only.
 # ---------------------------------------------------------------------------
 
-# The four group-key prefixes. Spelled ONCE here; every producer builds a key
+# The five group-key prefixes. Spelled ONCE here; every producer builds a key
 # with hub_group_key and every parser (including lib/hub-discovery.sh's awk,
 # which receives them via -v) reads them from these constants.
 HUB_GROUP_PREFIX_BASELINE='baseline'
 HUB_GROUP_PREFIX_TECH='tech'
 HUB_GROUP_PREFIX_PM_BACKEND='pm-backend'
+HUB_GROUP_PREFIX_ATOMIC='atomic'
 HUB_GROUP_PREFIX_SHARED='shared'
 
-# hub_group_key PREFIX KEY -> the group key for one of the four kinds, e.g.
+# hub_group_key PREFIX KEY -> the group key for one of the five kinds, e.g.
 # `hub_group_key "$HUB_GROUP_PREFIX_TECH" python` -> "tech:python". THE
 # constructor: no call site anywhere writes the ":" itself.
 hub_group_key() {
 	printf '%s:%s' "$1" "$2"
 }
 
-# WHICH GROUPS ARE ATOMIC — and the two different questions that phrase asks.
+# WHICH GROUPS ARE ATOMIC — and the THREE different things that word names here.
+#
+# Read this before touching the `atomic` column or the `atomic:` prefix, because the
+# word is deliberately reused and the two are NOT the same fact:
+#
+#   the `atomic:` PREFIX (above) is about REMOVAL COVERAGE — "this whole domain is
+#     one removable thing". An `atomic:` group therefore carries `atomic = 0` in the
+#     row-projection column below, which reads like a contradiction and is not one:
+#     a group flagged atomic in THAT column collapses to a single HUB_ROWS row and
+#     must have a hub_group_row_key, which only a Project Management backend has.
+#     Setting the column to 1 for an `atomic:` group makes hub_group_row_key DIE and
+#     takes List, Doctor and Uninstall down at startup, since hub_rows_build calls it
+#     at top level. Removal atomicity comes from the ROLE column instead (see
+#     hu_removal_is_atomic below), which `role=selectable` already provides.
 #
 # There is no shared `hub_group_is_atomic` helper, deliberately. One existed, and
 # it answered only the ROW-PROJECTION question ("does this group collapse to one
@@ -711,14 +751,13 @@ HUB_GTD_DIR_FLOWS='flows'
 # because of its unit count.
 #
 # FEATURES ARE PRESENTATION ONLY. They change no group, no unit, no install or
-# removal atom, and no machine payload: HUB_UNITS, HUB_GROUPS, HUB_ROWS and
-# every --format=env/json field still see GTD's three units and its one
-# `baseline:gtd` group, exactly as before. A feature is a way of GROUPING those
-# units on a human-facing line — the same kind of thing the collapsed baseline
-# count already is, just named. In particular GTD remains atomic and remains
-# unreachable by selective uninstall (its selection kind is `none`; see
-# hub_domain_selection_kind), which is precisely what hub_domain_feature_hint
-# below exists to say out loud.
+# removal atom: HUB_UNITS, HUB_GROUPS and HUB_ROWS still see GTD's three units and
+# its ONE group — `atomic:gtd` (see the GROUP KEY GRAMMAR above). A feature is a
+# way of GROUPING those units on a human-facing line — the same kind of thing the
+# collapsed baseline count already is, just named. In particular GTD remains
+# ATOMIC: both features arrive and leave together, whichever of them a screen
+# names and whichever of its units a caller passes to --components, which is
+# precisely what hub_domain_feature_hint below exists to say out loud.
 #
 # WHY THIS IS A REGISTRY ENTRY AND NOT A GENERIC MECHANISM: the labels cannot be
 # derived. "flow-inbox" sentence-cases to "Flow inbox", never to "Inbox
@@ -845,11 +884,13 @@ hub_domain_feature_of() {
 # DOMAIN's feature lines, or nothing for a domain with no features.
 #
 # WHY THE HINT EXISTS AT ALL: naming two features invites the reader to assume
-# they can pick one. They cannot — GTD's selection kind is `none`, so both
-# features arrive and leave together and neither is ever a checkbox
-# (hub_domain_selection_kind's own note on what `none` costs). The hint is the
-# only place a screen says that, and it is why splitting one line into two is
-# not a promise of finer control.
+# they can pick one. They cannot — a featured domain is ONE group (GTD's is
+# `atomic:gtd`; see the GROUP KEY GRAMMAR above), so both features arrive and leave
+# together and neither is ever a checkbox of its own. The domain itself IS a
+# checkbox on the uninstall checklist, which is what makes the hint load-bearing
+# there rather than merely informative: ticking that one row takes both features
+# out. It is the only place a screen says so, and it is why splitting one line into
+# two is not a promise of finer control.
 #
 # It is rendered DIMMED by every screen that shows it, and Doctor deliberately
 # does NOT show it: a health report states facts about what is broken and

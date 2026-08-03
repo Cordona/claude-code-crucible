@@ -293,13 +293,51 @@ hub_feature_counts() {
 	done
 }
 
-# hub_domain_state DOMAIN -> the domain's own state, defined as the state of its
-# BASELINE group: the baseline is what a domain fundamentally is, and it is
-# installed unconditionally the moment the domain is chosen. A domain with its
-# baseline in place but no technology/backend selected is still "installed" —
-# the sub-selection detail is reported separately (hub_domain_detail).
+# hub_domain_state DOMAIN -> the domain's own state, in hub_group_state's
+# vocabulary (installed | partial | available), defined as the state of the content
+# the domain installs UNCONDITIONALLY once it is chosen: its BASELINE group, or —
+# for a domain that has none — its own selectable content
+# (hub_domain_content_groups). A domain with its baseline in place but no
+# technology/backend selected is still "installed"; the sub-selection detail is
+# reported separately (hub_domain_detail).
+#
+# NOT `hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$1"` CONSTRUCTED BLIND, which is
+# what this was: for a domain with no baseline group that names a row that does not
+# exist, and hub_group_state answers `available` for a group with zero units. This
+# function feeds the PUBLISHED HUB_DOMAIN_<n>_STATE field of --format=env|json (and
+# the status screen's own glyph), so the blind construction published "not installed"
+# for such a domain permanently, however much of it was actually at the target.
+#
+# THE MULTI-GROUP AGGREGATION exists because the `else` branch can legitimately
+# return more than one group. It is hub_group_state's own three-way answer lifted one
+# level: every group installed -> installed, none present at all -> available,
+# anything in between -> partial. A `for` over an unquoted command substitution, the
+# same shape hub_domain_detail below uses, so the counters live in this shell rather
+# than in a pipeline subshell that would discard them (group keys hold no separator —
+# see lib/hub-domains.sh's hub_sd_tech_key on the charset gate that guarantees it).
 hub_domain_state() {
-	hub_group_state "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$1")"
+	hds_baseline=$(hub_domain_baseline_group "$1")
+	if [ -n "$hds_baseline" ]; then
+		hub_group_state "$hds_baseline"
+		return 0
+	fi
+	hds_total=0
+	hds_installed=0
+	hds_absent=0
+	for hds_group in $(hub_domain_content_groups "$1"); do
+		hds_total=$((hds_total + 1))
+		case $(hub_group_state "$hds_group") in
+		installed) hds_installed=$((hds_installed + 1)) ;;
+		available) hds_absent=$((hds_absent + 1)) ;;
+		esac
+	done
+	if [ "$hds_total" -eq 0 ] || [ "$hds_absent" -eq "$hds_total" ]; then
+		printf 'available\n'
+	elif [ "$hds_installed" -eq "$hds_total" ]; then
+		printf 'installed\n'
+	else
+		printf 'partial\n'
+	fi
 }
 
 # hub_domain_detail DOMAIN -> the parenthetical the status block appends to a
@@ -489,9 +527,14 @@ hub_rows_build() {
 #
 # ZERO HARDCODED NAMES, including the two SPLITS that look domain-specific:
 #   * WHICH GROUPS ARE SELECTABLE comes from the group table's own role+domain
-#     columns (hub_domain_selectable_groups), so a domain with no sub-selection
-#     at all — GTD, whose kind is `none` — simply contributes no selectable and
-#     no standard rows, with no test for it here.
+#     columns (hub_domain_selectable_groups), and WHETHER THERE IS A BASELINE AT ALL
+#     from hub_domain_baseline_group — so a domain that is its own single selectable
+#     group (GTD) contributes exactly one `selectable` row, no `standard` rows and no
+#     `baseline` rows, with no test for it here. A CONSUMER THAT RENDERS PER DOMAIN
+#     MUST THEREFORE NOT ASSUME the `selectable` bucket means "a technology or a
+#     backend": for a domain that declares features, the feature projection below
+#     already reports that same content by name, and hub-list.sh suppresses the
+#     duplicate row for exactly that reason.
 #   * WHICH BASELINE UNITS ARE LENSES is the src-path test, and ONLY the
 #     src-path test (hub_src_in_dir against HUB_SD_DIR_LENS_REVIEWERS) — the same
 #     classification hub-list.sh's hl_lens_rows_build and hub-install.sh's preview
@@ -590,7 +633,13 @@ hub_domain_buckets() {
 		done <"$hdbk_units"
 	done <"$hdbk_groups"
 
-	hdbk_baseline=$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$hdbk_domain")
+	# THE ACCESSOR, never a constructed `baseline:<domain>`: a domain that has no
+	# baseline group contributes no baseline rows at all, and the honest way to say
+	# that is to ask. Constructing the key instead named a nonexistent group, whose
+	# state rows are empty — the same zero rows, reached by accident rather than on
+	# purpose, and only because hub_group_state_rows happens to match nothing.
+	hdbk_baseline=$(hub_domain_baseline_group "$hdbk_domain")
+	[ -n "$hdbk_baseline" ] || return 0
 	hub_group_state_rows "$hdbk_baseline" >"$hdbk_units"
 	while IFS="$HUB_TAB" read -r _ _ hdbk_src hdbk_display hdbk_unit_state; do
 		[ -n "$hdbk_src" ] || continue
@@ -620,7 +669,7 @@ hub_domain_buckets() {
 
 # hub_domain_feature_rows DOMAIN OUTFILE -> "state<TAB>count<TAB>pending<TAB>label",
 # one row per feature DOMAIN declares (in the registry's own order) PLUS one final
-# RESIDUAL row for the baseline units no feature claims. Writes an EMPTY OUTFILE
+# RESIDUAL row for the content units no feature claims. Writes an EMPTY OUTFILE
 # for a domain that declares no features, which is every domain but GTD today —
 # and which is the test every consumer uses to decide between its feature path
 # and its ordinary collapsed-baseline path.
@@ -630,7 +679,7 @@ hub_domain_buckets() {
 # second — see hub_state_collapse, which computes both in one pass and states why.
 #
 # THE RESIDUAL ROW carries an EMPTY LABEL, deliberately, and is what makes this
-# projection exhaustive over the domain's baseline: only the calling screen knows
+# projection exhaustive over the domain's content: only the calling screen knows
 # what to call an anonymous remainder ("Framework baseline (N items)" on List and
 # Doctor, "new baseline (N items)" on Install's preview), so the label is left for
 # it to supply. Every other consumer contract in this hub would have the
@@ -655,8 +704,8 @@ hub_domain_buckets() {
 # `agents/reviewers/lens/*` as a capture feature.
 #
 # NON-RE-ENTRANCY CONTRACT, identical in shape and reason to hub_domain_buckets'
-# above: HUB_FEATURES_DIR is a process-wide cache and the two files under it are
-# FIXED PATHS rewritten in place per call, one of which is read back by a
+# above: HUB_FEATURES_DIR is a process-wide cache and the three files under it are
+# FIXED PATHS rewritten in place per call, two of which are read back by a
 # `done <"$file"` redirect inside this very function. A nested call that rewrites
 # those paths while an outer loop still holds a descriptor on one hands that loop a
 # torn stream with no error anywhere. Today's callers drive this from a plain `for`
@@ -685,9 +734,25 @@ hub_domain_feature_rows() {
 	fi
 	hdfr_units="$HUB_FEATURES_DIR/units.tsv"
 	hdfr_keyed="$HUB_FEATURES_DIR/keyed.tsv"
+	hdfr_groups="$HUB_FEATURES_DIR/groups.txt"
 
-	hub_group_state_rows "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$hdfr_domain")" \
-		>"$hdfr_units"
+	# THE UNITS COME FROM hub_domain_content_groups, not from a constructed
+	# `baseline:<domain>`: features partition the content a domain installs
+	# unconditionally, and for a domain that has no baseline group that content lives
+	# in its own selectable group instead (see that accessor). Hardcoding the baseline
+	# key here made the whole projection silently EMPTY for such a domain — which is
+	# the test every consumer uses to choose its no-features path, so all of them
+	# would have quietly fallen back to one anonymous collapsed line.
+	#
+	# Concatenated rather than one group per pass: a feature is a subset of the
+	# domain's content, and which group each unit came from is not part of the
+	# classification (hub_domain_feature_of reads the src path alone).
+	hub_domain_content_groups "$hdfr_domain" >"$hdfr_groups"
+	: >"$hdfr_units"
+	while IFS= read -r hdfr_group; do
+		[ -n "$hdfr_group" ] || continue
+		hub_group_state_rows "$hdfr_group" >>"$hdfr_units"
+	done <"$hdfr_groups"
 	: >"$hdfr_keyed"
 	while IFS="$HUB_TAB" read -r _ _ hdfr_src _ hdfr_state; do
 		[ -n "$hdfr_src" ] || continue

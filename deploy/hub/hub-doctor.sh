@@ -229,22 +229,25 @@ HD_ORPHAN_COUNT=$(hub_count_lines "$HD_ORPHANS")
 # rather than as "two technologies and one lens" — and the repair for all three
 # lines of a technology is the SAME single re-selection.
 #
-# Three rules, all derived from the group table and from path SHAPE, never from a
-# name list — so adding, removing or renaming any artifact still needs zero
+# Four rules, all derived from the group table, the registry and path SHAPE, never
+# from a name list — so adding, removing or renaming any artifact still needs zero
 # changes here:
 #   1. rows are grouped under a DOMAIN sub-header (hub-list.sh's convention).
-#   2. a SELECTABLE group (a technology, a backend) collapses to ONE line at the
+#   2. a unit of a domain that declares NAMED FEATURES is reported under its
+#      feature's name (see hd_diverged_classify, which is reached BEFORE rule 3 for
+#      such a domain whatever its group's role).
+#   3. a SELECTABLE group (a technology, a backend) collapses to ONE line at the
 #      group's own label, because the group is exactly what the human re-selects
 #      to repair it. Its state comes from hub_group_display_state — the shared
 #      owner of the `partial -> DIVERGED` mapping — rather than being inferred
 #      here from "one of its units happened to be diverged".
-#   3. a LENS reviewer stays itemized by name (individually nameable, exactly as
+#   4. a LENS reviewer stays itemized by name (individually nameable, exactly as
 #      hub-list.sh treats it), and so does the cross-domain shared unit; the
 #      remaining baseline plumbing collapses to a count, but only from TWO up,
 #      since naming one costs the same line as counting it.
 #
 # DOCTOR STILL READS HUB_ROWS, and switching it to hub_domain_buckets would be
-# wrong even though the three rules above resemble that table's buckets. Two
+# wrong even though the rules above resemble that table's buckets. Two
 # reasons, neither of them cosmetic: a bucket stream is PER DOMAIN, and it
 # deliberately excludes the cross-domain shared group (see its own header) — so
 # the domain loop it forces would silently drop a diverged auth procedure, which
@@ -309,6 +312,54 @@ hd_diverged_plan_build() {
 	' "$HUB_GROUPS" "$HUB_STATES" "$DIVERGED_ROWS" >"$1"
 }
 
+# hd_diverged_classify OUTFILE DOMAIN SRC TEXT -> file ONE diverged unit of a
+# domain's own content: emitted immediately when it is a lens reviewer, held back
+# under its FEATURE's key when a feature claims it, held back for the anonymous count
+# otherwise. Both held-back sets are emitted later by hd_diverged_flush_pending.
+#
+# TWO CALLERS, and extracting it is what lets them share one classification: a
+# `baseline` row, and any row of a domain that declares FEATURES (whatever its role —
+# a domain that is its own single selectable group has no baseline row at all). Before
+# this was a function the classification lived inside the `baseline` case arm, so the
+# second caller could only have had a copy of it.
+#
+# THE LENS TEST RUNS FIRST, BEFORE the feature classification, and the order is
+# load-bearing rather than stylistic — it is the order lib/hub-state.sh's
+# hub_domain_feature_rows applies for the same reason. hub_domain_feature_of
+# classifies by PATH SHAPE with positive tests, so a featured domain that ever grew a
+# lens subtree would have its `agents/reviewers/lens/*` units claimed as a `capture`
+# feature by an `agents/` test that ran first, and rule 4 above (a lens stays itemized
+# by name) would silently stop applying to it. Unreachable today — GTD ships no lens
+# subtree — and cheap to get right while both classifiers agree.
+#
+# A guard clause with a `return`, not an `elif` after the feature test: the two
+# questions are not alternatives at the same level, one gates the other. (It was a
+# `continue` while this was inline in the loop; a function cannot continue its
+# caller's loop, and the caller now has nothing left to do after this returns anyway.)
+hd_diverged_classify() {
+	hd_dc_out=$1
+	hd_dc_domain=$2
+	hd_dc_src=$3
+	hd_dc_text=$4
+	if hub_src_in_dir "$hd_dc_src" "$HUB_SD_DIR_LENS_REVIEWERS"; then
+		hd_diverged_emit "$hd_dc_out" "$hd_dc_text" "$HD_TAIL_SINGULAR"
+		return 0
+	fi
+	# A unit belonging to one of its domain's NAMED FEATURES is reported under the
+	# FEATURE's name — never its own, and never folded into the anonymous count. GTD's
+	# three units are two capabilities, and "Inbox triage — installed copy no longer
+	# matches source" is the actionable fact where "Framework baseline (1 item)" told
+	# the reader only that something somewhere under a domain broke. Held back like the
+	# plain baseline units and for the same reason: the collapse has to see all of a
+	# domain's rows before it can name a feature exactly once.
+	hd_dc_feature=$(hub_domain_feature_of "$hd_dc_domain" "$hd_dc_src")
+	if [ -n "$hd_dc_feature" ]; then
+		printf '%s\n' "$hd_dc_feature" >>"$HD_DIVERGED_FEATURES"
+	else
+		printf '%s\n' "$hd_dc_text" >>"$HD_DIVERGED_PENDING"
+	fi
+}
+
 # hd_diverged_render OUTFILE -> the section body (domain sub-headers and item
 # lines) into OUTFILE, and sets HD_DIVERGED_LINES to the number of ITEM lines
 # written. That figure is what the section heading counts, deliberately instead
@@ -341,6 +392,19 @@ hd_diverged_render() {
 			hd_dr_domain=$hd_dr_dom
 			hd_dr_group=""
 		fi
+		# THE FEATURE TEST COMES BEFORE THE ROLE DISPATCH, and the order is what makes
+		# a featured domain report the same way here as on every other screen. A domain
+		# that is its own single selectable group (GTD) carries `role=selectable`, so
+		# the `selectable` arm below would collapse all of its diverged units into ONE
+		# line at the domain label — turning hd_diverged_flush_pending's whole feature
+		# loop into dead code for the only domain that has features, and telling the
+		# reader "something under GTD broke" where "Inbox triage" is the actionable
+		# fact. Routed to the same classifier the `baseline` arm uses.
+		hd_dr_features=$(hub_domain_feature_keys "$hd_dr_dom")
+		if [ -n "$hd_dr_features" ]; then
+			hd_diverged_classify "$hd_dr_out" "$hd_dr_dom" "$hd_dr_src" "$hd_dr_text"
+			continue
+		fi
 		case $hd_dr_role in
 		selectable)
 			# A group's rows are contiguous in canonical order, so "same group as
@@ -360,38 +424,7 @@ hd_diverged_render() {
 			[ "$hd_dr_gstate" = DIVERGED ] || continue
 			hd_diverged_emit "$hd_dr_out" "$hd_dr_text" "$HD_TAIL_SINGULAR"
 			;;
-		baseline)
-			# THE LENS TEST RUNS FIRST, BEFORE the feature classification, and the order
-			# is load-bearing rather than stylistic — it is the order
-			# lib/hub-state.sh's hub_domain_feature_rows applies for the same reason.
-			# hub_domain_feature_of classifies by PATH SHAPE with positive tests, so a
-			# featured domain that ever grew a lens subtree would have its
-			# `agents/reviewers/lens/*` units claimed as a `capture` feature by an
-			# `agents/` test that ran first, and rule 3 above (a lens stays itemized by
-			# name) would silently stop applying to it. Unreachable today — GTD ships no
-			# lens subtree — and cheap to get right while both classifiers agree.
-			#
-			# A guard clause, not an `elif` after the feature test: the two questions are
-			# not alternatives at the same level, one gates the other.
-			if hub_src_in_dir "$hd_dr_src" "$HUB_SD_DIR_LENS_REVIEWERS"; then
-				hd_diverged_emit "$hd_dr_out" "$hd_dr_text" "$HD_TAIL_SINGULAR"
-				continue
-			fi
-			# A unit belonging to one of its domain's NAMED FEATURES is reported under
-			# the FEATURE's name — never its own, and never folded into the anonymous
-			# count. GTD's three units are two capabilities, and "Inbox triage —
-			# installed copy no longer matches source" is the actionable fact where
-			# "Framework baseline (1 item)" told the reader only that something
-			# somewhere under a domain broke. Held back like the plain baseline units
-			# below and for the same reason: the collapse has to see all of a domain's
-			# rows before it can name a feature exactly once.
-			hd_dr_feature=$(hub_domain_feature_of "$hd_dr_dom" "$hd_dr_src")
-			if [ -n "$hd_dr_feature" ]; then
-				printf '%s\n' "$hd_dr_feature" >>"$HD_DIVERGED_FEATURES"
-			else
-				printf '%s\n' "$hd_dr_text" >>"$HD_DIVERGED_PENDING"
-			fi
-			;;
+		baseline) hd_diverged_classify "$hd_dr_out" "$hd_dr_dom" "$hd_dr_src" "$hd_dr_text" ;;
 		# Everything else is named, never counted. Today that is the cross-domain
 		# shared unit — one individually nameable thing (an auth procedure) rather
 		# than plumbing — plus the plan's `unclassified` fallback, which lands here

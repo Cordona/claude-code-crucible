@@ -407,15 +407,25 @@ hi_selection_rows() {
 # installable: not-yet-installed domains, and partially-installed ones with a
 # real gap or a diverged item to fix.
 #
-# Deliberately NOT keyed off hub_domain_state alone: that reports only the
-# BASELINE group's state (see its own header — a domain's baseline installs
-# unconditionally on first selection, so hub_domain_state says "installed" the
-# moment even ONE of nine technologies is added). Checking the selectable groups
-# too is what keeps Software Development in this list while 8 of 9 technologies
-# remain available.
+# Deliberately NOT keyed off hub_domain_state alone: that reports only the state of
+# what the domain installs UNCONDITIONALLY (see its own header — that content goes in
+# on first selection, so hub_domain_state says "installed" the moment even ONE of
+# nine technologies is added). Checking the selectable groups too is what keeps
+# Software Development in this list while 8 of 9 technologies remain available.
+#
+# THE UNCONDITIONAL CONTENT IS ASKED FOR, never constructed as `baseline:<domain>`:
+# for a domain that has no baseline group that key names no row, hub_group_state
+# answers `available` for a nonexistent group, and this function then reported
+# "pending" forever — a fully-installed domain left standing as a live checkbox that
+# changes nothing when selected, which is verbatim the bug the paragraph above says
+# this function exists to prevent. hub_domain_content_groups answers for both shapes,
+# and its `else` branch is exactly the "judge it by its own selectable groups" rule
+# such a domain needs.
 hi_domain_pending() {
 	hidp_domain=$1
-	[ "$(hub_group_state "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$hidp_domain")")" = installed ] || return 0
+	for hidp_content in $(hub_domain_content_groups "$hidp_domain"); do
+		[ "$(hub_group_state "$hidp_content")" = installed ] || return 0
+	done
 	hidp_kind=$(hub_domain_selection_kind "$hidp_domain")
 	[ "$hidp_kind" != none ] || return 1
 	for hidp_group in $(hub_selectable_groups "$hidp_kind"); do
@@ -837,13 +847,25 @@ hi_selectable_group() {
 # ---------------------------------------------------------------------------
 
 # hi_plan_groups_build -> rewrite PLAN_GROUPS from the current selection: every
-# selected domain's baseline, every selected sub-selection key's own group, and
-# any shared group at least one of those pulled in.
+# selected domain's own unconditional content, every selected sub-selection key's own
+# group, and any shared group at least one of those pulled in.
+#
+# RULE ONE IS hub_domain_content_groups, ONE RULE RATHER THAN TWO. It used to append
+# a constructed `baseline:<domain>` per selected domain, which is the right answer for
+# a domain that HAS a baseline group and names nothing at all for a domain whose
+# selectable content is its whole footprint — picking such a domain then resolved to
+# an empty plan and installed nothing, silently. Asking the accessor covers both
+# shapes with one line, and it is the same accessor lib/hub-state.sh's feature
+# projection asks, so "what does picking this domain bring in" has one answer.
+#
+# The accessor writes to stdout and is APPENDED here, never read back through a
+# nested `while read` on SEL_DOMAINS: this loop holds an open descriptor on that file,
+# and a nested reader of it would consume the outer loop's own stream.
 hi_plan_groups_build() {
 	: >"$PLAN_GROUPS"
 	while IFS= read -r hipgb_domain; do
 		[ -n "$hipgb_domain" ] || continue
-		printf '%s\n' "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$hipgb_domain")" >>"$PLAN_GROUPS"
+		hub_domain_content_groups "$hipgb_domain" >>"$PLAN_GROUPS"
 	done <"$SEL_DOMAINS"
 
 	for hipgb_kind in $(hi_selection_kinds); do
@@ -1243,6 +1265,15 @@ hi_preview_domain_unchanged_note() {
 # a domain that declares no features, which is every domain but GTD — as the plain
 # per-unit `baseline` bucket rows this file has always counted.
 #
+# BASELINE_GROUP MAY BE EMPTY, for a domain that has none (see
+# hub_domain_baseline_group), and is then unused: such a domain reaches the feature
+# path. THE INVARIANT THAT MAKES THAT SAFE, stated because nothing enforces it: a
+# domain with no baseline group MUST declare features, or its content gets no line on
+# this screen at all — its `selectable` bucket row is not counted here (the loop above
+# reads only the keys a sub-selection screen selected, and such a domain has no such
+# screen) and it has no `baseline` rows to fall back on. GTD satisfies it. A future
+# `atomic:`-prefixed domain that does not would need its own arm here.
+#
 # WHY THE FEATURE PATH REPLACES THE BUCKET PATH RATHER THAN JOINING IT: the
 # `baseline` bucket holds one row per baseline UNIT, so counting it as well would
 # count GTD's three units into HI_BASE_NEW at the same time as the two feature
@@ -1408,7 +1439,14 @@ hi_preview_domain() {
 	# here any more. A domain with no lens subtree contributes no `lens` rows and
 	# the first call is simply a no-op for it; a second domain that ever grows
 	# lens reviewers is itemized on the same footing, with no edit here.
-	hipd_baseline_group=$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$hipd_domain")
+	#
+	# ASKED FOR, never constructed: a domain with no baseline group has no `lens` or
+	# `baseline` bucket rows to add (hub_domain_buckets emits none), and its own
+	# content is reported by the feature path inside hi_preview_domain_baseline.
+	# Passing it an EMPTY group is correct rather than a gap — that function branches
+	# on whether the domain declares features, not on the group it is handed, and the
+	# group is used only by its no-features path.
+	hipd_baseline_group=$(hub_domain_baseline_group "$hipd_domain")
 	hi_bucket_add_rows lens "$hipd_baseline_group"
 	hi_preview_domain_baseline "$hipd_domain" "$hipd_baseline_group"
 
@@ -1678,6 +1716,16 @@ hi_result_blocks() {
 # and the third, `shared`, belongs to no domain), which itemizes rather than dying
 # because silently dropping a unit AFTER the writes have landed is the one outcome
 # this screen must never produce.
+#
+# EXCEPT WHERE THE DOMAIN DECLARES FEATURES, which is tested FIRST, ahead of the role
+# dispatch — and that order is the whole point rather than a preference. A domain that
+# is its own single selectable group (GTD) carries `role=selectable`, so the role
+# dispatch alone gave it the generic one-line collapse at its own domain label, on the
+# one screen that reports what a run actually wrote. Every other feature-aware surface
+# — List, the preview above, Doctor, Uninstall — names "Inbox capture" and "Inbox
+# triage", so this screen alone would have confirmed back a name none of them showed.
+# The feature renderer is the same one the `baseline` arm uses; what changes is only
+# which groups reach it.
 hi_result_domain_block() {
 	hirdb_domain=$1
 	: >"$HI_RESULT_LINES"
@@ -1693,6 +1741,14 @@ hi_result_domain_block() {
 		[ "$hirdb_group_domain" = "$hirdb_domain" ] || continue
 		hirdb_count=$(hi_result_group_count "$hirdb_group")
 		[ "$hirdb_count" -gt 0 ] || continue
+		# The feature test comes BEFORE the role dispatch — see this function's header
+		# on why that order, and not the role column alone, is what keeps a featured
+		# domain named the same way here as on every other screen.
+		hirdb_features=$(hub_domain_feature_keys "$hirdb_domain")
+		if [ -n "$hirdb_features" ]; then
+			hi_result_baseline_lines "$hirdb_domain" "$hirdb_group" "$hirdb_count" >>"$HI_RESULT_LINES"
+			continue
+		fi
 		hirdb_role=$(hub_group_field "$hirdb_group" 4)
 		case $hirdb_role in
 		selectable)

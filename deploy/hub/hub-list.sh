@@ -225,9 +225,41 @@ hl_buckets_build() {
 # clutter this rewrite exists to remove. Uninstall's checklist makes the same
 # collapse for its own reasons and by its own projection (its SELECTABLE_ROWS);
 # neither screen changes what hub_rows_build itself produces.
+#
+# A FEATURED DOMAIN'S SELECTABLE ROW IS SUPPRESSED, because on THIS screen it would
+# be a second name for content already reported. A domain that is its own single
+# selectable group (GTD) contributes one `selectable` row whose label is the domain
+# label itself, and hl_domain_feature_lines below reports the very same units by
+# feature under a sub-header of that identical name — so without this filter the
+# block read "Getting Things Done (GTD) / ✓ Getting Things Done (GTD) / ✓ Inbox
+# capture / ✓ Inbox triage", claiming three things where there are two. The FEATURE
+# lines are the ones that survive: they say strictly more.
+#
+# KEYED ON "DOES THE DOMAIN DECLARE FEATURES", from the registry, never on a group
+# key shape or a domain literal — the same test every other feature-aware screen
+# dispatches on. A featured domain that also had technologies would keep those rows,
+# since the suppression is per DOMAIN only in as much as its features are: this
+# screen renders the feature lines for it either way, and a technology row is not
+# what they name. (No such domain exists; the filter is written on the column the
+# stream provides rather than on a special case.)
+#
+# The featured-domain set is a FILE and the join is one awk pass with the usual
+# FILENAME == ARGV[1] phase anchor: an EMPTY set is the normal state for a source
+# with no featured domain, and a bare FNR == NR would then mis-file HL_BUCKETS' own
+# first row as a featured-domain name.
 hl_selectable_rows_build() {
 	HL_SEL="$HUB_WORK/sel-rows.tsv"
-	awk -F '\t' -v OFS='\t' '$2 == "selectable" { print $1, $4, $3 }' "$HL_BUCKETS" >"$HL_SEL"
+	hl_srb_featured="$HUB_WORK/featured-domains.txt"
+	: >"$hl_srb_featured"
+	for hl_srb_domain in $HUB_DOMAIN_KEYS; do
+		hl_srb_keys=$(hub_domain_feature_keys "$hl_srb_domain")
+		[ -n "$hl_srb_keys" ] || continue
+		printf '%s\n' "$hl_srb_domain" >>"$hl_srb_featured"
+	done
+	awk -F '\t' -v OFS='\t' '
+		FNR == NR && FILENAME == ARGV[1] { featured[$1] = 1; next }
+		$2 == "selectable" && !($1 in featured) { print $1, $4, $3 }
+	' "$hl_srb_featured" "$HL_BUCKETS" >"$HL_SEL"
 }
 
 # hl_domain_rows DOMAIN STATE -> one display name per line, this domain's

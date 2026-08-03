@@ -13,16 +13,17 @@
 #   --components CSV      Remove exactly these components, named by the SAME
 #                          SELECTION keys the interactive checklist shows and
 #                          accepts: one token per TECHNOLOGY (its developer,
-#                          reviewer and standard always travel together) or per
-#                          Project Management BACKEND (whose skills likewise do).
-#                          HUB_ROWS' per-unit keys — the ones List and Doctor
-#                          name, e.g. "java-reviewer" — are still accepted, so
-#                          anything already scripted against them keeps working;
-#                          a per-unit key belonging to a technology or a backend
-#                          now resolves to that whole technology/backend rather
-#                          than to the one unit, because the bundle is what a
-#                          human installs and removes. Mutually exclusive with
-#                          --all.
+#                          reviewer and standard always travel together), per
+#                          Project Management BACKEND (whose skills likewise do),
+#                          or per SELF-CONTAINED DOMAIN — one whose whole footprint
+#                          is a single removable thing, named by its domain key
+#                          (today: gtd). HUB_ROWS' per-unit keys — the ones List
+#                          and Doctor name, e.g. "java-reviewer" — are still
+#                          accepted, so anything already scripted against them
+#                          keeps working; a per-unit key belonging to any of the
+#                          three now resolves to that whole thing rather than to
+#                          the one unit, because the bundle is what a human
+#                          installs and removes. Mutually exclusive with --all.
 #   --all                 Remove everything installed, plus CLAUDE.md and the
 #                          contract schemas. The one critical-tier flow.
 #   --confirm=UNINSTALL   Required alongside --apply --all when there is no
@@ -56,11 +57,13 @@
 #   --target/--source/--format/--no-color/-h  as elsewhere.
 #
 # WHAT THIS CAPABILITY OFFERS AS SELECTABLE, and why it is not HUB_ROWS:
-#   Exactly two things are offered, hub-wide — one row per TECHNOLOGY and one row
-#   per PROJECT MANAGEMENT BACKEND. Nothing else appears on the checklist at all:
-#   no baseline unit, no review lens, no flow, specialist or facade. A technology
-#   is ONE removable thing whose developer/reviewer/standard travel together, the
-#   same way a backend's skills already did.
+#   Every SELECTABLE group is offered, and nothing else — one row per TECHNOLOGY,
+#   one per PROJECT MANAGEMENT BACKEND, and one per SELF-CONTAINED DOMAIN (a domain
+#   whose whole footprint is its one group; today, GTD). No baseline unit, no review
+#   lens, no flow, specialist or facade appears on the checklist at all. A
+#   technology is ONE removable thing whose developer/reviewer/standard travel
+#   together, the same way a backend's skills already did — and a self-contained
+#   domain is one removable thing for the same reason, at domain scale.
 #
 #   hub_rows_build/HUB_ROWS is deliberately NOT the source of that list, and is
 #   left exactly as it was: its full per-unit granularity is what Doctor's
@@ -97,11 +100,15 @@
 #   ACTUALLY came out, so a partial removal reads "(2 items)" where the preview
 #   promised three (see hu_result_remove_items).
 #
-#   A domain with NO selection kind at all (today, GTD) is untouched by the whole
-#   mechanism: it has no selectable groups, so its consumer set can never go from
-#   non-empty to empty, and reading an always-empty set as "nothing remains"
-#   would sweep the domain out on any unrelated uninstall. It stays reachable
-#   through --all. A known, deliberate consequence.
+#   A domain with NO selection kind at all (today, GTD) is untouched by this whole
+#   mechanism, and now for a structural reason rather than as a carve-out: it has NO
+#   BASELINE GROUP to cascade. Its one group is `atomic:<domain>` with
+#   `role=selectable` (see lib/hub-domains.sh's GROUP KEY GRAMMAR), so it is
+#   SELECTED like any other selectable group and never cascaded — and the domain loop
+#   below skips it on its selection kind, which is what stops an always-empty
+#   consumer set from being read as "nothing remains" and sweeping the domain out on
+#   every unrelated uninstall. Both halves matter: the group shape is why there is
+#   nothing to sweep, the loop guard is why nothing tries.
 #
 # THE CROSS-DOMAIN RETENTION RULE, applied here, and it runs in BOTH directions:
 #   * KEPT — a shared unit (today, the GitHub-auth procedure) that IS in the
@@ -172,19 +179,22 @@ the confirm prompt.
 
 Options:
   --components CSV     Remove exactly these components. Two vocabularies are
-                        accepted: the checklist's own technology/backend keys
-                        (e.g. python, github) and List's per-unit row keys (e.g.
-                        java-reviewer — technologies only; a PM backend has no
-                        per-unit row key, only its selection/row key: github or
-                        github-backend). A KEY NAMING ONE UNIT OF A TECHNOLOGY
-                        REMOVES THE WHOLE TECHNOLOGY — its developer, reviewer
-                        and standard travel together, so --components=java-reviewer
-                        takes the whole Java technology out, not that one unit.
+                        accepted: the checklist's own keys — one per technology,
+                        per PM backend, and per self-contained domain (e.g.
+                        python, github, gtd) — and List's per-unit row keys (e.g.
+                        java-reviewer; a PM backend has no per-unit row key, only
+                        its selection/row key: github or github-backend). A KEY
+                        NAMING ONE UNIT REMOVES THE WHOLE THING IT BELONGS TO —
+                        a technology's developer, reviewer and standard travel
+                        together, and so does a self-contained domain's entire
+                        footprint, so --components=java-reviewer takes the whole
+                        Java technology out and --components=flow-inbox takes all
+                        of GTD out, not that one unit.
                         Mutually exclusive with --all.
   --all                Remove everything installed, plus CLAUDE.md and the
                         contract schemas. The one critical-tier flow, and the only
-                        way to remove a domain baseline or a domain that has no
-                        technologies/backends of its own (today, GTD).
+                        way to remove a domain BASELINE (which otherwise leaves
+                        only by cascade, once nothing installed still needs it).
   --confirm=UNINSTALL  Required alongside --apply --all when there is no terminal
                         to confirm at. Absent, the command fails loud rather than
                         assuming consent.
@@ -485,8 +495,12 @@ hu_removable_row_exists() {
 # no single predicate can honestly serve both readers. See lib/hub-domains.sh's
 # "WHICH GROUPS ARE ATOMIC" note, which owns the full statement.
 #
-# Every SELECTABLE group is removal-atomic, read from the role column, so a
-# future third selection kind needs no edit here either.
+# Every SELECTABLE group is removal-atomic, read from the role column, so a future
+# third selection kind needs no edit here either — and neither did the self-contained
+# domain shape (`atomic:<domain>`, role=selectable), which is what makes
+# `--components=<any one of its units>` remove all of them. That widening is the
+# intended consequence of the role, not an accident of it: such a domain installs as
+# one thing and removes as one thing.
 hu_removal_is_atomic() {
 	[ "$(hub_group_field "$1" 4)" = selectable ]
 }
@@ -565,11 +579,11 @@ else
 		if ($4 == "DIVERGED") { note = "partially installed"; div = 1 }
 		print $1, $5, div, note
 	}' "$SELECTABLE_ROWS" >"$CHECKLIST_ROWS"
-	# ORPHANS STAY OFFERED, and they are the one row here that is neither a
-	# technology nor a backend. That is deliberate: a dangling symlink is not a
-	# framework component whose granularity this redesign is about, it is target
-	# rubbish with no other way out — List points the user at THIS screen to clear
-	# it, and only --all would otherwise reach it.
+	# ORPHANS STAY OFFERED, and they are the one row here that is not a selectable
+	# group at all. That is deliberate: a dangling symlink is not a framework
+	# component whose granularity this redesign is about, it is target rubbish with
+	# no other way out — List points the user at THIS screen to clear it, and only
+	# --all would otherwise reach it.
 	while IFS="$HUB_TAB" read -r HU_NAME _; do
 		[ -n "$HU_NAME" ] || continue
 		printf '%s\t%s\t1\t%s\n' "$HU_NAME" "$HU_NAME" 'orphaned — source no longer exists' >>"$CHECKLIST_ROWS"
@@ -580,7 +594,7 @@ else
 	# checklist, whose own empty-view line is written for a filter matching
 	# nothing and would misdescribe this state.
 	if [ ! -s "$CHECKLIST_ROWS" ]; then
-		hu_ok_exit "$(printf 'Nothing to uninstall individually at %s — no technology or backend is installed, only domain baselines. Choose "Uninstall all" to remove those too, or "List" to see what is there.' "$TARGET_DIR")"
+		hu_ok_exit "$(printf 'Nothing to uninstall individually at %s — nothing selectable is installed, only domain baselines. Choose "Uninstall all" to remove those too, or "List" to see what is there.' "$TARGET_DIR")"
 	fi
 fi
 
@@ -841,30 +855,152 @@ hu_row_counts_build() {
 	' "$hurcb_counts" "$SELECTED_ROWS" >"$hurcb_out"
 }
 
-# hu_row_lines GLYPH INDENT ROWS -> one "<GLYPH> <label> (N items)" line per row of a
-# hu_row_counts_build table, labelled the way the checklist labelled it (ROW_LABELS).
+# hu_item_line GLYPH INDENT LABEL COUNT -> one "<GLYPH> <LABEL> (N items)" line.
+#
+# THE ONE PLACE THIS SCREEN'S "(N items)" ANNOTATION AND ITS SUPPRESSION LIVE. No
+# "(1 item)" on a single-unit line: the annotation exists to explain why one ticked
+# box accounts for several items in the header count, and on a lone unit it is noise
+# that says nothing the line did not already. (A cascade line is NOT one of these —
+# it carries a trailing reason and has its own printers below; the collapsed cascade
+# count line even keeps its "(1 item)", because there the count IS the subject.)
+hu_item_line() {
+	if [ "$4" -gt 1 ]; then
+		printf '%s%s %s (%s %s)\n' "$2" "$1" "$3" "$4" "$(hub_plural "$4" item items)"
+	else
+		printf '%s%s %s\n' "$2" "$1" "$3"
+	fi
+}
+
+# hu_row_label KEY -> the on-screen name of one selected row, as the checklist named
+# it (ROW_LABELS is the one place that was decided, whichever vocabulary named it).
+hu_row_label() {
+	hurlb_key="$1" awk -F '\t' '$1 == ENVIRON["hurlb_key"] { print $2; exit }' "$ROW_LABELS"
+}
+
+# hu_row_domain KEY -> the DOMAIN the row's group belongs to, or empty when the row
+# has no group at all (an orphan, which is nobody's group by definition).
+hu_row_domain() {
+	hurd_group=$(hurd_key="$1" awk -F '\t' \
+		'$1 == ENVIRON["hurd_key"] { print $2; exit }' "$ROW_GROUPS")
+	[ -n "$hurd_group" ] || return 0
+	hub_group_field "$hurd_group" 3
+}
+
+# hu_row_feature_lines GLYPH INDENT DOMAIN KEY UNITS -> the line(s) a row of a domain
+# that declares NAMED FEATURES gets: one per feature whose units are actually going out
+# (or actually came out, on the receipt), plus the row's own collapsed line for whatever
+# no feature claims.
+#
+# DOMAIN IS PASSED IN rather than re-derived from KEY: the caller had to resolve it to
+# decide this function applies at all, so taking it as an argument makes the
+# precondition ("a domain that declares features") part of the signature instead of a
+# lookup this function repeats and could disagree about.
+#
+# WHY A SELECTED ROW NEEDS THIS AND A TECHNOLOGY DOES NOT: a technology's label IS the
+# thing the user ticked and its units have no names any screen shows. A featured
+# domain's units DO — List, both Install screens and Doctor all name "Inbox capture"
+# and "Inbox triage" — so collapsing them here to the domain label would make this
+# screen, and only this screen, ask the user to approve (and then confirm back) a
+# removal under a name no other screen ever showed them. The checklist above still
+# offers ONE row, because one row is what the removal atom is; the itemization says
+# what that row contains.
+#
+# THE SRCS COME FROM THE CALLER'S OWN UNITS TABLE, joined through ROW_MAP, for the
+# same reason every count on both screens does (see hu_row_counts_build): the preview
+# passes what is planned and the receipt passes what actually came out, so a feature
+# whose second unit hit a foreign occupant collapses to "Inbox capture" against a
+# preview that promised "(2 items)" rather than reprinting the plan.
+#
+# LENS REVIEWERS ARE EXCLUDED BEFORE the feature test, the order lib/hub-state.sh's
+# hub_domain_feature_rows applies and for its reason: hub_domain_feature_of classifies
+# by positive path shape, so an `agents/` test reached first would claim a featured
+# domain's `agents/reviewers/lens/*` units as a `capture` feature. Such a unit falls
+# to the residual instead.
+#
+# ORDER AND COUNTING come from lib/hub-state.sh's hub_feature_counts, the shared
+# projection every feature-aware screen calls; the rendering is hu_item_line, this
+# screen's own.
+hu_row_feature_lines() {
+	hurfl_glyph=$1
+	hurfl_indent=$2
+	hurfl_domain=$3
+	hurfl_key=$4
+	hurfl_units=$5
+	hurfl_srcs="$HUB_WORK/row-feature-srcs.txt"
+	hurfl_keyed="$HUB_WORK/row-feature-keyed.txt"
+	hurfl_counts="$HUB_WORK/row-feature-counts.tsv"
+	# The units this row accounts for, by NAME through ROW_MAP, then their src column.
+	# The usual FILENAME == ARGV[1] phase anchor: ROW_MAP cannot be empty on a row that
+	# reached this function, and the shape stays the same everywhere it appears here.
+	hurfl_key="$hurfl_key" awk -F '\t' '
+		FNR == NR && FILENAME == ARGV[1] { if ($2 == ENVIRON["hurfl_key"]) row[$1] = 1; next }
+		($1 in row) { print $4 }
+	' "$ROW_MAP" "$hurfl_units" >"$hurfl_srcs"
+	: >"$hurfl_keyed"
+	hurfl_residual=0
+	while IFS= read -r hurfl_src; do
+		[ -n "$hurfl_src" ] || continue
+		# A negated `if` around the feature test rather than two nested ones, so a lens
+		# and a genuinely unclaimed unit reach the same residual arm by the same route —
+		# the same shape hu_cascade_baseline_lines below uses.
+		hurfl_fkey=''
+		if ! hub_src_in_dir "$hurfl_src" "$HUB_SD_DIR_LENS_REVIEWERS"; then
+			hurfl_fkey=$(hub_domain_feature_of "$hurfl_domain" "$hurfl_src")
+		fi
+		if [ -z "$hurfl_fkey" ]; then
+			hurfl_residual=$((hurfl_residual + 1))
+			continue
+		fi
+		printf '%s\n' "$hurfl_fkey" >>"$hurfl_keyed"
+	done <"$hurfl_srcs"
+	hub_feature_counts "$hurfl_domain" "$hurfl_keyed" "$hurfl_counts"
+	while IFS="$HUB_TAB" read -r hurfl_n hurfl_label; do
+		[ -n "$hurfl_n" ] || continue
+		hu_item_line "$hurfl_glyph" "$hurfl_indent" "$hurfl_label" "$hurfl_n"
+	done <"$hurfl_counts"
+	# The remainder no feature claims, under the ROW's own name — the same label the
+	# collapsed line would have carried if the domain declared no features at all, so an
+	# unnamed remainder reads identically either way. Unreachable while every unit of
+	# the one featured domain belongs to a feature; it is what keeps the itemization
+	# exhaustive rather than merely correct today.
+	if [ "$hurfl_residual" -gt 0 ]; then
+		hurfl_row_label=$(hu_row_label "$hurfl_key")
+		hu_item_line "$hurfl_glyph" "$hurfl_indent" "$hurfl_row_label" "$hurfl_residual"
+	fi
+}
+
+# hu_row_lines GLYPH INDENT ROWS UNITS -> one line per row of a hu_row_counts_build
+# table, labelled the way the checklist labelled it (ROW_LABELS) — or, for a row whose
+# domain declares NAMED FEATURES, one line per feature (hu_row_feature_lines above).
+# UNITS is the table ROWS was counted from, and is what the feature path reads srcs
+# out of.
 #
 # Shared by the preview's "Remove:" block and the Result screen's receipt so the two
 # render one removable thing identically — the receipt only swaps the glyph. Drifting
-# copies of this three-line format string are exactly how the same technology comes to
-# read "Java (3 items)" on one screen and "Java: 3" on the next.
+# copies of this format are exactly how the same technology comes to read
+# "Java (3 items)" on one screen and "Java: 3" on the next.
 hu_row_lines() {
 	hurl_glyph=$1
 	hurl_indent=$2
 	hurl_rows=$3
+	hurl_units=$4
 	while IFS="$HUB_TAB" read -r hurl_key hurl_n; do
 		[ -n "$hurl_key" ] || continue
-		hurl_label=$(hurl_key="$hurl_key" awk -F '\t' \
-			'$1 == ENVIRON["hurl_key"] { print $2; exit }' "$ROW_LABELS")
-		# No "(1 item)" on a single-unit row — the annotation exists to explain why
-		# one ticked box accounts for several items in the header count, and on a
-		# lone unit it is noise that says nothing the line did not already.
-		if [ "$hurl_n" -gt 1 ]; then
-			printf '%s%s %s (%s %s)\n' "$hurl_indent" "$hurl_glyph" "$hurl_label" \
-				"$hurl_n" "$(hub_plural "$hurl_n" item items)"
-		else
-			printf '%s%s %s\n' "$hurl_indent" "$hurl_glyph" "$hurl_label"
+		# An `if` on an assigned value, never `[ -n … ] || hurl_features=$(…)`: an
+		# assignment on the right of `||` is exempt from `set -e`, the shape this file
+		# already avoids at hub_shared_consumers.
+		hurl_features=''
+		hurl_domain=$(hu_row_domain "$hurl_key")
+		if [ -n "$hurl_domain" ]; then
+			hurl_features=$(hub_domain_feature_keys "$hurl_domain")
 		fi
+		if [ -n "$hurl_features" ]; then
+			hu_row_feature_lines "$hurl_glyph" "$hurl_indent" \
+				"$hurl_domain" "$hurl_key" "$hurl_units"
+			continue
+		fi
+		hurl_label=$(hu_row_label "$hurl_key")
+		hu_item_line "$hurl_glyph" "$hurl_indent" "$hurl_label" "$hurl_n"
 	done <"$hurl_rows"
 }
 
@@ -885,11 +1021,12 @@ HU_CASCADE_REASON='nothing installed requires it any more'
 # the collapsed count line for whatever no feature claims — or, for a domain that
 # declares no features (every domain but GTD), just that count line.
 #
-# WHY THE NAMES ARE HERE: this was the LAST screen in the hub still calling GTD's
-# footprint "Getting Things Done (GTD) baseline (3 items)" while List, the install
-# preview and the install receipt all name "Inbox capture" and "Inbox triage". It is
-# also the one screen where the generic name costs the most — a destructive removal
-# asks the user to approve a thing by a name no other screen ever showed them.
+# WHY THE NAMES ARE HERE: a generic name costs the most on a destructive screen — it
+# asks the user to approve a thing by a name no other screen ever showed them. GTD is
+# no longer the example (it is selected rather than cascaded now, and hu_row_lines
+# names its features under "Remove:"); this stays the shape any FUTURE featured
+# domain's cascaded baseline takes, and the shape hu_cascade_items reaches for
+# whenever the cascading group belongs to a domain that declares features at all.
 #
 # LENS REVIEWERS ARE EXCLUDED BEFORE the feature test, the order lib/hub-state.sh's
 # hub_domain_feature_rows applies and for its reason: hub_domain_feature_of
@@ -977,8 +1114,19 @@ hu_cascade_count_line() {
 	# and hub_domain_buckets both state, and hub-install.sh's hi_shared_heading applies
 	# to the same accessor.
 	huccl_label=$(hub_group_field "$huccl_group" 2)
-	printf '%s%s %s baseline (%s %s) — %s\n' \
-		"$huccl_indent" "$huccl_glyph" "$huccl_label" \
+	# The noun comes from the group's own PREFIX, never hardcoded: this function
+	# is also the residual line for a featured domain (hu_cascade_baseline_lines
+	# above), and a featured domain's own group may be `atomic:*` — which has no
+	# baseline to name — rather than `baseline:*`. Printing "GTD baseline (N
+	# items)" for a group that by definition has no baseline would ask the user
+	# to approve removing something that was never there.
+	case $huccl_group in
+	"$HUB_GROUP_PREFIX_BASELINE":*) huccl_noun=' baseline' ;;
+	"$HUB_GROUP_PREFIX_ATOMIC":*) huccl_noun='' ;;
+	*) die "hu_cascade_count_line: group '$huccl_group' is neither baseline nor atomic" ;;
+	esac
+	printf '%s%s %s%s (%s %s) — %s\n' \
+		"$huccl_indent" "$huccl_glyph" "$huccl_label" "$huccl_noun" \
 		"$huccl_count" "$(hub_plural "$huccl_count" item items)" "$HU_CASCADE_REASON"
 }
 
@@ -1014,6 +1162,25 @@ hu_cascade_items() {
 	awk -F '\t' '!($2 in seen) { seen[$2] = 1; print $2 }' "$huci_rows" >"$huci_groups"
 	while IFS= read -r huci_group; do
 		[ -n "$huci_group" ] || continue
+		# WHETHER THE DOMAIN DECLARES FEATURES IS ASKED FIRST, ahead of the group-key
+		# prefix test, because the prefix cannot answer it: a domain that is its own
+		# single group is keyed `atomic:<domain>`, not `baseline:<domain>`, so a
+		# prefix-only dispatch sent it to the per-name itemization below and printed one
+		# line per unit under names no other screen shows. Nothing cascades such a
+		# domain today (it is selected, never cascaded — its baseline cascade is
+		# skipped, see the domain loop), so this is the arm that keeps the two dispatches
+		# in this file agreeing rather than one that fires; the moment a featured domain
+		# does cascade, its features are named here exactly as they are under "Remove:"
+		# and only its anonymous remainder keeps this block's own collapsed wording.
+		huci_domain=$(hub_group_field "$huci_group" 3)
+		huci_features=''
+		if [ -n "$huci_domain" ]; then
+			huci_features=$(hub_domain_feature_keys "$huci_domain")
+		fi
+		if [ -n "$huci_features" ]; then
+			hu_cascade_baseline_lines "$huci_glyph" "$huci_indent" "$huci_rows" "$huci_group"
+			continue
+		fi
 		case $huci_group in
 		"$HUB_GROUP_PREFIX_BASELINE":*)
 			hu_cascade_baseline_lines "$huci_glyph" "$huci_indent" "$huci_rows" "$huci_group"
@@ -1058,7 +1225,7 @@ hu_preview_remove_items() {
 		done <"$REMOVE_ONLY"
 		return 0
 	fi
-	hu_row_lines "$(hub_glyph_remove)" '    ' "$PREVIEW_ROWS"
+	hu_row_lines "$(hub_glyph_remove)" '    ' "$PREVIEW_ROWS" "$REMOVE_ONLY"
 }
 
 # hu_result_remove_items -> the Result screen's receipt, at the granularity the user
@@ -1091,16 +1258,30 @@ hu_result_remove_items() {
 
 	# REMOVED minus the cascaded rows, exactly as REMOVE_ONLY is REMOVE_UNITS minus
 	# them and for the same reason: the row block and the cascade block below must
-	# not both claim the same unit. Same FNR == NR && FILENAME == ARGV[1] phase test,
-	# because an EMPTY CASCADED is the normal case (see REMOVE_ONLY's own note).
+	# not both claim the same unit.
+	#
+	# RE-WIDENED TO REMOVE_ONLY'S OWN FOUR COLUMNS (name, kind, display, SRC-LAST) by
+	# picking up kind and src from REMOVE_UNITS, because hu_row_lines' feature path
+	# classifies by src path and REMOVED carries only name and display. The DISPLAY
+	# still comes from REMOVED — it is the receipt's own record of what came out — and
+	# a REMOVED row with no REMOVE_UNITS entry keeps its line with the two extra
+	# columns empty rather than being dropped by an inner join, so the reconciliation
+	# guard further down can still report it. (Only the first-run bundle's items are
+	# ever in that position, and the --all path above returns before this.)
+	#
+	# The phase test is FILENAME == ARGV[n], never FNR == NR: with three inputs the NR
+	# trick cannot name the middle file at all, and an EMPTY CASCADED — the normal case
+	# — would make the second file's first record satisfy it anyway. The same shape
+	# hub-doctor.sh's hd_diverged_plan_build states for its own three-file join.
 	hurri_row_units="$HUB_WORK/removed-row-units.tsv"
-	awk -F '\t' '
-		FNR == NR && FILENAME == ARGV[1] { cascaded[$1] = 1; next }
-		!($1 in cascaded)
-	' "$CASCADED" "$REMOVED" >"$hurri_row_units"
+	awk -F '\t' -v OFS='\t' '
+		FILENAME == ARGV[1] { cascaded[$1] = 1; next }
+		FILENAME == ARGV[2] { kind[$1] = $2; src[$1] = $4; next }
+		!($1 in cascaded) { print $1, kind[$1], $2, src[$1] }
+	' "$CASCADED" "$REMOVE_UNITS" "$REMOVED" >"$hurri_row_units"
 	hurri_rows="$HUB_WORK/removed-rows.tsv"
 	hu_row_counts_build "$hurri_row_units" "$hurri_rows"
-	hu_row_lines "$(hub_glyph_ok)" '  ' "$hurri_rows"
+	hu_row_lines "$(hub_glyph_ok)" '  ' "$hurri_rows" "$hurri_row_units"
 
 	# The cascaded rows that ACTUALLY came out, rendered by the same collapser the
 	# preview's "Also removing" block uses — a baseline is one line here too.
@@ -1123,10 +1304,14 @@ hu_result_remove_items() {
 		FNR == NR && FILENAME == ARGV[1] { row[$1] = 1; next }
 		!($1 in row)
 	' "$ROW_MAP" "$hurri_row_units" >"$hurri_unattributed"
-	while IFS="$HUB_TAB" read -r _ hurri_display; do
-		[ -n "$hurri_display" ] || continue
-		printf '  %s %s\n' "$(hub_glyph_ok)" "$hurri_display"
-	done <"$hurri_unattributed"
+	# AWK-ONLY, never `read`: this table carries REMOVE_ONLY's own column order
+	# (name, kind, display, src), and kind (column 2) — not just src — can be
+	# empty for exactly the bundle-item rows this guard exists to catch, so a
+	# middle column here is nullable too, not only the last one. The same
+	# awk-only rule REMOVABLE_ROWS states above for the identical reason
+	# (lib/hub-common.sh, "THE TAB TRAP").
+	awk -F '\t' -v ok="$(hub_glyph_ok)" '$3 != "" { printf "  %s %s\n", ok, $3 }' \
+		"$hurri_unattributed"
 }
 
 # ===========================================================================
@@ -1151,8 +1336,13 @@ if [ "$INTERACTIVE_SELECTION" -eq 1 ]; then
 	# word for a row. The SUBTITLE — hub_checklist's own "the actual question being
 	# asked" slot, previously passed empty here — states the granularity rule plainly
 	# instead of leaving the user to infer it from the preview one screen later.
+	#
+	# "EACH ROW", not "technologies and backends": those are no longer the only kinds of
+	# row here (a self-contained domain is one too), and a subtitle that enumerates the
+	# kinds has to be re-edited every time one is added while saying nothing more. The
+	# rule is per-row either way.
 	hub_checklist 'Select what to uninstall' \
-		"Technologies and backends come out in one piece; a domain's baseline follows automatically once nothing installed still needs it." \
+		"Each row comes out in one piece; a domain's baseline follows automatically once nothing installed still needs it." \
 		"$CHECKLIST_ROWS" "$SELECTED_ROWS" || HU_RC=$?
 	case $HU_RC in
 	# `b` on the only checklist has no earlier step to return to, so it leaves the
@@ -1181,12 +1371,23 @@ fi
 # preview can itemize what the user SELECTED — one line per technology or backend
 # — while still counting in units. ROW_LABELS is the one place a row's on-screen
 # name is decided, whichever of the vocabularies below named it.
+#
+# ROW_GROUPS ("row key<TAB>group") is the third of the same shape, and it exists
+# because a row's LABEL cannot answer a question the itemization needs: which domain
+# the row belongs to, and therefore whether that domain declares NAMED FEATURES to
+# name its units by (hu_row_lines). Derived here rather than re-resolved at render
+# time, because this loop is where the group is already in hand — resolving it again
+# from a row key would be a second implementation of the two-vocabulary lookup below.
+# An ORPHAN gets no entry at all: it belongs to no group, which is what makes it an
+# orphan, and hu_row_domain reads that absence as "no domain".
 REMOVE_UNITS="$HUB_WORK/remove-units.tsv"
 ROW_MAP="$HUB_WORK/row-map.tsv"
 ROW_LABELS="$HUB_WORK/row-labels.tsv"
+ROW_GROUPS="$HUB_WORK/row-groups.tsv"
 : >"$REMOVE_UNITS"
 : >"$ROW_MAP"
 : >"$ROW_LABELS"
+: >"$ROW_GROUPS"
 while IFS= read -r HU_KEY; do
 	[ -n "$HU_KEY" ] || continue
 	HU_ORPHAN_KIND=$(hu_orphan_kind "$HU_KEY")
@@ -1240,6 +1441,7 @@ while IFS= read -r HU_KEY; do
 		printf '%s\t%s\n' "$HU_KEY" "$HU_KEY" >>"$ROW_MAP"
 	fi
 	printf '%s\t%s\n' "$HU_KEY" "$HU_LABEL" >>"$ROW_LABELS"
+	printf '%s\t%s\n' "$HU_KEY" "$HU_GROUP" >>"$ROW_GROUPS"
 done <"$SELECTED_ROWS"
 hub_dedup_first_field "$REMOVE_UNITS"
 # FIRST claimant wins (hub_dedup_first_field keeps a key's first row), which is
@@ -1278,11 +1480,24 @@ HU_REMAINING="$HUB_WORK/remaining.txt"
 # selectable group, so the shared loop's own result cannot change this pass's
 # answer.
 for HU_DOMAIN in $HUB_DOMAIN_KEYS; do
-	# A domain with NO selection kind (today, GTD) is untouched by this whole
-	# mechanism — see this file's header for why an always-empty consumer set must
-	# not be read as "nothing remains".
+	# THIS GUARD KEYS ON THE SELECTION KIND, and it must keep doing so rather than on
+	# the domain's group shape. A domain with NO sub-selection (today, GTD) has an
+	# always-empty selectable-consumer set, which hu_domain_selection_remains below
+	# cannot distinguish from "everything it had is going out" — so without this line
+	# such a domain would cascade on EVERY unrelated uninstall. That is the sweep bug,
+	# and it is why the guard is not rewritten as a test for "does this domain have a
+	# baseline group": both tests skip GTD today, but only this one states the reason,
+	# and the other would silently start cascading a `none` domain the day one is given
+	# a baseline group alongside its own content. Such a domain needs no cascade
+	# anyway — it is SELECTED, whole, like any other selectable group.
 	[ "$(hub_domain_selection_kind "$HU_DOMAIN")" != none ] || continue
-	HU_BASELINE=$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$HU_DOMAIN")
+	# The accessor, not a constructed key: a domain that reaches this line has a
+	# sub-selection and therefore a baseline group, so this is belt-and-braces rather
+	# than load-bearing — but a constructed key would hand hu_group_in_plan and
+	# hu_cascade_group a group that may not exist, which is exactly the assumption
+	# hub_domain_baseline_group exists to stop being made anywhere.
+	HU_BASELINE=$(hub_domain_baseline_group "$HU_DOMAIN")
+	[ -n "$HU_BASELINE" ] || continue
 	# Already in the removal set (--all, or a per-unit --components key naming a
 	# baseline item): there is nothing to cascade, the selection said it itself.
 	! hu_group_in_plan "$HU_BASELINE" || continue

@@ -290,13 +290,20 @@ hub_disc_pm() {
 
 # --- Getting Things Done --------------------------------------------------
 #
-# Everything under gtd/ is baseline: no selectable units, no sub-selection
-# screen. The agent walk is depth-limited to 2 under gtd/agents/ for the same
-# reason as Software Development's specialists.
+# Everything under gtd/ lands in ONE group, and that group is the domain itself:
+# `atomic:gtd`, not `baseline:gtd`. There is no fan-out and no sub-selection
+# screen, so there is nothing for a baseline group to be distinct FROM — the whole
+# footprint installs together and removes together, which is what the `atomic:`
+# prefix declares (see lib/hub-domains.sh's GROUP KEY GRAMMAR for why that prefix
+# exists at all, and why a permanently-empty selectable set is the one shape the
+# baseline cascade cannot reason about).
+#
+# The agent walk is depth-limited to 2 under gtd/agents/ for the same reason as
+# Software Development's specialists.
 hub_disc_gtd() {
 	hdg_root=$1
 	hdg_tmp=$(hub_mktemp_dir)
-	hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" gtd)"
+	hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_ATOMIC" gtd)"
 	hub_disc_agent_files "$hdg_root/$HUB_GTD_DIR_AGENTS" -maxdepth 2 >"$hdg_tmp/agents.txt"
 	hub_disc_emit_agents_from "$hdg_tmp/agents.txt"
 	hub_disc_skill_dirs "$hdg_root" >"$hdg_tmp/skills.txt"
@@ -608,6 +615,7 @@ hub_disc_render_tables() {
 		-v p_baseline="$HUB_GROUP_PREFIX_BASELINE" \
 		-v p_tech="$HUB_GROUP_PREFIX_TECH" \
 		-v p_pm_backend="$HUB_GROUP_PREFIX_PM_BACKEND" \
+		-v p_atomic="$HUB_GROUP_PREFIX_ATOMIC" \
 		-v p_shared="$HUB_GROUP_PREFIX_SHARED" '
 		function titlecase(s,   n, i, parts, out, w) {
 			n = split(s, parts, "-")
@@ -715,6 +723,29 @@ hub_disc_render_tables() {
 					# source is parsed by the shell. It is a syntax error at source
 					# time, not a subtle one, but it is invisible while writing prose.
 					label = titlecase(selkey)
+				} else if (has_group_prefix(group, p_atomic)) {
+					# A DOMAIN THAT IS ITS OWN ONE SELECTABLE GROUP. Its selection
+					# key is the domain key itself, so an agent removes it with
+					# --components=<domain> and the checklist offers it as one row.
+					#
+					# selkind AND atomic are spelled out even though both are the
+					# initialised defaults just above, because each has a plausible
+					# wrong value that breaks a real invariant elsewhere:
+					#   * atomic = 1 routes this group into hub_group_row_key, which
+					#     dies on anything but a pm-backend group — and hub_rows_build
+					#     calls it at top level, so List, Doctor and Uninstall would
+					#     all abort at startup. Removal atomicity comes from the role
+					#     column, not from here (see lib/hub-domains.sh, WHICH GROUPS
+					#     ARE ATOMIC).
+					#   * a made-up selkind ("domain", "none") would be looked up by
+					#     hub_selection_kind_prefix/_prompt/_noun/_flag, which die on
+					#     an unknown kind, and the literal "none" would additionally be
+					#     matched by hub_selectable_groups none. EMPTY is the truthful
+					#     value: this group is governed by no sub-selection screen, the
+					#     same as every baseline and shared group.
+					role = "selectable"; domain = group_selkey(group, p_atomic)
+					selkind = ""; selkey = domain; atomic = 0
+					label = domain_label(domain)
 				} else if (has_group_prefix(group, p_shared)) {
 					role = "shared"; domain = "_shared"
 					label = shared_label
@@ -827,6 +858,64 @@ hub_domain_selectable_groups() {
 	hub_discovery_require
 	hdsg_domain="$1" awk -F '\t' \
 		'$4 == "selectable" && $3 == ENVIRON["hdsg_domain"] { print $1 }' "$HUB_GROUPS"
+}
+
+# hub_domain_baseline_group DOMAIN -> DOMAIN's baseline group key, or NOTHING AT ALL
+# when the domain has no baseline group (a domain registered under the `atomic:`
+# prefix has none — its selectable content IS its whole footprint; see
+# lib/hub-domains.sh's GROUP KEY GRAMMAR).
+#
+# THE OWNER OF A QUESTION THAT USED TO BE ASSUMED. Every caller that needed a
+# domain's baseline CONSTRUCTED `hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$domain"`
+# and used the result unchecked, so a domain without one silently got a key naming no
+# row — and the two functions that then asked for that row's STATE got `available`
+# back (hub_group_state answers `available` for a group with zero units), which is
+# indistinguishable from "installed nothing yet". That made a fully-installed such
+# domain a live installable checkbox forever, and published `available` in
+# --format=env|json's own domain-state field. An accessor that can answer "it has
+# none" is what lets each of those callers branch instead of guess.
+#
+# EMPTY OUTPUT IS THE ANSWER, not an error, and this deliberately does not die: every
+# caller asks it of whichever domain it is rendering. Same non-dying shape, for the
+# same reason, as hub_domain_is_registered and hub_domain_feature_keys.
+#
+# EXISTENCE IS TESTED ON THE GROUP TABLE, through hub_group_field, rather than by
+# asking whether the domain has a selection kind: a source that ships a domain
+# subtree containing nothing discoverable produces no group for it either, and the
+# table is the only thing that knows.
+hub_domain_baseline_group() {
+	hdbg_group=$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$1")
+	# Column 1 is the group key itself, so a non-empty answer means the row exists.
+	hdbg_found=$(hub_group_field "$hdbg_group" 1)
+	[ -n "$hdbg_found" ] || return 0
+	printf '%s\n' "$hdbg_group"
+}
+
+# hub_domain_content_groups DOMAIN -> the group(s) holding the content DOMAIN
+# installs UNCONDITIONALLY once it is chosen, one per line: its baseline group when
+# it has one, ELSE every selectable group of its own that no sub-selection screen
+# governs (an empty selkind).
+#
+# ONE RULE, TWO CONSUMERS, and they must not disagree: hub-install.sh's plan assembly
+# (which groups does picking this domain add) and lib/hub-state.sh's feature
+# projection (over which units are this domain's named features computed). Both used
+# to spell `baseline:<domain>` themselves, which is exactly the assumption a domain
+# with no baseline group breaks.
+#
+# THE selkind FILTER IS WHAT KEEPS THE `else` HONEST. Without it this would hand a
+# baseline-less domain every technology-shaped group it owns, i.e. select the entire
+# fan-out that a sub-selection screen exists to let the user choose from. A domain
+# whose one group is its whole footprint carries an empty selkind precisely because no
+# screen governs it (see lib/hub-discovery.sh's role-classification pass).
+hub_domain_content_groups() {
+	hdcg_baseline=$(hub_domain_baseline_group "$1")
+	if [ -n "$hdcg_baseline" ]; then
+		printf '%s\n' "$hdcg_baseline"
+		return 0
+	fi
+	hub_discovery_require
+	hdcg_domain="$1" awk -F '\t' \
+		'$4 == "selectable" && $3 == ENVIRON["hdcg_domain"] && $5 == "" { print $1 }' "$HUB_GROUPS"
 }
 
 # hub_selection_keys SELKIND -> every SELECTION KEY of one kind (the token a
