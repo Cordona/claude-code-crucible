@@ -222,7 +222,7 @@ check "capture(basic): project field set to the --project override" "project mis
 # build-breaking requirement.
 # ---------------------------------------------------------------------------
 section "capture.sh — optional JSON-Schema validation (guarded, not required)"
-SCHEMA_FILE=$(cd "$TESTS_DIR/../../../../../../contracts" 2>/dev/null && pwd)/inbox-entry.schema.json
+SCHEMA_FILE=$(cd "$TESTS_DIR/../../../../../contracts" 2>/dev/null && pwd)/inbox-entry.schema.json
 if [ ! -f "$SCHEMA_FILE" ]; then
 	printf '  skip schema validation: contracts/inbox-entry.schema.json not found at %s\n' "$SCHEMA_FILE"
 elif env PATH="$ORIG_PATH" command -v check-jsonschema >/dev/null 2>&1; then
