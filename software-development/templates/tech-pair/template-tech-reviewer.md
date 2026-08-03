@@ -1,5 +1,5 @@
 <!--
-TEMPLATE — never deployed (deploy.sh excludes anything template-prefixed or under templates/,
+TEMPLATE — never deployed (deploy/hub/lib/hub-discovery.sh excludes anything template-prefixed or under templates/,
 by two independent checks — never rely on directory location alone).
 
 Extracted from kotlin-reviewer.md, rust-reviewer.md, and shell-script-reviewer.md. The Scope

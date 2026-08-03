@@ -1,5 +1,5 @@
 <!--
-TEMPLATE — never deployed (deploy.sh excludes anything template-prefixed or under templates/,
+TEMPLATE — never deployed (the Crucible Management Hub's discovery logic (deploy/hub/lib/hub-discovery.sh) excludes anything template-prefixed or under templates/,
 by two independent checks — never rely on directory location alone).
 
 Extracted from standard-kotlin/SKILL.md, standard-rust/SKILL.md, and standard-shell-script/SKILL.md.

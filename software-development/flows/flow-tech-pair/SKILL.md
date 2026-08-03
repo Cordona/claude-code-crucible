@@ -129,7 +129,7 @@ which came from the research swarm vs. general grounding>
 
 ## 8. Deploy — the human's choice, not automatic
 
-Ask: deploy now (you run `deploy/deploy.sh` from the repo root), or would they rather deploy manually? If manual, give the exact command (`deploy/deploy.sh --dry-run` first, then without the flag). Either way, note that a freshly-deployed agent may take a moment to appear in the live Task-tool registry — this has happened before in this framework and is not a failure.
+Ask: deploy now (you run `deploy/hub/crucible-hub install ...` from the repo root), or would they rather deploy manually? If manual, give the exact command (e.g. `deploy/hub/crucible-hub install --domains=software-development --technologies=<tech> --apply`, previewing without `--apply` first if the hub supports a dry-run/preview mode). Either way, note that a freshly-deployed agent may take a moment to appear in the live Task-tool registry — this has happened before in this framework and is not a failure.
 
 ---
 
