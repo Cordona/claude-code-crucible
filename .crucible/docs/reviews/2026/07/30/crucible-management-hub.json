@@ -1,0 +1,388 @@
+{
+  "schema_version": "1.0",
+  "id": "crucible-management-hub",
+  "repo": "claude-code-crucible",
+  "spec_ref": ".crucible/docs/specs/2026/07/30/crucible-management-hub-ui.json",
+  "created": "2026-07-30",
+  "last_updated": "2026-07-30",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-07-30",
+      "reviewers": [
+        "shell-script-reviewer",
+        "lens-clean-code-reviewer",
+        "lens-consistency-reviewer",
+        "lens-observability-reviewer",
+        "lens-performance-reviewer",
+        "lens-security-reviewer"
+      ]
+    },
+    {
+      "round": 2,
+      "generated": "2026-07-30",
+      "reviewers": [
+        "shell-script-reviewer",
+        "lens-clean-code-reviewer",
+        "lens-consistency-reviewer",
+        "lens-observability-reviewer",
+        "lens-performance-reviewer",
+        "lens-security-reviewer"
+      ]
+    },
+    {
+      "round": 3,
+      "generated": "2026-07-30",
+      "reviewers": [
+        "shell-script-reviewer",
+        "lens-performance-reviewer",
+        "lens-consistency-reviewer"
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "resolved": 19,
+    "new": 0,
+    "ack": 1
+  },
+  "findings": [
+    {
+      "id": "SHELL-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "CRITICAL",
+      "category": "correctness",
+      "locations": [
+        "deploy/hub/lib/hub-symlink.sh:57-75",
+        "deploy/hub/lib/hub-symlink.sh:140-156",
+        "deploy/hub/hub-install.sh:386"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "hub_symlink_item (install-side write) has no equivalent of hub_unlink_item's foreign-vs-framework-owned classification; once ALLOW_DIVERGED=1 (set for every selectively-installed item), it rm -rf's and overwrites any occupant of the target path, framework-owned or not",
+      "fix": "give hub_symlink_item the same stage-1/2/3 classification hub_unlink_item already has, and only honor ALLOW_DIVERGED for the framework-owned-wrong-target case",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "correctness",
+      "locations": [
+        "deploy/hub/hub-install.sh:386-389",
+        "deploy/hub/hub-uninstall.sh:260-306"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "both bulk --all flows pass ALLOW_DIVERGED=0 unconditionally, so DIVERGED items are never re-synced/removed in bulk mode, breaking the spec-promised Replace/full-removal behavior and its own preview arithmetic",
+      "fix": "once SHELL-001's classification exists, use it in bulk flows too so framework-owned diverged items are re-synced/removed, and only genuinely foreign occupants are protected",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-003",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "correctness",
+      "locations": [
+        "deploy/hub/hub-accounts.sh:110-117",
+        "deploy/hub/hub-doctor.sh:214-215"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "VAR=$(cmd|grep|sed) || VAR=default never falls back on real failure under plain POSIX sh (no pipefail — pipeline status is the last stage's only), so a delegate crash yields an empty string instead of the documented false, violating the HUB_*=true|false contract and crashing --format=json's jq --argjson on empty input",
+      "fix": "check the delegate script's own exit status (or test its output file is non-empty) before parsing, instead of relying on || after a multi-stage pipe",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-004",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "deploy/hub/lib/hub-nav.sh:48-73"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "hub_confirm's header comment claims unrecognized input is re-prompted once then defaulted, but the implementation never re-prompts, and the safe (default-Yes) tier silently declines on garbage input instead of defaulting Yes",
+      "fix": "implement the documented retry-then-default behavior, or correct the comment to describe the actual single-shot decline-on-anything-but-explicit-yes behavior",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-005",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "error-handling",
+      "locations": [
+        "deploy/hub/lib/hub-graph.sh:191",
+        "deploy/hub/lib/hub-graph.sh:287-302"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "a die() inside hub_graph_forward_deps/hub_graph_locate would still be masked behind a pipe or an if-condition command substitution in two spots (set -e blind spot); not currently reachable given today's call order",
+      "fix": "redirect to a file and check status explicitly instead of piping/testing directly, so a future call-order change can't silently swallow the failure",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-001",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "deploy/hub/hub-list.sh:89-101",
+        "deploy/hub/hub-doctor.sh:196-205",
+        "deploy/hub/crucible-hub:59-67"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "the status-counts KEY=value read and the Core status line's text are duplicated verbatim across crucible-hub, hub-list.sh, and hub-doctor.sh",
+      "fix": "add hub_status_counts_read() to lib/hub-status.sh and hub_render_core_line() to lib/hub-render.sh; call both from all three sites",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-002",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "deploy/hub/hub-list.sh:64-87",
+        "deploy/hub/hub-doctor.sh:66-89",
+        "deploy/hub/hub-install.sh:91-116",
+        "deploy/hub/hub-uninstall.sh:93-122"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "the shared --target/--source/--format/--no-color/-h flag-parsing cases and format validation are near-verbatim duplicated across 4 capability scripts",
+      "fix": "add hub_try_common_opt() + hub_validate_format() to lib/hub-common.sh; call first in each script's own arg loop",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-003",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "deploy/hub/hub-doctor.sh:214-215"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "hub-doctor.sh invokes 'hub-accounts.sh status' twice (once per field it needs) instead of capturing the one report once, doubling the underlying gh/jira auth checks on every Doctor run (found by both: Lens Clean Code + Lens Performance)",
+      "fix": "capture 'status --format=env' once into a temp file/var and grep both fields from that one capture",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "module-organization",
+      "locations": [
+        "deploy/hub/lib/hub-common.sh:1",
+        "deploy/hub/hub-install.sh:59-66",
+        "deploy/hub/crucible-hub:30-36"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "the claimed disclosed-exception paragraph naming the project's no-sourcing rule was never actually added to hub-common.sh's header (verified absent by direct grep) -- the sourced lib/ remains an undisclosed departure from the jira.sh one-dispatcher precedent",
+      "fix": "add the paragraph to hub-common.sh's header now, using the file's own adjacent 'WHY reimplemented rather than sourced from deploy.sh' paragraph (lines 14-22) as the template for how this project discloses a deliberate deviation",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-placement",
+      "locations": [
+        "roles/common/skills/accounts/procedure-git-auth/SKILL.md:1",
+        "roles/common/skills/accounts/procedure-jira-auth/SKILL.md:1",
+        "operations/agents/project-manager/project-manager.md:57,63"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "verified true that hub-accounts.sh calls both relocated scripts directly by path (project-manager is genuinely not the sole consumer), but no artifact in the repo states this -- both SKILL.md descriptions still read as project-manager-only, and hub-tiers.tsv's comment defers to a non-existent 'implementation report'",
+      "fix": "state the real 2-consumer reason directly in both SKILL.md descriptions, not only in an ephemeral report that isn't a persisted file",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "OBS-001",
+      "reviewer": "lens-observability-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "signal-quality",
+      "locations": [
+        "deploy/hub/hub-install.sh:454-469",
+        "deploy/hub/hub-uninstall.sh:324-339",
+        "deploy/hub/hub-uninstall.sh:609-622"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "HUB_STATUS=ok is emitted unconditionally in env/json even when items were foreign-blocked, with no itemized blocked names in machine format — an agent caller cannot detect or act on the partial failure",
+      "fix": "emit a distinguishing status/reason when foreign_blocked_count>0, and itemize blocked names in env/json (e.g. HUB_FOREIGN_BLOCKED_ITEMS)",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "OBS-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "signal-quality",
+      "locations": [
+        "deploy/hub/hub-install.sh:45-52",
+        "deploy/hub/hub-install.sh:273-289"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "code-side header comment now fixed, but the durable spec artifact's closed HUB_BLOCKED_REASON vocabulary still asserts only 2 values and explicitly claims no third exists, contradicted by the shipped dependency_unresolved value",
+      "fix": "add dependency_unresolved to the spec draft's closed-vocabulary statement (crucible-management-hub-ui-draft.md line 9) and, if warranted, the durable JSON/MD spec pair",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "OBS-003",
+      "reviewer": "lens-observability-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "signal-quality",
+      "locations": [
+        "deploy/hub/hub-doctor.sh:247-280",
+        "deploy/hub/hub-doctor.sh:281-370"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "Doctor's --format=env/json exposes only aggregate counts; the itemized tool names/reasons/hints and diverged item names that make the text output actionable are absent from the machine-readable sibling",
+      "fix": "add itemized fields (HUB_MISSING_TOOL_<N>_NAME, HUB_DIVERGED_ITEMS) mirroring List's HUB_ITEM_<N>_* convention",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "OBS-004",
+      "reviewer": "lens-observability-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "signal-quality",
+      "locations": [
+        "deploy/hub/lib/hub-discovery.sh:91-100"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "a SKILL.md missing 'name:' frontmatter is silently skipped (stderr warn only) and never counted as discovered or surfaced as unclassified, contradicting this codebase's own no-silent-drop design goal",
+      "fix": "route this case through the same unclassified surfacing Doctor already gives naming-mismatched items instead of a stderr-only warn",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "PERF-001",
+      "reviewer": "lens-performance-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "missing-caching",
+      "locations": [
+        "deploy/hub/crucible-hub:59-61",
+        "deploy/hub/hub-list.sh:89-109",
+        "deploy/hub/hub-doctor.sh:196-230",
+        "deploy/hub/lib/hub-discovery.sh:107-124"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "hub_discover_by_tier's full scan is never cached: the Main-menu render calls it twice on every single loop iteration, and list/doctor each call it 3-5x per run — the same bug class as the cascade-uninstall fix, in a different code path never touched by that fix",
+      "fix": "add a status-snapshot cache mirroring hub_graph_build_cache: scan once per invocation/render, classify every item's tier once, have every caller read that one cached table",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "PERF-002",
+      "reviewer": "lens-performance-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "data-structure-fit",
+      "locations": [
+        "deploy/hub/hub-install.sh:231-241",
+        "deploy/hub/hub-install.sh:411-431",
+        "deploy/hub/hub-uninstall.sh:387-448"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "per-item lookup helpers re-scan the entire selection table with awk on every call inside the bucketing/apply loops, making bulk install/uninstall O(n^2) in discovered-item count instead of O(n)",
+      "fix": "carry kind/src alongside name when the selection table is built (or index it once) so each loop reads fields directly instead of re-scanning via a lookup function",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-001",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "input-validation",
+      "locations": [
+        "deploy/hub/lib/hub-symlink.sh:19-25",
+        "deploy/hub/lib/hub-discovery.sh:21-48",
+        "deploy/hub/hub-install.sh:142-167"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "a discovered component name (from scanned frontmatter, trusted only via --source) is interpolated into a filesystem path with no character/shape validation, enabling path traversal / arbitrary symlink write if --source is ever pointed at a less-trusted tree",
+      "fix": "reject any discovered name containing '/', a leading '.', or control bytes before it reaches hub_target_path; classify it unclassified instead",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "ACK",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "insecure-design",
+      "locations": [
+        "deploy/hub/lib/hub-symlink.sh:46-84",
+        "deploy/hub/lib/hub-symlink.sh:122-162"
+      ],
+      "first_seen": "2026-07-30",
+      "problem": "a TOCTOU window exists between hub_item_state's check and the later rm/ln action; low real-world impact since exploitation needs same-user write access already",
+      "fix": "re-verify state immediately before acting, or accept as documented low-risk same-user race",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "PERF-003",
+      "reviewer": "lens-performance-reviewer",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "missing-caching",
+      "locations": [
+        "deploy/hub/hub-install.sh:128-134",
+        "deploy/hub/hub-install.sh:309",
+        "deploy/hub/hub-install.sh:410",
+        "deploy/hub/hub-uninstall.sh:136",
+        "deploy/hub/hub-uninstall.sh:145-147",
+        "deploy/hub/hub-uninstall.sh:375-376"
+      ],
+      "problem": "hub-install.sh and hub-uninstall.sh only build hub_graph_build_cache (the dependency-graph cache); they never call hub_discovery_build_cache, so every hub_discover_by_tier call (3x in hub-install.sh, 2-3x in hub-uninstall.sh) still triggers a full fresh agents+skills filesystem scan -- the same bug PERF-001 fixed, left open in these two scripts",
+      "fix": "call hub_discovery_build_cache \"$FRAMEWORK_ROOT\" once near the top of both scripts, alongside the existing hub_graph_build_cache call, mirroring hub-list.sh/hub-doctor.sh",
+      "status": "RESOLVED",
+      "first_seen": "2026-07-30",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "SHELL-006",
+      "reviewer": "shell-script-reviewer",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "error-handling",
+      "locations": [
+        "deploy/hub/lib/hub-graph.sh:316"
+      ],
+      "problem": "hub_graph_build_dependents_index still assigns hub_graph_forward_deps|awk|tr|sed via command substitution, masking an internal die() under no-pipefail sh (same class SHELL-005 fixed elsewhere, at a third call site never named in the original finding; not reachable today)",
+      "fix": "redirect hub_graph_forward_deps output to a file and check its exit status explicitly, as done at hub-graph.sh:205 and :221",
+      "status": "RESOLVED",
+      "first_seen": "2026-07-30",
+      "addressed_in_round": 3
+    }
+  ]
+}
