@@ -1,0 +1,269 @@
+#!/usr/bin/env sh
+# crucible-hub — the Crucible Management Hub entrypoint. A THIN dispatcher only:
+#                 parse the subcommand (or, bare on a TTY, run the interactive
+#                 Main menu loop), delegate to the one focused capability script
+#                 that owns it, and get out of the way. It holds no capability's
+#                 business logic — see hub-status.sh / hub-list.sh /
+#                 hub-doctor.sh / hub-accounts.sh / hub-install.sh /
+#                 hub-uninstall.sh for that.
+#
+# Usage:
+#   crucible-hub                          Interactive Main menu (TTY only).
+#   crucible-hub [--target DIR]           Interactive Main menu against DIR.
+#   crucible-hub status     [ARGS...]     -> hub-status.sh
+#   crucible-hub list       [ARGS...]     -> hub-list.sh
+#   crucible-hub doctor     [ARGS...]     -> hub-doctor.sh
+#   crucible-hub accounts   SUB [ARGS...] -> hub-accounts.sh
+#   crucible-hub install    [ARGS...]     -> hub-install.sh
+#   crucible-hub uninstall  [ARGS...]     -> hub-uninstall.sh
+#   crucible-hub -h|--help                Show this help.
+#
+# --target is the ONE flag this dispatcher understands before a subcommand,
+# because the interactive Main menu needs it: the menu has no other way to be
+# told which deployment directory it is operating on, and every screen it
+# dispatches must agree on that answer. Given before a subcommand it is also
+# forwarded to that subcommand, so `crucible-hub --target DIR list` and
+# `crucible-hub list --target DIR` mean the same thing. Every other flag stays
+# the subcommand's own.
+#
+# On a non-TTY with no subcommand, prints usage and exits 2: the menu never
+# renders off a non-TTY stdin, it directs the caller to the flag-driven commands
+# instead.
+#
+# Exit codes: whatever the dispatched capability script exits with; 2 on an
+#   unrecognized subcommand or a bare non-TTY invocation. Exit code 3 from a
+#   capability script means "the user pressed q" and is consumed HERE (the loop
+#   ends, the hub exits 0) rather than propagated — a user who asked to quit did
+#   not ask for a failing exit status.
+#
+# Portability: POSIX sh only.
+set -eu
+
+HUB_PROG=crucible-hub
+
+# $0's SYMLINK CHAIN IS RESOLVED HERE, before the first `.` source. A plain
+# `dirname "$0"` resolves to the directory of the SYMLINK, not of the real script,
+# so a `crucible-hub` convenience symlink anywhere on PATH would look for lib/
+# beside the symlink, find nothing, and abort under `set -e` on the very first
+# source.
+#
+# This duplicates lib/hub-common.sh's hub_resolve_script_dir in substance, and
+# unavoidably so: that function lives in the very file this resolution is needed
+# to locate. `die` is likewise not available yet, hence the bare printf/exit.
+HUB_SELF=$0
+HUB_SELF_HOPS=0
+while [ -h "$HUB_SELF" ]; do
+	HUB_SELF_HOPS=$((HUB_SELF_HOPS + 1))
+	if [ "$HUB_SELF_HOPS" -gt 64 ]; then
+		printf '%s: too many symlink levels resolving %s\n' "$HUB_PROG" "$0" >&2
+		exit 1
+	fi
+	HUB_SELF_LINK=$(readlink "$HUB_SELF") || {
+		printf '%s: cannot readlink %s\n' "$HUB_PROG" "$HUB_SELF" >&2
+		exit 1
+	}
+	case $HUB_SELF_LINK in
+	/*) HUB_SELF=$HUB_SELF_LINK ;;
+	*) HUB_SELF=$(dirname "$HUB_SELF")/$HUB_SELF_LINK ;;
+	esac
+done
+HUB_DIR0=$(cd "$(dirname "$HUB_SELF")" 2>/dev/null && pwd -P) || {
+	printf '%s: cannot resolve the directory of %s\n' "$HUB_PROG" "$0" >&2
+	exit 1
+}
+
+. "$HUB_DIR0/lib/hub-common.sh"
+. "$HUB_DIR0/lib/hub-domains.sh"
+. "$HUB_DIR0/lib/hub-render.sh"
+. "$HUB_DIR0/lib/hub-nav.sh"
+
+usage() {
+	cat <<EOF
+Usage: $HUB_PROG [--target DIR] [status|list|doctor|accounts|install|uninstall] [ARGS...]
+       $HUB_PROG [--target DIR]   (interactive Main menu — requires a TTY)
+
+  --target DIR   Deployed config dir (default: \$HOME/.claude). Used by the
+                  interactive menu, and forwarded to a subcommand when given
+                  before it.
+
+Run '$HUB_PROG SUBCOMMAND --help' for a subcommand's own options.
+EOF
+}
+
+# ch_capability SCRIPT [ARGS...] -> run one capability script with this session's
+# target threaded in.
+#
+# EVERY dispatch from the Main menu goes through here. Without it the menu
+# resolved CH_TARGET, printed it in its own header and its own status block, and
+# then dispatched every screen with no --target at all — so each child fell back
+# to $HOME/.claude and the menu silently operated on a different directory than
+# the one it was displaying.
+#
+# --target goes LAST, after the caller's own arguments, because hub-accounts.sh
+# takes its SUBCOMMAND as the first positional word: a leading flag would be read
+# as the subcommand and rejected.
+ch_capability() {
+	ch_cap_script=$1
+	shift
+	"$ch_cap_script" "$@" --target "$CH_TARGET"
+}
+
+# ch_run SCRIPT [ARGS...] -> run a capability script and translate its exit
+# status into this loop's own vocabulary: 0 keep looping, 1 quit the hub.
+# Everything except the quit code keeps the loop alive, including a genuine
+# failure — an install that failed is information the user should read on the
+# Main menu, not a reason to close the program under them.
+ch_run() {
+	ch_rc=0
+	"$@" || ch_rc=$?
+	[ "$ch_rc" -ne 3 ] || return 1
+	return 0
+}
+
+# ch_main_menu_once -> render the Main menu once, read one line, dispatch it.
+# Returns 0 to keep looping, 1 to exit the hub.
+#
+# NUMBERED-OPTIONS ONLY, deliberately. A live test session found the Main menu's
+# old Status block, tool-warning banner and first-run hint added exactly the
+# clutter this screen exists to let a user cut through quickly — that detail is
+# a menu item's own job now (Status is "1)"), not something repeated at the root
+# every time. The menu is the one screen with nowhere to "go back" to, so it
+# alone renders no nav-hint list either.
+#
+# The two mutating "all" items pass --apply. That is what makes them ACTIONS
+# rather than dry runs now that --apply gates reaching a confirm step at all
+# (hub-install.sh's own --apply contract); the confirm gate — [Y/n] for install,
+# the typed UNINSTALL phrase for uninstall — still stands between the preview and
+# any write, exactly as before.
+ch_main_menu_once() {
+	printf 'Crucible Management Hub\n%s\n\n' "$(hub_dim "target: $CH_TARGET")"
+
+	printf '  %s Status           %s\n' "$(hub_number '1.')" "$(hub_dim '— which domains are installed')"
+	printf '  %s List             %s\n' "$(hub_number '2.')" "$(hub_dim '— installed vs available components')"
+	printf '  %s Doctor           %s\n' "$(hub_number '3.')" "$(hub_dim '— required tools + account health')"
+	printf '  %s Accounts         %s\n' "$(hub_number '4.')" "$(hub_dim '— GitHub / Jira')"
+	printf '  %s Install all      %s\n' "$(hub_number '5.')" "$(hub_dim '— every domain, technology and backend')"
+	printf '  %s Install          %s\n' "$(hub_number '6.')" "$(hub_dim '— choose domains')"
+	printf '  %s Uninstall all\n' "$(hub_number '7.')"
+	printf '  %s Uninstall        %s\n' "$(hub_number '8.')" "$(hub_dim '— choose technologies or backends')"
+	printf '  %s Exit\n\n' "$(hub_number '9.')"
+	# The action hint lives ON the prompt line, not a separate line above it —
+	# no `b` here (the Main menu has nowhere to go back to), but `q` IS a valid
+	# choice (same as `9`) and was accepted without ever being advertised.
+	printf '  %s%s%s%s%s\n> ' \
+		"$(hub_dim 'Type a number')" "$(hub_sep_text)" "$(hub_hint_segment q quit)" \
+		"$(hub_sep_text)" "$(hub_hint_segment '?' help)"
+
+	IFS= read -r ch_choice || ch_choice=q
+
+	case $ch_choice in
+	1) ch_run ch_capability "$HUB_DIR0/hub-status.sh" || return 1 ;;
+	2) ch_run ch_capability "$HUB_DIR0/hub-list.sh" || return 1 ;;
+	3) ch_run ch_capability "$HUB_DIR0/hub-doctor.sh" || return 1 ;;
+	4) ch_run ch_accounts_submenu || return 1 ;;
+	5) ch_run ch_capability "$HUB_DIR0/hub-install.sh" --all --apply || return 1 ;;
+	6) ch_run ch_capability "$HUB_DIR0/hub-install.sh" || return 1 ;;
+	7) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" --all --apply || return 1 ;;
+	8) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" || return 1 ;;
+	9 | q | quit) return 1 ;;
+	'?') hub_show_help ;;
+	*) printf 'Not a valid choice.\n' ;;
+	esac
+	return 0
+}
+
+# ch_accounts_submenu -> the Accounts screen's own numbered menu. No numbered
+# "Back" row: `b`/`q`/`?` are advertised on this screen's own prompt line
+# instead (see hub_print_header's own header for why there is no separate list
+# any more). No separate press-key-to-continue either: the numbered prompt
+# below already blocks on input, so there is nothing to add.
+ch_accounts_submenu() {
+	hub_print_header 'Accounts'
+	printf '\n'
+	ch_capability "$HUB_DIR0/hub-accounts.sh" status
+	printf '\n'
+	printf '  %s Switch GitHub account\n' "$(hub_number '1.')"
+	printf '  %s Re-authenticate GitHub\n' "$(hub_number '2.')"
+	printf '  %s Configure Jira\n' "$(hub_number '3.')"
+	printf '  %s Re-authenticate Jira\n\n' "$(hub_number '4.')"
+	printf '  %s%s%s\n> ' "$(hub_dim '1-4')" "$(hub_sep_text)" "$(hub_nav_keys_hint)"
+	IFS= read -r ch_as_choice || ch_as_choice=b
+	case $ch_as_choice in
+	1) ch_capability "$HUB_DIR0/hub-accounts.sh" switch-github ;;
+	2) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-github ;;
+	3) ch_capability "$HUB_DIR0/hub-accounts.sh" configure-jira ;;
+	4) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-jira ;;
+	'?') hub_show_help ;;
+	q | quit) return 3 ;;
+	*) : ;;
+	esac
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch.
+# ---------------------------------------------------------------------------
+
+# A LEADING --target is consumed here, before the subcommand test below, and then
+# re-attached to whatever runs — the interactive menu, or the subcommand that
+# follows it. Nothing else is parsed at this level: every other flag belongs to a
+# capability script, and a dispatcher that started interpreting them would be a
+# second, drifting copy of six option parsers.
+CH_TARGET_OPT=""
+while [ $# -gt 0 ]; do
+	case $1 in
+	--target)
+		[ $# -ge 2 ] || die_usage "--target requires an argument"
+		CH_TARGET_OPT=$2
+		shift 2
+		;;
+	--target=*)
+		CH_TARGET_OPT=${1#--target=}
+		shift
+		;;
+	*) break ;;
+	esac
+done
+
+if [ $# -eq 0 ]; then
+	if ! hub_is_tty; then
+		usage >&2
+		die_usage "no subcommand given on a non-TTY; use a flag-driven subcommand"
+	fi
+	# Resolved ONCE, here rather than inside the render function: it is invariant
+	# for the session, and hub_default_target dies when HOME is unset — which must
+	# not happen on the flag-driven paths below, where --target can supply it.
+	if [ -n "$CH_TARGET_OPT" ]; then
+		CH_TARGET=$(hub_abspath "$CH_TARGET_OPT")
+	else
+		CH_TARGET=$(hub_default_target)
+	fi
+	while ch_main_menu_once; do :; done
+	exit 0
+fi
+
+# On the flag-driven paths a leading --target is simply forwarded; the capability
+# script owns resolving it, exactly as it does when the flag is written after the
+# subcommand instead.
+if [ -n "$CH_TARGET_OPT" ]; then
+	set -- "$@" --target "$CH_TARGET_OPT"
+fi
+
+case $1 in
+status | list | doctor | install | uninstall)
+	HUB_SUB=$1
+	shift
+	exec "$HUB_DIR0/hub-$HUB_SUB.sh" "$@"
+	;;
+accounts)
+	shift
+	exec "$HUB_DIR0/hub-accounts.sh" "$@"
+	;;
+-h | --help)
+	usage
+	exit 0
+	;;
+*)
+	usage >&2
+	die_usage "unknown subcommand: $1"
+	;;
+esac
