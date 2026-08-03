@@ -102,6 +102,7 @@ You judge test code against the **`standard-testing`** rubric (bound above) — 
 
 **Review-only check (NOT in the standard — you must add it):**
 - **Missing coverage for the change** — flag behaviors, flows, and important edge/error paths in the diff that have **NO** test (§6 defines behavior-not-line coverage; you apply it to what changed — do not demand 100%). Happy-path of a new flow untested → MEDIUM (**HIGH only if that happy path is currently broken** — then the finding IS the break); important edge/error path untested → MEDIUM.
+- **Exception — the change has NO tests at all, and none were expected yet.** Crucible defers all test-authoring to a separate `flow-testing` pass, gated on the human's explicit confirmation the implementation is right; a change you're reviewing before that pass has run legitimately has zero tests. Do NOT flag the total, expected absence of tests as `missing-coverage` by default (see `review-core`'s "Absent Tests Are Not Themselves a Finding" section — this is that rule's concrete boundary for this lens). This is distinct from, and does not excuse, a genuine gap in a test suite that already exists: if the change modifies a codebase/module that already has tests and a specific behavior in the diff has no corresponding coverage where comparable behaviors do, that is still a real finding. Score the total-absence case only if your delegation explicitly states tests were expected at this review (e.g. a re-review after `flow-testing` already ran).
 
 Map every finding to the `standard-testing` rule it violates. Where the project consistently and deliberately tests otherwise, apply `review-core`'s conflict protocol rather than hammering every instance.
 
@@ -158,6 +159,7 @@ These are where a reviewer must NOT raise a finding even though a rule looks vio
 | Framework-layer boundary swap via test config | Acceptable — a boundary swap, not a domain mock/fake. |
 | Project deliberately/consistently tests otherwise (heavy unit + mocks) | Conflict protocol: surface the tension + explain the standard; do not hammer every instance. |
 | Legacy tests untouched by the change | Diff-scope (review-core): focus on changed tests; note pre-existing issues separately, non-gating. |
+| The whole diff has zero tests, and none were told to be expected yet | Not a finding — Crucible defers test-authoring to a separate `flow-testing` pass; total, expected absence pre-that-pass is the designed state, not a gap. |
 
 ## Constraints (lens-specific; see `review-core` for the universal constraints)
 
@@ -173,3 +175,4 @@ These are where a reviewer must NOT raise a finding even though a rule looks vio
 - Do NOT flag a framework-layer config boundary-swap as a mock/fake.
 - Do NOT demand end-to-end / flow tests for a library, CLI, or pure algorithm — behavior at the public contract is the right altitude there.
 - Do NOT treat framework names as requirements — they are illustrative; map every principle to the target project's actual test framework (Phase 1).
+- Do NOT flag a diff's total, expected absence of tests as `missing-coverage` before `flow-testing` has run — only a gap in an *existing* suite is a finding (see the edge case above).
