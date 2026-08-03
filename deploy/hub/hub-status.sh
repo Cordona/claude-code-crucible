@@ -15,7 +15,9 @@
 # Output (env/json): per-domain state, the installed/available selection keys as
 #   comma-lists, the four component counts, and the first-run bundle's state.
 #
-# Exit codes: 0 always (read-only, cannot fail on valid input); 2 usage error.
+# Exit codes: 0 on success; 1 on an operational failure (--source doesn't
+#   resolve, or --format=json is requested without jq installed); 2 usage
+#   error; 3 if the user quits from the interactive pause (text format only).
 #
 # Portability: POSIX sh only. jq is required ONLY for --format=json.
 set -eu

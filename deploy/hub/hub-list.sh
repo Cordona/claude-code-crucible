@@ -41,7 +41,9 @@
 #   HUB_*_USED_BY — are PRESENTATION and may be reworded without notice, exactly as
 #   the text screen's own lines may be. Match on key, not on display text.
 #
-# Exit codes: 0 always (read-only, cannot fail on valid input); 2 usage error.
+# Exit codes: 0 on success; 1 on an operational failure (--source doesn't
+#   resolve, or --format=json is requested without jq installed); 2 usage
+#   error; 3 if the user quits from the interactive pause.
 #
 # Portability: POSIX sh only. jq is required ONLY for --format=json.
 set -eu
@@ -455,9 +457,14 @@ hl_baseline_summary() {
 # deciding what GTD's baseline is called.
 #
 # The local constant then went the same way and for the same reason: hub-doctor.sh
-# and hub-install.sh produce this identical line, and all three sites carried a
-# comment asserting their wording matched the other two. See HUB_BASELINE_LABEL's
-# own header on why one constant replaces three prose assertions.
+# shares this line's exact wording AND its exclude-lens counting rule.
+# hub-install.sh's receipt (hi_result_baseline_line) shares only the label
+# text — it folds lens-reviewer units INTO the count and appends its own ", incl.
+# N review lenses" clause, so for a domain with a lens subtree (Software
+# Development) the receipt's line is NOT byte-identical to this one. All three
+# sites carried a comment asserting their wording matched the other two. See
+# HUB_BASELINE_LABEL's own header on why one constant replaces three prose
+# assertions, and on why the "(N items)" annotation stays each screen's own.
 
 # hl_nondomain_rows_build -> sets HL_NONDOMAIN to "group<TAB>display<TAB>state" for
 # every HUB_ROWS row whose group belongs to NO registered domain. Today that is

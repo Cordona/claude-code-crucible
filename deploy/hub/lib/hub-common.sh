@@ -355,11 +355,14 @@ hub_itemized_json_array() {
 # action-string literal, which meant any future field had to be added twice or
 # the two scripts would silently disagree about their own contract.
 #
-# Both read the CALLER's OPT_FORMAT and write human prose to the caller's fd 3
-# (the human channel every capability script opens before its first possible
-# exit). That is the same contract hub_validate_format already relies on, and it
-# is what lets one implementation serve both scripts without a format argument
-# nobody would ever pass differently.
+# Both read the CALLER's OPT_FORMAT. hub_ok_exit always writes its message to
+# the caller's fd 3 (the human channel every capability script opens before its
+# first possible exit). hub_blocked's text-format branch writes directly to fd
+# 2 instead (bypassing fd 3), and its env/json branches carry the message only
+# inside the structured HUB_MESSAGE/message field — hub_blocked never writes to
+# fd 3. That is the same OPT_FORMAT contract hub_validate_format already relies
+# on, and it is what lets one implementation serve both scripts without a
+# format argument nobody would ever pass differently.
 # ---------------------------------------------------------------------------
 
 # hub_ok_exit ACTION APPLIED MESSAGE -> report a legitimate no-op or a completed

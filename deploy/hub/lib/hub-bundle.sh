@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 # lib/hub-bundle.sh — the first-run bundle: CLAUDE.md (the operating contract)
-#                      plus every */contracts/*.schema.json.
+#                      plus every *.schema.json found anywhere under the
+#                      source root (not restricted to dirs literally named
+#                      contracts — see hub_disc_contract_files).
 #
 # Sourced after lib/hub-common.sh, lib/hub-domains.sh, lib/hub-discovery.sh and
 # lib/hub-symlink.sh. Not executable on its own.

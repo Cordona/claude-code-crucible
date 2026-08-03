@@ -87,12 +87,14 @@
 #           kind would be ambiguous on a screen that shows no domain heading. A
 #           kind whose labels name themselves (as `technology`'s do) needs no arm;
 #           the predicate's default is "no".
-#         - hi_preview_domain's two per-kind tests — the `= technology` guard that
-#           decides whether a selected key ALSO has a standard to walk (in both the
-#           selected loop and the already-installed scan), and hub-install.sh's own
-#           `= software-development` test that splits Software Development's
-#           baseline into lens reviewers and the rest. A new kind that has neither
-#           a per-key standard nor a split baseline needs neither.
+#         - Nothing left to edit in hi_preview_domain itself: the old per-kind
+#           `= technology` guard (does a selected key also have a standard to
+#           walk?) and the old `= software-development` baseline-split test are
+#           both gone, refactored into hub_domain_buckets' (lib/hub-state.sh)
+#           generic, table-driven classification. A new kind's standard-walk and
+#           baseline-split behavior are already covered by that — only
+#           hub_domain_buckets itself would need attention, and only if the new
+#           kind requires a genuinely new classification axis.
 #         - hi_selection_kind_noun_plural — only if the new noun's plural is
 #           irregular; the regular "+s" fallback covers the rest.
 #       (This list previously named hi_preview_selectable_blocks, a function that

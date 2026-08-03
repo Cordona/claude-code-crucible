@@ -90,8 +90,10 @@ hub_states_require() {
 }
 
 # hub_state_counts -> sets HUB_COUNT_INSTALLED / _DIVERGED / _AVAILABLE /
-# _DISCOVERED from HUB_STATES. One computation, reused by the status block,
-# List's own totals and Doctor — never independently re-derived.
+# _DISCOVERED from HUB_STATES. One computation, reused by the status block
+# only — List and Doctor deliberately compute their own row-level totals from
+# HUB_ROWS instead (a different but equally correct granularity: HUB_ROWS
+# collapses an atomic/selectable group's units into one row).
 hub_state_counts() {
 	hub_states_require
 	# Counted inside awk (END { print n + 0 }) rather than piped through

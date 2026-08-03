@@ -557,7 +557,7 @@ hub_discovery_build() {
 # item's own name.
 #
 # EVERY SHAPE THIS AWK DECIDES ON IS PASSED IN VIA -v — the directory segments,
-# the role suffixes, the type-word prefixes and the four group-key prefixes. None
+# the role suffixes, the type-word prefixes and the five group-key prefixes. None
 # of them is re-spelled here as an awk literal, and no group key is parsed by a
 # magic substr() offset. Both were true before this pass, and both were silent
 # failure modes: adding a suffix to HUB_SD_TECH_AGENT_SUFFIXES fixed discovery and

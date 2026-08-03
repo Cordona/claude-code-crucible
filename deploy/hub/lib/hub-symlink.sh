@@ -5,8 +5,13 @@
 # Sourced after lib/hub-common.sh and lib/hub-state.sh (uses hub_target_path,
 # hub_readlink_abs). Not executable on its own.
 #
-# EVERY hub write funnels through the functions here — never a bare ln/rm at a
-# call site — so the guard and the outcome vocabulary live in exactly one place.
+# EVERY hub write to a domain-unit symlink funnels through the functions here —
+# never a bare ln/rm at a call site for those — so the guard and the outcome
+# vocabulary live in exactly one place for symlink installs/removals. The one
+# documented exception is lib/hub-bundle.sh's CLAUDE.md backup/restore
+# (plain-file cp/rm/mv, not a symlink op) — it reuses hub_assert_write_target
+# directly but has no outcome-vocabulary wrapper of its own; see its own
+# comment for why.
 # The guard logic is carried forward unchanged in substance from the previous
 # hub: it is not domain-aware and had no reason to change. What is new is the
 # path-level layer (hub_symlink_at / hub_unlink_at), so the first-run bundle's

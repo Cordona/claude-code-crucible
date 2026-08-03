@@ -46,7 +46,10 @@
 # it is the framework's definition of "required": the next surface that needs that
 # fact must read this table rather than grow a second, drifting copy of it.
 #
-# Exit codes: 0 always (Doctor reports; it never fails); 2 usage error.
+# Exit codes: 0 on a normal report (Doctor's own diagnostics never fail the
+#   run); 1 on an unresolvable --source or a missing jq dependency for
+#   --format=json; 2 on a usage error; 3 if the user quits from the
+#   interactive pause.
 #
 # Portability: POSIX sh only. jq is required ONLY for --format=json.
 set -eu
