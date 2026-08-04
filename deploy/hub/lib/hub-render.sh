@@ -284,13 +284,19 @@ hub_nav_keys_hint() {
 }
 
 # hub_glyph_for_state STATE -> the listing glyph for one of the three statuses
-# List groups rows by (spec §7: ✓ green installed, + blue available, ! orange
+# List groups rows by (✓ green installed, ○ yellow available, ! orange
 # diverged), plus ORPHANED which reuses the failure glyph because a dangling
-# link IS a genuine fault, not a pending action.
+# link IS a genuine fault, not a pending action. AVAILABLE IS hub_glyph_absent,
+# NOT hub_glyph_new: List is a report of current state, not a plan — `+`/`-`
+# are reserved for the plan stage (Install/Uninstall's own preview screens,
+# hi_unit_glyph/hub_glyph_remove), where they mean "will be added/removed" once
+# the user confirms. An available-but-not-installed item here is the same
+# absence hub-status.sh already reports with this same glyph, not a pending
+# action.
 hub_glyph_for_state() {
 	case $1 in
 	installed) hub_glyph_ok ;;
-	available) hub_glyph_new ;;
+	available) hub_glyph_absent ;;
 	DIVERGED) hub_glyph_warn ;;
 	ORPHANED) hub_glyph_fail ;;
 	*) die "hub_glyph_for_state: unknown state '$1'" ;;
