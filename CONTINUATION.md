@@ -7,13 +7,15 @@ context to execute. Read the essentials first.
 
 ## Essentials — read first (needed to execute *any* task below)
 
-- **Repo layout:** `crucible/` is the repo **root** — README at top level, `deploy/deploy.sh`,
-  `operations/`, `main-thread/`, `roles/`, `patterns/`, `contracts/`.
-- **Deploy model:** `deploy.sh` discovers agents (`*.md` with `name:`+`description:` frontmatter),
+- **Repo layout:** `crucible/` is the repo **root** — README at top level, `deploy/hub/`,
+  and the domain folders `software-development/`, `project-management/`, `gtd/`, plus the tiny
+  cross-domain `accounts/`. Contracts live per-domain (`{domain}/contracts/`), not at the root.
+- **Deploy model:** the Crucible Management Hub (`deploy/hub/hub-install.sh`, invoked as
+  `crucible-hub install`) discovers agents (`*.md` with `name:`+`description:` frontmatter),
   skills (dirs with `SKILL.md`), contracts (`*.schema.json`), and the one `CLAUDE.md` **by
   marker**, and symlinks them into `~/.claude`. Runtime data + the deploy target namespace live
-  under `~/.claude/crucible/…` regardless of the source repo's name. Run `deploy.sh --dry-run`
-  first, always.
+  under `~/.claude/crucible/…` regardless of the source repo's name. Run `crucible-hub install`
+  without `--apply` first, always — that's the dry run.
 - **How work is done — four separate, independently-gated procedures, not one:**
   `flow-implementation` (build → `{tech}`-developer + `{tech}`-reviewer ONLY, never a lens →
   bounded fix loop: round-1 fix, round-2 verify, stop; a 3rd round only on an open CRITICAL/HIGH),
@@ -61,63 +63,37 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
 ### B. New framework capabilities
 
 - **On-demand tech pairs** (inbox `20260726T060101Z-fd2f70ff`) — **DONE.** New skill
-  `main-thread/skills/flow-tech-pair`: polls for language/ecosystem → collision check (inform,
+  `software-development/flows/flow-tech-pair`: polls for language/ecosystem → collision check (inform,
   never decide) → gate → a parallel research swarm (style guide, pitfalls/correctness, linters,
   framework conventions if named) feeds one ephemeral synthesis document → two new meta-authoring
-  agents, `operations/agents/tech-developer-generator` then `tech-reviewer-generator`, generate the
-  pair in sequence against fixed reference templates (`templates/tech-pair/`, extracted from the
-  real Kotlin/Rust/Shell pairs — never deployed, `deploy.sh` excludes anything under `templates/`
-  or `template-`-prefixed, by two independent checks) → a lens review runs BEFORE anything deploys,
+  agents, `software-development/agents/specialists/tech-developer-generator` then `tech-reviewer-generator`, generate the
+  pair in sequence against fixed reference templates (`software-development/templates/tech-pair/`, extracted from the
+  real Kotlin/Rust/Shell pairs — never deployed, the hub's install script (`deploy/hub/hub-install.sh`)
+  excludes anything under `templates/` or `template-`-prefixed, by two independent checks) → a lens review runs BEFORE anything deploys,
   capped at 3 rounds/seat like the tech-pair fix loop → the human chooses whether to deploy. The
   `{tech}`-reviewer's correctness floor is grounded in the research swarm's pitfalls findings, not
   generic advice. Validated end-to-end by generating a real pair: `python-developer`/
   `python-reviewer` + `standard-python`, now deployed — the review pass caught and fixed a real
   security defect (a `bandit -ll` flag that silently excluded Bandit's own LOW-severity
   hardcoded-credential checks) and a real severity miscalibration, not just template conformance.
-- **Modular / selective deploy** (inbox `20260726T060057Z-6e67c59c`): let `deploy.sh` deploy the
-  **whole framework OR a selected subset** (some developers/reviewers, or only the GitHub flow, or
-  only Jira). `deploy.sh` already has `--only TYPE`; extend to component/profile selection via a
-  selection script/manifest. Keep the marker discovery + required-agent/skill-ref checks coherent
-  under a partial roster.
+- **Modular / selective deploy** (inbox `20260726T060057Z-6e67c59c`) — **DONE.** The hub's
+  `--domains=CSV`/`--technologies=CSV`/`--pm-backends=CSV` (install) and `--components=CSV`
+  (uninstall) selection already covers this — a selected subset, not just whole-framework,
+  installs/uninstalls coherently under the marker discovery + required-agent/skill-ref checks.
 - **Independent tests-developer pattern** (inbox `20260726T065816Z-2751bc13`) — **DONE**, superseded by
-  the `flow-orchestration` retirement itself: `tests-developer` (`roles/developers/agents/`) is now the
+  the `flow-orchestration` retirement itself: `tests-developer` (`software-development/agents/developers/`) is now the
   sole test-writing agent, `build-core` structurally forbids the `{tech}`-developer from touching a
   test file, `review-core` backstops it as a gating violation independent of content, and
   `flow-testing` is the only place tests get written — on the human's explicit confirmation the
   implementation is right, never automatically after a build or a review.
-- **Native-task progress pattern** (inbox `20260725T133509Z-28ec3911`): a skill that, on request,
-  has the orchestrator use Claude Code's native tasks (`TaskCreate`/`TaskUpdate`) to track work and
-  surface **live status**. New `main-thread` skill (or a CLAUDE.md addition) — contract-level, gate
-  carefully.
-- **Trackable-plan pattern** (inbox `20260725T081715Z-59bfdd95`): introduce the "trackable plan"
-  pattern as a new **main-thread skill** — a plan that stays linked to its execution as work
-  proceeds.
 - **Deterministic MD rendering** (inbox `20260725T072634Z-b8ca8251`) — **DONE.** `flow-spec`'s
   (`spec-create.sh`/`spec-approve.sh`/`render-md.sh`) and `flow-review`'s
   (`review-create.sh`/`review-add-round.sh`/`review-update-status.sh`/`render-md.sh`) durable-artifact
   scripts are built, tested, and reviewed, mirroring `flow-inbox`'s `render-md.sh` pattern (JSON
   source of truth + a sole deterministic renderer).
-- **PM tracker disambiguation** (inbox `20260725T061121Z-b1ead236`): when a backlog request doesn't
-  name Jira vs GitHub, the PM flow should **ask** rather than guess. In `flow-project-management`,
-  mirror the existing mandatory audience-ask. Low-token, contained.
-- **Agent-description token trim** (inbox `20260728T054725Z-b4185fdb`): Claude Code warns that
-  agent descriptions are **over the 15k-token limit (~23k)**. Trim the `{tech}`-developer/reviewer
-  + `lens-*` + operational agent frontmatter `description:` fields so the deployed roster fits.
-  Constraint: the orchestrator selects the review roster by reading these `description:`s — trim
-  without losing the applicability signal each lens declares.
-- **Canary GH issue** (inbox `20260725T062356Z-a3495efe`): implement the "canary gh issue" item —
-  confirm the specifics with the user before building.
 
 ### C. Structural refactors — run a `flow-decision` PANEL first (do NOT decide from the gut)
 
-- **Source-tree ownership reorg** (inbox `20260725T091423Z-30cae486`): directory placement
-  currently ASSERTS ownership. Four proposer-plans/orchestrator-executes skills
-  (`procedure-git-ops`, `procedure-gh-issues`, `procedure-gh-pr`, `procedure-jira`) file their
-  WRITE scripts under the planner agent, but the **orchestrator** executes them. Fork: (a)
-  craft-owner (keep under the agent) vs (b) execution-owner (move to main-thread/neutral). Reorg is
-  safe/cheap (deploy symlinks by basename; move dir + redeploy re-points the same-named symlink;
-  only risk is the move→redeploy dangling window — do it atomically, no mid-flight sessions).
-  **Panel it.**
 - **Shell-engine DRY/SRP restructure** (inbox `20260725T115318Z-4f37e4a5`): `jira.sh` is one large
   dispatcher (SRP fail; the re-read/token-cost problem); the gh scripts have ~700 duplicated
   plumbing lines (incl. the path-traversal guard + auth gate, drift risk). Target (agreed):
