@@ -72,20 +72,21 @@ cannot would be a gap.
 The Main menu opens (a TTY is required — off a terminal, use the commands below):
 
 ```
-  1. Status           — which domains are installed
-  2. List             — installed vs available components
-  3. Doctor           — required tools + account health
-  4. Accounts         — GitHub / Jira
-  5. Install all      — every domain, technology and backend
-  6. Install          — choose domains
-  7. Uninstall all
-  8. Uninstall        — choose technologies or backends
-  9. Exit
+  1.  Status              — which domains are installed
+  2.  List                — installed vs available components
+  3.  Doctor              — required tools + account health
+  4.  Accounts            — GitHub / Jira
+  5.  Create a tech pair  — a developer + reviewer pair for a technology
+  6.  Install all         — every domain, technology and backend
+  7.  Install             — choose domains
+  8.  Uninstall all
+  9.  Uninstall           — choose technologies or backends
+  10. Exit
 ```
 
 From any screen: `?` shows help, `b` goes back one level, `q` quits.
 
-1. **Pick `6` (Install).** A checklist asks which domains you want: Software Development, Project
+1. **Pick `7` (Install).** A checklist asks which domains you want: Software Development, Project
    Management, Getting Things Done. Type a row number or name and press Enter to select or
    deselect it; combine several with `1,3,5` or a range `1-5`; `a` selects all, `n` none. Enter on
    an empty prompt confirms.
@@ -104,7 +105,7 @@ From any screen: `?` shows help, `b` goes back one level, `q` quits.
 6. **Run `4` (Accounts)** to authenticate GitHub and Jira. See
    [Authenticating GitHub and Jira](#authenticating-github-and-jira).
 
-`5` (Install all) takes every domain, technology and backend in one step, through the same preview
+`6` (Install all) takes every domain, technology and backend in one step, through the same preview
 and confirmation.
 
 > **Where things land.** Agents symlink to `~/.claude/agents/<name>.md`, skills to

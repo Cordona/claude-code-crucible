@@ -138,18 +138,25 @@ ch_run() {
 ch_main_menu_once() {
 	printf 'Crucible Management Hub\n%s\n\n' "$(hub_dim "target: $CH_TARGET")"
 
-	printf '  %s Status           %s\n' "$(hub_number '1.')" "$(hub_dim '— which domains are installed')"
-	printf '  %s List             %s\n' "$(hub_number '2.')" "$(hub_dim '— installed vs available components')"
-	printf '  %s Doctor           %s\n' "$(hub_number '3.')" "$(hub_dim '— required tools + account health')"
-	printf '  %s Accounts         %s\n' "$(hub_number '4.')" "$(hub_dim '— GitHub / Jira')"
-	printf '  %s Install all      %s\n' "$(hub_number '5.')" "$(hub_dim '— every domain, technology and backend')"
-	printf '  %s Install          %s\n' "$(hub_number '6.')" "$(hub_dim '— choose domains')"
-	printf '  %s Uninstall all\n' "$(hub_number '7.')"
-	printf '  %s Uninstall        %s\n' "$(hub_number '8.')" "$(hub_dim '— choose technologies or backends')"
-	printf '  %s Exit\n\n' "$(hub_number '9.')"
+	# THE LABEL COLUMN IS HELD FIXED ACROSS THE 9-TO-10 DIGIT CHANGE by one extra
+	# space in every single-digit row's own FORMAT STRING, never inside the
+	# hub_number argument: padding within the colored substitution would ship a
+	# space wrapped in SGR attributes, and this hub colors the token the user
+	# types, not the whitespace beside it. Item 10's row is the one with a single
+	# space, because its number is the one that is a character wider.
+	printf '  %s  Status              %s\n' "$(hub_number '1.')" "$(hub_dim '— which domains are installed')"
+	printf '  %s  List                %s\n' "$(hub_number '2.')" "$(hub_dim '— installed vs available components')"
+	printf '  %s  Doctor              %s\n' "$(hub_number '3.')" "$(hub_dim '— required tools + account health')"
+	printf '  %s  Accounts            %s\n' "$(hub_number '4.')" "$(hub_dim '— GitHub / Jira')"
+	printf '  %s  Create a tech pair  %s\n' "$(hub_number '5.')" "$(hub_dim '— a developer + reviewer pair for a technology')"
+	printf '  %s  Install all         %s\n' "$(hub_number '6.')" "$(hub_dim '— every domain, technology and backend')"
+	printf '  %s  Install             %s\n' "$(hub_number '7.')" "$(hub_dim '— choose domains')"
+	printf '  %s  Uninstall all\n' "$(hub_number '8.')"
+	printf '  %s  Uninstall           %s\n' "$(hub_number '9.')" "$(hub_dim '— choose technologies or backends')"
+	printf '  %s Exit\n\n' "$(hub_number '10.')"
 	# The action hint lives ON the prompt line, not a separate line above it —
 	# no `b` here (the Main menu has nowhere to go back to), but `q` IS a valid
-	# choice (same as `9`) and was accepted without ever being advertised.
+	# choice (same as `10`) and was accepted without ever being advertised.
 	printf '  %s%s%s%s%s\n> ' \
 		"$(hub_dim 'Type a number')" "$(hub_sep_text)" "$(hub_hint_segment q quit)" \
 		"$(hub_sep_text)" "$(hub_hint_segment '?' help)"
@@ -161,11 +168,15 @@ ch_main_menu_once() {
 	2) ch_run ch_capability "$HUB_DIR0/hub-list.sh" || return 1 ;;
 	3) ch_run ch_capability "$HUB_DIR0/hub-doctor.sh" || return 1 ;;
 	4) ch_run ch_accounts_submenu || return 1 ;;
-	5) ch_run ch_capability "$HUB_DIR0/hub-install.sh" --all --apply || return 1 ;;
-	6) ch_run ch_capability "$HUB_DIR0/hub-install.sh" || return 1 ;;
-	7) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" --all --apply || return 1 ;;
-	8) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" || return 1 ;;
-	9 | q | quit) return 1 ;;
+	# NOT through ch_capability: this screen is rendered by lib/hub-nav.sh in
+	# this very process and inspects no deployment, so it has no --target to be
+	# threaded (the one thing ch_capability exists to thread).
+	5) ch_run hub_show_tech_pair || return 1 ;;
+	6) ch_run ch_capability "$HUB_DIR0/hub-install.sh" --all --apply || return 1 ;;
+	7) ch_run ch_capability "$HUB_DIR0/hub-install.sh" || return 1 ;;
+	8) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" --all --apply || return 1 ;;
+	9) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" || return 1 ;;
+	10 | q | quit) return 1 ;;
 	'?') hub_show_help ;;
 	*) printf 'Not a valid choice.\n' ;;
 	esac

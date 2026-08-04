@@ -2,8 +2,8 @@
 # lib/hub-nav.sh — the interactive navigation and confirmation primitives every
 #                   mutating screen shares: the safe/dangerous [Y/n]-style
 #                   prompt, the critical typed-phrase gate, the pending-
-#                   selection discard guard, the Result-screen pause, and the
-#                   global help screen.
+#                   selection discard guard, the Result-screen pause, the global
+#                   help screen, and the Create-a-tech-pair screen.
 #
 # Sourced after lib/hub-common.sh and lib/hub-render.sh. Not executable on its
 # own.
@@ -90,10 +90,11 @@ hub_help_text() {
 		'' \
 		'  Adding a new technology (tech pair)' \
 		'    Software Development ships with a fixed set, but the framework can' \
-		'    generate a new developer+reviewer pair on demand — in a Claude Code' \
-		'    session (not from this hub), just ask: "I need a tech pair for Go."' \
-		'    Review and deploy it, then re-run this hub to install it like any' \
-		'    other technology.' \
+		'    generate a new developer+reviewer pair on demand. "Create a tech' \
+		'    pair" on the main menu prints a prompt to paste into a Claude Code' \
+		'    session, which is where the generation itself runs. Review and deploy' \
+		'    it there, then re-run this hub to install it like any other' \
+		'    technology.' \
 		'' \
 		'  Project Management' \
 		'    GitHub and/or Jira backends: lets an agent file, comment on, and' \
@@ -139,6 +140,72 @@ hub_help_text() {
 hub_show_help() {
 	hub_help_text >&2
 	IFS= read -r _ || :
+}
+
+# hub_show_tech_pair -> the Create-a-tech-pair screen: the concept, the three
+# steps, and the priming prompt to paste into a Claude Code session, which is
+# where a pair is actually generated. Returns hub_press_key_to_continue's own
+# status (0 back to the menu, 3 quit the hub), so the Main menu's ch_run
+# translates a q here exactly as it does on every other screen.
+#
+# A STRAIGHT RENDER-THEN-PAUSE, the same shape as Status's and Doctor's own text
+# screens: there is nothing further to choose here — no submenu, no save-to-file
+# or clipboard alternative, and no language to poll for (the prompt's own
+# procedure polls for that once a real session runs it) — so the pause is
+# hub_press_key_to_continue, never a second prompt-reading loop of this screen's
+# own.
+#
+# TO stdout, unlike hub_show_help immediately above, and for the reason stated
+# there from the other side: the help overlay is reachable from the checklist and
+# the confirm screen, both of which a caller can reach under --format=env|json,
+# so it must stay off the machine channel. This screen is reachable ONLY from the
+# interactive Main menu, which requires a TTY and renders no machine format at
+# all, so stdout IS its human channel — the same choice ch_accounts_submenu makes.
+# Its own pause still writes to stderr, exactly as every text Result screen's
+# does.
+#
+# THE PROMPT BLOCK IS UNCOLORED AND UNINDENTED, and both halves of that are
+# deliberate rather than an omission: it is the one thing on this screen the user
+# selects and copies, so an ANSI escape would travel into the session with it and
+# leading spaces would be pasted along with the text. The rules above and below
+# it are what delimit it instead, which is why they are the only furniture here.
+hub_show_tech_pair() {
+	hstp_rule=$(hub_dim "$(hub_rule_text)")
+
+	hub_print_header 'Crucible Management Hub — Create a Tech Pair'
+	printf '\n'
+	printf '%s\n' \
+		'  A tech pair is a developer + reviewer agent pair for one technology.' \
+		"  Building one runs a research swarm — the language's style guide," \
+		'  common pitfalls, and framework conventions — then generates and' \
+		'  reviews both agents from that research before anything deploys.' \
+		''
+
+	# hub_step, NOT hub_number: these are ordinals in an instructional list, and
+	# this screen accepts no numbered input — see HUB_STEP_COLOR's own comment.
+	printf '  %s Start a Claude Code session\n' "$(hub_step '1.')"
+	printf '       %s\n\n' "$(hub_command claude)"
+	printf '  %s Paste the prompt below\n\n' "$(hub_step '2.')"
+	printf "  %s Once it's reviewed and deployed, come back here and run Install\n\n" \
+		"$(hub_step '3.')"
+
+	printf '%s\n' "$hstp_rule"
+	# shellcheck disable=SC2016  # the backticks around flow-tech-pair are literal
+	# markdown in the prompt's own text, which is why the whole block is
+	# single-quoted: it is pasted into a Claude Code session verbatim, and nothing
+	# in it is ever meant to expand here.
+	printf '%s\n' \
+		'I need a new tech pair.' \
+		'' \
+		'Bind the `flow-tech-pair` skill and run its full on-demand procedure:' \
+		'poll me for the missing language/ecosystem essentials, check for an' \
+		'existing-pair collision, gate the generation plan for my approval, run' \
+		'the research swarm, generate the developer + reviewer pair against the' \
+		'fixed templates, run the lens review before anything deploys, and' \
+		'report back so I can choose whether to deploy.'
+	printf '%s\n' "$hstp_rule"
+
+	hub_press_key_to_continue
 }
 
 # hub_confirm_gate TIER PENDING_COUNT -> the confirmation prompt on a dry-run

@@ -84,6 +84,45 @@ hub_sep_text() {
 	fi
 }
 
+# HUB_RULE_COLUMNS — how wide hub_rule_text draws a full-width horizontal rule.
+# A fixed count rather than a $COLUMNS/tput query: every other width in this hub
+# is fixed too (lib/hub-common.sh's truncation budgets), so a rule that alone
+# tracked the terminal would be the one element disagreeing with its neighbours
+# about how wide the screen is.
+HUB_RULE_COLUMNS=70
+
+# hub_rule_text -> a HUB_RULE_COLUMNS-wide horizontal rule as PLAIN, UNCOLOURED
+# text, honouring accessible mode.
+#
+# UNCOLOURED FOR A DIFFERENT REASON THAN hub_arrow_text/hub_sep_text ABOVE, and
+# the distinction is worth stating so this one is not later "fixed" by folding
+# the dim in: those two are text-only because hub-doctor.sh emits them into
+# machine payload under --format=env|json, where an ANSI escape would corrupt a
+# parsed value. This helper has NO machine consumer — nothing emits a rule into
+# a payload. It is plain simply because its one caller dims it (hub_dim), and
+# there is no second treatment to choose between.
+#
+# It lives HERE rather than at the screen that draws it because of HUB_ASCII, not
+# because of the shape it shares with its neighbours: the promise that EVERY
+# separator degrades under accessible mode is only keepable while every
+# separator's fallback is declared in this one file.
+#
+# A fill loop, not a 70-character literal, matching hub_pad_right's own manual
+# fill (lib/hub-common.sh): the width then has one NAME, instead of being a
+# length no reader can verify by looking at it.
+hub_rule_text() {
+	if [ "$HUB_ASCII" = 1 ]; then
+		hrt_char='-'
+	else
+		hrt_char='─'
+	fi
+	hrt_i=0
+	while [ "$hrt_i" -lt "$HUB_RULE_COLUMNS" ]; do
+		printf '%s' "$hrt_char"
+		hrt_i=$((hrt_i + 1))
+	done
+}
+
 # Only ✓, ✗, ○ and → are genuinely non-ASCII; !, +, and - already are ASCII and
 # pass through both modes unchanged. hub_glyph_arrow is built ON hub_arrow_text
 # rather than repeating the fallback, so the two can never disagree about what
@@ -222,6 +261,43 @@ hub_key() { hub_c "$HUB_KEY_COLOR" "$1"; }
 # from plain text.
 HUB_NUMBER_COLOR=36
 hub_number() { hub_c "$HUB_NUMBER_COLOR" "$1"; }
+
+# HUB_STEP_COLOR / hub_step -> an ORDINAL IN AN INSTRUCTIONAL LIST — "1.", "2.",
+# "3." on a screen that walks the user through steps to perform elsewhere — as
+# opposed to HUB_NUMBER_COLOR/hub_number directly above, which is "a number you
+# may TYPE" at a numbered choice (the Main menu, the Accounts submenu, a
+# checklist row).
+#
+# The fourth name on 36, and its own constant for the same reason
+# HUB_ARROW_COLOR, HUB_SAFE_COLOR and HUB_NUMBER_COLOR are each their own: the
+# four collide on one SGR code today and mean four unrelated things, so
+# recoloring any one must not move the others. Reusing hub_number here would
+# also have advertised input the screen does not take — the same reason
+# hub_command below is not hub_key.
+HUB_STEP_COLOR=36
+hub_step() { hub_c "$HUB_STEP_COLOR" "$1"; }
+
+# HUB_COMMAND_COLOR / hub_command -> the SAME one-place-to-change-it rule as
+# HUB_KEY_COLOR/hub_key and HUB_NUMBER_COLOR/hub_number, for one more thing this
+# hub colors: a literal terminal command shown as part of a screen's own
+# INSTRUCTIONAL CONTENT — something the user runs in their shell, not at any
+# prompt this hub renders (the `claude` line on the Create-a-tech-pair screen).
+# Never a bare `hub_c 31` at the call site, for the same reason none of the
+# others is.
+#
+# NOT hub_key: a key is typed AT a prompt of this hub's and is answered by it,
+# whereas this is a command the user takes elsewhere — coloring it as a key
+# would advertise input a screen does not take (the same distinction
+# lib/hub-nav.sh's help screen already draws when it declines to color the
+# `status`/`install all` subcommand names as keys).
+#
+# The FOURTH name on 31, and its own constant for exactly the reason
+# HUB_FAIL_COLOR, HUB_REMOVE_COLOR and HUB_CRITICAL_COLOR are each their own:
+# those three carry a failure / pending-removal / danger connotation this one
+# deliberately does not — "type this" is neutral instruction — so recoloring any
+# of them must not recolor this, and vice versa.
+HUB_COMMAND_COLOR=31
+hub_command() { hub_c "$HUB_COMMAND_COLOR" "$1"; }
 
 # HUB_HINT_KEY_COLOR — dim + cyan, for a key listed as part of a trailing
 # hint list (see hub_hint_segment) — as opposed to HUB_KEY_COLOR, which is for
