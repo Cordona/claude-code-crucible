@@ -273,12 +273,18 @@ if [ -z "$OPT_HOST" ] && [ "$ACTIVE_HOSTS_N" -gt 1 ]; then
 	GH_ACTIVE_AMBIGUOUS=true
 	# Build a deterministic (LC_ALL=C sorted) "login@host,..." set.
 	GH_ACTIVE_ACCOUNTS=""
+	# `set -f` guards the unquoted command substitution: splitting it on
+	# whitespace is the INTENDED mechanism (one pair per line), but globbing is
+	# not — a '*' or '?' surviving from a parsed login/host would otherwise be
+	# filename-expanded against the cwd and fabricate the candidate set.
+	set -f
 	for pair in $(printf '%s\n' "$ACT_DATA" | while IFS="$TAB" read -r a_host a_login; do
 		[ -n "$a_login" ] && printf '%s@%s\n' "$a_login" "$a_host"
 	done | sort); do
 		if [ -z "$GH_ACTIVE_ACCOUNTS" ]; then GH_ACTIVE_ACCOUNTS=$pair
 		else GH_ACTIVE_ACCOUNTS="$GH_ACTIVE_ACCOUNTS,$pair"; fi
 	done
+	set +f
 	error "multiple hosts have an active account ($GH_ACTIVE_ACCOUNTS); cannot pick one"
 	warn  "re-run with --host HOST to resolve a single active account"
 	emit
