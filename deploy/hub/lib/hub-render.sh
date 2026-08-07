@@ -347,10 +347,12 @@ hub_hint_segment() {
 # hub_hint_segment. The single definition of this trio's wording AND color.
 # Called by hub_confirm_prompt, hub_checklist_hint_text (which appends its own
 # "Enter: confirm" AFTER the trio, not before) and the Accounts submenu
-# prompt. hub_press_key_to_continue does NOT call this: it advertises no `b`
-# and leads with Enter instead, so it composes its own trio-shaped hint by
-# hand. The Main menu, the one screen where `b` has nothing to go back to,
-# also composes its own hint by hand rather than calling this.
+# prompt. Every screen where `b` is NOT applicable composes its own hint by
+# hand instead of calling this, rather than this function growing a
+# which-keys-to-include parameter: hub_press_key_to_continue (advertises no
+# `b`, leads with Enter), the Main menu (nothing to go back to), and
+# hu_choose_backup in hub-uninstall.sh (reached by --all alone, so likewise no
+# earlier screen).
 hub_nav_keys_hint() {
 	hnkh_sep=$(hub_sep_text)
 	printf '%s%s%s%s%s' \
@@ -425,28 +427,23 @@ hub_dry_run_marker() {
 # the spec's confirmation-tier table. TIER is safe | dangerous. (critical's
 # typed-phrase prompt lives in lib/hub-nav.sh — it is not a same-shape [Y/n]
 # prompt.) "Proceed? [Y/n]" is colored per tier (cyan for safe, yellow for
-# dangerous, matching the ladder's own color column); every hint key appended
-# after it (`c` and the b/q/? trio are ALL valid at this exact prompt —
-# hub_confirm_gate's own case statement handles each) is colored via
-# hub_hint_segment / hub_nav_keys_hint instead, NEVER by nesting one inside this
-# function's own `hub_c` call — hub_c always ends with a full SGR reset, so an
-# inner hub_c/hub_key call would silently kill the outer tier color for
-# everything printed after it.
+# dangerous, matching the ladder's own color column); the b/q/? trio appended
+# after it (all three valid at this exact prompt — hub_confirm_gate's own case
+# statement handles each) is colored via hub_nav_keys_hint instead, NEVER by
+# nesting it inside this function's own `hub_c` call — hub_c always ends with a
+# full SGR reset, so an inner hub_c/hub_key call would silently kill the outer
+# tier color for everything printed after it.
 #
-# `c: cancel` sits BETWEEN the tier question and the nav trio, and via
-# hub_hint_segment like every other trailing-hint key (never a hand-rolled
-# "$(hub_key c)$(hub_dim ': cancel')" — that composition is exactly what
-# hub_hint_segment exists to own). Two reasons for that position, both about
-# what the key IS rather than about line aesthetics. `c` is an answer to THIS
-# prompt's own question — a name for the decline that [Y/n]'s `n` half already
-# implies (see hub_confirm_gate) — whereas b/q/? are the hub's GLOBAL
-# navigation, valid at every prompt that renders them; grouping the
-# prompt-specific answer with the question and leaving the trio an unbroken tail
-# keeps b/q/? in the same relative position on every screen. And it is the
-# ordering lib/hub-checklist.sh's hub_checklist_hint_text already established
-# from the other side: screen-specific alternatives first (`1,3-5`, `a`, `n`,
-# `/text`), THEN hub_nav_keys_hint. Splitting the trio to slot `c` inside it
-# would also mean either breaking hub_nav_keys_hint apart or duplicating its
+# THE TRIO IS THE WHOLE HINT — this prompt advertises no screen-specific key of
+# its own. It used to lead with `c: cancel`, dropped because the key it named
+# was unreachable behavior (see hub_confirm_gate's own header for why): the
+# [Y/n] brackets already say how to decline, so the question needs no
+# alternative spelling of "no" slotted in front of the hub's global navigation.
+# Should a genuinely prompt-specific key ever earn a place here, it goes BEFORE
+# hub_nav_keys_hint, never inside it — the ordering
+# lib/hub-checklist.sh's hub_checklist_hint_text already established from the
+# other side (screen-specific alternatives first, THEN the trio), and splitting
+# the trio would mean either breaking hub_nav_keys_hint apart or duplicating its
 # wording, which is the drift that function exists to prevent.
 #
 # The segments are joined by hub_sep_text, like every other multi-segment hint
@@ -454,8 +451,8 @@ hub_dry_run_marker() {
 # no spaces of its own in the format string, since hub_sep_text carries its own
 # spacing. A hardcoded '·' here, which is what this used to be, was the one
 # separator in the hub that did NOT degrade under --accessible, against
-# HUB_ASCII's own stated contract that every separator does. Assigned ONCE to
-# hcp_sep rather than substituted per slot, matching hub_nav_keys_hint and
+# HUB_ASCII's own stated contract that every separator does. Held in hcp_sep
+# rather than substituted inline, matching hub_nav_keys_hint and
 # hub_checklist_hint_text.
 hub_confirm_prompt() {
 	hcp_tier=$1
@@ -465,8 +462,7 @@ hub_confirm_prompt() {
 	*) die "hub_confirm_prompt: unknown tier '$1'" ;;
 	esac
 	hcp_sep=$(hub_sep_text)
-	printf '%s%s%s%s%s: ' "$(hub_c "$hcp_color" "Proceed? [$hcp_yn]")" \
-		"$hcp_sep" "$(hub_hint_segment c cancel)" \
+	printf '%s%s%s: ' "$(hub_c "$hcp_color" "Proceed? [$hcp_yn]")" \
 		"$hcp_sep" "$(hub_nav_keys_hint)"
 }
 

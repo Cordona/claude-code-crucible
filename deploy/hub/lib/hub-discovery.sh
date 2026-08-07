@@ -176,11 +176,47 @@ hub_disc_sd_technologies() {
 #   * every skill under flows/
 #   * every skill under shared/ EXCEPT the per-technology standards under
 #     shared/standards/tech/ (those belong to their technology's group)
-#   * every specialist agent plus every skill nested beneath one
+#   * every specialist agent plus every skill nested beneath one, EXCEPT a
+#     git-operator PR/MR skill that classifies to a VCS host (see below —
+#     those are selectable, not baseline)
 #   * every lens reviewer agent (lens reviewers are unconditional baseline)
+#
+# The VCS fan-out is classified out of the specialist-skills sweep FIRST, by
+# the identical shape hub_disc_pm uses for its tracker fan-out: bucket every
+# specialist skill by hub_sd_vcs_of, emit the selectable VCS groups (only for
+# hosts that actually have a skill in this source), then open the baseline
+# group and emit everything else. A skill that classifies to neither host
+# (git-operator's identity/local-ops/standard-git-* skills, and every other
+# specialist's skills) lands in baseline exactly as it always did.
 hub_disc_sd_baseline() {
 	hdsb_root=$1
 	hdsb_tmp=$(hub_mktemp_dir)
+
+	hub_disc_skill_dirs "$hdsb_root/$HUB_SD_DIR_SPECIALISTS" >"$hdsb_tmp/specialist-skills.txt"
+
+	: >"$hdsb_tmp/specialist-skills-baseline.txt"
+	for hdsb_vcs in $HUB_SD_VCS_KEYS; do
+		: >"$hdsb_tmp/vcs-$hdsb_vcs.txt"
+	done
+	while IFS= read -r hdsb_skill; do
+		[ -n "$hdsb_skill" ] || continue
+		hdsb_class=$(hub_sd_vcs_of "${hdsb_skill##*/}")
+		if [ -n "$hdsb_class" ]; then
+			printf '%s\n' "$hdsb_skill" >>"$hdsb_tmp/vcs-$hdsb_class.txt"
+		else
+			printf '%s\n' "$hdsb_skill" >>"$hdsb_tmp/specialist-skills-baseline.txt"
+		fi
+	done <"$hdsb_tmp/specialist-skills.txt"
+
+	# Selectable VCS groups first, in HUB_SD_VCS_KEYS order. A host with no
+	# skill present in this source is simply not offered.
+	for hdsb_vcs in $HUB_SD_VCS_KEYS; do
+		if [ -s "$hdsb_tmp/vcs-$hdsb_vcs.txt" ]; then
+			hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_VCS" "$hdsb_vcs")"
+			hub_disc_emit_skills_from "$hdsb_tmp/vcs-$hdsb_vcs.txt"
+		fi
+	done
+
 	hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" software-development)"
 
 	hub_disc_agent_files "$hdsb_root/$HUB_SD_DIR_LENS_REVIEWERS" -maxdepth 1 >"$hdsb_tmp/lens.txt"
@@ -206,17 +242,16 @@ hub_disc_sd_baseline() {
 		hub_disc_emit_skills_from "$hdsb_tmp/shared.txt"
 	fi
 
-	hub_disc_skill_dirs "$hdsb_root/$HUB_SD_DIR_SPECIALISTS" >"$hdsb_tmp/specialist-skills.txt"
-	hub_disc_emit_skills_from "$hdsb_tmp/specialist-skills.txt"
+	hub_disc_emit_skills_from "$hdsb_tmp/specialist-skills-baseline.txt"
 
 	rm -rf "$hdsb_tmp" 2>/dev/null || :
 }
 
 # --- Project Management ---------------------------------------------------
 #
-# A Project Management agent's skills are partitioned by hub_pm_backend_of: a
-# skill whose name carries a jira token belongs to the Jira backend, one
-# carrying a gh/github token belongs to the GitHub backend, and anything else
+# A Project Management agent's skills are partitioned by hub_pm_tracker_of: a
+# skill whose name carries a jira token belongs to the Jira tracker, one
+# carrying a gh/github token belongs to the GitHub tracker, and anything else
 # is baseline. All three groups are populated from that ONE classification
 # pass, so a skill can never end up in two of them or in none.
 
@@ -252,25 +287,25 @@ hub_disc_pm() {
 	LC_ALL=C sort -u <"$hdp_tmp/skills-unsorted.txt" >"$hdp_tmp/skills.txt"
 
 	: >"$hdp_tmp/baseline-skills.txt"
-	for hdp_backend in $HUB_PM_BACKEND_KEYS; do
-		: >"$hdp_tmp/backend-$hdp_backend.txt"
+	for hdp_tracker in $HUB_PM_TRACKER_KEYS; do
+		: >"$hdp_tmp/tracker-$hdp_tracker.txt"
 	done
 	while IFS= read -r hdp_skill; do
 		[ -n "$hdp_skill" ] || continue
-		hdp_class=$(hub_pm_backend_of "${hdp_skill##*/}")
+		hdp_class=$(hub_pm_tracker_of "${hdp_skill##*/}")
 		if [ -n "$hdp_class" ]; then
-			printf '%s\n' "$hdp_skill" >>"$hdp_tmp/backend-$hdp_class.txt"
+			printf '%s\n' "$hdp_skill" >>"$hdp_tmp/tracker-$hdp_class.txt"
 		else
 			printf '%s\n' "$hdp_skill" >>"$hdp_tmp/baseline-skills.txt"
 		fi
 	done <"$hdp_tmp/skills.txt"
 
-	# Selectable backends first, in HUB_PM_BACKEND_KEYS order. A backend with
+	# Selectable trackers first, in HUB_PM_TRACKER_KEYS order. A tracker with
 	# no skills present in this source is simply not offered.
-	for hdp_backend in $HUB_PM_BACKEND_KEYS; do
-		if [ -s "$hdp_tmp/backend-$hdp_backend.txt" ]; then
-			hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_PM_BACKEND" "$hdp_backend")"
-			hub_disc_emit_skills_from "$hdp_tmp/backend-$hdp_backend.txt"
+	for hdp_tracker in $HUB_PM_TRACKER_KEYS; do
+		if [ -s "$hdp_tmp/tracker-$hdp_tracker.txt" ]; then
+			hub_disc_begin_group "$(hub_group_key "$HUB_GROUP_PREFIX_PM_TRACKER" "$hdp_tracker")"
+			hub_disc_emit_skills_from "$hdp_tmp/tracker-$hdp_tracker.txt"
 		fi
 	done
 
@@ -313,16 +348,37 @@ hub_disc_gtd() {
 
 # --- Cross-domain ---------------------------------------------------------
 #
-# Whatever skills live under accounts/ form the one shared group. The group key
-# and its consumers are named in lib/hub-domains.sh; the unit itself is
-# discovered, so renaming the skill on disk needs no code change.
+# Whatever skills live under accounts/ form the shared groups, one per VCS
+# host — see lib/hub-domains.sh's §5 header on why this is two groups now
+# rather than the one it used to be. Classification is by SUBSTRING, not
+# hub_sd_vcs_of's token match: accounts/ skill directory names carry the full
+# word (`procedure-github-auth`, `procedure-gitlab-auth`), never the short
+# `gh`/`glab` tokens git-operator's own skills use, so there is no ambiguity a
+# token match exists to prevent here — a plain substring test is the simpler
+# correct tool for a simpler naming shape. The group keys and their consumers
+# are named in lib/hub-domains.sh; the units themselves are discovered, so
+# renaming a skill on disk needs no code change here.
 hub_disc_shared() {
 	hds_src=$1
 	hds_tmp=$(hub_mktemp_dir)
 	hub_disc_skill_dirs "$hds_src/$HUB_ACCOUNTS_DIR" -maxdepth 2 >"$hds_tmp/skills.txt"
-	if [ -s "$hds_tmp/skills.txt" ]; then
-		hub_disc_begin_group "$HUB_SHARED_GIT_AUTH_GROUP"
-		hub_disc_emit_skills_from "$hds_tmp/skills.txt"
+	: >"$hds_tmp/github.txt"
+	: >"$hds_tmp/gitlab.txt"
+	while IFS= read -r hds_skill; do
+		[ -n "$hds_skill" ] || continue
+		case ${hds_skill##*/} in
+		*github*) printf '%s\n' "$hds_skill" >>"$hds_tmp/github.txt" ;;
+		*gitlab*) printf '%s\n' "$hds_skill" >>"$hds_tmp/gitlab.txt" ;;
+		*) warn "ignoring unrecognized skill under $HUB_ACCOUNTS_DIR (name must carry a github or gitlab token): $hds_skill" ;;
+		esac
+	done <"$hds_tmp/skills.txt"
+	if [ -s "$hds_tmp/github.txt" ]; then
+		hub_disc_begin_group "$HUB_SHARED_GITHUB_AUTH_GROUP"
+		hub_disc_emit_skills_from "$hds_tmp/github.txt"
+	fi
+	if [ -s "$hds_tmp/gitlab.txt" ]; then
+		hub_disc_begin_group "$HUB_SHARED_GITLAB_AUTH_GROUP"
+		hub_disc_emit_skills_from "$hds_tmp/gitlab.txt"
 	fi
 	rm -rf "$hds_tmp" 2>/dev/null || :
 }
@@ -454,7 +510,7 @@ hub_disc_resolve_names() {
 # from this list still discovers, installs and lists correctly — it just
 # sentence-cases mechanically. Nothing here affects behavior, flag spellings or
 # on-disk names.
-HUB_DISPLAY_ACRONYMS='php=PHP devops=DevOps gtd=GTD github=GitHub jira=Jira'
+HUB_DISPLAY_ACRONYMS='php=PHP devops=DevOps gtd=GTD github=GitHub gitlab=GitLab jira=Jira'
 
 # hub_discovery_build SRC -> runs the whole scan ONCE and sets:
 #   HUB_UNITS   group  name  kind  src  display
@@ -557,7 +613,7 @@ hub_discovery_build() {
 # item's own name.
 #
 # EVERY SHAPE THIS AWK DECIDES ON IS PASSED IN VIA -v — the directory segments,
-# the role suffixes, the type-word prefixes and the five group-key prefixes. None
+# the role suffixes, the type-word prefixes and the six group-key prefixes. None
 # of them is re-spelled here as an awk literal, and no group key is parsed by a
 # magic substr() offset. Both were true before this pass, and both were silent
 # failure modes: adding a suffix to HUB_SD_TECH_AGENT_SUFFIXES fixed discovery and
@@ -570,12 +626,12 @@ hub_discovery_build() {
 # ===========================================================================
 # A GROUP LABEL IS BARE, AND THE CONTEXT-FREE SCREENS QUALIFY IT THEMSELVES
 # ===========================================================================
-# A Project Management backend used to be labelled "GitHub backend" here, so that
+# A Project Management tracker used to be labelled "GitHub tracker" here, so that
 # the label could stand alone. It read correctly on the two surfaces that show no
 # domain heading and wrongly on every surface that does: List, both Install
 # screens, Uninstall's receipt and Doctor all print the label under a "Project
 # Management" heading, where the suffix repeats the heading on every row — and
-# Install's own sub-selection screen, already titled "select backend(s)", had to
+# Install's own sub-selection screen, already titled "select tracker(s)", had to
 # strip the suffix back off, which is a label being un-built one screen after it
 # was built.
 #
@@ -614,7 +670,8 @@ hub_disc_render_tables() {
 		-v procedure_prefix="$HUB_PROCEDURE_SKILL_PREFIX" \
 		-v p_baseline="$HUB_GROUP_PREFIX_BASELINE" \
 		-v p_tech="$HUB_GROUP_PREFIX_TECH" \
-		-v p_pm_backend="$HUB_GROUP_PREFIX_PM_BACKEND" \
+		-v p_pm_tracker="$HUB_GROUP_PREFIX_PM_TRACKER" \
+		-v p_vcs="$HUB_GROUP_PREFIX_VCS" \
 		-v p_atomic="$HUB_GROUP_PREFIX_ATOMIC" \
 		-v p_shared="$HUB_GROUP_PREFIX_SHARED" '
 		function titlecase(s,   n, i, parts, out, w) {
@@ -709,19 +766,29 @@ hub_disc_render_tables() {
 					role = "selectable"; domain = "software-development"
 					selkind = "technology"; selkey = group_selkey(group, p_tech)
 					label = (count[group] > 1) ? titlecase(selkey) : titlecase(devname[group])
-				} else if (has_group_prefix(group, p_pm_backend)) {
+				} else if (has_group_prefix(group, p_pm_tracker)) {
 					role = "selectable"; domain = "project-management"
-					selkind = "pm-backend"; selkey = group_selkey(group, p_pm_backend); atomic = 1
-					# BARE — "GitHub", not "GitHub backend". See the note above this
-					# function on why the suffix is gone and where the two screens
-					# that still need it get it from instead
-					# (hub_group_label_in_context).
+					selkind = "pm-tracker"; selkey = group_selkey(group, p_pm_tracker); atomic = 1
+					# BARE — "GitHub", not "GitHub tracker". See the note above this
+					# function on why the suffix is gone and where the two heading-less
+					# surfaces that still need it get it from instead
+					# (hub_group_label_in_context) — hub-accounts.sh own qualified
+					# line and hub-uninstall.sh Remove:/Result receipt, NOT the
+					# interactive checklist, which carries its own domain heading now.
 					#
 					# NO APOSTROPHE ANYWHERE IN THIS awk PROGRAM, here or in any
 					# comment inside it: the whole program is one single-quoted shell
 					# word, so an apostrophe ends the quoting and the rest of the awk
 					# source is parsed by the shell. It is a syntax error at source
 					# time, not a subtle one, but it is invisible while writing prose.
+					label = titlecase(selkey)
+				} else if (has_group_prefix(group, p_vcs)) {
+					# The identical shape as the pm_tracker arm just above, for the
+					# identical reason: bare "GitHub"/"GitLab", qualified only by the
+					# same two heading-less surfaces through hub_group_label_in_context
+					# (see the pm-tracker arm above, in this same block).
+					role = "selectable"; domain = "software-development"
+					selkind = "vcs"; selkey = group_selkey(group, p_vcs); atomic = 1
 					label = titlecase(selkey)
 				} else if (has_group_prefix(group, p_atomic)) {
 					# A DOMAIN THAT IS ITS OWN ONE SELECTABLE GROUP. Its selection
@@ -732,11 +799,11 @@ hub_disc_render_tables() {
 					# initialised defaults just above, because each has a plausible
 					# wrong value that breaks a real invariant elsewhere:
 					#   * atomic = 1 routes this group into hub_group_row_key, which
-					#     dies on anything but a pm-backend group — and hub_rows_build
-					#     calls it at top level, so List, Doctor and Uninstall would
-					#     all abort at startup. Removal atomicity comes from the role
-					#     column, not from here (see lib/hub-domains.sh, WHICH GROUPS
-					#     ARE ATOMIC).
+					#     dies on anything but a pm-tracker or vcs group — and
+					#     hub_rows_build calls it at top level, so List, Doctor and
+					#     Uninstall would all abort at startup. Removal atomicity comes
+					#     from the role column, not from here (see lib/hub-domains.sh,
+					#     WHICH GROUPS ARE ATOMIC).
 					#   * a made-up selkind ("domain", "none") would be looked up by
 					#     hub_selection_kind_prefix/_prompt/_noun/_flag, which die on
 					#     an unknown kind, and the literal "none" would additionally be
@@ -807,13 +874,19 @@ hub_group_field() {
 #
 # THE COUNTERPART OF THE BARE LABEL, and the reason the bare label is safe. Every
 # domain-grouped surface reads column 2 directly and gets "GitHub" under a
-# "Project Management" heading; the two surfaces with no heading at all —
-# hub-uninstall.sh's flat checklist, which mixes every domain's rows under one
-# generic title — call this instead and get "Project Management (GitHub)". A
-# technology is unaffected: hub_selection_kind_needs_domain answers `no` for it,
-# so "Java" stays "Java" rather than becoming "Software Development (Java)",
-# which would add a word to every row of the longest list on that screen to
-# disambiguate something that was never ambiguous.
+# "Project Management" heading; the surfaces with no heading at all — today,
+# hub-accounts.sh's own qualified "used by:"/tracker line, and
+# hub-uninstall.sh's Remove:/Result receipt — call this instead and get
+# "Project Management (GitHub)". hub-uninstall.sh's INTERACTIVE checklist is
+# NOT one of these any more: it grew its own domain (and, for Software
+# Development, Technologies/VCS sub-) heading — see that file's
+# CHECKLIST_ROWS header — so it now reads column 2 directly like every other
+# grouped surface, and shows "GitHub" under "Project Management" the same way
+# List and Doctor do. A technology is unaffected either way:
+# hub_selection_kind_needs_domain answers `no` for it, so "Java" stays "Java"
+# rather than becoming "Software Development (Java)", which would add a word
+# to every row of the longest list on that screen to disambiguate something
+# that was never ambiguous.
 #
 # WHICH groups need it is the KIND's own fact, read from the group table's selkind
 # column and answered by lib/hub-domains.sh — never a domain literal or a group-key
@@ -823,9 +896,9 @@ hub_group_field() {
 # argument: hub_group_field dies (via hub_discovery_require) on an unbuilt
 # discovery and hub_domain_label dies on a key outside its closed set, and a die
 # inside a command substitution used as an ARGUMENT is swallowed — the
-# substitution yields empty, printf still succeeds, and a checklist row loses
-# its subject while still being selectable. The same hoisting lib/hub-state.sh's
-# hub_rows_build states.
+# substitution yields empty, printf still succeeds, and a removal receipt or an
+# accounts line loses its subject while still naming something real. The same
+# hoisting lib/hub-state.sh's hub_rows_build states.
 hub_group_label_in_context() {
 	hglic_label=$(hub_group_field "$1" 2)
 	hglic_kind=$(hub_group_field "$1" 5)
@@ -839,7 +912,7 @@ hub_group_label_in_context() {
 }
 
 # hub_selectable_groups SELKIND -> every selectable group of one kind
-# ("technology" | "pm-backend"), in canonical order.
+# ("technology" | "pm-tracker"), in canonical order.
 hub_selectable_groups() {
 	hub_discovery_require
 	hsg_kind="$1" awk -F '\t' '$5 == ENVIRON["hsg_kind"] { print $1 }' "$HUB_GROUPS"
@@ -920,7 +993,7 @@ hub_domain_content_groups() {
 
 # hub_selection_keys SELKIND -> every SELECTION KEY of one kind (the token a
 # human types on the checklist and an agent passes to --technologies /
-# --pm-backends), in canonical order.
+# --pm-trackers), in canonical order.
 #
 # Read from the group table's own selkey column, never by stripping the group-key
 # prefix off the group key with sed: the column is the authoritative answer, and a

@@ -190,7 +190,7 @@ hub_validate_format() {
 
 # hub_split_csv CSV FILE -> writes one non-empty, whitespace-trimmed token per
 # line of FILE, from a comma-separated CSV. The single place every
-# comma-list flag (--domains, --technologies, --pm-backends, --components) is
+# comma-list flag (--domains, --technologies, --pm-trackers, --components) is
 # tokenized, so trimming and empty-token rules can never drift between them.
 hub_split_csv() {
 	printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' >"$2" || :
@@ -781,9 +781,10 @@ if [ -z "${HUB_STDOUT_IS_TTY:-}" ]; then
 fi
 
 # hub_color_enabled -> exit 0 when ANSI color should be emitted: not disabled
-# by the standard NO_COLOR env var (per no-color.org, checked by PRESENCE —
-# an empty NO_COLOR="" still disables color), not disabled by --no-color, and
-# stdout is a real terminal.
+# by the standard NO_COLOR env var, checked by PRESENCE alone — deliberately
+# STRICTER than no-color.org itself (which disables color only when NO_COLOR
+# is present AND non-empty): an empty NO_COLOR="" still disables color here.
+# Not disabled by --no-color, and stdout is a real terminal.
 #
 # Both HUB_NO_COLOR checks are STRING comparisons (`case`), never
 # `-eq`/arithmetic: an unsanitized HUB_NO_COLOR inherited from the environment

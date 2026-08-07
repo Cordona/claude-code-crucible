@@ -86,7 +86,9 @@ hub_help_text() {
 		'  Software Development' \
 		'    A developer + reviewer agent pair per technology (Python, Java, React,' \
 		'    ...), plus review lenses and framework plumbing shared across all of' \
-		'    them.' \
+		'    them. Optionally, a VCS choice (GitHub and/or GitLab) wires up' \
+		'    git-operator'\''s merge/pull-request skill for whichever host(s) you' \
+		'    install — everything else installs regardless of this choice.' \
 		'' \
 		'  Adding a new technology (tech pair)' \
 		'    Software Development ships with a fixed set, but the framework can' \
@@ -97,8 +99,8 @@ hub_help_text() {
 		'    technology.' \
 		'' \
 		'  Project Management' \
-		'    GitHub and/or Jira backends: lets an agent file, comment on, and' \
-		'    update tickets on whichever backend(s) you install.' \
+		'    GitHub, GitLab and/or Jira trackers: lets an agent file, comment on,' \
+		'    and update tickets on whichever tracker(s) you install.' \
 		'' \
 		'  Getting Things Done (GTD)' \
 		'    Two capabilities:' \
@@ -108,12 +110,14 @@ hub_help_text() {
 		"      - Inbox triage: review what's captured and process it." \
 		'' \
 		'  Actions' \
-		'    status         which domains are installed' \
+		'    status         which domains are installed (cheap — no account checks;' \
+		'                   folded into the Main menu'\''s "Doctor" item, still its' \
+		'                   own subcommand for a quick, agent-friendly check)' \
 		'    list           installed vs available components' \
-		'    doctor         required tools + account health' \
-		'    accounts       manage GitHub / Jira authentication' \
-		'    install all    install every domain, technology and backend' \
-		'    install        choose domains, then technologies / backends' \
+		'    doctor         domain status, required tools, account health' \
+		'    accounts       manage GitHub / GitLab / Jira authentication' \
+		'    install all    install every domain, technology, VCS host and tracker' \
+		'    install        choose domains, then technologies / trackers' \
 		'    uninstall all  uninstall everything (critical, typed confirmation)' \
 		'    uninstall      choose specific components to uninstall' \
 		''
@@ -218,29 +222,25 @@ hub_show_tech_pair() {
 # Input handling:
 #   * an EMPTY line applies TIER's default — safe: Yes, dangerous: No.
 #   * an explicit y/yes (any case) proceeds, on either tier.
-#   * c/cancel declines — the SAME return 1, and the same "Cancelled. Nothing
-#     changed." at both call sites, that an unrecognized or negative input has
-#     always produced. It is a NAME for the existing decline path, not a new
-#     return code and not new behavior: the capability existed but nothing on
-#     screen said so, leaving "abandon this operation" the one action the user
-#     had to infer while its two neighbours (b/back, q/quit) were both
-#     advertised — and easy to confuse with either, since `b` re-opens the
-#     checklist and `q` leaves the hub entirely. Handled HERE, above the tier
-#     dispatch, rather than folded into either tier's `*)` arm: the two `*)`
-#     arms are tier-specific by construction (safe's default-Yes lives in one
-#     of them), so a key that must behave identically on both tiers cannot live
-#     in either.
 #   * b/back goes back one level; ? shows help and re-prompts.
 #   * q/quit quits, asking first when PENDING_COUNT is non-zero — the confirm
 #     screen holds the identical not-yet-committed selection the checklist just
 #     built, so a habitual q here is the identical footgun at the identical
 #     cost, and guarding the checklist but not its very next sibling would close
 #     the gap in the wrong place.
-#   * anything else declines. A safe tier's default-Yes applies ONLY to the
-#     empty line; garbage input is never read as consent to proceed, which is
-#     the safer and conventional reading of a [Y/n] prompt. This implicit path
-#     is retained exactly as-is alongside the explicit `c` above — naming the
-#     action must not make the unnamed spelling stop working.
+#   * anything else declines — an `n`, an unrecognized word, garbage. A safe
+#     tier's default-Yes applies ONLY to the empty line; garbage input is never
+#     read as consent to proceed, which is the safer and conventional reading
+#     of a [Y/n] prompt.
+#
+# THERE IS NO `c`/`cancel` KEY, deliberately. It existed, advertised on the
+# prompt line, and did nothing that declining did not already do: it returned
+# the identical 1 as both tiers' `*)` arm, and both call sites (hub-install.sh,
+# hub-uninstall.sh) branch on that return code alone, so the two paths were
+# indistinguishable by construction. A third advertised spelling of "no" on a
+# prompt whose own [Y/n] brackets already say how to say no is one more key to
+# read, learn and keep working, for zero reachable behavior — while its
+# neighbours b/back and q/quit each do something no other key here does.
 #
 # There is no retry loop for a decline: a non-interactive caller never reaches
 # this function at all (every capability script gates it on its own TTY check).
@@ -255,7 +255,6 @@ hub_confirm_gate() {
 			hub_show_help
 			continue
 			;;
-		c | cancel) return 1 ;;
 		b | back) return 2 ;;
 		q | quit)
 			if [ "$hcg_pending" -gt 0 ]; then

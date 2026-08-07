@@ -14,7 +14,7 @@
 #                          SELECTION keys the interactive checklist shows and
 #                          accepts: one token per TECHNOLOGY (its developer,
 #                          reviewer and standard always travel together), per
-#                          Project Management BACKEND (whose skills likewise do),
+#                          Project Management TRACKER (whose skills likewise do),
 #                          or per SELF-CONTAINED DOMAIN — one whose whole footprint
 #                          is a single removable thing, named by its domain key
 #                          (today: gtd). HUB_ROWS' per-unit keys — the ones List
@@ -58,11 +58,11 @@
 #
 # WHAT THIS CAPABILITY OFFERS AS SELECTABLE, and why it is not HUB_ROWS:
 #   Every SELECTABLE group is offered, and nothing else — one row per TECHNOLOGY,
-#   one per PROJECT MANAGEMENT BACKEND, and one per SELF-CONTAINED DOMAIN (a domain
+#   one per PROJECT MANAGEMENT TRACKER, and one per SELF-CONTAINED DOMAIN (a domain
 #   whose whole footprint is its one group; today, GTD). No baseline unit, no review
 #   lens, no flow, specialist or facade appears on the checklist at all. A
 #   technology is ONE removable thing whose developer/reviewer/standard travel
-#   together, the same way a backend's skills already did — and a self-contained
+#   together, the same way a tracker's skills already did — and a self-contained
 #   domain is one removable thing for the same reason, at domain scale.
 #
 #   hub_rows_build/HUB_ROWS is deliberately NOT the source of that list, and is
@@ -77,7 +77,7 @@
 #   lenses — they are part of the baseline bundle, not a separate concept) is
 #   never individually selectable and never individually removable. It comes out
 #   by CASCADE, once the removal leaves that domain with ZERO PRESENT
-#   technologies/backends, and is announced in the same "Also removing" block as
+#   technologies/trackers, and is announced in the same "Also removing" block as
 #   the cross-domain cascade below — because it IS that rule, with a different
 #   consumer set: the domain's own selectable groups instead of a cross-domain
 #   registry list. Its trigger is the same deliberately WIDE condition (see the
@@ -180,10 +180,10 @@ the confirm prompt.
 Options:
   --components CSV     Remove exactly these components. Two vocabularies are
                         accepted: the checklist's own keys — one per technology,
-                        per PM backend, and per self-contained domain (e.g.
+                        per PM tracker, and per self-contained domain (e.g.
                         python, github, gtd) — and List's per-unit row keys (e.g.
-                        java-reviewer; a PM backend has no per-unit row key, only
-                        its selection/row key: github or github-backend). A KEY
+                        java-reviewer; a PM tracker has no per-unit row key, only
+                        its selection/row key: github or github-tracker). A KEY
                         NAMING ONE UNIT REMOVES THE WHOLE THING IT BELONGS TO —
                         a technology's developer, reviewer and standard travel
                         together, and so does a self-contained domain's entire
@@ -195,6 +195,9 @@ Options:
                         contract schemas. The one critical-tier flow, and the only
                         way to remove a domain BASELINE (which otherwise leaves
                         only by cascade, once nothing installed still needs it).
+                        Orphans are NOT removed by --all (they are not legitimate
+                        components); the result reports how many remain — use
+                        --components=<name> or "Doctor" to clear them.
   --confirm=UNINSTALL  Required alongside --apply --all when there is no terminal
                         to confirm at. Absent, the command fails loud rather than
                         assuming consent.
@@ -333,6 +336,7 @@ hub_rows_build
 
 ORPHANS="$HUB_WORK/orphans.tsv"
 hub_orphaned_units "$TARGET_DIR" >"$ORPHANS"
+ORPHAN_COUNT=$(hub_count_lines "$ORPHANS")
 
 # ---------------------------------------------------------------------------
 # Machine-status exits. Both live in lib/hub-common.sh (hub_ok_exit /
@@ -361,9 +365,12 @@ hu_blocked() {
 
 # ---------------------------------------------------------------------------
 # Removable rows: everything actually present at the target. An available row is
-# not offered — there is nothing to remove — and an orphan IS offered, because a
-# dangling link is precisely something a user wants to be able to clear (List
-# points them here for exactly that).
+# not offered — there is nothing to remove. An orphan is REACHABLE here (through
+# the explicit, named --components=<name> form and through hu_removable_row_exists
+# below) but is deliberately NOT offered on the interactive checklist or by
+# --all — see that screen's own build, further down, for why: a dangling link is
+# a different problem from a legit component, with a different owner now
+# (Doctor reports it; List enumerates it).
 # ---------------------------------------------------------------------------
 REMOVABLE_ROWS="$HUB_WORK/removable-rows.tsv"
 ORPHAN_KINDS="$HUB_WORK/orphan-kinds.tsv"
@@ -399,7 +406,7 @@ hu_orphan_kind() {
 
 # ---------------------------------------------------------------------------
 # SELECTABLE ROWS — the interactive checklist's ENTIRE vocabulary: one row per
-# technology and one per Project Management backend that has anything to remove.
+# technology and one per Project Management tracker that has anything to remove.
 # See this file's header ("WHAT THIS CAPABILITY OFFERS AS SELECTABLE") for why
 # this exists beside HUB_ROWS rather than replacing it.
 #
@@ -407,20 +414,24 @@ hu_orphan_kind() {
 # of selection kinds — so a future third kind is offered here with no edit, the
 # same way hub-list.sh's own hl_selectable_rows_build already does it.
 #
-# Columns: key, group, domain, state, LABEL-LAST. Every column is non-empty for a
-# selectable group, so `read` is safe on this table; the label still goes last,
-# since it is the only one whose emptiness would be a display bug rather than a
-# crash (lib/hub-common.sh's "THE TAB TRAP").
+# Columns: key, group, domain, state, label, SELKIND-LAST. Selkind (the group
+# table's own column 5) is genuinely empty for an atomic-domain group like
+# GTD's — the one column here that can be — which is exactly why it moved to
+# the true end rather than sitting where label used to (lib/hub-common.sh's
+# "THE TAB TRAP"): every other column, label included, is unconditionally
+# non-empty for a selectable group.
 #
-# THE LABEL IS THE CONTEXT-FREE FORM (hub_group_label_in_context), not the group
-# table's raw column 2, and this screen is one of exactly two places in the hub that
-# needs it. Its checklist mixes every domain's rows under one generic title with no
-# domain sub-headers at all, so a bare "GitHub" row says nothing about which of the
-# several GitHub things this hub touches it removes; the qualified
-# "Project Management (GitHub)" does. A technology row is unaffected — the predicate
-# behind that function answers `no` for its kind, so "Java" stays "Java" rather than
-# growing a "Software Development (…)" wrapper on every row of the longest list
-# here. See lib/hub-discovery.sh's own note on why the bare label became canonical.
+# THE LABEL IS THE BARE FORM (the group table's own column 2), NOT
+# hub_group_label_in_context's context-free qualified one — a reversal from this
+# table's earlier shape. That function exists for a HEADING-LESS screen, where a
+# bare "GitHub" row says nothing about which of the several GitHub things this
+# hub touches it removes; this screen is no longer heading-less. Its checklist
+# now groups rows under a domain heading (and, for Software Development, a
+# further Technologies/VCS sub-heading — see the CHECKLIST_ROWS build below and
+# hub_checklist's own GROUPED mode), so "GitHub" under "Project Management" /
+# "GitHub" under "Software Development" / "VCS" already says everything the
+# qualified form existed to add, and printing it again would just repeat the
+# heading the reader is already looking at.
 #
 # THE STATE COLUMN IS IN THE DISPLAY VOCABULARY (installed | available | DIVERGED),
 # put there by lib/hub-state.sh's hub_group_display_state — the ONE owner of the
@@ -459,16 +470,131 @@ for HU_SGROUP in $(hub_groups_of_role selectable); do
 	[ "$HU_SSTATE" != available ] || continue
 	HU_SSELKEY=$(hub_group_field "$HU_SGROUP" 6)
 	HU_SDOMAIN=$(hub_group_field "$HU_SGROUP" 3)
-	HU_SLABEL=$(hub_group_label_in_context "$HU_SGROUP")
-	printf '%s\t%s\t%s\t%s\t%s\n' \
+	HU_SLABEL=$(hub_group_field "$HU_SGROUP" 2)
+	# SELKIND, LAST: the group table's own column 5 already holds the fact
+	# CHECKLIST_ROWS' sub-heading needs (which selection kind this group is),
+	# so it is read from there rather than re-derived from the group key's own
+	# prefix a second time. Genuinely empty for an atomic-domain group (GTD's
+	# `atomic:gtd`, whose selkind column is blank by the registry's own
+	# design) — LAST is what makes that safe, per THE TAB TRAP: label (column
+	# 5 here) is never empty, so appending one more column after it moves the
+	# "may be empty" property to the new true end, exactly where it belongs.
+	HU_SSELKIND=$(hub_group_field "$HU_SGROUP" 5)
+	printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
 		"$HU_SSELKEY" "$HU_SGROUP" "$HU_SDOMAIN" \
-		"$HU_SSTATE" "$HU_SLABEL" >>"$SELECTABLE_ROWS"
+		"$HU_SSTATE" "$HU_SLABEL" "$HU_SSELKIND" >>"$SELECTABLE_ROWS"
+done
+
+# HU_ALL_SELKEYS — "selkey<TAB>group", one row per selectable group in the
+# REGISTRY, with NO availability filter. This is the superset SELECTABLE_ROWS
+# above is filtered from, and it exists for exactly one job: deciding whether a
+# bare selection key is AMBIGUOUS. That verdict must be a pure function of the
+# registry, not of install state — see hu_selectable_group_ambiguous's own
+# header for the compatibility hazard an install-state-filtered ambiguity check
+# would otherwise create.
+HU_ALL_SELKEYS="$HUB_WORK/all-selkeys.tsv"
+: >"$HU_ALL_SELKEYS"
+for HU_ASK_GROUP in $(hub_groups_of_role selectable); do
+	HU_ASK_KEY=$(hub_group_field "$HU_ASK_GROUP" 6)
+	printf '%s\t%s\n' "$HU_ASK_KEY" "$HU_ASK_GROUP" >>"$HU_ALL_SELKEYS"
 done
 
 # hu_selectable_group_of KEY -> the selectable group KEY is the selection key of,
-# or empty when KEY names nothing that is offered.
+# or empty when KEY names nothing that is offered — OR when KEY names MORE THAN
+# ONE group.
+#
+# THE AMBIGUOUS CASE IS NEW, and is why this counts rather than exiting on the
+# first match. A bare selection key used to be unique by construction — each
+# kind's own key vocabulary never overlapped another's (a technology key like
+# "python" shares no space with a tracker key like "github"). That stopped being
+# true the moment Software Development's `vcs` kind and Project Management's
+# `pm-tracker` kind both started offering "github" and "gitlab": a bare
+# `--components=gitlab` (or, interactively, a colliding checklist row — see
+# CHECKLIST_ROWS' own header on how it avoids this) can no longer say which one
+# is meant. Returning empty for that case, rather than the first row found (the
+# previous behavior), pushes the caller to its own fallback — REMOVABLE_ROWS'
+# row-key vocabulary (hub_group_row_key, e.g. "gitlab-vcs" / "gitlab-tracker"),
+# which is unambiguous by construction because it is qualified — instead of
+# silently acting on whichever kind happened to be discovered first.
+#
+# THE AMBIGUITY CHECK RUNS FIRST, AGAINST HU_ALL_SELKEYS, NOT SELECTABLE_ROWS —
+# see hu_selectable_group_ambiguous's own header for why. Without it, this
+# function would resolve a colliding key just fine whenever only one of its two
+# groups happened to be installed, and then start returning empty (ambiguous)
+# with no code change on the caller's side the moment the other one was also
+# installed — the exact state-dependent behavior this guard exists to close.
 hu_selectable_group_of() {
-	husgo_key="$1" awk -F '\t' '$1 == ENVIRON["husgo_key"] { print $2; exit }' "$SELECTABLE_ROWS"
+	hu_selectable_group_ambiguous "$1" && return 0
+	husgo_key="$1" awk -F '\t' '
+		$1 == ENVIRON["husgo_key"] { n++; g = $2 }
+		END { if (n == 1) print g }
+	' "$SELECTABLE_ROWS"
+}
+
+# hu_selectable_group_ambiguous KEY -> exit 0 when KEY names MORE THAN ONE
+# selectable group IN THE REGISTRY — the condition hu_selectable_group_of above
+# treats the same as "names nothing", but which deserves a more specific usage
+# message than "unknown" (hu_selectable_group_ambiguous_hint below supplies
+# it).
+#
+# SCANS HU_ALL_SELKEYS, THE INSTALL-STATE-INDEPENDENT SUPERSET — deliberately
+# NOT SELECTABLE_ROWS, which is filtered to what's currently installed. Scanning
+# the filtered table would make a bare key's ambiguity verdict a function of
+# install state: "gitlab" would resolve fine today (only the PM tracker
+# installed) and start failing tomorrow, with no code change on the caller's
+# side, the moment the SD VCS "gitlab" group is also installed. A command that
+# is well-formed or malformed independent of what else is installed is exactly
+# the human/agent parity this hub otherwise guarantees everywhere else, so the
+# verdict here is a pure function of the registry, never of state.
+hu_selectable_group_ambiguous() {
+	husga_key="$1" awk -F '\t' '
+		$1 == ENVIRON["husga_key"] { n++ }
+		END { exit (n > 1) ? 0 : 1 }
+	' "$HU_ALL_SELKEYS"
+}
+
+# hu_selectable_group_ambiguous_hint KEY -> the comma-joined qualified row keys
+# (hub_group_row_key) a caller should use instead of ambiguous bare KEY.
+#
+# SOURCED FROM HU_ALL_SELKEYS, the same registry-wide table
+# hu_selectable_group_ambiguous checks — not SELECTABLE_ROWS. Hinting only the
+# currently-installed qualified forms would silently drop a candidate the
+# moment it stopped being installed, even though the qualified key itself
+# (hub_group_row_key) is stable regardless of state; a caller who later installs
+# the other one and hits the same ambiguity deserves the same complete hint,
+# not a shorter one because less happens to be installed right now. A qualified
+# key naming something not currently installed simply has nothing to remove —
+# the SAME "no such row" outcome any other not-installed target gets — so
+# listing it here is never misleading, only complete.
+hu_selectable_group_ambiguous_hint() {
+	husgah_out=""
+	for husgah_group in $(husgah_key="$1" awk -F '\t' '$1 == ENVIRON["husgah_key"] { print $2 }' "$HU_ALL_SELKEYS"); do
+		husgah_out=$(hub_join_append "$husgah_out" "$(hub_group_row_key "$husgah_group")" ', ')
+	done
+	printf '%s' "$husgah_out"
+}
+
+# hu_kind_subgroup_label KIND -> the sub-heading text for one selection kind, on
+# the interactive checklist's own Technologies/VCS sub-grouping (see the
+# CHECKLIST_ROWS build below), or empty for a kind (or non-kind) this screen
+# never sub-groups. A LOCAL, presentation-only vocabulary — not
+# lib/hub-domains.sh's own noun lookups (hub_selection_kind_noun answers
+# "technology"/"tracker"/"VCS" singular, for a different job: naming ONE
+# candidate in an unsatisfiable-source message, not heading a run of several).
+# Kept here because no other screen needs a plural heading form of a kind, and
+# inventing a shared one for a single caller would be exactly the premature
+# generalization this hub's own registry file warns against elsewhere.
+#
+# DEFINED AT TOP LEVEL, like every other hu_* helper in this file — it used to
+# sit inside the interactive branch that is its only caller, which meant it
+# existed only on the code path that happened to define it first, unlike
+# every one of the ~40 sibling helpers here.
+hu_kind_subgroup_label() {
+	case $1 in
+	technology) printf 'Technologies' ;;
+	vcs) printf 'VCS' ;;
+	*) printf '' ;;
+	esac
 }
 
 # hu_removable_row_exists KEY -> exit 0 when KEY is one of HUB_ROWS' own removable
@@ -518,7 +644,13 @@ INTERACTIVE_SELECTION=0
 CHECKLIST_ROWS="$HUB_WORK/checklist-rows.tsv"
 
 if [ "$OPT_ALL" -eq 1 ]; then
-	awk -F '\t' '{ print $1 }' "$REMOVABLE_ROWS" >"$SELECTED_ROWS"
+	# ORPHANS ARE EXCLUDED, deliberately: "Uninstall all" removes every legit
+	# installed component (plus CLAUDE.md and the contract schemas — see this
+	# flag's own usage text), not target rubbish that was never a component in
+	# the first place. An orphan's ONLY removal path now is the explicit,
+	# named --components=<name> form (see hu_removable_row_exists below) — the
+	# same reasoning that dropped it from the interactive checklist just below.
+	awk -F '\t' '$4 != "ORPHANED" { print $1 }' "$REMOVABLE_ROWS" >"$SELECTED_ROWS"
 elif [ -n "$OPT_COMPONENTS" ]; then
 	# hub_dedup_first_field after the split, exactly as hub-install.sh does after
 	# EVERY split: hub_split_csv trims and drops empty tokens but does not
@@ -531,8 +663,15 @@ elif [ -n "$OPT_COMPONENTS" ]; then
 	hub_dedup_first_field "$SELECTED_ROWS"
 	while IFS= read -r HU_KEY; do
 		[ -n "$HU_KEY" ] || continue
+		# AMBIGUOUS NAMED FIRST, with its own message: "unknown" would be a false
+		# answer for a key that names something — two somethings, which is the
+		# whole problem. See hu_selectable_group_of's own header for why this case
+		# exists at all only now.
+		if hu_selectable_group_ambiguous "$HU_KEY"; then
+			die_usage "$(printf '%s is ambiguous — use one of: %s' "$HU_KEY" "$(hu_selectable_group_ambiguous_hint "$HU_KEY")")"
+		fi
 		# BOTH vocabularies are legal, and neither is guessed at: the checklist's
-		# own technology/backend selection keys (so a human and an agent name the
+		# own technology/tracker selection keys (so a human and an agent name the
 		# same thing — the parity requirement) and HUB_ROWS' per-unit keys, which
 		# anything already scripted against this flag passes. An unknown token is a
 		# usage error, never a silently narrowed selection.
@@ -552,11 +691,11 @@ else
 	# that can be empty and must therefore come last (lib/hub-common.sh, "THE
 	# TAB TRAP").
 	#
-	# ONE row per technology and per backend, read from SELECTABLE_ROWS. A group
+	# ONE row per technology and per tracker, read from SELECTABLE_ROWS. A group
 	# that is only partly present — some unit missing, or its path occupied by
 	# something else — arrives here already reading DIVERGED (SELECTABLE_ROWS puts it
 	# through hub_group_display_state; this awk no longer maps `partial` itself) and
-	# is marked [!]. Selecting it still removes the whole technology/backend.
+	# is marked [!]. Selecting it still removes the whole technology/tracker.
 	#
 	# THE ANNOTATION SAYS "partially installed", the same STATE PHRASE
 	# hub-install.sh's own checklist uses for the identical group state, replacing
@@ -567,27 +706,88 @@ else
 	# group rather than completing it, and no annotation states the removal
 	# consequence anyway: it is true of every row here, not just this one.
 	#
-	# A backend row reads "Project Management (GitHub)" here, not the bare "GitHub"
-	# every domain-grouped screen shows: this checklist mixes domains under one
-	# generic title and has nothing else to say what a bare "GitHub" would be. The
-	# qualification is applied when SELECTABLE_ROWS is built, by
-	# hub_group_label_in_context — see that build for why it lives there and not in
-	# this awk, and lib/hub-discovery.sh for why the canonical label is bare.
-	awk -F '\t' -v OFS='\t' '{
-		note = ""
-		div = 0
-		if ($4 == "DIVERGED") { note = "partially installed"; div = 1 }
-		print $1, $5, div, note
-	}' "$SELECTABLE_ROWS" >"$CHECKLIST_ROWS"
-	# ORPHANS STAY OFFERED, and they are the one row here that is not a selectable
-	# group at all. That is deliberate: a dangling symlink is not a framework
-	# component whose granularity this redesign is about, it is target rubbish with
-	# no other way out — List points the user at THIS screen to clear it, and only
-	# --all would otherwise reach it.
-	while IFS="$HUB_TAB" read -r HU_NAME _; do
-		[ -n "$HU_NAME" ] || continue
-		printf '%s\t%s\t1\t%s\n' "$HU_NAME" "$HU_NAME" 'orphaned — source no longer exists' >>"$CHECKLIST_ROWS"
-	done <"$ORPHANS"
+	# A tracker/VCS row reads bare "GitHub" here now, not "Project Management
+	# (GitHub)" — this checklist is no longer heading-less (see SELECTABLE_ROWS'
+	# own header on why its LABEL column changed to match), so the domain
+	# heading already says what the qualified form existed to add.
+	#
+	# THE ROW KEY IS THE BARE SELKEY ($1) EXCEPT WHEN IT COLLIDES. A shell loop,
+	# not one more awk pass, because deciding "does this key collide" means
+	# counting occurrences of $1 across the whole table first — the same
+	# question hu_selectable_group_of's own header answers for --components. A
+	# colliding key (today: exactly "github" and "gitlab", named by BOTH
+	# Software Development's `vcs` kind and Project Management's `pm-tracker`
+	# kind) is remapped to its qualified ROW KEY (hub_group_row_key, e.g.
+	# "gitlab-vcs" / "gitlab-tracker") so ticking either row writes something
+	# hub_checklist can tell apart from the other — two rows sharing one key
+	# would tick, and appear pre-seeded, together. A non-colliding key (every
+	# technology, and a tracker naming no other kind's host) keeps the bare
+	# selkey it always has: this changes nothing for the vocabulary that was
+	# never ambiguous, including what --components already accepts for it.
+	#
+	# GROUPED BY DOMAIN, THEN BY KIND WITHIN A MULTI-KIND DOMAIN (hub_checklist's
+	# GROUPED=1 mode — see its own header): this screen mixes every domain's rows
+	# on one flat list, and a domain heading before each domain's run of rows is
+	# what makes that readable — doubly so now that two different kinds
+	# (Software Development's `vcs`, Project Management's `pm-tracker`) can offer
+	# the identical label ("GitLab") right next to each other with nothing to
+	# tell them apart otherwise. Software Development additionally gets the
+	# narrower Technologies/VCS sub-heading, because it is the one domain with
+	# more than one selection kind — HU_SSELKIND (SELECTABLE_ROWS' own 6th
+	# column) is that fact, read from the group table where it already lives,
+	# never re-derived from the row's own group-key prefix a second time (a
+	# duplicate mapping review flagged: the SAME classification, spelled twice,
+	# with no way for the two to be told apart if they ever disagreed). GROUP
+	# itself must be non-empty and always is: SELECTABLE_ROWS only ever holds
+	# `role=selectable` groups, and every one of those belongs to a real,
+	# registered domain (a shared group is role=shared and never reaches this
+	# table). SUBGROUP is correctly EMPTY for Project Management and GTD —
+	# Project Management has exactly ONE kind (pm-tracker) and GTD has NONE
+	# (its selkind column is blank by the registry's own design — see
+	# lib/hub-domains.sh's GROUP KEY GRAMMAR), so neither has anything narrower
+	# than the domain heading to say. hu_kind_subgroup_label (defined at top
+	# level, with the other hu_* helpers) supplies the sub-heading text itself.
+	: >"$CHECKLIST_ROWS"
+	while IFS="$HUB_TAB" read -r HU_SELKEY HU_SGROUP HU_SDOMAIN HU_SSTATE HU_SLABEL HU_SSELKIND; do
+		[ -n "$HU_SELKEY" ] || continue
+		HU_CKEY=$HU_SELKEY
+		if hu_selectable_group_ambiguous "$HU_SELKEY"; then
+			HU_CKEY=$(hub_group_row_key "$HU_SGROUP")
+		fi
+		HU_CNOTE=""
+		HU_CDIV=0
+		if [ "$HU_SSTATE" = DIVERGED ]; then
+			HU_CNOTE="partially installed"
+			HU_CDIV=1
+		fi
+		HU_CGROUP=$(hub_domain_label "$HU_SDOMAIN")
+		HU_CSUBGROUP=""
+		# A SUB-HEADING ONLY WHEN THE DOMAIN GENUINELY HAS MORE THAN ONE KIND —
+		# ASSIGNED FIRST, never inlined as a `case` word: hub_domain_selection_kind
+		# is a closed lookup that DIES on an unregistered domain, and a die inside
+		# a command substitution used that way is swallowed under `set -e` — the
+		# same hazard this hub's own convention states repeatedly elsewhere
+		# (hub-install.sh's "ASSIGNED, never inlined" notes). Tested on the
+		# space-separated list itself rather than hardcoding
+		# "software-development", so a future second multi-kind domain gets this
+		# for free. Project Management's and GTD's rows leave HU_CSUBGROUP empty,
+		# which hub_checklist's own GROUPED mode treats as "no sub-heading for
+		# this row" — never printed, never a trap (see that function's header on
+		# why an empty middle column is safe here).
+		HU_SKINDS=$(hub_domain_selection_kind "$HU_SDOMAIN")
+		case $HU_SKINDS in
+		*' '*) HU_CSUBGROUP=$(hu_kind_subgroup_label "$HU_SSELKIND") ;;
+		esac
+		printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+			"$HU_CKEY" "$HU_SLABEL" "$HU_CDIV" "$HU_CGROUP" "$HU_CSUBGROUP" "$HU_CNOTE" >>"$CHECKLIST_ROWS"
+	done <"$SELECTABLE_ROWS"
+	# ORPHANS ARE NOT OFFERED HERE ANY MORE. This screen is for removing legit,
+	# still-discoverable components; a dangling symlink is target rubbish with
+	# no source to speak for it, which is a different problem with a different
+	# owner now — Doctor reports it (and List enumerates it), and the removal
+	# path for one is the explicit, named `--components=<name>` form (see
+	# hu_removable_row_exists below), not a row on this checklist.
+	#
 	# SOMETHING IS INSTALLED (checked just above) BUT NOTHING IS INDIVIDUALLY
 	# REMOVABLE: only domain baselines are left, and a baseline is never offered —
 	# it leaves by cascade or with --all. Saying so beats opening an empty
@@ -691,7 +891,7 @@ hu_group_in_plan() {
 }
 
 # hu_domain_selection_remains DOMAIN -> exit 0 when at least one of DOMAIN's own
-# selectable groups (its technologies, or its backends) is still PRESENT once this
+# selectable groups (its technologies, or its trackers) is still PRESENT once this
 # removal is done. Exit 1 means the domain is left with nothing selectable at all —
 # which is precisely when its baseline has nothing left to serve and cascades out.
 #
@@ -731,9 +931,10 @@ hu_domain_selection_remains() {
 #
 # IT OBEYS THIS HUB'S UNIVERSAL PROMPT CONTRACT, which it previously did not, and
 # every clause below is a live defect it had:
-#   * The action hint sits ON the `> ` line and names the nav trio, like every
-#     other input point in this hub (hub_confirm_prompt, the checklist,
-#     hub_press_key_to_continue). It had no hint at all and no `> ` line.
+#   * The action hint sits ON the `> ` line and names every key this screen
+#     accepts, like every other input point in this hub (hub_confirm_prompt, the
+#     checklist, hub_press_key_to_continue). It had no hint at all and no `> `
+#     line.
 #   * A BARE ENTER takes the documented default, "Restore none". `read` only
 #     defaults on EOF, never on an empty line, so Enter used to fall through with
 #     an empty choice, match no numbered row and DIE — aborting a critical-tier
@@ -749,10 +950,18 @@ hu_domain_selection_remains() {
 #     and stay uncolored: they are advisory prose nobody selects by number, and
 #     their text is emitted verbatim as machine payload under --format=env|json.
 #
-# `b`/`back` means "restore none" rather than a step backwards: this prompt is not
-# a step anyone navigated FORWARD to (it is reached by --all alone), so there is no
-# earlier screen to return to, and declining the restore is what "back out of this
-# question" can honestly mean here. `q`/`quit` exits 3 like everywhere else.
+# NO `b`/`back` HERE, and so the hint line is hand-rolled rather than calling
+# hub_nav_keys_hint: this prompt is not a step anyone navigated FORWARD to (it is
+# reached by --all alone), so there is no earlier screen for `b` to return to. It
+# used to be accepted as a fourth spelling of "restore none" — alongside a bare
+# Enter, the word `back`, and the numbered "Restore none" row this screen prints
+# two lines above the prompt — which advertised a global navigation key doing
+# something local and non-navigational, on the one screen where that key has no
+# meaning. What remains is the shape the rest of this hub uses: a numbered row
+# plus its own advertised Enter-default. The Main menu and
+# hub_press_key_to_continue hand-roll their hints for this same reason (nothing
+# to go back to / `b` not applicable); this screen now matches them.
+# `q`/`quit` exits 3 like everywhere else.
 #
 # Every line goes to fd 3, the human channel: under --format=env|json fd 3 is
 # stderr, so a numbered menu can never interleave with the HUB_*= payload or the
@@ -779,12 +988,14 @@ hu_choose_backup() {
 		# hub_confirm_prompt documents at its own prompt).
 		printf '    %s Restore none %s%s%s\n\n' "$(hub_number "$(printf '%2s.' "$hcb_n")")" \
 			"$(hub_dim '(the default — press ')" "$(hub_key Enter)" "$(hub_dim ')')"
-		printf '  %s%s\n> ' "$(hub_dim "1-$hcb_n")" "$(hub_sep_text)$(hub_nav_keys_hint)"
+		printf '  %s%s%s%s%s\n> ' \
+			"$(hub_dim "1-$hcb_n")" "$(hub_sep_text)" "$(hub_hint_segment q quit)" \
+			"$(hub_sep_text)" "$(hub_hint_segment '?' help)"
 		} >&3
 
 		IFS= read -r hcb_choice || hcb_choice=""
 		case $hcb_choice in
-		'' | b | back)
+		'')
 			RESTORE_TARGET=""
 			return 0
 			;;
@@ -1199,7 +1410,7 @@ hu_cascade_items() {
 }
 
 # hu_preview_remove_items -> the "Remove:" block's itemization: ONE line per thing
-# the user actually SELECTED — a technology, a backend, a dangling orphan — named
+# the user actually SELECTED — a technology, a tracker, a dangling orphan — named
 # the way the checklist named it, with the number of units it takes out whenever
 # that is more than one. Never one line per unit: a technology is one removable
 # thing whose three units are an implementation detail, and itemizing them is what
@@ -1229,7 +1440,7 @@ hu_preview_remove_items() {
 }
 
 # hu_result_remove_items -> the Result screen's receipt, at the granularity the user
-# actually chose at: one line per TECHNOLOGY or BACKEND that came out ("✓ Java
+# actually chose at: one line per TECHNOLOGY or TRACKER that came out ("✓ Java
 # (3 items)"), one line per cascaded domain baseline ("✓ Software Development
 # baseline (44 items)"), and one line per orphan — an orphan is nobody's group, so it
 # has nothing to collapse into and stays its own line, which is correct.
@@ -1337,13 +1548,13 @@ if [ "$INTERACTIVE_SELECTION" -eq 1 ]; then
 	# asked" slot, previously passed empty here — states the granularity rule plainly
 	# instead of leaving the user to infer it from the preview one screen later.
 	#
-	# "EACH ROW", not "technologies and backends": those are no longer the only kinds of
+	# "EACH ROW", not "technologies and trackers": those are no longer the only kinds of
 	# row here (a self-contained domain is one too), and a subtitle that enumerates the
 	# kinds has to be re-edited every time one is added while saying nothing more. The
 	# rule is per-row either way.
 	hub_checklist 'Select what to uninstall' \
 		"Each row comes out in one piece; a domain's baseline follows automatically once nothing installed still needs it." \
-		"$CHECKLIST_ROWS" "$SELECTED_ROWS" || HU_RC=$?
+		"$CHECKLIST_ROWS" "$SELECTED_ROWS" 1 || HU_RC=$?
 	case $HU_RC in
 	# `b` on the only checklist has no earlier step to return to, so it leaves the
 	# capability entirely — through hu_ok_exit, never a bare `exit 0`. A machine
@@ -1368,7 +1579,7 @@ fi
 # anywhere else would silently shift the fields after it.
 #
 # ROW_MAP ("unit<TAB>row key") and ROW_LABELS ("row key<TAB>display") exist so the
-# preview can itemize what the user SELECTED — one line per technology or backend
+# preview can itemize what the user SELECTED — one line per technology or tracker
 # — while still counting in units. ROW_LABELS is the one place a row's on-screen
 # name is decided, whichever of the vocabularies below named it.
 #
@@ -1408,16 +1619,19 @@ while IFS= read -r HU_KEY; do
 		HU_GROUP=$(HU_KEY="$HU_KEY" awk -F '\t' '$1 == ENVIRON["HU_KEY"] { print $2; exit }' "$REMOVABLE_ROWS")
 	fi
 	if [ -n "$HU_GROUP" ] && hu_removal_is_atomic "$HU_GROUP"; then
-		# THE CONTEXT-FREE FORM (hub_group_label_in_context), the same call the
-		# checklist above makes, NOT the group table's raw column 2. ROW_LABELS is read
-		# by hu_row_lines, which renders both the preview's "Remove:" block and the
-		# Result screen's receipt — and NEITHER of those carries a domain heading, which
-		# is exactly the heading-less condition that function exists for. A bare
-		# "Jira (3 items)" under "Remove:" says nothing about which of the several Jira
-		# things this hub touches is going; "Project Management (Jira) (3 items)" does,
-		# and it is what the checklist that produced the tick already called it. All
-		# three surfaces of this one screen now name one removable thing identically,
-		# which is what hu_row_lines' own header claims of the receipt.
+		# THE CONTEXT-FREE FORM (hub_group_label_in_context), NOT the group table's
+		# raw column 2 — and, since the checklist grew domain headings (see
+		# CHECKLIST_ROWS' own header), NOT the same call the checklist itself makes
+		# any more either: that screen now shows the BARE label under a heading that
+		# already supplies the context, while ROW_LABELS is read by hu_row_lines,
+		# which renders both the preview's "Remove:" block and the Result screen's
+		# receipt — and NEITHER of those carries a domain heading, which is exactly
+		# the heading-less condition this function exists for. A bare "Jira (3
+		# items)" under "Remove:" says nothing about which of the several Jira
+		# things this hub touches is going; "Project Management (Jira) (3 items)"
+		# does. The checklist row reads "Jira" under "Project Management"; this
+		# receipt reads "Project Management (Jira)" with no heading above it — two
+		# different strings naming the one thing each surface's own shape requires.
 		HU_LABEL=$(hub_group_label_in_context "$HU_GROUP")
 		# `$6 != "available"` — a unit with NOTHING at its path is not part of the
 		# removal: including it changed no write (hub_unlink_unit reports
@@ -1535,7 +1749,7 @@ CASCADED_COUNT=$(hub_count_lines "$CASCADED")
 
 # REMOVE_ONLY — REMOVE_UNITS minus the cascaded rows, i.e. exactly what the
 # preview's "Remove:" block accounts for: its header count, and (through ROW_MAP)
-# the per-row item counts beside each selected technology or backend. A cascaded
+# the per-row item counts beside each selected technology or tracker. A cascaded
 # unit IS in REMOVE_UNITS (it is genuinely being removed, and the apply loop must
 # walk it), but it is announced by the "Also removing" block below; without this
 # subtraction it was counted TWICE, once in each block, which reads as two
@@ -1846,6 +2060,15 @@ env)
 	hub_env_kv HUB_BUNDLE_RESTORED "$HU_RESTORED_NAME"
 	hub_env_kv HUB_KEPT_COUNT "$KEPT_COUNT"
 	hub_emit_itemized_env HUB_FOREIGN_BLOCKED "$FOREIGN_BLOCKED"
+	# ORPHANS ARE NEVER TOUCHED BY THIS SCRIPT (they have no removal path here
+	# but the explicit --components=<name> form), so this is the count LEFT,
+	# not a count of anything this run acted on — a caller must not read it as
+	# "orphans removed". Present on every run, not just --all: a selective
+	# uninstall can just as easily leave the target's orphan count unchanged,
+	# and an agent parsing this payload should not have to also call List or
+	# Doctor just to learn a fact this run already computed for its own
+	# ORPHANED-row handling above.
+	hub_env_kv HUB_ORPHANS_REMAINING_COUNT "$ORPHAN_COUNT"
 	;;
 json)
 	have jq || die "--format=json requires jq, which is not installed"
@@ -1858,11 +2081,13 @@ json)
 		--argjson kept_count "$KEPT_COUNT" \
 		--argjson foreign_blocked_count "$FOREIGN_BLOCKED_COUNT" \
 		--slurpfile foreign_blocked_items "$HU_FB_JSON" \
+		--argjson orphans_remaining_count "$ORPHAN_COUNT" \
 		'{status:"ok", action:$action, applied:true, requested_items:$requested,
 		  acted_on_count:$acted_on_count, attempted_count:$attempted_count,
 		  bundle_removed:$bundle_removed, bundle_restored:$bundle_restored,
 		  kept_count:$kept_count, foreign_blocked_count:$foreign_blocked_count,
-		  foreign_blocked_items:$foreign_blocked_items}'
+		  foreign_blocked_items:$foreign_blocked_items,
+		  orphans_remaining_count:$orphans_remaining_count}'
 	;;
 text)
 	# The Result screen carries the nav hint, as both specs' mockups show, and the
@@ -1880,7 +2105,7 @@ text)
 	# keeps this block reading REMOVED rather than the plan: every line and every
 	# count below reports what the unlink loop ACTUALLY reported, never what the
 	# preview intended. What no longer follows from it is FLAT PER-UNIT lines. Since
-	# the redesign made a technology/backend the atomic removal unit, "✓ Java
+	# the redesign made a technology/tracker the atomic removal unit, "✓ Java
 	# (3 items)" is a receipt for precisely the thing the user ticked, and it is no
 	# less true than three separate lines — while 44 baseline lines are not more
 	# honest than one, they are just longer.
@@ -1904,8 +2129,18 @@ text)
 	printf '  %s Run "Doctor" to verify, or "List" to see the updated state.\n' "$(hub_glyph_arrow)"
 	if [ "$OPT_ALL" -eq 1 ]; then
 		printf '  %s To reverse: choose "Install all".\n' "$(hub_glyph_arrow)"
+		# "Uninstall all" deliberately leaves orphans in place (see this flag's own
+		# branch above), so a run against a target that had any is otherwise silent
+		# about the fact that something is still there when it finishes — the
+		# reader would have to already know to go check List/Doctor. Named here,
+		# with the actual count, rather than left to be discovered.
+		if [ "$ORPHAN_COUNT" -gt 0 ]; then
+			printf '  %s %s orphaned %s left untouched (not legitimate components) — see "Doctor" to clear %s.\n' \
+				"$(hub_glyph_arrow)" "$ORPHAN_COUNT" "$(hub_plural "$ORPHAN_COUNT" item items)" \
+				"$(hub_plural "$ORPHAN_COUNT" it them)"
+		fi
 	else
-		printf '  %s To reverse: open "Install" and choose the domains, technologies or backends you want back.\n' "$(hub_glyph_arrow)"
+		printf '  %s To reverse: open "Install" and choose the domains, technologies or trackers you want back.\n' "$(hub_glyph_arrow)"
 	fi
 	if hub_interactive; then
 		# `q` at the pause means "quit the hub", which is exit 3 — the same code

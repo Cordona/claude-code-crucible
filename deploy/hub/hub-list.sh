@@ -209,7 +209,7 @@ hl_buckets_build() {
 }
 
 # hl_selectable_rows_build -> sets HL_SEL to "domain<TAB>display<TAB>state" for
-# every SELECTABLE GROUP (technology or pm-backend) — ONE row per group, using
+# every SELECTABLE GROUP (technology or pm-tracker) — ONE row per group, using
 # the group's own aggregate state and its own display label, regardless of how
 # many units the group holds.
 #
@@ -220,7 +220,7 @@ hl_buckets_build() {
 #
 # Deliberately NOT built from HUB_ROWS: that table is per-UNIT for every
 # non-atomic group (hub_rows_build only collapses a group the group table marks
-# atomic, i.e. a pm-backend), which is what Doctor's diverged-components section
+# atomic, i.e. a pm-tracker), which is what Doctor's diverged-components section
 # and this screen's own per-unit env/json payload need — but reusing it HERE would
 # show "Python agent developer"/"Python agent reviewer" as two List rows, the exact
 # clutter this rewrite exists to remove. Uninstall's checklist makes the same
@@ -333,7 +333,7 @@ hl_domain_lens_rows() {
 #     no, filter on hub_domain_buckets' `standard` bucket.
 # The two mechanisms differ; the rule they produce is the same one, and it is the
 # same rule a baseline unit gets: the individually nameable things on this hub's
-# screens are technologies, backends and lens reviewers. Nothing else.
+# screens are technologies, trackers and lens reviewers. Nothing else.
 hl_lens_rows_build() {
 	HL_LENS="$HUB_WORK/lens-rows.tsv"
 	awk -F '\t' -v OFS='\t' '$2 == "lens" { print $1, $4, $3 }' "$HL_BUCKETS" >"$HL_LENS"
@@ -429,8 +429,21 @@ hl_baseline_summary() {
 		'$1 == ENVIRON["hl_bs_domain"] && $5 == "" { print $2, $3, $4; exit }' "$HL_FEATURES")
 	if [ -n "$hl_bs_residual" ]; then
 		printf '%s\n' "$hl_bs_residual" >"$HL_BS_TMP"
+		# Reset rather than left stale: the non-residual branch below is what
+		# normally (re)builds this file, but a featured domain (GTD) takes this
+		# branch instead and must not leave a PRIOR domain's rows sitting here
+		# for HL_BS_BROKEN_FILE/HL_BS_PENDING_FILE below to misread as its own.
+		: >"$HL_BS_KEYED"
 	else
-		awk -F '\t' -v OFS='\t' '$2 == "baseline" { print $1, $3 }' \
+		# THIRD COLUMN KEPT, unlike before: this used to print only ($1, $3) —
+		# domain and state — discarding the unit's own display name ($4) the
+		# instant it was read. That is exactly what made "Framework baseline (N
+		# items)" incapable of ever naming which N: the names were computed and
+		# then thrown away in this one line, not merely left unprinted. Keeping
+		# $4 costs nothing here — hub_state_collapse below still reads only
+		# columns 1-2 and ignores the rest — and is what HL_BS_BROKEN_FILE /
+		# HL_BS_PENDING_FILE further down now read.
+		awk -F '\t' -v OFS='\t' '$2 == "baseline" { print $1, $3, $4 }' \
 			"$HL_BUCKETS" >"$HL_BS_KEYED"
 		hub_state_collapse "$HL_BS_KEYED" "$hl_bs_domain" >"$HL_BS_TMP"
 	fi
@@ -441,6 +454,28 @@ hl_baseline_summary() {
 	# the tab and that value inside HL_BS_COUNT, which the caller compares with
 	# `-gt` — a shell arithmetic error rather than a wrong number.
 	IFS="$HUB_TAB" read -r HL_BS_STATE HL_BS_COUNT _ <"$HL_BS_TMP"
+
+	# HL_BS_BROKEN_FILE / HL_BS_PENDING_FILE — HL_BS_COUNT alone cannot tell apart
+	# two very different situations that hub_state_collapse's three-way branch
+	# both label DIVERGED the moment a baseline is a MIX rather than "all" or
+	# "none": a unit whose OWN state is the real, per-unit DIVERGED (hub_path_state:
+	# something wrong occupies its target — a foreign file, or a symlink pointing
+	# somewhere else — genuinely needs a re-sync) versus a unit that is simply
+	# "available" (never installed at all; nothing is wrong, it just hasn't been
+	# added yet). Sourced from the SAME HL_BS_KEYED table hub_state_collapse just
+	# read above, filtered to this call's own domain (HL_BS_KEYED spans every
+	# domain's baseline rows, not just this one — hub_state_collapse does its own
+	# per-domain filtering on column 1 the same way).
+	HL_BS_BROKEN_FILE="$HUB_WORK/baseline-broken.txt"
+	HL_BS_PENDING_FILE="$HUB_WORK/baseline-pending.txt"
+	hl_bs_domain="$hl_bs_domain" awk -F '\t' -v OFS='\t' \
+		'$1 == ENVIRON["hl_bs_domain"] && $2 == "DIVERGED" { print $3 }' \
+		"$HL_BS_KEYED" >"$HL_BS_BROKEN_FILE"
+	hl_bs_domain="$hl_bs_domain" awk -F '\t' -v OFS='\t' \
+		'$1 == ENVIRON["hl_bs_domain"] && $2 == "available" { print $3 }' \
+		"$HL_BS_KEYED" >"$HL_BS_PENDING_FILE"
+	HL_BS_BROKEN_COUNT=$(hub_count_lines "$HL_BS_BROKEN_FILE")
+	HL_BS_PENDING_COUNT=$(hub_count_lines "$HL_BS_PENDING_FILE")
 }
 
 # THE COLLAPSED BASELINE LINE'S LABEL is lib/hub-domains.sh's HUB_BASELINE_LABEL,
@@ -582,7 +617,28 @@ hl_print_status_group() {
 		hl_domain_feature_lines "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
 		hl_baseline_summary "$hl_psg_domain"
 		hl_psg_bs_line=""
-		if [ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
+		if [ "$hl_psg_state" = DIVERGED ]; then
+			# The DIVERGED pass never shows the old collapsed "(N items)" line —
+			# that wording read as "N things are broken", when hub_state_collapse's
+			# own DIVERGED bucket is really "this baseline is a MIX of installed
+			# and not", which is true here even when every single unit in it is
+			# perfectly healthy, just not yet installed (see hl_baseline_summary).
+			# Only a GENUINELY broken unit belongs under this heading, and it is
+			# named individually, like every other row on this screen — never
+			# folded into a count. A merely-pending unit is this pass's business
+			# not at all; hl_print_pending_group (after all three passes) owns it,
+			# fed by the same per-domain accumulation below.
+			if [ "$HL_BS_STATE" = DIVERGED ] && [ "$HL_BS_BROKEN_COUNT" -gt 0 ]; then
+				cat "$HL_BS_BROKEN_FILE" >>"$HL_DOMAIN_TMP"
+			fi
+			if [ "$HL_BS_STATE" = DIVERGED ] && [ "$HL_BS_PENDING_COUNT" -gt 0 ]; then
+				printf '%s\t%s\n' "$hl_psg_domain" "$HL_BS_PENDING_COUNT" >>"$HL_PENDING_SUMMARY"
+				while IFS= read -r hl_psg_pending_name; do
+					[ -n "$hl_psg_pending_name" ] || continue
+					printf '%s\t%s\n' "$hl_psg_domain" "$hl_psg_pending_name" >>"$HL_PENDING_DETAIL"
+				done <"$HL_BS_PENDING_FILE"
+			fi
+		elif [ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
 			hl_psg_bs_line=$(printf '%s (%s %s)' "$HUB_BASELINE_LABEL" \
 				"$HL_BS_COUNT" "$(hub_plural "$HL_BS_COUNT" item items)")
 		fi
@@ -602,38 +658,56 @@ hl_print_status_group() {
 	hl_print_nondomain_groups "$hl_psg_state" "$hl_psg_glyph"
 }
 
-# hl_print_nondomain_groups STATE GLYPH -> one sub-header plus its rows for every
-# non-domain group holding a row in STATE, under the status heading the domain loop
+# hl_print_nondomain_groups STATE GLYPH -> ONE sub-header, then every non-domain
+# group's rows in STATE underneath it, under the status heading the domain loop
 # above may or may not have already written (hl_psg_heading_once owns that).
 #
 # Called from hl_print_status_group only, and AFTER its domain loop, so the
 # registry's own domains keep the canonical order they have everywhere in this hub
-# and the group that belongs to none of them lands last — the same placement
-# lib/hub-discovery.sh gives it in the tables themselves ("cross-domain last") and
-# the same placement hub-install.sh's result and preview screens give it.
+# and the groups that belong to none of them land last — the same placement
+# lib/hub-discovery.sh gives them in the tables themselves ("cross-domain last") and
+# the same placement hub-install.sh's result and preview screens give them.
+#
+# ONE SUB-HEADER FOR THE WHOLE PASS, not one per group — this changed the moment a
+# second shared group existed (GitLab-auth alongside GitHub-auth): every non-domain
+# group carries the IDENTICAL "Cross-domain" label (lib/hub-discovery.sh's
+# domain_label() awk function has exactly one fallback for "belongs to no
+# registered domain"), so printing a sub-header per group printed "Cross-domain"
+# twice in a row with one group's row under each — the same "heading owned by the
+# group, not the STATUS" bug the domain loop never had, because a domain heading is
+# genuinely per-domain while every non-domain group shares one identity. The fix is
+# the domain loop's own shape: one heading, then every qualifying group's rows
+# underneath it, in group order.
 #
 # GROUPS IN FIRST-SEEN ORDER, taken from HL_NONDOMAIN itself, which inherits
 # HUB_ROWS' canonical order — never awk's unspecified for-in order. Same shape
 # hub-uninstall.sh's hu_cascade_items uses to list its own cascade groups.
 #
-# The heading is the GROUP's own label from the group table ("Cross-domain"), which
-# is what hub-doctor.sh's hd_domain_heading falls back to for exactly this group,
-# with the same group-key fallback for a label that somehow came back empty.
+# The heading is the FIRST QUALIFYING GROUP's own label from the group table
+# ("Cross-domain") — safe to take from just one group precisely because every
+# non-domain group shares that same label by construction, which is what makes
+# printing it once, rather than once per group, correct rather than a lossy
+# collapse. Falls back to the group key for a label that somehow came back empty,
+# the same fallback hub-doctor.sh's hd_domain_heading uses for this group.
 hl_print_nondomain_groups() {
 	hl_png_state=$1
 	hl_png_glyph=$2
 	hl_png_groups="$HUB_WORK/nondomain-group-order.txt"
 	hl_png_tmp="$HUB_WORK/nondomain-display.txt"
 	awk -F '\t' '!($1 in seen) { seen[$1] = 1; print $1 }' "$HL_NONDOMAIN" >"$hl_png_groups"
+	hl_png_heading_written=0
 	while IFS= read -r hl_png_group; do
 		[ -n "$hl_png_group" ] || continue
 		hl_png_group="$hl_png_group" hl_png_state="$hl_png_state" awk -F '\t' \
 			'$1 == ENVIRON["hl_png_group"] && $3 == ENVIRON["hl_png_state"] { print $2 }' \
 			"$HL_NONDOMAIN" >"$hl_png_tmp"
 		[ -s "$hl_png_tmp" ] || continue
-		hl_png_label=$(hub_group_field "$hl_png_group" 2)
 		hl_psg_heading_once
-		printf '  %s\n' "${hl_png_label:-$hl_png_group}"
+		if [ "$hl_png_heading_written" -eq 0 ]; then
+			hl_png_label=$(hub_group_field "$hl_png_group" 2)
+			printf '  %s\n' "${hl_png_label:-$hl_png_group}"
+			hl_png_heading_written=1
+		fi
 		while IFS= read -r hl_png_display; do
 			[ -n "$hl_png_display" ] || continue
 			printf '    %s %s\n' "$hl_png_glyph" "$hl_png_display"
@@ -698,9 +772,41 @@ text)
 	hl_features_build
 	hl_nondomain_rows_build
 
+	# HL_PENDING_SUMMARY ("domain<TAB>count") / HL_PENDING_DETAIL
+	# ("domain<TAB>name") — accumulated across every domain during the Diverged
+	# pass below (hl_print_status_group), then rendered as their own "Pending
+	# install" group after it.
+	HL_PENDING_SUMMARY="$HUB_WORK/pending-summary.tsv"
+	HL_PENDING_DETAIL="$HUB_WORK/pending-detail.tsv"
+	: >"$HL_PENDING_SUMMARY"
+	: >"$HL_PENDING_DETAIL"
+
 	hl_print_status_group Installed installed
 	hl_print_status_group Available available
 	hl_print_status_group Diverged DIVERGED
+
+	if [ -s "$HL_PENDING_SUMMARY" ]; then
+		printf '\nPending install\n'
+		while IFS="$HUB_TAB" read -r HL_PI_DOMAIN HL_PI_COUNT; do
+			[ -n "$HL_PI_DOMAIN" ] || continue
+			HL_PI_LABEL=$(hub_domain_label "$HL_PI_DOMAIN")
+			printf '  %s\n' "$HL_PI_LABEL"
+			printf '    %s (%s %s never installed — run "Install" to add them)\n' \
+				"$HUB_BASELINE_LABEL" "$HL_PI_COUNT" "$(hub_plural "$HL_PI_COUNT" item items)"
+			# Filtered to a file first, never piped straight into the while: a
+			# pipeline's exit status is its LAST command's (the while), so an awk
+			# failure here would go unnoticed even under `set -e` — POSIX sh has no
+			# pipefail. Reading the file back is also what makes HL_PI_NAME visible
+			# to the loop body in the same shell, with no subshell in between.
+			HL_PI_DETAIL_TMP="$HUB_WORK/pending-detail-domain.txt"
+			HL_PI_DOMAIN="$HL_PI_DOMAIN" awk -F '\t' \
+				'$1 == ENVIRON["HL_PI_DOMAIN"] { print $2 }' "$HL_PENDING_DETAIL" >"$HL_PI_DETAIL_TMP"
+			while IFS= read -r HL_PI_NAME; do
+				[ -n "$HL_PI_NAME" ] || continue
+				printf '      %s %s\n' "$(hub_glyph_absent)" "$HL_PI_NAME"
+			done <"$HL_PI_DETAIL_TMP"
+		done <"$HL_PENDING_SUMMARY"
+	fi
 
 	if [ "$ORPHAN_COUNT" -gt 0 ]; then
 		printf '\nOrphaned\n'
@@ -716,6 +822,11 @@ text)
 	HL_DIVERGED_FILE="$HUB_WORK/diverged-rows.tsv"
 	hl_rows_of_state DIVERGED >"$HL_DIVERGED_FILE"
 	DIVERGED_ROWS=$(hub_count_lines "$HL_DIVERGED_FILE")
+	# A broken baseline unit needs no separate fold-in here: it is a non-atomic
+	# group's own unit, so hub_rows_build already gives it a HUB_ROWS row of its
+	# own (only a pm-tracker/vcs GROUP collapses to one row — see hub-domains.sh's
+	# "WHICH GROUPS ARE ATOMIC"), and hl_rows_of_state DIVERGED above already
+	# counts it.
 	if [ "$DIVERGED_ROWS" -gt 0 ] || [ "$ORPHAN_COUNT" -gt 0 ]; then
 		printf '\n'
 	fi
@@ -723,7 +834,14 @@ text)
 		printf '  %s Diverged items re-sync the next time you run "Install" and choose them.\n' "$(hub_glyph_arrow)"
 	fi
 	if [ "$ORPHAN_COUNT" -gt 0 ]; then
-		printf '  %s Orphaned items point at sources that no longer exist — run "Uninstall" and choose them to clear the stale links.\n' "$(hub_glyph_arrow)"
+		# NOT "run Uninstall and choose them" — an orphan is no longer offered on
+		# Uninstall's interactive checklist (a dangling link is not a legit
+		# component; Doctor is where this hub now reports AND advises on orphans,
+		# this line stays as the enumeration-side pointer). "Doctor" is named
+		# rather than the ready-to-run command Doctor itself prints, because this
+		# screen enumerates and Doctor judges — sending the reader there for the
+		# actual remediation step keeps that split rather than duplicating it.
+		printf '  %s Orphaned items point at sources that no longer exist — see "Doctor" to clear them.\n' "$(hub_glyph_arrow)"
 	fi
 
 	if hub_interactive; then
