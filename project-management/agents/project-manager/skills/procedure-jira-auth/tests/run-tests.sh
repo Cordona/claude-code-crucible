@@ -4,7 +4,7 @@
 #                procedure-jira-auth script suite (jira-login.sh,
 #                jira-auth-status.sh, jira-curl-config.sh, jira-accounts.sh).
 #
-# WHY a hand-rolled harness (not bats): same rationale as procedure-git-auth's
+# WHY a hand-rolled harness (not bats): same rationale as procedure-github-auth's
 # sibling harness — the whole point of this suite is "runs on any machine
 # with no dependencies". Requiring bats-core would contradict that.
 #
@@ -20,7 +20,7 @@
 #   * jira-login.sh is interactive; tests drive it by feeding
 #     site\nemail\ntoken\n (or just email\ntoken\n when --site is given) on
 #     stdin — the same "pipe a transcript" technique
-#     procedure-git-auth/tests/run-tests.sh uses for manage_gh_accounts.sh.
+#     procedure-github-auth/tests/run-tests.sh uses for manage_gh_accounts.sh.
 #   * The load-bearing security assertion in this suite: every test that
 #     handles a credential feeds a DISTINCTIVE token value and then greps
 #     every script's captured stdout+stderr for it — it must never appear.
@@ -87,7 +87,7 @@ for t in sh env sed mktemp mkdir chmod mv rm cat tr sort cp dirname; do
 done
 
 # ---------------------------------------------------------------------------
-# Runner primitives (same shape as procedure-git-auth/tests/run-tests.sh).
+# Runner primitives (same shape as procedure-github-auth/tests/run-tests.sh).
 # ---------------------------------------------------------------------------
 TESTS_RUN=0
 TESTS_FAIL=0

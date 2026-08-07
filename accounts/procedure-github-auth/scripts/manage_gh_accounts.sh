@@ -50,7 +50,7 @@ MAX_RETRIES=3
 # HUB_WARN_COLOR, HUB_NUMBER_COLOR, HUB_DIM_COLOR, HUB_HINT_KEY_COLOR and the
 # ✓/✗/! glyphs), so this screen looks like the menu that launched it. They are
 # RE-DECLARED here and NOT sourced from that file, for the reason this script's
-# own header states: it ships inside the procedure-git-auth skill and is run
+# own header states: it ships inside the procedure-github-auth skill and is run
 # directly by agents as their account-confirmation gate, so it must keep working
 # with no hub present. The cost of that independence is this duplication; the
 # rule for it is that the values here only ever move to MATCH the hub's.

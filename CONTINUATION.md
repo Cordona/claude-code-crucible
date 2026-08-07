@@ -37,6 +37,12 @@ context to execute. Read the essentials first.
   issues.
 - **Keep the repo free of any client/employer identifiers** — org-specific work is host-local or a
   separate private skill, never in this shared tree.
+- **A hub redeploy is REQUIRED, not cosmetic, after the `procedure-git-auth` → `procedure-github-auth`
+  rename and the new GitLab skills (2026-08-05).** The deployed symlink `~/.claude/skills/procedure-git-auth`
+  is now dangling — until `crucible-hub install` runs again, the GitHub account gate is unbindable by
+  its new name, and `procedure-gitlab-auth`/`procedure-glab-mr`/`procedure-glab-issues` aren't deployed
+  at all. A plain re-install links the new names but does NOT remove the orphaned old link — that needs
+  the hub's Uninstall orphan-cleanup path (`List`/`Doctor` will report it as Orphaned).
 
 ---
 
@@ -103,6 +109,12 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
   which requires the relaxation. Bank the safe rule-compatible wins first (gh dispatcher
   consolidation + jira move-only reordering); panel the rule-relaxation before the physical jira
   split. Same thread as the reorg above — consider together.
+  **GitLab joins this scope (2026-08-05):** the new GL backend (`procedure-glab-*`, mirroring
+  `procedure-gh-issues`/`procedure-gh-pr`) is being built monolithic-first, deliberately matching
+  gh's current shape rather than SRP/DRY from day one — the panel-gated rule-relaxation above
+  isn't worth deciding just for one new backend. When this restructure eventually runs, it covers
+  gh + jira + gl together, in one consistent pass, not gl cleaned up alone while gh/jira stay
+  monolithic.
 
 ### D. Cleanup
 

@@ -42,7 +42,7 @@
 #   2  usage error
 #
 # NOT performed here (deliberately upstream): the GitHub-ACCOUNT confirmation
-# gate — that is `procedure-git-auth`'s job, run by the calling agent BEFORE
+# gate — that is `procedure-github-auth`'s job, run by the calling agent BEFORE
 # this script (see this skill's SKILL.md). This is an OUTWARD, PERSISTENT
 # repo write — gate it on the user's explicit opt-in, same as create-issue.sh.
 #

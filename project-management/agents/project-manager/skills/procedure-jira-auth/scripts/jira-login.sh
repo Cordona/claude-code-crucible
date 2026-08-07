@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 #
 # jira-login.sh — USER-interactive Jira Cloud credential setup. The twin of
-#                 procedure-git-auth's manage_gh_accounts.sh, but for Jira:
+#                 procedure-github-auth's manage_gh_accounts.sh, but for Jira:
 #                 there is no local CLI session to switch (Jira has no `gh`
 #                 equivalent), so this script's whole job is to PROMPT for a
 #                 site + email + API token and write them to a secure,

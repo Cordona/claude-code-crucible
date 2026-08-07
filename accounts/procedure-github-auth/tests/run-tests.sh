@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 #
 # run-tests.sh — self-contained, zero-dependency POSIX test harness for the
-#                procedure-git-auth script suite (gh-auth-status.sh +
+#                procedure-github-auth script suite (gh-auth-status.sh +
 #                manage_gh_accounts.sh).
 #
 # WHY a hand-rolled harness (not bats): the whole point of this suite is "runs

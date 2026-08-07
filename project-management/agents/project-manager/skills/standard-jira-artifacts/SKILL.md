@@ -1,18 +1,18 @@
 ---
 name: standard-jira-artifacts
 description: |
-  The Jira-specific delta on top of `standard-backlog-artifacts` — the shared rubric the project-manager BUILDS to whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers ONLY what Jira adds that GitHub has no analog for: the markdown-to-ADF authoring surface (`md-to-adf.sh`'s supported flat subset — never Jira wiki notation), Jira's config-driven workflow-STATUS state machine and the readiness-audit-against-status mechanism (auditing a ticket's content against what its CURRENT status requires), and how a confirmed Jira site selects a private per-client overlay skill (`standard-jira-<client>`) through a data-driven site-to-skill registry, never a client name hardcoded here.
+  The Jira-specific delta on top of `standard-backlog-artifacts` — the shared rubric the project-manager BUILDS to whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers ONLY what Jira adds that neither GitHub nor GitLab has an analog for: the markdown-to-ADF authoring surface (`md-to-adf.sh`'s supported flat subset — never Jira wiki notation), Jira's config-driven workflow-STATUS state machine and the readiness-audit-against-status mechanism (auditing a ticket's content against what its CURRENT status requires), and how a confirmed Jira site selects a private per-client overlay skill (`standard-jira-<client>`) through a data-driven site-to-skill registry, never a client name hardcoded here.
 
   Does NOT restate artifact taxonomy, INVEST, Given/When/Then, DoR/DoD, or the audience matrix — those live in `standard-backlog-artifacts` and apply to Jira artifacts unchanged. Does NOT define any per-client template, label, or status-gate content (that is a `standard-jira-<client>` overlay) or the `procedure-jira`/`procedure-jira-auth` CLI mechanics.
 ---
 
 # Standard: Jira Artifacts
 
-The **Jira delta only**. This skill adds nothing about what makes a good backlog artifact — that is `standard-backlog-artifacts`, unchanged for Jira. It adds only what Jira, as a tracker, requires that GitHub does not: an authoring surface (markdown → ADF) and a workflow-status state machine, with a readiness-audit mechanism keyed to that state machine.
+The **Jira delta only**. This skill adds nothing about what makes a good backlog artifact — that is `standard-backlog-artifacts`, unchanged for Jira. It adds only what Jira, as a tracker, requires that neither GitHub nor GitLab does: an authoring surface (markdown → ADF) and a workflow-status state machine, with a readiness-audit mechanism keyed to that state machine.
 
 ## Builds on `standard-backlog-artifacts`
 
-Before writing or auditing any Jira artifact, apply `standard-backlog-artifacts` in full — type taxonomy, INVEST, vertical slicing, Given/When/Then acceptance criteria, Definition of Ready/Done, and the audience matrix all apply to a Jira ticket exactly as they do to a GitHub issue. **This skill does not repeat any of that.** A `standard-jira-<client>` overlay may add ticket-template sections and label rules on top; it still specializes the same generic craft, never replaces it.
+Before writing or auditing any Jira artifact, apply `standard-backlog-artifacts` in full — type taxonomy, INVEST, vertical slicing, Given/When/Then acceptance criteria, Definition of Ready/Done, and the audience matrix all apply to a Jira ticket exactly as they do to a GitHub or GitLab issue. **This skill does not repeat any of that.** A `standard-jira-<client>` overlay may add ticket-template sections and label rules on top; it still specializes the same generic craft, never replaces it.
 
 ## Authoring surface: markdown to ADF
 
@@ -31,7 +31,7 @@ The converter supports a **flat** subset only:
 
 Write flat markdown — a blank line between blocks, no nested lists — so nothing degrades unexpectedly. A `standard-jira-<client>` overlay's ticket template must stay inside this subset.
 
-## Workflow status: the axis GitHub has no analog for
+## Workflow status: the axis neither GitHub nor GitLab has an analog for
 
 A Jira issue carries a **status** from a project- and issue-type-specific workflow graph, configured per project — never a fixed global list. Illustrative default (the shape an unconfigured project effectively behaves like): `Open → In Progress → Reviewing → Done → Closed`. Treat this as an example, not a contract — the real statuses and legal transitions for a given project come from its config, discoverable with `jira.sh workflow <KEY> --confirmed-site SITE`.
 
@@ -47,7 +47,7 @@ Because status is a real state machine, "is this ticket ready to move?" is answe
 2. Look up that status's required sections/fields in the client overlay's rules-by-status table.
 3. Report each as present-and-adequate, present-but-thin, or missing — never silently pass a thin section.
 
-GitHub issues have no equivalent: there is no per-status "what must be filled in before this moves" concept to audit against.
+Neither GitHub nor GitLab issues have an equivalent: there is no per-status "what must be filled in before this moves" concept to audit against.
 
 ## Site selects the client overlay (data-driven, never a name switch)
 

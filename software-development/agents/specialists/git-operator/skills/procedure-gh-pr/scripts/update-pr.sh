@@ -61,7 +61,7 @@
 #      field flag given at all)
 #
 # NOT performed here (deliberately upstream): the GitHub-ACCOUNT confirmation
-# gate — that is `procedure-git-auth`'s job, run by the calling agent BEFORE
+# gate — that is `procedure-github-auth`'s job, run by the calling agent BEFORE
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
@@ -117,9 +117,16 @@ need_arg() {
 	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
 }
 
+# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
+# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
+# ('007') is not the number GitHub would echo back. Both used to slip through and
+# surface as a confusing `gh` failure (exit 1) instead of the usage error
+# (exit 2) they are. Kept byte-identical to procedure-glab-mr's update-mr.sh so
+# the two siblings cannot drift apart.
 is_positive_int() {
 	case "$1" in
-		''|*[!0-9]*) return 1 ;;
+		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
+		0*) return 1 ;;            # a bare '0', and any leading-zero form
 		*) return 0 ;;
 	esac
 }
