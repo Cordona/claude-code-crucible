@@ -44,16 +44,16 @@ This project uses **Git Flow**. Two long-lived branches, three supporting types:
 
 ## Protection (the server-side backstop)
 
-`main` and `develop` are **protected** via a repository ruleset:
-- Require a **pull request** before merging (no direct pushes).
+`main` and `develop` are **protected** — on GitHub via a **repository ruleset**, on GitLab via **protected branches + push rules** (same intent, different mechanism):
+- Require a **pull/merge request** before merging (no direct pushes).
 - Require **signed commits** and **linear history**.
 - Require **passing status checks** (commitlint + build/test) and **≥ 1 review**.
 - **Block force-pushes** and branch deletion.
 
-Client-side branch discipline is advisory; the ruleset is what makes it an invariant.
+Client-side branch discipline is advisory; the platform's protection setting is what makes it an invariant.
 
 ## Constraints (NEVER violate)
-- Never commit directly to a protected branch (`main`/`develop`) — always via a branch + PR.
+- Never commit directly to a protected branch (`main`/`develop`) — always via a branch + PR/MR.
 - Never force-push a shared/published branch.
 - Never put `#`, spaces, or uppercase in a branch name; never mix multiple concerns on one branch (bar the refactor exception).
 

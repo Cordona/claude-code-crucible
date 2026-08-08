@@ -11,7 +11,10 @@
 #                 [--no-color] [-h|--help]
 #
 # Output (text): one labeled line per domain — its install state plus its own
-#   sub-selection detail ("(2/9 technologies)", "(GitHub, Jira)").
+#   sub-selection detail ("(2/9 technologies)", "(GitHub, Jira)", or, for a
+#   domain with more than one kind, both joined in the domain's own kind
+#   order: "(GitHub; 2/9 technologies)" for Software Development, whose VCS
+#   kind is listed before its technology kind — see hub_domain_selection_kind).
 # Output (env/json): per-domain state, the installed/available selection keys as
 #   comma-lists, the four component counts, and the first-run bundle's state.
 #
@@ -106,8 +109,10 @@ hub_status_selection_keys() {
 
 TECHNOLOGIES=$(hub_status_selection_keys technology 1)
 TECHNOLOGIES_AVAILABLE=$(hub_status_selection_keys technology 0)
-PM_BACKENDS=$(hub_status_selection_keys pm-backend 1)
-PM_BACKENDS_AVAILABLE=$(hub_status_selection_keys pm-backend 0)
+SD_VCS=$(hub_status_selection_keys vcs 1)
+SD_VCS_AVAILABLE=$(hub_status_selection_keys vcs 0)
+PM_TRACKERS=$(hub_status_selection_keys pm-tracker 1)
+PM_TRACKERS_AVAILABLE=$(hub_status_selection_keys pm-tracker 0)
 
 case $OPT_FORMAT in
 env)
@@ -130,8 +135,10 @@ env)
 	hub_env_kv HUB_DOMAIN_COUNT "$HS_N"
 	hub_env_kv HUB_TECHNOLOGIES "$TECHNOLOGIES"
 	hub_env_kv HUB_TECHNOLOGIES_AVAILABLE "$TECHNOLOGIES_AVAILABLE"
-	hub_env_kv HUB_PM_BACKENDS "$PM_BACKENDS"
-	hub_env_kv HUB_PM_BACKENDS_AVAILABLE "$PM_BACKENDS_AVAILABLE"
+	hub_env_kv HUB_SD_VCS "$SD_VCS"
+	hub_env_kv HUB_SD_VCS_AVAILABLE "$SD_VCS_AVAILABLE"
+	hub_env_kv HUB_PM_TRACKERS "$PM_TRACKERS"
+	hub_env_kv HUB_PM_TRACKERS_AVAILABLE "$PM_TRACKERS_AVAILABLE"
 	hub_env_kv HUB_INSTALLED_COUNT "$HUB_COUNT_INSTALLED"
 	hub_env_kv HUB_DIVERGED_COUNT "$HUB_COUNT_DIVERGED"
 	hub_env_kv HUB_AVAILABLE_COUNT "$HUB_COUNT_AVAILABLE"
@@ -151,7 +158,8 @@ json)
 		--arg status ok --arg action status --arg target "$TARGET_DIR" \
 		--argjson bundle_installed "$([ "$BUNDLE_STATE" = installed ] && printf true || printf false)" \
 		--arg technologies "$TECHNOLOGIES" --arg technologies_available "$TECHNOLOGIES_AVAILABLE" \
-		--arg pm_backends "$PM_BACKENDS" --arg pm_backends_available "$PM_BACKENDS_AVAILABLE" \
+		--arg sd_vcs "$SD_VCS" --arg sd_vcs_available "$SD_VCS_AVAILABLE" \
+		--arg pm_trackers "$PM_TRACKERS" --arg pm_trackers_available "$PM_TRACKERS_AVAILABLE" \
 		--argjson installed_count "$HUB_COUNT_INSTALLED" \
 		--argjson diverged_count "$HUB_COUNT_DIVERGED" \
 		--argjson available_count "$HUB_COUNT_AVAILABLE" \
@@ -161,46 +169,23 @@ json)
 		  domains:$domains,
 		  technologies:($technologies | if . == "" then [] else split(",") end),
 		  technologies_available:($technologies_available | if . == "" then [] else split(",") end),
-		  pm_backends:($pm_backends | if . == "" then [] else split(",") end),
-		  pm_backends_available:($pm_backends_available | if . == "" then [] else split(",") end),
+		  sd_vcs:($sd_vcs | if . == "" then [] else split(",") end),
+		  sd_vcs_available:($sd_vcs_available | if . == "" then [] else split(",") end),
+		  pm_trackers:($pm_trackers | if . == "" then [] else split(",") end),
+		  pm_trackers_available:($pm_trackers_available | if . == "" then [] else split(",") end),
 		  installed_count:$installed_count, diverged_count:$diverged_count,
 		  available_count:$available_count, discovered_count:$discovered_count}'
 	;;
 text)
-	# A live test session found two things worth fixing here, both the same
-	# "glyph leads the thing it describes" rule already applied everywhere else
-	# in this hub: (1) the glyph now comes BEFORE the domain label, not after a
-	# now-redundant "installed"/"partially installed" word — the glyph already
-	# says that; (2) "not installed" leads with its own glyph (a yellow hollow
-	# circle, hub_glyph_absent — an absent domain is expected, never a failure,
-	# so it is neither the same glyph nor color as a genuine problem) and is
-	# full-brightness text, not dimmed: a domain being absent is exactly the
-	# fact this screen exists to report, not a footnote about it.
+	# The per-domain render rules (glyph-before-label, the absent-domain glyph,
+	# the colon-belongs-to-the-detail rule) live at hub_print_domain_status_lines
+	# (lib/hub-state.sh) now, shared with hub-doctor.sh's own merged Status
+	# section — see that function's own header for the rationale.
 	hub_print_header 'Status'
 	printf '\n'
-	for HS_DOMAIN in $HUB_DOMAIN_KEYS; do
-		hub_domain_exists "$FRAMEWORK_ROOT" "$HS_DOMAIN" || continue
-		HS_STATE=$(hub_domain_state "$HS_DOMAIN")
-		HS_DETAIL=$(hub_domain_detail "$HS_DOMAIN")
-		case $HS_STATE in
-		installed) HS_GLYPH=$(hub_glyph_ok) ;;
-		partial) HS_GLYPH=$(hub_glyph_warn) ;;
-		*)
-			printf '  %s %s: not installed\n' "$(hub_glyph_absent)" "$(hub_domain_short_label "$HS_DOMAIN")"
-			continue
-			;;
-		esac
-		# The colon belongs to the DETAIL, not to the label on its own: a domain
-		# with no sub-selection (GTD) has no detail to introduce, and printing
-		# the colon anyway left it dangling with nothing after it once installed
-		# — a gap the mockup never showed because its one worked example had GTD
-		# not-installed, where the "not installed" branch above fills the line.
-		if [ -n "$HS_DETAIL" ]; then
-			printf '  %s %s: %s\n' "$HS_GLYPH" "$(hub_domain_short_label "$HS_DOMAIN")" "$HS_DETAIL"
-		else
-			printf '  %s %s\n' "$HS_GLYPH" "$(hub_domain_short_label "$HS_DOMAIN")"
-		fi
-	done
+	# hub_print_domain_status_lines (lib/hub-state.sh) — shared with
+	# hub-doctor.sh's own merged Status section; see its own header.
+	hub_print_domain_status_lines "$FRAMEWORK_ROOT" '  '
 	if [ "$HUB_COUNT_DIVERGED" -gt 0 ]; then
 		printf '\n  %s %s installed %s no longer %s source — run "Install" and choose %s to re-sync (see "List").\n' \
 			"$(hub_glyph_warn)" "$HUB_COUNT_DIVERGED" \

@@ -50,7 +50,7 @@ MAX_RETRIES=3
 # HUB_WARN_COLOR, HUB_NUMBER_COLOR, HUB_DIM_COLOR, HUB_HINT_KEY_COLOR and the
 # ✓/✗/! glyphs), so this screen looks like the menu that launched it. They are
 # RE-DECLARED here and NOT sourced from that file, for the reason this script's
-# own header states: it ships inside the procedure-git-auth skill and is run
+# own header states: it ships inside the procedure-github-auth skill and is run
 # directly by agents as their account-confirmation gate, so it must keep working
 # with no hub present. The cost of that independence is this duplication; the
 # rule for it is that the values here only ever move to MATCH the hub's.
@@ -85,9 +85,11 @@ SGR_DIM=2
 # forms there and so belongs to the separator rather than to each call site.
 SEP=' · '
 
-# Colors: honour NO_COLOR (https://no-color.org/, checked by PRESENCE — an
-# empty NO_COLOR="" still disables color, matching the hub's own
-# hub_color_enabled), honour the hub's own HUB_NO_COLOR when this script runs
+# Colors: honour NO_COLOR, checked by PRESENCE alone — deliberately STRICTER
+# than no-color.org itself (which disables color only when NO_COLOR is present
+# AND non-empty), so this agrees with the hub's own hub_color_enabled rather
+# than with the spec's letter: an empty NO_COLOR="" still disables color here,
+# same as there. Also honour the hub's own HUB_NO_COLOR when this script runs
 # AS the hub's delegate (crucible-hub passes it through on exec; unset when run
 # standalone, so a direct invocation is unaffected), and disable when stdout is
 # not a TTY, so piped/captured output is clean.
@@ -553,6 +555,15 @@ do_login() {
 }
 
 # main_menu — the authenticated-state menu. Sets MENU_ACTION.
+#
+# EVERY ACCEPTED TOKEN IS ADVERTISED: the number, and the one mnemonic word per
+# row. The keep row used to also answer to `exit`, `q` and `Q`, none of which the
+# "Select 1-3" prompt line ever mentioned — three extra spellings of the row a
+# user can already reach by typing its number or its name, unfindable except by
+# reading this source. They are gone rather than promoted onto the prompt line:
+# `q` here would read as "quit", and this script's documented 0/1 exit-code
+# contract (see its header, usage() and the skill's SKILL.md) makes "keep the
+# current account" a 0-exit success, not a quit.
 MENU_ACTION=""
 main_menu() {
 	MENU_ACTION=""
@@ -575,7 +586,7 @@ main_menu() {
 		case "$mm_choice" in
 			1|switch) MENU_ACTION=switch; return 0 ;;
 			2|login)  MENU_ACTION=login;  return 0 ;;
-			3|keep|exit|q|Q) MENU_ACTION=keep; return 0 ;;
+			3|keep) MENU_ACTION=keep; return 0 ;;
 			*) log_error "Invalid choice. Enter 1, 2, or 3."
 			   mm_retries=$((mm_retries + 1)) ;;
 		esac

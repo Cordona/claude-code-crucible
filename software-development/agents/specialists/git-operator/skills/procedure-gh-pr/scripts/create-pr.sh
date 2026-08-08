@@ -56,7 +56,7 @@
 #   2  usage error (missing/invalid argument, unreadable body-file)
 #
 # NOT performed here (deliberately upstream): the GitHub-ACCOUNT confirmation
-# gate (which login is active) — that is `procedure-git-auth`'s job, run by
+# gate (which login is active) — that is `procedure-github-auth`'s job, run by
 # the calling agent BEFORE this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded

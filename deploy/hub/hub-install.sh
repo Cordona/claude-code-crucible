@@ -6,9 +6,9 @@
 #                   pipeline.
 #
 # Usage:
-#   hub-install.sh [--domains=a,b] [--technologies=a,b] [--pm-backends=a,b]
-#                  [--all] [--apply] [--non-interactive] [--accessible]
-#                  [--details] [--target DIR] [--source DIR]
+#   hub-install.sh [--domains=a,b] [--technologies=a,b] [--sd-vcs=a,b]
+#                  [--pm-trackers=a,b] [--all] [--apply] [--non-interactive]
+#                  [--accessible] [--details] [--target DIR] [--source DIR]
 #                  [--format=text|env|json] [--no-color] [-h|--help]
 #
 #   --domains CSV       Install exactly these domains. Each domain always brings
@@ -17,8 +17,14 @@
 #   --technologies CSV  Software Development only: which technologies (a
 #                        developer agent, its reviewer and its standard, whichever
 #                        of the three exist).
-#   --pm-backends CSV   Project Management only: github, jira, or both.
-#   --all               Every domain, every technology, every backend.
+#   --sd-vcs CSV        Software Development only, OPTIONAL: which VCS host(s)
+#                        git-operator's PR/MR skill talks to — github, gitlab, or
+#                        both. Every other specialist and git-operator's own
+#                        local commit/branch/tag skills install regardless;
+#                        omitting this flag (or giving it nothing) is a valid
+#                        "no PR/MR automation" answer, never a blocked run.
+#   --pm-trackers CSV   Project Management only: github, gitlab, jira, or any combination.
+#   --all               Every domain, every technology, every VCS host, every tracker.
 #   --apply             Perform the writes. Absent: preview only (the dry run) —
 #                        on EVERY path, including a TTY. A flag-driven selection
 #                        without --apply prints its preview and stops there; it
@@ -49,7 +55,7 @@
 #   0  preview shown / nothing to install / cancelled / applied successfully.
 #   1  blocked (a domain needs a sub-selection that was not given), or an
 #      internal write failure.
-#   2  usage error (bad flag, unknown domain/technology/backend name).
+#   2  usage error (bad flag, unknown domain/technology/tracker name).
 #   3  the user pressed q to quit the hub from an interactive screen. A distinct
 #      code because "cancel this action" and "quit the program" are different
 #      answers, and the entrypoint must be able to tell them apart: exiting 0
@@ -65,7 +71,7 @@
 # use:
 #   selection_required — a selected domain has a mandatory sub-selection
 #                        (Software Development's technologies, Project
-#                        Management's backends) and none was given. Never
+#                        Management's trackers) and none was given. Never
 #                        guessed: installing "some default technology" because
 #                        the caller did not say is exactly the silent
 #                        assumption the never-guess discipline forbids.
@@ -89,10 +95,10 @@ hub_workspace_init
 
 usage() {
 	cat <<EOF
-Usage: $HUB_PROG [--domains=a,b] [--technologies=a,b] [--pm-backends=a,b] [--all]
-                  [--apply] [--non-interactive] [--accessible] [--details]
-                  [--target DIR] [--source DIR] [--format=text|env|json]
-                  [--no-color] [-h|--help]
+Usage: $HUB_PROG [--domains=a,b] [--technologies=a,b] [--sd-vcs=a,b]
+                  [--pm-trackers=a,b] [--all] [--apply] [--non-interactive]
+                  [--accessible] [--details] [--target DIR] [--source DIR]
+                  [--format=text|env|json] [--no-color] [-h|--help]
 
 With no --domains and no --all on a TTY, runs the interactive domain onboarding.
 A flag-driven selection without --apply previews only and stops; it never reaches
@@ -100,14 +106,17 @@ the confirm prompt.
 
 Options:
   --domains CSV       Install exactly these domains. Each domain always brings its
-                       own baseline; a domain with a sub-selection also needs its
-                       matching flag below, or the run is blocked rather than given
-                       a guessed default.
+                       own baseline; a domain with a MANDATORY sub-selection also
+                       needs its matching flag below, or the run is blocked rather
+                       than given a guessed default.
   --technologies CSV  Software Development only: which technologies. One token per
                        technology installs its developer agent, its reviewer and its
                        standard together — whichever of the three exist.
-  --pm-backends CSV   Project Management only: github, jira, or both.
-  --all               Every domain, every technology, every backend.
+  --sd-vcs CSV        Software Development only, OPTIONAL: github, gitlab, or both —
+                       which host(s) git-operator's PR/MR skill talks to. Omitting
+                       it (or giving it nothing) is a valid answer, never a block.
+  --pm-trackers CSV   Project Management only: github, gitlab, jira, or any combination.
+  --all               Every domain, every technology, every VCS host, every tracker.
   --apply             Perform the writes. Absent: preview only, on EVERY path,
                        including a TTY. A flag-driven selection without --apply
                        prints its preview and stops, so a bare Enter cannot turn a
@@ -130,7 +139,8 @@ EOF
 
 OPT_DOMAINS=""
 OPT_TECHNOLOGIES=""
-OPT_PM_BACKENDS=""
+OPT_PM_TRACKERS=""
+OPT_SD_VCS=""
 OPT_ALL=0
 OPT_APPLY=0
 OPT_NONINTERACTIVE=0
@@ -167,13 +177,22 @@ while [ $# -gt 0 ]; do
 		OPT_TECHNOLOGIES=${1#--technologies=}
 		shift
 		;;
-	--pm-backends)
-		[ $# -ge 2 ] || die_usage "--pm-backends requires an argument"
-		OPT_PM_BACKENDS=$2
+	--pm-trackers)
+		[ $# -ge 2 ] || die_usage "--pm-trackers requires an argument"
+		OPT_PM_TRACKERS=$2
 		shift 2
 		;;
-	--pm-backends=*)
-		OPT_PM_BACKENDS=${1#--pm-backends=}
+	--pm-trackers=*)
+		OPT_PM_TRACKERS=${1#--pm-trackers=}
+		shift
+		;;
+	--sd-vcs)
+		[ $# -ge 2 ] || die_usage "--sd-vcs requires an argument"
+		OPT_SD_VCS=$2
+		shift 2
+		;;
+	--sd-vcs=*)
+		OPT_SD_VCS=${1#--sd-vcs=}
 		shift
 		;;
 	--all)
@@ -289,28 +308,43 @@ hi_rows_file() {
 }
 
 # hi_selection_kinds -> every sub-selection kind any domain in this source needs,
-# in canonical domain order, each listed once.
+# in canonical domain order (and, within a multi-kind domain, that domain's own
+# kind order — e.g. Software Development's `vcs` before `technology`), each
+# listed once.
+#
+# THE INNER LOOP is what changed the moment a domain could carry more than one
+# kind: hub_domain_selection_kind now returns a space-separated list, so this
+# walks every word of it instead of treating the whole result as one kind.
 hi_selection_kinds() {
 	hisk_seen=""
 	for hisk_domain in $HUB_DOMAIN_KEYS; do
-		hisk_kind=$(hub_domain_selection_kind "$hisk_domain")
-		[ "$hisk_kind" != none ] || continue
-		case " $hisk_seen " in
-		*" $hisk_kind "*) continue ;;
-		esac
-		hisk_seen="$hisk_seen $hisk_kind"
-		printf '%s\n' "$hisk_kind"
+		# ASSIGNED, never inlined as the for-list word: hub_domain_selection_kind
+		# DIES on an unregistered domain, and a die inside a command substitution
+		# used as a for-list is swallowed under `set -e` (the substitution simply
+		# yields whatever it printed before dying — here, nothing — and the loop
+		# runs zero times instead of the script failing). Unreachable today only
+		# because every domain reaching this point already came from
+		# $HUB_DOMAIN_KEYS itself; nothing structurally ties the two together.
+		hisk_kinds=$(hub_domain_selection_kind "$hisk_domain")
+		for hisk_kind in $hisk_kinds; do
+			[ "$hisk_kind" != none ] || continue
+			case " $hisk_seen " in
+			*" $hisk_kind "*) continue ;;
+			esac
+			hisk_seen="$hisk_seen $hisk_kind"
+			printf '%s\n' "$hisk_kind"
+		done
 	done
 }
 
 # The two names the RESULT PAYLOAD still refers to directly, because
-# HUB_TECHNOLOGIES / HUB_PM_BACKENDS are per-kind fields of a published, closed
+# HUB_TECHNOLOGIES / HUB_PM_TRACKERS are per-kind fields of a published, closed
 # machine contract and cannot be emitted by a generic loop without inventing key
 # names. Read-only aliases for the per-kind files above, never a second source of
 # truth: the selection, validation and preview paths all address these files
 # through hi_sel_file so a kind added to the registry needs no edit there.
 SEL_TECHNOLOGIES=$(hi_sel_file technology)
-SEL_BACKENDS=$(hi_sel_file pm-backend)
+SEL_TRACKERS=$(hi_sel_file pm-tracker)
 for HI_KIND in $(hi_selection_kinds); do
 	: >"$(hi_sel_file "$HI_KIND")"
 done
@@ -324,7 +358,8 @@ done
 hi_flag_value() {
 	case $1 in
 	technology) printf '%s' "$OPT_TECHNOLOGIES" ;;
-	pm-backend) printf '%s' "$OPT_PM_BACKENDS" ;;
+	pm-tracker) printf '%s' "$OPT_PM_TRACKERS" ;;
+	vcs) printf '%s' "$OPT_SD_VCS" ;;
 	*) die "hi_flag_value: no flag variable for selection kind '$1'" ;;
 	esac
 }
@@ -363,7 +398,7 @@ hi_selection_rows() {
 		hisr_state=$(hub_group_state "$hisr_group")
 		# A GROUP THAT IS ALREADY FULLY INSTALLED IS NOT OFFERED AT ALL — the
 		# same rule hi_domain_pending applies at the domain level, applied here
-		# at the technology/backend level. A live test session found this screen
+		# at the technology/tracker level. A live test session found this screen
 		# still listing React/Shell script/Tests developer as live, selectable
 		# checkboxes annotated "already installed" once they genuinely were —
 		# selecting them changed nothing. "Partial" (some of a group's units
@@ -375,15 +410,16 @@ hi_selection_rows() {
 		hisr_note=""
 		hisr_div=0
 		case $1 in
-		# The ONE per-kind arm left on this screen: a backend row carries a "what it
-		# does" blurb. It used to ALSO trim a " backend" suffix off the group label,
-		# because the label carried one and this screen is already titled "select
-		# backend(s)" — that trim is gone, not disabled: the group label itself is
-		# bare now (see lib/hub-discovery.sh's own note on why the default was
-		# inverted), so the row reads "GitHub" here with nothing to strip, and the
-		# two screens that DO need the fuller form compose it themselves through
-		# hub_group_label_in_context.
-		pm-backend) hisr_note=$(hub_pm_backend_hint "$hisr_key") ;;
+		# The per-kind arms left on this screen: a tracker or VCS row carries a
+		# "what it does" blurb. Both used to ALSO trim a suffix off the group
+		# label, because the label carried one and each screen is already titled
+		# "select tracker(s)"/"select VCS" — that trim is gone, not disabled: the
+		# group label itself is bare now (see lib/hub-discovery.sh's own note on
+		# why the default was inverted), so a row reads "GitHub" here with
+		# nothing to strip, and the two screens that DO need the fuller form
+		# compose it themselves through hub_group_label_in_context.
+		pm-tracker) hisr_note=$(hub_pm_tracker_hint "$hisr_key") ;;
+		vcs) hisr_note=$(hub_sd_vcs_hint "$hisr_key") ;;
 		esac
 		if [ "$hisr_state" = partial ]; then
 			hisr_note="${hisr_note:+$hisr_note   }partially installed — choose to complete"
@@ -426,10 +462,18 @@ hi_domain_pending() {
 	for hidp_content in $(hub_domain_content_groups "$hidp_domain"); do
 		[ "$(hub_group_state "$hidp_content")" = installed ] || return 0
 	done
-	hidp_kind=$(hub_domain_selection_kind "$hidp_domain")
-	[ "$hidp_kind" != none ] || return 1
-	for hidp_group in $(hub_selectable_groups "$hidp_kind"); do
-		[ "$(hub_group_state "$hidp_group")" = installed ] || return 0
+	# EVERY KIND THE DOMAIN HAS, not just its first: Software Development must
+	# stay pending while EITHER its technology OR its VCS fan-out still has
+	# something available, and a domain whose kind list is the single word
+	# `none` (GTD) correctly finds nothing here and falls through to `return 1`.
+	# ASSIGNED, never inlined — see hi_selection_kinds' own note on why a die
+	# inside a for-list command substitution is swallowed under `set -e`.
+	hidp_kinds=$(hub_domain_selection_kind "$hidp_domain")
+	for hidp_kind in $hidp_kinds; do
+		[ "$hidp_kind" != none ] || continue
+		for hidp_group in $(hub_selectable_groups "$hidp_kind"); do
+			[ "$(hub_group_state "$hidp_group")" = installed ] || return 0
+		done
 	done
 	return 1
 }
@@ -462,11 +506,22 @@ hi_drop_unsatisfiable_domain() {
 # The interactive walk's STEP SEQUENCE, derived from the registry.
 #
 # A step is either the literal `domains` (the onboarding checklist, always first)
-# or a DOMAIN KEY, meaning "that domain's sub-selection screen". The sequence is
-# recomputed from SEL_DOMAINS whenever the domain selection changes, so it always
-# holds exactly the screens this selection needs, in canonical domain order.
+# or a KIND KEY, meaning "the sub-selection screen for that kind". Steps are KIND
+# keys rather than DOMAIN keys precisely because a domain can now carry more than
+# one kind (Software Development: `vcs` then `technology`) — keying by kind gives
+# a multi-kind domain one step per kind for free from this same generic sequence
+# machinery (hi_step_next/hi_step_prev below need no change at all), where keying
+# by domain would have needed a second, nested sequence inside a single domain
+# step. hub_selection_kind_domain is the reverse lookup a step uses to recover
+# its own domain (for the screen title, the empty-selection message, and the
+# unsatisfiable-source notice) — safe because a kind still maps to exactly ONE
+# domain, only a domain can now map to more than one kind.
 #
-# This replaced a hardcoded domains -> technologies -> backends machine whose every
+# The sequence is recomputed from SEL_DOMAINS whenever the domain selection
+# changes, so it always holds exactly the screens this selection needs, in
+# canonical domain order (and, within a domain, that domain's own kind order).
+#
+# This replaced a hardcoded domains -> technologies -> trackers machine whose every
 # transition tested for the literal strings "software-development" and
 # "project-management". That was the largest single item in a new domain's blast
 # radius, and it was invisible: adding a domain with a sub-selection would have
@@ -475,25 +530,27 @@ hi_drop_unsatisfiable_domain() {
 HI_STEPS="$HUB_WORK/selection-steps.txt"
 
 # hi_kind_required KIND -> exit 0 when at least one SELECTED domain needs a
-# sub-selection of KIND.
+# sub-selection of KIND. A reverse lookup (hub_selection_kind_domain) rather than
+# a scan of every domain's own kind LIST: a kind still maps to exactly one
+# domain, so asking "is THAT domain selected" is the whole question.
 hi_kind_required() {
-	for hikr_domain in $HUB_DOMAIN_KEYS; do
-		[ "$(hub_domain_selection_kind "$hikr_domain")" = "$1" ] || continue
-		if grep -qxF -- "$hikr_domain" "$SEL_DOMAINS"; then
-			return 0
-		fi
-	done
-	return 1
+	hikr_domain=$(hub_selection_kind_domain "$1")
+	grep -qxF -- "$hikr_domain" "$SEL_DOMAINS"
 }
 
-# hi_steps_build -> rewrite HI_STEPS: one line per SELECTED domain that has a
-# sub-selection, in HUB_DOMAIN_KEYS order.
+# hi_steps_build -> rewrite HI_STEPS: one line per KIND any SELECTED domain
+# needs, in canonical domain order (and, within a domain, that domain's own kind
+# order).
 hi_steps_build() {
 	: >"$HI_STEPS"
 	for hisb_domain in $HUB_DOMAIN_KEYS; do
 		grep -qxF -- "$hisb_domain" "$SEL_DOMAINS" || continue
-		[ "$(hub_domain_selection_kind "$hisb_domain")" != none ] || continue
-		printf '%s\n' "$hisb_domain" >>"$HI_STEPS"
+		# ASSIGNED, never inlined — see hi_selection_kinds' own note.
+		hisb_kinds=$(hub_domain_selection_kind "$hisb_domain")
+		for hisb_kind in $hisb_kinds; do
+			[ "$hisb_kind" != none ] || continue
+			printf '%s\n' "$hisb_kind" >>"$HI_STEPS"
+		done
 	done
 }
 
@@ -574,11 +631,13 @@ hi_select_interactive() {
 			continue
 		fi
 
-		# A domain sub-selection step. Everything about it — the screen title, the
+		# A sub-selection step. Everything about it — the screen title, the
 		# rows, the selection file, the empty-selection message, the noun in the
-		# unsatisfiable-source message — comes from the domain registry.
-		HI_DOMAIN=$HI_STEP
-		HI_KIND=$(hub_domain_selection_kind "$HI_DOMAIN")
+		# unsatisfiable-source message — comes from the registry. The STEP is a
+		# KIND now (see this section's header above), so the domain is the
+		# reverse lookup, not the other way around.
+		HI_KIND=$HI_STEP
+		HI_DOMAIN=$(hub_selection_kind_domain "$HI_KIND")
 		HI_SEL=$(hi_sel_file "$HI_KIND")
 		HI_ROWS=$(hi_rows_file "$HI_KIND")
 		HI_NEXT=$(hi_step_next "$HI_STEP")
@@ -588,16 +647,19 @@ hi_select_interactive() {
 			# EMPTY has two different causes, and only one of them means the
 			# domain is unsatisfiable. If this --source genuinely has no
 			# candidate of this kind at all, hi_drop_unsatisfiable_domain's
-			# message is correct and the domain has to come out. But if
-			# candidates DO exist and are simply all already installed —
-			# reachable now that hi_selection_rows excludes them entirely —
-			# the domain almost certainly stayed in SEL_DOMAINS for its
-			# BASELINE'S own sake (hi_domain_pending admitted it for exactly
-			# that reason); dropping it here would make a diverged baseline
-			# item unreachable through Install. Skip this step with an empty
+			# message is correct and the domain has to come out — UNLESS this
+			# kind is OPTIONAL (hub_selection_kind_optional), in which case
+			# zero candidates is exactly as fine as zero chosen: nothing to
+			# drop, nothing to block, just skip the step. If candidates DO
+			# exist and are simply all already installed — reachable now that
+			# hi_selection_rows excludes them entirely — the domain almost
+			# certainly stayed in SEL_DOMAINS for its BASELINE'S own sake
+			# (hi_domain_pending admitted it for exactly that reason);
+			# dropping it here would make a diverged baseline item
+			# unreachable through Install. Skip this step with an empty
 			# sub-selection instead — there is nothing to pick, but that is
 			# not the same as nothing to do.
-			if [ -n "$(hub_selectable_groups "$HI_KIND")" ]; then
+			if [ -n "$(hub_selectable_groups "$HI_KIND")" ] || hub_selection_kind_optional "$HI_KIND"; then
 				: >"$HI_SEL"
 				# THE SKIPPED STEP COMES OUT OF THE SEQUENCE, and that is not
 				# bookkeeping — it is what keeps `b` working. hi_last_selection_step
@@ -605,14 +667,15 @@ hi_select_interactive() {
 				# step that rendered no checklist but stayed listed was a step `b`
 				# could land on: re-entering it hit this same branch, advanced
 				# straight back to the confirm screen, and `b` became a silent no-op
-				# with the real checklist unreachable. Removed by LINE rather than by
+				# with the real checklist unreachable. Removed by LINE (against its
+				# own KIND now, since steps are kind-keyed) rather than by
 				# hi_steps_build (the sibling drop branch's mechanism just below):
 				# that rebuild derives the sequence from SEL_DOMAINS, and this domain
-				# deliberately STAYS selected for its baseline's own sake, so a
-				# rebuild would put the step straight back. Re-entering the domains
-				# checklist rebuilds it anyway, and this branch removes it again —
-				# self-healing either way.
-				hub_remove_line "$HI_STEPS" "$HI_DOMAIN"
+				# deliberately STAYS selected for its baseline's own sake (or, for an
+				# optional kind, simply stays selected), so a rebuild would put the
+				# step straight back. Re-entering the domains checklist rebuilds it
+				# anyway, and this branch removes it again — self-healing either way.
+				hub_remove_line "$HI_STEPS" "$HI_KIND"
 				[ -n "$HI_NEXT" ] || return 0
 				HI_STEP=$HI_NEXT
 				continue
@@ -636,7 +699,7 @@ hi_select_interactive() {
 			;;
 		2) exit 3 ;;
 		esac
-		if [ ! -s "$HI_SEL" ]; then
+		if [ ! -s "$HI_SEL" ] && ! hub_selection_kind_optional "$HI_KIND"; then
 			# ASSIGNED, never inlined as the printf argument.
 			# hub_domain_empty_selection_message is a closed lookup that DIES for a
 			# domain with no sub-selection, and a die inside a command substitution used
@@ -647,6 +710,11 @@ hi_select_interactive() {
 			# today, but that guard is in another branch of another function and nothing
 			# structurally ties the two together. The same hoisting lib/hub-state.sh's
 			# hub_rows_build states and hi_shared_heading applies.
+			#
+			# THE OPTIONAL-KIND EXEMPTION is new: an empty `vcs` selection is a
+			# genuinely valid answer ("no PR/MR automation"), not an empty domain,
+			# so it never reaches this block at all — it falls straight through to
+			# advancing the step, exactly like a satisfied selection does.
 			HI_EMPTY_MSG=$(hub_domain_empty_selection_message "$HI_DOMAIN")
 			printf '\n%s %s\n' "$(hub_glyph_warn)" "$HI_EMPTY_MSG" >&3
 			continue
@@ -665,7 +733,7 @@ INTERACTIVE_SELECTION=0
 
 if [ "$OPT_ALL" -eq 1 ]; then
 	# Every kind the registry knows about, not the two that happened to exist when
-	# this was written: a third domain reusing `technology` or `pm-backend` was
+	# this was written: a third domain reusing `technology` or `pm-tracker` was
 	# silently unselectable via --all while the interactive walk offered it.
 	cat "$VALID_DOMAINS" >"$SEL_DOMAINS"
 	for HI_KIND in $(hi_selection_kinds); do
@@ -688,7 +756,7 @@ elif [ "$FLAG_DRIVEN" -eq 1 ]; then
 		hub_dedup_first_field "$HI_SEL"
 		# The "unknown X" noun is the registry's own, plus the flag it came from:
 		# the hand-written literals this replaced named the DOMAIN ("unknown
-		# project-management backend"), and the flag is the more actionable half —
+		# project-management tracker"), and the flag is the more actionable half —
 		# it is the thing the caller actually typed.
 		hi_validate_tokens "$HI_SEL" "$(hi_valid_file "$HI_KIND")" \
 			"$(hub_selection_kind_noun "$HI_KIND") ($(hub_selection_kind_flag "$HI_KIND"))"
@@ -700,11 +768,14 @@ elif [ "$FLAG_DRIVEN" -eq 1 ]; then
 	# it installed Python when it did not. Both this check and the mandatory-
 	# sub-selection check below iterate the registry, so neither names a domain.
 	for HI_DOMAIN in $HUB_DOMAIN_KEYS; do
-		HI_KIND=$(hub_domain_selection_kind "$HI_DOMAIN")
-		[ "$HI_KIND" != none ] || continue
-		[ -s "$(hi_sel_file "$HI_KIND")" ] || continue
-		grep -qxF -- "$HI_DOMAIN" "$SEL_DOMAINS" ||
-			die_usage "$(hub_selection_kind_flag "$HI_KIND") requires $HI_DOMAIN in --domains"
+		# ASSIGNED, never inlined — see hi_selection_kinds' own note.
+		HI_KINDS=$(hub_domain_selection_kind "$HI_DOMAIN")
+		for HI_KIND in $HI_KINDS; do
+			[ "$HI_KIND" != none ] || continue
+			[ -s "$(hi_sel_file "$HI_KIND")" ] || continue
+			grep -qxF -- "$HI_DOMAIN" "$SEL_DOMAINS" ||
+				die_usage "$(hub_selection_kind_flag "$HI_KIND") requires $HI_DOMAIN in --domains"
+		done
 	done
 else
 	if ! hub_interactive; then
@@ -721,7 +792,7 @@ else
 		[ -n "$HI_DOMAIN" ] || continue
 		hi_domain_pending "$HI_DOMAIN" || continue
 		HI_NOTE=$(hub_domain_blurb "$HI_DOMAIN")
-		# The ratio/backend detail (hub_domain_detail, e.g. "(2/9 technologies)")
+		# The ratio/tracker detail (hub_domain_detail, e.g. "(2/9 technologies)")
 		# is the accurate way to say "here's what's already there" for a
 		# partially-selected domain — unlike the binary installed/partial tag
 		# this replaced, it cannot claim a domain with 8 of 9 technologies still
@@ -763,17 +834,26 @@ fi
 if [ "$INTERACTIVE_SELECTION" -eq 0 ]; then
 	while IFS= read -r HI_DOMAIN; do
 		[ -n "$HI_DOMAIN" ] || continue
-		HI_KIND=$(hub_domain_selection_kind "$HI_DOMAIN")
-		[ "$HI_KIND" != none ] || continue
-		if [ ! -s "$(hi_sel_file "$HI_KIND")" ]; then
-			# ASSIGNED, never inlined as hi_blocked's argument — same hazard as the
-			# interactive path's own copy of this message above, with a worse outcome
-			# here: a swallowed die would hand a MACHINE caller
-			# `HUB_BLOCKED_REASON=selection_required` with an empty HUB_MESSAGE, i.e. a
-			# refusal it cannot act on or report.
-			HI_EMPTY_MSG=$(hub_domain_empty_selection_message "$HI_DOMAIN")
-			hi_blocked selection_required "$HI_EMPTY_MSG"
-		fi
+		# ASSIGNED, never inlined — see hi_selection_kinds' own note.
+		HI_KINDS=$(hub_domain_selection_kind "$HI_DOMAIN")
+		for HI_KIND in $HI_KINDS; do
+			[ "$HI_KIND" != none ] || continue
+			# An OPTIONAL kind (vcs) is never mandatory here either — an empty
+			# selection of it is a valid answer on every entry point, not just
+			# the interactive one.
+			if hub_selection_kind_optional "$HI_KIND"; then
+				continue
+			fi
+			if [ ! -s "$(hi_sel_file "$HI_KIND")" ]; then
+				# ASSIGNED, never inlined as hi_blocked's argument — same hazard as the
+				# interactive path's own copy of this message above, with a worse outcome
+				# here: a swallowed die would hand a MACHINE caller
+				# `HUB_BLOCKED_REASON=selection_required` with an empty HUB_MESSAGE, i.e. a
+				# refusal it cannot act on or report.
+				HI_EMPTY_MSG=$(hub_domain_empty_selection_message "$HI_DOMAIN")
+				hi_blocked selection_required "$HI_EMPTY_MSG"
+			fi
+		done
 	done <"$SEL_DOMAINS"
 fi
 
@@ -917,16 +997,20 @@ hi_plan_groups_build() {
 # be there unchanged.
 # ---------------------------------------------------------------------------
 
-# hi_selection_kind_noun_plural KIND -> the irregular plural for the one or two
-# selection kinds this hub has today, with a regular "+s" fallback for a future
-# kind whose plural genuinely is regular. A local, tiny mapping rather than a
-# new entry in hub-domains.sh's own KIND registry (hub_selection_kind_noun and
-# its siblings): this is the ONE place in the hub that needs a plural form of
-# the noun, so growing the shared registry for it is not yet earned.
+# hi_selection_kind_noun_plural KIND -> the irregular plural for a selection
+# kind whose plural genuinely is irregular, with a regular "+s" fallback for
+# one that is not. A local, tiny mapping rather than a new entry in
+# hub-domains.sh's own KIND registry (hub_selection_kind_noun and its
+# siblings): this is the ONE place in the hub that needs a plural form of the
+# noun, so growing the shared registry for it is not yet earned. `vcs` is an
+# arm here for the same reason `technology`/`pm-tracker` are: the "+s"
+# fallback on an acronym like "VCS" produces "VCSs", exactly the irregular
+# case this function exists to override.
 hi_selection_kind_noun_plural() {
 	case $1 in
 	technology) printf 'technologies' ;;
-	pm-backend) printf 'backends' ;;
+	pm-tracker) printf 'trackers' ;;
+	vcs) printf 'VCS hosts' ;;
 	*)
 		# Assigned, not inlined as the printf argument: hub_selection_kind_noun is a
 		# closed lookup that DIES on an unknown kind, and a die inside a command
@@ -950,12 +1034,12 @@ hi_selection_kind_noun_plural() {
 # HI_NEW_UNITS / HI_DIVERGED_UNITS are those same two files' UNIT WEIGHT — see
 # hi_bucket_add_row, and the "LINES ARE NOT UNITS" note below.
 #
-# WHAT IS INDIVIDUALLY NAMEABLE ON THIS HUB'S SCREENS: a technology, a backend, a
+# WHAT IS INDIVIDUALLY NAMEABLE ON THIS HUB'S SCREENS: a technology, a tracker, a
 # lens reviewer. Nothing else — not a baseline unit, and not a standard of either
 # kind. hub-list.sh's hl_lens_rows_build owns the authoritative statement of that
 # rule and the two different mechanisms that produce it; this comment deliberately
 # does not restate them, because it previously CONTRADICTED them (it named
-# "technologies/backends/standards/lenses" as the nameable set, while List has never
+# "technologies/trackers/standards/lenses" as the nameable set, while List has never
 # given a standard a row of its own in any state).
 #
 # So neither a baseline unit nor a standard ever lands in those two files:
@@ -978,7 +1062,7 @@ hi_selection_kind_noun_plural() {
 # precisely what a non-nameable thing gets.
 #
 # HI_SEL_UNCHANGED is the one of the four that hi_bucket_add_row never fills from
-# a SELECTED key: an already-installed technology/backend is counted by
+# a SELECTED key: an already-installed technology/tracker is counted by
 # hi_preview_domain's own selection-independent pass over every selectable row of
 # the domain, because the checklist no longer offers an already-installed group
 # at all (hi_selection_rows excludes it) and a selection therefore cannot name
@@ -1186,7 +1270,7 @@ hi_bucket_add_row() {
 		# see hi_preview_domain, right after its selection loop — so that it works
 		# the same whether the selection came from the checklist (which never
 		# offers an already-installed group) or from a --technologies /
-		# --pm-backends flag (which can name one).
+		# --pm-trackers flag (which can name one).
 		selectable) : ;;
 		esac
 		;;
@@ -1225,18 +1309,45 @@ hi_bucket_add_rows() {
 	done <"$HI_BUCKET_ROWS"
 }
 
-# hi_preview_domain_unchanged_note KIND -> "(N other <selectable-noun>, M
-# standards, K review lenses, the L-item baseline already installed, unchanged)"
-# — naming only the kinds that actually have an unchanged remainder, so a domain
-# with everything itemized above prints no note at all.
+# hi_preview_domain_unchanged_note DOMAIN INSTALLED_GROUPS_FILE -> "(N other
+# <selectable-noun>, M standards, K review lenses, the L-item baseline already
+# installed, unchanged)" — naming only the kinds that actually have an
+# unchanged remainder, so a domain with everything itemized above prints no
+# note at all.
+#
+# LOOPS OVER EVERY KIND THE DOMAIN HAS, one fragment per kind with a non-zero
+# count, rather than reading a single scalar kind — Software Development now
+# carries two (vcs, technology), and reading whichever one a caller's own loop
+# happened to iterate last (this function's previous shape) named the wrong
+# noun and, worse, is not even a stable answer: it depends on the registry's
+# own kind ORDER, which is documented as screen-walk order, not a contract.
+# INSTALLED_GROUPS_FILE is the domain-wide "selectable rows already installed"
+# list hi_preview_domain built once (HI_SEL_UNCHANGED's own source) — read
+# here, never rebuilt, so the count named in the note and the count folded
+# into HI_SEL_UNCHANGED can never disagree.
 hi_preview_domain_unchanged_note() {
-	hipdun_kind=$1
+	hipdun_domain=$1
+	hipdun_installed=$2
 	hipdun_note=""
-	if [ "$hipdun_kind" != none ] && [ "$HI_SEL_UNCHANGED" -gt 0 ]; then
-		hipdun_noun=$(hub_plural "$HI_SEL_UNCHANGED" "$(hub_selection_kind_noun "$hipdun_kind")" \
+	# ASSIGNED, never inlined — see hi_selection_kinds' own note.
+	hipdun_kinds=$(hub_domain_selection_kind "$hipdun_domain")
+	for hipdun_kind in $hipdun_kinds; do
+		[ "$hipdun_kind" != none ] || continue
+		# INTERSECTED against hub_selectable_groups' own DISCOVERED set for
+		# this kind, rather than re-deriving "which kind does this group
+		# belong to" from the group key's own prefix a second time: the
+		# registry already answers that question, through the one function
+		# every other per-kind walk in this file already calls.
+		hipdun_kind_n=0
+		for hipdun_kind_group in $(hub_selectable_groups "$hipdun_kind"); do
+			grep -qxF -- "$hipdun_kind_group" "$hipdun_installed" || continue
+			hipdun_kind_n=$((hipdun_kind_n + 1))
+		done
+		[ "$hipdun_kind_n" -gt 0 ] || continue
+		hipdun_noun=$(hub_plural "$hipdun_kind_n" "$(hub_selection_kind_noun "$hipdun_kind")" \
 			"$(hi_selection_kind_noun_plural "$hipdun_kind")")
-		hipdun_note=$(hub_join_append "$hipdun_note" "$HI_SEL_UNCHANGED other $hipdun_noun" ', ')
-	fi
+		hipdun_note=$(hub_join_append "$hipdun_note" "$hipdun_kind_n other $hipdun_noun" ', ')
+	done
 	if [ "$HI_STD_UNCHANGED" -gt 0 ]; then
 		hipdun_note=$(hub_join_append "$hipdun_note" \
 			"$HI_STD_UNCHANGED $(hub_plural "$HI_STD_UNCHANGED" standard standards)" ', ')
@@ -1353,7 +1464,7 @@ hi_print_feature_hint() {
 # from hi_preview's own domain loop (see its header for why every domain's
 # blocks print together rather than interleaved by block kind).
 #
-# Buckets, in this order: DOMAIN's own selectable items (technologies/backends, by
+# Buckets, in this order: DOMAIN's own selectable items (technologies/trackers, by
 # group state — each ONE line, with its own standard folded into it), then its lens
 # reviewers split out from the rest of its baseline. A domain with none of this
 # changing collapses to one line; otherwise every new/diverged item is itemized by
@@ -1373,8 +1484,18 @@ hi_preview_domain() {
 	# blocks below need.
 	hub_domain_buckets "$hipd_domain" "$HI_BUCKETS"
 
-	hipd_kind=$(hub_domain_selection_kind "$hipd_domain")
-	if [ "$hipd_kind" != none ]; then
+	# EVERY KIND THE DOMAIN HAS, not just its first: Software Development's
+	# preview block now accumulates rows from BOTH its `vcs` and its
+	# `technology` selection files into the same bucket set, in kind order —
+	# one domain block, still, regardless of how many kinds fed it. A domain
+	# with a single kind (or `none`) behaves byte-identically to before this
+	# loop existed.
+	hipd_has_kind=0
+	# ASSIGNED, never inlined — see hi_selection_kinds' own note.
+	hipd_kinds=$(hub_domain_selection_kind "$hipd_domain")
+	for hipd_kind in $hipd_kinds; do
+		[ "$hipd_kind" != none ] || continue
+		hipd_has_kind=1
 		hipd_sel=$(hi_sel_file "$hipd_kind")
 		# THE SELECTED keys, each read from its own `selectable` row — one lookup
 		# per key, whose state serves both decisions this loop makes (how to
@@ -1410,21 +1531,32 @@ hi_preview_domain() {
 			# selection kind that has no standards simply has no rows here.
 			[ "$HI_BK_STATE" = installed ] || hi_bucket_add_rows standard "$hipd_group"
 		done <"$hipd_sel"
+	done
+	# ALWAYS CREATED, even for a domain with no kind at all (GTD): the unchanged
+	# note below reads this file unconditionally as its second argument, and an
+	# absent file there would be a "file not found" error rather than the
+	# correct "nothing installed to report" empty-file answer.
+	hipd_installed="$HUB_WORK/preview-installed-groups.txt"
+	: >"$hipd_installed"
+	if [ "$hipd_has_kind" -eq 1 ]; then
 		# The already-installed count, and those groups' already-installed
 		# standards — deliberately over EVERY selectable row of this domain, not
-		# just what is in hipd_sel: the interactive checklist no longer offers an
-		# already-installed group at all (hi_selection_rows excludes it), so
-		# hipd_sel can never carry one, and this is the only remaining way to know
-		# how many exist. It is also the SOLE source of the unchanged-standards
-		# count (see the loop above).
+		# just what is in any one kind's own selection file: the interactive
+		# checklist no longer offers an already-installed group at all
+		# (hi_selection_rows excludes it), so no selection file can ever carry
+		# one, and this is the only remaining way to know how many exist. It is
+		# also the SOLE source of the unchanged-standards count (see the loop
+		# above), run ONCE for the whole domain rather than once per kind —
+		# HI_BUCKETS already holds every kind's selectable rows together, so a
+		# second pass per kind would double-count a domain with more than one.
 		#
-		# Scoped to the DOMAIN's own rows rather than to every group of the KIND,
-		# which is what this read before: the two are the same set today, but a
-		# source where two domains share one selection kind would otherwise credit
-		# this domain's block with the other domain's installed technologies. That
-		# is the same reason hub_domain_selectable_groups filters on the domain
-		# column (see its header).
-		hipd_installed="$HUB_WORK/preview-installed-groups.txt"
+		# Scoped to the DOMAIN's own rows rather than to every group of a KIND,
+		# which is what this read before: the two are the same set for a
+		# single-kind domain, but a source where two domains share one selection
+		# kind would otherwise credit this domain's block with the other
+		# domain's installed technologies. That is the same reason
+		# hub_domain_selectable_groups filters on the domain column (see its
+		# header).
 		awk -F '\t' '$1 == "selectable" && $3 == "installed" { print $2 }' \
 			"$HI_BUCKETS" >"$hipd_installed"
 		while IFS= read -r hipd_all_group; do
@@ -1499,7 +1631,7 @@ hi_preview_domain() {
 		"$(hub_glyph_warn)" "$HI_BASE_DIVERGED" "$(hub_plural "$HI_BASE_DIVERGED" item items)"
 
 	hi_print_feature_hint "$hipd_domain"
-	hi_preview_domain_unchanged_note "$hipd_kind"
+	hi_preview_domain_unchanged_note "$hipd_domain" "$hipd_installed"
 	printf '\n'
 }
 
@@ -1521,13 +1653,29 @@ hi_shared_heading() {
 	printf '%s (shared by more than one domain; installed once)' "$hish_label"
 }
 
-# hi_preview_shared -> the cross-domain block plus its wrapped "required by:"
-# attribution, for every shared group the plan pulled in.
+# hi_preview_shared -> ONE cross-domain block, then every shared group the plan
+# pulled in underneath it, each with its own units plus its own wrapped
+# "required by:" attribution.
+#
+# ONE HEADING FOR THE WHOLE BLOCK, not one per group — this changed the moment a
+# second shared group existed (GitLab-auth alongside GitHub-auth): hi_shared_heading
+# reads its label from the group table, and every shared group's label is the
+# identical "Cross-domain" (lib/hub-discovery.sh's domain_label() awk function has
+# exactly one fallback for "belongs to no registered domain"), so printing it once
+# per group printed "Cross-domain (shared by more than one domain; installed
+# once):" twice in a row with one group's units and required-by note under each —
+# the same per-group-heading bug hub-list.sh's hl_print_nondomain_groups had and
+# was fixed the same way: one heading, then every qualifying group's own content
+# underneath it, in role order.
 hi_preview_shared() {
+	hipsh_heading_written=0
 	for hipsh_shared in $(hub_groups_of_role shared); do
 		grep -qxF -- "$hipsh_shared" "$PLAN_GROUPS" || continue
-		hipsh_heading=$(hi_shared_heading "$hipsh_shared")
-		printf '  %s:\n' "$hipsh_heading"
+		if [ "$hipsh_heading_written" -eq 0 ]; then
+			hipsh_heading=$(hi_shared_heading "$hipsh_shared")
+			printf '  %s:\n' "$hipsh_heading"
+			hipsh_heading_written=1
+		fi
 		hi_print_units "$hipsh_shared" any
 		hipsh_first=1
 		while IFS= read -r hipsh_note; do
@@ -1539,8 +1687,9 @@ hi_preview_shared() {
 				printf ',\n                   %s' "$hipsh_note"
 			fi
 		done <"$(hi_reqby_file "$hipsh_shared")"
-		printf '\n\n'
+		printf '\n'
 	done
+	[ "$hipsh_heading_written" -eq 0 ] || printf '\n'
 }
 
 # hi_preview_totals -> the total, phrased around what will actually be WRITTEN
@@ -1649,7 +1798,7 @@ hi_pending_count() {
 
 # ===========================================================================
 # Result blocks — the Result screen's DETAIL view, at the same granularity the
-# preview reports in: one block per domain, one line per technology/backend, the
+# preview reports in: one block per domain, one line per technology/tracker, the
 # baseline collapsed to a single count line.
 #
 # IT USED TO BE ONE FLAT LINE PER ACTED-ON UNIT — "Python agent developer",
@@ -1709,7 +1858,7 @@ hi_result_blocks() {
 #
 # THE GROUP'S ROLE DECIDES THE COLLAPSE, read from the group table's own column
 # rather than inferred from the group key's shape: a `selectable` group is ONE line
-# at its label (the technology or backend the human actually picked), annotated with
+# at its label (the technology or tracker the human actually picked), annotated with
 # how many of its units this run actually wrote so the line reconciles with the
 # header's own unit count, and a `baseline` group is one count line. Any other role
 # is itemized by unit — an arm nothing reaches today (the grammar has three roles
@@ -1967,17 +2116,24 @@ hi_result_print_lines() {
 	done <"$1"
 }
 
-# hi_result_nondomain_blocks -> one block per acted-on group belonging to no
-# domain: today exactly the cross-domain shared group, under the same heading the
-# preview gives it (hi_shared_heading), itemized by unit.
+# hi_result_nondomain_blocks -> ONE block for every acted-on group belonging to
+# no domain: today, the two cross-domain shared groups (one per VCS host), under
+# ONE heading (hi_shared_heading) — not one heading per group. Same fix, same
+# reason, as hi_preview_shared above: every shared group's own label is the
+# identical "Cross-domain", so a second shared group meant a second identical
+# heading with one group's units under each half; now every qualifying group's
+# units list underneath the single heading instead.
 #
 # Selected by the DOMAIN column rather than by `hub_groups_of_role shared`,
 # deliberately: paired with hi_result_blocks' per-domain half, "its domain is not
 # one of the registry's keys" is what makes the two halves provably exhaustive,
 # where a role-name filter would silently drop a group carrying some third role.
 # The heading falls back to the plain group label for such a group, since the
-# "installed once" promise is only true of a genuinely shared one.
+# "installed once" promise is only true of a genuinely shared one — taken from
+# the FIRST qualifying group only, safe because every non-domain group today
+# shares that identical label and role.
 hi_result_nondomain_blocks() {
+	hirnb_heading_written=0
 	while IFS= read -r hirnb_group; do
 		[ -n "$hirnb_group" ] || continue
 		hirnb_domain=$(hub_group_field "$hirnb_group" 3)
@@ -1986,10 +2142,13 @@ hi_result_nondomain_blocks() {
 		fi
 		hirnb_count=$(hi_result_group_count "$hirnb_group")
 		[ "$hirnb_count" -gt 0 ] || continue
-		hirnb_role=$(hub_group_field "$hirnb_group" 4)
-		hirnb_heading=$(hub_group_field "$hirnb_group" 2)
-		[ "$hirnb_role" != shared ] || hirnb_heading=$(hi_shared_heading "$hirnb_group")
-		printf '  %s\n' "$hirnb_heading"
+		if [ "$hirnb_heading_written" -eq 0 ]; then
+			hirnb_role=$(hub_group_field "$hirnb_group" 4)
+			hirnb_heading=$(hub_group_field "$hirnb_group" 2)
+			[ "$hirnb_role" != shared ] || hirnb_heading=$(hi_shared_heading "$hirnb_group")
+			printf '  %s\n' "$hirnb_heading"
+			hirnb_heading_written=1
+		fi
 		hi_result_group_units "$hirnb_group" >"$HI_RESULT_LINES"
 		hi_result_print_lines "$HI_RESULT_LINES"
 	done <"$HI_RESULT_GROUPS"
@@ -2214,7 +2373,8 @@ FOREIGN_BLOCKED_COUNT=$(hub_count_lines "$FOREIGN_BLOCKED")
 # ---------------------------------------------------------------------------
 HI_DOMAINS_CSV=$(tr '\n' ',' <"$SEL_DOMAINS" | sed 's/,$//')
 HI_TECH_CSV=$(tr '\n' ',' <"$SEL_TECHNOLOGIES" | sed 's/,$//')
-HI_BACKENDS_CSV=$(tr '\n' ',' <"$SEL_BACKENDS" | sed 's/,$//')
+HI_SD_VCS_CSV=$(tr '\n' ',' <"$(hi_sel_file vcs)" | sed 's/,$//')
+HI_TRACKERS_CSV=$(tr '\n' ',' <"$SEL_TRACKERS" | sed 's/,$//')
 
 case $OPT_FORMAT in
 env)
@@ -2226,7 +2386,8 @@ env)
 	hub_env_kv HUB_APPLIED true
 	hub_env_kv HUB_DOMAINS "$HI_DOMAINS_CSV"
 	hub_env_kv HUB_TECHNOLOGIES "$HI_TECH_CSV"
-	hub_env_kv HUB_PM_BACKENDS "$HI_BACKENDS_CSV"
+	hub_env_kv HUB_SD_VCS "$HI_SD_VCS_CSV"
+	hub_env_kv HUB_PM_TRACKERS "$HI_TRACKERS_CSV"
 	hub_env_kv HUB_ACTED_ON_COUNT "$RESULT_COUNT"
 	hub_env_kv HUB_ATTEMPTED_COUNT "$ATTEMPT_COUNT"
 	hub_env_kv HUB_BUNDLE_INSTALLED "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)"
@@ -2238,7 +2399,8 @@ json)
 	HI_FB_JSON=$(hub_itemized_json_array "$FOREIGN_BLOCKED")
 	jq -n --arg action "$HI_ACTION" \
 		--arg domains "$HI_DOMAINS_CSV" --arg technologies "$HI_TECH_CSV" \
-		--arg pm_backends "$HI_BACKENDS_CSV" \
+		--arg sd_vcs "$HI_SD_VCS_CSV" \
+		--arg pm_trackers "$HI_TRACKERS_CSV" \
 		--arg bundle_backup "${HUB_BUNDLE_BACKUP:-}" \
 		--argjson acted_on_count "$RESULT_COUNT" --argjson attempted_count "$ATTEMPT_COUNT" \
 		--argjson bundle_installed "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)" \
@@ -2247,7 +2409,8 @@ json)
 		'{status:"ok", action:$action, applied:true,
 		  domains:($domains | if . == "" then [] else split(",") end),
 		  technologies:($technologies | if . == "" then [] else split(",") end),
-		  pm_backends:($pm_backends | if . == "" then [] else split(",") end),
+		  sd_vcs:($sd_vcs | if . == "" then [] else split(",") end),
+		  pm_trackers:($pm_trackers | if . == "" then [] else split(",") end),
 		  acted_on_count:$acted_on_count, attempted_count:$attempted_count,
 		  bundle_installed:$bundle_installed, bundle_backup:$bundle_backup,
 		  foreign_blocked_count:$foreign_blocked_count,

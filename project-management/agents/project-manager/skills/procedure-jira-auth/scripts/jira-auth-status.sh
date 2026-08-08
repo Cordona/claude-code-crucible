@@ -2,7 +2,7 @@
 #
 # jira-auth-status.sh — deterministically report the Jira credential state
 #                        BEFORE any Jira write. The twin of
-#                        procedure-git-auth's gh-auth-status.sh: fully
+#                        procedure-github-auth's gh-auth-status.sh: fully
 #                        non-interactive, machine-parseable, and READ-ONLY
 #                        (it never writes anything and never prompts). This
 #                        is what the orchestrator reads to PRESENT the

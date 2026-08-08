@@ -29,14 +29,35 @@
 # machine payload is a contract, the human screen is a presentation.
 #
 # Usage:
-#   hub-doctor.sh [--target DIR] [--source DIR] [--format=text|env|json]
-#                 [--no-color] [-h|--help]
+#   hub-doctor.sh [--target DIR] [--source DIR] [--clean-orphans] [--apply]
+#                 [--non-interactive] [--format=text|env|json] [--no-color]
+#                 [-h|--help]
 #
 # A finding is a PROBLEM when something installed cannot work, and a NOTE when
 # it only matters for something not installed (yet). "Jira not authenticated" on
-# a machine with no Jira backend is a note; the same line with the Jira backend
+# a machine with no Jira tracker is a note; the same line with the Jira tracker
 # installed is a problem. Reporting both at the same severity would train the
 # reader to ignore the screen.
+#
+# ORPHAN CLEANUP IS THE ONE THING THIS SCRIPT WRITES, and it is scoped
+# narrowly: removing a dangling, framework-owned symlink whose source no
+# longer exists — never a legit, still-discoverable component (that is
+# Uninstall's job, on purpose; see hub-uninstall.sh's own header on why an
+# orphan is deliberately NOT offered there). Two ways in:
+#   * INTERACTIVE (a TTY, --format=text, no --non-interactive): when orphans
+#     exist, the report's last section prompts "Remove them? [y/N]" — N is
+#     the default (and every unrecognized answer declines too), matching
+#     every sibling inline confirm in this hub; declining leaves them for
+#     next time. This is presented as Doctor's own cleanup step, never as an
+#     Uninstall operation the user is redirected to.
+#   * FLAG-DRIVEN (--clean-orphans --apply, any format, no prompt): the
+#     machine-facing equivalent — same removal, decided in advance rather
+#     than asked for, so an agent can trigger it non-interactively. Requires
+#     both flags together; --clean-orphans alone is a usage error, since a
+#     flag that could silently do nothing is worse than one that refuses.
+# Either way, the underlying removal is lib/hub-symlink.sh's own
+# hub_unlink_orphan — the same primitive Uninstall calls for the same job —
+# never a second, duplicated unlink path.
 #
 # NOTE on the required-tools table: it lives in lib/hub-tools.sh rather than
 # being scraped out of another script's human-facing diagnostics. That text is
@@ -47,9 +68,11 @@
 # fact must read this table rather than grow a second, drifting copy of it.
 #
 # Exit codes: 0 on a normal report (Doctor's own diagnostics never fail the
-#   run); 1 on an unresolvable --source or a missing jq dependency for
-#   --format=json; 2 on a usage error; 3 if the user quits from the
-#   interactive pause.
+#   run, and neither does declining or completing an orphan cleanup — both are
+#   normal outcomes); 1 on an unresolvable --source, a missing jq dependency
+#   for --format=json, or a write failure during orphan cleanup; 2 on a usage
+#   error (including --clean-orphans without --apply); 3 if the user quits
+#   from the interactive pause.
 #
 # Portability: POSIX sh only. jq is required ONLY for --format=json.
 set -eu
@@ -63,26 +86,41 @@ HUB_DIR0=$(dirname "$0")
 . "$HUB_DIR0/lib/hub-tools.sh"
 . "$HUB_DIR0/lib/hub-discovery.sh"
 . "$HUB_DIR0/lib/hub-state.sh"
+. "$HUB_DIR0/lib/hub-symlink.sh"
 
 hub_workspace_init
 
 usage() {
 	cat <<EOF
-Usage: $HUB_PROG [--target DIR] [--source DIR] [--format=text|env|json] [--no-color] [-h|--help]
+Usage: $HUB_PROG [--target DIR] [--source DIR] [--clean-orphans] [--apply]
+                 [--non-interactive] [--format=text|env|json] [--no-color]
+                 [-h|--help]
 
 Required tools and account health for this environment.
 
 Options:
-  --target DIR   Deployed config dir to inspect (default: \$HOME/.claude).
-  --source DIR   Framework root to scan (default: the hub's own tree).
-  --format FMT   text (default) | env | json.
-  --no-color     Disable ANSI color.
-  -h, --help     Show this help.
+  --target DIR       Deployed config dir to inspect (default: \$HOME/.claude).
+  --source DIR       Framework root to scan (default: the hub's own tree).
+  --clean-orphans    Remove every orphaned (source-gone) symlink found.
+                      Requires --apply. On a TTY with neither flag given, an
+                      interactive "Remove them? [y/N]" prompt offers the same
+                      cleanup instead — this flag is the non-interactive path
+                      to it, for a scripted or agent caller.
+  --apply             Perform the write. Required alongside --clean-orphans;
+                      has no effect otherwise (Doctor's own diagnostics never
+                      write on their own).
+  --non-interactive   Never prompt, even on a TTY (report only).
+  --format FMT       text (default) | env | json.
+  --no-color         Disable ANSI color.
+  -h, --help         Show this help.
 EOF
 }
 
 OPT_TARGET=""
 OPT_SOURCE=""
+OPT_CLEAN_ORPHANS=0
+OPT_APPLY=0
+OPT_NONINTERACTIVE=0
 OPT_FORMAT=text
 HUB_NO_COLOR=${HUB_NO_COLOR:-0}
 
@@ -92,6 +130,18 @@ while [ $# -gt 0 ]; do
 		continue
 	fi
 	case $1 in
+	--clean-orphans)
+		OPT_CLEAN_ORPHANS=1
+		shift
+		;;
+	--apply)
+		OPT_APPLY=1
+		shift
+		;;
+	--non-interactive)
+		OPT_NONINTERACTIVE=1
+		shift
+		;;
 	-h | --help)
 		usage
 		exit 0
@@ -102,10 +152,26 @@ done
 
 hub_validate_format text env json
 
+# A FLAG THAT COULD SILENTLY DO NOTHING IS WORSE THAN ONE THAT REFUSES:
+# --clean-orphans names the intent, --apply is the write gate every other
+# mutating capability in this hub already requires — accepting the first
+# without the second would either write when the caller only meant to name
+# the intent, or silently no-op and let them believe it ran.
+if [ "$OPT_CLEAN_ORPHANS" -eq 1 ] && [ "$OPT_APPLY" -ne 1 ]; then
+	die_usage "--clean-orphans requires --apply"
+fi
+
 [ -n "$OPT_TARGET" ] || OPT_TARGET=$(hub_default_target)
 [ -n "$OPT_SOURCE" ] || OPT_SOURCE=$(hub_default_source)
 TARGET_DIR=$(hub_abspath "$OPT_TARGET")
 FRAMEWORK_ROOT=$(hub_realpath "$OPT_SOURCE") || die "cannot resolve --source: $OPT_SOURCE"
+
+# SET BEFORE ANYTHING CAN WRITE, exactly as hub-install.sh/hub-uninstall.sh set
+# it immediately after resolving their own --target: lib/hub-symlink.sh's
+# hub_assert_write_target reads this on every write, and Doctor is now, for
+# the first time, a script that can write (orphan cleanup only — see this
+# file's own header).
+HUB_TARGET_DIR=$TARGET_DIR
 
 # ---------------------------------------------------------------------------
 # Required tools — the table itself lives in lib/hub-tools.sh; this script only
@@ -141,9 +207,12 @@ ACCOUNTS_ENV="$HUB_WORK/accounts.env"
 GH_INSTALLED=$(hub_env_field "$ACCOUNTS_ENV" HUB_GH_INSTALLED false)
 GH_AUTHENTICATED=$(hub_env_field "$ACCOUNTS_ENV" HUB_GH_AUTHENTICATED false)
 GH_STATE_KNOWN=$(hub_env_field "$ACCOUNTS_ENV" HUB_GH_STATE_KNOWN false)
+GL_INSTALLED=$(hub_env_field "$ACCOUNTS_ENV" HUB_GL_INSTALLED false)
+GL_AUTHENTICATED=$(hub_env_field "$ACCOUNTS_ENV" HUB_GL_AUTHENTICATED false)
+GL_STATE_KNOWN=$(hub_env_field "$ACCOUNTS_ENV" HUB_GL_STATE_KNOWN false)
 JIRA_CONFIGURED=$(hub_env_field "$ACCOUNTS_ENV" HUB_JIRA_CONFIGURED false)
 JIRA_STATE_KNOWN=$(hub_env_field "$ACCOUNTS_ENV" HUB_JIRA_STATE_KNOWN false)
-JIRA_BACKEND_INSTALLED=$(hub_env_field "$ACCOUNTS_ENV" HUB_JIRA_BACKEND_INSTALLED false)
+JIRA_TRACKER_INSTALLED=$(hub_env_field "$ACCOUNTS_ENV" HUB_JIRA_TRACKER_INSTALLED false)
 
 # Whether anything that needs GitHub auth is actually installed, answered by the
 # same cross-domain consumer rule the installer uses — not a second list.
@@ -203,9 +272,118 @@ DIVERGED_COUNT=$(hub_count_lines "$DIVERGED_ITEMS")
 # payload, which reports them per unit. Giving Doctor's own payload an
 # HUB_ORPHANED_COUNT field is a contract ADDITION and belongs in its own change.
 # ---------------------------------------------------------------------------
+HD_ORPHANS_RAW="$HUB_WORK/orphans-raw.tsv"
+hub_orphaned_units "$TARGET_DIR" >"$HD_ORPHANS_RAW"
+
+# EVERY OTHER NAME REACHING A WRITE OR A RENDERING SURFACE IN THIS HUB IS
+# CHARSET-VALIDATED AT ITS ONE POINT OF ORIGIN (lib/hub-common.sh's
+# HUB_NAME_CHARSET_RE, applied by discovery to every unit name it emits) —
+# except an orphan's name, which comes from `find` over the TARGET, not from
+# discovery, and so has never passed that gate. A name carrying a control
+# character or an ANSI escape would otherwise render raw on this text screen
+# and land unfiltered in the machine payload below. Rejected rather than
+# silently dropped: a caller should be able to tell "no orphans" from "one
+# orphan this hub refuses to name."
 HD_ORPHANS="$HUB_WORK/orphans.tsv"
-hub_orphaned_units "$TARGET_DIR" >"$HD_ORPHANS"
+: >"$HD_ORPHANS"
+while IFS="$HUB_TAB" read -r HD_ORPHAN_RAW_NAME HD_ORPHAN_RAW_KIND; do
+	[ -n "$HD_ORPHAN_RAW_NAME" ] || continue
+	if printf '%s' "$HD_ORPHAN_RAW_NAME" | grep -Eq "$HUB_NAME_CHARSET_RE"; then
+		printf '%s\t%s\n' "$HD_ORPHAN_RAW_NAME" "$HD_ORPHAN_RAW_KIND" >>"$HD_ORPHANS"
+	else
+		warn "ignoring an orphan candidate under $TARGET_DIR whose name fails the hub's charset gate (unsafe to render or remove)"
+	fi
+done <"$HD_ORPHANS_RAW"
 HD_ORPHAN_COUNT=$(hub_count_lines "$HD_ORPHANS")
+
+# HD_ORPHAN_NAMES — just the name column, single-column, for hub_emit_itemized_env
+# and hub_itemized_json_array below: both read whole lines with no delimiter, so
+# handing either one HD_ORPHANS directly (name<TAB>kind) would cram the kind
+# column into the emitted name value instead of stopping at the tab.
+HD_ORPHAN_NAMES="$HUB_WORK/orphan-names.txt"
+awk -F '\t' '{ print $1 }' "$HD_ORPHANS" >"$HD_ORPHAN_NAMES"
+
+# NO CLEANUP OF ANY KIND WHEN DISCOVERY FOUND NOTHING AT ALL. hub_orphaned_units'
+# own classification (lib/hub-state.sh) already requires a candidate to be
+# genuinely DANGLING, not merely undiscovered — but a --source that is wrong
+# or an ancestor of the real one (the concrete case a security review named)
+# can still leave discovery empty while every real, correctly-installed link
+# happens to keep resolving, so that guard alone is not load-bearing against
+# every misconfiguration shape, only the one it directly tests. An empty
+# HUB_UNITS is the cheap, independent second signal: a genuinely installed
+# framework is never zero units, so this is what a wrong --source looks like
+# from here, and it is reason enough to refuse touching anything at the
+# target rather than trust a classification made against a source that
+# plainly is not the real one.
+HD_DISCOVERY_EMPTY=0
+[ -s "$HUB_UNITS" ] || HD_DISCOVERY_EMPTY=1
+
+# hd_clean_orphans -> attempt to remove every row of HD_ORPHANS, capturing
+# hub_unlink_orphan's REAL outcome per name rather than assuming success.
+# Leaves HD_CLEAN_REMOVED (names actually removed) and HD_CLEAN_BLOCKED (names
+# hub_unlink_orphan refused as foreign-owned — hub_link_is_framework_owned is
+# an independent, stricter test than orphan detection's own dangling check,
+# and can still refuse a candidate that passed it) for the caller to report
+# from. Shared by both cleanup paths below so neither can drift from what
+# actually happened — the discarded-outcome shape a review found or an
+# earlier version of the interactive path.
+hd_clean_orphans() {
+	HD_CLEAN_REMOVED="$HUB_WORK/orphans-removed.txt"
+	HD_CLEAN_BLOCKED="$HUB_WORK/orphans-blocked.txt"
+	: >"$HD_CLEAN_REMOVED"
+	: >"$HD_CLEAN_BLOCKED"
+	while IFS="$HUB_TAB" read -r hd_clean_name hd_clean_kind; do
+		[ -n "$hd_clean_name" ] || continue
+		hd_clean_outcome=$(hub_unlink_orphan "$hd_clean_name" "$hd_clean_kind" "$TARGET_DIR" "$FRAMEWORK_ROOT" 1)
+		case $hd_clean_outcome in
+		removed) printf '%s\n' "$hd_clean_name" >>"$HD_CLEAN_REMOVED" ;;
+		foreign-blocked) printf '%s\n' "$hd_clean_name" >>"$HD_CLEAN_BLOCKED" ;;
+		# already-absent: neither removed nor blocked. Something else cleared
+		# it between the scan above and this call (another process, a race) —
+		# there is nothing left to report for this name either way.
+		esac
+	done <"$HD_ORPHANS"
+}
+
+# ---------------------------------------------------------------------------
+# --clean-orphans --apply: the FLAG-DRIVEN cleanup path, resolved HERE —
+# before any format branches — so every one of text/env/json reports the
+# POST-cleanup state rather than three formats disagreeing about whether it
+# already happened. The INTERACTIVE prompt (the OTHER way in) is a
+# text-branch-only concern and lives down in that branch, at the point the
+# orphan section renders — see its own comment there for why the two paths
+# are kept apart rather than unified into one, sharing only hd_clean_orphans.
+#
+# hub_unlink_orphan is lib/hub-symlink.sh's own primitive — the SAME one
+# hub-uninstall.sh calls for the identical job — never re-implemented here.
+# --apply's own guard already ran at the top of this script (die_usage on
+# --clean-orphans without it), so reaching this point means both flags are
+# set together.
+# HD_CLEAN_ATTEMPTED — the pre-cleanup count, captured before anything below
+# overwrites HD_ORPHAN_COUNT, so the machine payload can publish "asked to
+# remove N, actually removed M" instead of just the post-state.
+HD_CLEAN_ATTEMPTED=0
+if [ "$OPT_CLEAN_ORPHANS" -eq 1 ] && [ "$HD_ORPHAN_COUNT" -gt 0 ]; then
+	if [ "$HD_DISCOVERY_EMPTY" -eq 1 ]; then
+		die "refusing --clean-orphans: discovery found zero units under --source $FRAMEWORK_ROOT — this looks like a wrong or misconfigured --source, not an empty framework, so nothing was removed"
+	fi
+	HD_CLEAN_ATTEMPTED=$HD_ORPHAN_COUNT
+	hd_clean_orphans
+	# RECOMPUTED, never assumed empty: a foreign-blocked name is still
+	# present, so a machine caller's report must reflect what actually came
+	# out, not what was asked for.
+	hub_orphaned_units "$TARGET_DIR" >"$HD_ORPHANS"
+	HD_ORPHAN_COUNT=$(hub_count_lines "$HD_ORPHANS")
+	awk -F '\t' '{ print $1 }' "$HD_ORPHANS" >"$HD_ORPHAN_NAMES"
+fi
+# ALWAYS-PRESENT, even when --clean-orphans found nothing to do (HD_ORPHAN_COUNT
+# was already 0) or was not passed at all: the machine payload below reads
+# these unconditionally once OPT_CLEAN_ORPHANS=1, and "ran but removed/blocked
+# nothing" must render as empty lists, never as a missing file.
+[ -n "${HD_CLEAN_REMOVED:-}" ] || HD_CLEAN_REMOVED="$HUB_WORK/orphans-removed-empty.txt"
+[ -n "${HD_CLEAN_BLOCKED:-}" ] || HD_CLEAN_BLOCKED="$HUB_WORK/orphans-blocked-empty.txt"
+[ -e "$HD_CLEAN_REMOVED" ] || : >"$HD_CLEAN_REMOVED"
+[ -e "$HD_CLEAN_BLOCKED" ] || : >"$HD_CLEAN_BLOCKED"
 
 # ---------------------------------------------------------------------------
 # Diverged components — the TEXT projection, and ONLY the text projection.
@@ -239,7 +417,7 @@ HD_ORPHAN_COUNT=$(hub_count_lines "$HD_ORPHANS")
 #   2. a unit of a domain that declares NAMED FEATURES is reported under its
 #      feature's name (see hd_diverged_classify, which is reached BEFORE rule 3 for
 #      such a domain whatever its group's role).
-#   3. a SELECTABLE group (a technology, a backend) collapses to ONE line at the
+#   3. a SELECTABLE group (a technology, a tracker) collapses to ONE line at the
 #      group's own label, because the group is exactly what the human re-selects
 #      to repair it. Its state comes from hub_group_display_state — the shared
 #      owner of the `partial -> DIVERGED` mapping — rather than being inferred
@@ -554,15 +732,21 @@ hd_diverged_emit() {
 }
 
 GH_CONSUMER_INSTALLED=false
+GL_CONSUMER_INSTALLED=false
 # Materialized to a file, then read with a redirect. A `while read ... <<EOF
 # $(cmd) EOF` heredoc-wrapped command substitution parses, but it is the
 # construction hub-uninstall.sh's own comment calls out as unsafe and avoids; all
 # three consumers of hub_shared_consumers now read it the same, plainer way.
 HD_CONSUMERS="$HUB_WORK/shared-consumers.tsv"
-hub_shared_consumers "$HUB_SHARED_GIT_AUTH_GROUP" >"$HD_CONSUMERS"
+hub_shared_consumers "$HUB_SHARED_GITHUB_AUTH_GROUP" >"$HD_CONSUMERS"
 while IFS="$HUB_TAB" read -r HD_CONSUMER _; do
 	[ -n "$HD_CONSUMER" ] || continue
 	[ "$(hub_group_state "$HD_CONSUMER")" = available ] || GH_CONSUMER_INSTALLED=true
+done <"$HD_CONSUMERS"
+hub_shared_consumers "$HUB_SHARED_GITLAB_AUTH_GROUP" >"$HD_CONSUMERS"
+while IFS="$HUB_TAB" read -r HD_CONSUMER _; do
+	[ -n "$HD_CONSUMER" ] || continue
+	[ "$(hub_group_state "$HD_CONSUMER")" = available ] || GL_CONSUMER_INSTALLED=true
 done <"$HD_CONSUMERS"
 
 # ---------------------------------------------------------------------------
@@ -580,7 +764,25 @@ while IFS="$HUB_TAB" read -r _ HD_PRIMARY HD_STATE HD_FALLBACK; do
 	[ -n "$HD_PRIMARY" ] || continue
 	case $HD_STATE in
 	missing)
-		printf '%s missing — %s\n' "$(hub_tool_label "$HD_PRIMARY")" "$(hub_tool_reason "$HD_PRIMARY")" >>"$PROBLEMS"
+		# `gh`/`glab` are the two slots with an actual OPT-OUT: nothing forces a
+		# machine to pick GitHub or GitLab at all, so their absence is only a
+		# PROBLEM when something already installed actually consumes that host —
+		# the same GH_CONSUMER_INSTALLED/GL_CONSUMER_INSTALLED gate the auth
+		# findings above already use, not a second derivation of "is this
+		# needed". Every other slot here (git, jq, curl, gpg|ssh-keygen) has no
+		# such opt-out — the framework uses them unconditionally — so they keep
+		# the unconditional PROBLEM severity this case always had.
+		case $HD_PRIMARY in
+		gh) HD_TOOL_NEEDED=$GH_CONSUMER_INSTALLED ;;
+		glab) HD_TOOL_NEEDED=$GL_CONSUMER_INSTALLED ;;
+		*) HD_TOOL_NEEDED=true ;;
+		esac
+		if [ "$HD_TOOL_NEEDED" = true ]; then
+			printf '%s missing — %s\n' "$(hub_tool_label "$HD_PRIMARY")" "$(hub_tool_reason "$HD_PRIMARY")" >>"$PROBLEMS"
+		else
+			printf '%s missing (only relevant once you install something that needs it)\n' \
+				"$(hub_tool_label "$HD_PRIMARY")" >>"$NOTES"
+		fi
 		printf 'install %s — macOS: %s%sLinux: %s\n' \
 			"$(hub_tool_label "$HD_PRIMARY")" "$(hub_tool_install_macos "$HD_PRIMARY")" \
 			"$(hub_sep_text)" "$(hub_tool_install_linux "$HD_PRIMARY")" >>"$STEPS"
@@ -612,13 +814,24 @@ elif [ "$GH_INSTALLED" = true ] && [ "$GH_AUTHENTICATED" != true ]; then
 	printf 'Accounts %s authenticate GitHub\n' "$(hub_arrow_text)" >>"$STEPS"
 fi
 
+if [ "$GL_STATE_KNOWN" != true ]; then
+	printf 'GitLab auth state not checked — open "Accounts" to check it interactively\n' >>"$NOTES"
+elif [ "$GL_INSTALLED" = true ] && [ "$GL_AUTHENTICATED" != true ]; then
+	if [ "$GL_CONSUMER_INSTALLED" = true ]; then
+		printf 'GitLab not authenticated (required by an installed domain)\n' >>"$PROBLEMS"
+	else
+		printf 'GitLab not authenticated (only relevant once you install a domain that needs it)\n' >>"$NOTES"
+	fi
+	printf 'Accounts %s authenticate GitLab\n' "$(hub_arrow_text)" >>"$STEPS"
+fi
+
 if [ "$JIRA_STATE_KNOWN" != true ]; then
 	printf 'Jira auth state not checked — open "Accounts" to check it interactively\n' >>"$NOTES"
 elif [ "$JIRA_CONFIGURED" != true ]; then
-	if [ "$JIRA_BACKEND_INSTALLED" = true ]; then
-		printf 'Jira not authenticated (the Jira backend is installed and needs it)\n' >>"$PROBLEMS"
+	if [ "$JIRA_TRACKER_INSTALLED" = true ]; then
+		printf 'Jira not authenticated (the Jira tracker is installed and needs it)\n' >>"$PROBLEMS"
 	else
-		printf 'Jira not authenticated (only relevant if you install the Jira backend)\n' >>"$NOTES"
+		printf 'Jira not authenticated (only relevant if you install the Jira tracker)\n' >>"$NOTES"
 	fi
 	printf 'Accounts %s configure Jira\n' "$(hub_arrow_text)" >>"$STEPS"
 fi
@@ -633,10 +846,36 @@ env)
 	hub_env_kv HUB_ACTION doctor
 	hub_env_kv HUB_GH_AUTHENTICATED "$GH_AUTHENTICATED"
 	hub_env_kv HUB_GH_STATE_KNOWN "$GH_STATE_KNOWN"
+	hub_env_kv HUB_GL_AUTHENTICATED "$GL_AUTHENTICATED"
+	hub_env_kv HUB_GL_STATE_KNOWN "$GL_STATE_KNOWN"
 	hub_env_kv HUB_JIRA_CONFIGURED "$JIRA_CONFIGURED"
 	hub_env_kv HUB_JIRA_STATE_KNOWN "$JIRA_STATE_KNOWN"
-	hub_env_kv HUB_DIVERGED_COUNT "$DIVERGED_COUNT"
+	# hub_emit_itemized_env already emits "${prefix}_COUNT" itself (see its own
+	# definition) — an explicit `hub_env_kv HUB_DIVERGED_COUNT "$DIVERGED_COUNT"`
+	# used to sit here too, ahead of this call, printing the identical value a
+	# second time under the same key on every run. Removed rather than kept as a
+	# defensive duplicate: a caller `eval`-ing this output can only ever see
+	# whichever assignment lands last, so the second copy was never doing
+	# anything except risking exactly that ambiguity.
 	hub_emit_itemized_env HUB_DIVERGED "$DIVERGED_ITEMS"
+	# HUB_ORPHANED_COUNT / HUB_ORPHANED / HUB_ORPHANED_<N>_NAME — the contract
+	# addition flagged where HD_ORPHAN_NAMES is built above: the text screen has
+	# reported orphans since they were introduced, but the machine payload never
+	# did, which is the exact human/agent capability gap this hub's own
+	# discipline elsewhere calls forbidden, just in the direction that's easier
+	# to miss (a human sees it, an agent parsing --format=env cannot).
+	hub_emit_itemized_env HUB_ORPHANED "$HD_ORPHAN_NAMES"
+	# THE MUTATION RECEIPT for --clean-orphans --apply, ONLY when that flag was
+	# actually given — the same "HUB_APPLIED only on a real result" rule
+	# hub-install.sh/hub-uninstall.sh already follow, so a caller that never
+	# asked for cleanup sees no cleanup fields at all rather than a
+	# permanently-empty set that looks like a completed no-op.
+	if [ "$OPT_CLEAN_ORPHANS" -eq 1 ]; then
+		hub_env_kv HUB_APPLIED true
+		hub_env_kv HUB_ATTEMPTED_COUNT "$HD_CLEAN_ATTEMPTED"
+		hub_env_kv HUB_ACTED_ON_COUNT "$(hub_count_lines "$HD_CLEAN_REMOVED")"
+		hub_emit_itemized_env HUB_FOREIGN_BLOCKED "$HD_CLEAN_BLOCKED"
+	fi
 	HD_N=0
 	while IFS="$HUB_TAB" read -r _ HD_PRIMARY HD_STATE HD_FALLBACK; do
 		[ -n "$HD_PRIMARY" ] || continue
@@ -666,25 +905,73 @@ json)
 	HD_NOTE_JSON=$(hub_itemized_json_array "$NOTES")
 	HD_STEP_JSON=$(hub_itemized_json_array "$STEPS")
 	HD_DIVERGED_JSON=$(hub_itemized_json_array "$DIVERGED_ITEMS")
+	# Same contract addition as the env branch above: HD_ORPHAN_NAMES already
+	# holds just the name column (HD_ORPHANS is name<TAB>kind).
+	HD_ORPHAN_JSON=$(hub_itemized_json_array "$HD_ORPHAN_NAMES")
+	# THE MUTATION RECEIPT, same rule as the env branch: present only when
+	# --clean-orphans was actually given.
+	HD_CLEAN_APPLIED=false
+	HD_CLEAN_ATTEMPTED_JSON=0
+	HD_CLEAN_ACTED_ON_JSON=0
+	HD_CLEAN_BLOCKED_JSON="$(hub_mktemp_dir)/blocked-empty.json"
+	: >"$HD_CLEAN_BLOCKED_JSON"
+	if [ "$OPT_CLEAN_ORPHANS" -eq 1 ]; then
+		HD_CLEAN_APPLIED=true
+		HD_CLEAN_ATTEMPTED_JSON=$HD_CLEAN_ATTEMPTED
+		HD_CLEAN_ACTED_ON_JSON=$(hub_count_lines "$HD_CLEAN_REMOVED")
+		HD_CLEAN_BLOCKED_JSON=$(hub_itemized_json_array "$HD_CLEAN_BLOCKED")
+	fi
 	jq -n \
 		--argjson gh_authenticated "$([ "$GH_AUTHENTICATED" = true ] && printf true || printf false)" \
 		--argjson gh_state_known "$([ "$GH_STATE_KNOWN" = true ] && printf true || printf false)" \
+		--argjson gl_authenticated "$([ "$GL_AUTHENTICATED" = true ] && printf true || printf false)" \
+		--argjson gl_state_known "$([ "$GL_STATE_KNOWN" = true ] && printf true || printf false)" \
 		--argjson jira_configured "$([ "$JIRA_CONFIGURED" = true ] && printf true || printf false)" \
 		--argjson jira_state_known "$([ "$JIRA_STATE_KNOWN" = true ] && printf true || printf false)" \
 		--argjson diverged_count "$DIVERGED_COUNT" \
+		--argjson orphaned_count "$HD_ORPHAN_COUNT" \
+		--argjson clean_applied "$HD_CLEAN_APPLIED" \
+		--argjson clean_attempted_count "$HD_CLEAN_ATTEMPTED_JSON" \
+		--argjson clean_acted_on_count "$HD_CLEAN_ACTED_ON_JSON" \
 		--slurpfile tools "$HD_TOOL_JSON" \
 		--slurpfile problems "$HD_PROBLEM_JSON" \
 		--slurpfile notes "$HD_NOTE_JSON" \
 		--slurpfile steps "$HD_STEP_JSON" \
 		--slurpfile diverged "$HD_DIVERGED_JSON" \
+		--slurpfile orphaned "$HD_ORPHAN_JSON" \
+		--slurpfile clean_foreign_blocked "$HD_CLEAN_BLOCKED_JSON" \
 		'{status:"ok", action:"doctor", gh_authenticated:$gh_authenticated,
 		  gh_state_known:$gh_state_known,
+		  gl_authenticated:$gl_authenticated, gl_state_known:$gl_state_known,
 		  jira_configured:$jira_configured, jira_state_known:$jira_state_known,
 		  diverged_count:$diverged_count, diverged:$diverged,
+		  orphaned_count:$orphaned_count, orphaned:$orphaned,
+		  clean_orphans:{applied:$clean_applied, attempted_count:$clean_attempted_count,
+		    acted_on_count:$clean_acted_on_count, foreign_blocked:$clean_foreign_blocked},
 		  tools:$tools, problems:$problems, notes:$notes, steps:$steps}'
 	;;
 text)
 	hub_print_header "crucible-hub doctor — $TARGET_DIR"
+	# STATUS, FIRST — what used to be the separate "Status" screen/menu item,
+	# folded in here rather than kept as its own numbered entry: Doctor already
+	# builds discovery+state for its own diverged/orphan sections below, so
+	# rendering "what's installed" costs nothing extra to compute, and a human
+	# gets one screen for "what do I have, and is it healthy" instead of two.
+	# hub-status.sh ITSELF IS UNTOUCHED and stays independently callable
+	# (`crucible-hub status`, cheap: no gh/glab/jira subprocess calls) — this
+	# reads the exact same lib/hub-state.sh functions Status's own text branch
+	# does, not a copy of its logic, and not a subprocess spawn of it.
+	#
+	# THE ONE THING DELIBERATELY OMITTED from Status's own rendering: its
+	# generic "$N items diverged, re-sync" one-liner. Doctor's OWN Diverged
+	# components section, a few lines below, already itemizes every one of
+	# those units by name — printing both would say the same fact twice, once
+	# vaguely and once precisely, on the same screen.
+	printf '\n  Status\n'
+	# hub_print_domain_status_lines (lib/hub-state.sh) — shared with
+	# hub-status.sh's own Status screen; see its own header for the render
+	# rules this used to carry as a second, drifting copy of.
+	hub_print_domain_status_lines "$FRAMEWORK_ROOT" '    '
 	printf '\n  Required tools\n'
 	# Glyph now LEADS the tool name (✓/✗, matching every other status line in
 	# this hub) instead of a trailing bare "ok"/nothing — a live test session
@@ -720,22 +1007,6 @@ text)
 		printf '\n  Diverged components (%s):\n' "$HD_DIVERGED_LINES"
 		cat "$HD_DIVERGED_TEXT"
 		printf '    Run "Install" and re-select these to re-sync (see "List" for full detail).\n'
-	fi
-
-	# The orphan section, beside the diverged one and after it: divergence is the
-	# recoverable fault and its repair is "Install", an orphan is the unrecoverable
-	# one and its only repair is "Uninstall", so the two carry different next steps
-	# and cannot share a block. Flat lines, no sub-header — see the section's own
-	# header above on why an orphan has nothing to collapse to. The glyph is
-	# hub_glyph_fail, not hub_glyph_warn: this is the broken case, and List marks it
-	# the same way.
-	if [ "$HD_ORPHAN_COUNT" -gt 0 ]; then
-		printf '\n  Orphaned components (%s):\n' "$HD_ORPHAN_COUNT"
-		while IFS="$HUB_TAB" read -r HD_ORPHAN_NAME _; do
-			[ -n "$HD_ORPHAN_NAME" ] || continue
-			printf '    %s %s — source no longer exists\n' "$(hub_glyph_fail)" "$HD_ORPHAN_NAME"
-		done <"$HD_ORPHANS"
-		printf '    Run "Uninstall" and choose these to clear the stale links.\n'
 	fi
 
 	printf '\n  Accounts\n'
@@ -805,6 +1076,112 @@ text)
 			HD_N=$((HD_N + 1))
 			printf '    %s) %s\n' "$HD_N" "$HD_LINE"
 		done <"$STEPS"
+	fi
+
+	# ORPHANED COMPONENTS, LAST ON THE SCREEN, DELIBERATELY — a live design
+	# conversation moved it here from beside "Diverged components": an orphan is
+	# unrecoverable target rubbish, not a health finding to weigh alongside
+	# everything above it, and it deserves the reader's attention only after
+	# they've seen the rest of the report. Flat lines, no sub-header — see this
+	# file's own header above on why an orphan has nothing to collapse to. The
+	# glyph is hub_glyph_fail, not hub_glyph_warn: this is the broken case, and
+	# List marks it the same way.
+	#
+	# THE INTERACTIVE PROMPT LIVES HERE, not beside the flag-driven cleanup
+	# above: that path is decided in advance (a caller who already said
+	# --clean-orphans --apply is not asked again), while THIS path exists
+	# specifically because there was no such advance decision — a human is
+	# reading the report right now and gets asked once, here, after seeing
+	# everything else. `hub_interactive` folds in --non-interactive and the
+	# TTY check both, so a non-interactive run (or one already past
+	# --clean-orphans) just reports the list and moves on, exactly as before
+	# this feature existed.
+	#
+	# N IS THE DEFAULT (hub_key N, capital), the same y/N-defaults-no shape
+	# every other inline confirm in this hub uses (hub_discard_guard,
+	# hub_result_details, hub-accounts.sh's foreign-script confirm), and the
+	# displayed brackets match the ACTUAL default exactly: removal happens ONLY
+	# on an explicit y/yes, and EVERYTHING else keeps the orphans — a bare
+	# Enter, an `n`, a stray `q`/`b`/`?` typed out of navigation habit, a typo,
+	# or a failed read. This prompt previously advertised [Y/n] and removed on
+	# anything that was not an `n`, which made the three keys the rest of the
+	# hub trains the user to press (`q`, `b`, `?`) silently destructive on the
+	# one screen that accepts none of them as navigation — and disagreed with
+	# its own read-failure fallback of 'n' besides. A cleanup whose target
+	# already resolves to nothing is cheap to postpone (the next Doctor run
+	# offers it again) and not free to get wrong, so consent is explicit and
+	# re-asking is the recovery path. Framed and worded as Doctor's own step —
+	# never "Uninstall", never a flag to copy — because that is the whole
+	# point of this feature existing: Uninstall is for legit, still-
+	# discoverable components, this is for target rubbish Doctor found.
+	if [ "$HD_ORPHAN_COUNT" -gt 0 ]; then
+		printf '\n  Orphaned components (%s):\n' "$HD_ORPHAN_COUNT"
+		while IFS="$HUB_TAB" read -r HD_ORPHAN_NAME _; do
+			[ -n "$HD_ORPHAN_NAME" ] || continue
+			printf '    %s %s — source no longer exists\n' "$(hub_glyph_fail)" "$HD_ORPHAN_NAME"
+		done <"$HD_ORPHANS"
+		if [ "$HD_DISCOVERY_EMPTY" -eq 1 ]; then
+			# NO PROMPT AT ALL when discovery found zero units — the same refusal
+			# the flag-driven path `die`s on, restated as a report line instead:
+			# this screen has no consent to ask for when it cannot tell a genuine
+			# orphan from every symlink a wrong --source simply failed to
+			# recognize.
+			printf '\n  %s Not offering to remove these — discovery under %s found zero units, which looks like a wrong --source rather than confirmation these are genuinely gone.\n' \
+				"$(hub_glyph_warn)" "$FRAMEWORK_ROOT"
+		elif [ "$OPT_CLEAN_ORPHANS" -eq 0 ] && hub_interactive; then
+			# OPT_CLEAN_ORPHANS EXCLUDED: a run that already asked via the flag
+			# has nothing left to consent to here — any orphan still listed above
+			# is one hd_clean_orphans already tried and hub_unlink_orphan refused
+			# (foreign-blocked), and re-prompting to remove it would just be
+			# refused again. This report section states that fact; it does not
+			# ask a second time.
+			printf '\n  Remove them? [%s]: ' "$(hub_key y)/$(hub_key N)"
+			# A FAILED READ (EOF/^D, stdin closed) DECLINES, never removes:
+			# every other read-failure default in this hub falls to its safe
+			# branch (hub_discard_guard, hub_press_key_to_continue), and this
+			# is the one gate that used to fall through to the destructive
+			# branch instead — the fallback value is the literal 'n' so it
+			# lands in the SAME case arm a typed "n" does, not a special case.
+			IFS= read -r HD_ORPHAN_REPLY || HD_ORPHAN_REPLY=n
+			case $HD_ORPHAN_REPLY in
+			[Yy] | [Yy][Ee][Ss])
+				printf '\n'
+				hd_clean_orphans
+				while IFS= read -r HD_ORPHAN_NAME; do
+					[ -n "$HD_ORPHAN_NAME" ] || continue
+					printf '    %s Removed %s\n' "$(hub_glyph_ok)" "$HD_ORPHAN_NAME"
+				done <"$HD_CLEAN_REMOVED"
+				# FOREIGN-BLOCKED NAMED EXPLICITLY, never folded into the removed
+				# count or left unmentioned: hub_unlink_orphan's refusal is the
+				# ownership guard working correctly, and reporting it as
+				# "Removed" (the bug a review found) would be a false receipt on
+				# a screen whose whole point is telling the truth about what
+				# happened.
+				while IFS= read -r HD_ORPHAN_NAME; do
+					[ -n "$HD_ORPHAN_NAME" ] || continue
+					printf '    %s %s — not owned by this framework tree, left in place\n' "$(hub_glyph_warn)" "$HD_ORPHAN_NAME"
+				done <"$HD_CLEAN_BLOCKED"
+				HD_ORPHAN_REMOVED_N=$(hub_count_lines "$HD_CLEAN_REMOVED")
+				printf '\n  %s %s cleared.\n' "$HD_ORPHAN_REMOVED_N" "$(hub_plural "$HD_ORPHAN_REMOVED_N" orphan orphans)"
+				;;
+			*)
+				printf '\n  Kept — you can clean these up the next time you run "Doctor".\n'
+				;;
+			esac
+		else
+			# OPT_CLEAN_ORPHANS=1 REACHES HERE, non-interactively or on a TTY
+			# alike: HD_ORPHANS was already recomputed after the flag-driven
+			# hd_clean_orphans call above, so every name still listed at :1118
+			# is one that call attempted and hub_unlink_orphan refused
+			# (foreign-blocked) — never one it silently skipped. State that in
+			# text form too, matching the machine payload's own
+			# HUB_FOREIGN_BLOCKED, rather than leaving the flag-driven action
+			# with no human-readable receipt at all.
+			while IFS= read -r HD_ORPHAN_NAME; do
+				[ -n "$HD_ORPHAN_NAME" ] || continue
+				printf '    %s %s — not owned by this framework tree, left in place\n' "$(hub_glyph_warn)" "$HD_ORPHAN_NAME"
+			done <"$HD_CLEAN_BLOCKED"
+		fi
 	fi
 
 	if hub_interactive; then

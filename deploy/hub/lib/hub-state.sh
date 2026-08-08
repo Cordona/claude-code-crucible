@@ -134,7 +134,7 @@ hub_group_state_rows() {
 # available (no unit present at all).
 #
 # "partial" exists because a group is an intent, not a file: a technology whose
-# reviewer was hand-deleted, or a Jira backend that got two of its three skills,
+# reviewer was hand-deleted, or a Jira tracker that got two of its three skills,
 # is neither honestly "installed" nor honestly "available", and the screens that
 # report it must be able to say so rather than round in either direction.
 hub_group_state() {
@@ -161,7 +161,7 @@ hub_group_state() {
 # question about the GROUP ("are all, some or none of its units present"), and
 # `partial` is a truthful answer to that question — but no screen has a fourth
 # column for it, and every screen resolves it the same way: a partly-present
-# technology or backend reads DIVERGED, because "select it to re-sync" is exactly
+# technology or tracker reads DIVERGED, because "select it to re-sync" is exactly
 # the right next action for it.
 #
 # Written by hand as `[ "$x" != partial ] || x=DIVERGED` at three sites before
@@ -300,7 +300,7 @@ hub_feature_counts() {
 # the domain installs UNCONDITIONALLY once it is chosen: its BASELINE group, or —
 # for a domain that has none — its own selectable content
 # (hub_domain_content_groups). A domain with its baseline in place but no
-# technology/backend selected is still "installed"; the sub-selection detail is
+# technology/tracker selected is still "installed"; the sub-selection detail is
 # reported separately (hub_domain_detail).
 #
 # NOT `hub_group_key "$HUB_GROUP_PREFIX_BASELINE" "$1"` CONSTRUCTED BLIND, which is
@@ -343,41 +343,91 @@ hub_domain_state() {
 }
 
 # hub_domain_detail DOMAIN -> the parenthetical the status block appends to a
-# domain's line, or empty when the domain has no sub-selection (spec §7:
-# "(2/9 technologies)", "(GitHub, Jira)").
+# domain's line, or empty when the domain has no sub-selection or nothing to
+# say about the one(s) it has (spec §7: "(2/9 technologies)", "(GitHub, Jira)").
 #
-# The backend arm joins the groups' own labels, which are BARE now ("GitHub", not
-# "GitHub backend") — correct here without qualification, since the label this
-# parenthetical is appended to is the domain's own.
+# LOOPS OVER EVERY KIND THE DOMAIN HAS, joining each kind's own fragment with
+# "; ", because Software Development now carries two (vcs, technology) where
+# every domain used to carry at most one. A single-kind domain's output is
+# byte-identical to before this loop existed: one fragment, wrapped once.
+#
+# The tracker/vcs arm joins the groups' own labels, which are BARE now
+# ("GitHub", not "GitHub tracker") — correct here without qualification, since
+# the label this parenthetical is appended to is the domain's own.
 hub_domain_detail() {
 	hdd_domain=$1
-	case $(hub_domain_selection_kind "$hdd_domain") in
-	technology)
-		hdd_total=0
-		hdd_installed=0
-		for hdd_group in $(hub_selectable_groups technology); do
-			hdd_total=$((hdd_total + 1))
-			[ "$(hub_group_state "$hdd_group")" = available ] || hdd_installed=$((hdd_installed + 1))
-		done
-		printf '(%s/%s %s)' "$hdd_installed" "$hdd_total" "$(hub_plural "$hdd_total" technology technologies)"
-		;;
-	pm-backend)
-		hdd_labels=""
-		for hdd_group in $(hub_selectable_groups pm-backend); do
-			[ "$(hub_group_state "$hdd_group")" = available ] && continue
-			hdd_labels=$(hub_join_append "$hdd_labels" "$(hub_group_field "$hdd_group" 2)" ', ')
-		done
-		# No fallback "(no backend)" text: a Project Management with zero
-		# backends selected cannot actually be installed (the empty-selection
-		# rule blocks confirming with none), so this branch is reached ONLY when
-		# the domain itself is not installed at all — where printing anything
-		# here duplicated "not installed" with a second, confusing claim about a
-		# "backend" that was never really the subject. Same "nothing to say"
-		# treatment as the `*)` arm below.
-		[ -z "$hdd_labels" ] || printf '(%s)' "$hdd_labels"
-		;;
-	*) printf '' ;;
-	esac
+	hdd_out=""
+	for hdd_kind in $(hub_domain_selection_kind "$hdd_domain"); do
+		case $hdd_kind in
+		technology)
+			hdd_total=0
+			hdd_installed=0
+			for hdd_group in $(hub_selectable_groups technology); do
+				hdd_total=$((hdd_total + 1))
+				[ "$(hub_group_state "$hdd_group")" = available ] || hdd_installed=$((hdd_installed + 1))
+			done
+			hdd_frag=$(printf '%s/%s %s' "$hdd_installed" "$hdd_total" "$(hub_plural "$hdd_total" technology technologies)")
+			hdd_out=$(hub_join_append "$hdd_out" "$hdd_frag" '; ')
+			;;
+		pm-tracker | vcs)
+			hdd_labels=""
+			for hdd_group in $(hub_selectable_groups "$hdd_kind"); do
+				[ "$(hub_group_state "$hdd_group")" = available ] && continue
+				hdd_labels=$(hub_join_append "$hdd_labels" "$(hub_group_field "$hdd_group" 2)" ', ')
+			done
+			# No fallback text for an empty kind here: for `pm-tracker` a
+			# Project Management with zero trackers selected cannot actually be
+			# installed (the empty-selection rule blocks confirming with none),
+			# so this arm is reached empty only when the domain itself is not
+			# installed at all. For `vcs` (optional — hub_selection_kind_optional)
+			# an empty selection is a genuinely valid state on its own, not a
+			# symptom of anything, so saying nothing is the honest answer either
+			# way. Either way, printing anything here would duplicate "not
+			# installed"/say nothing new with a second, confusing claim.
+			[ -z "$hdd_labels" ] || hdd_out=$(hub_join_append "$hdd_out" "$hdd_labels" '; ')
+			;;
+		esac
+	done
+	[ -z "$hdd_out" ] || printf '(%s)' "$hdd_out"
+}
+
+# hub_print_domain_status_lines FRAMEWORK_ROOT INDENT -> one line per
+# registered domain: "<indent><glyph> <label>: <detail>" (bare label with no
+# colon when there is no detail — GTD's own shape), or
+# "<indent><absent-glyph> <label>: not installed" for a domain that is not.
+# Skips a domain whose subtree FRAMEWORK_ROOT doesn't even ship, exactly as
+# hub_domain_exists' own callers elsewhere do.
+#
+# SHARED BY hub-status.sh's OWN "Status" screen and hub-doctor.sh's merged
+# Status section, which used to carry two copies of this identical render
+# loop — down to the same two live-test-session tweaks in each ("glyph leads
+# the label", "the colon belongs to the detail, not the label") — differing
+# only in indent and variable prefix. One owner means one place absorbs the
+# next tweak, not two.
+hub_print_domain_status_lines() {
+	hpdsl_root=$1
+	hpdsl_indent=$2
+	for hpdsl_domain in $HUB_DOMAIN_KEYS; do
+		hub_domain_exists "$hpdsl_root" "$hpdsl_domain" || continue
+		hpdsl_state=$(hub_domain_state "$hpdsl_domain")
+		hpdsl_detail=$(hub_domain_detail "$hpdsl_domain")
+		case $hpdsl_state in
+		installed) hpdsl_glyph=$(hub_glyph_ok) ;;
+		partial) hpdsl_glyph=$(hub_glyph_warn) ;;
+		*)
+			printf '%s%s %s: not installed\n' "$hpdsl_indent" "$(hub_glyph_absent)" "$(hub_domain_short_label "$hpdsl_domain")"
+			continue
+			;;
+		esac
+		# The colon belongs to the DETAIL, not to the label on its own: a domain
+		# with no sub-selection (GTD) has no detail to introduce, and printing
+		# the colon anyway leaves it dangling with nothing after it.
+		if [ -n "$hpdsl_detail" ]; then
+			printf '%s%s %s: %s\n' "$hpdsl_indent" "$hpdsl_glyph" "$(hub_domain_short_label "$hpdsl_domain")" "$hpdsl_detail"
+		else
+			printf '%s%s %s\n' "$hpdsl_indent" "$hpdsl_glyph" "$(hub_domain_short_label "$hpdsl_domain")"
+		fi
+	done
 }
 
 # ---------------------------------------------------------------------------
@@ -389,7 +439,7 @@ hub_domain_detail() {
 # It is NOT what any interactive CHECKLIST shows: each screen's checklist is its
 # own, coarser projection over the same states — hub-list.sh's
 # hl_selectable_rows_build, hub-uninstall.sh's SELECTABLE_ROWS — because a human
-# picks a technology or a backend while Doctor has to be able to name "Security
+# picks a technology or a tracker while Doctor has to be able to name "Security
 # review lens" specifically. Both granularities are deliberate; this one is the
 # fine-grained end.
 # ---------------------------------------------------------------------------
@@ -400,7 +450,7 @@ hub_domain_detail() {
 #
 # An atomic row's state is the group's own aggregate state, mapped into the
 # same three-word row vocabulary the rest of the table uses (a partly-present
-# backend reads DIVERGED) — through hub_group_display_state, which owns that
+# tracker reads DIVERGED) — through hub_group_display_state, which owns that
 # mapping for every screen, never a fourth hand-written copy of it here.
 #
 # Iterates GROUP KEYS (a single-column stream) and asks the group table for the
@@ -448,7 +498,7 @@ hub_rows_build() {
 # domain structure. This is the other end — for ONE domain, the four kinds of
 # thing its screens actually talk about:
 #
-#   selectable  one row per technology / backend, at the group's own aggregate
+#   selectable  one row per technology / tracker, at the group's own aggregate
 #               display state. A technology is ONE thing a human picks (its
 #               developer, reviewer and standard travel together), which is why
 #               its two agent units are represented by this row and never
@@ -534,7 +584,7 @@ hub_rows_build() {
 #     group (GTD) contributes exactly one `selectable` row, no `standard` rows and no
 #     `baseline` rows, with no test for it here. A CONSUMER THAT RENDERS PER DOMAIN
 #     MUST THEREFORE NOT ASSUME the `selectable` bucket means "a technology or a
-#     backend": for a domain that declares features, the feature projection below
+#     tracker": for a domain that declares features, the feature projection below
 #     already reports that same content by name, and hub-list.sh suppresses the
 #     duplicate row for exactly that reason.
 #   * WHICH BASELINE UNITS ARE LENSES is the src-path test, and ONLY the
@@ -842,7 +892,7 @@ hub_group_remains_present() {
 #
 # This is the whole cross-domain rule: accounts/'s git-auth procedure is pulled
 # in once by Software Development's baseline and once by Project Management's
-# GitHub backend, deduplicated on install, and removed on uninstall only when
+# GitHub tracker, deduplicated on install, and removed on uninstall only when
 # NEITHER consumer remains. Whether a consumer "remains" is
 # hub_group_remains_present's answer, above — the same predicate the per-domain
 # baseline cascade uses, so the two cannot disagree about what "still there after
@@ -887,13 +937,30 @@ hub_shared_consumers_remaining() {
 
 # hub_orphaned_units TARGET_DIR -> "name<TAB>kind" for every symlink the hub
 # placed under TARGET_DIR/agents or TARGET_DIR/skills whose name no longer
-# appears anywhere in discovery.
+# appears anywhere in discovery AND WHICH GENUINELY NO LONGER RESOLVES.
 #
-# Deliberately `-type l`, never an existence test: the whole point is to also
-# find a DANGLING symlink whose source vanished, which an existence-based scan
-# would silently skip — exactly the case this exists to catch. A non-symlink
-# entry is never reported: the hub only ever creates symlinks, so anything else
-# is a foreign file, which is a different (already-guarded) concern.
+# BOTH CONDITIONS ARE REQUIRED, and the second is not redundant with the
+# first. "Not in this run's discovery" is a fact about the CALLER's --source,
+# not about the link itself: a --source narrower than the one that installed a
+# component (a partial checkout, or — the concrete case a security review
+# named — a wrong or ancestor --source under which discovery finds nothing at
+# all) makes every legitimately-installed, perfectly-resolving symlink fail
+# the "known names" test too. Before this existence check, that state was
+# reported as "orphaned" — and, once Doctor gained the power to delete what it
+# reports as orphaned, would have been deleted. A genuine orphan is a link
+# whose TARGET IS ACTUALLY GONE, which `[ -e ]` verifies below, on the exact
+# path `find` already resolved it through.
+#
+# Deliberately `-type l`, never an existence test AS THE find(1) FILTER: the
+# whole point is to also find a DANGLING symlink whose source vanished, which
+# an existence-based find FILTER would silently skip before this function ever
+# saw it — exactly the case this exists to catch (find's own `-type l` still
+# matches a dangling link; a bare path predicate does not, since it follows
+# the link). The existence check that matters is the one below, applied
+# per-candidate AFTER the known-names test, not folded into the walk itself. A
+# non-symlink entry is never reported: the hub only ever creates symlinks, so
+# anything else is a foreign file, which is a different (already-guarded)
+# concern.
 #
 # Zero hardcoded names: both sides are generic scans, so adding, removing,
 # renaming or relocating any artifact anywhere is picked up with no code change.
@@ -902,20 +969,31 @@ hub_orphaned_units() {
 	hou_target=$1
 	hou_known="$(hub_mktemp_dir)/known-names.txt"
 	awk -F '\t' '{ print $2 }' "$HUB_UNITS" | LC_ALL=C sort -u >"$hou_known"
-	# awk, never sed, for the "basename<TAB>kind" transform. `\t` in a sed
-	# REPLACEMENT is a GNU extension: BSD/macOS sed emits a literal backslash-t
-	# instead of a TAB, which collapsed both columns into one token
+	# awk, never sed, for the "basename<TAB>kind<TAB>path" transform. `\t` in a
+	# sed REPLACEMENT is a GNU extension: BSD/macOS sed emits a literal
+	# backslash-t instead of a TAB, which collapsed columns into one token
 	# ("python-developertagent"), left the kind column empty, and made the
 	# grep -qxF known-name test below fail for EVERY row — reporting the entire
-	# installed set as orphaned on the hub's primary platform. awk's `"\t"` inside
-	# a string is specified by POSIX and behaves identically on both userlands.
+	# installed set as orphaned on the hub's primary platform. awk's `"\t"`
+	# inside a string is specified by POSIX and behaves identically on both
+	# userlands. PATH IS CARRIED AS A THIRD COLUMN, never reconstructed later
+	# from name+kind+target: it is what `find` already resolved this exact
+	# candidate through, and re-deriving it a second way (even via this hub's
+	# own hub_target_path) would risk the reconstruction disagreeing with what
+	# was actually scanned. It is read only for the existence test below and is
+	# never part of this function's own "name<TAB>kind" return value.
 	{
 		find "$hou_target/agents" -maxdepth 1 -type l -name '*.md' 2>/dev/null |
-			awk -v kind=agent '{ name = $0; sub(/.*\//, "", name); sub(/\.md$/, "", name); print name "\t" kind }'
+			awk -v kind=agent '{ path = $0; name = $0; sub(/.*\//, "", name); sub(/\.md$/, "", name); print name "\t" kind "\t" path }'
 		find "$hou_target/skills" -maxdepth 1 -type l 2>/dev/null |
-			awk -v kind=skill '{ name = $0; sub(/.*\//, "", name); print name "\t" kind }'
-	} | LC_ALL=C sort -u | while IFS="$HUB_TAB" read -r hou_name hou_kind; do
+			awk -v kind=skill '{ path = $0; name = $0; sub(/.*\//, "", name); print name "\t" kind "\t" path }'
+	} | LC_ALL=C sort -u | while IFS="$HUB_TAB" read -r hou_name hou_kind hou_path; do
 		[ -n "$hou_name" ] || continue
-		grep -qxF -- "$hou_name" "$hou_known" || printf '%s\t%s\n' "$hou_name" "$hou_kind"
+		grep -qxF -- "$hou_name" "$hou_known" && continue
+		# `-e` FOLLOWS THE SYMLINK, which is exactly what makes it the right
+		# test here: a link that still resolves to a real file is not gone,
+		# whatever discovery this run happened to see.
+		[ -e "$hou_path" ] && continue
+		printf '%s\t%s\n' "$hou_name" "$hou_kind"
 	done
 }

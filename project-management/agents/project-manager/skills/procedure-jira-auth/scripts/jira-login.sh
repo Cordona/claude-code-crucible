@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 #
 # jira-login.sh — USER-interactive Jira Cloud credential setup. The twin of
-#                 procedure-git-auth's manage_gh_accounts.sh, but for Jira:
+#                 procedure-github-auth's manage_gh_accounts.sh, but for Jira:
 #                 there is no local CLI session to switch (Jira has no `gh`
 #                 equivalent), so this script's whole job is to PROMPT for a
 #                 site + email + API token and write them to a secure,
@@ -78,23 +78,121 @@ PROG=${0##*/}
 MAX_RETRIES=3
 
 # ---------------------------------------------------------------------------
-# Colors + logging (NO_COLOR-aware; disabled when stdout is not a TTY so
-# piped/captured output stays clean). Same shape as manage_gh_accounts.sh.
+# Rendering legend — glyphs, colors and prompt furniture.
+#
+# The VALUES and glyph choices below deliberately mirror the Crucible
+# Management Hub's lib/hub-render.sh one for one (HUB_OK_COLOR, HUB_FAIL_COLOR,
+# HUB_WARN_COLOR, HUB_NUMBER_COLOR, HUB_DIM_COLOR, HUB_HINT_KEY_COLOR and the
+# ✓/✗/! glyphs), so this screen looks like the menu that launched it — and so it
+# looks like its already-migrated siblings manage_gh_accounts.sh and
+# manage_glab_accounts.sh, which carry this identical legend. They are
+# RE-DECLARED here and NOT sourced from that file, for the reason this script's
+# own header states: it ships inside the procedure-jira-auth skill and is run
+# directly by agents, so it must keep working with no hub present. The cost of
+# that independence is this duplication; the rule for it is that the values here
+# only ever move to MATCH the hub's.
+#
+# One named constant per MEANING, following the hub's own discipline: several
+# meanings collide on an SGR number today (number and hint-key are both 36), so
+# recoloring one must not silently move the others.
+#
+# Out of scope, and stated so no one reads its absence as an oversight: the
+# hub's HUB_ASCII/--accessible glyph fallback. This script has no such flag to
+# switch on, and inventing one would add an option the hub never passes it.
+#
+# `number()`/C_NUMBER STAY even though this screen asks no numbered question
+# (free text only, so nothing here ever calls `number()`): the stated rule for
+# this deliberately duplicated block is that its values only ever move to
+# MATCH the hub's, and that is only checkable while this file's copy of the
+# VALUE DECLARATIONS AND RENDERING HELPERS (the GLYPH_*/SGR_DIM/SEP constants,
+# color_disabled, the color if/else, dim/number/hint_segment, and log_*) reads
+# identically to manage_gh_accounts.sh's and manage_glab_accounts.sh's — NOT
+# the whole legend block verbatim. Two documented exceptions: `prompt_select`
+# (both siblings have it; this file doesn't, since it has no numbered menu for
+# it to serve) and the `shellcheck disable=SC2329` line right above `number()`
+# below (only needed here, since only here is `number()` genuinely unused).
+# Deleting the one line this screen happens not to use would break that
+# byte-identity for no benefit.
 # ---------------------------------------------------------------------------
-if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
-	C_RESET=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""
+
+# Glyph characters. NOT emptied by the no-color branch below: color and content
+# are independent axes in the hub too (--no-color strips ANSI attributes and
+# keeps every glyph), and a ✓ still reads as success in a pipe.
+GLYPH_OK='✓'
+GLYPH_WARN='!'
+GLYPH_FAIL='✗'
+
+# SGR_DIM — the faint attribute (hub HUB_DIM_COLOR=2). The one color value that
+# needs a name of its own rather than living inline in a printf format below,
+# because TWO renderings derive from it: C_DIM, and C_HINT_KEY's dim+cyan pair.
+# That derivation is valid ONLY while this holds an intensity ATTRIBUTE (2) and
+# not a hue — "2;36" applies both, whereas a grey hue like "38;5;245;36" would
+# let the trailing 36 override the grey outright and lose the dimming.
+SGR_DIM=2
+
+# SEP — the inline hint-list separator, carrying its OWN surrounding spacing
+# (hub hub_sep_text), because the spacing differs between the Unicode and ASCII
+# forms there and so belongs to the separator rather than to each call site.
+SEP=' · '
+
+# Colors: honour NO_COLOR, checked by PRESENCE alone — deliberately STRICTER
+# than no-color.org itself (which disables color only when NO_COLOR is present
+# AND non-empty), so this agrees with the hub's own hub_color_enabled rather
+# than with the spec's letter: an empty NO_COLOR="" still disables color here,
+# same as there. Also honour the hub's own HUB_NO_COLOR when this script runs
+# AS the hub's delegate (unset when run standalone, so a direct invocation is
+# unaffected), and disable when stdout is not a TTY, so piped/captured output
+# is clean.
+color_disabled() {
+	[ -z "${NO_COLOR+x}" ] || return 0
+	case ${HUB_NO_COLOR:-0} in
+	0 | '') : ;;
+	*) return 0 ;;
+	esac
+	[ -t 1 ] || return 0
+	return 1
+}
+if color_disabled; then
+	C_RESET=""; C_OK=""; C_WARN=""; C_FAIL=""; C_NUMBER=""; C_DIM=""; C_HINT_KEY=""
 else
 	C_RESET=$(printf '\033[0m')
-	C_RED=$(printf '\033[31m')
-	C_GREEN=$(printf '\033[32m')
-	C_YELLOW=$(printf '\033[93m')
-	C_BLUE=$(printf '\033[34m')
+	C_OK=$(printf '\033[32m')                      # green  — success (hub HUB_OK_COLOR)
+	C_WARN=$(printf '\033[38;5;208m')              # orange — warning (hub HUB_WARN_COLOR)
+	C_FAIL=$(printf '\033[31m')                    # red    — failure (hub HUB_FAIL_COLOR)
+	C_NUMBER=$(printf '\033[36m')                  # cyan   — a number you may type (hub HUB_NUMBER_COLOR)
+	C_DIM=$(printf '\033[%sm' "$SGR_DIM")          # faint  — secondary/instructional text
+	C_HINT_KEY=$(printf '\033[%s;36m' "$SGR_DIM")  # dim cyan — a key offered in a trailing hint list
 fi
 
-log_info()    { printf '%s[INFO]%s %s\n'  "$C_BLUE"   "$C_RESET" "$*"; }
-log_success() { printf '%s[OK]%s %s\n'    "$C_GREEN"  "$C_RESET" "$*"; }
-log_warning() { printf '%s[WARN]%s %s\n'  "$C_YELLOW" "$C_RESET" "$*" >&2; }
-log_error()   { printf '%s[ERROR]%s %s\n' "$C_RED"    "$C_RESET" "$*" >&2; }
+# dim TEXT / number TEXT -> TEXT in the one treatment named above. Every call
+# site colors through these, never by hand-writing an escape, so "change the
+# color" stays a one-line change in the legend.
+dim()    { printf '%s%s%s' "$C_DIM"    "$1" "$C_RESET"; }
+# shellcheck disable=SC2329  # unused here by design: no numbered prompt on this screen; kept for legend byte-identity with the gh/glab copies (see the legend's own header)
+number() { printf '%s%s%s' "$C_NUMBER" "$1" "$C_RESET"; }
+
+# hint_segment KEY LABEL -> "KEY: LABEL", KEY in dim cyan and LABEL dimmed —
+# the hub's hub_hint_segment shape, for one of the alternatives a user may type
+# INSTEAD of answering the prompt's own question (`c: cancel`). Two separately
+# colored spans CONCATENATED, never nested: each span ends in a full SGR reset,
+# so wrapping one inside the other would kill the outer color for everything
+# printed after it.
+hint_segment() {
+	printf '%s%s%s%s' "$C_HINT_KEY" "$1" "$C_RESET" "$(dim ": $2")"
+}
+
+# Logging: INFO/SUCCESS -> stdout, WARNING/ERROR -> stderr. Matches the
+# semantics of the original common/lib/logging.sh convenience functions.
+#
+# The severity is carried by a COLORED GLYPH rather than a bracketed [LEVEL]
+# tag, which is what aligns this script with the hub. log_info deliberately
+# gets neither glyph nor color: an informational line is the screen's ordinary
+# content, so a marker on it would only compete with the three that mean
+# something.
+log_info()    { printf '%s\n' "$*"; }
+log_success() { printf '%s%s%s %s\n' "$C_OK"   "$GLYPH_OK"   "$C_RESET" "$*"; }
+log_warning() { printf '%s%s%s %s\n' "$C_WARN" "$GLYPH_WARN" "$C_RESET" "$*" >&2; }
+log_error()   { printf '%s%s%s %s\n' "$C_FAIL" "$GLYPH_FAIL" "$C_RESET" "$*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Usage
@@ -217,7 +315,10 @@ confirm_yn() {
 }
 
 # prompt_site -> sets SITE_HOST to a validated, normalized host. Retries on
-# an empty or disallowed value; does not touch the credential store.
+# an empty or disallowed value; does not touch the credential store. Returns 1
+# on cancellation (an explicit `c`, EOF, an invalid --site, or retries
+# exhausted) — the same 1 every other failure path here returns, since the
+# caller treats "no site" identically however it was reached.
 SITE_HOST=""
 prompt_site() {
 	ps_retries=0
@@ -225,11 +326,26 @@ prompt_site() {
 		if [ -n "$OPT_SITE" ]; then
 			ps_raw=$OPT_SITE
 		else
-			printf 'Jira site (e.g. your-co.atlassian.net): '
+			printf '  %s%s%s\n> ' "$(dim 'Jira site (e.g. your-co.atlassian.net)')" "$SEP" "$(hint_segment c cancel)"
 			if ! IFS= read -r ps_raw; then
 				log_error "No input; cancelling."
 				return 1
 			fi
+			# CANCEL IS MATCHED ON THE RAW LINE, and inside this interactive
+			# branch, for two reasons that are both about scope rather than
+			# style. A --site value never reaches this check at all (a caller who
+			# passed the flag is not standing at a prompt to cancel), which the
+			# branch enforces structurally instead of re-testing OPT_SITE. And
+			# matching BEFORE normalize_site() means the strip can never
+			# manufacture a cancel: "https://c" and "c.atlassian.net/path"
+			# normalize to "c" and "c.atlassian.net", and neither is what was
+			# typed here, so a site whose host merely starts with a `c` is
+			# untouched. log_info, not log_error: the user asked to stop, which
+			# is an outcome, not a fault — the non-zero return is what tells the
+			# caller nothing was stored.
+			case "$ps_raw" in
+				c|C|cancel) log_info "Cancelled."; return 1 ;;
+			esac
 		fi
 		ps_host=$(normalize_site "$ps_raw")
 		if [ -z "$ps_host" ]; then
@@ -249,17 +365,24 @@ prompt_site() {
 
 # prompt_email -> sets ACCOUNT_EMAIL to a non-empty, single-line, "@"-shaped
 # value (a light sanity check — Jira itself is the source of truth for
-# whether the address is real).
+# whether the address is real). Returns 1 on cancellation, exactly as
+# prompt_site does, so the caller's handling is the same at either prompt.
+#
+# The cancel arm sits FIRST in the same case that validates the shape, rather
+# than in a case of its own: `c`/`C`/`cancel` contain no "@" and so can never
+# collide with the *@*[!@]* arm below, which makes one case statement the whole
+# decision — cancel, accept, or complain — instead of two in sequence.
 ACCOUNT_EMAIL=""
 prompt_email() {
 	pe_retries=0
 	while [ "$pe_retries" -lt "$MAX_RETRIES" ]; do
-		printf 'Account email: '
+		printf '  %s%s%s\n> ' "$(dim 'Account email')" "$SEP" "$(hint_segment c cancel)"
 		if ! IFS= read -r pe_raw; then
 			log_error "No input; cancelling."
 			return 1
 		fi
 		case "$pe_raw" in
+			c|C|cancel) log_info "Cancelled."; return 1 ;;
 			*@*[!@]*) ACCOUNT_EMAIL=$pe_raw; return 0 ;;
 			*) log_error "Enter a valid-looking email (must contain '@')." ;;
 		esac
@@ -311,11 +434,20 @@ trap cleanup_on_exit EXIT INT TERM
 
 # prompt_token -> sets API_TOKEN. Echo is disabled for the read; the raw
 # value is NEVER printed, logged, or echoed back — not even masked.
+#
+# STYLED LIKE prompt_site/prompt_email (the same dim()-wrapped label, the same
+# indent, the same `> ` marker), but DELIBERATELY carries no hint_segment
+# cancel key, unlike those two — the hint-less variant manage_gh_accounts.sh's
+# main_menu and manage_glab_accounts.sh's prompt_new_hostname both use when a
+# prompt has nothing to offer besides its own answer. A secret-input prompt
+# must not advertise a typeable word as a control command; the omission here
+# is that rule, not the oversight it would otherwise look like next to two
+# sibling prompts that DO show one.
 API_TOKEN=""
 prompt_token() {
 	pt_retries=0
 	while [ "$pt_retries" -lt "$MAX_RETRIES" ]; do
-		printf 'API token (input hidden): '
+		printf '  %s\n> ' "$(dim 'API token (input hidden)')"
 		stty_echo_off
 		if ! IFS= read -r pt_raw; then
 			stty_echo_on
@@ -401,11 +533,15 @@ set_default_if_unset() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+# The title is PLAIN, UNCOLORED text at column 0 and carries no rule lines above
+# or below it — the hub's hub_print_header shape exactly, and manage_gh_accounts.sh's.
+# Both are the same point: in this hub only glyphs, typeable keys and numbers are
+# colored, and a screen title is content, not a marker. The "====" rules went with
+# the color for the same reason — nothing else in the hub separates a screen from
+# its content with a drawn rule, and the blank line below already does that job.
 main() {
 	printf '\n'
-	printf '===============================================================================\n'
-	printf '  %sJira Credential Setup%s\n' "$C_BLUE" "$C_RESET"
-	printf '===============================================================================\n'
+	printf 'Jira Credential Setup\n'
 	printf '\n'
 	printf '  Stores an API token for one Jira Cloud site. Run again for another site.\n'
 	printf '\n'

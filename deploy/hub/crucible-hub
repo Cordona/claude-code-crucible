@@ -138,22 +138,22 @@ ch_run() {
 ch_main_menu_once() {
 	printf 'Crucible Management Hub\n%s\n\n' "$(hub_dim "target: $CH_TARGET")"
 
-	# THE LABEL COLUMN IS HELD FIXED ACROSS THE 9-TO-10 DIGIT CHANGE by one extra
-	# space in every single-digit row's own FORMAT STRING, never inside the
-	# hub_number argument: padding within the colored substitution would ship a
-	# space wrapped in SGR attributes, and this hub colors the token the user
-	# types, not the whitespace beside it. Item 10's row is the one with a single
-	# space, because its number is the one that is a character wider.
-	printf '  %s  Status              %s\n' "$(hub_number '1.')" "$(hub_dim '— which domains are installed')"
-	printf '  %s  List                %s\n' "$(hub_number '2.')" "$(hub_dim '— installed vs available components')"
-	printf '  %s  Doctor              %s\n' "$(hub_number '3.')" "$(hub_dim '— required tools + account health')"
-	printf '  %s  Accounts            %s\n' "$(hub_number '4.')" "$(hub_dim '— GitHub / Jira')"
-	printf '  %s  Create a tech pair  %s\n' "$(hub_number '5.')" "$(hub_dim '— a developer + reviewer pair for a technology')"
-	printf '  %s  Install all         %s\n' "$(hub_number '6.')" "$(hub_dim '— every domain, technology and backend')"
-	printf '  %s  Install             %s\n' "$(hub_number '7.')" "$(hub_dim '— choose domains')"
-	printf '  %s  Uninstall all\n' "$(hub_number '8.')"
-	printf '  %s  Uninstall           %s\n' "$(hub_number '9.')" "$(hub_dim '— choose technologies or backends')"
-	printf '  %s Exit\n\n' "$(hub_number '10.')"
+	# NINE ITEMS, ALL SINGLE-DIGIT — no digit-width compensation needed any more
+	# (dropping the old "Status" item took the list from 10 down to 9, so
+	# nothing here reaches two digits). Every row's format string gets the same
+	# two literal spaces after the number for that reason; if a tenth item ever
+	# returns, restore the one-item digit-width compensation this comment used
+	# to describe rather than reinventing it, and see that description in
+	# version control for the exact reasoning.
+	printf '  %s  List                %s\n' "$(hub_number '1.')" "$(hub_dim '— installed vs available components')"
+	printf '  %s  Doctor              %s\n' "$(hub_number '2.')" "$(hub_dim '— domain status, required tools, account health')"
+	printf '  %s  Accounts            %s\n' "$(hub_number '3.')" "$(hub_dim '— GitHub / GitLab / Jira')"
+	printf '  %s  Create a tech pair  %s\n' "$(hub_number '4.')" "$(hub_dim '— a developer + reviewer pair for a technology')"
+	printf '  %s  Install all         %s\n' "$(hub_number '5.')" "$(hub_dim '— every domain, technology, VCS host and tracker')"
+	printf '  %s  Install             %s\n' "$(hub_number '6.')" "$(hub_dim '— choose domains')"
+	printf '  %s  Uninstall all\n' "$(hub_number '7.')"
+	printf '  %s  Uninstall           %s\n' "$(hub_number '8.')" "$(hub_dim '— choose technologies, VCS hosts or trackers')"
+	printf '  %s  Exit\n\n' "$(hub_number '9.')"
 	# The action hint lives ON the prompt line, not a separate line above it —
 	# no `b` here (the Main menu has nowhere to go back to), but `q` IS a valid
 	# choice (same as `10`) and was accepted without ever being advertised.
@@ -164,19 +164,25 @@ ch_main_menu_once() {
 	IFS= read -r ch_choice || ch_choice=q
 
 	case $ch_choice in
-	1) ch_run ch_capability "$HUB_DIR0/hub-status.sh" || return 1 ;;
-	2) ch_run ch_capability "$HUB_DIR0/hub-list.sh" || return 1 ;;
-	3) ch_run ch_capability "$HUB_DIR0/hub-doctor.sh" || return 1 ;;
-	4) ch_run ch_accounts_submenu || return 1 ;;
+	1) ch_run ch_capability "$HUB_DIR0/hub-list.sh" || return 1 ;;
+	2) ch_run ch_capability "$HUB_DIR0/hub-doctor.sh" || return 1 ;;
+	3) ch_run ch_accounts_submenu || return 1 ;;
 	# NOT through ch_capability: this screen is rendered by lib/hub-nav.sh in
 	# this very process and inspects no deployment, so it has no --target to be
 	# threaded (the one thing ch_capability exists to thread).
-	5) ch_run hub_show_tech_pair || return 1 ;;
-	6) ch_run ch_capability "$HUB_DIR0/hub-install.sh" --all --apply || return 1 ;;
-	7) ch_run ch_capability "$HUB_DIR0/hub-install.sh" || return 1 ;;
-	8) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" --all --apply || return 1 ;;
-	9) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" || return 1 ;;
-	10 | q | quit) return 1 ;;
+	4) ch_run hub_show_tech_pair || return 1 ;;
+	5) ch_run ch_capability "$HUB_DIR0/hub-install.sh" --all --apply || return 1 ;;
+	6) ch_run ch_capability "$HUB_DIR0/hub-install.sh" || return 1 ;;
+	7) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" --all --apply || return 1 ;;
+	8) ch_run ch_capability "$HUB_DIR0/hub-uninstall.sh" || return 1 ;;
+	# 10 IS ALSO ACCEPTED, even though the menu above only ever shows through 9:
+	# this screen used to have a tenth item (the separate Status entry the
+	# header comment above describes dropping), Exit at "10", and an
+	# already-written script/muscle-memory habit that typed "10" for Exit is
+	# exactly the kind of caller a renumbering should not silently break — the
+	# same reasoning `q`/`quit` are accepted despite never being the advertised
+	# number.
+	9 | 10 | q | quit) return 1 ;;
 	'?') hub_show_help ;;
 	*) printf 'Not a valid choice.\n' ;;
 	esac
@@ -188,26 +194,63 @@ ch_main_menu_once() {
 # instead (see hub_print_header's own header for why there is no separate list
 # any more). No separate press-key-to-continue either: the numbered prompt
 # below already blocks on input, so there is nothing to add.
+#
+# A LOOP, the same `while :; do` shape the Main menu gets from its own
+# `while ch_main_menu_once`, and for the same two reasons — this screen ran its
+# body exactly once, and both consequences were live defects:
+#   * `?` showed help and then FELL OUT to the Main menu, so the one screen the
+#     user had explicitly not left was the one they lost by asking what its keys
+#     do. `continue` re-draws Accounts, matching `?` at every other prompt in
+#     this hub (hub_confirm_gate, hub_press_key_to_continue, the checklist).
+#   * An unrecognized choice — INCLUDING a bare Enter, this prompt's most likely
+#     keystroke — dropped a level in silence, via the `*) : ;;` no-op. It now
+#     says so and re-draws, exactly as ch_main_menu_once's own `*)` does.
+# `b`/`back` gets an EXPLICIT arm rather than continuing to work by falling into
+# that no-op: the prompt line has always advertised it, so it should not depend
+# on being indistinguishable from a typo. It is also what the read-failure
+# fallback below resolves to (`ch_as_choice=b`), which now lands in a real arm
+# instead of the catch-all.
+#
+# The six delegates still `return` rather than looping — the Main menu is where a
+# completed account action belongs, and its own re-render is what shows the
+# resulting status. The bare `return` after the case propagates the DELEGATE's
+# exit status, which is what it did as this function's last command before the
+# loop existed: a `q` pressed inside a sub-screen exits 3, ch_run sees it, and
+# the hub quits from there exactly as it does from every other screen.
 ch_accounts_submenu() {
-	hub_print_header 'Accounts'
-	printf '\n'
-	ch_capability "$HUB_DIR0/hub-accounts.sh" status
-	printf '\n'
-	printf '  %s Switch GitHub account\n' "$(hub_number '1.')"
-	printf '  %s Re-authenticate GitHub\n' "$(hub_number '2.')"
-	printf '  %s Configure Jira\n' "$(hub_number '3.')"
-	printf '  %s Re-authenticate Jira\n\n' "$(hub_number '4.')"
-	printf '  %s%s%s\n> ' "$(hub_dim '1-4')" "$(hub_sep_text)" "$(hub_nav_keys_hint)"
-	IFS= read -r ch_as_choice || ch_as_choice=b
-	case $ch_as_choice in
-	1) ch_capability "$HUB_DIR0/hub-accounts.sh" switch-github ;;
-	2) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-github ;;
-	3) ch_capability "$HUB_DIR0/hub-accounts.sh" configure-jira ;;
-	4) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-jira ;;
-	'?') hub_show_help ;;
-	q | quit) return 3 ;;
-	*) : ;;
-	esac
+	while :; do
+		hub_print_header 'Accounts'
+		printf '\n'
+		ch_capability "$HUB_DIR0/hub-accounts.sh" status
+		printf '\n'
+		printf '  %s Switch GitHub account\n' "$(hub_number '1.')"
+		printf '  %s Re-authenticate GitHub\n' "$(hub_number '2.')"
+		printf '  %s Switch GitLab account\n' "$(hub_number '3.')"
+		printf '  %s Re-authenticate GitLab\n' "$(hub_number '4.')"
+		printf '  %s Configure Jira\n' "$(hub_number '5.')"
+		printf '  %s Re-authenticate Jira\n\n' "$(hub_number '6.')"
+		printf '  %s%s%s\n> ' "$(hub_dim '1-6')" "$(hub_sep_text)" "$(hub_nav_keys_hint)"
+		IFS= read -r ch_as_choice || ch_as_choice=b
+		case $ch_as_choice in
+		1) ch_capability "$HUB_DIR0/hub-accounts.sh" switch-github ;;
+		2) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-github ;;
+		3) ch_capability "$HUB_DIR0/hub-accounts.sh" switch-gitlab ;;
+		4) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-gitlab ;;
+		5) ch_capability "$HUB_DIR0/hub-accounts.sh" configure-jira ;;
+		6) ch_capability "$HUB_DIR0/hub-accounts.sh" reauth-jira ;;
+		b | back) return 0 ;;
+		'?')
+			hub_show_help
+			continue
+			;;
+		q | quit) return 3 ;;
+		*)
+			printf 'Not a valid choice.\n'
+			continue
+			;;
+		esac
+		return
+	done
 }
 
 # ---------------------------------------------------------------------------

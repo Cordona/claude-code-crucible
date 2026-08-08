@@ -1,34 +1,39 @@
 #!/usr/bin/env sh
 # hub-accounts.sh — Capability: Accounts. A thin DELEGATOR only: it never
-#                    reimplements the framework's GitHub/Jira auth procedures,
-#                    it invokes their own scripts.
+#                    reimplements the framework's GitHub/GitLab/Jira auth
+#                    procedures, it invokes their own scripts.
 #
 # Usage:
 #   hub-accounts.sh SUBCOMMAND [--target DIR] [--source DIR]
 #                   [--format=text|env] [--no-color] [-h|--help]
 #
 #   SUBCOMMAND is one of:
-#     status          Read-only: report GitHub + Jira auth state, and which
-#                       installed domains actually depend on each (used by
-#                       Doctor and by the interactive Accounts screen).
+#     status          Read-only: report GitHub + GitLab + Jira auth state, and
+#                       which installed domains actually depend on each (used
+#                       by Doctor and by the interactive Accounts screen).
 #     switch-github    Interactive: the GitHub account manager.
 #     reauth-github    Interactive: the SAME script as switch-github — its own
 #                       menu offers both switching between authenticated
 #                       accounts and logging in fresh, so the hub does not
 #                       invent a second entry point for one tool.
+#     switch-gitlab    Interactive: the GitLab account manager — the same
+#                       shape as switch-github, one script per host.
+#     reauth-gitlab    Interactive: the SAME script as switch-gitlab, for the
+#                       same reason switch-github/reauth-github share one.
 #     configure-jira  Interactive: the Jira login procedure.
 #     reauth-jira      Interactive: the SAME script as configure-jira, for the
 #                       same reason.
 #
 # The auth scripts are located by SCRIPT NAME within the specific structural
-# subtree each is expected to live in — accounts/ for GitHub, Project Management's
-# agents/ subtree for Jira — rather than by a hardcoded full path OR by searching
-# the whole framework tree. That keeps this script working across the domain
-# restructuring (procedure-git-auth moved to accounts/, procedure-jira-auth lives
+# subtree each is expected to live in — accounts/ for GitHub and GitLab,
+# Project Management's agents/ subtree for Jira — rather than by a hardcoded
+# full path OR by searching the whole framework tree. That keeps this script
+# working across the domain restructuring (procedure-github-auth and
+# procedure-gitlab-auth both live under accounts/, procedure-jira-auth lives
 # inside project-management/) without encoding either location, while still
 # refusing to execute a same-named file that happens to sit somewhere unrelated.
-# Naming the two scripts is unavoidable and legitimate: this capability is by
-# definition a front over those two specific procedures — the
+# Naming the three scripts is unavoidable and legitimate: this capability is by
+# definition a front over those three specific procedures — the
 # zero-hardcoded-names contract governs which COMPONENTS the hub installs, not
 # which external tool a delegator delegates to.
 #
@@ -88,7 +93,7 @@ usage() {
 	cat <<EOF
 Usage: $HUB_PROG SUBCOMMAND [--target DIR] [--source DIR] [--format=text|env] [--no-color] [-h|--help]
 
-Subcommands: status | switch-github | reauth-github | configure-jira | reauth-jira
+Subcommands: status | switch-github | reauth-github | switch-gitlab | reauth-gitlab | configure-jira | reauth-jira
 
 Options:
   --target DIR   Deployed config dir (default: \$HOME/.claude) — used by status
@@ -188,6 +193,10 @@ ha_resolve_script "$HA_ACCOUNTS_ROOT" gh-auth-status.sh
 GH_STATUS_SCRIPT=$HA_SCRIPT
 ha_resolve_script "$HA_ACCOUNTS_ROOT" manage_gh_accounts.sh
 GH_MANAGE_SCRIPT=$HA_SCRIPT
+ha_resolve_script "$HA_ACCOUNTS_ROOT" glab-auth-status.sh
+GL_STATUS_SCRIPT=$HA_SCRIPT
+ha_resolve_script "$HA_ACCOUNTS_ROOT" manage_glab_accounts.sh
+GL_MANAGE_SCRIPT=$HA_SCRIPT
 ha_resolve_script "$HA_PM_AGENTS_ROOT" jira-auth-status.sh
 JIRA_STATUS_SCRIPT=$HA_SCRIPT
 ha_resolve_script "$HA_PM_AGENTS_ROOT" jira-login.sh
@@ -384,8 +393,10 @@ status)
 	hub_validate_format text env
 
 	GH_OUT="$HUB_WORK/gh.env"
+	GL_OUT="$HUB_WORK/gl.env"
 	JIRA_OUT="$HUB_WORK/jira.env"
 	: >"$GH_OUT"
+	: >"$GL_OUT"
 	: >"$JIRA_OUT"
 	# The SENTINEL each delegate documents as always emitted, even on its own
 	# failure paths — see ha_run_status_script for why a key rather than an exit
@@ -394,6 +405,10 @@ status)
 	GH_STATE_KNOWN=$([ "$HA_RAN" -eq 1 ] && printf true || printf false)
 	GH_REASON=$HA_REASON
 	GH_STDERR=$HA_STDERR
+	ha_run_status_script "$GL_STATUS_SCRIPT" "$GL_OUT" GLAB_INSTALLED
+	GL_STATE_KNOWN=$([ "$HA_RAN" -eq 1 ] && printf true || printf false)
+	GL_REASON=$HA_REASON
+	GL_STDERR=$HA_STDERR
 	ha_run_status_script "$JIRA_STATUS_SCRIPT" "$JIRA_OUT" JIRA_AUTH_CONFIGURED
 	JIRA_STATE_KNOWN=$([ "$HA_RAN" -eq 1 ] && printf true || printf false)
 	JIRA_REASON=$HA_REASON
@@ -402,6 +417,14 @@ status)
 	GH_AUTHENTICATED=$(hub_env_field "$GH_OUT" GH_AUTHENTICATED false)
 	GH_ACCOUNT=$(hub_env_field "$GH_OUT" GH_ACTIVE_ACCOUNT '')
 	GH_HOST=$(hub_env_field "$GH_OUT" GH_HOST '')
+	# GL_* mirrors GH_* field-for-field, reading the GitLab delegate's own
+	# GLAB_-prefixed vocabulary (glab-auth-status.sh's own naming, distinct from
+	# this script's GH_/GL_ internal prefixes) exactly the way the GitHub block
+	# reads gh-auth-status.sh's GH_-prefixed one.
+	GL_INSTALLED=$(hub_env_field "$GL_OUT" GLAB_INSTALLED false)
+	GL_AUTHENTICATED=$(hub_env_field "$GL_OUT" GLAB_AUTHENTICATED false)
+	GL_ACCOUNT=$(hub_env_field "$GL_OUT" GLAB_ACTIVE_ACCOUNT '')
+	GL_HOST=$(hub_env_field "$GL_OUT" GLAB_HOST '')
 	JIRA_CONFIGURED=$(hub_env_field "$JIRA_OUT" JIRA_AUTH_SITE_CONFIGURED false)
 	JIRA_SITE=$(hub_env_field "$JIRA_OUT" JIRA_AUTH_SITE '')
 	JIRA_ACCOUNT=$(hub_env_field "$JIRA_OUT" JIRA_AUTH_ACCOUNT '')
@@ -421,12 +444,19 @@ status)
 		GH_REASON=$(ha_reason_line "$GH_STDERR")
 		[ -n "$GH_REASON" ] || GH_REASON='no single active GitHub account could be resolved'
 	fi
+	# The identical GitLab check, against glab-auth-status.sh's own documented
+	# GLAB_ACTIVE_AMBIGUOUS shape — same rationale as the GitHub block above.
+	if [ "$GL_STATE_KNOWN" = true ] && [ "$GL_AUTHENTICATED" = true ] && [ -z "$GL_ACCOUNT" ]; then
+		GL_STATE_KNOWN=false
+		GL_REASON=$(ha_reason_line "$GL_STDERR")
+		[ -n "$GL_REASON" ] || GL_REASON='no single active GitLab account could be resolved'
+	fi
 
 	# "used by" is derived from the SAME cross-domain consumer rule the installer
 	# walks (lib/hub-domains.sh's hub_shared_consumers), not from a second
 	# hand-written list — so a change to who needs GitHub auth moves both the
 	# installer and this screen at once. Jira has no cross-domain entry by
-	# construction: its auth lives inside Project Management's own Jira backend.
+	# construction: its auth lives inside Project Management's own Jira tracker.
 	hub_discovery_build "$FRAMEWORK_ROOT"
 	hub_states_build "$TARGET_DIR"
 
@@ -435,9 +465,9 @@ status)
 	# hub-uninstall.sh's own comment calls out as unsafe. All three consumers of
 	# hub_shared_consumers now read it the same, plainer way.
 	HA_CONSUMERS="$HUB_WORK/shared-consumers.tsv"
-	hub_shared_consumers "$HUB_SHARED_GIT_AUTH_GROUP" >"$HA_CONSUMERS"
+	hub_shared_consumers "$HUB_SHARED_GITHUB_AUTH_GROUP" >"$HA_CONSUMERS"
 	# THE "— not installed" ANNOTATION SITS OUTSIDE the consumer's own parentheses, on
-	# BOTH lines of this screen. Here that is automatic (the annotation is appended to a
+	# every line of this screen. Here that is automatic (the annotation is appended to a
 	# complete label), and the Jira line below now does the same rather than reaching
 	# inside a half-built parenthesis — see there.
 	GH_USED_BY=""
@@ -449,28 +479,47 @@ status)
 		GH_USED_BY=$(hub_join_append "$GH_USED_BY" "$HA_NOTE" ', ')
 	done <"$HA_CONSUMERS"
 
-	# THE FIRST Jira backend group wins and the loop STOPS there. Without the break it
+	# The identical shape for GitLab-auth's own consumers (Software Development's
+	# GitLab VCS choice, Project Management's GitLab tracker choice) — a second
+	# call, not a generalized loop over HUB_SHARED_GROUPS, because GH_USED_BY and
+	# GL_USED_BY are two DISTINCT machine fields this screen renders on two
+	# distinct lines; collapsing them into one loop would need the same per-host
+	# variable dispatch this avoids by just calling the pattern twice.
+	hub_shared_consumers "$HUB_SHARED_GITLAB_AUTH_GROUP" >"$HA_CONSUMERS"
+	GL_USED_BY=""
+	while IFS="$HUB_TAB" read -r HA_CONSUMER HA_NOTE; do
+		[ -n "$HA_CONSUMER" ] || continue
+		if [ "$(hub_group_state "$HA_CONSUMER")" = available ]; then
+			HA_NOTE="$HA_NOTE — not installed"
+		fi
+		GL_USED_BY=$(hub_join_append "$GL_USED_BY" "$HA_NOTE" ', ')
+	done <"$HA_CONSUMERS"
+
+	# THE FIRST Jira tracker group wins and the loop STOPS there. Without the break it
 	# kept the LAST match, which is the same answer today (there is exactly one Jira
-	# backend) and quietly the wrong shape: "which group is the Jira backend" is a
+	# tracker) and quietly the wrong shape: "which group is the Jira tracker" is a
 	# lookup, and a lookup that keeps scanning after it has found its answer reads as
 	# though later rows could legitimately override earlier ones.
-	JIRA_BACKEND_STATE=available
-	JIRA_BACKEND_GROUP=""
-	for HA_GROUP in $(hub_selectable_groups pm-backend); do
+	JIRA_TRACKER_STATE=available
+	JIRA_TRACKER_GROUP=""
+	for HA_GROUP in $(hub_selectable_groups pm-tracker); do
 		[ "$(hub_group_field "$HA_GROUP" 6)" = jira ] || continue
-		JIRA_BACKEND_GROUP=$HA_GROUP
-		JIRA_BACKEND_STATE=$(hub_group_state "$HA_GROUP")
+		JIRA_TRACKER_GROUP=$HA_GROUP
+		JIRA_TRACKER_STATE=$(hub_group_state "$HA_GROUP")
 		break
 	done
-	# "Project Management (Jira)" — the domain named, then the backend, because this
+	# "Project Management (Jira)" — the domain named, then the tracker, because this
 	# line stands alone with no domain heading anywhere near it. Through
 	# hub_group_label_in_context, the ONE owner of that qualification (the same call
-	# hub-uninstall.sh's checklist and lib/hub-domains.sh's consumer annotations make),
-	# rather than composed here from hub_domain_label plus a hardcoded "Jira": the
+	# hub-uninstall.sh's own heading-less Remove:/Result receipt and
+	# lib/hub-domains.sh's consumer annotations make — NOT hub-uninstall.sh's
+	# interactive checklist any more, which now shows the bare label under a domain
+	# heading of its own — see that file's CHECKLIST_ROWS header), rather than
+	# composed here from hub_domain_label plus a hardcoded "Jira": the
 	# hand-built version existed only so that "— not installed" could be appended
 	# INSIDE the parenthesis, which is the opposite of what the GitHub line above does
 	# with the identical annotation — two punctuation conventions for one concept on one
-	# screen. The annotation goes outside on both now, and the backend word comes from
+	# screen. The annotation goes outside on both now, and the tracker word comes from
 	# the group table like every other label in the hub.
 	#
 	# An `if`, never `[ -n "$G" ] || JIRA_USED_BY=$(…)`: an assignment on the right of
@@ -479,17 +528,17 @@ status)
 	# and quietly absorbed by the fallback below. As the last command of an `if` body it
 	# fails the script instead.
 	JIRA_USED_BY=""
-	if [ -n "$JIRA_BACKEND_GROUP" ]; then
-		JIRA_USED_BY=$(hub_group_label_in_context "$JIRA_BACKEND_GROUP")
+	if [ -n "$JIRA_TRACKER_GROUP" ]; then
+		JIRA_USED_BY=$(hub_group_label_in_context "$JIRA_TRACKER_GROUP")
 	fi
-	# A source shipping no Jira backend at all has no group row to name, so the
+	# A source shipping no Jira tracker at all has no group row to name, so the
 	# qualified form comes back empty and the domain alone is the honest subject — never
 	# an empty "used by:" line. Same fallback, for the same reason, as
-	# hub_shared_consumers' own GitHub-backend annotation.
+	# hub_shared_consumers' own GitHub-tracker annotation.
 	if [ -z "$JIRA_USED_BY" ]; then
 		JIRA_USED_BY=$(hub_domain_label project-management)
 	fi
-	if [ "$JIRA_BACKEND_STATE" = available ]; then
+	if [ "$JIRA_TRACKER_STATE" = available ]; then
 		JIRA_USED_BY="$JIRA_USED_BY — not installed"
 	fi
 
@@ -506,12 +555,18 @@ status)
 		hub_env_kv HUB_GH_ACCOUNT "$GH_ACCOUNT"
 		hub_env_kv HUB_GH_HOST "$GH_HOST"
 		hub_env_kv HUB_GH_USED_BY "$GH_USED_BY"
+		hub_env_kv HUB_GL_STATE_KNOWN "$GL_STATE_KNOWN"
+		hub_env_kv HUB_GL_INSTALLED "$GL_INSTALLED"
+		hub_env_kv HUB_GL_AUTHENTICATED "$GL_AUTHENTICATED"
+		hub_env_kv HUB_GL_ACCOUNT "$GL_ACCOUNT"
+		hub_env_kv HUB_GL_HOST "$GL_HOST"
+		hub_env_kv HUB_GL_USED_BY "$GL_USED_BY"
 		hub_env_kv HUB_JIRA_STATE_KNOWN "$JIRA_STATE_KNOWN"
 		hub_env_kv HUB_JIRA_CONFIGURED "$JIRA_CONFIGURED"
 		hub_env_kv HUB_JIRA_SITE "$JIRA_SITE"
 		hub_env_kv HUB_JIRA_ACCOUNT "$JIRA_ACCOUNT"
 		hub_env_kv HUB_JIRA_USED_BY "$JIRA_USED_BY"
-		hub_env_kv HUB_JIRA_BACKEND_INSTALLED "$([ "$JIRA_BACKEND_STATE" = available ] && printf false || printf true)"
+		hub_env_kv HUB_JIRA_TRACKER_INSTALLED "$([ "$JIRA_TRACKER_STATE" = available ] && printf false || printf true)"
 		exit 0
 	fi
 
@@ -534,6 +589,16 @@ status)
 		hub_print_hint '    GitHub   not authenticated'
 	fi
 	hub_print_hint "$(printf '             used by: %s' "$GH_USED_BY")"
+	if [ "$GL_STATE_KNOWN" != true ]; then
+		hub_print_hint "$(printf '    GitLab   not checked — %s' "$GL_REASON")"
+	elif [ "$GL_INSTALLED" != true ]; then
+		hub_print_hint '    GitLab   glab not installed — install it, then re-run "Doctor"'
+	elif [ "$GL_AUTHENTICATED" = true ]; then
+		printf '  %s GitLab   authenticated as %s (%s)\n' "$(hub_glyph_ok)" "$GL_ACCOUNT" "$GL_HOST"
+	else
+		hub_print_hint '    GitLab   not authenticated'
+	fi
+	hub_print_hint "$(printf '             used by: %s' "$GL_USED_BY")"
 	if [ "$JIRA_STATE_KNOWN" != true ]; then
 		hub_print_hint "$(printf '    Jira     not checked — %s' "$JIRA_REASON")"
 	elif [ "$JIRA_CONFIGURED" = true ]; then
@@ -548,6 +613,11 @@ switch-github | reauth-github)
 	hub_is_tty || die "switch-github/reauth-github require an interactive terminal"
 	[ -n "$GH_MANAGE_SCRIPT" ] || die "GitHub account manager script not found under $FRAMEWORK_ROOT"
 	ha_exec_delegate "$GH_MANAGE_SCRIPT"
+	;;
+switch-gitlab | reauth-gitlab)
+	hub_is_tty || die "switch-gitlab/reauth-gitlab require an interactive terminal"
+	[ -n "$GL_MANAGE_SCRIPT" ] || die "GitLab account manager script not found under $FRAMEWORK_ROOT"
+	ha_exec_delegate "$GL_MANAGE_SCRIPT"
 	;;
 configure-jira | reauth-jira)
 	hub_is_tty || die "configure-jira/reauth-jira require an interactive terminal"

@@ -705,6 +705,32 @@ expect_rc "linkkids(non-numeric --epic): -> exit 2" 2
 run 1 sh "$LINKKIDS" --repo o/r --epic 1 --child abc
 expect_rc "linkkids(non-numeric --child): -> exit 2" 2
 
+# CONS-005: digits-only is NOT enough. A bare '0' is not a positive number and a
+# leading-zero form is not the number GitHub echoes back, so both must be the
+# usage error (exit 2) this script's header documents rather than a raw `gh`
+# failure (exit 1). `--child 0` is the worse of the two: it used to SPLICE a dead
+# "- [ ] #0" line into the epic and report PM_LINKED=1 — a silently WRONG outcome —
+# while `--child 007` would have linked issue 7. Same guard, same wording as the
+# GitLab sibling's.
+KIDS_EDIT_LOG_ZERO="$WORK/kids-edit-log-zero"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_ARGV_LOG=$KIDS_EDIT_LOG_ZERO" \
+	sh "$LINKKIDS" --repo o/r --epic 10 --child 0
+expect_rc "linkkids(--child 0): -> exit 2, not a raw gh failure" 2
+stderr_has "linkkids(--child 0): diagnostic" "--child must be a positive integer"
+file_missing "linkkids(--child 0): the epic was never edited with a dead '#0' link" "$KIDS_EDIT_LOG_ZERO"
+
+run 1 sh "$LINKKIDS" --repo o/r --epic 10 --child 007
+expect_rc "linkkids(--child 007): -> exit 2 (007 would have linked issue 7)" 2
+stderr_has "linkkids(--child 007): diagnostic" "--child must be a positive integer"
+
+run 1 sh "$LINKKIDS" --repo o/r --epic 0 --child 2
+expect_rc "linkkids(--epic 0): -> exit 2" 2
+stderr_has "linkkids(--epic 0): diagnostic" "positive integer"
+
+run 1 sh "$LINKKIDS" --repo o/r --epic 007 --child 2
+expect_rc "linkkids(--epic 007): -> exit 2" 2
+stderr_has "linkkids(--epic 007): diagnostic" "positive integer"
+
 run 1 sh "$LINKKIDS" --repo not-owner-slash-repo --epic 1 --child 2
 expect_rc "linkkids(malformed --repo): -> exit 2" 2
 stderr_has "linkkids(malformed --repo): diagnostic" "OWNER/REPO"
@@ -934,6 +960,20 @@ expect_rc "comment(missing --body-file): -> exit 2" 2
 run 1 sh "$COMMENT" --repo o/r --issue abc --body-file "$CBODY"
 expect_rc "comment(non-numeric --issue): -> exit 2" 2
 
+# CONS-005 — see the link-children.sh block above for the rationale. Digits-only
+# let '0' and '007' through to `gh` as a raw failure (exit 1) instead of the usage
+# error (exit 2) this script's header documents.
+COMMENT_LOG_ZERO="$WORK/comment-log-zero"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_COMMENT_LOG=$COMMENT_LOG_ZERO" \
+	sh "$COMMENT" --repo o/r --issue 0 --body-file "$CBODY"
+expect_rc "comment(--issue 0): -> exit 2, not a raw gh failure" 2
+stderr_has "comment(--issue 0): diagnostic" "positive integer"
+file_missing "comment(--issue 0): gh issue comment never invoked" "$COMMENT_LOG_ZERO"
+
+run 1 sh "$COMMENT" --repo o/r --issue 007 --body-file "$CBODY"
+expect_rc "comment(--issue 007): -> exit 2 (007 is not the number GitHub echoes back)" 2
+stderr_has "comment(--issue 007): diagnostic" "positive integer"
+
 run 1 sh "$COMMENT" --repo o/r --issue 1 --body-file "$WORK/does-not-exist"
 expect_rc "comment(nonexistent body-file): -> exit 2" 2
 
@@ -1008,6 +1048,18 @@ expect_rc "update(missing --issue): -> exit 2" 2
 
 run 1 sh "$UPDATE" --repo o/r --issue abc --title x
 expect_rc "update(non-numeric --issue): -> exit 2" 2
+
+# CONS-005 — see the link-children.sh block above for the rationale.
+UPDATE_ARGV_LOG_ZERO="$WORK/update-argv-log-zero"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_ARGV_LOG=$UPDATE_ARGV_LOG_ZERO" \
+	sh "$UPDATE" --repo o/r --issue 0 --title x
+expect_rc "update(--issue 0): -> exit 2, not a raw gh failure" 2
+stderr_has "update(--issue 0): diagnostic" "positive integer"
+file_missing "update(--issue 0): gh issue edit never invoked" "$UPDATE_ARGV_LOG_ZERO"
+
+run 1 sh "$UPDATE" --repo o/r --issue 007 --title x
+expect_rc "update(--issue 007): -> exit 2 (007 is not the number GitHub echoes back)" 2
+stderr_has "update(--issue 007): diagnostic" "positive integer"
 
 run 1 sh "$UPDATE" --repo o/r --issue 1
 expect_rc "update(no fields given): -> exit 2" 2
@@ -1097,6 +1149,27 @@ expect_rc "close(missing --issue): -> exit 2" 2
 
 run 1 sh "$CLOSE" --repo o/r --issue abc
 expect_rc "close(non-numeric --issue): -> exit 2" 2
+
+# CONS-005 — see the link-children.sh block above for the rationale. BOTH writes
+# this script can make are asserted absent: the close AND the optional preceding
+# comment, so a rejected iid cannot leave a comment behind on issue 0.
+CLOSE_LOG_ZERO="$WORK/close-log-zero"
+CLOSE_COMMENT_LOG_ZERO="$WORK/close-comment-log-zero"
+# Its OWN fixture, not the comment.sh section's $CBODY: this section must not
+# depend on a file another section happens to create above it (see the harness
+# header on shared fixtures created far from their consumers).
+CLOSE_ZERO_COMMENT="$WORK/close-zero-comment.md"
+printf 'Closing as done.\n' >"$CLOSE_ZERO_COMMENT"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_CLOSE_LOG=$CLOSE_LOG_ZERO" "GH_STUB_COMMENT_LOG=$CLOSE_COMMENT_LOG_ZERO" \
+	sh "$CLOSE" --repo o/r --issue 0 --comment-file "$CLOSE_ZERO_COMMENT"
+expect_rc "close(--issue 0): -> exit 2, not a raw gh failure" 2
+stderr_has "close(--issue 0): diagnostic" "positive integer"
+file_missing "close(--issue 0): gh issue close never invoked" "$CLOSE_LOG_ZERO"
+file_missing "close(--issue 0): no closing comment was posted either" "$CLOSE_COMMENT_LOG_ZERO"
+
+run 1 sh "$CLOSE" --repo o/r --issue 007
+expect_rc "close(--issue 007): -> exit 2 (007 is not the number GitHub echoes back)" 2
+stderr_has "close(--issue 007): diagnostic" "positive integer"
 
 run 1 sh "$CLOSE" --repo o/r --issue 1 --reason wontfix
 expect_rc "close(invalid --reason): -> exit 2" 2

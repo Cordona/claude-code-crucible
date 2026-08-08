@@ -1,6 +1,6 @@
 ---
 name: procedure-inbox-capture
-description: The procedure the `gtd-inbox-writer` agent runs to append ONE entry to the user's GTD inbox log without ever hand-authoring the write. It wraps a single highly-portable, deterministic POSIX-sh script — scripts/capture.sh (APPEND: stamps id/ts, sets is_processed=false and note=null, optionally records the capturing session's session_id when --session-id is given, builds the schema-shaped line via a static jq program, and appends it under a shared on-disk lock). The captured text is ALWAYS supplied as a FILE via --text-file — never a string, heredoc, or $(...) — which is the command-injection boundary (identical in spirit to procedure-gh-issues' --body-file rule): the caller materializes the verbatim bytes to a temp file and hands the script only the path, so untrusted user prose never enters a shell command. It does NOT own triage, listing, processing, or purging the inbox (those are the main thread's flow-inbox skill, which keeps list.sh/process.sh/purge-processed.sh), nor the entry wire-shape (gtd/contracts/inbox-entry.schema.json), nor the agent's own safety conduct (the gtd-inbox-writer agent body). Bound by the gtd-inbox-writer agent.
+description: The procedure the `gtd-inbox-writer` agent runs to append ONE entry to the user's GTD inbox log without ever hand-authoring the write. It wraps a single highly-portable, deterministic POSIX-sh script — scripts/capture.sh (APPEND: stamps id/ts, sets is_processed=false and note=null, optionally records the capturing session's session_id when --session-id is given, builds the schema-shaped line via a static jq program, and appends it under a shared on-disk lock). The captured text is ALWAYS supplied as a FILE via --text-file — never a string, heredoc, or $(...) — which is the command-injection boundary (identical in spirit to procedure-gh-issues' / procedure-glab-issues' --body-file rule): the caller materializes the verbatim bytes to a temp file and hands the script only the path, so untrusted user prose never enters a shell command. It does NOT own triage, listing, processing, or purging the inbox (those are the main thread's flow-inbox skill, which keeps list.sh/process.sh/purge-processed.sh), nor the entry wire-shape (gtd/contracts/inbox-entry.schema.json), nor the agent's own safety conduct (the gtd-inbox-writer agent body). Bound by the gtd-inbox-writer agent.
 ---
 
 # Procedure: Inbox Capture (`capture.sh` wrapper)
@@ -26,7 +26,7 @@ $HOME/.claude/skills/procedure-inbox-capture/scripts/capture.sh --text-file /pat
   file. The caller (the main thread) `Write`s the verbatim text to a temp file *outside any repo*
   and hands the agent the **path**; the agent passes it straight to `--text-file`. This is the
   injection boundary — untrusted bytes never touch a shell command line, exactly as
-  `procedure-gh-issues` keeps a body out of shell via `--body-file`.
+  `procedure-gh-issues`/`procedure-glab-issues` keep a body out of shell via `--body-file`.
 - **`--project NAME`** is passed **explicitly by the caller** (derived from the USER's cwd). The
   script has a cwd-basename fallback, but the agent must NOT rely on it — the agent runs in its own
   cwd, never the user's repo — so `--project` is always supplied (or deliberately omitted when the

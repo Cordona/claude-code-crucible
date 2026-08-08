@@ -26,7 +26,17 @@
 # OR-slot: either alternative satisfies it, so a machine with only ssh-keygen is
 # not missing a requirement — it is a note about a preferred-but-optional tool,
 # never a blocking problem.
-HUB_REQUIRED_TOOL_SLOTS='git gh jq curl gpg|ssh-keygen'
+#
+# `gh` AND `glab` ARE BOTH LISTED, UNCONDITIONALLY, THE SAME WAY: neither VCS
+# host is more "required" than the other now that Software Development's VCS
+# choice and Project Management's tracker choice both offer GitHub and GitLab
+# as peers (lib/hub-domains.sh §3b/§4) — treating one as baseline-required and
+# the other as an afterthought would misstate the parity the framework's own
+# GitHub/GitLab work established. Neither slot's absence is fatal on its own —
+# a machine that never picks that host never needs its CLI — but this table
+# only ever reports what a fully-equipped machine needs, the same unconditional
+# treatment `gh` already had before `glab` existed.
+HUB_REQUIRED_TOOL_SLOTS='git gh glab jq curl gpg|ssh-keygen'
 
 # hub_tool_slot_primary SLOT / hub_tool_slot_fallback SLOT -> the two halves of a
 # slot. The fallback is empty for a plain (non-OR) slot.
@@ -61,6 +71,7 @@ hub_tool_label() {
 	case $1 in
 	git) printf 'Git' ;;
 	gh) printf 'GitHub CLI' ;;
+	glab) printf 'GitLab CLI' ;;
 	jq) printf 'jq' ;;
 	curl) printf 'curl' ;;
 	gpg) printf 'GnuPG' ;;
@@ -79,7 +90,8 @@ hub_tool_label() {
 hub_tool_reason() {
 	case $1 in
 	git) printf 'needed by the git operator for branch/commit/push/tag and identity resolution' ;;
-	gh) printf 'needed for GitHub account management, pull requests and the GitHub backend' ;;
+	gh) printf 'needed for GitHub account management, pull requests and the GitHub tracker' ;;
+	glab) printf 'needed for GitLab account management, merge requests and the GitLab tracker' ;;
 	jq) printf 'needed by the GTD inbox skills and the entire Jira surface' ;;
 	curl) printf 'needed for every Jira REST call' ;;
 	gpg) printf 'needed, as ONE of two alternatives (see OpenSSH), for git commit/tag signing' ;;
@@ -92,6 +104,7 @@ hub_tool_install_macos() {
 	case $1 in
 	git) printf 'brew install git' ;;
 	gh) printf 'brew install gh' ;;
+	glab) printf 'brew install glab' ;;
 	jq) printf 'brew install jq' ;;
 	curl) printf 'brew install curl (usually already present)' ;;
 	gpg) printf 'brew install gnupg' ;;
@@ -104,6 +117,7 @@ hub_tool_install_linux() {
 	case $1 in
 	git) printf 'apt install git (or your distro package manager)' ;;
 	gh) printf 'see https://github.com/cli/cli#installation' ;;
+	glab) printf 'see https://gitlab.com/gitlab-org/cli#installation' ;;
 	jq) printf 'apt install jq' ;;
 	curl) printf 'apt install curl' ;;
 	gpg) printf 'apt install gnupg' ;;

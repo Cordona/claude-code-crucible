@@ -31,7 +31,7 @@ Maintain human-facing release notes (never a raw `git log` dump):
 ## Release automation (optional)
 
 The payoff of the commit conventions. Choose per appetite:
-- **release-please** (PR-gated) — accrues changes in a Release PR; on merge it bumps SemVer, updates the changelog, and cuts the tag + GitHub Release. A human still merges the PR — the **culturally-consistent default** for this human-gated, ticket-driven standard.
+- **release-please** (PR-gated) — accrues changes in a Release PR; on merge it bumps SemVer, updates the changelog, and cuts the tag + GitHub Release. A human still merges the PR — the **culturally-consistent default** for this human-gated, ticket-driven standard. (`release-please` itself is GitHub-Actions-specific; on GitLab the same shape — a Release MR, merged by a human, cutting the tag + a GitLab Release — is typically wired through GitLab CI rather than this exact tool.)
 - **semantic-release** (zero-gate) — fully automatic on merge to the release branch, including publish. Reach for it only if you want hands-off continuous publishing.
 
 ## Release prep — the optimized build runs HERE, once

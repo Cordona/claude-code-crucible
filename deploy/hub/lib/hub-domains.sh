@@ -18,13 +18,13 @@
 #   1. The three domains that exist, their display labels and their blurbs.
 #   2. The directory names each domain's structure uses (flows/, shared/,
 #      agents/developers/, ...) — a path SHAPE, never an item name.
-#   3. The naming PATTERNS the display layer and the backend classifier read
+#   3. The naming PATTERNS the display layer and the tracker classifier read
 #      (role suffixes, type-word prefixes, the jira/gh tokens in
-#      hub_pm_backend_of) — patterns, never name lists.
-#   4. The ONE cross-domain shared unit and its consumers (see
-#      hub_shared_consumers). There is exactly one such unit in the framework
-#      today; a small explicit named rule is correct here and a fully generic
-#      "cross-domain dependency declaration" system would be premature
+#      hub_pm_tracker_of) — patterns, never name lists.
+#   4. The cross-domain shared units and their consumers (see
+#      hub_shared_consumers, HUB_SHARED_GROUPS). Two exist today, one per VCS
+#      host; a small explicit named rule per host is correct here and a fully
+#      generic "cross-domain dependency declaration" system would be premature
 #      abstraction (YAGNI).
 #   5. The FEATURE names of the one domain that has any (GTD — see §4b). Their
 #      LABELS are editorial and cannot be derived, exactly as a domain's own
@@ -47,8 +47,8 @@
 #       exist: one arm each in hub_selection_kind_prefix /
 #       hub_selection_kind_prompt / hub_selection_kind_noun /
 #       hub_selection_kind_flag, plus the directory-shape constants its own
-#       structure uses. A domain that REUSES an existing kind (technology or
-#       pm-backend) costs none of this.
+#       structure uses. A domain that REUSES an existing kind (technology,
+#       pm-tracker or vcs) costs none of this.
 #     * hub_shared_consumers, only if the new domain consumes a cross-domain
 #       unit.
 #
@@ -60,7 +60,7 @@
 #       -v label.
 #     * IF the domain introduces a NEW selection kind: one more arm in
 #       hub_disc_render_tables' PASS 2 group-metadata chain — the
-#       has_group_prefix(group, p_tech) / p_pm_backend ladder is what stamps a
+#       has_group_prefix(group, p_tech) / p_pm_tracker ladder is what stamps a
 #       group's role/domain/selkind/selkey/atomic and builds its label, so a new
 #       kind's groups fall through to the baseline arm without it and are never
 #       selectable at all. Its group-key prefix constant is passed in via -v like
@@ -72,7 +72,7 @@
 #       plan-group assembly, --all's select-everything expansion and the flag
 #       validation all iterate HUB_DOMAIN_KEYS / hi_selection_kinds and ask
 #       hub_domain_selection_kind / hub_domain_label, so no edit is needed. (--all
-#       and flag validation used to name SEL_TECHNOLOGIES / SEL_BACKENDS
+#       and flag validation used to name SEL_TECHNOLOGIES / SEL_TRACKERS
 #       literally, which made a third domain on an existing kind silently
 #       unselectable by flag while the interactive walk offered it — the exact
 #       invisible failure this comment previously claimed could not happen.)
@@ -81,7 +81,7 @@
 #           fills. That flag also needs its case arms in the argument parser, so
 #           this one is irreducible rather than an oversight.
 #         - hi_selection_rows — only IF the new kind's checklist rows need a
-#           per-kind annotation the way `pm-backend` does (it adds a hint); a kind
+#           per-kind annotation the way `pm-tracker` does (it adds a hint); a kind
 #           whose rows are plain label+state needs no arm at all.
 #         - hub_selection_kind_needs_domain — only IF a bare row label of the new
 #           kind would be ambiguous on a screen that shows no domain heading. A
@@ -109,10 +109,12 @@
 #       (hi_sel_file/hi_rows_file), so TWO domains sharing one kind would share
 #       one selection file and render the same sub-selection screen once per
 #       domain — hi_steps_build emits one step per selected domain that has a
-#       sub-selection. Nothing today does this (each of the three domains has a
-#       distinct kind or none), and the per-kind naming is what buys the
-#       zero-edit reuse above; a second domain on an existing kind would need
-#       these files keyed by domain+kind instead.
+#       sub-selection. Nothing today does this: Software Development has TWO
+#       kinds of its own (technology, vcs), Project Management has one
+#       (pm-tracker), GTD has none, but no KIND is shared ACROSS domains, and
+#       the per-kind naming is what buys the zero-edit reuse above; a second
+#       domain on an existing kind would need these files keyed by
+#       domain+kind instead.
 #
 #   Everything else (hub-list.sh, hub-status.sh, hub-uninstall.sh,
 #   hub-doctor.sh, lib/hub-state.sh) is domain-agnostic and needs no edit.
@@ -137,7 +139,10 @@
 #                          chosen; never a selectable row.
 #   tech:<key>             Software Development's per-technology fan-out; one
 #                          group per discovered developer agent.
-#   pm-backend:<key>       Project Management's backend fan-out (github|jira).
+#   pm-tracker:<key>       Project Management's tracker fan-out
+#                          (github|gitlab|jira).
+#   vcs:<key>              Software Development's VCS-host fan-out, OPTIONAL
+#                          unlike every other selection kind (github|gitlab).
 #   atomic:<domain>        a domain whose ENTIRE footprint is ONE selectable
 #                          thing: the domain IS its own group, so it has no
 #                          baseline group distinct from its selectable content
@@ -157,7 +162,7 @@
 # NOT `domain:` deliberately — the group table already has a `domain` COLUMN, and
 # a `domain:` key would read as a synonym for the concept it replaces.
 #
-# The five prefixes are CONSTANTS below and the key is always built by
+# The six prefixes are CONSTANTS below and the key is always built by
 # hub_group_key — never by string concatenation at a call site, and never parsed
 # by a magic substr() offset. Both were done by hand before this pass (~10 sites
 # and three offsets), which is exactly how a grammar documented in one place
@@ -206,7 +211,7 @@ hub_domain_short_label() {
 # triage, process an inbox" promised a third capability no screen names and no
 # feature exists for. Software Development's and Project Management's each track
 # their own shape the same way — the technology pair plus its shared plumbing, and
-# the two backends.
+# the two trackers.
 hub_domain_blurb() {
 	case $1 in
 	software-development) printf 'technologies, review swarm, git ops' ;;
@@ -216,11 +221,23 @@ hub_domain_blurb() {
 	esac
 }
 
-# hub_domain_selection_kind DOMAIN -> which sub-selection screen this domain
-# needs after the onboarding checklist, or "none":
-#   technology  -> Software Development's technology multi-select (spec §3)
-#   pm-backend  -> Project Management's backend multi-select (spec §4)
+# hub_domain_selection_kind DOMAIN -> which sub-selection screen(s) this domain
+# needs after the onboarding checklist, as SHELL WORDS in the order their
+# screens are walked, or the single word "none":
+#   vcs         -> Software Development's VCS multi-select, OPTIONAL (spec §3a)
+#   technology  -> Software Development's technology multi-select, mandatory (spec §3b)
+#   pm-tracker  -> Project Management's tracker multi-select, mandatory (spec §4)
 #   none        -> GTD: self-contained, no fan-out, no screen (spec §5).
+#
+# SOFTWARE DEVELOPMENT IS THE ONE DOMAIN WITH MORE THAN ONE WORD, because it has
+# two genuinely independent sub-selections: which VCS(s) its git operator talks
+# to, and which technologies it installs. Every caller that used to treat this
+# function's result as a single scalar now iterates it — `for KIND in $(...)` —
+# and the one caller that still legitimately wants "does DOMAIN have any
+# sub-selection at all" (hub-uninstall.sh) keeps working unchanged: `none` is
+# never mixed with a real kind for any domain, so comparing the whole string
+# against the literal `none` still answers that question correctly for a
+# single-kind domain, and no domain with `none` also carries another word.
 #
 # `none` MEANS "NO SUB-SELECTION SCREEN", AND NOTHING MORE. It used to also mean
 # "unreachable by selective uninstall", because a domain with no selectable groups
@@ -239,10 +256,30 @@ hub_domain_blurb() {
 # gap, and Install must not grow a sub-selection screen to close it.
 hub_domain_selection_kind() {
 	case $1 in
-	software-development) printf 'technology' ;;
-	project-management) printf 'pm-backend' ;;
+	software-development) printf 'vcs technology' ;;
+	project-management) printf 'pm-tracker' ;;
 	gtd) printf 'none' ;;
 	*) die "hub_domain_selection_kind: unknown domain '$1'" ;;
+	esac
+}
+
+# hub_selection_kind_domain KIND -> the ONE domain that needs a sub-selection of
+# this kind. The reverse of hub_domain_selection_kind, needed because a domain
+# can now carry more than one kind: the interactive walk's step tokens (see
+# hub-install.sh's hi_steps_build) are KIND keys, not domain keys, precisely so a
+# multi-kind domain gets one step per kind for free from the existing generic
+# step machinery — and a step needs to recover its own domain to render its
+# screen title, its empty-selection message and its unsatisfiable-source notice.
+#
+# DIES on an unknown kind, like every other closed lookup keyed by kind in this
+# section: every caller reaches this with a kind that came out of the registry
+# itself (hi_selection_kinds, hub_domain_selection_kind), so an unknown kind here
+# means the registry contradicts itself.
+hub_selection_kind_domain() {
+	case $1 in
+	vcs | technology) printf 'software-development' ;;
+	pm-tracker) printf 'project-management' ;;
+	*) die "hub_selection_kind_domain: unknown selection kind '$1'" ;;
 	esac
 }
 
@@ -256,7 +293,7 @@ hub_domain_empty_selection_message() {
 		printf 'Software Development doesn'\''t do anything without at least one technology. Choose at least one, or press "b" to remove Software Development from your selection.'
 		;;
 	project-management)
-		printf 'Project Management can'\''t create or update tracked work without at least one backend. Choose GitHub, Jira, or both, or press "b" to remove Project Management from your selection.'
+		printf 'Project Management can'\''t create or update tracked work without at least one tracker. Choose GitHub, GitLab, Jira, or any combination, or press "b" to remove Project Management from your selection.'
 		;;
 	*) die "hub_domain_empty_selection_message: domain '$1' has no sub-selection" ;;
 	esac
@@ -308,16 +345,17 @@ hub_domain_is_registered() {
 # 2. The group-key grammar — constructed and parsed in one place only.
 # ---------------------------------------------------------------------------
 
-# The five group-key prefixes. Spelled ONCE here; every producer builds a key
+# The six group-key prefixes. Spelled ONCE here; every producer builds a key
 # with hub_group_key and every parser (including lib/hub-discovery.sh's awk,
 # which receives them via -v) reads them from these constants.
 HUB_GROUP_PREFIX_BASELINE='baseline'
 HUB_GROUP_PREFIX_TECH='tech'
-HUB_GROUP_PREFIX_PM_BACKEND='pm-backend'
+HUB_GROUP_PREFIX_PM_TRACKER='pm-tracker'
+HUB_GROUP_PREFIX_VCS='vcs'
 HUB_GROUP_PREFIX_ATOMIC='atomic'
 HUB_GROUP_PREFIX_SHARED='shared'
 
-# hub_group_key PREFIX KEY -> the group key for one of the five kinds, e.g.
+# hub_group_key PREFIX KEY -> the group key for one of the six kinds, e.g.
 # `hub_group_key "$HUB_GROUP_PREFIX_TECH" python` -> "tech:python". THE
 # constructor: no call site anywhere writes the ":" itself.
 hub_group_key() {
@@ -333,7 +371,7 @@ hub_group_key() {
 #     one removable thing". An `atomic:` group therefore carries `atomic = 0` in the
 #     row-projection column below, which reads like a contradiction and is not one:
 #     a group flagged atomic in THAT column collapses to a single HUB_ROWS row and
-#     must have a hub_group_row_key, which only a Project Management backend has.
+#     must have a hub_group_row_key, which only a Project Management tracker has.
 #     Setting the column to 1 for an `atomic:` group makes hub_group_row_key DIE and
 #     takes List, Doctor and Uninstall down at startup, since hub_rows_build calls it
 #     at top level. Removal atomicity comes from the ROLE column instead (see
@@ -347,12 +385,13 @@ hub_group_key() {
 # an owner:
 #
 #   ROW PROJECTION — the group table's own `atomic` column (set once in
-#     lib/hub-discovery.sh, read by hub_rows_build via hub_group_field … 7). Only a
-#     Project Management backend is atomic there: its skills always travel together
-#     as one backend unit, which is why it has a row key of its own (below). A
-#     technology group is deliberately NOT atomic in this projection — HUB_ROWS is
-#     what Doctor's diverged-components section and List's env/json payload read,
-#     and both must be able to name "Python agent reviewer" specifically.
+#     lib/hub-discovery.sh, read by hub_rows_build via hub_group_field … 7). A
+#     Project Management tracker and a Software Development VCS are BOTH atomic
+#     there: each is one skill installed as one unit, which is why each has a row
+#     key of its own (below). A technology group is deliberately NOT atomic in
+#     this projection — HUB_ROWS is what Doctor's diverged-components section and
+#     List's env/json payload read, and both must be able to name "Python agent
+#     reviewer" specifically.
 #
 #   REMOVAL COVERAGE — hub-uninstall.sh's own hu_removal_is_atomic, where EVERY
 #     selectable group is atomic, technology included: a developer, its reviewer and
@@ -377,7 +416,8 @@ hub_group_key() {
 # the whole group.
 hub_group_row_key() {
 	case $1 in
-	"$HUB_GROUP_PREFIX_PM_BACKEND":*) printf '%s-backend' "${1#"$HUB_GROUP_PREFIX_PM_BACKEND":}" ;;
+	"$HUB_GROUP_PREFIX_PM_TRACKER":*) printf '%s-tracker' "${1#"$HUB_GROUP_PREFIX_PM_TRACKER":}" ;;
+	"$HUB_GROUP_PREFIX_VCS":*) printf '%s-vcs' "${1#"$HUB_GROUP_PREFIX_VCS":}" ;;
 	*) die "hub_group_row_key: group '$1' is not atomic and has no row key" ;;
 	esac
 }
@@ -404,7 +444,8 @@ hub_group_row_key() {
 hub_selection_kind_prefix() {
 	case $1 in
 	technology) printf '%s' "$HUB_GROUP_PREFIX_TECH" ;;
-	pm-backend) printf '%s' "$HUB_GROUP_PREFIX_PM_BACKEND" ;;
+	pm-tracker) printf '%s' "$HUB_GROUP_PREFIX_PM_TRACKER" ;;
+	vcs) printf '%s' "$HUB_GROUP_PREFIX_VCS" ;;
 	*) die "hub_selection_kind_prefix: unknown selection kind '$1'" ;;
 	esac
 }
@@ -415,7 +456,8 @@ hub_selection_kind_prefix() {
 hub_selection_kind_prompt() {
 	case $1 in
 	technology) printf 'select technologies' ;;
-	pm-backend) printf 'select backend(s)' ;;
+	pm-tracker) printf 'select tracker(s)' ;;
+	vcs) printf 'select VCS' ;;
 	*) die "hub_selection_kind_prompt: unknown selection kind '$1'" ;;
 	esac
 }
@@ -426,7 +468,8 @@ hub_selection_kind_prompt() {
 hub_selection_kind_noun() {
 	case $1 in
 	technology) printf 'technology' ;;
-	pm-backend) printf 'backend' ;;
+	pm-tracker) printf 'tracker' ;;
+	vcs) printf 'VCS' ;;
 	*) die "hub_selection_kind_noun: unknown selection kind '$1'" ;;
 	esac
 }
@@ -437,7 +480,8 @@ hub_selection_kind_noun() {
 hub_selection_kind_flag() {
 	case $1 in
 	technology) printf '%s' '--technologies' ;;
-	pm-backend) printf '%s' '--pm-backends' ;;
+	pm-tracker) printf '%s' '--pm-trackers' ;;
+	vcs) printf '%s' '--sd-vcs' ;;
 	*) die "hub_selection_kind_flag: unknown selection kind '$1'" ;;
 	esac
 }
@@ -450,17 +494,23 @@ hub_selection_kind_flag() {
 # WHY THE TWO KINDS DIFFER, since the asymmetry looks arbitrary until it is
 # stated: a `technology` label IS the answer to "what is this row" — "Java",
 # "Python", "Shell script" name themselves and nothing else in this hub is
-# called that. A `pm-backend` label is the name of an external service, and
+# called that. A `pm-tracker` label is the name of an external service, and
 # "GitHub" on a line of its own says nothing about which of the several GitHub
-# things the hub touches (the backend, the CLI, the auth account) it means.
-# Before this predicate the group label carried a literal " backend" suffix to
+# things the hub touches (the tracker, the CLI, the auth account) it means.
+# Before this predicate the group label carried a literal " tracker" suffix to
 # close that gap, which meant every screen that DID show a "Project Management"
-# heading printed the domain twice ("Project Management / GitHub backend") and
-# one screen — Install's own sub-selection, already titled "select backend(s)" —
+# heading printed the domain twice ("Project Management / GitHub tracker") and
+# one screen — Install's own sub-selection, already titled "select tracker(s)" —
 # had to strip the suffix back off. Qualifying at the two context-free surfaces
 # instead of suffixing at all of them inverts that default: the bare label is
 # now correct everywhere a heading is visible, and only the two screens with no
 # heading pay for the disambiguation.
+#
+# `vcs` NEEDS THE SAME TREATMENT AS `pm-tracker`, FOR THE SAME REASON: a bare
+# "GitHub" row on Software Development's VCS screen is exactly as ambiguous as
+# one on Project Management's tracker screen — this hub touches "GitHub" as a
+# VCS, as a tracker, and as an auth account, and only the qualified form on a
+# heading-less screen says which.
 #
 # RETURNS A STATUS rather than printing, because every caller is a test, and it
 # deliberately does NOT die on an unknown kind — unlike its four closed-lookup
@@ -471,7 +521,32 @@ hub_selection_kind_flag() {
 # hub_domain_is_registered states for its own non-dying shape.
 hub_selection_kind_needs_domain() {
 	case $1 in
-	pm-backend) return 0 ;;
+	pm-tracker | vcs) return 0 ;;
+	esac
+	return 1
+}
+
+# hub_selection_kind_optional KIND -> exit 0 when a screen of this kind may be
+# confirmed with NOTHING chosen, without tripping the empty-selection rule.
+#
+# `vcs` IS THE FIRST KIND THIS IS TRUE FOR. `technology` and `pm-tracker` both
+# gate real capability a domain cannot function without at all (Software
+# Development installs nothing to build with; Project Management can create or
+# update no tracked work), so an empty selection there is genuinely a domain the
+# user asked for but gave nothing to do. A VCS choice gates only git-operator's
+# PR/MR skill for whichever host was picked — the developer/reviewer pair,
+# every other specialist, and git-operator's own local commit/branch/tag
+# skills all install regardless. Choosing zero VCS hosts is therefore a
+# legitimate "I don't want PR/MR automation" answer, not an empty domain.
+#
+# RETURNS A STATUS, deliberately does NOT die on an unknown kind, and defaults
+# to "no" (mandatory) for the same reason hub_selection_kind_needs_domain
+# defaults to "no": every caller asks this of a kind that might not need the
+# distinction at all, and "must this be non-empty" has an honest default answer
+# of yes for anything not declared otherwise.
+hub_selection_kind_optional() {
+	case $1 in
+	vcs) return 0 ;;
 	esac
 	return 1
 }
@@ -640,6 +715,76 @@ hub_sd_tech_standard_path() {
 }
 
 # ---------------------------------------------------------------------------
+# 3b. Software Development's VCS fan-out — which host(s) git-operator's PR/MR
+#     skill talks to. Optional (hub_selection_kind_optional above): every other
+#     specialist and every one of git-operator's own local commit/branch/tag
+#     skills installs regardless of this choice; only the PR/MR skill for a
+#     given host is gated by it.
+# ---------------------------------------------------------------------------
+
+# HUB_SD_VCS_KEYS — the VCS hosts, in the order the selection screen shows them.
+HUB_SD_VCS_KEYS='github gitlab'
+
+# hub_sd_vcs_hint KEY -> the VCS row's "what it does" blurb. Deliberately NOT
+# "pull requests" / "merge requests" alone: a live review of an early mockup
+# pointed out that phrasing named only git-operator's PR/MR skill when a VCS
+# choice is about the host's git operations generally (branches, commits
+# included) — the same over-narrow-hint mistake hub_pm_tracker_hint's own
+# history avoided by staying at "issues" rather than naming one issue type.
+hub_sd_vcs_hint() {
+	case $1 in
+	github) printf 'branches, commits, PRs' ;;
+	gitlab) printf 'branches, commits, MRs' ;;
+	*) printf '' ;;
+	esac
+}
+
+# hub_sd_vcs_of SKILL_DIR_NAME -> which VCS host a git-operator skill belongs
+# to (github | gitlab), or empty for a skill that is not host-specific (every
+# other git-operator skill: identity resolution, local ops, the three
+# standard-git-* rubrics).
+#
+# Classification is by TOKEN, not substring, and for the identical reason
+# hub_pm_tracker_of states its own: a token match cannot be fooled by a
+# coincidental substring inside an unrelated skill name.
+#
+# NOT hub_pm_tracker_of ITSELF, despite the identical github/gitlab token
+# vocabulary: that function also tests for `jira`, a token with no meaning for
+# a VCS choice, and coupling the two would mean a future PM-only token change
+# could silently alter SD's classification too. Each domain's own classifier,
+# same as hub_sd_tech_key and hub_pm_tracker_of already are two classifiers for
+# two domains rather than one shared one.
+hub_sd_vcs_of() {
+	hsvo_name=$1
+	hsvo_rest=$hsvo_name
+	hsvo_has_github=0
+	hsvo_has_gitlab=0
+	while [ -n "$hsvo_rest" ]; do
+		case $hsvo_rest in
+		*-*)
+			hsvo_token=${hsvo_rest%%-*}
+			hsvo_rest=${hsvo_rest#*-}
+			;;
+		*)
+			hsvo_token=$hsvo_rest
+			hsvo_rest=""
+			;;
+		esac
+		case $hsvo_token in
+		gh | github) hsvo_has_github=1 ;;
+		glab | gitlab) hsvo_has_gitlab=1 ;;
+		esac
+	done
+	if [ "$hsvo_has_github" -eq 1 ]; then
+		printf 'github\n'
+	elif [ "$hsvo_has_gitlab" -eq 1 ]; then
+		printf 'gitlab\n'
+	else
+		printf '\n'
+	fi
+}
+
+# ---------------------------------------------------------------------------
 # 4. Project Management's structural rules.
 # ---------------------------------------------------------------------------
 
@@ -650,44 +795,47 @@ HUB_PM_DIR_FLOWS='flows'
 # spelled the literal segment `agents/project-manager`, which was the ONE place
 # in the whole hub where an actual agent name was embedded in code: renaming the
 # agent's directory silently emptied Project Management's baseline and all of its
-# backends. Project Management's agents are now walked exactly the way Software
+# trackers. Project Management's agents are now walked exactly the way Software
 # Development's specialists are (agents/*/*.md, then each agent's own skills/),
 # so a rename needs zero hub changes and the zero-hardcoded-names contract holds
 # without an exception.
 HUB_PM_DIR_AGENTS='agents'
 HUB_PM_AGENT_SKILLS_SUBDIR='skills'
 
-# HUB_PM_BACKEND_KEYS — the backends, in the order the selection screen shows
+# HUB_PM_TRACKER_KEYS — the trackers, in the order the selection screen shows
 # them.
-HUB_PM_BACKEND_KEYS='github jira'
+HUB_PM_TRACKER_KEYS='github gitlab jira'
 
-# hub_pm_backend_hint KEY -> the backend row's "what it does" blurb (spec §4).
-hub_pm_backend_hint() {
+# hub_pm_tracker_hint KEY -> the tracker row's "what it does" blurb (spec §4).
+hub_pm_tracker_hint() {
 	case $1 in
 	github) printf 'issues' ;;
+	gitlab) printf 'issues' ;;
 	jira) printf 'tickets, workflow' ;;
 	*) printf '' ;;
 	esac
 }
 
-# hub_pm_backend_of SKILL_DIR_NAME -> which backend a project-manager skill
-# belongs to (github | jira), or empty for a baseline skill.
+# hub_pm_tracker_of SKILL_DIR_NAME -> which tracker a project-manager skill
+# belongs to (github | gitlab | jira), or empty for a baseline skill.
 #
 # Classification is by TOKEN, not substring: the skill directory name is split
 # on "-" and a token must match EXACTLY. A substring test would be actively
 # wrong — "standard-backlog-artifacts" contains the letters "g","h" adjacently
 # in no token, but a future "flow-oversight"/"standard-highlight" would contain
-# a literal "gh" substring and be misclassified as a GitHub backend skill.
+# a literal "gh" substring and be misclassified as a GitHub tracker skill.
 # Token matching is the pattern that actually expresses the intent.
 #
-# Jira is tested first, so a hypothetical name carrying both tokens resolves to
-# Jira rather than to whichever test happened to run first. Stated explicitly
-# because a silent precedence is exactly the kind of thing that rots.
-hub_pm_backend_of() {
+# Jira is tested first, then GitHub, then GitLab, so a hypothetical name
+# carrying more than one token resolves by that fixed order rather than by
+# whichever test happened to run first. Stated explicitly because a silent
+# precedence is exactly the kind of thing that rots.
+hub_pm_tracker_of() {
 	hpbo_name=$1
 	hpbo_rest=$hpbo_name
 	hpbo_has_jira=0
 	hpbo_has_github=0
+	hpbo_has_gitlab=0
 	while [ -n "$hpbo_rest" ]; do
 		case $hpbo_rest in
 		*-*)
@@ -702,12 +850,15 @@ hub_pm_backend_of() {
 		case $hpbo_token in
 		jira) hpbo_has_jira=1 ;;
 		gh | github) hpbo_has_github=1 ;;
+		glab | gitlab) hpbo_has_gitlab=1 ;;
 		esac
 	done
 	if [ "$hpbo_has_jira" -eq 1 ]; then
 		printf 'jira\n'
 	elif [ "$hpbo_has_github" -eq 1 ]; then
 		printf 'github\n'
+	elif [ "$hpbo_has_gitlab" -eq 1 ]; then
+		printf 'gitlab\n'
 	else
 		printf '\n'
 	fi
@@ -855,7 +1006,7 @@ hub_domain_feature_label() {
 #
 # PRECEDENCE: flows/ IS TESTED FIRST, so a path lying inside both subtrees (a flow
 # nested somewhere under agents/) resolves to `triage` rather than to whichever arm
-# happened to run first. Stated for the same reason hub_pm_backend_of states its own
+# happened to run first. Stated for the same reason hub_pm_tracker_of states its own
 # Jira-first precedence a few functions above: with two independent path tests and
 # one answer, a silent precedence is exactly the kind of thing that rots.
 #
@@ -904,68 +1055,96 @@ hub_domain_feature_hint() {
 }
 
 # ---------------------------------------------------------------------------
-# 5. The cross-domain rule — exactly one shared unit exists today.
+# 5. The cross-domain rule — two shared units exist today, one per VCS host.
 # ---------------------------------------------------------------------------
+#
+# THIS USED TO BE ONE UNIT, and the header above said so. It stopped being true
+# the moment GitLab got its own auth procedure under accounts/ alongside
+# GitHub's: `accounts/` now ships procedure-github-auth AND procedure-gitlab-
+# auth, each consumed by a different, independent pair of selectable groups (see
+# below), so they are two shared groups, not one shared group with two skills —
+# a GitLab-only install has no reason to carry GitHub's auth skill and vice
+# versa. HUB_SHARED_GROUPS is the registry's own complete, ordered list of
+# every shared group, kept here for whichever future caller needs "every
+# shared group" as one generic list rather than one host at a time — NOT
+# because today's callers already read it. They don't: hub-accounts.sh's own
+# per-host GH_USED_BY/GL_USED_BY handling is explicitly NOT a generalized loop
+# over this constant (see its own comment on why), and hub-doctor.sh/
+# hub-install.sh/hub-uninstall.sh each iterate `hub_groups_of_role shared` —
+# discovery's own groups — instead, since a group missing from discovery has
+# nothing to install/uninstall/report regardless of what this registry-only
+# list claims exists. A third host still costs one more constant and one more
+# line here, same as today's two; it just does not (yet) shrink an existing
+# loop anywhere.
 
 HUB_ACCOUNTS_DIR='accounts'
 
-# HUB_SHARED_GIT_AUTH_GROUP — the group key for the shared GitHub-auth
-# procedure. Its UNIT is discovered from the filesystem (whatever skill lives
-# under accounts/), so renaming that skill needs no change here; only the
+# HUB_SHARED_GITHUB_AUTH_GROUP / HUB_SHARED_GITLAB_AUTH_GROUP — the group keys
+# for the two shared auth procedures. Each UNIT is discovered from the
+# filesystem (whichever skill under accounts/ classifies to that host — see
+# hub_disc_shared), so renaming either skill needs no change here; only the
 # group key and its consumer list are encoded.
-HUB_SHARED_GIT_AUTH_GROUP=$(hub_group_key "$HUB_GROUP_PREFIX_SHARED" git-auth)
+HUB_SHARED_GITHUB_AUTH_GROUP=$(hub_group_key "$HUB_GROUP_PREFIX_SHARED" github-auth)
+HUB_SHARED_GITLAB_AUTH_GROUP=$(hub_group_key "$HUB_GROUP_PREFIX_SHARED" gitlab-auth)
+
+# HUB_SHARED_GROUPS — every shared group the registry knows about, in the order
+# screens should render them.
+HUB_SHARED_GROUPS="$HUB_SHARED_GITHUB_AUTH_GROUP $HUB_SHARED_GITLAB_AUTH_GROUP"
 
 # hub_shared_consumers GROUP -> one "consumer-group<TAB>annotation" line per
 # group that structurally requires this shared group. The annotation is the
 # "required by:" text the install preview prints (spec §6).
 #
-# Both consumers are structural facts, not per-item lookups:
-#   * Software Development's baseline always needs GitHub auth, because the
-#     git-operator specialist it always installs performs push/PR operations.
-#   * Project Management's GitHub backend always needs GitHub auth, because a
-#     GitHub backend inherently does.
-# There is no Jira equivalent: Jira's own auth procedure lives INSIDE Project
-# Management's Jira backend, not under accounts/, because only the
+# Both hosts now have the IDENTICAL consumer shape, which they did not before
+# GitLab existed: Software Development's VCS choice for that host (SELECTABLE
+# and OPTIONAL now — see hub_selection_kind_optional — not SD's baseline
+# unconditionally, since a VCS gates only git-operator's PR/MR skill for that
+# host), and Project Management's tracker choice for that host. There is no
+# Jira equivalent for either: Jira's own auth procedure lives INSIDE Project
+# Management's Jira tracker, not under accounts/, because only the
 # project-manager agent uses it.
 #
-# THE BACKEND CONSUMER NAMES ITSELF THROUGH hub_group_label_in_context, not through
-# a hand-written "Project Management (GitHub backend)". Every surface this
+# NEITHER CONSUMER FALLS BACK TO A BARE DOMAIN LABEL, unlike this function's
+# single-group predecessor did for Project Management. That fallback existed
+# for a MANDATORY sub-selection: Project Management genuinely cannot install
+# with zero trackers chosen, so if the specific tracker group has no row to
+# name (a --source shipping no matching skill), the domain alone is still an
+# honest subject. Software Development's VCS choice is optional now — CALLING
+# hub_shared_consumers never differentiates "not shipped" from "shipped but not
+# selected" (hub_group_label_in_context answers only from what a --source
+# ships), but the caller (hub-install.sh's hi_plan_groups_build) filters every
+# consumer line against the groups actually IN THIS RUN'S PLAN before it ever
+# reaches a screen — so an unselected VCS's consumer line is silently dropped
+# there, correctly, and a fallback here would only ever paper over a
+# genuinely-unshipped skill, which "say nothing" already handles correctly for
+# an optional kind.
+#
+# THE TRACKER CONSUMER NAMES ITSELF THROUGH hub_group_label_in_context, not through
+# a hand-written "Project Management (GitHub tracker)". Every surface this
 # annotation reaches is heading-less (hub-accounts.sh's "used by:" line,
 # hub-install.sh's "required by:" block, hub-uninstall.sh's "Kept" note), which is
-# precisely the condition that function exists for — and the hand-written string had
-# drifted: the group label itself is BARE now ("GitHub"), so the accounts screen
-# showed "Project Management (GitHub backend)" four lines above its own freshly-bare
-# "Project Management (Jira)", two spellings of one concept on one screen.
+# precisely the condition that function exists for.
 #
 # EVERY accessor result is assigned before it is used, never inlined as a printf
-# argument: hub_domain_label dies on a key outside its closed set and
-# hub_group_label_in_context dies (via hub_discovery_require) on an unbuilt
-# discovery, and a die inside a command substitution used as an ARGUMENT is
-# swallowed — printf still succeeds and the annotation loses its subject, on lines
-# that tell a user which installed thing still needs an auth procedure.
+# argument: hub_group_label_in_context dies (via hub_discovery_require) on an
+# unbuilt discovery, and a die inside a command substitution used as an ARGUMENT
+# is swallowed — printf still succeeds and the annotation loses its subject, on
+# lines that tell a user which installed thing still needs an auth procedure.
 hub_shared_consumers() {
 	case $1 in
-	"$HUB_SHARED_GIT_AUTH_GROUP")
-		hshc_sd_group=$(hub_group_key "$HUB_GROUP_PREFIX_BASELINE" software-development)
-		hshc_sd_label=$(hub_domain_label software-development)
-		printf '%s\t%s (git operator, baseline)\n' "$hshc_sd_group" "$hshc_sd_label"
-		hshc_pm_group=$(hub_group_key "$HUB_GROUP_PREFIX_PM_BACKEND" github)
-		hshc_pm_label=$(hub_group_label_in_context "$hshc_pm_group")
-		# A source shipping NO GitHub backend has no group row to name, so the
-		# qualified form comes back empty; the domain alone is then the honest subject
-		# — never an empty annotation, which would render as a bare comma on the
-		# "used by:" line.
-		#
-		# An `if`, never `[ -n … ] || hshc_pm_label=$(…)`: an assignment on the right of
-		# `||` is exempt from `set -e`, which would swallow a die inside the substitution
-		# and leave the annotation empty — the very thing this fallback exists to prevent.
-		if [ -z "$hshc_pm_label" ]; then
-			hshc_pm_label=$(hub_domain_label project-management)
-		fi
-		printf '%s\t%s\n' "$hshc_pm_group" "$hshc_pm_label"
-		;;
+	"$HUB_SHARED_GITHUB_AUTH_GROUP") hshc_host=github ;;
+	"$HUB_SHARED_GITLAB_AUTH_GROUP") hshc_host=gitlab ;;
 	*) die "hub_shared_consumers: unknown shared group '$1'" ;;
 	esac
+	hshc_sd_group=$(hub_group_key "$HUB_GROUP_PREFIX_VCS" "$hshc_host")
+	hshc_sd_label=$(hub_group_label_in_context "$hshc_sd_group")
+	[ -z "$hshc_sd_label" ] || printf '%s\t%s\n' "$hshc_sd_group" "$hshc_sd_label"
+	hshc_pm_group=$(hub_group_key "$HUB_GROUP_PREFIX_PM_TRACKER" "$hshc_host")
+	hshc_pm_label=$(hub_group_label_in_context "$hshc_pm_group")
+	if [ -z "$hshc_pm_label" ]; then
+		hshc_pm_label=$(hub_domain_label project-management)
+	fi
+	printf '%s\t%s\n' "$hshc_pm_group" "$hshc_pm_label"
 }
 
 # ---------------------------------------------------------------------------

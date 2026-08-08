@@ -23,17 +23,19 @@ loop.
 - [How a request flows](#how-a-request-flows)
 - [Entry modes — how you talk to it](#entry-modes--how-you-talk-to-it)
 - [What's in each domain](#whats-in-each-domain)
-- [Authenticating GitHub and Jira](#authenticating-github-and-jira)
+- [Authenticating GitHub, GitLab, and Jira](#authenticating-github-gitlab-and-jira)
 - [Requirements](#requirements)
 
 ---
 
 ## What Crucible is
 
-Crucible is a tree of **agent definitions**, **skills**, and **JSON contracts** organized into four
-domains. You install the domains you want into a Claude Code config directory (`~/.claude` by
-default) as symlinks. Once installed, the primary Claude Code agent reads the operating contract
-and changes how it behaves.
+Crucible is a tree of **agent definitions**, **skills**, and **JSON contracts** organized into three
+domains — Software Development, Project Management, Getting Things Done — plus `accounts/`, a
+shared cross-domain folder the hub manages automatically (installed the moment a domain needs it,
+removed the moment none does; never picked directly, unlike the three domains). You install the
+domains you want into a Claude Code config directory (`~/.claude` by default) as symlinks. Once
+installed, the primary Claude Code agent reads the operating contract and changes how it behaves.
 
 Three ideas run through the whole framework:
 
@@ -61,7 +63,9 @@ your environment can actually run it. There is no separate deploy script.
 
 Every screen exists twice, on purpose: an **interactive menu** for a human, and an **exact
 flag-driven equivalent** for a script or an agent. A fact one of them can read and the other
-cannot would be a gap.
+cannot would be a gap. The one deliberate exception is `4` (Create a tech pair): it primes a
+Claude Code session with a prompt a human pastes in, so there is nothing for a script to run
+non-interactively — it stays menu-only.
 
 ### First run
 
@@ -72,47 +76,64 @@ cannot would be a gap.
 The Main menu opens (a TTY is required — off a terminal, use the commands below):
 
 ```
-  1.  Status              — which domains are installed
-  2.  List                — installed vs available components
-  3.  Doctor              — required tools + account health
-  4.  Accounts            — GitHub / Jira
-  5.  Create a tech pair  — a developer + reviewer pair for a technology
-  6.  Install all         — every domain, technology and backend
-  7.  Install             — choose domains
-  8.  Uninstall all
-  9.  Uninstall           — choose technologies or backends
-  10. Exit
+  1.  List                — installed vs available components
+  2.  Doctor              — domain status, required tools, account health
+  3.  Accounts            — GitHub / GitLab / Jira
+  4.  Create a tech pair  — a developer + reviewer pair for a technology
+  5.  Install all         — every domain, technology, VCS host and tracker
+  6.  Install             — choose domains
+  7.  Uninstall all
+  8.  Uninstall           — choose technologies, VCS hosts or trackers
+  9.  Exit
 ```
 
-From any screen: `?` shows help, `b` goes back one level, `q` quits.
+From any menu or checklist: `?` shows help, `b` goes back one level (the Main menu has nowhere to
+go back to), `q` quits. An inline `[y/N]` confirm or a typed-phrase gate takes only its own answer —
+no mis-press there is destructive; each declines on anything it doesn't recognize.
 
-1. **Pick `7` (Install).** A checklist asks which domains you want: Software Development, Project
+1. **Pick `6` (Install).** A checklist asks which domains you want: Software Development, Project
    Management, Getting Things Done. Type a row number or name and press Enter to select or
    deselect it; combine several with `1,3,5` or a range `1-5`; `a` selects all, `n` none. Enter on
    an empty prompt confirms.
-2. **Choose each domain's sub-selection.** Software Development asks which technologies (each one
-   installs its developer agent, its reviewer and its standard together). Project Management asks
-   for GitHub, Jira, or both. GTD has no sub-selection. A domain that needs one and gets none is
-   never given a guessed default — the screen says so and re-prompts.
+2. **Choose each domain's sub-selection.** Software Development asks first, optionally, which VCS
+   host(s) — GitHub, GitLab, or both — the git operator should talk to, then which technologies
+   (each one installs its developer agent, its reviewer and its standard together). Project
+   Management asks for GitHub, GitLab, Jira, or any combination. GTD's one group installs and
+   removes as a single unit and has no further sub-selection. A domain with a MANDATORY
+   sub-selection (technologies, the tracker) that gets none is never given a guessed default — the
+   screen says so and re-prompts; the VCS host choice is the one OPTIONAL sub-selection, since
+   picking neither is a valid answer.
 3. **Read the preview.** Nothing has been written yet. The preview lists exactly what will be
    created, replaced and skipped, including the first-run bundle ([`CLAUDE.md`](./CLAUDE.md) plus
    the contract schemas) and whether an existing `CLAUDE.md` will be backed up.
 4. **Confirm at the `[Y/n]` prompt.** Enter accepts. `b` returns to the checklist with your
    selection intact; `q` asks before discarding it.
-5. **Run `3` (Doctor).** It reports required tools, account health, and any component that has
+5. **Run `2` (Doctor).** It reports required tools, account health, and any component that has
    diverged from source — and separates *problems* (something installed cannot work) from *notes*
    (something that only matters for a domain you have not installed).
-6. **Run `4` (Accounts)** to authenticate GitHub and Jira. See
-   [Authenticating GitHub and Jira](#authenticating-github-and-jira).
+6. **Run `3` (Accounts)** to authenticate GitHub, GitLab, and Jira. See
+   [Authenticating GitHub, GitLab, and Jira](#authenticating-github-gitlab-and-jira).
 
-`6` (Install all) takes every domain, technology and backend in one step, through the same preview
+`5` (Install all) takes every domain, technology, VCS host and tracker in one step, through the same preview
 and confirmation.
 
 > **Where things land.** Agents symlink to `~/.claude/agents/<name>.md`, skills to
 > `~/.claude/skills/<name>/`, the contract schemas to `~/.claude/crucible/contracts/`, and the
 > operating contract to `~/.claude/CLAUDE.md`. They are symlinks into this clone, so `git pull`
-> updates a live installation in place — and moving or deleting the clone leaves the target
-> dangling (the hub reports those as **orphaned**). Point elsewhere with `--target DIR`.
+> updates a live installation in place for a file that already has a symlink — and moving or
+> deleting the clone leaves the target dangling (the hub reports those as **orphaned**). Point
+> elsewhere with `--target DIR`. **A `git pull` that RENAMES a skill directory or ADDS a new
+> one is different: symlinks are per-name, so a rename leaves the OLD name's symlink dangling
+> while the new name has no symlink yet, and a brand-new skill has none at all — a plain `git
+> pull` cannot create or retarget a symlink by itself.** Re-run Install — the menu walk re-selecting
+> your own domains, or the flag form naming them (`install --domains=... --technologies=... --apply`)
+> — after any pull that changed which agents/skills exist (not just their content) to pick up the
+> new names; `--all --apply` also works but installs *everything*, not just what you already had, so
+> reach for it only if that's actually what you want. Then run `crucible-hub doctor` (which reports
+> the stale link as **orphaned** and
+> offers to remove it) to clear the old one. `List` also reports it, but Doctor is where cleanup
+> happens — an orphan is a dangling link, not a legitimate component, so it is no longer offered
+> on Uninstall's checklist.
 
 > **An existing `CLAUDE.md` is backed up, not lost.** A foreign `CLAUDE.md` at the target — a real
 > file, or a symlink outside the framework — is copied to a timestamped
@@ -126,19 +147,24 @@ option reference.
 
 | Menu screen | Command |
 |---|---|
-| Status | `crucible-hub status` |
+| *(no Main-menu row any more †)* | `crucible-hub status` |
 | List | `crucible-hub list` |
 | Doctor | `crucible-hub doctor` |
-| Accounts | `crucible-hub accounts status\|switch-github\|reauth-github\|configure-jira\|reauth-jira` |
-| Install | `crucible-hub install --domains=CSV [--technologies=CSV] [--pm-backends=CSV] --apply` |
+| Accounts | `crucible-hub accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
+| Install | `crucible-hub install --domains=CSV [--technologies=CSV] [--sd-vcs=CSV] [--pm-trackers=CSV] --apply` |
 | Install all | `crucible-hub install --all --apply` |
 | Uninstall | `crucible-hub uninstall --components=CSV --apply` |
 | Uninstall all | `crucible-hub uninstall --all --apply --confirm=UNINSTALL` |
 
+† `Status` was folded into Doctor and dropped from the interactive Main menu, but it survives as
+this standalone, agent-friendly subcommand.
+
 Shared options: `--target DIR` (deployed config dir, default `$HOME/.claude`), `--source DIR`
-(framework root to scan, default this tree), `--format=text|env|json`, `--no-color`. Install and
-uninstall add `--non-interactive`, `--accessible` (ASCII fallback for every non-ASCII symbol) and
-`--details` (itemize a bulk result instead of summarizing it).
+(framework root to scan, default this tree), `--format=text|env|json` (`accounts` accepts only
+`text|env`), `--no-color`, `--accessible` (ASCII fallback for every non-ASCII symbol). `install`,
+`uninstall`, and `doctor` add `--non-interactive`; `install`/`uninstall` alone add `--details`
+(itemize a bulk result instead of summarizing it). `doctor` also takes `--clean-orphans --apply` —
+the flag-driven equivalent of the interactive "Remove them?" orphan-cleanup prompt.
 
 **`--format=env` and `--format=json` are what make the hub agent-drivable.** Both emit the same
 facts the text screen shows — per-domain state, per-component rows, counts, a `HUB_STATUS` of `ok`
@@ -148,9 +174,11 @@ does.
 ### Nothing is written without saying so first
 
 - **`--apply` is required to write, on every path, terminal or not.** Without it you get the
-  preview and nothing else. A flag-driven selection never reaches the confirm prompt at all, so a
-  stray Enter cannot turn a dry run into an install. Only the pure interactive walk
-  confirms-then-writes, because walking the checklists *is* the request.
+  preview and nothing else — a flag-driven selection with no `--apply` never reaches the confirm
+  prompt at all, so a stray Enter cannot turn a dry run into an install. *With* `--apply`, on a
+  terminal, a flag-driven selection reaches the same confirm the interactive walk does — `[Y/n]` for
+  install, Enter accepts (`5`/Install all works this way); `[y/N]` for uninstall, Enter declines. It
+  is only off a terminal that `--apply` writes with no prompt at all.
 - **A missing sub-selection blocks rather than guesses.** `install --domains=software-development`
   with no `--technologies` exits blocked (`selection_required`), never with some default stack.
 - **`uninstall --all` is the one critical-tier flow.** On a terminal you type the word `UNINSTALL`
@@ -158,16 +186,19 @@ does.
   assuming consent. It removes everything installed plus `CLAUDE.md` and the contract schemas, and
   can restore a chosen `CLAUDE.md` backup on the way out (`--restore-backup=TIMESTAMP|none`).
 - **Selective uninstall works at the granularity a human installs at** — one row per technology,
-  one per Project Management backend. A domain's baseline comes out by cascade once its last
-  technology or backend is gone, announced explicitly in the preview. GTD has no sub-selection, so
-  only `--all` reaches it.
+  one per Software Development VCS host, one per Project Management tracker, and one per
+  self-contained domain (today, GTD — it installs and removes as a single unit, so
+  `--components=gtd`, or any one of its unit keys, takes all of it out). A domain's baseline comes
+  out by cascade once its last technology, VCS host, or tracker is gone, announced explicitly in
+  the preview.
 
-Exit codes: `0` preview shown, nothing to do, cancelled, or applied · `1` blocked or a write
-failure · `2` usage error · `3` the user quit an interactive screen.
+Exit codes: `0` preview shown, nothing to do, cancelled, or applied · `1` blocked, a write failure,
+or an operational error (an unresolvable `--source`, `--format=json` without `jq`) · `2` usage
+error · `3` a subcommand's own interactive screen was quit (a bare interactive `crucible-hub`
+translates that back to exit `0` at its own Main menu).
 
 The design rationale behind each screen lives in the script headers under
-[`deploy/hub/`](./deploy/hub) and in the UI spec at
-[`.crucible/docs/specs/2026/07/30/`](./.crucible/docs/specs/2026/07/30).
+[`deploy/hub/`](./deploy/hub) — the code is the authoritative record.
 
 ---
 
@@ -214,28 +245,33 @@ defined in [`CLAUDE.md`](./CLAUDE.md).
 | **Direct** | no subagent matches the stack | Orchestrator implements, self-checks via an execution test |
 | **Tech-pair** | "I need a new tech pair" (bare, or "...for Go") | Poll → collision check → gate → research swarm → generate the pair in order → lens review before deploy → human deploys |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers with different lenses + a neutral `decision-arbiter` |
-| **External review** | an external/automated PR review to address | Advocates + the `review-arbiter` judge → fix → one response |
+| **External review** | an external/automated PR (GitHub) or MR (GitLab) review to address | Advocates + the `review-arbiter` judge → fix → one response |
 | **Documentation** | "document this", "write a README" | `docs-writer` drafts → fact-checked against the code → fix loop |
 | **Backlog** | "file an issue/ticket", "carve an epic" | `project-manager` recommends + drafts → consent-gated tracker write |
 | **Capture** | a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:` | `gtd-inbox-writer` appends the thought verbatim, never executes it |
 
 A cross-cutting **git/VCS flow** ([`flow-git-operations`](./software-development/flows/flow-git-operations))
-can fire from any mode: the `git-operator` plans branches, atomic signed commits, pushes, tags and
-pull requests; the orchestrator exposes the message verbatim and executes only on consent.
+can fire from any mode: the `git-operator` plans branches, atomic signed commits, pushes, tags, and
+pull requests (GitHub) or merge requests (GitLab); the orchestrator exposes the message verbatim and
+executes only on consent.
 
 ---
 
 ## What's in each domain
 
-Install any subset. Run `crucible-hub list` for the live, exhaustive inventory — each agent and
-skill documents itself in its own file, so the list below is a map, not a catalogue.
+Install any subset of the three domains. Run `crucible-hub list` for the live, exhaustive
+inventory — each agent and skill documents itself in its own file, so the list below is a map, not
+a catalogue.
 
 | Domain | What you get | Sub-selection |
 |---|---|---|
-| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 8 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies** |
-| [`project-management/`](./project-management) | The `project-manager` agent: authors backlog artifacts tuned to a declared audience and operates the tracker | **GitHub**, **Jira**, or both |
+| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 8 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies**, plus an OPTIONAL **VCS host** — GitHub, GitLab, or both |
+| [`project-management/`](./project-management) | The `project-manager` agent: authors backlog artifacts tuned to a declared audience and operates the tracker | **GitHub**, **GitLab**, **Jira**, or any combination |
 | [`gtd/`](./gtd) | `gtd-inbox-writer` for zero-judgment capture, plus `flow-inbox` for triage and processing | none |
-| [`accounts/`](./accounts) | The shared GitHub auth procedure. Installed automatically when a domain needs it, removed when none does | — |
+
+[`accounts/`](./accounts) is **not a fourth domain to pick** — it's shared cross-domain plumbing (the
+GitHub and GitLab auth procedures) the hub installs and removes automatically as the three domains'
+own VCS/tracker choices come and go. It never appears on the domain checklist.
 
 Each domain follows the same shape: `agents/` (agent definitions, each with its own `skills/`),
 `flows/` (the orchestrator's playbooks), `contracts/` (JSON schemas for structured output), and —
@@ -251,35 +287,48 @@ pass. Test authoring is separate again: `tests-developer` is tech-agnostic, and
 from touching a test file at all.
 
 **Project Management** is script-driven, not a thin wrapper. GitHub covers issues (create, comment,
-update, close, labels, projects); Jira covers issues, components, versions and releases,
-attachments, bulk operations and the full Agile surface — boards, sprints, backlog, epics, sprint
-lifecycle — over the REST v3 and Agile v1.0 APIs. Ticket bodies are authored in markdown and
-converted to Atlassian Document Format, and real files attach alongside. That is what makes
-agent-run Jira token-efficient: attach the stack trace or the screenshot, write a tight ticket,
-skip transcribing thousands of tokens of prose. Pull requests are **not** here — they are VCS work
-and belong to the `git-operator`.
+update, close, labels, projects); GitLab covers issues the same way (create, comment, update, close,
+labels, a task-list-based child/epic-issue link — GitLab's own group-level epic feature is
+deliberately not used, see [`procedure-glab-issues`](./project-management/agents/project-manager/skills/procedure-glab-issues));
+Jira covers issues, components, versions and releases, attachments, bulk operations and the full
+Agile surface — boards, sprints, backlog, epics, sprint lifecycle — over the REST v3 and Agile v1.0
+APIs. Ticket bodies are authored in markdown and converted to Atlassian Document Format, and real
+files attach alongside. That is what makes agent-run Jira token-efficient: attach the stack trace or
+the screenshot, write a tight ticket, skip transcribing thousands of tokens of prose. Pull/merge
+requests are **not** here — they are VCS work and belong to the `git-operator`.
 
 **GTD** parks a thought mid-session. A leading `dump:` / `park:` / `inbox:` directive stores the
 remainder verbatim through a deterministic script; the text is data, never a command.
 
 ---
 
-## Authenticating GitHub and Jira
+## Authenticating GitHub, GitLab, and Jira
 
 Credentials are stored locally. The scripts never put a token on a command line or in a log, and
 before any live write the framework re-confirms the active site or account with you.
 
-The hub's Accounts screen is the front door — it reports both states and delegates to each
-procedure's own script:
+The hub's Accounts screen is the front door for GitHub, GitLab, and Jira alike — it reports all
+three states and delegates to each procedure's own script:
 
 ```sh
 crucible-hub accounts status          # who the framework will act as
 crucible-hub accounts switch-github   # switch between, or log in to, GitHub accounts
+crucible-hub accounts switch-gitlab   # switch between, or log in to, GitLab accounts
 crucible-hub accounts configure-jira  # add a Jira site
 ```
 
 **GitHub** uses the GitHub CLI. `gh auth login` works exactly as it always does; `gh auth switch`
 and the hub's Accounts screen both change the active account.
+
+**GitLab** uses the GitLab CLI (`glab`). `glab auth login` works exactly as it always does, and one
+credential is kept per instance (gitlab.com or a self-managed host) — `glab` has no `auth switch`
+of its own, so authenticating an instance IS the switch; the hub's Accounts screen (`switch-gitlab`)
+drives that. To bypass the hub and drive it directly:
+
+```sh
+$HOME/.claude/skills/procedure-gitlab-auth/scripts/glab-auth-status.sh
+$HOME/.claude/skills/procedure-gitlab-auth/scripts/manage_glab_accounts.sh
+```
 
 **Jira** prompts for your site, email, and an API token (created at **id.atlassian.com → Security →
 API tokens**, entered with terminal echo off). Each credential is stored as a `600` file under
@@ -296,13 +345,21 @@ $HOME/.claude/skills/procedure-jira-auth/scripts/jira-accounts.sh set-default --
 
 ## Requirements
 
-`crucible-hub doctor` checks all of these and tells you which are missing.
+`crucible-hub doctor` checks the external tools below (`git`, `gh`, `glab`, `jq`, `curl`,
+`gpg`-or-`ssh-keygen`) plus GitHub/GitLab/Jira account health, and tells you which are missing. The
+first two bullets are assumed, not checked by Doctor — you need them just to run the hub at all.
 
 - **Claude Code** — the host for the framework.
 - **A POSIX shell** (`sh`) — the hub and every `procedure-*` script are POSIX `sh`.
 - **`git`** — for the VCS operations.
 - **`gh`** (GitHub CLI) — for GitHub issues and pull requests.
-- **`jq`** — the Jira/GitHub/inbox procedures, and the hub's `--format=json`.
+- **`glab`** (GitLab CLI) — for GitLab issues and merge requests. `crucible-hub doctor` checks for both
+  `gh` and `glab` — but only reports the one you don't have as a blocking problem if something you've
+  already installed actually needs that host; otherwise it's a non-blocking note, since choosing GitHub
+  or GitLab (or neither) is optional.
+- **`jq`** — the Jira and GTD-inbox procedures, the `flow-spec`/`flow-review` artifact scripts, the
+  git operator's identity resolution, and the hub's `--format=json`. The GitHub/GitLab procedures do
+  *not* need it — they use `gh --jq`/`glab --jq`, the CLIs' own built-in engine.
 - **`curl`** — drives the Jira REST calls.
 - **`gpg` or `ssh-keygen`** (one of the two) — backs the signed commits `git-operator` produces.
-- A Jira instance and API token — only if you install the Jira backend.
+- A Jira instance and API token — only if you install the Jira tracker.

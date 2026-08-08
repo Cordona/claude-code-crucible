@@ -2,7 +2,7 @@
 # lib/hub-checklist.sh — THE multi-select checklist widget. One implementation,
 #                         used by all four selection screens: domain onboarding,
 #                         Software Development's technologies, Project
-#                         Management's backends, and uninstall's flat component
+#                         Management's trackers, and uninstall's flat component
 #                         list.
 #
 # Sourced after lib/hub-common.sh, lib/hub-render.sh and lib/hub-nav.sh. Not
@@ -51,10 +51,11 @@ HUB_CHECKLIST_MULTISELECT_THRESHOLD=1
 # a loop nobody asked for and a screenful of near-identical complaints.
 #
 # 100 because the largest screen this widget renders is Uninstall's flat list —
-# one row per installed technology and backend plus any orphan — which tops out
-# around 80 today: the bound clears every real list with headroom for the
-# framework to grow, while staying small enough that rejecting an absurd range is
-# instant.
+# one row per installed technology, VCS host and tracker (an orphan is no
+# longer one of them — Doctor owns orphan reporting and cleanup now) — which
+# tops out around 80 today: the bound clears every real list with headroom for
+# the framework to grow, while staying small enough that rejecting an absurd
+# range is instant.
 #
 # BOUNDING THE ENDPOINTS rather than the SPAN is the deliberate choice, and it is
 # not just simpler — it is strictly stronger. Both endpoints being <= the bound
@@ -186,21 +187,50 @@ hub_checklist_strip_leading_zeros() {
 #
 # WHY A RANGE CANNOT COLLIDE WITH A ROW KEY. Both sides must be pure digits, and
 # the keys this hub renders are semantic names — "software-development",
-# "github-backend", "python", "tests-developer" — where a hyphen always has a
+# "github-tracker", "python", "tests-developer" — where a hyphen always has a
 # letter on at least one side, so the digit test fails and the key falls through
-# to the by-name lookup unchanged. The one row key not drawn from that
-# vocabulary is Uninstall's orphan row, whose key is a dangling symlink's
-# basename and so is whatever is on disk; a symlink literally named "1-2" would
-# be shadowed. That is disclosed rather than guarded because the widget ALREADY
-# works this way for a plain number and always has (an orphan named "3" is
-# likewise read as row three, not as the key "3"), and because the row stays
-# reachable by the number printed next to it either way.
+# to the by-name lookup unchanged.
+#
+# THIS USED TO HAVE ONE DISCLOSED EXCEPTION: Uninstall's orphan row, whose key
+# was a dangling symlink's basename and so was whatever a filesystem happened
+# to hold — a symlink literally named "1-2" would have been shadowed. Orphans
+# are no longer offered on Uninstall's interactive checklist at all (Doctor
+# owns orphan reporting and cleanup now — see hub-doctor.sh), so every row key
+# this widget renders, on every one of its four call sites, is drawn from the
+# semantic vocabulary above; there is no longer a non-digit-safe key anywhere
+# in this widget's own input. Stated for whichever future caller adds a fifth
+# one: a row key sourced from outside this hub's own naming (raw filesystem
+# names, again, or anything else not guaranteed hyphen-with-a-letter) would
+# reopen the same hazard and would need the same disclosure this paragraph
+# used to carry.
 #
 # A REVERSED range ("5-1") is read as 1-5 rather than rejected. The user has
 # unambiguously named two endpoints, the order they typed them in carries no
 # other meaning here, and of the three candidate behaviours — swap, error,
 # silently do nothing — only silence teaches them nothing, and an error would be
 # pedantry about a typo whose intent is obvious.
+hub_checklist_next_field() {
+	case $hcl_rest in
+	*"$HUB_TAB"*)
+		hcl_field=${hcl_rest%%"$HUB_TAB"*}
+		hcl_rest=${hcl_rest#*"$HUB_TAB"}
+		;;
+	*)
+		# NO tab left in hcl_rest: parameter expansion's own "no match, string
+		# unchanged" rule is the trap here. `${hcl_rest#*TAB}` on a tab-less
+		# hcl_rest returns hcl_rest ITSELF, not "" — so naively chaining `%%`/`#`
+		# extractions across a row with fewer tabs than expected columns would
+		# freeze hcl_rest at whatever survived the last real cut, and every
+		# field read after that point would silently repeat it instead of
+		# degrading to empty. This branch is what makes a short/malformed row
+		# read as "this field, then nothing" rather than "this field, then a
+		# duplicate of it, forever".
+		hcl_field=$hcl_rest
+		hcl_rest=""
+		;;
+	esac
+}
+
 hub_checklist_expand_token() {
 	hcet_token=$1
 	hcet_start=${hcet_token%%-*}
@@ -281,8 +311,9 @@ hub_checklist_expand_token() {
 	done
 }
 
-# hub_checklist TITLE SUBTITLE ROWSFILE OUTFILE -> render an interactive
-# checklist and write the selected row keys, one per line, to OUTFILE.
+# hub_checklist TITLE SUBTITLE ROWSFILE OUTFILE [GROUPED] -> render an
+# interactive checklist and write the selected row keys, one per line, to
+# OUTFILE.
 #
 # SUBTITLE is an optional second line under the title (the onboarding screen's
 # "Which domain(s) do you want to install?"); pass an empty string for none. It is
@@ -294,19 +325,74 @@ hub_checklist_expand_token() {
 # to right-align a nav hint. It no longer measures anything — that hint moved onto
 # each screen's own prompt line.)
 #
-# ROWSFILE columns: key<TAB>label<TAB>diverged<TAB>annotation
+# GROUPED is OPTIONAL, defaults to 0 (ungrouped — the ORIGINAL, unchanged shape,
+# and every existing call site before Uninstall's flat list omits it and is
+# untouched by anything below). Pass 1 to render:
+#   * a plain, un-numbered, un-selectable DOMAIN HEADING at the 2-space indent
+#     (matching hub-list.sh's own domain sub-headers), preceded by a blank line
+#     unless it is the very first heading on screen, before the first row of
+#     every run of consecutive rows that share a GROUP value;
+#   * optionally, a second, narrower SUBGROUP heading at the 4-space indent —
+#     one level deeper than its domain heading — preceded by a blank line
+#     unless it is the first subgroup of its domain, before a run of rows that
+#     share a SUBGROUP within that domain (Software Development: Technologies,
+#     then VCS).
+# Uninstall's own reason for wanting either level at all: its checklist mixes
+# rows from every domain on one screen, and with two selectable kinds now
+# sharing a key vocabulary (github/gitlab, both a VCS choice and a tracker
+# choice) an ungrouped flat list reads as one undifferentiated block.
+# Numbering STAYS CONTINUOUS across BOTH heading levels (neither consumes a
+# number and neither is ever a toggle target) — the same "heading is
+# presentation only" rule hub-list.sh's own domain sub-headers follow.
+#
+# EVERY ROW NESTS ONE LEVEL DEEPER THAN THE HEADING DIRECTLY OVER IT, never
+# level with it: a row with no subgroup sits at 4-space (one level under its
+# domain heading's 2-space); a row WITH a subgroup sits at 6-space (one level
+# under that subgroup's own 4-space), not sharing the subgroup's depth. A row
+# is told apart from a heading by depth first, and only secondarily by having
+# a checkbox/number a heading never has.
+#
+# ROWSFILE columns, GROUPED=0 (default):
+#   key<TAB>label<TAB>diverged<TAB>annotation
+# ROWSFILE columns, GROUPED=1:
+#   key<TAB>label<TAB>diverged<TAB>group<TAB>subgroup<TAB>annotation
 #   key         the token written to OUTFILE and accepted as typed input; also
 #               the flag token the non-interactive path uses, so the human and
 #               the agent name the same thing (the parity requirement).
-#   label       the human-facing display name.
+#   label       the human-facing display name. On a GROUPED=1 screen this
+#               should be the BARE label (no domain qualification): the
+#               heading now supplies the context a heading-less screen's own
+#               qualified form existed to substitute for — see
+#               lib/hub-domains.sh's hub_selection_kind_needs_domain.
 #   diverged    1 when this row is installed-but-diverged, so a SELECTED row
 #               renders [!] (re-syncs on install) rather than [x].
+#   group       GROUPED=1 ONLY. The domain heading text. NEVER empty when
+#               GROUPED=1 is passed — every real row has a real group by
+#               construction on the one screen that uses this (a flat
+#               component list only ever mixes DOMAINS, and every domain has
+#               a label) — an always-empty column would defeat its own
+#               purpose, and an ever-changing one is what drives the heading
+#               to print.
+#   subgroup    GROUPED=1 ONLY. The narrower heading text, or EMPTY for a
+#               domain with only one selection kind (Project Management,
+#               GTD) — genuinely empty is fine here, unlike group: this
+#               column is read by PARAMETER EXPANSION (see the render loop),
+#               never by `read`'s IFS-splitting, so it carries none of the
+#               concentration THE TAB TRAP warns about elsewhere in this hub.
 #   annotation  optional trailing text shown after the label (a blurb, a state).
 #
-# ANNOTATION IS LAST, and that is load-bearing, not cosmetic: it is the one
-# column that can legitimately be empty, and `read` with IFS=TAB collapses
-# consecutive tabs, so an empty column anywhere but the end silently shifts every
-# field after it. See lib/hub-common.sh's "THE TAB TRAP".
+# WHY AN EMPTY MIDDLE COLUMN IS SAFE HERE, WHEN lib/hub-common.sh's "THE TAB
+# TRAP" SAYS IT SHOULDN'T BE: that trap is specifically about `read` with
+# IFS=TAB, which treats a run of tabs as ONE delimiter and silently shifts
+# every field after an empty one. This function's GROUPED=1 parsing never uses
+# `read` for the per-column split — it reads the WHOLE raw line with `read`
+# (a single field, nothing to collapse) and then splits it with parameter
+# expansion (`${var%%pat*}` / `${var#*pat}`), which never merges delimiters
+# and never treats an empty field as anything but itself. That is what makes
+# `subgroup` safe to leave empty while `annotation`, further right, is ALSO
+# sometimes empty on the very same row — a shape the TAB TRAP's own `read`
+# based tables cannot express safely, and this table does not use `read` to
+# read it.
 #
 # Exit status:
 #   0  confirmed — OUTFILE holds the selection (possibly empty; the CALLER owns
@@ -320,6 +406,7 @@ hub_checklist() {
 	hcl_subtitle=$2
 	hcl_rows=$3
 	hcl_out=$4
+	hcl_grouped=${5:-0}
 
 	hcl_scratch=$(hub_mktemp_dir)
 	hcl_selected="$hcl_scratch/selected.txt"
@@ -375,7 +462,43 @@ hub_checklist() {
 		: >"$hcl_numbered"
 		hcl_n=0
 		hcl_visible=0
-		while IFS="$HUB_TAB" read -r hcl_key hcl_label hcl_div hcl_note; do
+		# hcl_prev_group starts at a value no real GROUP can ever equal (a group is
+		# always non-empty when hcl_grouped=1 — see this function's own header), so
+		# the FIRST visible row of a grouped render always prints its heading rather
+		# than needing a separate "is this the first row" flag.
+		hcl_prev_group=""
+		hcl_prev_subgroup=""
+		while IFS= read -r hcl_rawline; do
+			[ -n "$hcl_rawline" ] || continue
+			# MANUAL FIELD SPLITTING, never `read ... <field vars>`: `read`'s IFS-TAB
+			# splitting collapses CONSECUTIVE tabs (THE TAB TRAP — see
+			# lib/hub-common.sh), and grouped rows legitimately have an EMPTY
+			# annotation followed by a non-empty trailing field in ungrouped rows'
+			# old position — exactly the interior-empty-field shape that trap warns
+			# about. hub_checklist_next_field (above) never collapses anything AND
+			# degrades a short/malformed row's missing trailing fields to empty
+			# rather than duplicating the last one it did find — see that
+			# function's own comment for the parameter-expansion trap this avoids.
+			hcl_rest=$hcl_rawline
+			hub_checklist_next_field
+			hcl_key=$hcl_field
+			hub_checklist_next_field
+			hcl_label=$hcl_field
+			hub_checklist_next_field
+			hcl_div=$hcl_field
+			if [ "$hcl_grouped" -eq 1 ]; then
+				hub_checklist_next_field
+				hcl_group=$hcl_field
+				hub_checklist_next_field
+				hcl_subgroup=$hcl_field
+				hub_checklist_next_field
+				hcl_note=$hcl_field
+			else
+				hcl_group=""
+				hcl_subgroup=""
+				hub_checklist_next_field
+				hcl_note=$hcl_field
+			fi
 			[ -n "$hcl_key" ] || continue
 			if [ -n "$hcl_filter" ]; then
 				case $hcl_label in
@@ -387,6 +510,21 @@ hub_checklist() {
 					esac
 					;;
 				esac
+			fi
+			# THE HEADING, printed once per run of consecutive VISIBLE rows sharing
+			# a group — never for an ungrouped call (hcl_group is always "" there,
+			# so it never changes and this branch never fires), and never counted
+			# as a row: it consumes no number and is never a toggle target.
+			if [ "$hcl_grouped" -eq 1 ] && [ "$hcl_group" != "$hcl_prev_group" ]; then
+				[ -z "$hcl_prev_group" ] || printf '\n'
+				printf '  %s\n' "$hcl_group"
+				hcl_prev_group=$hcl_group
+				hcl_prev_subgroup=""
+			fi
+			if [ "$hcl_grouped" -eq 1 ] && [ -n "$hcl_subgroup" ] && [ "$hcl_subgroup" != "$hcl_prev_subgroup" ]; then
+				[ -z "$hcl_prev_subgroup" ] || printf '\n'
+				printf '    %s\n' "$hcl_subgroup"
+				hcl_prev_subgroup=$hcl_subgroup
 			fi
 			hcl_n=$((hcl_n + 1))
 			hcl_visible=$((hcl_visible + 1))
@@ -415,11 +553,22 @@ hub_checklist() {
 			# 1) in others") stops being true. One fix, here, covers all four
 			# checklist screens this widget renders.
 			hcl_numstr=$(hub_number "$(printf '%2s.' "$hcl_n")")
+			# ONE INDENT LEVEL DEEPER THAN WHATEVER HEADING THIS ROW SITS UNDER: a
+			# row with no subgroup nests one level under its domain heading
+			# (4-space — the domain's own 2-space plus one level); a row WITH a
+			# subgroup nests one level under THAT instead (6-space) rather than
+			# sharing its depth — a row is never visually equal to the heading
+			# that introduces it.
+			hcl_row_indent='  '
+			if [ "$hcl_grouped" -eq 1 ]; then
+				hcl_row_indent='    '
+				[ -z "$hcl_subgroup" ] || hcl_row_indent='      '
+			fi
 			if [ -n "$hcl_note" ]; then
-				printf '  %s %s %s %s\n' "$hcl_box" "$hcl_numstr" \
+				printf '%s%s %s %s %s\n' "$hcl_row_indent" "$hcl_box" "$hcl_numstr" \
 					"$(hub_pad_right "$hcl_shown" "$hcl_width")" "$hcl_note"
 			else
-				printf '  %s %s %s\n' "$hcl_box" "$hcl_numstr" "$hcl_shown"
+				printf '%s%s %s %s\n' "$hcl_row_indent" "$hcl_box" "$hcl_numstr" "$hcl_shown"
 			fi
 		done <"$hcl_rows"
 
