@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # create-issue.sh — create a GitHub issue via `gh`, with the artifact BODY
 #                    always supplied as a FILE (--body-file), never built in
@@ -31,15 +32,30 @@
 #                          NO --body passthrough — the body is always a file.
 #     --label NAME         A label to apply. Repeatable, and/or a
 #                          comma-separated list in one occurrence.
-#     --milestone STR      An EXISTING milestone title.
-#     --assignee LOGIN     A GitHub login to assign. Repeatable.
+#     --milestone STR      An EXISTING milestone title. NOT a list — a single
+#                          value, passed through verbatim (a milestone title
+#                          may legitimately contain a comma).
+#     --assignee LOGIN     A GitHub login to assign. Repeatable, and/or a
+#                          comma-separated list in one occurrence.
 #     --project NAME        A (classic or v2) project to add the issue to.
-#                          Repeatable. UNLIKE --label/--milestone, this has NO
+#                          Repeatable, and/or a comma-separated list in one
+#                          occurrence. UNLIKE --label/--milestone, this has NO
 #                          pre-check: project lookup is GraphQL (projects-v2),
 #                          out of scope here — an unknown project surfaces as
 #                          a plain `gh issue create` failure via the existing
 #                          TMP_ERR path below, same as any other gh error.
 #     -h, --help           Show this help.
+#
+# LIST FLAGS ALL SPLIT ON COMMAS, AND ALL ACCUMULATE ACROSS REPEATS. --label,
+# --assignee and --project are handled identically: each occurrence is split on
+# commas, each token trimmed, empties dropped, and the result appended to what
+# earlier occurrences contributed. So `--assignee alice,bob` and
+# `--assignee alice --assignee bob` are the same request, exactly as
+# update-issue.sh's --add-assignee/--remove-assignee already behaved and as the
+# real `gh` CLI's own repeatable string-slice flags behave. The cost of that
+# uniformity is that a value CONTAINING a comma cannot be expressed through
+# these three flags — the same limitation real `gh` has, and the one --label
+# has always had here. --milestone is deliberately NOT in this set.
 #
 # Output:
 #   On success, stdout carries machine-parseable keys the caller can relay:
@@ -59,20 +75,36 @@
 #
 # Portability: POSIX sh only (no bashisms). Runs identically on macOS (BSD
 #   userland / Bash 3.2) and Linux (GNU coreutils). Every external binary is
-#   guarded with `command -v`. Self-contained: sources nothing.
+#   guarded with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-PROG=${0##*/}
+for _pm_lib in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh pm-lists.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-# ---------------------------------------------------------------------------
-# Diagnostics (all to stderr — stdout stays machine-clean)
-# ---------------------------------------------------------------------------
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-gh-preconditions.sh
+. "$PM_LIB_DIR/pm-gh-preconditions.sh"
+# shellcheck source=../lib/pm-lists.sh
+. "$PM_LIB_DIR/pm-lists.sh"
 
 usage() {
 	cat <<EOF
@@ -88,11 +120,12 @@ Options:
   --title STR         Issue title (required).
   --body-file PATH    Path to the issue body (required; must exist/readable).
   --label NAME        A label to apply. Repeatable and/or comma-separated.
-  --milestone STR     An existing milestone title.
-  --assignee LOGIN    A login to assign. Repeatable.
-  --project NAME      A project to add the issue to. Repeatable. NOT
-                       pre-checked (see the script header) — an unknown
-                       project surfaces as a plain gh failure.
+  --milestone STR     An existing milestone title (NOT a list).
+  --assignee LOGIN    A login to assign. Repeatable and/or comma-separated.
+  --project NAME      A project to add the issue to. Repeatable and/or
+                       comma-separated. NOT pre-checked (see the script
+                       header) — an unknown project surfaces as a plain gh
+                       failure.
   -h, --help          Show this help.
 
 On success, prints:
@@ -106,72 +139,18 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated directly into `gh api repos/VALUE/...` REST paths below, so
-# this rejects both disallowed characters and dot-segment path traversal
-# (e.g. "o/..", "../r") before that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 # ---------------------------------------------------------------------------
 # List accumulators (POSIX sh has no arrays; a newline-separated string is
 # the portable stand-in). Kept as plain globals — this script is a single
 # short-lived process, not a library.
+#
+# All three route through the SAME primitive, csv_accumulate (lib/pm-lists.sh):
+# comma-split + trim + drop-empties + append, so repeats and comma-lists are
+# interchangeable for every one of them. See the LIST FLAGS note in the header.
 # ---------------------------------------------------------------------------
 LABELS=""       # newline-separated
 ASSIGNEES=""    # newline-separated
 PROJECTS=""     # newline-separated
-
-# add_label VALUE — split VALUE on commas (comma-list support) and append
-# each non-empty, trimmed token as a new line onto $LABELS.
-add_label() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		if [ -z "$LABELS" ]; then LABELS=$tok
-		else LABELS="$LABELS
-$tok"
-		fi
-	done
-}
-
-add_assignee() {
-	value=$1
-	[ -n "$value" ] || return 0
-	if [ -z "$ASSIGNEES" ]; then ASSIGNEES=$value
-	else ASSIGNEES="$ASSIGNEES
-$value"
-	fi
-}
-
-add_project() {
-	value=$1
-	[ -n "$value" ] || return 0
-	if [ -z "$PROJECTS" ]; then PROJECTS=$value
-	else PROJECTS="$PROJECTS
-$value"
-	fi
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -186,10 +165,10 @@ while [ $# -gt 0 ]; do
 		--repo)      need_arg "$1" "${2:-}"; OPT_REPO=$2; shift ;;
 		--title)     need_arg "$1" "${2:-}"; OPT_TITLE=$2; shift ;;
 		--body-file) need_arg "$1" "${2:-}"; OPT_BODY_FILE=$2; shift ;;
-		--label)     need_arg "$1" "${2:-}"; add_label "$2"; shift ;;
+		--label)     need_arg "$1" "${2:-}"; LABELS=$(csv_accumulate "$LABELS" "$2"); shift ;;
 		--milestone) need_arg "$1" "${2:-}"; OPT_MILESTONE=$2; shift ;;
-		--assignee)  need_arg "$1" "${2:-}"; add_assignee "$2"; shift ;;
-		--project)   need_arg "$1" "${2:-}"; add_project "$2"; shift ;;
+		--assignee)  need_arg "$1" "${2:-}"; ASSIGNEES=$(csv_accumulate "$ASSIGNEES" "$2"); shift ;;
+		--project)   need_arg "$1" "${2:-}"; PROJECTS=$(csv_accumulate "$PROJECTS" "$2"); shift ;;
 		-h|--help)   usage; exit 0 ;;
 		--)          shift; break ;;
 		-*)          usage >&2; error "unknown option: $1"; exit 2 ;;
@@ -217,25 +196,16 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh_cli
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
 # ---------------------------------------------------------------------------
-# Temp files (mktemp, cleaned up on exit) — used only for gh's OWN stderr and
-# for read-only precondition queries. NEVER used for the issue body, which
-# only ever travels as the caller's own --body-file path.
+# Temp file (mktemp, cleaned up on exit — see init_tmp_err in lib/pm-diag.sh) —
+# used only for gh's OWN stderr. NEVER used for the issue body, which only ever
+# travels as the caller's own --body-file path.
 # ---------------------------------------------------------------------------
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-create-issue.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-create-issue
 
 # ---------------------------------------------------------------------------
 # Precondition: every requested label must already exist. gh does not
@@ -244,7 +214,7 @@ trap 'rm -f "$TMP_ERR"' EXIT
 if [ -n "$LABELS" ]; then
 	if ! EXISTING_LABELS=$(gh api "repos/${OPT_REPO}/labels" --paginate --jq '.[].name' 2>"$TMP_ERR"); then
 		error "failed to look up labels for repo '$OPT_REPO'"
-		sed 's/^/  /' "$TMP_ERR" >&2
+		emit_captured_stderr
 		exit 1
 	fi
 
@@ -274,7 +244,7 @@ fi
 if [ -n "$OPT_MILESTONE" ]; then
 	if ! EXISTING_MILESTONES=$(gh api "repos/${OPT_REPO}/milestones?state=all" --paginate --jq '.[].title' 2>"$TMP_ERR"); then
 		error "failed to look up milestones for repo '$OPT_REPO'"
-		sed 's/^/  /' "$TMP_ERR" >&2
+		emit_captured_stderr
 		exit 1
 	fi
 
@@ -330,7 +300,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! ISSUE_URL=$("$@" 2>"$TMP_ERR"); then
 	error "gh issue create failed"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

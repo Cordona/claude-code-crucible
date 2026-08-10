@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # update-issue.sh — edit fields of an existing GitHub issue via
 #                    `gh issue edit`, with the body (when changed at all)
@@ -41,8 +42,10 @@
 #                              first if the caller wants that).
 #     --remove-label NAME       A label to remove. Repeatable and/or
 #                              comma-separated.
-#     --add-assignee LOGIN      A login to assign. Repeatable.
-#     --remove-assignee LOGIN   A login to unassign. Repeatable.
+#     --add-assignee LOGIN      A login to assign. Repeatable and/or
+#                              comma-separated.
+#     --remove-assignee LOGIN   A login to unassign. Repeatable and/or
+#                              comma-separated.
 #     --milestone STR           Replace the milestone (must already exist).
 #     -h, --help                 Show this help.
 #
@@ -65,17 +68,36 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-PROG=${0##*/}
+for _pm_lib in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh pm-lists.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-gh-preconditions.sh
+. "$PM_LIB_DIR/pm-gh-preconditions.sh"
+# shellcheck source=../lib/pm-lists.sh
+. "$PM_LIB_DIR/pm-lists.sh"
 
 usage() {
 	cat <<EOF
@@ -99,8 +121,9 @@ Options:
                           Must already exist (run ensure-labels.sh first if
                           it doesn't).
   --remove-label NAME    A label to remove. Repeatable and/or comma-separated.
-  --add-assignee LOGIN   A login to assign. Repeatable.
-  --remove-assignee LOGIN  A login to unassign. Repeatable.
+  --add-assignee LOGIN   A login to assign. Repeatable and/or comma-separated.
+  --remove-assignee LOGIN  A login to unassign. Repeatable and/or
+                          comma-separated.
   --milestone STR        Replace the milestone (must already exist).
   -h, --help             Show this help.
 
@@ -114,116 +137,23 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the number GitHub would echo back. Both used to slip through and
-# surface as a confusing `gh` failure (exit 1) instead of the usage error (exit 2)
-# this script's own header documents. Kept byte-identical to the GitLab siblings'
-# (procedure-glab-issues) so the two families cannot diverge again.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 # ---------------------------------------------------------------------------
 # List accumulators (POSIX sh has no arrays; a newline-separated string is
-# the portable stand-in). Four accumulators need IDENTICAL comma-split +
-# trim behavior, so that parsing is factored into split_csv_list (prints one
-# trimmed, non-empty token per line) and each accumulator gets its own tiny
-# append function — not a single function keyed by a "which list" string
-# argument, which would be a flag parameter switching behavior in disguise.
+# the portable stand-in). All four need IDENTICAL comma-split + trim + append
+# behavior, so all four route through the SAME pair in lib/pm-lists.sh —
+# split_csv_list (tokenize) and csv_accumulate (append, VALUE-RETURNING) —
+# rather than four byte-identical-except-for-the-variable-name append functions.
+#
+# csv_accumulate RETURNS the new list on stdout instead of mutating a global
+# chosen by a name argument: `ADD_LABELS=$(csv_accumulate "$ADD_LABELS" "$2")`
+# keeps the target variable at the call site, where the reader can see it, and
+# needs no `eval` and no string-keyed dispatcher — the pattern this codebase's
+# own conventions reject.
 # ---------------------------------------------------------------------------
 ADD_LABELS=""
 REMOVE_LABELS=""
 ADD_ASSIGNEES=""
 REMOVE_ASSIGNEES=""
-
-# split_csv_list VALUE — print each comma-separated, trimmed, non-empty
-# token in VALUE on its own line (stdout). Read via a heredoc (never piped
-# into a `while read`), so the caller's loop stays in the CURRENT shell and
-# can mutate its own accumulator — piping into the loop would run it in a
-# subshell and lose that mutation on exit.
-split_csv_list() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		printf '%s\n' "$tok"
-	done
-}
-
-add_add_label() {
-	while IFS= read -r tok; do
-		if [ -z "$ADD_LABELS" ]; then ADD_LABELS=$tok
-		else ADD_LABELS="$ADD_LABELS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_remove_label() {
-	while IFS= read -r tok; do
-		if [ -z "$REMOVE_LABELS" ]; then REMOVE_LABELS=$tok
-		else REMOVE_LABELS="$REMOVE_LABELS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_add_assignee() {
-	while IFS= read -r tok; do
-		if [ -z "$ADD_ASSIGNEES" ]; then ADD_ASSIGNEES=$tok
-		else ADD_ASSIGNEES="$ADD_ASSIGNEES
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_remove_assignee() {
-	while IFS= read -r tok; do
-		if [ -z "$REMOVE_ASSIGNEES" ]; then REMOVE_ASSIGNEES=$tok
-		else REMOVE_ASSIGNEES="$REMOVE_ASSIGNEES
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -240,10 +170,10 @@ while [ $# -gt 0 ]; do
 		--issue)            need_arg "$1" "${2:-}"; OPT_ISSUE=$2; shift ;;
 		--title)            need_arg "$1" "${2:-}"; OPT_TITLE=$2; shift ;;
 		--body-file)        need_arg "$1" "${2:-}"; OPT_BODY_FILE=$2; shift ;;
-		--add-label)        need_arg "$1" "${2:-}"; add_add_label "$2"; shift ;;
-		--remove-label)     need_arg "$1" "${2:-}"; add_remove_label "$2"; shift ;;
-		--add-assignee)     need_arg "$1" "${2:-}"; add_add_assignee "$2"; shift ;;
-		--remove-assignee)  need_arg "$1" "${2:-}"; add_remove_assignee "$2"; shift ;;
+		--add-label)        need_arg "$1" "${2:-}"; ADD_LABELS=$(csv_accumulate "$ADD_LABELS" "$2"); shift ;;
+		--remove-label)     need_arg "$1" "${2:-}"; REMOVE_LABELS=$(csv_accumulate "$REMOVE_LABELS" "$2"); shift ;;
+		--add-assignee)     need_arg "$1" "${2:-}"; ADD_ASSIGNEES=$(csv_accumulate "$ADD_ASSIGNEES" "$2"); shift ;;
+		--remove-assignee)  need_arg "$1" "${2:-}"; REMOVE_ASSIGNEES=$(csv_accumulate "$REMOVE_ASSIGNEES" "$2"); shift ;;
 		--milestone)        need_arg "$1" "${2:-}"; OPT_MILESTONE=$2; shift ;;
 		-h|--help)          usage; exit 0 ;;
 		--)                 shift; break ;;
@@ -279,20 +209,11 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh_cli
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-update-issue.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-update-issue
 
 # ---------------------------------------------------------------------------
 # Build the `gh issue edit` argv as POSITIONAL PARAMETERS — POSIX sh's array
@@ -348,7 +269,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! ISSUE_URL=$("$@" 2>"$TMP_ERR"); then
 	error "gh issue edit failed for issue #$OPT_ISSUE"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

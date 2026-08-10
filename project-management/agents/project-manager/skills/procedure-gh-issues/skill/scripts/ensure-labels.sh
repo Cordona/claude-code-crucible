@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # ensure-labels.sh — opt-in, idempotent creation of PERSISTENT repo labels.
 #
@@ -47,17 +48,36 @@
 # repo write — gate it on the user's explicit opt-in, same as create-issue.sh.
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-PROG=${0##*/}
+for _pm_lib in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh pm-lists.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-gh-preconditions.sh
+. "$PM_LIB_DIR/pm-gh-preconditions.sh"
+# shellcheck source=../lib/pm-lists.sh
+. "$PM_LIB_DIR/pm-lists.sh"
 
 usage() {
 	cat <<EOF
@@ -88,55 +108,10 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated directly into `gh api repos/VALUE/...` REST paths below, so
-# this rejects both disallowed characters and dot-segment path traversal
-# (e.g. "o/..", "../r") before that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
-# is_valid_hex_color VALUE — exactly 6 hex digits, no leading '#'. `case`
-# patterns have no {n} quantifier, so the 6 positions are spelled out.
-is_valid_hex_color() {
-	case "$1" in
-		[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
-# add_label VALUE — split VALUE on commas (comma-list support) and append
-# each non-empty, trimmed token as a new line onto $LABELS.
-LABELS=""       # newline-separated (may contain duplicates; deduped below)
-add_label() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		if [ -z "$LABELS" ]; then LABELS=$tok
-		else LABELS="$LABELS
-$tok"
-		fi
-	done
-}
+# Requested labels, newline-separated (may contain duplicates; deduped below).
+# Appended to via csv_accumulate (lib/pm-lists.sh), which comma-splits and trims
+# each occurrence, so `--label "a, b" --label c` and `--label a,b,c` are the same.
+LABELS=""
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -148,7 +123,7 @@ OPT_DESCRIPTION=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--repo)        need_arg "$1" "${2:-}"; OPT_REPO=$2; shift ;;
-		--label)       need_arg "$1" "${2:-}"; add_label "$2"; shift ;;
+		--label)       need_arg "$1" "${2:-}"; LABELS=$(csv_accumulate "$LABELS" "$2"); shift ;;
 		--color)       need_arg "$1" "${2:-}"; OPT_COLOR=$2; shift ;;
 		--description) need_arg "$1" "${2:-}"; OPT_DESCRIPTION=$2; shift ;;
 		-h|--help)     usage; exit 0 ;;
@@ -172,27 +147,18 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions — fail CLOSED: this is an outward, persistent repo write.
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh_cli
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-ensure-labels.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-ensure-labels
 
 # ---------------------------------------------------------------------------
 # Look up the repo's actual labels ONCE.
 # ---------------------------------------------------------------------------
 if ! EXISTING_LABELS=$(gh api "repos/${OPT_REPO}/labels" --paginate --jq '.[].name' 2>"$TMP_ERR"); then
 	error "failed to look up labels for repo '$OPT_REPO'"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 
@@ -211,10 +177,7 @@ while IFS= read -r label; do
 	if printf '%s\n' "$SEEN" | grep -Fxq -- "$label"; then
 		continue
 	fi
-	if [ -z "$SEEN" ]; then SEEN="$label"
-	else SEEN="$SEEN
-$label"
-	fi
+	SEEN=$(append_line "$SEEN" "$label")
 
 	if printf '%s\n' "$EXISTING_LABELS" | grep -Fxq -- "$label"; then
 		if [ -z "$EXISTED" ]; then EXISTED="$label"
@@ -241,7 +204,7 @@ $label"
 	else
 		ANY_CREATE_FAILED=1
 		error "failed to create label '$label' in repo '$OPT_REPO'"
-		sed 's/^/  /' "$TMP_ERR" >&2
+		emit_captured_stderr
 	fi
 done <<EOF
 $LABELS

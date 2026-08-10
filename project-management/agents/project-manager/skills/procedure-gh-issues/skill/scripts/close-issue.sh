@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # close-issue.sh — close a GitHub issue, with an optional closing comment
 #                  supplied ONLY as a FILE, never built in shell.
@@ -51,17 +52,34 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-PROG=${0##*/}
+for _pm_lib in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-gh-preconditions.sh
+. "$PM_LIB_DIR/pm-gh-preconditions.sh"
 
 usage() {
 	cat <<EOF
@@ -85,39 +103,6 @@ Exit codes:
   1  gh absent / not authenticated / comment post failed / close failed
   2  usage error
 EOF
-}
-
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the number GitHub would echo back. Both used to slip through and
-# surface as a confusing `gh` failure (exit 1) instead of the usage error (exit 2)
-# this script's own header documents. Kept byte-identical to the GitLab siblings'
-# (procedure-glab-issues) so the two families cannot diverge again.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
 }
 
 is_valid_reason() {
@@ -169,20 +154,11 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh_cli
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-close-issue.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-close-issue
 
 # ---------------------------------------------------------------------------
 # 1. Post the closing comment FIRST, if requested — via --body-file only,
@@ -192,7 +168,7 @@ COMMENT_POSTED=0
 if [ -n "$OPT_COMMENT_FILE" ]; then
 	if ! gh issue comment "$OPT_ISSUE" --repo "$OPT_REPO" --body-file "$OPT_COMMENT_FILE" >/dev/null 2>"$TMP_ERR"; then
 		error "failed to post closing comment on issue #$OPT_ISSUE"
-		sed 's/^/  /' "$TMP_ERR" >&2
+		emit_captured_stderr
 		exit 1
 	fi
 	COMMENT_POSTED=1
@@ -221,7 +197,7 @@ if ! "$@" >/dev/null 2>"$TMP_ERR"; then
 	if [ "$COMMENT_POSTED" -eq 1 ]; then
 		warn "the closing comment was ALREADY POSTED — retry WITHOUT --comment-file to avoid posting it twice"
 	fi
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

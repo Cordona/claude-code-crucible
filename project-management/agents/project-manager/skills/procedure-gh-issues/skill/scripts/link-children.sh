@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # link-children.sh — wire child issues under an epic by appending a
 #                     task-list, WITHOUT ever constructing the epic body in
@@ -53,17 +54,36 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-PROG=${0##*/}
+for _pm_lib in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh pm-lists.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-gh-preconditions.sh
+. "$PM_LIB_DIR/pm-gh-preconditions.sh"
+# shellcheck source=../lib/pm-lists.sh
+. "$PM_LIB_DIR/pm-lists.sh"
 
 usage() {
 	cat <<EOF
@@ -91,39 +111,6 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the number GitHub would echo back. Both used to slip through and
-# surface as a confusing `gh` failure (exit 1) instead of the usage error (exit 2)
-# this script's own header documents. Kept byte-identical to the GitLab siblings'
-# (procedure-glab-issues) so the two families cannot diverge again.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -138,10 +125,7 @@ while [ $# -gt 0 ]; do
 		--child)
 			need_arg "$1" "${2:-}"
 			is_positive_int "$2" || { usage >&2; error "--child must be a positive integer, got: $2"; exit 2; }
-			if [ -z "$CHILDREN" ]; then CHILDREN=$2
-			else CHILDREN="$CHILDREN
-$2"
-			fi
+			CHILDREN=$(append_line "$CHILDREN" "$2")
 			shift ;;
 		-h|--help) usage; exit 0 ;;
 		--) shift; break ;;
@@ -162,27 +146,17 @@ is_positive_int "$OPT_EPIC" || { usage >&2; error "--epic must be a positive int
 # ---------------------------------------------------------------------------
 # Tooling preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh_cli
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required to splice the checklist into the epic body)"
-	exit 1
-fi
+require_awk "splice the checklist into the epic body"
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
 # Temp files: the EXIT trap is (re-)armed immediately after EVERY mktemp so a
 # later mktemp failing under `set -e` can never leak an earlier temp file.
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-link-children.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+# init_tmp_err (lib/pm-diag.sh) does that for the FIRST one; the extra files
+# below re-arm it themselves with the full list.
+init_tmp_err pm-link-children
 
 TMP_BODY=$(mktemp "${TMPDIR:-/tmp}/pm-link-children.body.XXXXXX")
 trap 'rm -f "$TMP_ERR" "$TMP_BODY"' EXIT
@@ -193,7 +167,7 @@ trap 'rm -f "$TMP_ERR" "$TMP_BODY"' EXIT
 # ---------------------------------------------------------------------------
 if ! gh issue view "$OPT_EPIC" --repo "$OPT_REPO" --json body --jq '.body // ""' >"$TMP_BODY" 2>"$TMP_ERR"; then
 	error "could not read epic #$OPT_EPIC in repo '$OPT_REPO'"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 
@@ -221,15 +195,9 @@ while IFS= read -r child; do
 	if grep -Eq -- "$CHECK_RE" "$TMP_BODY" 2>/dev/null; then
 		continue
 	fi
-	if [ -z "$SEEN" ]; then SEEN="$child"
-	else SEEN="$SEEN
-$child"
-	fi
+	SEEN=$(append_line "$SEEN" "$child")
 	LINKED_COUNT=$((LINKED_COUNT + 1))
-	if [ -z "$NEW_LINES" ]; then NEW_LINES="- [ ] #$child"
-	else NEW_LINES="$NEW_LINES
-- [ ] #$child"
-	fi
+	NEW_LINES=$(append_line "$NEW_LINES" "- [ ] #$child")
 done <<EOF
 $CHILDREN
 EOF
@@ -300,7 +268,7 @@ mv "$TMP_BODY_NEW" "$TMP_BODY"
 # ---------------------------------------------------------------------------
 if ! gh issue edit "$OPT_EPIC" --repo "$OPT_REPO" --body-file "$TMP_BODY" >/dev/null 2>"$TMP_ERR"; then
 	error "gh issue edit failed for epic #$OPT_EPIC"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 
