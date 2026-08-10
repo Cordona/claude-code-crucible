@@ -17,15 +17,20 @@ context to execute. Read the essentials first.
   under `~/.claude/crucible/…` regardless of the source repo's name. Run `crucible-hub install`
   without `--apply` first, always — that's the dry run.
 - **How work is done — four separate, independently-gated procedures, not one:**
-  `flow-implementation` (build → `{tech}`-developer + `{tech}`-reviewer ONLY, never a lens →
-  bounded fix loop: round-1 fix, round-2 verify, stop; a 3rd round only on an open CRITICAL/HIGH),
-  `flow-review` (the lens swarm, **on-demand only, never automatic** — derives its roster from the
-  diff, persists a durable trackable report, runs no fix loop itself), `flow-spec` (cross-repo /
-  multi-tech-pair contract, gated before any parallel build), `flow-testing` (tests, last, only on
-  the human's explicit confirmation the implementation is right — written by `tests-developer`, never
-  the developer). Verdicts: CHANGES_REQUIRED (any open CRITICAL/HIGH) / APPROVED_WITH_FOLLOWUPS
-  (only MED/LOW) / APPROVED. `flow-orchestration` is retired — this is not a variant of it, it's
-  its replacement.
+  `flow-implementation` (build → `{tech}`-developer alone first when a usable live source exists —
+  Validate-First, reviewer deferred until after live validation + `flow-testing` — or together with
+  the `{tech}`-reviewer immediately otherwise (no usable source, or a security-sensitive path —
+  Pair-First; the choice is open judgment, see that skill's §1, not a strict binary); never a lens →
+  bounded fix loop: round-1 fix,
+  round-2 verify, stop; a 3rd round only on an open CRITICAL/HIGH), `flow-review` (the lens swarm,
+  **on-demand only, never automatic** — derives its roster from the diff, persists a durable
+  trackable report, runs no fix loop itself, and reviews only once the reviewer pass has actually
+  closed), `flow-spec` (cross-repo / multi-tech-pair contract, gated before any parallel build),
+  `flow-testing` (tests, only on the human's explicit confirmation the implementation is right —
+  which can now be a live-validation confirmation on a Validate-First build, so tests run before the
+  deferred reviewer rather than always last — written by `tests-developer`, never the developer).
+  Verdicts: CHANGES_REQUIRED (any open CRITICAL/HIGH) / APPROVED_WITH_FOLLOWUPS (only MED/LOW) /
+  APPROVED. `flow-orchestration` is retired — this is not a variant of it, it's its replacement.
 - **Commit discipline:** author the message to a file; **expose it verbatim before committing**;
   commit **signed** with your own public identity (never a work/client email).
 - **Jira cycle rhythm:** ground-truth probe (read-only) → gate → build + offline mock tests →

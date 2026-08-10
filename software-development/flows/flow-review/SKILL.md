@@ -20,6 +20,8 @@ The procedure the primary agent follows for a deep, multi-lens review. **Bound o
 
 If none of those is an explicit ask, don't propose this skill unprompted beyond noting in `flow-implementation`'s executive summary that it's available.
 
+**Rule, not observation, when `flow-implementation` used its Validate-First path (see that skill's §2):** bind this skill only after its deferred `{tech}-reviewer` pass (that skill's §4d) has closed. If asked to review a Validate-First result earlier than that — a live-validated, tested, but not-yet-correctness-reviewed diff — say so plainly, and either finish that deferred pass first or seat the `{tech}-reviewer` here explicitly (§3).
+
 ---
 
 ## 1. Brief yourself
@@ -43,11 +45,11 @@ For **cross-repo work**, ask this ONCE for the whole effort, not once per repo �
 
 ---
 
-## 3. Roster — the lens swarm, derived from the confirmed scope, correctness NOT re-seated
+## 3. Roster — the lens swarm, derived from the confirmed scope, correctness NOT re-seated once its pass has closed
 
 You already know the available subagents from your Task tool. Select dynamically; never from a hardcoded list.
 
-**The `{tech}-reviewer` is NOT re-seated here.** It already ran as part of `flow-implementation`'s correctness floor. This procedure adds the quality lenses on top of already-correctness-reviewed code — it does not re-check correctness. If the human specifically wants a fresh correctness pass too, say so and seat it explicitly, but that's the exception, not this skill's default shape.
+**The `{tech}-reviewer` is NOT re-seated here — CONDITIONAL on it having actually run.** For a `flow-implementation` Pair-First result, it has, by construction — it ran in the same round as the developer. For a Validate-First result, confirm its deferred pass (that skill's §4d) has actually closed before assuming this; §0 above states the rule. If it has not closed, this is not "the exception" to route around — it is a missing correctness floor, full stop: say so, and either send the effort back to close that pass first, or seat the `{tech}-reviewer` here explicitly. Only once correctness is confirmed does this procedure add quality lenses on top of it without re-checking it. If the human specifically wants a fresh correctness pass too even on an already-reviewed result, say so and seat it explicitly, but that's a separate, deliberate ask, not this skill's default shape.
 
 **Read, don't audition.** For each `lens-*`, read the **Applicability** it declares in its own description and reason the change against it. That declaration is free. **Never invoke a lens to ask whether it wants a seat.** Where its declaration genuinely doesn't settle it, put it in the plan's **Uncertain** block and let the user resolve it at the gate.
 
@@ -167,7 +169,7 @@ When the effort spans multiple repos/tech stacks, this procedure runs **once per
 - **Never fires automatically** — not from state, not from build size, not as an auto-followup. Only an explicit human ask (§0).
 - **Scope is confirmed explicitly via `AskUserQuestion`, never inferred from the request wording** — the one exception is a re-review of prior findings, already scoped by the artifact it checks (§2). This exists specifically to prevent an ambiguous request silently becoming a full-codebase review.
 - **Never dispatch the swarm without approval of the roster** (§4).
-- **The roster starts from the lens swarm only — the `{tech}-reviewer` is not re-seated here** (§3).
+- **The roster starts from the lens swarm only — the `{tech}-reviewer` is not re-seated here, CONDITIONAL on its pass having actually closed.** If it has not — a Validate-First result reviewed before its deferred pass — this is a missing correctness floor, not the exception to route around: seat it here explicitly, or send the effort back to close that pass first (§0/§3).
 - **Never price the review** — neither gate (scope or roster) asks about tokens or time (§2/§4).
 - **Reviewers are read-only** and have no shell; materialize the diff for them (§5a).
 - **This skill never runs a fix loop** — findings are handed to `flow-implementation` (§6).
@@ -175,4 +177,4 @@ When the effort spans multiple repos/tech stacks, this procedure runs **once per
 - **Cross-repo work produces N separate artifacts, never one merged document; scope is confirmed once for the whole effort** (§7).
 
 ---
-*Procedure Version: 1.1 — added the mandatory, explicit scope confirmation (§2) before roster derivation: scope was previously inferred from the request wording alone, which risked an ambiguous "review this" silently becoming a full-codebase audit. Prompted by field feedback flagging that gap. All subsequent sections renumbered (old §2→§3 Roster, §3→§4 Gate, §4→§5 Dispatch/merge/persist/expose, §5→§6 Does-not-fix, §6→§7 Cross-repo). Split out of the retired `flow-orchestration` as the on-demand-only half. The tech-pair build lives in `flow-implementation`. The durable-artifact persistence mechanism is script-backed (§5c): `review-create.sh`, `review-add-round.sh`, `review-update-status.sh`, and `render-md.sh`.*
+*Procedure Version: 1.4 — round-2 lens verify (after v1.3's security fix) closed the residual findings: §3's heading and Invariant now state the "not re-seated" rule as explicitly conditional on the `{tech}-reviewer`'s pass having closed, matching the body's own wording, not just asserting it unconditionally (CLEAN-009); dropped a colliding "the exception" label that §0 and §3 had each claimed for a different case (CLEAN-010). v1.3 rewrote §0's self-contradicting note into a firm rule and made §3's "not re-seated" claim conditional (SEC-005). v1.2 added the §0 orientation note on `flow-implementation`'s roster split. v1.1 added the mandatory, explicit scope confirmation (§2). Full per-version rationale: `git log -p` on this file. Split out of the retired `flow-orchestration` as the on-demand-only half; the tech-pair build lives in `flow-implementation`. The durable-artifact persistence mechanism is script-backed (§5c): `review-create.sh`, `review-add-round.sh`, `review-update-status.sh`, `render-md.sh`.*

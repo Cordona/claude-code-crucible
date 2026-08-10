@@ -41,16 +41,38 @@ skill also owns the consent + reviewed preconditions below, not just the mechani
 1. **Consent** — the user explicitly asked for THIS commit/push/tag in this conversation. Neither a
    review nor an identity check can supply it. **If you are unsure whether they asked — they did
    not.** (The hard invariant below.)
-2. **Reviewed** — changes **you** made that `git status` shows uncommitted have been through **at
-   least `flow-implementation`'s tech-pair loop** (the developer + `{tech}-reviewer` correctness
-   pass — NOT necessarily a `flow-review` lens swarm, which only ever runs on a separate, explicit
-   ask and is never a precondition for committing). This is the ONE state-based check surviving
-   from the previous design: it does not re-run anything and costs nothing beyond asking. If you
-   cannot positively recall this diff going through `flow-implementation` this session, **say so
-   and ask the human explicitly** — "these changes haven't been through the tech-pair review yet;
-   commit anyway, or run `flow-implementation`'s review-only variant first?" — rather than assuming
-   either answer. Pre-existing dirty work you did not author is not yours to gate on; say it is
-   there and leave it alone.
+2. **Reviewed** — changes **you** made that `git status` shows uncommitted have cleared
+   `flow-implementation`'s correctness floor for this diff (NOT necessarily a `flow-review` lens
+   swarm, which only ever runs on a separate, explicit ask and is never a precondition for
+   committing). **This is NOT the same question as "has this effort touched `flow-implementation` at
+   all."** `flow-implementation`'s Validate-First path can be live-validated and fully
+   `flow-testing`-covered while its deferred `{tech}-reviewer` pass (that flow's §4d) has genuinely
+   not run yet — that diff has NOT cleared the floor, no matter how much scrutiny the live validation
+   and the test suite gave it. What "cleared" means depends on which of `flow-implementation`'s two
+   correctness-floor mechanisms applies to this diff:
+   - **A stack with a `{tech}-reviewer`** (Validate-First or Pair-First) — cleared only once that
+     reviewer's own gating findings have closed for this diff.
+   - **No `{tech}-reviewer` exists for the stack** (`flow-implementation` §6 Direct implementation,
+     or any framework-prose change — `CLAUDE.md`, a `SKILL.md`, an agent definition) — cleared once
+     that flow's **execution-test** floor (§2/§6.3 there) has run against this diff and found nothing
+     it couldn't comply with. Do not read "no reviewer exists" as "this precondition doesn't apply" —
+     it applies via this branch instead.
+
+   **A single diff spanning BOTH classes clears only when EACH class has cleared its own mechanism** —
+   never one branch standing in for the whole diff. A working tree mixing reviewer-backed code with
+   framework-prose changes (a common shape in this repo) does not satisfy this precondition just
+   because the prose half passed an execution test; the code half still needs its own `{tech}-reviewer`
+   pass closed. If `git-operator`'s atomic split (G2) separates these into different commits, check
+   each commit's own class — do not let one commit's cleared floor vouch for another's.
+
+   This is the ONE state-based check surviving from the previous design: it does not re-run anything
+   and costs nothing beyond asking. If you cannot positively recall the applicable floor having
+   actually closed for this diff, **say so and ask the human explicitly, naming which floor is
+   outstanding** — for example: *"these changes haven't cleared the `{tech}-reviewer` pass yet — they're
+   live-validated and tested, but the deferred reviewer hasn't closed; commit anyway, or finish that
+   pass first?"*, or *"these changes haven't had an execution test run against them yet; commit
+   anyway, or run one first?"* — rather than assuming either answer. Pre-existing dirty work you did
+   not author is not yours to gate on; say it is there and leave it alone.
 3. **No open gating finding** — the merged verdict is not `CHANGES_REQUIRED`. **"It has been
    reviewed" is not "it passed."** Open CRITICAL/HIGH findings do not clear a commit; they document
    one. Shipping against an ignored report is worse than shipping unreviewed — it manufactures a
@@ -286,4 +308,4 @@ likewise a new invocation.
   from the delegation; ask if missing (Pull-Request Path / Merge-Request Path).
 
 ---
-*Procedure Version: 1.2 — the on-demand VCS / git-operations workflow, extracted from CLAUDE.md §1's VCS block so the operating contract carries only the trigger + the invariant checklist. The git counterpart of `flow-project-management`. Conventions live in `standard-git-commit` / `-branch` / `-tag` / `-pr` (the last covering GitLab MR bodies too); mechanics in `procedure-git-ops` / `procedure-gh-pr` / `procedure-glab-mr`; the signing identity in `procedure-git-identity`; the accounts in `procedure-github-auth` / `procedure-gitlab-auth`. **Pull requests belong here** (moved from the project-manager — PR work is development work, not backlog authoring; see the Pull-Request Path), **and so do GitLab merge requests** (see the Merge-Request Path, added in 1.2). This skill is the orchestration procedure only.*
+*Procedure Version: 1.5 — a goal-conformance review found G1.2 resolved the correctness floor once per DIFF, but a diff can mix reviewer-backed code with framework-prose changes with no {tech}-reviewer at all — so an orchestrator could clear the whole diff on the execution-test branch while the code half never got a {tech}-reviewer pass (SEC-015, MEDIUM). Added the per-class requirement: each class in a mixed diff must clear its own mechanism, never one branch vouching for the whole. Version 1.4 — round 2 of the same review found the 1.3 fix over-corrected: requiring the `{tech}-reviewer` to have "actually closed" made precondition 2 unsatisfiable for the whole class of changes with no `{tech}-reviewer` at all — `flow-implementation`'s Direct-implementation variant and every framework-prose change, this file included (SEC-012/COMPAT-010, both MEDIUM, found independently). Added the second branch: for that class, the precondition is satisfied by `flow-implementation`'s execution-test floor having run and closed instead. Version 1.3 — a compatibility review of `flow-implementation`'s new Validate-First path found G1.2's "Reviewed" precondition equated "touched `flow-implementation`" with "the `{tech}-reviewer` ran" — true when that flow only had one path, false in Validate-First's new window where a diff is live-validated and fully `flow-testing`-covered but the deferred reviewer pass has not closed. This was the framework's own stated sole surviving safety check reading as satisfied for correctness-unreviewed code (COMPAT-007, HIGH). Reworded G1.2 to require the `{tech}-reviewer` pass to have actually CLOSED, independent of how much other scrutiny (live validation, tests) the diff already received. Version 1.2 was the on-demand VCS / git-operations workflow, extracted from CLAUDE.md §1's VCS block so the operating contract carries only the trigger + the invariant checklist. The git counterpart of `flow-project-management`. Conventions live in `standard-git-commit` / `-branch` / `-tag` / `-pr` (the last covering GitLab MR bodies too); mechanics in `procedure-git-ops` / `procedure-gh-pr` / `procedure-glab-mr`; the signing identity in `procedure-git-identity`; the accounts in `procedure-github-auth` / `procedure-gitlab-auth`. **Pull requests belong here** (moved from the project-manager — PR work is development work, not backlog authoring; see the Pull-Request Path), **and so do GitLab merge requests** (see the Merge-Request Path, added in 1.2). This skill is the orchestration procedure only.*

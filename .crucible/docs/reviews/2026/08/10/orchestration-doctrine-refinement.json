@@ -1,0 +1,1041 @@
+{
+  "schema_version": "1.0",
+  "id": "orchestration-doctrine-refinement",
+  "repo": "claude-code-crucible",
+  "created": "2026-08-10",
+  "last_updated": "2026-08-10",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-08-10",
+      "reviewers": [
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-consistency-reviewer",
+        "lens-clean-code-reviewer"
+      ]
+    },
+    {
+      "round": 2,
+      "generated": "2026-08-10",
+      "reviewers": [
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-consistency-reviewer",
+        "lens-clean-code-reviewer"
+      ]
+    },
+    {
+      "round": 3,
+      "generated": "2026-08-10",
+      "reviewers": [
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-consistency-reviewer",
+        "lens-clean-code-reviewer"
+      ]
+    },
+    {
+      "round": 4,
+      "generated": "2026-08-10",
+      "reviewers": [
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer"
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "resolved": 67,
+    "new": 0,
+    "ack": 0
+  },
+  "findings": [
+    {
+      "id": "SEC-001",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "fail-open",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-testing's gate-skip exception rested on one unverifiable self-asserted precondition with no default-deny",
+      "fix": "replaced with four enumerated conjunctive preconditions plus an explicit fail-closed default",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "broken-access-control",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:77-88"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-implementation's §3 plan never disclosed the mid-flow flow-testing dispatch it was claimed to pre-authorize",
+      "fix": "§3 plan template now names the seats and loop for the mid-flow flow-testing dispatch",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-003",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "info-leak",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:110",
+        "software-development/flows/flow-testing/SKILL.md:143"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "interim reports could read as build-done while the {tech}-reviewer pass was still outstanding",
+      "fix": "mandatory verbatim outstanding-reviewer statement at every interim checkpoint",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-004",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "broken-access-control",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:110"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the live-validation confirmation could be self-supplied by the orchestrator instead of the human",
+      "fix": "confirmation must now be the human's own explicit in-turn statement; a probe only gathers evidence",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-005",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "fail-open",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:52"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-review asserted the {tech}-reviewer already ran unconditionally, false for an open Validate-First deferral",
+      "fix": "made the not-re-seated rule explicitly conditional on the deferred pass having closed",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-006",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:114"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "no durable marker for the outstanding deferred-reviewer obligation across the flow-testing dispatch",
+      "fix": "added carried-obligation invariants restating the outstanding reviewer at every subsequent report, plus a fail-closed terminal check in flow-git-operations",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-007",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:110"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the live-validation iteration loop was unbounded, unlike every other loop in the framework",
+      "fix": "capped at 3 rounds of iteration before re-presenting the gate",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-008",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:36"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the live-testability judgment had no fail-closed default; a weak check could qualify a task for deferral",
+      "fix": "added on any doubt, recommend Pair-First with named weak-check examples",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-009",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "security-consistency",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:6"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "stale tests-are-last text reinforced the premature-done misread SEC-003 depends on",
+      "fix": "retitled H1 and rationale to reflect confirmation-gated, not chronologically-last, tests",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-001",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-break",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md:20"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "review-core cited flow-implementation's old §4c for the diff-artifact rule after renumbering",
+      "fix": "repointed citation to §4d",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-007",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:44-53"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the commit gate's Reviewed precondition equated touched-flow-implementation with reviewer-ran, false in Validate-First's new window",
+      "fix": "G1.2 now requires the {tech}-reviewer pass to have actually closed, independent of other scrutiny received",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-002",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:79"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "an invariant called both floors the fixed un-derived roster of their flow, contradicting the file's own softened roster claim",
+      "fix": "reworded to fixed seats, not fixed WHEN those seats run",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-005",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:66"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the unqualified never-dispatch-without-approval invariant didn't reference the new gate-skip exception stated elsewhere",
+      "fix": "added the carve-out reference pointing at flow-testing's documented exception",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-004",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the gate-skip exception claimed the Validate-First plan names flow-testing as the next step, but the plan template didn't list it",
+      "fix": "flow-implementation §3's template now carries the seats and loop line for this dispatch",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-008",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:143"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-testing's exit summary and invariants carried no hand-back-to-flow-implementation reminder for the case-3 path",
+      "fix": "added a mandatory disclosure plus a matching invariant",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-006",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "README.md:213-223"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "README's how-a-request-flows still described unconditional dev-reviewer and tests-always-last",
+      "fix": "rewrote steps 2 and 4 to describe both paths",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-003",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:47"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "§3 heading still read MANDATORY before ANY dispatch directly above a documented exception",
+      "fix": "softened heading to MANDATORY, one documented exception",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md:20"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "same stale §4c citation independently found by the compatibility lens",
+      "fix": "repointed to §4d",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:48"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "Shape as a proper noun collided with shape already used generically throughout the framework's prose",
+      "fix": "renamed to Validate-First/Pair-First throughout",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:6"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-testing's H1 and last rationale contradicted its own new §0 trigger 3",
+      "fix": "retitled both",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "README.md:241"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "README's Entry Modes mirror and flow prose weren't updated to match CLAUDE.md's new doctrine",
+      "fix": "updated the mirror row and flow steps",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:174"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "opaque letter labels were a new fourth naming pattern alongside this framework's descriptive-name conventions",
+      "fix": "renamed to descriptive hyphenated Title-Case names matching the repo's existing pattern",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-006",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "dto-shape",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:77"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "new gate-plan bullets used pipe for placeholder alternatives where every other template in the repo uses slash",
+      "fix": "changed to slash",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-007",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md:40"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "review-core's zero-tests default assumption needed a Validate-First carve-out since that path's correctness pass now runs after flow-testing",
+      "fix": "added the explicit carve-out",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-008",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "CLAUDE.md:31"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "CLAUDE.md's rewritten IMPLEMENT row abandoned the arrow-chained pipeline format every other row uses",
+      "fix": "restored the arrow-chain format",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-001",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:40"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the defers-WHEN-never-WHETHER rule was restated 3x per file in normative prose",
+      "fix": "reduced to one canonical normative site per file plus its expected invariant restatement",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-002",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "naming",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:50"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "Shape A/B needed an inline gloss at nearly every use, evidence of a weak name",
+      "fix": "renamed to self-describing Validate-First/Pair-First",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-003",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "coupling",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:30"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-testing claimed its roster was the same shape as flow-implementation §2, false once §2 became two paths",
+      "fix": "rewrote as a contrast rather than an inherited definition",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-004",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "redundant-comment",
+      "locations": [
+        "CLAUDE.md:56",
+        "CLAUDE.md:79",
+        "CLAUDE.md:80"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "diff-relative changelog phrasing (now/no-longer/rather-than) sat in normative prose with no footer for a reader to resolve now against",
+      "fix": "restated in present tense across CLAUDE.md/README/flow-testing",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-005",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "kiss",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:20"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the re-entry sentence restated one rule three times in one paragraph",
+      "fix": "trimmed to one rule plus its reason plus its consequence",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-006",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "naming",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:6"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "four headings asserted rules their own bodies revoked",
+      "fix": "retitled all four to match their bodies",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-007",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "kiss",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:23"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-review's added note self-contradicted within one sentence pair and left an ordering case unhandled",
+      "fix": "replaced with a single firm rule covering the unhandled case",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CLEAN-008",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "file-ordering",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:106"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the conditional detour was structurally one level too low relative to its dispatch-only siblings",
+      "fix": "named the detour in the section heading instead of silently absorbing it",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-010",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "security-consistency",
+      "locations": [
+        "CONTINUATION.md:19-28"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the agent-onboarding doc still stated the pre-change doctrine (reviewer always immediate, tests always last)",
+      "fix": "updated to name the Validate-First/Pair-First split and the new tests-can-precede-reviewer rule"
+    },
+    {
+      "id": "SEC-011",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "broken-access-control",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:80"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the pre-authorized flow-testing dispatch's seats/loop were disclosed but not its test scope",
+      "fix": "added a Test scope field to the §3 plan template for Validate-First"
+    },
+    {
+      "id": "SEC-012",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "fail-open",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:44"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "tightening the Reviewed precondition to require a closed {tech}-reviewer pass made it unsatisfiable for framework-prose/DIRECT-mode changes, which have no reviewer at all",
+      "fix": "added the execution-test-floor branch as the alternate way to satisfy the precondition for that class of change"
+    },
+    {
+      "id": "COMPAT-009",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:41",
+        "README.md:233-234"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the commit-gate tightening in flow-git-operations didn't propagate to its two always-loaded mirrors, which still stated the looser precondition",
+      "fix": "reworded both mirrors to match the corrected precondition"
+    },
+    {
+      "id": "COMPAT-010",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:52"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "same underlying gap as SEC-012, found independently: the tightened absolute wording made precondition 2 unsatisfiable for the no-reviewer class of change",
+      "fix": "added the execution-test-floor branch"
+    },
+    {
+      "id": "CONS-009",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "CLAUDE.md:41",
+        "README.md:234"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "same stale gate-precondition mirrors independently found by the compatibility lens",
+      "fix": "reworded both to match the corrected owner"
+    },
+    {
+      "id": "CONS-010",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:48"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "§2 said the deferred reviewer joins later in §4c, but the reviewer actually joins at §4d",
+      "fix": "corrected the citation"
+    },
+    {
+      "id": "CONS-011",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the new four-precondition block used bare §4a/§4b/§4c refs, which per this repo's own citation rule resolve to this file's own distinct §4a/§4b/§4c, not flow-implementation's",
+      "fix": "qualified all three references to explicitly name flow-implementation"
+    },
+    {
+      "id": "CONS-012",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:75"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the Recommended-path gate bullet had no omission rule for the review-only/Direct variants, unlike its sibling Spec bullet",
+      "fix": "added the matching omission rule"
+    },
+    {
+      "id": "CLEAN-009",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "naming",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:48"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "§3's heading and invariant still stated the not-re-seated rule unconditionally even though the body was made conditional",
+      "fix": "carried the condition into both the heading and the invariant"
+    },
+    {
+      "id": "CLEAN-010",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:23"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the exception label was claimed by two different cases one section apart, §0 and §3",
+      "fix": "dropped §0's label, letting §3 own naming its own cases"
+    },
+    {
+      "id": "CLEAN-011",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming",
+      "locations": [
+        "CLAUDE.md:66",
+        "software-development/flows/flow-testing/SKILL.md:57"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "one concept had three different vocabularies across three files, one of which negated another",
+      "fix": "standardized on gate is pre-satisfied everywhere the concept appears"
+    },
+    {
+      "id": "CLEAN-012",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "kiss",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:47"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "G1.2 embedded a bracketed editorial directive inside the quoted line the agent is meant to speak verbatim",
+      "fix": "split into two plain example phrasings instead of a nested bracketed insert"
+    },
+    {
+      "id": "CLEAN-013",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "redundant-comment",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:213",
+        "software-development/flows/flow-testing/SKILL.md:173"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "version footers had become stacked, unbounded review changelogs citing unresolvable finding IDs",
+      "fix": "trimmed each footer to the current version's rationale plus a pointer to git history"
+    },
+    {
+      "id": "CLEAN-014",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "kiss",
+      "locations": [
+        "README.md:213-219"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "README never named the two paths, so a reader met Validate-First/Pair-First as undefined proper nouns elsewhere",
+      "fix": "named both paths and split the fork into sub-bullets"
+    },
+    {
+      "id": "SEC-013",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:38-46"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the enriched live-testability signals gave quotable justification for Validate-First on security-sensitive code, where live validation only proves the happy path and can't catch an auth bypass or fail-open error",
+      "fix": "added an explicit standing case: auth/crypto/secrets/untrusted-input paths recommend Pair-First regardless of other signals"
+    },
+    {
+      "id": "SEC-014",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "security-consistency",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:206"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "flow-implementation's own Invariants block carried no bullet for the flow-testing-always-gates rule, unlike its two sibling files",
+      "fix": "added the matching invariant bullet"
+    },
+    {
+      "id": "COMPAT-011",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:222"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the v1.4 footer omitted the §1 live-testability rewrite from its list of what changed",
+      "fix": "v1.5 footer now describes the §1 collapse and security carve-out explicitly"
+    },
+    {
+      "id": "COMPAT-012",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        ".crucible/docs/reviews/2026/08/10/orchestration-doctrine-refinement.json"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the persisted artifact's round-1/2 findings describe a gate-skip mechanism since deliberately removed, with no supersession marker, risking a future re-review reading the reversal as a regression",
+      "fix": "the supersession is recorded in the flow-implementation v1.5 and flow-testing v2.5 SKILL.md footers, which explicitly name the superseded findings and mechanism; the JSON schema has no free-text artifact-level note field to duplicate this in"
+    },
+    {
+      "id": "COMPAT-013",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:48"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the name-the-source instruction sat after the Pair-First signals, reading as if it also applied to the no-live-source branch",
+      "fix": "split into per-branch instructions: name the source for Validate-First, state why not for Pair-First"
+    },
+    {
+      "id": "COMPAT-014",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:56"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "a bare §3 citation for flow-testing's gate violated this file's own citation-qualification rule",
+      "fix": "qualified as flow-testing §3"
+    },
+    {
+      "id": "CONS-013",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:46"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "Pair-First's definition (no live source) didn't cover the new case where a live source exists but is destructive/slow/security-sensitive",
+      "fix": "widened the definition and the gate template's Pair-First branch to no usable live source"
+    },
+    {
+      "id": "CONS-014",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "CLAUDE.md:56"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "same bare §3 citation independently found by the compatibility lens",
+      "fix": "qualified as flow-testing §3"
+    },
+    {
+      "id": "CONS-015",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:122"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "two §3 tokens two clauses apart pointed at different documents (flow-testing's vs this file's own)",
+      "fix": "disambiguated both references explicitly by name"
+    },
+    {
+      "id": "CONS-016",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:47"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the gate heading's added NO exceptions qualifier was inconsistent with every sibling gate heading in the repo, which name only the gated object",
+      "fix": "reverted heading to MANDATORY before ANY dispatch; the body and invariant already carry the no-exceptions force"
+    },
+    {
+      "id": "CONS-017",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:43"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the negative signal list lacked the same illustrative-not-sufficient hedge the positive list had",
+      "fix": "resolved by collapsing the mirrored list into one hedged list plus a closing inverse sentence, per CLEAN-015"
+    },
+    {
+      "id": "CLEAN-015",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:43"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the two mirrored bulleted signal lists read as a pro/con scorecard, the exact tally-reasoning the open-judgment framing was meant to prevent",
+      "fix": "collapsed to one list plus a single closing sentence covering the inverse and the security carve-out"
+    },
+    {
+      "id": "CLEAN-016",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:100",
+        "software-development/flows/flow-testing/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "a same-section restatement ten lines from its source, and three consecutive sentences asserting one absolute in flow-testing §3",
+      "fix": "trimmed both to a single statement plus a pointer"
+    },
+    {
+      "id": "CLEAN-017",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "dry",
+      "locations": [
+        "CLAUDE.md:79"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the gate-always-fires rule was restated three times within one invariant bullet",
+      "fix": "trimmed to one classification sentence"
+    },
+    {
+      "id": "CLEAN-018",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:167"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the version footer cited bare finding IDs unresolvable without knowing the artifact's path",
+      "fix": "replaced with a plain-language gloss, no bare IDs"
+    },
+    {
+      "id": "CLEAN-019",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "redundant-comment",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:222"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the v1.4 footer's all now moot claim misdescribed the still-live test-scope field",
+      "fix": "v1.5 footer now names only the genuinely superseded item"
+    },
+    {
+      "id": "SEC-015",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "fail-open",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "the commit gate's Reviewed precondition resolved once per whole diff, so a diff mixing reviewer-backed code with framework-prose changes could clear on the execution-test branch alone, leaving the code half never seen by a {tech}-reviewer",
+      "fix": "added a requirement that each class in a mixed diff clears its own mechanism independently, never one branch vouching for the whole diff"
+    },
+    {
+      "id": "COMPAT-015",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:99"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "CLAUDE.md's roster summary still stated the retired strict biconditional (live source exists or not), omitting the security-sensitive carve-out and the usable-live-source widening flow-implementation v1.5 shipped",
+      "fix": "replaced the restated criterion with a pointer to flow-implementation §1 as the sole definition, per this file's own not-restating-owners convention"
+    },
+    {
+      "id": "COMPAT-016",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "behavioral-break",
+      "locations": [
+        "README.md:215",
+        "CONTINUATION.md:20"
+      ],
+      "first_seen": "2026-08-10",
+      "problem": "same retired criterion in the human-facing docs",
+      "fix": "widened both to name the usable-source and security-sensitive disjuncts and flag the choice as open judgment"
+    }
+  ]
+}

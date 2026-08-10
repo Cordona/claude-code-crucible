@@ -1,13 +1,13 @@
 ---
 name: flow-testing
-description: The orchestrator's procedure for authoring tests — ONLY on the human's explicit confirmation that a `flow-implementation` result is what they expected. Bind this when the human says the implementation is right and it's time to write tests ("write tests now", "this is right, add tests", "test this"). Never fires automatically after a build or a review — tests are the last step, not a parallel one. Briefs the new `tests-developer` agent — never the `{tech}-developer`, which is structurally restricted from writing tests (build-core) — then runs a MANDATORY `lens-test-quality-reviewer` correctness pass and a bounded fix loop, the same shape as `flow-implementation`'s tech-pair loop. Does NOT build production code (flow-implementation), run a discretionary lens swarm (flow-review), or define test conduct/standards (standard-testing, owned by tests-developer's own binding) or review conduct (review-core / review-report-standards, owned by the reviewer's own binding).
+description: The orchestrator's procedure for authoring tests — ONLY on the human's explicit confirmation that a `flow-implementation` result is what they expected, whether that confirmation is a completed tech-pair loop, a review pass, or live validation of a not-yet-reviewed `flow-implementation` Validate-First result. Bind this when the human says the implementation is right and it's time to write tests ("write tests now", "this is right, add tests", "test this"). Never fires automatically after a build or a review — tests only follow confirmation, never precede it, and (under Validate-First) run before the deferred `{tech}-reviewer`. Briefs the new `tests-developer` agent — never the `{tech}-developer`, which is structurally restricted from writing tests (build-core) — then runs a MANDATORY `lens-test-quality-reviewer` correctness pass and a bounded fix loop, the same shape as `flow-implementation`'s tech-pair loop. Does NOT build production code (flow-implementation), run a discretionary lens swarm (flow-review), or define test conduct/standards (standard-testing, owned by tests-developer's own binding) or review conduct (review-core / review-report-standards, owned by the reviewer's own binding).
 ---
 
-# Flow: Testing (last, on explicit confirmation only)
+# Flow: Testing (on explicit confirmation only)
 
 The procedure the primary agent follows to get tests written **and verified**. **Bound only after the human confirms the implementation is right.**
 
-**Why tests are last, not parallel.** Writing tests against an implementation the human hasn't yet confirmed is right means testing something that might get thrown away — the exact failure this redesign exists to prevent. Deferring tests until confirmation, and handing them to an agent that never wrote the code under test, closes two problems at once: no wasted test-authoring against a wrong direction, and no test suite graded by the same party motivated to make it pass.
+**Why tests follow confirmation, never precede it.** Writing tests against an implementation the human hasn't yet confirmed is right means testing something that might get thrown away — the exact failure this redesign exists to prevent. Deferring tests until confirmation, and handing them to an agent that never wrote the code under test, closes two problems at once: no wasted test-authoring against a wrong direction, and no test suite graded by the same party motivated to make it pass.
 
 **Why this flow reviews, not just writes.** The party motivated to make tests pass and the party who verifies they actually test anything cannot be the same agent — that's why `tests-developer` exists as a separate dispatch from the `{tech}-developer` in the first place. But the same logic applies one level further: `tests-developer` grading its *own* tests (even sincerely, via self-checks) is the identical failure shape, just moved one step over. A real backend session found three defects that self-checking alone missed — a repaired assertion that silently dropped a compound-index key, wired-in collaborators provably never invoked, and a test whose real failure condition drifted — none caught, because nothing independent ever looked. `flow-implementation` never ships a real build without its `{tech}-reviewer`; this flow now holds tests to the same bar.
 
@@ -15,13 +15,19 @@ The procedure the primary agent follows to get tests written **and verified**. *
 
 ## 0. When this applies
 
-**Bind this skill ONLY when the human has explicitly confirmed the implementation matches their intent.** This may be immediately after `flow-implementation`'s tech-pair loop, or only after one or more `flow-review` passes and their fixes — whenever the human actually says so. It does not fire because a build finished, because a review approved, or because it "seems like the natural next step."
+**Bind this skill ONLY when the human has explicitly confirmed the implementation matches their intent.** Three shapes of confirmation are equally valid:
+
+1. Immediately after `flow-implementation`'s tech-pair loop (Pair-First there).
+2. After one or more `flow-review` passes and their fixes.
+3. **After live validation** of a `flow-implementation` Validate-First result whose `{tech}-reviewer` pass hasn't run yet (`flow-implementation` §2/§4c). Here confirmation comes from the human's live-test result, not from a completed correctness review — and `flow-implementation` resumes AFTER this flow to run its deferred `{tech}-reviewer` pass, with the tests just written as its regression net.
+
+It does not fire because a build finished, because a review approved, or because it "seems like the natural next step."
 
 ---
 
 ## 1. Roster — the test pair, and NOTHING else
 
-Fixed by construction, same shape as `flow-implementation` §2: **`tests-developer` writes, `lens-test-quality-reviewer` reviews.** That is the entire roster. No other lens is seated as part of this procedure — a broader audit is `flow-review`'s call, made separately.
+Fixed by construction — unlike `flow-implementation` §2's two-path roster: **`tests-developer` writes, `lens-test-quality-reviewer` reviews.** That is the entire roster. No other lens is seated as part of this procedure — a broader audit is `flow-review`'s call, made separately.
 
 **Test-quality floor (hard).** Whether a test verifies real behavior — not implementation, not noise, not a false-confidence assertion that passes regardless of whether the behavior it names holds — is owned ONLY by `lens-test-quality-reviewer`. This procedure without it ships with ZERO verification coverage: a green suite nobody has confirmed is actually testing anything. There is no variant of this skill that omits the reviewer for a real (non-trivial) test-authoring or test-repair pass.
 
@@ -41,6 +47,8 @@ Fixed by construction, same shape as `flow-implementation` §2: **`tests-develop
 ## 3. The gate (MANDATORY — before ANY dispatch)
 
 **Present the plan and wait for approval before dispatching anything, `tests-developer` or the reviewer.** Proportionate to itself — for a small, single-file test addition this is close to one line.
+
+**This gate ALWAYS fires — including when triggered from `flow-implementation`'s Validate-First path (that skill's §4c).** Approving the Validate-First PLAN at `flow-implementation`'s own §3 gate is NOT itself approval to dispatch `tests-developer` — that plan only discloses that this step exists and roughly what it will do. Every path — Pair-First's tech-pair loop, a `flow-review` pass, or Validate-First's live validation — earns this gate in full, every time, confirmed here when this step is actually reached.
 
 **Emit as LIVE MARKDOWN the terminal renders — never inside a code fence.**
 
@@ -134,6 +142,8 @@ MEDIUM/LOW you do NOT fix are follow-ups — list them, never their own round.
 
 Present: the stack · `tests-developer` · `lens-test-quality-reviewer` · the cycle count · what was written/repaired · the files delivered · the final verdict with issues found vs. resolved · any seat still unsatisfied at the cap · the mutation-verification and repair-vs-authoring answers · **whether a broader lens review (`flow-review`) is available and not yet run** (so the human knows it exists as a next step, without it having auto-fired).
 
+**When triggered via §0 case 3 (Validate-First), lead the summary with an explicit, unambiguous statement: "the production code has NOT yet been correctness-reviewed — `flow-implementation`'s deferred `{tech}-reviewer` pass is still outstanding at its §4d, and this diff is not commit-eligible until it closes."** Then hand control back explicitly: `flow-implementation` resumes now to run that pass. Never let a green test verdict here read as "the build is done."
+
 ---
 
 ## Invariants (NEVER break)
@@ -142,6 +152,8 @@ Present: the stack · `tests-developer` · `lens-test-quality-reviewer` · the c
 - **The roster is the test pair, full stop — never a broader lens.** A lens seat beyond `lens-test-quality-reviewer`, however warranted-looking, is `flow-review`'s call, made separately (§1).
 - **`tests-developer` writes tests. The `{tech}-developer` never does** — enforced structurally in `build-core`, backstopped in `review-core` (a test file in the developer's diff is itself a gating violation, independent of the test's content).
 - **Test-quality floor** — `lens-test-quality-reviewer` is the sole owner of whether a test verifies real behavior; no variant of this skill ships without it for a real test-authoring or repair pass (§1). **This is a floor built into this flow, not a discretionary lens seat** — the same relationship `{tech}-reviewer` has to `flow-implementation`, not the relationship an on-demand lens has to `flow-review`.
+- **§3's gate ALWAYS fires — no trigger, including Validate-First, ever pre-satisfies or skips it.** Approving `flow-implementation`'s plan is never itself approval to dispatch `tests-developer` (§3).
+- **Triggered via §0 case 3, this flow hands control back explicitly** — its own executive summary states the `{tech}-reviewer` pass is still outstanding and that `flow-implementation` resumes now at its §4d, never a bare "tests done" that could be mistaken for "build done" (§6).
 - **Round 1 is guaranteed; the cap is 3.** Hitting the cap unsatisfied is an escalation, never an approval (§5).
 - **The reviewer keeps its seat until ITS gating findings close** — you never declare them resolved (§5).
 - **Never price the review** — the gate asks about scope, never tokens or time (§3).
@@ -152,4 +164,4 @@ Present: the stack · `tests-developer` · `lens-test-quality-reviewer` · the c
 - **A spec, when one governs the work, is handed by path + hint — never pasted verbatim** (§2).
 
 ---
-*Procedure Version: 2.0 — added the mandatory `lens-test-quality-reviewer` correctness pass and bounded fix loop (mirroring `flow-implementation` §4–§5), closing a real gap: this flow previously shipped tests with zero independent verification, relying on `tests-developer`'s own self-check. Prompted by field feedback from a session where self-checked repairs silently weakened three assertions undetected. Test conduct/standards live in `standard-testing` + `tests-developer`'s own Mutation Verification/repair-vs-authoring reporting requirement; review conduct in `review-core` / `review-report-standards`. The restriction on `{tech}-developer` writing tests lives in `build-core`; its backstop in `review-core`.*
+*Procedure Version: 2.5 — a third lens round on v2.4 found the §3 heading's added ", NO exceptions" qualifier was the odd one out against every sibling gate heading in this repo (which name only the gated object, never a strength qualifier) and implied by contrast that other gates admit exceptions; reverted to "MANDATORY — before ANY dispatch", with the no-exceptions force carried entirely by the body and the Invariants bullet, which already stated it unambiguously. Also trimmed three consecutive sentences in §3's body asserting the same absolute down to two. v2.4 — the human explicitly rejected the v2.2/2.3 gate-skip design: §3 must NEVER pre-satisfy or skip for any trigger, full stop. Removed the four-precondition exception entirely; §3 now fires unconditionally on every trigger, including Validate-First. This also retires two review findings against that exception (its citation ambiguity and terminology drift), since the mechanism they described no longer exists. v2.3 had instead hardened that exception rather than removing it. v2.2 renamed "Shape A/B" to "Validate-First"/"Pair-First", retitled the H1/rationale (no longer "last"), fixed a stale roster claim, and added the mandatory not-yet-reviewed disclosure to §6. v2.1 added the third trigger condition (§0). v2.0 added the mandatory `lens-test-quality-reviewer` pass and bounded fix loop. Full per-version rationale: `git log -p` on this file. Test conduct/standards live in `standard-testing` + `tests-developer`'s own Mutation Verification/repair-vs-authoring reporting requirement; review conduct in `review-core` / `review-report-standards`; the restriction on `{tech}-developer` writing tests lives in `build-core`, backstopped in `review-core`.*
