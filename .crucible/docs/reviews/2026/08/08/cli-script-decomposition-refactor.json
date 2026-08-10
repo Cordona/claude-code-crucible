@@ -1,0 +1,938 @@
+{
+  "schema_version": "1.0",
+  "id": "cli-script-decomposition-refactor",
+  "repo": "claude-code-crucible",
+  "created": "2026-08-08",
+  "last_updated": "2026-08-08",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-08-08",
+      "reviewers": [
+        "lens-clean-code-reviewer",
+        "lens-consistency-reviewer",
+        "lens-security-reviewer",
+        "lens-test-quality-reviewer",
+        "lens-compatibility-reviewer"
+      ]
+    },
+    {
+      "round": 2,
+      "generated": "2026-08-08",
+      "reviewers": [
+        "shell-script-reviewer"
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "resolved": 51,
+    "new": 0,
+    "ack": 6
+  },
+  "findings": [
+    {
+      "id": "HUB-001",
+      "reviewer": "lens-compatibility-reviewer, lens-consistency-reviewer, lens-security-reviewer (independently confirmed)",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "category": "consumer-compatibility",
+      "locations": [
+        "deploy/hub/lib/hub-discovery.sh:201-209",
+        "deploy/hub/lib/hub-discovery.sh:302-311"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "hub_disc_sd_baseline classifies specialist skills by the raw basename, which is now the literal \"skill\" for procedure-gh-pr/procedure-glab-mr (the skill-basename unwrap was applied to hub_disc_pm but not to hub_disc_sd_baseline), so hub_sd_vcs_of returns empty, the vcs:github/vcs:gitlab groups are never created, --sd-vcs and the github-vcs/gitlab-vcs component tokens break, both PR/MR skills silently install as unconditional SD baseline, and cross-domain cascade logic misclassifies consumers.",
+      "fix": "Apply hub_disc_pm's identical basename-unwrap (lines 306-310) inside hub_disc_sd_baseline before calling hub_sd_vcs_of; extract the unwrap into one shared helper so a third classification site cannot miss it again.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "COMPAT-002",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "mixed-version-unsafe",
+      "locations": [
+        "deploy/hub/lib/hub-symlink.sh:123-137"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Every already-installed target's symlink still points at the old procedure-X source path; after this move hub_path_state will read all 5 refactored skills as DIVERGED on the next install/upgrade run, and the upgrade path was never exercised (only a fresh scratch --target was tested).",
+      "fix": "Verify the upgrade path against a target installed from the pre-move tree and document the required re-run (accepting the diverged re-sync) in the release/handoff notes.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "colocation",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-vote.sh:7",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/validate.sh:12",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh:240-244"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Jira's 26 cmd-*.sh are sourced-only fragments (never directly invoked) but sit in skill/scripts/ next to the real entry points, breaking the scripts=invokable / lib=sourced-only convention every sibling family follows.",
+      "fix": "Move the 26 cmd-*.sh under skill/lib/ (or skill/lib/commands/) and source them from $LIB_DIR, leaving skill/scripts/ holding only jira.sh + md-to-adf.sh.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer, lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "documentation",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/SKILL.md:10-12",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/SKILL.md:19-41",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/SKILL.md:80"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "procedure-jira's SKILL.md was never updated for the decomposition: it still asserts jira.sh is self-contained, argues against the sourcing rule the refactor deliberately relaxed, documents no lib/ section, carries no version/changelog bump, lists only 14 of the 26 actual commands, and contains two factual errors (a removed --resolution default, and JIRA_WATCHING vs the real JIRA_WATCHED key).",
+      "fix": "Rewrite SKILL.md: add a lib/ section mirroring the sibling SKILL.mds, delete the stale self-contained claims, regenerate the command list from usage.sh, delete the removed-behavior sentence, correct the watch output key, and bump the version footer with a changelog entry.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "category": "naming-convention",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/http.sh:1",
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/lib/pm-diag.sh:1",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-url.sh:1",
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/skill/lib/gh-pr-common.sh:1",
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/skill/lib/glab-mr-output.sh:1"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Three unrelated lib/ naming schemes exist for the same structural role (plain in Jira, pm-* in gh/glab-issues, skill-name-prefixed in gh-pr/glab-mr) with no stated rule, and the split isn't explained by domain since procedure-jira and procedure-gh-issues share one domain yet differ.",
+      "fix": "Pick one naming rule and record it in the layout convention doc; recommend the plain, role-descriptive form since lib/ is per-skill-private and never cross-sourced, so any prefix just repeats the path."
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "import-order",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh:213-214"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "jira.sh resolves SCRIPT_DIR via dirname/cd/pwd while all four sibling families resolve theirs by pure parameter expansion specifically because dirname/readlink/realpath/basename are excluded from the test toolbox; the refactor made this weaker idiom load-bearing for all 43 newly sourced units.",
+      "fix": "Replace jira.sh's SCRIPT_DIR derivation with the siblings' case \"$0\" in */) ... esac parameter-expansion form.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "input-validation",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-url.sh:80-120"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The GitLab issue/MR URL-candidate extractors anchor the project path but never constrain the host, so a same-path/same-iid URL on an attacker-controlled host can pass validation and be relayed as the genuine issue/MR URL.",
+      "fix": "Require the confirmed host as a third parameter and compare each candidate's authority component literally before stripping it; wire --confirmed-host through every glab-issues call site and update-mr.sh, and derive it from the repo remote for create-mr.sh.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-001",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "false-confidence",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-write-tests.sh:1524-1583"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The 'token never on argv' test block is 9 purely negative assertions with no exit-code or call-count control, so a command that regressed to exit before its first curl call would pass vacuously.",
+      "fix": "Add expect_rc and a positive call-count/argv_log_has_token assertion to each of the 9 cases, matching run-engine-tests.sh:395-400's pattern.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-002",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "false-confidence",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh:84-281"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The new variable-collision gate has no self-test: an empty derived table or a regex that stops matching after a layout change degrades silently to 'no collisions found' + exit 0, with nothing to distinguish a clean codebase from a broken analyzer.",
+      "fix": "Add a fixtures/varcheck/ pair (one known-dangerous collision, one known-safe shared name), point the script at it via an env override, and assert exit 1 / exit 0 respectively; fail loudly if the derived funcs/calls tables come back empty.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-003",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "missing-coverage",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/tests/run-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh",
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/tests/run-tests.sh",
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/tests/run-tests.sh"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Only Jira's test harness proves the new $0-relative lib resolution survives the real deploy shape (an unrelated cwd + a symlinked skill/ dir); the other four families gained the identical resolution but only invoke scripts by absolute repo path, so a resolution regression is invisible until the first real operation.",
+      "fix": "Port Jira's two deploy-shape probes (cwd change + symlink-through) into all four remaining harnesses.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-004",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "test-dry",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh:59-292",
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-write-tests.sh:39-230",
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-rig-tests.sh:33-120"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "~150 lines of test-harness mechanics (curl stub, runner primitives) are copy-pasted verbatim across three Jira test files in the same directory and have already drifted (one copy supports -D header dumps the others lack).",
+      "fix": "Extract tests/lib/harness.sh + tests/lib/curl-stub.sh and dot-source them from all three test files; the production-side duplication rationale (independent skill deployment) doesn't apply to tests/, which is never deployed.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-005",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "brittle-assertion",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh:3242-3331"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The P4 test driver reconstructs jira.sh's state by sed-scraping between two variable-name sentinels; any behavior-preserving rename/reorder of those lines silently empties the range and turns 26 checks into unbound-variable failures, and it asserts ACCEPT paths only (a gutted validator would pass all 26).",
+      "fix": "Bracket the initializer block with stable marker comments instead of variable names, assert the extracted block is non-empty before sourcing, and pair each accept case with a reject case.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-009",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "boundary-coverage",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/tests/run-tests.sh:503-554"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The accumulate() characterization set never tests a list token containing a space or an all-separator value -- exactly the properties accumulate's newline-separated-list design exists to preserve.",
+      "fix": "Add a --label 'needs review' case (asserted as one token) and a --label ',,' case (asserted to produce no token) to both create-pr.sh and update-pr.sh sections, and mirror into glab-mr's harness.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-001",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "redundant-comment",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh:3-198"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "jira.sh's own header still claims it is self-contained ('sources nothing') and describes fourteen commands, directly contradicting the 43-unit sourcing loop and 26-command dispatch table that ships in the same file.",
+      "fix": "Rewrite the header to describe the dispatcher + lib/ + cmd-*.sh shape and replace the 'sources nothing' claim with the real source list.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-002",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "redundant-comment",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/usage.sh:13-44"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "usage.sh's header carries a second, already-drifted CLI synopsis (14 commands) duplicating the real usage() function 140 lines below it (26 commands).",
+      "fix": "Delete the header synopsis; keep only a one-line pointer to usage() as the single source of truth.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-003",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-transition.sh:414-415",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-comment.sh:61-62",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-update.sh:165-166",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-watch.sh:103-104",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-vote.sh:65-66"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "require_ticket_positional was extracted for exactly this prelude but 5 of 8 candidate sites still hand-roll the identical text instead of calling it.",
+      "fix": "Replace each hand-rolled pair with a call to require_ticket_positional (output is byte-identical).",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-004",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "naming",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/search-core.sh:36-39",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-search.sh:31",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/fields.sh:26",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/projectconfig.sh:39"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Several lib/ units use bare scratch names (jql, out_file, config_file, key, value) that runtime.sh's own stated naming convention forbids; one collision is already live in a real call chain (cmd_search's jql is reassigned inside build_search_request_body), and the split raised the cost of checking uniqueness from one file to 43.",
+      "fix": "Prefix each lib function's scratch names per-function as the cmd-*.sh files already do.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-005",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "redundant-comment",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-schedule.sh:29-55",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-link.sh:33-44",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-watch.sh:14-17"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Several extracted command files kept the old monolith's section banner underneath their new file header, and the banners have already started drifting from the code (cmd-watch's banner still documents vote's endpoint, which now lives in cmd-vote.sh).",
+      "fix": "Delete each redundant banner, folding in only the parts that add information not already in the new header.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-006",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/scripts/create-issue.sh:188-198",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/create-issue.sh:329-346"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The mktemp+trap+stderr-indent idiom for capturing tool stderr is repeated verbatim across all 7 scripts in both issue families, while the sibling git-operator skills already prove the extraction is cheap (init_tmp_err/emit_captured_stderr).",
+      "fix": "Add init_tmp_err/emit_captured_stderr equivalents to each family's own pm-diag.sh and call them from all 14 scripts.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-007",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/skill/scripts/find-mr.sh:210-217",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-labels.sh:66",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/find-duplicate.sh:247-256"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Both glab families extracted a count_lines helper and then re-implemented it inline at 4 more sites, each carrying its own copy of the same explanatory comment.",
+      "fix": "Call count_lines at all four sites, and relocate glab-issues' count_lines to pm-diag.sh (a unit every script already sources) instead of the URL-named lib that currently hides it.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-008",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/scripts/link-children.sh:126-129",
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/scripts/link-children.sh:198-206",
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/scripts/ensure-labels.sh:181-184"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "gh-issues' own append_line helper (in pm-lists.sh) is hand-rolled inline at 4 sites instead of called; glab-issues has the identical gap despite its pm-lists.sh header explicitly discussing this exact idiom.",
+      "fix": "Source pm-lists.sh in link-children.sh/ensure-labels.sh and replace each hand-rolled append with a call to append_line, in both families.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-009",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/comment.sh:295-310",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/update-issue.sh:450-464"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The URL-candidate/iid-cross-check resolution block is duplicated between comment.sh and update-issue.sh with the same policy, and the two copies have already drifted (one strips a '#note_' anchor before comparing, the other doesn't).",
+      "fix": "Extract pm_url_matching_iid(candidates, iid) into pm-glab-url.sh and call it from both sites.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-016",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "cohesion",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/find-duplicate.sh:100",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-labels.sh:20-45"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "find-duplicate.sh sources the labels-named lib for one generic jq-normalizer function it needs, inheriting label-pagination constants it never uses -- a boundary problem the implementing session's own 'harmless' disclosure doesn't resolve.",
+      "fix": "Move pm_strip_jq_quotes to pm-diag.sh (or a new pm-glab-jq.sh) and drop the pm-glab-labels.sh source from find-duplicate.sh.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "COMPAT-003",
+      "reviewer": "lens-compatibility-reviewer, lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "module-organization",
+      "locations": [
+        "software-development/agents/developers/tests-developer.md:18",
+        "CONTINUATION.md:64"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Both a deployed agent body and the backlog doc still reference the pre-move path procedure-jira/scripts/jira.sh (now procedure-jira/skill/scripts/jira.sh), and CONTINUATION.md locates several cmd_* functions 'in jira.sh' when they now live in their own cmd-*.sh files.",
+      "fix": "Insert the /skill/ segment in both paths and repoint CONTINUATION.md's bullet at the actual per-command files.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-007",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/skill/SKILL.md:84",
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/skill/SKILL.md:161"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Both git-operator SKILL.md footers declare a version number that their own changelog line immediately contradicts (e.g. declares 1.2 then changelog says '1.3 decomposes...').",
+      "fix": "Bump the declared footer versions to 1.3 and 1.1 respectively, matching their own changelog lines.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-008",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "module-organization",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/SKILL.md:66"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "glab-issues nests its lib/ subsection under the wrong parent heading ('The other GitLab divergences' instead of 'The seven scripts'), unlike every sibling SKILL.md.",
+      "fix": "Move the lib/ subsection to be a child of 'The seven scripts', matching gh-issues/gh-pr/glab-mr.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-009",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "visibility",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/validate.sh:1-2",
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/lib/pm-diag.sh:1",
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/skill/lib/gh-pr-common.sh:1-8"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Three different header conventions exist for sourced-only files in the same pass (shebang+directive, directive-only, neither), even though gh-pr-common.sh states outright that a sourced-only file should carry no shebang.",
+      "fix": "Standardize: no shebang, '# shellcheck shell=sh' directive present, on every sourced-only file across all 5 families.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CONS-010",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "import-order",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/skill/scripts/create-mr.sh:160-166"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "glab-mr's lib-guard loop uses a bare, never-unset 'lib' variable where the PM families use a prefixed, unset-after-use variable -- a live collision risk in a family with one flat POSIX namespace -- and its shellcheck source directive form differs from the PM families'.",
+      "fix": "Rename the loop variable to a prefixed name and unset it after the loop; standardize the shellcheck source directive to the SCRIPTDIR form repo-wide (the technically-correct one).",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "SEC-003",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "misconfiguration",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/http.sh:46"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "All three curl invocations place --proto '=https' before -K \"$CURL_CONFIG_FILE\", so any directive inside that config file (a future insecure/proxy/location option) would override the hardening flags that precede it on the command line.",
+      "fix": "Reorder so -K comes immediately after 'curl -sS' and hardening flags like --proto come after it, in all three call sites.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "SEC-004",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "security-consistency",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/issue-set.sh:79",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-discover.sh:296"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Two diagnostics interpolate API-derived values directly into terminal output without the strip_control_ansi treatment every sibling call site applies, even though these two values reach that branch precisely because they failed a shape check.",
+      "fix": "Pipe both values through strip_control_ansi before interpolating, matching cmd-create.sh:145's pattern.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-006",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "false-confidence",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh:3340-3356"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The single-curl-transport security gate matches an exact string ('curl -sS'), so a harmless reformatting of a future curl call (extra space, different flag order) would silently escape detection.",
+      "fix": "Match the command invocation pattern rather than the exact flag string.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-007",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "brittle-assertion",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh:400"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "A positive '-K' flag check uses a substring helper instead of the token-exact helper the same file defines and correctly uses ten lines later.",
+      "fix": "Replace with argv_log_has_token for that assertion.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-008",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "test-consistency",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/tests/run-tests.sh:45",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh:96"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "These two harnesses still resolve LIB_DIR without the readability-guard/preflight fix already applied to the gh-pr/glab-mr harnesses in round 1, so a missing lib file surfaces as hundreds of identical unreadable failures or a raw cd-abort instead of one clear diagnostic.",
+      "fix": "Port the two-line guard fix and a per-lib-file preflight check into both harnesses.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "TEST-010",
+      "reviewer": "lens-test-quality-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "brittle-assertion",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/tests/run-tests.sh:368-369"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Machine-key assertions like 'PM_PR_COUNT=1' are unanchored substrings that would also pass on PM_PR_COUNT=10, even though the same harness already uses anchored regex correctly elsewhere.",
+      "fix": "Use the anchored stdout_re helper for all key=value machine-line assertions.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-011",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh:358",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-epics.sh:37",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-epic.sh:16",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-backlog.sh:16"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "The dispatcher's generic positional TICKET_KEY holds a numeric board/sprint/epic id in seven agile commands, reading as a ticket key being used where a board id is expected.",
+      "fix": "Rename the dispatcher's positional to POSITIONAL_ARG, or alias it once per agile command right after validation.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-012",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "redundant-comment",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/skill/scripts/update-issue.sh:137-144",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/scripts/create-issue.sh:220-231"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Accumulator comments describe the pre-extraction design, including naming a function 'accumulate' that doesn't exist in this family (it's csv_accumulate).",
+      "fix": "Update the comments to match the real csv_accumulate call and its two-line form.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-013",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "kiss",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/lib/agile-paging.sh:121-135"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "agile_paginate is a one-statement wrapper over fetch_paginated_agile with no other caller, adding an extra hop with a doc block that just restates the inner function's.",
+      "fix": "Collapse to one public function name.",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "CLEAN-014",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "file-ordering",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-transition.sh:48-418",
+        "project-management/agents/project-manager/skills/procedure-jira/skill/scripts/cmd-discover.sh:67-354"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "Every cmd-*.sh runs helpers-first / cmd_X-near-end / validate_X_args-last, opposite the newspaper/stepdown convention -- presented by the reviewer as a discretionary convention question, not a defect.",
+      "fix": "Optional: reorder to validate_X_args, cmd_X, then helpers in first-call order, if the team wants to adopt the stepdown convention here."
+    },
+    {
+      "id": "CLEAN-015",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming",
+      "locations": [
+        "deploy/hub/lib/hub-discovery.sh:306-311"
+      ],
+      "first_seen": "2026-08-08",
+      "problem": "After the skill/-unwrap fix, the variable hdp_basename no longer holds an actual basename on the branch the fix introduced, so the name now contradicts its value.",
+      "fix": "Rename to hdp_skill_name (and hdp_parent to hdp_skill_dir).",
+      "addressed_in_round": 1
+    },
+    {
+      "id": "HGATE-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "deploy/hub/lib/hub-discovery.sh:400-422"
+      ],
+      "problem": "While fixing HUB-001, a third classification site (hub_disc_shared, the accounts/ domain walk) was found to share the identical raw-basename-classification + -maxdepth 2 bug, undiscovered until now because no accounts/ skill uses the skill/ layout yet.",
+      "fix": "Routed hub_disc_shared through the same shared hub_disc_skill_name helper and bumped its walk to -maxdepth 3; verified zero behavior change on the current tree and a reproduced-then-fixed regression on a synthetic accounts/ skill.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh"
+      ],
+      "problem": "The new variable-collision self-test gate's Pass 1 matched only line-initial assignments, missing ~30 mid-line forms (`|| x=`, `then x=`, `; x=`) already live in the codebase.",
+      "fix": "Rewrote Pass 1's statement-start detection to recognize assignments after `;`/`&&`/`||`/`(`/`{`/backtick/keyword, with a fixture proving both the true-positive gain and rejection of jq-program false positives.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "portability",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-write-tests.sh"
+      ],
+      "problem": "The suite's claimed portability backstop (dirname/readlink/realpath/basename excluded from the test PATH) was false for dirname, which was actually present, so a regression to dirname-based path resolution would pass silently.",
+      "fix": "Removed dirname from the engine and write-test toolboxes; kept it only in the rig toolbox (which genuinely needs it) with a documented reason. Proved the backstop is now real by reintroducing a throwaway dirname regression and confirming it broke the suite.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-003",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/run-engine-tests.sh"
+      ],
+      "problem": "The single-curl-transport security gate could be evaded by a line-continuation or URL-first curl call shape.",
+      "fix": "Added continuation-folding and widened the invocation-shape matcher, with new probes for both evasions plus a negative control.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-004",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh"
+      ],
+      "problem": "The mid-line-assignment fix from JGATE-001 still missed case-branch prefixes (`PATTERN) name=value`), leaving 11 more live writes invisible to the gate.",
+      "fix": "Added a rule accepting a `)`-terminated prefix with no unmatched `(` before it; verified against all 11 real sites and against command-substitution false-positive shapes, with a permanent fixture pair added.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-005",
+      "reviewer": "shell-script-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh"
+      ],
+      "problem": "The one-line-function-body branch of the collision scanner also drops that function's outgoing call edges and reads, not just its assignments as documented — inert today (no live case exercises it), found during round-3 review of JGATE-004.",
+      "fix": "Acknowledged, not fixed this pass, per the reviewer's own recommendation to stop the recursive hardening loop now that the gap-space is bounded and enumerated. Candidate for a future bounded pass if the repo-wide lib/ convention rollout proceeds.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-006",
+      "reviewer": "shell-script-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh"
+      ],
+      "problem": "The case-branch rule from JGATE-004 is anchored at line start, so any earlier `(` on the same line suppresses it, not just the leading-paren form documented. Zero live instances today.",
+      "fix": "Acknowledged, not fixed — same stopping-point rationale as JGATE-005.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "JGATE-007",
+      "reviewer": "shell-script-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-jira/tests/check-variable-collisions.sh"
+      ],
+      "problem": "A header comment describing one under-report gap slightly mischaracterizes the mechanism (says a second writer would be invisible; actually the collision itself goes unreported since only one write is recorded).",
+      "fix": "Acknowledged, documentation wording nit — not fixed this pass.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-url.sh"
+      ],
+      "problem": "The SEC-002 host-authority fix (case-sensitive compare) would false-reject a legitimate URL differing only by ASCII case, causing create-issue.sh to falsely report failure on an already-completed, unretractable create.",
+      "fix": "Both extractors now fold ASCII case on the authority comparison via tolower(); port comparison deliberately kept literal pending live self-managed-instance verification, documented in SKILL.md.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-gh-issues/tests/run-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "TEST-008's per-lib preflight guard tested existence ([ -f ]) rather than readability, diverging from every command script's own [ -r ] preflight.",
+      "fix": "Both guards changed to [ -r ]; mutation-verified in both directions (fires on unreadable file, silent mass-failure confirmed under the old form).",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-003",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "Two comments in the glab-issues test file referenced a non-existent `accumulate` helper (the real one is csv_accumulate), missed by CLEAN-012's original scope which covered only scripts.",
+      "fix": "Corrected both comments to csv_accumulate.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-004",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "documentation",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/SKILL.md"
+      ],
+      "problem": "SKILL.md claimed 'the two scripts that mktemp additional files' when only link-children.sh does this in this family.",
+      "fix": "Reworded to name link-children.sh specifically.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-005",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "MEDIUM",
+      "category": "missing-coverage",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "IGATE-001's host case-fold fix had zero automated test coverage — the fix was deletable with the suite fully green.",
+      "fix": "Added 5 new test cases (13 checks) covering both directions of the case-fold and the dedup-normalization fix (IGATE-006); each mutation-verified to genuinely fail when the corresponding fix is reverted.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "IGATE-006",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/skill/lib/pm-glab-url.sh"
+      ],
+      "problem": "IGATE-001's case-fold created a side effect: URL-candidate dedup keyed on the raw token, so two case-variant spellings of the SAME url now survived as distinct candidates, falsely triggering the ambiguity guard on a completed create.",
+      "fix": "Dedup now keys on a case-normalized form (scheme + tolower(authority) + path) while still printing the original first-seen spelling; verified the over-collapse guard (genuinely different iids still fail closed) is intact.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "PGATE-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/tests/run-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-gh-issues/tests/run-tests.sh"
+      ],
+      "problem": "New negative argv assertions (added for TEST-009) used whole-file grep, which also scans a body-text payload block in the same log, risking corruption by a coincidentally-matching fixture line.",
+      "fix": "Ported the sibling glab-mr harness's ARGV-block-scoped, ENVIRON-based argv_has_token/argv_has_pair helpers into both gh-pr and gh-issues, converting all 13 and 11 affected sites respectively; poison-fixture-proved the old form was exploitable and the new form immune.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "PGATE-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "HIGH",
+      "category": "correctness",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-gh-pr/tests/run-tests.sh",
+        "software-development/agents/project-manager/skills/procedure-gh-issues/tests/run-tests.sh",
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/tests/run-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "The ported argv_has_token/argv_has_pair helpers compared via awk's bare ==, which does numeric (strnum) comparison, so a logged '0100' would wrongly match a searched '100'. A live instance was found in glab-issues (--per-page 100 assertion) that would have let a real regression ship silently.",
+      "fix": "Forced string comparison via string concatenation on both sides of the compare, in all 4 harnesses; proved a real emitted-zero-padding regression now correctly fails where it previously passed 667/667 green.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "PGATE-003",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "addressed_in_round": 2,
+      "severity": "HIGH",
+      "category": "correctness",
+      "locations": [
+        "software-development/agents/specialists/git-operator/skills/procedure-glab-mr/tests/run-tests.sh",
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "The same strnum comparison bug (PGATE-002) existed in a separate helper, argv_first_is, which specifically asserts numeric MR/issue iids -- the highest-risk instance of this defect class.",
+      "fix": "Applied the identical string-forcing fix plus migrated the value to ENVIRON; proved a zero-padded-iid corruption bug would have shipped silently under the old form (328/328 green) and correctly fails under the new form.",
+      "first_seen": "2026-08-08"
+    },
+    {
+      "id": "PGATE-004",
+      "reviewer": "shell-script-reviewer",
+      "status": "ACK",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "category": "missing-coverage",
+      "locations": [
+        "project-management/agents/project-manager/skills/procedure-glab-issues/tests/run-tests.sh"
+      ],
+      "problem": "close-issue.sh's pre-close note leg has no argv_first_is/argv_has_pair assertion on its iid/--repo, so a leg-local positional corruption there would be invisible -- found during PGATE-003's re-review.",
+      "fix": "Acknowledged as a documented coverage-gap follow-up rather than reopening the loop again, per the reviewer's own proportionality judgment (the leg is correct today; only a hand-edited future mutation would slip through).",
+      "first_seen": "2026-08-08"
+    }
+  ]
+}
