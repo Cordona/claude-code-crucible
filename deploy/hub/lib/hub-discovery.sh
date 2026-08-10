@@ -129,6 +129,34 @@ hub_disc_emit_skills_from() {
 	done <"$1"
 }
 
+# hub_disc_skill_name SKILL_DIR -> the name a CLASSIFIER must be handed for the
+# skill rooted at SKILL_DIR: normally SKILL_DIR's own basename, but the SKILL's
+# name rather than SKILL.md's immediate parent under the reserved skill/
+# deploy-root convention (skills/<name>/skill/SKILL.md, the layout that keeps a
+# skill's tests/ outside what the hub symlinks). There, the basename is the
+# literal "skill" — a non-token EVERY skill using the convention collides on —
+# so the classifying name is its parent's instead.
+#
+# ONE HELPER FOR EVERY CLASSIFICATION SITE, and that is the whole point of it
+# existing: all THREE sites that classify a skill directory by name route through
+# it — hub_disc_sd_baseline (the VCS fan-out), hub_disc_pm (the tracker fan-out),
+# and hub_disc_shared (the accounts/ fan-out). A site that skips this unwrap does
+# not fail loudly — it hands the classifier the literal "skill" and gets an empty
+# answer back, which lands the unit in whatever that site's no-match arm is: the
+# baseline group for the two domain fan-outs (installed unconditionally, its
+# selectable group never created at all), or a warn-and-DROP for accounts/, where
+# the unit disappears behind a misleading "unrecognized skill" message. That is
+# exactly what happened when the unwrap was applied to one of the sites only, so
+# the shape a further site must not miss is a function, not a copied block.
+hub_disc_skill_name() {
+	hdsn_name=${1##*/}
+	if [ "$hdsn_name" = skill ]; then
+		hdsn_skill_dir=${1%/*}
+		hdsn_name=${hdsn_skill_dir##*/}
+	fi
+	printf '%s\n' "$hdsn_name"
+}
+
 # --- Software Development -------------------------------------------------
 #
 # Selectable — one group per technology. A technology is discovered by scanning
@@ -183,11 +211,13 @@ hub_disc_sd_technologies() {
 #
 # The VCS fan-out is classified out of the specialist-skills sweep FIRST, by
 # the identical shape hub_disc_pm uses for its tracker fan-out: bucket every
-# specialist skill by hub_sd_vcs_of, emit the selectable VCS groups (only for
-# hosts that actually have a skill in this source), then open the baseline
-# group and emit everything else. A skill that classifies to neither host
-# (git-operator's identity/local-ops/standard-git-* skills, and every other
-# specialist's skills) lands in baseline exactly as it always did.
+# specialist skill by hub_sd_vcs_of over hub_disc_skill_name (the SAME helper
+# hub_disc_pm classifies through — see its header for why a raw basename is the
+# wrong input), emit the selectable VCS groups (only for hosts that actually
+# have a skill in this source), then open the baseline group and emit everything
+# else. A skill that classifies to neither host (git-operator's
+# identity/local-ops/standard-git-* skills, and every other specialist's skills)
+# lands in baseline exactly as it always did.
 hub_disc_sd_baseline() {
 	hdsb_root=$1
 	hdsb_tmp=$(hub_mktemp_dir)
@@ -200,7 +230,8 @@ hub_disc_sd_baseline() {
 	done
 	while IFS= read -r hdsb_skill; do
 		[ -n "$hdsb_skill" ] || continue
-		hdsb_class=$(hub_sd_vcs_of "${hdsb_skill##*/}")
+		hdsb_skill_name=$(hub_disc_skill_name "$hdsb_skill")
+		hdsb_class=$(hub_sd_vcs_of "$hdsb_skill_name")
 		if [ -n "$hdsb_class" ]; then
 			printf '%s\n' "$hdsb_skill" >>"$hdsb_tmp/vcs-$hdsb_class.txt"
 		else
@@ -276,12 +307,19 @@ hub_disc_pm() {
 	# The walk is anchored at each agent's skills/ rather than at agents/ with a
 	# deeper -maxdepth, so a stray SKILL.md somewhere else under an agent cannot
 	# be mistaken for one of its skills.
+	#
+	# -maxdepth 3, not 2: a skill directory may itself be SKILL.md's immediate
+	# parent (skills/<name>/SKILL.md, depth 2 from skills/) OR nest it one level
+	# further under a reserved skill/ deploy-root (skills/<name>/skill/SKILL.md,
+	# depth 3) — the convention that keeps tests/ outside what the hub symlinks.
+	# Both shapes are live in this tree at once; 3 is the ceiling that reaches
+	# the deeper one without walking past it into a skill's own scripts/lib/.
 	hub_disc_pm_agent_dirs "$hdp_root" "$hdp_tmp/agent-dirs.txt"
 	: >"$hdp_tmp/skills-unsorted.txt"
 	while IFS= read -r hdp_agent_dir; do
 		[ -n "$hdp_agent_dir" ] || continue
 		[ "$hdp_agent_dir" != "$hdp_root/$HUB_PM_DIR_AGENTS" ] || continue
-		hub_disc_skill_dirs "$hdp_agent_dir/$HUB_PM_AGENT_SKILLS_SUBDIR" -maxdepth 2 \
+		hub_disc_skill_dirs "$hdp_agent_dir/$HUB_PM_AGENT_SKILLS_SUBDIR" -maxdepth 3 \
 			>>"$hdp_tmp/skills-unsorted.txt"
 	done <"$hdp_tmp/agent-dirs.txt"
 	LC_ALL=C sort -u <"$hdp_tmp/skills-unsorted.txt" >"$hdp_tmp/skills.txt"
@@ -292,7 +330,8 @@ hub_disc_pm() {
 	done
 	while IFS= read -r hdp_skill; do
 		[ -n "$hdp_skill" ] || continue
-		hdp_class=$(hub_pm_tracker_of "${hdp_skill##*/}")
+		hdp_skill_name=$(hub_disc_skill_name "$hdp_skill")
+		hdp_class=$(hub_pm_tracker_of "$hdp_skill_name")
 		if [ -n "$hdp_class" ]; then
 			printf '%s\n' "$hdp_skill" >>"$hdp_tmp/tracker-$hdp_class.txt"
 		else
@@ -361,12 +400,21 @@ hub_disc_gtd() {
 hub_disc_shared() {
 	hds_src=$1
 	hds_tmp=$(hub_mktemp_dir)
-	hub_disc_skill_dirs "$hds_src/$HUB_ACCOUNTS_DIR" -maxdepth 2 >"$hds_tmp/skills.txt"
+	# -maxdepth 3, not 2, for the reason hub_disc_pm's walk carries in full: a
+	# skill directory may be SKILL.md's immediate parent (<name>/SKILL.md, depth 2
+	# from accounts/) OR nest it one level further under a reserved skill/
+	# deploy-root (<name>/skill/SKILL.md, depth 3). No accounts/ skill uses the
+	# deeper shape today; 3 is what keeps the next one that does discoverable.
+	hub_disc_skill_dirs "$hds_src/$HUB_ACCOUNTS_DIR" -maxdepth 3 >"$hds_tmp/skills.txt"
 	: >"$hds_tmp/github.txt"
 	: >"$hds_tmp/gitlab.txt"
 	while IFS= read -r hds_skill; do
 		[ -n "$hds_skill" ] || continue
-		case ${hds_skill##*/} in
+		# Through hub_disc_skill_name, exactly as the other two classification
+		# sites: the raw basename of a converted skill is the literal "skill",
+		# which matches neither substring and would hit the warn-and-drop arm.
+		hds_skill_name=$(hub_disc_skill_name "$hds_skill")
+		case $hds_skill_name in
 		*github*) printf '%s\n' "$hds_skill" >>"$hds_tmp/github.txt" ;;
 		*gitlab*) printf '%s\n' "$hds_skill" >>"$hds_tmp/gitlab.txt" ;;
 		*) warn "ignoring unrecognized skill under $HUB_ACCOUNTS_DIR (name must carry a github or gitlab token): $hds_skill" ;;
