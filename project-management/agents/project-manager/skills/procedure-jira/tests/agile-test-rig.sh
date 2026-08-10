@@ -88,7 +88,7 @@ RIG_LABEL_PREFIX="crucible-ephemeral-"
 # the caller's cwd). The `full` flow drives its REAL sprint WRITE verbs through
 # it; the unit suite exercises that same path with the stub `curl` on PATH.
 RIG_SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-RIG_JIRA_SH="$RIG_SCRIPT_DIR/../scripts/jira.sh"
+RIG_JIRA_SH="$RIG_SCRIPT_DIR/../skill/scripts/jira.sh"
 
 RIG_HOST=""
 RIG_PROJECT=""

@@ -73,7 +73,12 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
+# `2>/dev/null` + an explicit failure branch: without them a MISSING lib/ dir
+# aborts right here under `set -e`, with a raw `cd` error, before the friendly
+# per-file preflight below can ever run — i.e. the preflight could not fire in
+# its single most likely failure mode.
+LIB_DIR=$(cd "$TESTS_DIR/../skill/lib" 2>/dev/null && pwd) || { printf 'FATAL: missing lib dir: %s\n' "$TESTS_DIR/../skill/lib" >&2; exit 1; }
 FINDMR="$SCRIPTS_DIR/find-mr.sh"
 CREATEMR="$SCRIPTS_DIR/create-mr.sh"
 UPDATEMR="$SCRIPTS_DIR/update-mr.sh"
@@ -110,6 +115,14 @@ link_tool() {
 # this comment now names it too.
 for t in sh env mktemp grep sed cat diff awk rm head git; do
 	link_tool "$t"
+done
+
+# Every command script sources its lib(s) at startup, so a missing lib file would
+# surface as 300+ identical, unreadable failures. Fail once, loudly, instead —
+# beside the link_tool fatals above and deliberately NOT counted in TESTS_RUN,
+# so the check totals stay comparable across this refactor.
+for f in glab-mr-common.sh glab-mr-output.sh; do
+	[ -f "$LIB_DIR/$f" ] || { printf 'FATAL: missing lib file: %s\n' "$LIB_DIR/$f" >&2; exit 1; }
 done
 
 # ---------------------------------------------------------------------------
@@ -433,13 +446,19 @@ file_missing() {
 # (this suite asserts the literal jq expression `.[] | "\(.iid)\t\(.web_url)"`)
 # would silently become a real tab in awk and never match the literal backslash-t
 # the script actually passed. ENVIRON does no such rewriting.
+#
+# Each comparison concatenates "" onto BOTH sides. `$0` and ENVIRON values are awk
+# STRNUMs: when both look numeric, `==` compares them NUMERICALLY, so a logged token
+# of `007` would match an expected value of `7` — and an MR iid is exactly the kind
+# of numeric-looking argv this suite asserts on. Concatenation forces the BYTE-EXACT
+# string comparison these argv assertions actually mean.
 argv_has_pair() {
 	ARGV_FLAG=$2 ARGV_VALUE=$3 awk '
 		$0 == "ARGV_BEGIN" { in_argv = 1; want = 0; next }
 		$0 == "ARGV_END"   { in_argv = 0; want = 0; next }
 		in_argv != 1 { next }
-		$0 == ENVIRON["ARGV_FLAG"] { want = 1; next }
-		want == 1 { if ($0 == ENVIRON["ARGV_VALUE"]) { found = 1 }; want = 0 }
+		($0 "") == (ENVIRON["ARGV_FLAG"] "") { want = 1; next }
+		want == 1 { if (($0 "") == (ENVIRON["ARGV_VALUE"] "")) { found = 1 }; want = 0 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -450,12 +469,13 @@ argv_has_pair() {
 # blocks too: an assertion that "no --draft token was passed" must not be
 # defeated by a fixture whose description happens to contain a line reading
 # exactly `--draft`. TOKEN travels via ENVIRON for the same no-escape-processing
-# reason as argv_has_pair's.
+# reason as argv_has_pair's, and is compared with the same ""-concatenation on both
+# sides for the same strnum reason.
 argv_has_token() {
 	ARGV_TOKEN=$2 awk '
 		$0 == "ARGV_BEGIN" { in_argv = 1; next }
 		$0 == "ARGV_END"   { in_argv = 0; next }
-		in_argv == 1 && $0 == ENVIRON["ARGV_TOKEN"] { found = 1 }
+		in_argv == 1 && ($0 "") == (ENVIRON["ARGV_TOKEN"] "") { found = 1 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -470,10 +490,17 @@ argv_has_token() {
 # block, i.e. it was passed POSITIONALLY rather than behind a flag. This is what
 # proves update-mr.sh forwards the MR iid the way `glab mr update` takes it
 # ([<id>|<branch>] positional), not as an invented --mr flag.
+#
+# VALUE travels via ENVIRON and is compared with the same ""-concatenation on both
+# sides as argv_has_pair/argv_has_token, for the same two reasons — and this helper
+# is where BOTH bite hardest, because the value it asserts is an MR iid. A bare
+# `==` between two strnum operands compares NUMERICALLY: a regression that logged
+# `007` where the test searched `7` (or `7.0`, or `+7`) would compare equal and
+# pass an assertion it never earned. Concatenating "" forces a byte comparison.
 argv_first_is() {
-	awk -v value="$2" '
+	ARGV_FIRST_VALUE=$2 awk '
 		$0 == "ARGV_BEGIN" { next_is_first = 1; next }
-		next_is_first == 1 { if ($0 == value) { found = 1 }; next_is_first = 0 }
+		next_is_first == 1 { if (($0 "") == (ENVIRON["ARGV_FIRST_VALUE"] "")) { found = 1 }; next_is_first = 0 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -1035,6 +1062,39 @@ check "createmr(csv trim): the UNTRIMMED ' urgent ' never reached argv" "an untr
 check "createmr(csv trim): the empty elements produced NO empty --label value" "an empty label value was passed to glab" \
 	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' '' && echo 1 || echo 0 )"
 
+section "create-mr.sh — a list token with a SPACE stays ONE token; an all-separator value contributes NONE (TEST-009)"
+# The two properties accumulate()'s NEWLINE-separated-list design exists to
+# preserve, and the two the characterization set above never pinned:
+#   * a token with an INTERNAL space ('needs review') has to reach glab as ONE
+#     argv token. An accumulator that joined its entries on spaces instead of
+#     newlines would pass the whole comma-list suite above (no fixture there
+#     contains a space) while silently turning one label into two.
+#   * an ALL-separator value (',,') has to contribute NOTHING — not an empty
+#     token, and not a dangling --label flag with no value behind it.
+CREATE_LOG_SPACE="$WORK/mr-create-log-space-label"
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_MR_LIST=" "GLAB_STUB_CREATE_LOG=$CREATE_LOG_SPACE" \
+	sh "$CREATEMR" --repo group/sub/proj --repo-dir "$GITREPO" --source-branch feat/x --target-branch main --title t \
+		--description-file "$MRDESC" --label 'needs review' --label ready
+expect_rc "createmr(space in label): -> exit 0" 0
+check "createmr(space in label): 'needs review' reached glab as ONE argv token" "the label was word-split into separate argv tokens" \
+	"$( argv_has_pair "$CREATE_LOG_SPACE" '--label' 'needs review' && echo 0 || echo 1 )"
+check "createmr(space in label): no bare 'needs' token exists in argv (proof it was NOT split)" "the label was split on its internal space" \
+	"$( argv_has_token "$CREATE_LOG_SPACE" 'needs' && echo 1 || echo 0 )"
+check "createmr(space in label): the NEXT label in the list still arrived intact" "a space-bearing entry corrupted the rest of the accumulated list" \
+	"$( argv_has_pair "$CREATE_LOG_SPACE" '--label' 'ready' && echo 0 || echo 1 )"
+
+CREATE_LOG_ALLSEP="$WORK/mr-create-log-all-separator-label"
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_MR_LIST=" "GLAB_STUB_CREATE_LOG=$CREATE_LOG_ALLSEP" \
+	sh "$CREATEMR" --repo group/sub/proj --repo-dir "$GITREPO" --source-branch feat/x --target-branch main \
+		--title 'all separators' --description-file "$MRDESC" --label ',,'
+expect_rc "createmr(all-separator label): -> exit 0 (a value yielding no token is not an error)" 0
+# Asserted FIRST so the --label absence below cannot pass merely because glab was
+# never invoked and the log is missing entirely.
+check "createmr(all-separator label): glab mr create DID run (the argv log is real)" "no create was logged, so the absence assertion below would be vacuous" \
+	"$( argv_has_pair "$CREATE_LOG_ALLSEP" '--title' 'all separators' && echo 0 || echo 1 )"
+check "createmr(all-separator label): NO --label token reached glab at all" "an empty or dangling --label was passed to glab" \
+	"$( argv_has_token "$CREATE_LOG_ALLSEP" '--label' && echo 1 || echo 0 )"
+
 section "create-mr.sh — a GLOB metacharacter in a comma-list stays literal (TEST-004)"
 # split_csv_list wraps its `set -- \$value` in `set -f` precisely so the unquoted
 # split cannot ALSO filename-expand. No fixture contained a glob character, so
@@ -1582,6 +1642,33 @@ check "updatemr(glob guard): the literal '*' reached --unlabel (it was NOT filen
 	"the '*' was glob-expanded against the cwd instead of staying literal" \
 	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--unlabel' '*' && echo 0 || echo 1 )"
 
+section "update-mr.sh — a list token with a SPACE stays ONE token; an all-separator value contributes NONE (TEST-009)"
+# The same two accumulate() properties as create-mr.sh's section above, asserted
+# through update-mr.sh's own accumulators — they share the lib helper, but only
+# this script's argv proves the newline list survives the --label emit loop.
+UPDATE_LOG_SPACE="$WORK/mr-update-log-space-label"
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_UPDATE_OUT=" "GLAB_STUB_UPDATE_LOG=$UPDATE_LOG_SPACE" \
+	sh "$UPDATEMR" --confirmed-host gitlab.com --repo g/p --mr 5 --add-label 'needs review' --add-label ready
+expect_rc "updatemr(space in label): -> exit 0" 0
+check "updatemr(space in label): 'needs review' reached glab as ONE argv token" "the label was word-split into separate argv tokens" \
+	"$( argv_has_pair "$UPDATE_LOG_SPACE" '--label' 'needs review' && echo 0 || echo 1 )"
+check "updatemr(space in label): no bare 'needs' token exists in argv (proof it was NOT split)" "the label was split on its internal space" \
+	"$( argv_has_token "$UPDATE_LOG_SPACE" 'needs' && echo 1 || echo 0 )"
+check "updatemr(space in label): the NEXT label in the list still arrived intact" "a space-bearing entry corrupted the rest of the accumulated list" \
+	"$( argv_has_pair "$UPDATE_LOG_SPACE" '--label' 'ready' && echo 0 || echo 1 )"
+
+# --title carries the update here: an all-separator --add-label contributes no
+# token, so on its own it would trip the "at least one field to change" guard
+# and this case could never reach glab at all.
+UPDATE_LOG_ALLSEP="$WORK/mr-update-log-all-separator-label"
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_UPDATE_OUT=" "GLAB_STUB_UPDATE_LOG=$UPDATE_LOG_ALLSEP" \
+	sh "$UPDATEMR" --confirmed-host gitlab.com --repo g/p --mr 5 --title 'all separators' --add-label ',,'
+expect_rc "updatemr(all-separator label): -> exit 0 (a value yielding no token is not an error)" 0
+check "updatemr(all-separator label): glab mr update DID run (the argv log is real)" "no update was logged, so the absence assertion below would be vacuous" \
+	"$( argv_has_pair "$UPDATE_LOG_ALLSEP" '--title' 'all separators' && echo 0 || echo 1 )"
+check "updatemr(all-separator label): NO --label token reached glab at all" "an empty or dangling --label was passed to glab" \
+	"$( argv_has_token "$UPDATE_LOG_ALLSEP" '--label' && echo 1 || echo 0 )"
+
 section "update-mr.sh — --mr rejects 0 and leading-zero forms (usage error, not a glab failure)"
 run 1 sh "$UPDATEMR" --confirmed-host gitlab.com --repo g/p --mr 0 --title x
 expect_rc "updatemr(--mr 0): -> exit 2" 2
@@ -1589,6 +1676,46 @@ stderr_has "updatemr(--mr 0): diagnostic" "positive integer"
 run 1 sh "$UPDATEMR" --confirmed-host gitlab.com --repo g/p --mr 007 --title x
 expect_rc "updatemr(--mr 007): -> exit 2 (007 is not the iid GitLab echoes back)" 2
 stderr_has "updatemr(--mr 007): diagnostic" "positive integer"
+
+# ===========================================================================
+# Deploy-shape probes (TEST-003) — the sibling libs resolve in the shape this
+# skill is actually DEPLOYED in, not just the shape the suite runs it in.
+#
+# Every case above invokes a script by its absolute path from the repo checkout,
+# with the harness's own cwd. Neither half of the real deployment is exercised
+# that way: the hub installs this skill as a SYMLINK
+# ($HOME/.claude/skills/procedure-glab-mr -> the repo's skill/), and the agent
+# invokes it from whatever directory it happens to be working in. Each script
+# now derives its libs from $0 by parameter expansion (`${0%/*}/../lib`) with no
+# `cd` normalization — so both claims have to hold, and before the split there
+# was no sibling lib/ to reach and no deployment symlink in the test path.
+# Ported from procedure-jira's run-write-tests.sh P3 probes.
+#
+# create-mr.sh is the probe subject deliberately: it sources BOTH libs and its
+# own `cd "$OPT_REPO_DIR"` subshell makes it the script most sensitive to a
+# resolution scheme that quietly depends on the cwd.
+# ===========================================================================
+section "deploy shape — the libs resolve from an unrelated cwd and through a symlinked skill/"
+
+mkdir -p "$WORK/unrelated"
+DEPLOY_SAVED_CWD=$(pwd)
+cd "$WORK/unrelated" || { printf 'FATAL: cannot cd into the probe dir\n' >&2; exit 1; }
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_MR_LIST=" \
+	sh "$CREATEMR" --repo group/sub/proj --repo-dir "$GITREPO" --source-branch feat/cwd-probe \
+		--target-branch main --title "cwd probe" --description-file "$MRDESC"
+cd "$DEPLOY_SAVED_CWD" || { printf 'FATAL: cannot restore the original cwd\n' >&2; exit 1; }
+expect_rc "deploy(unrelated cwd): create-mr.sh -> exit 0" 0
+stdout_has "deploy(unrelated cwd): both libs still resolved (the run reached a real create)" "PM_MR_URL=https://gitlab.com/group/sub/proj/-/merge_requests/7"
+
+DEPLOY_SKILL_DIR=$(cd "$SCRIPTS_DIR/.." && pwd)
+ln -s "$DEPLOY_SKILL_DIR" "$WORK/skill-link"
+DEPLOY_CREATEMR_VIA_LINK="$WORK/skill-link/scripts/create-mr.sh"
+
+run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_MR_LIST=" \
+	sh "$DEPLOY_CREATEMR_VIA_LINK" --repo group/sub/proj --repo-dir "$GITREPO" --source-branch feat/symlink-probe \
+		--target-branch main --title "symlink probe" --description-file "$MRDESC"
+expect_rc "deploy(symlinked skill/): create-mr.sh -> exit 0" 0
+stdout_has "deploy(symlinked skill/): both libs still resolved through the link" "PM_MR_URL=https://gitlab.com/group/sub/proj/-/merge_requests/7"
 
 # ===========================================================================
 # Summary

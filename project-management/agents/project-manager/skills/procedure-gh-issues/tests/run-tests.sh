@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # run-tests.sh — self-contained, zero-dependency POSIX test harness for the
 #                procedure-gh-issues script suite (create-issue.sh,
@@ -40,7 +41,12 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
+# `2>/dev/null` + an explicit failure branch: without them a MISSING lib/ dir
+# aborts right here under `set -e`, with a raw `cd` error, before the friendly
+# per-file preflight below can ever run — i.e. the preflight could not fire in
+# its single most likely failure mode.
+LIB_DIR=$(cd "$TESTS_DIR/../skill/lib" 2>/dev/null && pwd) || { printf 'FATAL: missing lib dir: %s\n' "$TESTS_DIR/../skill/lib" >&2; exit 1; }
 CREATE="$SCRIPTS_DIR/create-issue.sh"
 FINDDUP="$SCRIPTS_DIR/find-duplicate.sh"
 LINKKIDS="$SCRIPTS_DIR/link-children.sh"
@@ -77,6 +83,14 @@ for t in sh mktemp grep sed cat tr paste rm cp mv awk; do
 	link_tool "$t"
 done
 
+# Every command script sources its libs at startup, so a missing lib file would
+# surface as 300+ identical, unreadable failures. Fail once, loudly, instead —
+# beside the link_tool fatals above and deliberately NOT counted in TESTS_RUN,
+# so the check totals stay comparable.
+for f in pm-diag.sh pm-validate.sh pm-gh-preconditions.sh pm-lists.sh; do
+	[ -r "$LIB_DIR/$f" ] || { printf 'FATAL: missing lib file: %s\n' "$LIB_DIR/$f" >&2; exit 1; }
+done
+
 # ---------------------------------------------------------------------------
 # gh stub — fully env-driven so tests script every deterministic branch.
 #   GH_STUB_AUTHED=1              -> `gh auth status` succeeds
@@ -89,6 +103,12 @@ done
 #                                    distinct from leaving it unset)
 #   GH_STUB_CREATE_LOG=path       -> capture argv (token-per-line) + the
 #                                    --body-file CONTENTS
+#   GH_STUB_BODY_FILE_RAW=path    -> byte-exact raw COPY of the --body-file gh
+#                                    received (honored by `gh issue create` and
+#                                    `gh issue comment`). A channel entirely
+#                                    separate from the marker block above, so a
+#                                    byte-exact proof never has to survive
+#                                    marker framing — see diff_body_raw.
 #   GH_STUB_LIST_RC=n             -> exit code for `gh issue list`
 #   GH_STUB_LIST_LOG=path         -> capture `gh issue list` argv (token-per-line)
 #   GH_STUB_SEARCH_URLS=<nl-list> -> `gh issue list --json url --jq...` result
@@ -143,20 +163,35 @@ log_argv() {
 }
 
 capture_body_file() {
-	# capture_body_file LOGFILE "$@" — scans argv for the value following
-	# --body-file and, if a log target is set, appends a verbatim copy of
-	# that file's CONTENTS between BODY_FILE_CONTENTS_START/END markers.
+	# capture_body_file LOGFILE RAWFILE "$@" — scans argv for the value following
+	# --body-file and records that file two ways: a verbatim copy of its CONTENTS
+	# appended to LOGFILE between BODY_FILE_CONTENTS_START/END markers (readable,
+	# scoped assertions), and — when RAWFILE is set — a byte-exact copy for a
+	# strict diff. Either target may be empty; each is guarded independently.
+	#
+	# `awk '{ print }'`, NOT `cat`: awk terminates every record it prints with a
+	# newline, so the closing BODY_FILE_CONTENTS_END marker always lands on its
+	# OWN line. `cat` on a body file whose last byte is NOT a newline — a legal
+	# file — glues the marker onto the final content line, which silently breaks
+	# BOTH body_block's marker-range extraction (it swallows that last line) and
+	# ARGV_SCOPE's payload suppression (in_payload never resets). A no-op for
+	# already-newline-terminated input; mirrors procedure-glab-issues' raw channel.
 	logtarget=$1
-	shift
-	[ -n "$logtarget" ] || return 0
+	rawtarget=$2
+	shift 2
 	prev=""
 	for a in "$@"; do
 		if [ "$prev" = "--body-file" ]; then
-			{
-				printf 'BODY_FILE_CONTENTS_START\n'
-				cat "$a"
-				printf 'BODY_FILE_CONTENTS_END\n'
-			} >>"$logtarget"
+			if [ -n "$logtarget" ]; then
+				{
+					printf 'BODY_FILE_CONTENTS_START\n'
+					awk '{ print }' "$a"
+					printf 'BODY_FILE_CONTENTS_END\n'
+				} >>"$logtarget"
+			fi
+			if [ -n "$rawtarget" ]; then
+				cp "$a" "$rawtarget"
+			fi
 		fi
 		prev=$a
 	done
@@ -195,7 +230,7 @@ case "${1:-}" in
 			create)
 				shift 2
 				log_argv "${GH_STUB_CREATE_LOG:-}" "$@"
-				capture_body_file "${GH_STUB_CREATE_LOG:-}" "$@"
+				capture_body_file "${GH_STUB_CREATE_LOG:-}" "${GH_STUB_BODY_FILE_RAW:-}" "$@"
 				if [ "${GH_STUB_CREATE_RC:-0}" != "0" ]; then
 					printf 'stub: forced create failure\n' >&2
 					exit "${GH_STUB_CREATE_RC:-1}"
@@ -243,7 +278,7 @@ case "${1:-}" in
 			comment)
 				shift 2
 				log_argv "${GH_STUB_COMMENT_LOG:-}" "$@"
-				capture_body_file "${GH_STUB_COMMENT_LOG:-}" "$@"
+				capture_body_file "${GH_STUB_COMMENT_LOG:-}" "${GH_STUB_BODY_FILE_RAW:-}" "$@"
 				if [ "${GH_STUB_COMMENT_RC:-0}" != "0" ]; then
 					printf 'stub: forced comment failure\n' >&2
 					exit "${GH_STUB_COMMENT_RC:-1}"
@@ -365,14 +400,97 @@ line_count_eq() {
 	[ "$(grep -Fxc -- "$2" "$1" 2>/dev/null || true)" -eq "$3" ]
 }
 
+# ---------------------------------------------------------------------------
+# argv assertions — the three helpers below share ONE scoping prelude.
+#
+# ARGV_SCOPE is the awk program prefix every argv assertion is built on. It
+# reduces the stub's log to the tokens that genuinely came from log_argv, and
+# maintains the per-block state the helpers read (in_argv, want, next_is_first),
+# so each helper is left as nothing but its own comparison rule. Sharing ONE
+# prelude is also what keeps the three sound in the same way — the previous
+# per-helper copies had drifted, and the drift was a real hole (below).
+#
+# WHY THE PAYLOAD SUPPRESSION MUST COME FIRST, BEFORE the ARGV_BEGIN rule: the
+# same log file also holds the stub's BODY_FILE_CONTENTS block, i.e. untrusted
+# fixture payload bytes. Gating on ARGV_BEGIN/ARGV_END ALONE is NOT enough,
+# because a payload line reading exactly `ARGV_BEGIN` re-opens that gate and
+# hands the following payload lines to the comparison as though the script had
+# passed them — a positive assertion would pass without being earned, and a
+# negative one would be defeated. Skipping the payload block outright is what
+# makes the gate sound; the "harness self-check" section below pins it.
+# ---------------------------------------------------------------------------
+# shellcheck disable=SC2016  # $0 here is awk's whole-line, not a shell parameter — single quotes are required
+ARGV_SCOPE='
+	$0 == "BODY_FILE_CONTENTS_START" { in_payload = 1; next }
+	$0 == "BODY_FILE_CONTENTS_END"   { in_payload = 0; next }
+	in_payload == 1 { next }
+	$0 == "ARGV_BEGIN" { in_argv = 1; want = 0; next_is_first = 1; next }
+	$0 == "ARGV_END"   { in_argv = 0; want = 0; next_is_first = 0; next }
+	in_argv != 1 { next }
+'
+
 # argv_has_pair LOGFILE FLAG VALUE — true iff FLAG appears immediately
 # followed by VALUE as two CONSECUTIVE lines inside the log's token-per-line
 # ARGV_BEGIN/ARGV_END block. Proves VALUE reached gh as ONE argv token right
 # after FLAG — a word-splitting regression would show as extra lines instead.
+#
+# FLAG and VALUE travel through the ENVIRONMENT, not through `awk -v`, because
+# `-v` assignment performs ESCAPE PROCESSING: a backslash sequence inside an
+# expected value (a label of 'a\tb' is legal input here) would silently become a
+# real tab in awk and never match the literal backslash-t the script actually
+# passed. ENVIRON does no such rewriting.
+#
+# Each comparison concatenates "" onto BOTH sides. `$0` and ENVIRON values are awk
+# STRNUMs: when both look numeric, `==` compares them NUMERICALLY, so a logged token
+# of `007` would match an expected value of `7` — and an issue number is exactly the
+# kind of numeric-looking argv this suite asserts on. Concatenation forces the
+# BYTE-EXACT string comparison these argv assertions actually mean.
 argv_has_pair() {
-	awk -v flag="$2" -v value="$3" '
-		$0 == flag { want = 1; next }
-		want == 1 { if ($0 == value) { found = 1 }; want = 0 }
+	ARGV_FLAG=$2 ARGV_VALUE=$3 awk "$ARGV_SCOPE"'
+		($0 "") == (ENVIRON["ARGV_FLAG"] "") { want = 1; next }
+		want == 1 { if (($0 "") == (ENVIRON["ARGV_VALUE"] "")) { found = 1 }; want = 0 }
+		END { exit(found ? 0 : 1) }
+	' "$1"
+}
+
+# argv_has_token LOGFILE TOKEN — true iff TOKEN appears as a WHOLE LINE inside an
+# ARGV_BEGIN/ARGV_END block. The scoped replacement for a bare
+# `grep -Fxq -- 'TOKEN' logfile`, which scanned the BODY_FILE_CONTENTS payload
+# block too: an assertion that "no bare --body token was passed" must not be
+# defeated by a fixture whose issue body happens to contain a line reading
+# exactly `--body`. TOKEN travels via ENVIRON for the same no-escape-processing
+# reason as argv_has_pair's, and is compared with the same ""-concatenation on both
+# sides for the same strnum reason.
+argv_has_token() {
+	ARGV_TOKEN=$2 awk "$ARGV_SCOPE"'
+		($0 "") == (ENVIRON["ARGV_TOKEN"] "") { found = 1 }
+		END { exit(found ? 0 : 1) }
+	' "$1"
+}
+
+# argv_first_is LOGFILE VALUE — true iff VALUE is the FIRST token of an argv
+# block, i.e. it was passed POSITIONALLY rather than behind a flag. This is what
+# proves close-issue.sh forwards the issue number the way gh takes it (positional
+# <number>), and — more to the point — that it forwards the number the CALLER
+# named rather than some other value that happens to be in scope. Every other
+# argv assertion in this file checks a FLAG's presence or value; none of them can
+# see the positional at all.
+#
+# The stub `shift 2`s past `issue close` / `issue comment` before logging, so the
+# first logged token IS the positional. Deliberately anchored to the first token
+# rather than scanning the block: an off-by-one that emitted the right number in
+# some other argv slot must not satisfy this.
+#
+# VALUE travels via ENVIRON and is compared with the same ""-concatenation on both
+# sides as argv_has_pair/argv_has_token, for the same two reasons — and this helper
+# is where BOTH bite hardest, because the value it asserts is an issue number. A
+# bare `==` between two strnum operands compares NUMERICALLY: a regression that
+# logged `042` where the test searched `42` (or `42.0`, or `+42`) would compare
+# equal and pass an assertion it never earned. Concatenating "" forces a byte
+# comparison. Mirrors procedure-glab-issues' helper of the same name.
+argv_first_is() {
+	ARGV_FIRST_VALUE=$2 awk "$ARGV_SCOPE"'
+		next_is_first == 1 { if (($0 "") == (ENVIRON["ARGV_FIRST_VALUE"] "")) { found = 1 }; next_is_first = 0 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -385,17 +503,158 @@ body_block() {
 	sed -n '/^BODY_FILE_CONTENTS_START$/,/^BODY_FILE_CONTENTS_END$/p' "$1" | sed '1d;$d'
 }
 
-# diff_body_block LOGFILE EXPECTEDFILE — strict byte-for-byte compare of what
-# gh actually received (body_block of LOGFILE) against the original fixture
-# file. The authoritative proof that a body reached gh completely unaltered:
-# evaluation, truncation (a real heredoc stopping early), or reordering would
-# all change the captured bytes. Writes the diff to $WORK/body_block_diff.
-diff_body_block() {
-	body_block "$1" >"$WORK/body_block_actual"
-	diff -u "$2" "$WORK/body_block_actual" >"$WORK/body_block_diff" 2>&1
+# diff_body_raw FIXTURE RAWCOPY — strict byte-for-byte compare of the stub's raw
+# copy of the file gh actually received (GH_STUB_BODY_FILE_RAW) against the
+# original fixture. The authoritative proof that a body reached gh completely
+# unaltered: evaluation, truncation (a real heredoc stopping early), or
+# reordering would all change the captured bytes.
+#
+# Deliberately reads the RAW channel rather than body_block's marker-extracted
+# text. Marker framing has to re-serialise the content line by line, so a fixture
+# whose last byte is not a newline can never be compared byte-exactly through it
+# — the framing must add one. Diffing a plain `cp` sidesteps the whole question,
+# which makes this proof independent of the log format entirely. Writes the diff
+# to $WORK/body_raw_diff. Mirrors procedure-glab-issues' diff_value_file.
+diff_body_raw() {
+	diff -u "$1" "$2" >"$WORK/body_raw_diff" 2>&1
 }
 
 section() { printf '\n== %s ==\n' "$1"; }
+
+# ===========================================================================
+# Harness self-check — the argv helpers are NOT fooled by payload bytes
+#
+# WHY A TEST OF THE TEST HARNESS. argv_has_pair / argv_has_token /
+# argv_first_is are the primitives roughly a hundred assertions below are
+# expressed in, so a false positive in one of them silently disarms every
+# assertion built on it — the suite stays green while verifying nothing. That
+# failure mode is invisible from the outside, which is exactly why it gets a
+# direct test rather than trust.
+#
+# The fixture is a genuine argv block followed by a body payload that IMPERSONATES
+# a second one: a payload line reading exactly `ARGV_BEGIN`, followed by lines the
+# assertions below search for. Before ARGV_SCOPE gained its payload suppression,
+# that impersonation re-opened the argv gate and every negative check here passed
+# a value the script never sent.
+# ===========================================================================
+section "harness self-check — argv helpers ignore the body payload block"
+
+ARGV_POISON_LOG="$WORK/argv-poison-log"
+cat >"$ARGV_POISON_LOG" <<'POISON_EOF'
+ARGV_BEGIN
+9
+--repo
+o/r
+ARGV_END
+BODY_FILE_CONTENTS_START
+ARGV_BEGIN
+42
+--body
+--reason
+not planned
+BODY_FILE_CONTENTS_END
+POISON_EOF
+
+check "self-check: argv_first_is still finds the REAL positional '9'" "the helper stopped seeing a genuine first token" \
+	"$( argv_first_is "$ARGV_POISON_LOG" '9' && echo 0 || echo 1 )"
+check "self-check: argv_first_is does NOT accept '42' from the payload's fake ARGV_BEGIN" "a body line was mistaken for a positional argument" \
+	"$( argv_first_is "$ARGV_POISON_LOG" '42' && echo 1 || echo 0 )"
+check "self-check: argv_has_pair still finds the REAL --repo o/r" "the helper stopped seeing a genuine flag/value pair" \
+	"$( argv_has_pair "$ARGV_POISON_LOG" '--repo' 'o/r' && echo 0 || echo 1 )"
+check "self-check: argv_has_pair does NOT accept a flag/value pair from the payload" "two body lines were mistaken for a flag and its value" \
+	"$( argv_has_pair "$ARGV_POISON_LOG" '--reason' 'not planned' && echo 1 || echo 0 )"
+check "self-check: argv_has_token does NOT accept a token from the payload" "a body line was mistaken for an argv token" \
+	"$( argv_has_token "$ARGV_POISON_LOG" '--body' && echo 1 || echo 0 )"
+
+# ===========================================================================
+# lib/pm-validate.sh — DIRECT unit coverage of the pure predicates
+#
+# WHY THIS BLOCK EXISTS, AND WHY IT IS THE ONLY ONE THAT SOURCES A LIB.
+# Every other test in this file is black-box: it invokes a script through the
+# isolated toolbox and asserts on stdout/stderr/exit code. That is the right
+# altitude for a CLI — but it can only reach a predicate through whatever
+# inputs some command's argument parser happens to forward, so most of each
+# predicate's truth table is simply unreachable from out there (a CLI test can
+# show that "o/.." is rejected; it cannot cheaply enumerate "a/b/c", "g//p",
+# "./p", "" and the rest).
+#
+# pm-validate.sh is sourceable here precisely BECAUSE its functions are pure:
+# no $PROG, no usage(), no exiting, no globals, no binary on PATH. Sourcing it
+# into the harness's own shell costs nothing and pins the full truth table
+# directly — including the edge inputs above, which is where a rewrite of a
+# `case` pattern actually goes wrong.
+#
+# This block deliberately does NOT run under `run` / `env -i`: there is no
+# subprocess and no PATH involved, so the toolbox is irrelevant to it.
+# ===========================================================================
+section "lib/pm-validate.sh — pure predicate truth tables (unit)"
+
+# shellcheck source=../skill/lib/pm-validate.sh
+. "$LIB_DIR/pm-validate.sh"
+
+# pred_true NAME FN VALUE — assert FN accepts VALUE (exit 0).
+pred_true() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if "$2" "$3"; then pass "$1"
+	else fail "$1" "$2 rejected a value it must accept: [$3]"; fi
+}
+
+# pred_false NAME FN VALUE — assert FN rejects VALUE (exit 1).
+pred_false() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if "$2" "$3"; then fail "$1" "$2 accepted a value it must reject: [$3]"
+	else pass "$1"; fi
+}
+
+pred_true  "is_positive_int: '1'"            is_positive_int 1
+pred_true  "is_positive_int: '42'"           is_positive_int 42
+pred_true  "is_positive_int: '10'"           is_positive_int 10
+pred_false "is_positive_int: '0' (not positive)"        is_positive_int 0
+pred_false "is_positive_int: '007' (leading zero)"      is_positive_int 007
+pred_false "is_positive_int: '' (empty)"                is_positive_int ""
+pred_false "is_positive_int: '1x' (trailing non-digit)" is_positive_int 1x
+pred_false "is_positive_int: 'abc'"                     is_positive_int abc
+pred_false "is_positive_int: '-1' (negative)"           is_positive_int "-1"
+pred_false "is_positive_int: '1 2' (embedded space)"    is_positive_int "1 2"
+
+pred_true  "is_valid_repo_slug: 'o/r'"                  is_valid_repo_slug o/r
+pred_true  "is_valid_repo_slug: 'octo/repo'"            is_valid_repo_slug octo/repo
+pred_true  "is_valid_repo_slug: dots/dashes/underscores" is_valid_repo_slug my-org.x/my_repo.js
+pred_false "is_valid_repo_slug: 'a/b/c' (GitHub takes exactly one '/')" is_valid_repo_slug a/b/c
+pred_false "is_valid_repo_slug: 'o/..' (dot-segment)"   is_valid_repo_slug 'o/..'
+pred_false "is_valid_repo_slug: '../r' (dot-segment)"   is_valid_repo_slug '../r'
+pred_false "is_valid_repo_slug: '..' (bare dot-segment)" is_valid_repo_slug '..'
+pred_false "is_valid_repo_slug: 'noslash'"              is_valid_repo_slug noslash
+pred_false "is_valid_repo_slug: '' (empty)"             is_valid_repo_slug ""
+pred_false "is_valid_repo_slug: 'o/r; rm -rf /' (metachars)" is_valid_repo_slug 'o/r; rm -rf /'
+pred_false "is_valid_repo_slug: 'o r/x' (space)"        is_valid_repo_slug 'o r/x'
+# 'g//p', '/g/p' and 'g/p/' are all rejected — but by the EXACTLY-ONE-'/' rule
+# (*/*/*), not by any empty-segment rule: this predicate has none. That
+# distinction is the point of the three cases below, and of the two after them.
+pred_false "is_valid_repo_slug: 'g//p' (caught by the two-slash rule)"  is_valid_repo_slug 'g//p'
+pred_false "is_valid_repo_slug: '/g/p' (caught by the two-slash rule)"  is_valid_repo_slug '/g/p'
+pred_false "is_valid_repo_slug: 'g/p/' (caught by the two-slash rule)"  is_valid_repo_slug 'g/p/'
+pred_false "is_valid_repo_slug: '.' (bare current-dir segment)"         is_valid_repo_slug '.'
+# CURRENT BEHAVIOR, PINNED AS-IS — NOT an endorsement. With only ONE slash there
+# is no */*/* match and no ".." to catch, so a LEADING slash and a leading "./"
+# both slip through: '/gp' and './p' are ACCEPTED. The GitLab sibling rejects the
+# equivalents outright (it has explicit leading/trailing-slash and current-dir
+# rules). Neither is a traversal — '.' resolves to the same path, so the REST
+# sink just 404s — which is why this refactor PRESERVES the behavior rather than
+# "fixing" it: silently tightening a validator mid-refactor is exactly the kind
+# of riding-along change that must be a separate, deliberate decision. These two
+# assertions exist so that decision, if it ever comes, has to be explicit.
+pred_true  "is_valid_repo_slug: '/gp' ACCEPTED (leading slash unscreened — pinned, see note)" is_valid_repo_slug '/gp'
+pred_true  "is_valid_repo_slug: './p' ACCEPTED (leading './' unscreened — pinned, see note)"  is_valid_repo_slug './p'
+
+pred_true  "is_valid_hex_color: 'ff0000'"               is_valid_hex_color ff0000
+pred_true  "is_valid_hex_color: 'FF00aa' (mixed case)"  is_valid_hex_color FF00aa
+pred_true  "is_valid_hex_color: '000000'"               is_valid_hex_color 000000
+pred_false "is_valid_hex_color: '#ff0000' (gh wants NO leading '#')" is_valid_hex_color '#ff0000'
+pred_false "is_valid_hex_color: 'zzzzzz' (non-hex)"     is_valid_hex_color zzzzzz
+pred_false "is_valid_hex_color: 'ff00' (too short)"     is_valid_hex_color ff00
+pred_false "is_valid_hex_color: 'ff00000' (too long)"   is_valid_hex_color ff00000
+pred_false "is_valid_hex_color: '' (empty)"             is_valid_hex_color ""
 
 # ===========================================================================
 # create-issue.sh
@@ -520,9 +779,9 @@ check "create(success): --assignee alice passed as one token" "assignee missing/
 check "create(success): --assignee bob passed as one token" "assignee missing/misplaced in argv" \
 	"$( argv_has_pair "$CREATE_LOG3" '--assignee' 'bob' && echo 0 || echo 1 )"
 check "create(success): argv uses --body-file (the injection-safety mechanism)" "no --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$CREATE_LOG3" && echo 0 || echo 1 )"
+	"$( argv_has_token "$CREATE_LOG3" '--body-file' && echo 0 || echo 1 )"
 check "create(success): argv has NO bare --body token" "a bare --body flag was found in argv" \
-	"$( grep -Fxq -- '--body' "$CREATE_LOG3" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CREATE_LOG3" '--body' && echo 1 || echo 0 )"
 check "create(success): body-file contents relayed verbatim (body-only text, not the title)" "body content missing" \
 	"$( body_block "$CREATE_LOG3" | grep -Fq -- '## Story' && echo 0 || echo 1 )"
 
@@ -542,6 +801,96 @@ check "create(project): --project 'Q3 Goals' passed as one token" "project missi
 # generic-failure code path as this test exercises. A separate
 # "unknown --project" test would be identical to this one in every assertion
 # and is intentionally not duplicated here.
+section "create-issue.sh — a comma-list with SPACES and EMPTY elements"
+# add_label trims each token and drops empty ones, but no fixture in THIS harness
+# contained a space or an empty element, so both behaviors were unexercised here
+# (the GitLab sibling has covered them all along). A dropped trim would send gh
+# the label " urgent" — a DIFFERENT label, which the existence pre-check would
+# then reject — and a dropped empty-skip would send an empty argv value.
+CREATE_LOG_TRIM="$WORK/create-log-trim"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_LABELS=bug
+urgent" "GH_STUB_CREATE_LOG=$CREATE_LOG_TRIM" \
+	sh "$CREATE" --repo octo/repo --title x --body-file "$BODY1" --label "bug, urgent ,,"
+expect_rc "create(csv trim): -> exit 0 (the trimmed names passed the existence pre-check)" 0
+check "create(csv trim): 'bug' arrived clean" "the first token was mangled" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' 'bug' && echo 0 || echo 1 )"
+check "create(csv trim): ' urgent ' arrived TRIMMED to 'urgent'" "surrounding whitespace was not trimmed" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' 'urgent' && echo 0 || echo 1 )"
+check "create(csv trim): the UNTRIMMED ' urgent ' never reached argv" "an untrimmed token was passed to gh" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' ' urgent ' && echo 1 || echo 0 )"
+check "create(csv trim): the empty elements produced NO empty --label value" "an empty label value was passed to gh" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' '' && echo 1 || echo 0 )"
+
+section "create-issue.sh — --assignee/--project DO comma-split (unified with update-issue.sh)"
+# A DELIBERATE, DOCUMENTED BEHAVIOR CHANGE, pinned here in its new direction.
+# --assignee and --project used to append their value verbatim while --label
+# comma-split and update-issue.sh's --add-assignee comma-split — so the identical
+# string `alice,bob` meant ONE assignee on create and TWO on update. All three
+# create flags now route through the same csv_accumulate primitive (lib/
+# pm-lists.sh, which carries the full rationale), so the asymmetry is resolved in
+# favour of splitting: the more capable direction, and the one the real `gh` CLI's
+# repeatable string-slice flags take.
+#
+# The cost of that uniformity is that a value CONTAINING a comma can no longer be
+# expressed through these flags — which is precisely what the "never reached argv"
+# assertions below pin, so a silent revert to the verbatim append cannot pass.
+CREATE_LOG_SPLIT="$WORK/create-log-split"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_CREATE_URL=https://github.com/octo/repo/issues/8" "GH_STUB_CREATE_LOG=$CREATE_LOG_SPLIT" \
+	sh "$CREATE" --repo octo/repo --title x --body-file "$BODY1" \
+		--assignee "alice,bob" --project "A,B"
+expect_rc "create(split): -> exit 0" 0
+check "create(split): --assignee 'alice,bob' WAS split into its own 'alice' token" \
+	"--assignee stopped comma-splitting" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--assignee' 'alice' && echo 0 || echo 1 )"
+check "create(split): --assignee 'alice,bob' WAS split into its own 'bob' token" \
+	"--assignee dropped the second half of the comma-list" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--assignee' 'bob' && echo 0 || echo 1 )"
+check "create(split): the unsplit 'alice,bob' NEVER reached argv as one token" \
+	"--assignee passed the comma-list through verbatim (the pre-unification behavior)" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--assignee' 'alice,bob' && echo 1 || echo 0 )"
+check "create(split): --project 'A,B' WAS split into its own 'A' token" \
+	"--project stopped comma-splitting" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--project' 'A' && echo 0 || echo 1 )"
+check "create(split): --project 'A,B' WAS split into its own 'B' token" \
+	"--project dropped the second half of the comma-list" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--project' 'B' && echo 0 || echo 1 )"
+check "create(split): the unsplit 'A,B' NEVER reached argv as one token" \
+	"--project passed the comma-list through verbatim (the pre-unification behavior)" \
+	"$( argv_has_pair "$CREATE_LOG_SPLIT" '--project' 'A,B' && echo 1 || echo 0 )"
+
+section "create-issue.sh — --assignee/--project also ACCUMULATE across repeats"
+# The other half of the same change: each occurrence is appended to what earlier
+# occurrences contributed, so a repeat and a comma-list are interchangeable AND
+# combinable. Deliberately the MIXED spelling (one comma-list occurrence plus a
+# second plain one) rather than a plain repeat: a plain repeat of each flag is
+# already pinned by the create(success) and create(project) sections above, so a
+# third copy of it would verify nothing new — whereas splitting AND accumulating
+# in the SAME invocation is reachable no other way, and is what a rewrite that
+# handles only one of the two would break.
+CREATE_LOG_ACCUM="$WORK/create-log-accum"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_CREATE_URL=https://github.com/octo/repo/issues/8" "GH_STUB_CREATE_LOG=$CREATE_LOG_ACCUM" \
+	sh "$CREATE" --repo octo/repo --title x --body-file "$BODY1" \
+		--assignee "alice,bob" --assignee carol --project "A,B" --project C
+expect_rc "create(accumulate): -> exit 0" 0
+check "create(accumulate): --assignee kept 'alice' from the comma-list occurrence" \
+	"a later --assignee occurrence REPLACED the earlier one instead of accumulating" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--assignee' 'alice' && echo 0 || echo 1 )"
+check "create(accumulate): --assignee kept 'bob' from the comma-list occurrence" \
+	"a later --assignee occurrence REPLACED the earlier one instead of accumulating" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--assignee' 'bob' && echo 0 || echo 1 )"
+check "create(accumulate): --assignee appended 'carol' from the repeated occurrence" \
+	"the repeated --assignee occurrence was dropped" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--assignee' 'carol' && echo 0 || echo 1 )"
+check "create(accumulate): --project kept 'A' from the comma-list occurrence" \
+	"a later --project occurrence REPLACED the earlier one instead of accumulating" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--project' 'A' && echo 0 || echo 1 )"
+check "create(accumulate): --project kept 'B' from the comma-list occurrence" \
+	"a later --project occurrence REPLACED the earlier one instead of accumulating" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--project' 'B' && echo 0 || echo 1 )"
+check "create(accumulate): --project appended 'C' from the repeated occurrence" \
+	"the repeated --project occurrence was dropped" \
+	"$( argv_has_pair "$CREATE_LOG_ACCUM" '--project' 'C' && echo 0 || echo 1 )"
+
 section "create-issue.sh — gh issue create itself fails"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_CREATE_RC=1" sh "$CREATE" --repo o/r --title x --body-file "$BODY1"
 expect_rc "create(gh-fail): -> exit 1" 1
@@ -573,7 +922,9 @@ this line runs $(whoami) and `id` if the body were ever evaluated as shell
 - nothing else
 BODY_EOF
 CREATE_LOG4="$WORK/create-log4"
+CREATE_RAW4="$WORK/create-raw4"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_CREATE_URL=https://github.com/octo/repo/issues/99" "GH_STUB_CREATE_LOG=$CREATE_LOG4" \
+	"GH_STUB_BODY_FILE_RAW=$CREATE_RAW4" \
 	sh "$CREATE" --repo octo/repo --title "adversarial body test" --body-file "$ADVERSARIAL"
 expect_rc "create(adversarial): -> exit 0 (the file path carried it, not shell)" 0
 stdout_has "create(adversarial): still succeeds normally" "PM_ISSUE_URL=https://github.com/octo/repo/issues/99"
@@ -587,9 +938,9 @@ stdout_has "create(adversarial): still succeeds normally" "PM_ISSUE_URL=https://
 # unnecessary — the comparison is against the static fixture file, never a
 # computed value — and was host-coupled: a coincidental username substring
 # could have false-failed the assertion on some machines).
-if diff_body_block "$CREATE_LOG4" "$ADVERSARIAL"; then BODY_DIFF_RC=0; else BODY_DIFF_RC=1; fi
+if diff_body_raw "$ADVERSARIAL" "$CREATE_RAW4"; then BODY_DIFF_RC=0; else BODY_DIFF_RC=1; fi
 check "create(adversarial): body-file contents reached gh BYTE-IDENTICAL to the source fixture" \
-	"$(cat "$WORK/body_block_diff" 2>/dev/null)" \
+	"$(cat "$WORK/body_raw_diff" 2>/dev/null)" \
 	"$BODY_DIFF_RC"
 
 # Pin the MECHANISM, not just the content: a regression to
@@ -597,9 +948,38 @@ check "create(adversarial): body-file contents reached gh BYTE-IDENTICAL to the 
 # (command substitution's OWN output isn't re-evaluated either) — only
 # checking the actual argv shape catches that regression.
 check "create(adversarial): argv uses --body-file (the injection-safety mechanism)" "no --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$CREATE_LOG4" && echo 0 || echo 1 )"
+	"$( argv_has_token "$CREATE_LOG4" '--body-file' && echo 0 || echo 1 )"
 check "create(adversarial): argv has NO bare --body token" "a bare --body flag was found in argv" \
-	"$( grep -Fxq -- '--body' "$CREATE_LOG4" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CREATE_LOG4" '--body' && echo 1 || echo 0 )"
+
+section "create-issue.sh — a body-file whose last byte is NOT a newline"
+# Every other body fixture in this harness is heredoc- or printf-with-\n-written
+# and therefore newline-terminated, so an unterminated file — perfectly legal,
+# and what any editor-less generator can emit — went unexercised. It is the one
+# shape that breaks a `cat`-based capture in the gh stub: the closing
+# BODY_FILE_CONTENTS_END marker glues onto the final content line instead of
+# standing alone, which silently corrupts body_block's marker-range extraction
+# (it drops that last line) and ARGV_SCOPE's payload suppression (in_payload
+# never resets, so payload bytes leak into every argv assertion downstream).
+# Built with printf precisely BECAUSE a heredoc always terminates its last line.
+NO_EOL_BODY="$WORK/no-trailing-newline-body.md"
+printf '## Story\nA final line deliberately left unterminated' >"$NO_EOL_BODY"
+CREATE_LOG_NO_EOL="$WORK/create-log-no-eol"
+CREATE_RAW_NO_EOL="$WORK/create-raw-no-eol"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_CREATE_URL=https://github.com/octo/repo/issues/77" \
+	"GH_STUB_CREATE_LOG=$CREATE_LOG_NO_EOL" "GH_STUB_BODY_FILE_RAW=$CREATE_RAW_NO_EOL" \
+	sh "$CREATE" --repo octo/repo --title "unterminated body test" --body-file "$NO_EOL_BODY"
+expect_rc "create(no-eol body): -> exit 0" 0
+if diff_body_raw "$NO_EOL_BODY" "$CREATE_RAW_NO_EOL"; then NO_EOL_DIFF_RC=0; else NO_EOL_DIFF_RC=1; fi
+check "create(no-eol body): reached gh BYTE-IDENTICAL, absent trailing newline and all" \
+	"$(cat "$WORK/body_raw_diff" 2>/dev/null)" \
+	"$NO_EOL_DIFF_RC"
+check "create(no-eol body): the stub's BODY_FILE_CONTENTS_END marker stands on its OWN line" \
+	"the closing marker was glued onto the unterminated last content line — the log framing is corrupt" \
+	"$( line_count_eq "$CREATE_LOG_NO_EOL" 'BODY_FILE_CONTENTS_END' 1 && echo 0 || echo 1 )"
+check "create(no-eol body): body_block still extracts the unterminated last line" \
+	"the marker-range extraction swallowed the final line" \
+	"$( body_block "$CREATE_LOG_NO_EOL" | grep -Fq -- 'A final line deliberately left unterminated' && echo 0 || echo 1 )"
 
 # ===========================================================================
 # find-duplicate.sh
@@ -913,7 +1293,7 @@ stdout_has "ensurelabels(adversarial-label): reported created verbatim" 'PM_LABE
 # shellcheck disable=SC2016  # same deliberate literal as above
 check "ensurelabels(adversarial-label): the literal label text reached gh's argv (inert, never evaluated)" \
 	"literal \$(whoami)/backtick label text missing from gh's logged argv" \
-	"$( grep -Fxq -- '$(whoami) `id`' "$LABEL_LOG2" && echo 0 || echo 1 )"
+	"$( argv_has_token "$LABEL_LOG2" '$(whoami) `id`' && echo 0 || echo 1 )"
 
 section "ensure-labels.sh — a create failure is best-effort, not all-or-nothing"
 LABEL_LOG3="$WORK/label-log3"
@@ -999,9 +1379,9 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_COMMENT_URL=https://github.com/octo/repo/issue
 expect_rc "comment(success): -> exit 0" 0
 stdout_has "comment(success): PM_COMMENT_URL" "PM_COMMENT_URL=https://github.com/octo/repo/issues/1#issuecomment-42"
 check "comment(success): argv uses --body-file" "no --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$COMMENT_LOG1" && echo 0 || echo 1 )"
+	"$( argv_has_token "$COMMENT_LOG1" '--body-file' && echo 0 || echo 1 )"
 check "comment(success): argv has NO bare --body token" "a bare --body flag was found in argv" \
-	"$( grep -Fxq -- '--body' "$COMMENT_LOG1" && echo 1 || echo 0 )"
+	"$( argv_has_token "$COMMENT_LOG1" '--body' && echo 1 || echo 0 )"
 
 section "comment.sh — successful comment with NO URL returned (still success)"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_COMMENT_URL=" sh "$COMMENT" --repo o/r --issue 1 --body-file "$CBODY"
@@ -1024,12 +1404,14 @@ this line runs $(whoami) and `id` if the body were ever evaluated as shell
 Closing as a duplicate of #4.
 BODY_EOF
 COMMENT_LOG2="$WORK/comment-log2"
+COMMENT_RAW2="$WORK/comment-raw2"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_COMMENT_URL=https://github.com/octo/repo/issues/1#issuecomment-99" "GH_STUB_COMMENT_LOG=$COMMENT_LOG2" \
+	"GH_STUB_BODY_FILE_RAW=$COMMENT_RAW2" \
 	sh "$COMMENT" --repo octo/repo --issue 1 --body-file "$CADVERSARIAL"
 expect_rc "comment(adversarial): -> exit 0" 0
-if diff_body_block "$COMMENT_LOG2" "$CADVERSARIAL"; then COMMENT_DIFF_RC=0; else COMMENT_DIFF_RC=1; fi
+if diff_body_raw "$CADVERSARIAL" "$COMMENT_RAW2"; then COMMENT_DIFF_RC=0; else COMMENT_DIFF_RC=1; fi
 check "comment(adversarial): body-file contents reached gh BYTE-IDENTICAL to the source fixture" \
-	"$(cat "$WORK/body_block_diff" 2>/dev/null)" \
+	"$(cat "$WORK/body_raw_diff" 2>/dev/null)" \
 	"$COMMENT_DIFF_RC"
 
 # ===========================================================================
@@ -1091,9 +1473,9 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/issues/5
 expect_rc "update(no-body-clobber): -> exit 0" 0
 stdout_has "update(no-body-clobber): PM_ISSUE_URL" "PM_ISSUE_URL=https://github.com/octo/repo/issues/5"
 check "update(no-body-clobber): argv has NO --body-file token" "a --body-file token was found even though none was given — this would CLOBBER the body" \
-	"$( grep -Fxq -- '--body-file' "$UPDATE_ARGV_LOG1" && echo 1 || echo 0 )"
+	"$( argv_has_token "$UPDATE_ARGV_LOG1" '--body-file' && echo 1 || echo 0 )"
 check "update(no-body-clobber): argv has NO bare --body token either" "a bare --body flag was found" \
-	"$( grep -Fxq -- '--body' "$UPDATE_ARGV_LOG1" && echo 1 || echo 0 )"
+	"$( argv_has_token "$UPDATE_ARGV_LOG1" '--body' && echo 1 || echo 0 )"
 check "update(no-body-clobber): --title passed as one token" "title missing/misplaced in argv" \
 	"$( argv_has_pair "$UPDATE_ARGV_LOG1" '--title' 'renamed' && echo 0 || echo 1 )"
 check "update(no-body-clobber): --add-label bug passed" "add-label bug missing from argv" \
@@ -1119,9 +1501,48 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/issues/5
 	sh "$UPDATE" --repo octo/repo --issue 5 --body-file "$UBODY"
 expect_rc "update(body-replace): -> exit 0" 0
 check "update(body-replace): argv HAS --body-file token" "expected a --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$UPDATE_ARGV_LOG2" && echo 0 || echo 1 )"
+	"$( argv_has_token "$UPDATE_ARGV_LOG2" '--body-file' && echo 0 || echo 1 )"
 check "update(body-replace): body-file contents relayed verbatim" "body content missing" \
 	"$( grep -Fq -- '## Updated' "$UPDATE_BODY_LOG2" && echo 0 || echo 1 )"
+
+section "update-issue.sh — comma-list trimming and empty-skip"
+# The update-side twin of create's csv-trim section above: add_add_label routes
+# through split_csv_list, whose trim + empty-skip had no fixture exercising them
+# in this harness.
+UPDATE_LOG_TRIM="$WORK/update-log-trim"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/issues/5" \
+	"GH_STUB_EDIT_ARGV_LOG=$UPDATE_LOG_TRIM" \
+	sh "$UPDATE" --repo octo/repo --issue 5 --add-label "bug, urgent ,,"
+expect_rc "update(csv trim): -> exit 0" 0
+check "update(csv trim): 'bug' arrived clean" "the first token was mangled" \
+	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--add-label' 'bug' && echo 0 || echo 1 )"
+check "update(csv trim): ' urgent ' arrived TRIMMED to 'urgent'" "surrounding whitespace was not trimmed" \
+	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--add-label' 'urgent' && echo 0 || echo 1 )"
+check "update(csv trim): the UNTRIMMED ' urgent ' never reached argv" "an untrimmed token was passed to gh" \
+	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--add-label' ' urgent ' && echo 1 || echo 0 )"
+check "update(csv trim): the empty elements produced NO empty --add-label value" "an empty label value was passed to gh" \
+	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--add-label' '' && echo 1 || echo 0 )"
+
+section "update-issue.sh — --add-assignee DOES comma-split (the update half of the unified behavior)"
+# The update-side twin of create-issue.sh's split section: the very same
+# comma-list, handed to --add-assignee, is split into separate argv tokens. Both
+# ends now agree — every caller-facing list flag in this skill splits — so this
+# pins the update half of that uniformity: a change that reverted only this flag
+# to a verbatim append would leave create's section green and this one red.
+UPDATE_LOG_SPLIT="$WORK/update-log-split"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/issues/5" \
+	"GH_STUB_EDIT_ARGV_LOG=$UPDATE_LOG_SPLIT" \
+	sh "$UPDATE" --repo octo/repo --issue 5 --add-assignee "alice,bob"
+expect_rc "update(assignee-split): -> exit 0" 0
+check "update(assignee-split): --add-assignee 'alice,bob' WAS split into 'alice'" \
+	"--add-assignee stopped comma-splitting" \
+	"$( argv_has_pair "$UPDATE_LOG_SPLIT" '--add-assignee' 'alice' && echo 0 || echo 1 )"
+check "update(assignee-split): --add-assignee 'alice,bob' WAS split into 'bob'" \
+	"--add-assignee stopped comma-splitting" \
+	"$( argv_has_pair "$UPDATE_LOG_SPLIT" '--add-assignee' 'bob' && echo 0 || echo 1 )"
+check "update(assignee-split): the unsplit 'alice,bob' never reached argv" \
+	"--add-assignee passed the comma-list through verbatim" \
+	"$( argv_has_pair "$UPDATE_LOG_SPLIT" '--add-assignee' 'alice,bob' && echo 1 || echo 0 )"
 
 section "update-issue.sh — gh issue edit itself fails"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_RC=1" sh "$UPDATE" --repo o/r --issue 1 --title x
@@ -1210,7 +1631,7 @@ CLOSE_LOG4="$WORK/close-log4"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_CLOSE_LOG=$CLOSE_LOG4" sh "$CLOSE" --repo octo/repo --issue 9
 expect_rc "close(bare): -> exit 0" 0
 check "close(bare): argv has NO --reason token" "a --reason token was found even though none was requested (a silently-injected default)" \
-	"$( grep -Fxq -- '--reason' "$CLOSE_LOG4" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CLOSE_LOG4" '--reason' && echo 1 || echo 0 )"
 
 section "close-issue.sh — --comment-file posts a comment BEFORE closing"
 CCOMMENT="$WORK/close-comment.md"
@@ -1226,6 +1647,35 @@ check "close(with-comment): comment body-file contents relayed verbatim" "commen
 	"$( body_block "$CLOSE_COMMENT_LOG" | grep -Fq -- 'Closing as resolved.' && echo 0 || echo 1 )"
 check "close(with-comment): the issue was also closed" "no close call was logged" \
 	"$( [ -f "$CLOSE_LOG2" ] && echo 0 || echo 1 )"
+
+section "close-issue.sh — BOTH legs target the exact issue and repo the caller named"
+# Until now every close-issue.sh assertion above checked a FLAG (--reason present,
+# absent, translated) or merely that SOME call was logged — nothing pinned WHICH
+# issue in WHICH repo either leg actually acted on. A leg-local corruption (a
+# hardcoded number, the wrong variable, a dropped/duplicated --repo) would have
+# been invisible, and this script makes TWO writes, so each leg needs its own
+# proof: the comment leg posting on a different issue than the one being closed
+# is precisely the silent mis-target this covers.
+#
+# ONE invocation, asserted across the two distinct observable channels (the
+# comment log and the close log) — that is what lets the comment leg's positional
+# be asserted to be the SAME number the close leg used, which two separate runs
+# could not establish. Issue 42 (not 1) and owner/repo-a (not the ambiguous
+# octo/repo used elsewhere) so an off-by-one or a wrong-repo substitution is
+# actually detectable rather than colliding with a plausible default.
+CLOSE_TARGET_COMMENT_LOG="$WORK/close-target-comment-log"
+CLOSE_TARGET_CLOSE_LOG="$WORK/close-target-close-log"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_COMMENT_LOG=$CLOSE_TARGET_COMMENT_LOG" "GH_STUB_CLOSE_LOG=$CLOSE_TARGET_CLOSE_LOG" \
+	sh "$CLOSE" --repo owner/repo-a --issue 42 --comment-file "$CCOMMENT"
+expect_rc "close(target): -> exit 0" 0
+check "close(target): the CLOSE leg's positional is exactly issue 42" "gh issue close acted on some other issue number" \
+	"$( argv_first_is "$CLOSE_TARGET_CLOSE_LOG" '42' && echo 0 || echo 1 )"
+check "close(target): the CLOSE leg's --repo is exactly owner/repo-a" "gh issue close targeted the wrong repo" \
+	"$( argv_has_pair "$CLOSE_TARGET_CLOSE_LOG" '--repo' 'owner/repo-a' && echo 0 || echo 1 )"
+check "close(target): the pre-close NOTE leg's positional is the SAME issue 42" "the closing comment was posted on a different issue than the one closed" \
+	"$( argv_first_is "$CLOSE_TARGET_COMMENT_LOG" '42' && echo 0 || echo 1 )"
+check "close(target): the pre-close NOTE leg's --repo is exactly owner/repo-a" "the closing comment was posted in the wrong repo" \
+	"$( argv_has_pair "$CLOSE_TARGET_COMMENT_LOG" '--repo' 'owner/repo-a' && echo 0 || echo 1 )"
 
 section "close-issue.sh — comment post failure aborts BEFORE closing"
 CLOSE_LOG3="$WORK/close-log3"

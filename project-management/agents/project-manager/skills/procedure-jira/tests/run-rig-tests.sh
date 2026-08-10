@@ -7,8 +7,8 @@
 # real, pre-existing, or unprovable artifact, and NEVER emit a mutation curl
 # when they refuse.
 #
-# It reuses the SAME canned-response-queue curl stub the engine suite uses (see
-# tests/run-engine-tests.sh): each curl call is logged (full argv, one token per
+# It reuses the SAME canned-response-queue curl stub the engine suite uses (one
+# shared copy, tests/lib/curl-stub.sh): each curl call is logged (full argv, one token per
 # line) and served the Nth queued response, so every assertion is a pure
 # function of (manifest fixture, queued responses). NOTHING here touches a real
 # Jira — the stub is the only `curl` on PATH.
@@ -20,6 +20,13 @@ set -eu
 
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 RIG="$TESTS_DIR/agile-test-rig.sh"
+
+# Shared harness mechanics (runner primitives + the curl stub) — one copy for
+# all three Jira suites; see lib/harness.sh's header for what stays local.
+# shellcheck source=SCRIPTDIR/lib/harness.sh
+. "$TESTS_DIR/lib/harness.sh"
+# shellcheck source=SCRIPTDIR/lib/curl-stub.sh
+. "$TESTS_DIR/lib/curl-stub.sh"
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/jira-rig-tests.XXXXXX")
 TOOLBOX="$WORK/toolbox"
@@ -33,92 +40,27 @@ trap cleanup EXIT INT TERM
 # ---------------------------------------------------------------------------
 # Isolated PATH toolbox: only the real tools the rig needs, plus the stub curl
 # in its OWN dir (opted into per run).
+#
+# WHY THIS TOOLBOX CARRIES `dirname` AND ITS TWO SIBLINGS DO NOT. The engine and
+# write suites deliberately OMIT dirname/readlink/realpath/basename, so that a
+# regression away from jira.sh's pure-parameter-expansion $0 resolution breaks
+# them loudly. This suite cannot: its subject, agile-test-rig.sh, resolves its
+# own RIG_SCRIPT_DIR with `cd "$(dirname "$0")"` — a TEST-side script, never
+# deployed and never bound by jira.sh's portability contract. Dropping dirname
+# here would break the rig itself, not catch a defect. The guard therefore lives
+# in the two suites that actually exercise jira.sh's own path resolution.
 # ---------------------------------------------------------------------------
-ORIG_PATH=$PATH
-link_tool() {
-	target_dir=$1
-	tool_name=$2
-	tool_path=$(PATH="$ORIG_PATH" command -v "$tool_name" 2>/dev/null || true)
-	[ -n "$tool_path" ] || { printf 'FATAL: required tool not found: %s\n' "$tool_name" >&2; exit 1; }
-	ln -s "$tool_path" "$target_dir/$tool_name"
-}
+harness_init "$WORK"
 for t in sh mktemp sed grep tr cat rm chmod cp mv dirname mkdir od jq; do
 	link_tool "$TOOLBOX" "$t"
 done
 
-# ---------------------------------------------------------------------------
-# The curl stub — identical contract to the engine suite's: a canned-response
-# QUEUE that logs every call's argv (one token per line) and serves the Nth
-# response from CURL_STUB_RESP_DIR/resp-<n>.{body,code}.
-# ---------------------------------------------------------------------------
-cat >"$STUBCURL_DIR/curl" <<'CURL_STUB'
-#!/usr/bin/env sh
-set -eu
+# The canned-response-queue curl stub (lib/curl-stub.sh owns the mechanism).
+init_curl_stub "$STUBCURL_DIR" "$WORK"
 
-n=0
-[ -f "$CURL_STUB_COUNTER_FILE" ] && n=$(cat "$CURL_STUB_COUNTER_FILE")
-n=$((n + 1))
-printf '%s' "$n" >"$CURL_STUB_COUNTER_FILE"
-
-if [ -n "${CURL_STUB_ARGV_LOG:-}" ]; then
-	{
-		printf 'CALL_%s_BEGIN\n' "$n"
-		for a in "$@"; do printf '%s\n' "$a"; done
-		printf 'CALL_%s_END\n' "$n"
-	} >>"$CURL_STUB_ARGV_LOG"
-fi
-
-out_file=""
-data_at=""
-url=""
-prev=""
-for a in "$@"; do
-	[ "$prev" = "-o" ] && out_file=$a
-	case "$a" in
-		@*) data_at=${a#@} ;;
-	esac
-	url=$a
-	prev=$a
-done
-
-if [ -n "$data_at" ] && [ -n "${CURL_STUB_BODY_LOG_DIR:-}" ]; then
-	cat "$data_at" >"$CURL_STUB_BODY_LOG_DIR/call-$n.body"
-fi
-
-resp_body="$CURL_STUB_RESP_DIR/resp-$n.body"
-resp_code="$CURL_STUB_RESP_DIR/resp-$n.code"
-if [ ! -f "$resp_body" ] || [ ! -f "$resp_code" ]; then
-	printf 'STUB curl: no canned response configured for call #%s (url=%s)\n' "$n" "$url" >&2
-	exit 99
-fi
-
-[ -z "$out_file" ] || cat "$resp_body" >"$out_file"
-cat "$resp_code"
-CURL_STUB
-chmod +x "$STUBCURL_DIR/curl"
-
-# ---------------------------------------------------------------------------
-# Curl-stub control: queue + logs, reset before every test.
-# ---------------------------------------------------------------------------
-CURL_STUB_RESP_DIR="$WORK/curlresp"
-CURL_STUB_COUNTER_FILE="$WORK/curl-counter"
-CURL_STUB_ARGV_LOG="$WORK/curl-argv.log"
-CURL_STUB_BODY_LOG_DIR="$WORK/curl-bodies"
-
-reset_curl_stub() {
-	rm -rf "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	mkdir -p "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	printf '0' >"$CURL_STUB_COUNTER_FILE"
-	: >"$CURL_STUB_ARGV_LOG"
-}
-
-set_stub_response() {
-	n=$1; body=$2; code=$3
-	printf '%s' "$body" >"$CURL_STUB_RESP_DIR/resp-$n.body"
-	printf '%s' "$code" >"$CURL_STUB_RESP_DIR/resp-$n.code"
-}
-
-call_count() { cat "$CURL_STUB_COUNTER_FILE" 2>/dev/null || printf '0'; }
+# run [VAR=VALUE...] COMMAND... — this suite has a single toolbox, so its
+# run() takes no selector. Everything else lives in lib/harness.sh.
+run() { harness_run "$STUBCURL_DIR:$TOOLBOX" "$@"; }
 
 # count_method METHOD — how many logged curl calls used `-X METHOD`. The argv
 # log lists each token on its own line, so an exact-line grep for the method
@@ -153,74 +95,6 @@ write_manifest() {
 
 MANIFEST="$WORK/manifest.txt"
 
-# ---------------------------------------------------------------------------
-# Runner primitives (same shape as the engine harness).
-# ---------------------------------------------------------------------------
-TESTS_RUN=0
-TESTS_FAIL=0
-CUR_OUT=""
-CUR_ERR=""
-CUR_RC=0
-
-run() {
-	set +e
-	env -i \
-		HOME="$WORK/home" \
-		PATH="$STUBCURL_DIR:$TOOLBOX" \
-		TMPDIR="$WORK" \
-		CURL_STUB_RESP_DIR="$CURL_STUB_RESP_DIR" \
-		CURL_STUB_COUNTER_FILE="$CURL_STUB_COUNTER_FILE" \
-		CURL_STUB_ARGV_LOG="$CURL_STUB_ARGV_LOG" \
-		CURL_STUB_BODY_LOG_DIR="$CURL_STUB_BODY_LOG_DIR" \
-		"$@" >"$WORK/out" 2>"$WORK/err"
-	CUR_RC=$?
-	set -e
-	CUR_OUT=$(cat "$WORK/out"); CUR_ERR=$(cat "$WORK/err")
-	rm -f "$WORK/out" "$WORK/err"
-	if [ "${VERBOSE:-0}" = "1" ]; then
-		printf '    rc=%s\n' "$CUR_RC"
-		printf '%s\n' "$CUR_OUT" | sed 's/^/    out| /'
-		printf '%s\n' "$CUR_ERR" | sed 's/^/    err| /'
-	fi
-}
-
-pass() { printf '  ok   %s\n' "$1"; }
-fail() { printf '  FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; TESTS_FAIL=$((TESTS_FAIL + 1)); }
-
-expect_rc() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$CUR_RC" -eq "$2" ]; then pass "$1"
-	else fail "$1" "expected exit $2, got $CUR_RC; stderr: $CUR_ERR"; fi
-}
-stderr_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stderr missing: $2
-       stderr was: $CUR_ERR"; fi
-}
-stdout_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stdout missing: $2
-       stdout was: $CUR_OUT"; fi
-}
-equals() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$2" = "$3" ]; then pass "$1"
-	else fail "$1" "expected: $3
-       got:      $2"; fi
-}
-argv_log_not_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then fail "$1" "argv log unexpectedly contains the exact token: $2"
-	else pass "$1"; fi
-}
-argv_log_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then pass "$1"
-	else fail "$1" "argv log missing the exact token: $2"; fi
-}
-
 # manifest_has_line / manifest_not_has_line — EXACT whole-line match (grep -Fxq)
 # against a manifest file, the same strictness the rig's own manifest_minted_has
 # uses: a substring test for "PREEXISTING board 826" would also match
@@ -235,7 +109,6 @@ manifest_not_has_line() {
 	if [ -f "$2" ] && grep -Fxq -- "$3" "$2"; then fail "$1" "$2 unexpectedly contains exact line: $3"
 	else pass "$1"; fi
 }
-section() { printf '\n== %s ==\n' "$1"; }
 
 SITE="foo.atlassian.net"
 

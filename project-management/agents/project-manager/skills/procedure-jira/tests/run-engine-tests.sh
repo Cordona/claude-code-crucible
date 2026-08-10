@@ -1,12 +1,16 @@
 #!/usr/bin/env sh
 #
-# run-engine-tests.sh — self-contained, zero-dependency POSIX test harness
-#                        for jira.sh: the engine core + view/search/workflow.
+# run-engine-tests.sh — zero-dependency POSIX test harness for jira.sh: the
+#                        engine core + view/search/workflow.
 #
 # WHY a hand-rolled harness (not bats): same rationale as the sibling
 # tests/run-tests.sh (md-to-adf.sh) and procedure-gh-issues/tests/run-tests.sh
 # — the whole point of this suite is "runs on any machine with no
 # dependencies beyond jq". Requiring bats-core would contradict that.
+#
+# The runner primitives and the curl stub live in tests/lib/harness.sh and
+# tests/lib/curl-stub.sh, dot-sourced by all three Jira suites; this file owns
+# only its own PATH-toolbox selector map and its assertions.
 #
 # What it does:
 #   * Builds an isolated PATH toolbox of symlinks to only the real tools
@@ -43,8 +47,15 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
 JIRA="$SCRIPTS_DIR/jira.sh"
+
+# Shared harness mechanics (runner primitives + the curl stub) — one copy for
+# all three Jira suites; see lib/harness.sh's header for what stays local.
+# shellcheck source=SCRIPTDIR/lib/harness.sh
+. "$TESTS_DIR/lib/harness.sh"
+# shellcheck source=SCRIPTDIR/lib/curl-stub.sh
+. "$TESTS_DIR/lib/curl-stub.sh"
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/jira-engine-tests.XXXXXX")
 TOOLBOX="$WORK/toolbox"          # real tools, curl NEVER here
@@ -58,16 +69,16 @@ trap cleanup EXIT INT TERM
 
 # ---------------------------------------------------------------------------
 # Isolated PATH toolboxes: symlink only the real tools jira.sh needs.
+#
+# dirname/readlink/realpath/basename are DELIBERATELY ABSENT, and that absence
+# is a load-bearing regression guard, not an oversight: jira.sh resolves
+# skill/lib/ and md-to-adf.sh from its own $0 with pure parameter expansion
+# (see its Portability header), and a future regression to
+# `SCRIPT_DIR=$(dirname "$0")` must break this suite loudly instead of passing
+# green. Adding any of the four back here silently voids that claim.
 # ---------------------------------------------------------------------------
-ORIG_PATH=$PATH
-link_tool() {
-	target_dir=$1
-	tool_name=$2
-	tool_path=$(PATH="$ORIG_PATH" command -v "$tool_name" 2>/dev/null || true)
-	[ -n "$tool_path" ] || { printf 'FATAL: required tool not found: %s\n' "$tool_name" >&2; exit 1; }
-	ln -s "$tool_path" "$target_dir/$tool_name"
-}
-for t in sh mktemp sed grep tr cat rm chmod cp mv dirname tail mkdir date; do
+harness_init "$WORK"
+for t in sh mktemp sed grep tr cat rm chmod cp mv tail mkdir date; do
 	link_tool "$TOOLBOX" "$t"
 	link_tool "$NOJQ_TOOLBOX" "$t"
 done
@@ -80,7 +91,7 @@ link_tool "$TOOLBOX" jq
 # run()'s `fixedtime`.
 FIXEDDATE_TOOLBOX="$WORK/fixeddate"
 mkdir -p "$FIXEDDATE_TOOLBOX"
-for t in sh mktemp sed grep tr cat rm chmod cp mv dirname tail mkdir jq; do
+for t in sh mktemp sed grep tr cat rm chmod cp mv tail mkdir jq; do
 	link_tool "$FIXEDDATE_TOOLBOX" "$t"
 done
 cat >"$FIXEDDATE_TOOLBOX/date" <<'FIXED_DATE_STUB'
@@ -90,206 +101,23 @@ printf '20260725T000000Z\n'
 FIXED_DATE_STUB
 chmod +x "$FIXEDDATE_TOOLBOX/date"
 
-# ---------------------------------------------------------------------------
-# The curl stub — a canned-response QUEUE (see the header note). Only ever
-# touches CURL_STUB_* env vars, which run() supplies for every invocation.
-# ---------------------------------------------------------------------------
-cat >"$STUBCURL_DIR/curl" <<'CURL_STUB'
-#!/usr/bin/env sh
-set -eu
+# The canned-response-queue curl stub (lib/curl-stub.sh owns the mechanism).
+init_curl_stub "$STUBCURL_DIR" "$WORK"
 
-n=0
-[ -f "$CURL_STUB_COUNTER_FILE" ] && n=$(cat "$CURL_STUB_COUNTER_FILE")
-n=$((n + 1))
-printf '%s' "$n" >"$CURL_STUB_COUNTER_FILE"
-
-if [ -n "${CURL_STUB_ARGV_LOG:-}" ]; then
-	{
-		printf 'CALL_%s_BEGIN\n' "$n"
-		for a in "$@"; do printf '%s\n' "$a"; done
-		printf 'CALL_%s_END\n' "$n"
-	} >>"$CURL_STUB_ARGV_LOG"
-fi
-
-out_file=""
-header_out=""
-data_at=""
-url=""
-prev=""
-for a in "$@"; do
-	[ "$prev" = "-o" ] && out_file=$a
-	[ "$prev" = "-D" ] && header_out=$a
-	case "$a" in
-		@*) data_at=${a#@} ;;
-	esac
-	url=$a
-	prev=$a
-done
-
-if [ -n "$data_at" ] && [ -n "${CURL_STUB_BODY_LOG_DIR:-}" ]; then
-	cat "$data_at" >"$CURL_STUB_BODY_LOG_DIR/call-$n.body"
-fi
-
-resp_body="$CURL_STUB_RESP_DIR/resp-$n.body"
-resp_code="$CURL_STUB_RESP_DIR/resp-$n.code"
-if [ ! -f "$resp_body" ] || [ ! -f "$resp_code" ]; then
-	printf 'STUB curl: no canned response configured for call #%s (url=%s)\n' "$n" "$url" >&2
-	exit 99
-fi
-
-[ -z "$out_file" ] || cat "$resp_body" >"$out_file"
-
-# Header dump (-D): if this call requested one AND a header response is
-# configured for it, write the canned header block to the -D file. Mirrors
-# the -o body path — used by resolve_media_uuid's 303/Location capture.
-resp_headers="$CURL_STUB_RESP_DIR/resp-$n.headers"
-if [ -n "$header_out" ] && [ -f "$resp_headers" ]; then
-	cat "$resp_headers" >"$header_out"
-fi
-
-cat "$resp_code"
-CURL_STUB
-chmod +x "$STUBCURL_DIR/curl"
-
-# ---------------------------------------------------------------------------
-# Curl-stub control: queue + logs, reset before every test that uses curl.
-# ---------------------------------------------------------------------------
-CURL_STUB_RESP_DIR="$WORK/curlresp"
-CURL_STUB_COUNTER_FILE="$WORK/curl-counter"
-CURL_STUB_ARGV_LOG="$WORK/curl-argv.log"
-CURL_STUB_BODY_LOG_DIR="$WORK/curl-bodies"
-
-reset_curl_stub() {
-	rm -rf "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	mkdir -p "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	printf '0' >"$CURL_STUB_COUNTER_FILE"
-	: >"$CURL_STUB_ARGV_LOG"
-}
-
-# set_stub_response N BODY CODE — the Nth curl call gets this response.
-set_stub_response() {
-	n=$1; body=$2; code=$3
-	printf '%s' "$body" >"$CURL_STUB_RESP_DIR/resp-$n.body"
-	printf '%s' "$code" >"$CURL_STUB_RESP_DIR/resp-$n.code"
-}
-
-# set_stub_headers N HEADERS — the Nth curl call's -D header dump gets these
-# raw header lines (used to canned a 303 + Location for resolve_media_uuid).
-set_stub_headers() {
-	n=$1; headers=$2
-	printf '%s' "$headers" >"$CURL_STUB_RESP_DIR/resp-$n.headers"
-}
-
-call_count() { cat "$CURL_STUB_COUNTER_FILE" 2>/dev/null || printf '0'; }
-
-# ---------------------------------------------------------------------------
-# Runner primitives (same shape as the sibling harnesses). run() takes a
-# PATH-toolbox selector, then any number of "VAR=VALUE" env assignments
-# (env's own leading-assignment argv parsing — see procedure-gh-issues'
-# harness for the same idiom), then the command to run.
-# ---------------------------------------------------------------------------
-TESTS_RUN=0
-TESTS_FAIL=0
-CUR_OUT=""
-CUR_ERR=""
-CUR_RC=0
-
+# run SELECTOR [VAR=VALUE...] COMMAND... — the PATH-toolbox selector map, the
+# one part of the runner that is genuinely per-suite. Everything else lives in
+# lib/harness.sh's harness_run.
 run() {
 	selector=$1; shift
 	case "$selector" in
-		full)     r_path="$STUBCURL_DIR:$TOOLBOX" ;;
-		nocurl)   r_path="$TOOLBOX" ;;
-		nojq)     r_path="$STUBCURL_DIR:$NOJQ_TOOLBOX" ;;
+		full)      r_path="$STUBCURL_DIR:$TOOLBOX" ;;
+		nocurl)    r_path="$TOOLBOX" ;;
+		nojq)      r_path="$STUBCURL_DIR:$NOJQ_TOOLBOX" ;;
 		fixedtime) r_path="$STUBCURL_DIR:$FIXEDDATE_TOOLBOX" ;;
 		*) printf 'FATAL: bad run() selector: %s\n' "$selector" >&2; exit 1 ;;
 	esac
-	set +e
-	env -i \
-		HOME="$WORK/home" \
-		PATH="$r_path" \
-		TMPDIR="$WORK" \
-		CURL_STUB_RESP_DIR="$CURL_STUB_RESP_DIR" \
-		CURL_STUB_COUNTER_FILE="$CURL_STUB_COUNTER_FILE" \
-		CURL_STUB_ARGV_LOG="$CURL_STUB_ARGV_LOG" \
-		CURL_STUB_BODY_LOG_DIR="$CURL_STUB_BODY_LOG_DIR" \
-		"$@" >"$WORK/out" 2>"$WORK/err"
-	CUR_RC=$?
-	set -e
-	CUR_OUT=$(cat "$WORK/out"); CUR_ERR=$(cat "$WORK/err")
-	rm -f "$WORK/out" "$WORK/err"
-	if [ "${VERBOSE:-0}" = "1" ]; then
-		printf '    rc=%s\n' "$CUR_RC"
-		printf '%s\n' "$CUR_OUT" | sed 's/^/    out| /'
-		printf '%s\n' "$CUR_ERR" | sed 's/^/    err| /'
-	fi
+	harness_run "$r_path" "$@"
 }
-
-pass() { printf '  ok   %s\n' "$1"; }
-fail() { printf '  FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; TESTS_FAIL=$((TESTS_FAIL + 1)); }
-
-expect_rc() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$CUR_RC" -eq "$2" ]; then pass "$1"
-	else fail "$1" "expected exit $2, got $CUR_RC; stderr: $CUR_ERR"; fi
-}
-
-stdout_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stdout missing: $2
-       stdout was: $CUR_OUT"; fi
-}
-
-stdout_not_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then fail "$1" "stdout unexpectedly contains: $2"
-	else pass "$1"; fi
-}
-
-stderr_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stderr missing: $2
-       stderr was: $CUR_ERR"; fi
-}
-
-file_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then pass "$1"
-	else fail "$1" "$2 missing: $3"; fi
-}
-
-file_not_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then fail "$1" "$2 unexpectedly contains: $3"
-	else pass "$1"; fi
-}
-
-# argv_log_has_token / argv_log_not_has_token — like file_has/file_not_has but
-# an EXACT-LINE match against the argv log (one argv token per line, see the
-# curl stub), not a substring match. This is deliberately stricter than
-# file_has for flag assertions: a substring match on "-L" would also match
-# inside an unrelated longer token, silently proving nothing.
-argv_log_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then pass "$1"
-	else fail "$1" "argv log missing the exact token: $2"; fi
-}
-
-argv_log_not_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then fail "$1" "argv log unexpectedly contains the exact token: $2"
-	else pass "$1"; fi
-}
-
-equals() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$2" = "$3" ]; then pass "$1"
-	else fail "$1" "expected: $3
-       got:      $2"; fi
-}
-
-section() { printf '\n== %s ==\n' "$1"; }
 
 # ===========================================================================
 # usage / argument errors
@@ -397,7 +225,7 @@ run full "JIRA_EMAIL=agent@example.com" "JIRA_TOKEN=super-secret-token-value" \
 expect_rc "view with own-resolved credentials -> exit 0" 0
 file_not_has "argv log never contains the raw token" "$CURL_STUB_ARGV_LOG" "super-secret-token-value"
 file_not_has "argv log never contains -u/--user" "$CURL_STUB_ARGV_LOG" "-u"
-file_has "argv log DOES contain -K (the config-file handoff)" "$CURL_STUB_ARGV_LOG" "-K"
+argv_log_has_token "argv log DOES contain -K (the config-file handoff)" "-K"
 
 section "jira.sh — credential handoff: JIRA_CURL_CONFIG passthrough is never deleted"
 
@@ -1409,6 +1237,345 @@ equals "version --archive: body is exactly {archived:true}" "$VER_ARCHIVE_KEYS" 
 VER_ARCHIVE_VAL=$(jq -r '.archived' "$CURL_STUB_BODY_LOG_DIR/call-1.body")
 equals "version --archive: archived is a JSON boolean true" "$VER_ARCHIVE_VAL" "true"
 
+# ---------------------------------------------------------------------------
+# version --delete — DELETE /version/<id> with up to TWO OPTIONAL, INDEPENDENT
+# reassignment query params (moveFixIssuesTo / moveAffectedIssuesTo). Mirrors
+# the component --delete section below: a 204 No Content response, a machine
+# line in human mode, a SYNTHESIZED body under --json.
+#
+# Every URL assertion here is argv_log_has_token (an exact-LINE match against
+# the argv log), NOT file_has (a substring match). That is load-bearing for
+# this command specifically: the query string is built by appending, so a
+# substring assertion on ".../version/11751" would pass just as happily against
+# ".../version/11751?" or ".../version/11751?&moveAffectedIssuesTo=11753". The
+# exact-line form is what makes "no query string at all", "no dangling &" and
+# "no doubled ?" real assertions rather than wishful ones.
+#
+# The three ids are DELIBERATELY DISTINCT (11751 deleted, 11752 fix target,
+# 11753 affected target) so a mapping that swapped the two params — the other
+# way this can silently break — fails instead of matching by coincidence.
+# ---------------------------------------------------------------------------
+section "jira.sh — version --delete: DELETE /version/<id>, no query string when no move flag is given"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --delete -> exit 0" 0
+argv_log_has_token "version --delete: URL is EXACTLY /rest/api/3/version/11751 (no trailing '?')" "https://foo.atlassian.net/rest/api/3/version/11751"
+argv_log_has_token "version --delete: uses DELETE" "DELETE"
+file_not_has "version --delete: no moveFixIssuesTo when not given" "$CURL_STUB_ARGV_LOG" "moveFixIssuesTo"
+file_not_has "version --delete: no moveAffectedIssuesTo when not given" "$CURL_STUB_ARGV_LOG" "moveAffectedIssuesTo"
+stdout_has "version --delete: machine line names the deleted id" "JIRA_VERSION_DELETED=11751"
+
+section "jira.sh — version --delete: ONE move flag opens the query with '?', never a dangling separator"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-fix-issues-to 11752 --confirmed-site foo.atlassian.net
+expect_rc "version --delete --move-fix-issues-to -> exit 0" 0
+argv_log_has_token "version --delete --move-fix-issues-to: URL is EXACTLY .../version/11751?moveFixIssuesTo=11752" "https://foo.atlassian.net/rest/api/3/version/11751?moveFixIssuesTo=11752"
+file_not_has "version --delete --move-fix-issues-to: the untouched param is absent" "$CURL_STUB_ARGV_LOG" "moveAffectedIssuesTo"
+
+# The SECOND param given ALONE is the dangling-separator case: it is the one
+# whose branch also emits the '&' joiner, so a joiner emitted unconditionally
+# (rather than only when a first param already landed) produces `?&moveAffec…`.
+# The exact-line match below is what rejects that, and a doubled '?' with it.
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-affected-issues-to 11753 --confirmed-site foo.atlassian.net
+expect_rc "version --delete --move-affected-issues-to -> exit 0" 0
+argv_log_has_token "version --delete --move-affected-issues-to ALONE: URL is EXACTLY .../version/11751?moveAffectedIssuesTo=11753 (no leading '&', no doubled '?')" "https://foo.atlassian.net/rest/api/3/version/11751?moveAffectedIssuesTo=11753"
+file_not_has "version --delete --move-affected-issues-to: the untouched param is absent" "$CURL_STUB_ARGV_LOG" "moveFixIssuesTo"
+
+section "jira.sh — version --delete: BOTH move flags join with exactly one '&', in fix-then-affected order"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-fix-issues-to 11752 --move-affected-issues-to 11753 \
+	--confirmed-site foo.atlassian.net
+expect_rc "version --delete with BOTH move flags -> exit 0" 0
+argv_log_has_token "version --delete both flags: URL is EXACTLY .../version/11751?moveFixIssuesTo=11752&moveAffectedIssuesTo=11753" "https://foo.atlassian.net/rest/api/3/version/11751?moveFixIssuesTo=11752&moveAffectedIssuesTo=11753"
+
+section "jira.sh — version --delete --json: SYNTHESIZES a body (the 204 has none to pass through)"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --confirmed-site foo.atlassian.net --json
+expect_rc "version --delete --json -> exit 0" 0
+# One compact, key-sorted compare pins the WHOLE synthesized object — the shape
+# (exactly {id,deleted}, identical to component --delete's), the id's JSON
+# STRING type, and the deleted flag's JSON BOOLEAN type — in a single
+# diagnosable assertion. Parsing $CUR_OUT with jq at all is also what proves
+# the empty 204 body was never fed to a parser.
+VER_DELETE_JSON=$(printf '%s' "$CUR_OUT" | jq -cS '.')
+equals "version --delete --json: SYNTHESIZED body is exactly {id:\"11751\",deleted:true}" "$VER_DELETE_JSON" '{"deleted":true,"id":"11751"}'
+
+# ---------------------------------------------------------------------------
+# version --delete's TWO OPT-IN pre-write safety nets: `--plan`/`--dry-run`
+# (disclose, write nothing) and `--project KEY` (refuse unless the version
+# really belongs to KEY). Both are backed by resolve_version_owner's TWO
+# read-only GETs — /version/<id> for the name + numeric projectId, then
+# /project/<projectId> for the KEY a human actually reads.
+#
+# WHY THE METHOD SEQUENCE IS THE LOAD-BEARING ASSERTION HERE, and not a URL
+# one: the version GET and the DELETE address the SAME url
+# (.../rest/api/3/version/11751), so no URL assertion can tell "read it" from
+# "deleted it" apart. The ordered METHOD sequence can, and it is the only
+# thing that proves --plan short-circuited BEFORE the write rather than after
+# it, and that the cross-check refused BEFORE the write rather than alongside
+# it. Every case below therefore pins the full sequence, not just a count.
+# ---------------------------------------------------------------------------
+
+# request_method_sequence -> the HTTP methods of the last run's curl calls, in
+# call order, joined by "/" (e.g. "GET/GET/DELETE"). http.sh's jira_curl always
+# passes the method as the argv token immediately following `-X`, and the stub
+# logs one argv token per line — so "the line after each `-X` line" IS the
+# method, in call order, with no parsing of the surrounding CALL_<n> markers.
+request_method_sequence() {
+	sed -n '/^-X$/{n;p;}' "$CURL_STUB_ARGV_LOG" | tr '\n' '/' | sed 's|/$||'
+}
+
+# The owning project is reported by /version/<id> ONLY as a numeric projectId,
+# which is exactly why a second GET exists; the two ids are deliberately
+# distinct (version 11751, project 10042) so a mix-up cannot pass by accident.
+VERSION_OWNER_BODY='{"id":"11751","name":"1.2.0","projectId":10042}'
+VERSION_OWNER_PROJECT_BODY='{"id":"10042","key":"PSWS","name":"Platform Services"}'
+
+# EVERY case below queues a 204 as its THIRD response, including the ones that
+# must not write at all. That is deliberate and load-bearing: with no third
+# response the stub errors out, so a guard that stopped working would fail the
+# run for the wrong reason and the "no DELETE" assertions would be propped up by
+# the fixture rather than by the code. With the 204 queued, a missing
+# short-circuit or a missing cross-check produces a CLEAN, successful delete —
+# and these assertions are the only thing standing in its way.
+
+section "jira.sh — version --delete --plan: TWO read-only GETs, ZERO writes, plan disclosed"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan -> exit 0" 0
+equals "version --delete --plan: exactly TWO curl calls (the owner resolve, nothing more)" "$(call_count)" "2"
+equals "version --delete --plan: the two calls are GET/GET — the DELETE never happened" \
+	"$(request_method_sequence)" "GET/GET"
+argv_log_has_token "version --delete --plan: first read is GET /version/11751" "https://foo.atlassian.net/rest/api/3/version/11751"
+argv_log_has_token "version --delete --plan: second read is GET /project/10042 (the key comes from the numeric projectId)" "https://foo.atlassian.net/rest/api/3/project/10042"
+stdout_has "version --delete --plan: discloses the resolved name AND owning project" \
+	'would delete version 11751 "1.2.0" in project PSWS'
+stdout_has "version --delete --plan: discloses the exact request that WOULD be sent" \
+	"DELETE https://foo.atlassian.net/rest/api/3/version/11751"
+stdout_has "version --delete --plan: ends on the engine-wide dry-run line" "NOTHING WAS WRITTEN"
+stdout_not_has "version --delete --plan: NO success machine line (nothing was deleted)" "JIRA_VERSION_DELETED"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --json --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --json -> exit 0" 0
+equals "version --delete --plan --json: still exactly TWO GETs, no write" \
+	"$(request_method_sequence)" "GET/GET"
+# One key-sorted compare pins the WHOLE synthesized plan object — the op tag, the
+# plan/willWrite pair a consent gate machine-checks, and every resolved field —
+# in a single diagnosable assertion, the same idiom the --json delete above uses.
+VER_PLAN_JSON=$(printf '%s' "$CUR_OUT" | jq -cS '.')
+equals "version --delete --plan --json: SYNTHESIZED plan object is exactly the documented shape" \
+	"$VER_PLAN_JSON" \
+	'{"id":"11751","name":"1.2.0","op":"version-delete","plan":true,"project":"PSWS","url":"https://foo.atlassian.net/rest/api/3/version/11751","willWrite":false}'
+
+section "jira.sh — version --delete --plan + the move flags: the disclosed URL is the one that WOULD be sent"
+
+# THE CONTRACT A PREVIEW MAKES: the URL it discloses is the URL the real request
+# would carry — reassignment query and all. That only holds because the query is
+# built BEFORE the --plan short-circuit; move the construction after it and the
+# plan still prints, still says NOTHING WAS WRITTEN, and still exits 0, while
+# quietly disclosing a bare .../version/11751 for a delete that would in fact
+# re-point every issue's fixVersions. A caller reading that plan would approve a
+# reassignment they were never shown.
+#
+# Each case pins the FULL URL as one substring, so a plan that dropped a param,
+# swapped the two, or emitted a dangling separator fails here — the same
+# exact-shape discipline the non-plan cases above apply to the argv log. The
+# GET/GET method sequence alongside it is what proves the preview is still a
+# preview: with a 204 queued as call 3, a lost short-circuit would delete for
+# real and read as "GET/GET/DELETE".
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --move-fix-issues-to 11752 --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --move-fix-issues-to -> exit 0" 0
+equals "version --delete --plan --move-fix-issues-to: still GET/GET — the reassigning DELETE never happened" \
+	"$(request_method_sequence)" "GET/GET"
+stdout_has "version --delete --plan --move-fix-issues-to: the disclosed URL carries the real ?moveFixIssuesTo=11752" \
+	"DELETE https://foo.atlassian.net/rest/api/3/version/11751?moveFixIssuesTo=11752"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --move-affected-issues-to 11753 --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --move-affected-issues-to -> exit 0" 0
+equals "version --delete --plan --move-affected-issues-to: still GET/GET — the reassigning DELETE never happened" \
+	"$(request_method_sequence)" "GET/GET"
+stdout_has "version --delete --plan --move-affected-issues-to ALONE: the disclosed URL opens with '?', not a dangling '&'" \
+	"DELETE https://foo.atlassian.net/rest/api/3/version/11751?moveAffectedIssuesTo=11753"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --move-fix-issues-to 11752 --move-affected-issues-to 11753 \
+	--confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan with BOTH move flags -> exit 0" 0
+equals "version --delete --plan both move flags: still GET/GET — the reassigning DELETE never happened" \
+	"$(request_method_sequence)" "GET/GET"
+# Same fix-then-affected order, same single '&', as the non-plan both-flags case
+# above pins on the wire — which is the whole point: one construction, two
+# consumers, so the preview cannot drift from the request.
+stdout_has "version --delete --plan both move flags: the disclosed URL joins both params with exactly one '&', fix before affected" \
+	"DELETE https://foo.atlassian.net/rest/api/3/version/11751?moveFixIssuesTo=11752&moveAffectedIssuesTo=11753"
+
+# The machine-readable half of the same contract: a consent gate reads `url` from
+# the synthesized object, not the human line, so it is pinned in full too.
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --json --move-fix-issues-to 11752 --move-affected-issues-to 11753 \
+	--confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --json with BOTH move flags -> exit 0" 0
+equals "version --delete --plan --json both move flags: still GET/GET, no write" \
+	"$(request_method_sequence)" "GET/GET"
+VER_PLAN_MOVE_JSON=$(printf '%s' "$CUR_OUT" | jq -cS '.')
+equals "version --delete --plan --json both move flags: the synthesized object's url carries BOTH query params" \
+	"$VER_PLAN_MOVE_JSON" \
+	'{"id":"11751","name":"1.2.0","op":"version-delete","plan":true,"project":"PSWS","url":"https://foo.atlassian.net/rest/api/3/version/11751?moveFixIssuesTo=11752&moveAffectedIssuesTo=11753","willWrite":false}'
+
+section "jira.sh — version --delete --project: the ownership cross-check, under --plan and for real"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --project MATCHING -> exit 0" 0
+equals "version --delete --plan --project MATCHING: ONE owner resolve serves both features (still just GET/GET)" \
+	"$(request_method_sequence)" "GET/GET"
+stdout_has "version --delete --plan --project MATCHING: the plan is still disclosed" \
+	'would delete version 11751 "1.2.0" in project PSWS'
+stdout_has "version --delete --plan --project MATCHING: states nothing was written" "NOTHING WAS WRITTEN"
+
+# The cross-check must fire EVEN UNDER --plan: a mismatch means the plan would
+# describe a version the caller did not mean, and printing it would read as
+# confirmation of exactly the wrong thing.
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --project OTHER --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan --project MISMATCHED -> exit 1" 1
+equals "version --delete --plan --project MISMATCHED: still only the two reads, no write" \
+	"$(request_method_sequence)" "GET/GET"
+stderr_has "version --delete --plan --project MISMATCHED: diagnostic names BOTH the real owner and the asserted one" \
+	"version 11751 belongs to project PSWS, not --project OTHER"
+stdout_not_has "version --delete --plan --project MISMATCHED: the plan is NOT printed (it would confirm the wrong version)" \
+	"would delete version 11751"
+stdout_not_has "version --delete --plan --project MISMATCHED: no dry-run footer either" "NOTHING WAS WRITTEN"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "version --delete --project MATCHING (a real delete) -> exit 0" 0
+equals "version --delete --project MATCHING: THREE requests" "$(call_count)" "3"
+equals "version --delete --project MATCHING: in GET/GET/DELETE order — both reads precede the write" \
+	"$(request_method_sequence)" "GET/GET/DELETE"
+stdout_has "version --delete --project MATCHING: machine line names the deleted id" "JIRA_VERSION_DELETED=11751"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --project OTHER --confirmed-site foo.atlassian.net
+expect_rc "version --delete --project MISMATCHED (a real delete attempt) -> exit 1" 1
+equals "version --delete --project MISMATCHED: only the two reads happened" "$(call_count)" "2"
+# The whole point of the flag: the destructive request must never be issued at
+# all, not merely be reported as failed afterwards. A 204 IS queued as call 3
+# above, so a cross-check that ran too late would exit 0 here and this would fail.
+argv_log_not_has_token "version --delete --project MISMATCHED: the DELETE was NEVER sent" "DELETE"
+stderr_has "version --delete --project MISMATCHED: refusal diagnostic" \
+	"version 11751 belongs to project PSWS, not --project OTHER — refusing to delete it"
+stdout_not_has "version --delete --project MISMATCHED: no success machine line" "JIRA_VERSION_DELETED"
+
+# REGRESSION GUARD for the DEFAULT path: neither opt-in flag given, the delete
+# must behave EXACTLY as it did before --plan/--project existed — one request,
+# the DELETE, and NO owner-resolution read bolted on. Pinning the full method
+# sequence to a bare "DELETE" is what proves that: any GET added to this path
+# (an unconditional resolve, a "cheap" pre-read) makes the sequence
+# "GET/GET/DELETE" and fails here, where a call-count-only assertion could be
+# quietly relaxed later.
+section "jira.sh — version --delete with NEITHER opt-in flag: unchanged single-request default"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --delete (no --plan, no --project) -> exit 0" 0
+equals "version --delete default: exactly ONE request" "$(call_count)" "1"
+equals "version --delete default: that request is the DELETE and nothing precedes it" \
+	"$(request_method_sequence)" "DELETE"
+argv_log_has_token "version --delete default: URL is EXACTLY /rest/api/3/version/11751" "https://foo.atlassian.net/rest/api/3/version/11751"
+file_not_has "version --delete default: no /project/ lookup was added to this path" "$CURL_STUB_ARGV_LOG" "/rest/api/3/project/"
+stdout_has "version --delete default: machine line unchanged" "JIRA_VERSION_DELETED=11751"
+
+section "jira.sh — version --delete: the owner resolve fails CLOSED on an unusable response"
+
+# The resolve exists to make a delete SAFER, so an owner it cannot establish
+# must be exit 1 — never a softer "unknown" that proceeds to the DELETE anyway.
+reset_curl_stub
+set_stub_response 1 '{"id":"11751","name":"1.2.0"}' 200
+set_stub_response 2 "$VERSION_OWNER_PROJECT_BODY" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --plan --confirmed-site foo.atlassian.net
+expect_rc "version --delete --plan, version response carries NO projectId -> exit 1" 1
+equals "version --delete --plan, no projectId: stops after the first read" "$(call_count)" "1"
+argv_log_not_has_token "version --delete --plan, no projectId: the DELETE was NEVER sent" "DELETE"
+stderr_has "version --delete --plan, no projectId: diagnostic" \
+	"could not determine which project version 11751 belongs to"
+
+reset_curl_stub
+set_stub_response 1 "$VERSION_OWNER_BODY" 200
+set_stub_response 2 '{"id":"10042","name":"Platform Services"}' 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "version --delete --project, project response carries NO key -> exit 1" 1
+equals "version --delete --project, no key: both reads ran, nothing more" "$(request_method_sequence)" "GET/GET"
+argv_log_not_has_token "version --delete --project, no key: the DELETE was NEVER sent" "DELETE"
+stderr_has "version --delete --project, no key: diagnostic names the unhelpful project" \
+	"project 10042 reported no key"
+
 section "jira.sh — version: mode-flag + argument validation"
 
 run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
@@ -1421,12 +1588,133 @@ run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "version with TWO mode flags -> exit 2" 2
 stderr_has "version two modes: diagnostic" "exactly one mode"
 
-# A component-only mode flag (--delete) passed to `version` must be rejected by
-# name, not silently ignored while the one own mode (--list) runs.
+# `version --list --delete` names TWO of version's OWN modes. It used to be
+# rejected by NAME ("--delete is not a version mode") because --delete was then
+# a component-only flag; --delete is now a version mode in its own right, so the
+# exactly-one-mode count is what rejects the pair. The property under test is
+# unchanged — you cannot give two version modes at once — only the diagnostic
+# that enforces it, which is why this asserts the new message rather than being
+# dropped. Shaped like the sibling `component --list --delete --id` case below.
 run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
-	sh "$JIRA" version --list --delete --project PSWS --confirmed-site foo.atlassian.net
-expect_rc "version --list + foreign --delete -> exit 2" 2
-stderr_has "version foreign --delete: diagnostic names it not a version mode" "not a version mode"
+	sh "$JIRA" version --list --delete --id 11751 --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "version --list + --delete (TWO modes) -> exit 2" 2
+stderr_has "version --list --delete: diagnostic names the exactly-one-mode rule" "exactly one mode"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --create --project PSWS --name X --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --delete + --create (TWO modes) -> exit 2" 2
+stderr_has "version --delete --create: diagnostic names the exactly-one-mode rule" "exactly one mode"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --confirmed-site foo.atlassian.net
+expect_rc "version --delete without --id -> exit 2" 2
+stderr_has "version --delete no id: diagnostic names --id as required" "--update/--release/--archive/--delete requires --id"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id abc --confirmed-site foo.atlassian.net
+expect_rc "version --delete with a NON-NUMERIC --id -> exit 2" 2
+stderr_has "version --delete non-numeric id: diagnostic" "invalid --id (must be a numeric version id)"
+
+# --project is OPTIONAL on --delete, so only its SHAPE is checked — but it IS
+# checked, and at VALIDATION time. A malformed key left unchecked would reach
+# the ownership comparison instead and fail as "belongs to another project"
+# (exit 1), dressing a caller's own typo up as a Jira fact. Exit 2 AND zero
+# curl calls together are what prove it was rejected before the network, which
+# neither assertion establishes on its own.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --project psws --confirmed-site foo.atlassian.net
+expect_rc "version --delete with a MALFORMED --project -> exit 2 (usage), not exit 1 (ownership)" 2
+stderr_has "version --delete malformed project: diagnostic" "invalid project key: psws"
+equals "version --delete malformed project: ZERO curl calls (rejected before the owner resolve)" "$(call_count)" "0"
+
+# The two reassignment targets are INDEPENDENT guards in the validator — each
+# is numeric-checked and mode-checked on its own — so each is asserted on its
+# own. A shared assertion would let one guard be deleted and still pass.
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-fix-issues-to abc --confirmed-site foo.atlassian.net
+expect_rc "version --delete NON-NUMERIC --move-fix-issues-to -> exit 2" 2
+stderr_has "version non-numeric move-fix target: diagnostic names THAT flag" "invalid --move-fix-issues-to (must be a numeric version id)"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-affected-issues-to abc --confirmed-site foo.atlassian.net
+expect_rc "version --delete NON-NUMERIC --move-affected-issues-to -> exit 2" 2
+stderr_has "version non-numeric move-affected target: diagnostic names THAT flag" "invalid --move-affected-issues-to (must be a numeric version id)"
+
+# Both reassignment flags are meaningful ONLY while deleting: paired with any
+# other mode they must fail loud, never be silently ignored while that mode runs.
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --list --project PSWS --move-fix-issues-to 11752 --confirmed-site foo.atlassian.net
+expect_rc "version --list + --move-fix-issues-to -> exit 2" 2
+stderr_has "version move-fix-issues-to misuse: diagnostic" "--move-fix-issues-to is only valid with version --delete"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --list --project PSWS --move-affected-issues-to 11753 --confirmed-site foo.atlassian.net
+expect_rc "version --list + --move-affected-issues-to -> exit 2" 2
+stderr_has "version move-affected-issues-to misuse: diagnostic" "--move-affected-issues-to is only valid with version --delete"
+
+# --project means something in exactly THREE of version's six modes: it NAMES the
+# project for --list/--create, and it is --delete's opt-in ownership cross-check.
+# --update/--release/--archive address the version by --id alone and never read
+# it, so an unguarded --project there would be SILENTLY dropped — and now that
+# --project is a documented safety net on the sibling --delete, a caller has real
+# reason to believe it bit. The guard is ONE call covering all three modes, but
+# each mode is asserted on its own: a mode dropped from the guard's condition
+# would otherwise still pass on the strength of its siblings.
+#
+# All three run under the `full` selector and assert ZERO calls, so "refused
+# before the network" is observed rather than assumed.
+for version_unscoped_mode in --update --release --archive; do
+	reset_curl_stub
+	run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+		sh "$JIRA" version "$version_unscoped_mode" --id 11751 --name X --project PSWS \
+		--confirmed-site foo.atlassian.net
+	expect_rc "version $version_unscoped_mode + --project -> exit 2" 2
+	stderr_has "version $version_unscoped_mode --project: diagnostic names the three modes that DO read --project" \
+		"--project is only valid with version --list/--create/--delete"
+	equals "version $version_unscoped_mode --project: ZERO curl calls (the PUT is never sent)" "$(call_count)" "0"
+done
+
+# --plan/--dry-run is the SECOND of --delete's two opt-in pre-write safety nets,
+# and the graver one to lose: --update/--release/--archive implement NO preview,
+# so a silently-ignored --plan means a caller who believes they asked for a dry
+# run gets a REAL write instead. Same one-guard-covering-three-modes shape as the
+# --project loop above, and asserted the same way — per mode, so a mode dropped
+# from the condition cannot ride on its siblings.
+#
+# BOTH spellings are exercised because two distinct pieces of production code
+# must hold for the guard to bite: jira.sh's parser folding `--dry-run` into the
+# same OPT_PLAN carrier as `--plan`, and the guard reading that carrier. The
+# --plan cases alone would stay green if the `--dry-run` alias were dropped from
+# the parser, leaving the friendlier spelling silently ignored — exactly the
+# failure this guard exists to prevent. The nested loop is scenario
+# parameterization over (spelling x mode); every label names both, so a red test
+# identifies the exact pair.
+#
+# All six run under the `full` selector and assert ZERO calls, so "refused before
+# the network" is observed rather than assumed.
+for version_plan_spelling in --plan --dry-run; do
+	for version_unpreviewable_mode in --update --release --archive; do
+		reset_curl_stub
+		run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+			sh "$JIRA" version "$version_unpreviewable_mode" --id 11751 --name X "$version_plan_spelling" \
+			--confirmed-site foo.atlassian.net
+		expect_rc "version $version_unpreviewable_mode + $version_plan_spelling -> exit 2" 2
+		stderr_has "version $version_unpreviewable_mode $version_plan_spelling: diagnostic names the only version mode that previews, and warns this one writes for REAL" \
+			"--plan/--dry-run is only valid with version --delete among the version modes — version --update/--release/--archive would write for REAL"
+		equals "version $version_unpreviewable_mode $version_plan_spelling: ZERO curl calls (the PUT is never sent)" "$(call_count)" "0"
+	done
+done
+
+# Regression guard for the guard: the LEGITIMATE --release (neither --plan nor
+# --project) must still clear validation. Run WITHOUT the stub curl for the same
+# reason as the component --update guard below — reaching the curl precondition
+# is the observable proof that validate_version_args returned instead of
+# exiting 2.
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --release --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --release WITHOUT --plan/--project -> still passes validation (exit 1 at the tool check, not exit 2)" 1
+stderr_has "version --release plain: got PAST validation to the curl precondition" "curl is not installed"
 
 run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" version --list --confirmed-site foo.atlassian.net
@@ -1567,6 +1855,103 @@ run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "component --delete NON-NUMERIC --id -> exit 2" 2
 stderr_has "component non-numeric id: diagnostic" "numeric component id"
 
+# The mirror image of `version --list --move-issues-to`'s rejection above: the
+# two reassignment flags are VERSION --delete flags, and cmd_component never
+# reads either. Without these guards `component --delete --id N
+# --move-fix-issues-to M` would exit 0 having deleted the component and SILENTLY
+# dropped the reassignment — destructive AND silent. Each flag is its own guard,
+# so each gets its own case: a shared one would let either be deleted and pass.
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --delete --id 10500 --move-fix-issues-to 10501 --confirmed-site foo.atlassian.net
+expect_rc "component --delete + foreign --move-fix-issues-to -> exit 2" 2
+stderr_has "component move-fix-issues-to misuse: diagnostic names the owning command" "--move-fix-issues-to is only valid with version --delete"
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --delete --id 10500 --move-affected-issues-to 10501 --confirmed-site foo.atlassian.net
+expect_rc "component --delete + foreign --move-affected-issues-to -> exit 2" 2
+stderr_has "component move-affected-issues-to misuse: diagnostic names the owning command" "--move-affected-issues-to is only valid with version --delete"
+
+# Distinct code path from the two above: this guard is NOT gated on component's
+# active mode, so a non-delete mode must be rejected by the SAME diagnostic —
+# never allowed to run its own mode while silently ignoring the foreign flag
+# (the `component --list --release` failure shape, one flag over).
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --list --project PSWS --move-fix-issues-to 10501 --confirmed-site foo.atlassian.net
+expect_rc "component --list + foreign --move-fix-issues-to (guard is mode-independent) -> exit 2" 2
+stderr_has "component --list move-fix-issues-to misuse: same diagnostic as --delete" "--move-fix-issues-to is only valid with version --delete"
+
+# `version --delete`'s TWO pre-write safety nets are NOT implemented by
+# `component --delete`, which is destructive and irreversible — so each must be
+# REFUSED rather than silently ignored. --plan is the graver of the two: a
+# caller who believes they asked for a preview and instead gets a real delete
+# has been actively misled by the tool. Each flag is its own guard (a 0/1 carrier
+# vs. a string carrier — see require_flag_off's header on why they cannot share
+# one), so each gets its own case.
+#
+# Both run under the `full` selector (the stub curl IS on PATH) and assert ZERO
+# calls, so "refused before the network" is a real observation rather than an
+# artifact of curl being unavailable — the same shape the attach cases below use.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --delete --id 10500 --plan --confirmed-site foo.atlassian.net
+expect_rc "component --delete + --plan -> exit 2" 2
+stderr_has "component --delete --plan: diagnostic names the only --delete that previews, and warns this one is for REAL" \
+	"--plan/--dry-run is only valid with version --delete among the delete commands — component --delete would delete for REAL"
+equals "component --delete --plan: ZERO curl calls (the component is NOT deleted)" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --delete --id 10500 --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "component --delete + --project -> exit 2" 2
+# --project IS a component flag (--list/--create take it), so the diagnostic must
+# name THOSE modes — not another command, as the move-flag guards above do.
+stderr_has "component --delete --project: diagnostic names component's OWN modes that take --project" \
+	"--project is only valid with component --list/--create"
+equals "component --delete --project: ZERO curl calls (the component is NOT deleted)" "$(call_count)" "0"
+
+# --update carries the SAME --project guard as --delete above, for the same
+# reason and with the same diagnostic: --project NAMES the project in only two
+# of this command's four modes (--list/--create), and --update addresses the
+# component by --id alone. Unguarded, `component --update --id N --project
+# WRONGKEY` would exit 0 having edited whatever project's component N really
+# belongs to, with the scope the caller stated never checked against anything.
+# The key is well-formed but WRONG on purpose: --update never runs
+# validate_project_key, so a malformed key would prove nothing about this
+# guard — only a valid-shaped, unread key does.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --update --id 10500 --name X --project WRONGKEY --confirmed-site foo.atlassian.net
+expect_rc "component --update + --project -> exit 2" 2
+stderr_has "component --update --project: diagnostic names component's OWN modes that take --project" \
+	"--project is only valid with component --list/--create"
+equals "component --update --project: ZERO curl calls (the PUT is never sent)" "$(call_count)" "0"
+
+# ORDERING, pinned deliberately: the --project guard sits AFTER the
+# at-least-one-field check, so an --update carrying ONLY a bogus --project is
+# told what it is actually missing rather than being lectured about --project.
+# Both branches error-then-exit, so exactly ONE diagnostic reaches stderr —
+# asserting the missing-field one therefore proves the ORDER, not merely that
+# the message exists. Swap the two blocks in validate_component_args and this
+# case fails while the case above still passes.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --update --id 10500 --project WRONGKEY --confirmed-site foo.atlassian.net
+expect_rc "component --update + --project + NO field flag -> exit 2" 2
+stderr_has "component --update --project no field: the MISSING-FIELD diagnostic wins over the --project one" \
+	"component --update requires at least one field to change"
+equals "component --update --project no field: ZERO curl calls" "$(call_count)" "0"
+
+# Regression guard for the guard: the LEGITIMATE --update (a field flag, no
+# --project) must still clear validation. Run WITHOUT the stub curl so the run
+# stops at the first precondition AFTER validation — reaching "curl is not
+# installed" (exit 1) is the observable proof that validate_component_args
+# returned rather than exiting 2, which a happy-path exit-0 case cannot
+# distinguish from a validator that never ran at all.
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" component --update --id 10500 --name X --confirmed-site foo.atlassian.net
+expect_rc "component --update --name WITHOUT --project -> still passes validation (exit 1 at the tool check, not exit 2)" 1
+stderr_has "component --update no project: got PAST validation to the curl precondition" "curl is not installed"
+
 run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" component --create --name X --confirmed-site foo.atlassian.net
 expect_rc "component --create without --project -> exit 2" 2
@@ -1589,6 +1974,59 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "version --create 400 -> exit 1" 1
 stderr_has "version --create 400: HTTP code in diagnostic" "HTTP 400"
 stderr_has "version --create 400: Jira's own error message surfaced" "already exists in this project"
+
+section "jira.sh — version --delete: a non-2xx surfaces the HTTP code + Jira's own error message"
+
+# DELETE /version/<id> documents FOUR statuses (Atlassian's published OpenAPI
+# spec, operation deleteVersion), and the three failures are distinct scenarios
+# — covered one per case below, because collapsing them hides which one the
+# script actually handles.
+#
+# 404 means exactly one thing here: "Returned if the version is not found" —
+# the id does not exist. It is NOT the permission-denied response; that is 401
+# (next case). The status check must fire BEFORE the 204 "no body to parse"
+# branch — otherwise a failed delete would be reported as a successful one.
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["The version with id 11751 does not exist"]}' 404
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --delete 404 (version not found) -> exit 1" 1
+stderr_has "version --delete 404: HTTP code in diagnostic" "HTTP 404"
+stderr_has "version --delete 404: Jira's own error message surfaced" "does not exist"
+stdout_not_has "version --delete 404: NO success machine line on the error path" "JIRA_VERSION_DELETED"
+
+# 401 is the PERMISSION-DENIED response: the spec folds "the authentication
+# credentials are incorrect" and "the user does not have the required
+# permissions" into this one status, so an account without "Administer
+# Projects" on the version's project gets 401 — never 404. This is the failure
+# a real caller hits with a project-scoped token, so the wording Jira sends is
+# the only thing that tells them WHY, and it must reach stderr.
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["You do not have permission to edit versions in this project."]}' 401
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --confirmed-site foo.atlassian.net
+expect_rc "version --delete 401 (permission denied) -> exit 1" 1
+stderr_has "version --delete 401: HTTP code in diagnostic" "HTTP 401"
+stderr_has "version --delete 401: Jira's own permission message surfaced" \
+	"You do not have permission to edit versions in this project."
+stdout_not_has "version --delete 401: NO success machine line on the error path" "JIRA_VERSION_DELETED"
+
+# 400 ("Returned if the request is invalid") is reachable through a move target
+# only the SERVER can reject: the spec requires the replacement version to be in
+# the same project as the deleted one and to not BE the deleted one — neither of
+# which jira.sh can know locally, its own guard checking numeric shape only.
+# The body is the OTHER ErrorCollection shape — a per-field `errors` MAP instead
+# of `errorMessages` — so this also pins handle_http_status's `errors` branch,
+# which no other case in this suite reaches.
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":[],"errors":{"moveFixIssuesTo":"The version with id 10999 is not in the same project as the version being deleted."}}' 400
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" version --delete --id 11751 --move-fix-issues-to 10999 --confirmed-site foo.atlassian.net
+expect_rc "version --delete 400 (invalid move target) -> exit 1" 1
+stderr_has "version --delete 400: HTTP code in diagnostic" "HTTP 400"
+stderr_has 'version --delete 400: per-field errors MAP surfaced as "field: message"' \
+	"moveFixIssuesTo: The version with id 10999 is not in the same project"
+stdout_not_has "version --delete 400: NO success machine line on the error path" "JIRA_VERSION_DELETED"
 
 section "jira.sh — component --delete: a non-2xx surfaces the HTTP code + Jira's own error message"
 
@@ -1983,6 +2421,67 @@ reset_curl_stub
 run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" attach PSWS-1 --delete --id 303980 --confirmed-site foo.atlassian.net
 expect_rc "attach --delete WITH a stray ticket key -> exit 2 (delete addresses by --id, not KEY)" 2
+
+# The three reassignment targets belong to version/component --delete. attach
+# shares their OPT_* carriers but never reads one, so an unguarded
+# `attach --delete --id N --move-…-to M` would exit 0 having DELETED the
+# attachment and silently dropped the flag — destructive AND quiet, the worst
+# pairing. Each flag is a SEPARATE guard naming a DIFFERENT owning command, so
+# each gets its own case: a shared or looped assertion would let one guard be
+# deleted, or one message be wrong, and still pass.
+#
+# Every case runs under the `full` selector (the stub curl IS on PATH) and
+# asserts ZERO calls, so "rejected before the network" is a real observation
+# rather than an artifact of curl being unavailable.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --delete --id 303980 --move-fix-issues-to 11752 --confirmed-site foo.atlassian.net
+expect_rc "attach --delete + --move-fix-issues-to -> exit 2" 2
+stderr_has "attach --move-fix-issues-to: diagnostic names THAT flag and its owning command" \
+	"--move-fix-issues-to is only valid with version --delete"
+equals "attach --move-fix-issues-to: ZERO curl calls (the attachment is NOT deleted)" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --delete --id 303980 --move-affected-issues-to 11753 --confirmed-site foo.atlassian.net
+expect_rc "attach --delete + --move-affected-issues-to -> exit 2" 2
+stderr_has "attach --move-affected-issues-to: diagnostic names THAT flag and its owning command" \
+	"--move-affected-issues-to is only valid with version --delete"
+equals "attach --move-affected-issues-to: ZERO curl calls (the attachment is NOT deleted)" "$(call_count)" "0"
+
+# --move-issues-to is component --delete's, not version's — the diagnostic must
+# name the command that actually accepts it, never a sibling's.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --delete --id 303980 --move-issues-to 20501 --confirmed-site foo.atlassian.net
+expect_rc "attach --delete + --move-issues-to -> exit 2" 2
+stderr_has "attach --move-issues-to: diagnostic names component --delete as the owner, not version" \
+	"--move-issues-to is only valid with component --delete"
+equals "attach --move-issues-to: ZERO curl calls (the attachment is NOT deleted)" "$(call_count)" "0"
+
+# `attach --delete` is the third destructive delete in the engine and implements
+# neither of `version --delete`'s pre-write safety nets, so it carries component
+# --delete's identical pair of guards. The diagnostics are NOT identical to
+# component's, and deliberately so: each names the command it is really talking
+# about, so a caller is never pointed at a sibling's behaviour.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --delete --id 303980 --plan --confirmed-site foo.atlassian.net
+expect_rc "attach --delete + --plan -> exit 2" 2
+stderr_has "attach --delete --plan: diagnostic names attach --delete itself as the one that would delete for REAL" \
+	"--plan/--dry-run is only valid with version --delete among the delete commands — attach --delete would delete for REAL"
+equals "attach --delete --plan: ZERO curl calls (the attachment is NOT deleted)" "$(call_count)" "0"
+
+# attach addresses an issue by KEY and an attachment by --id; it has no
+# project-scoped mode at all, so --project can only ever be a mistake here — and
+# the diagnostic says exactly that rather than naming modes attach does not have.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --delete --id 303980 --project PSWS --confirmed-site foo.atlassian.net
+expect_rc "attach --delete + --project -> exit 2" 2
+stderr_has "attach --delete --project: diagnostic states attach addresses its target by KEY/--id, never by project" \
+	"--project is only valid with project-scoped commands (attach addresses its target by KEY/--id)"
+equals "attach --delete --project: ZERO curl calls (the attachment is NOT deleted)" "$(call_count)" "0"
 
 # ===========================================================================
 # Cycle B — inline images in description/comment bodies.
@@ -3169,6 +3668,349 @@ run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" view PROJ-1 --confirmed-site foo.atlassian.net
 expect_rc "jq absent -> exit 1" 1
 stderr_has "jq absent: diagnostic" "jq is not installed"
+
+# ===========================================================================
+# Split-parity assertions (P1, P2, P4, P5)
+#
+# These cover gaps the split of jira.sh into 43 sourced units could silently
+# open and that the pre-split suite had no reason to check. They assert the
+# SHAPE of the split, not any command's behavior — the rest of this file
+# already covers behavior.
+# ===========================================================================
+section "jira.sh — split parity (dispatcher identity, temp files, unit containment)"
+
+# P1 — a usage error must still be prefixed with the DISPATCHER's own name.
+# $PROG is ${0##*/}, so if a unit were ever EXECUTED instead of sourced the
+# prefix would silently become that unit's filename ("cmd-view.sh: error: ...")
+# and every caller that greps this prefix would break. Anchored deliberately:
+# the harness's substring stderr_has would also match a mid-line occurrence.
+run nocurl sh "$JIRA" bogus
+TESTS_RUN=$((TESTS_RUN + 1))
+if printf '%s\n' "$CUR_ERR" | grep -q '^jira\.sh: error:'; then
+	pass "P1: a usage error is prefixed exactly 'jira.sh: error:'"
+else
+	fail "P1: a usage error is prefixed exactly 'jira.sh: error:'" "stderr was: $CUR_ERR"
+fi
+
+run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view not-a-key --confirmed-site foo.atlassian.net
+TESTS_RUN=$((TESTS_RUN + 1))
+if printf '%s\n' "$CUR_ERR" | grep -q '^jira\.sh: error:'; then
+	pass "P1: a per-command validation error is prefixed exactly 'jira.sh: error:'"
+else
+	fail "P1: a per-command validation error is prefixed exactly 'jira.sh: error:'" "stderr was: $CUR_ERR"
+fi
+
+# P2 — the no-arg and -h paths must leave NO temp artifacts behind. Sourcing 43
+# units runs more top-level code before argv parsing than the monolith did, so a
+# unit that created a workdir or a credential config at LOAD time would leak one
+# on every single --help.
+count_jira_tmp_artifacts() {
+	find "$WORK" -maxdepth 1 \
+		\( -name 'jira.work.*' -o -name 'jira.curlconfig.*' \) 2>/dev/null |
+		wc -l | tr -d ' '
+}
+
+run nocurl sh "$JIRA"
+TESTS_RUN=$((TESTS_RUN + 1))
+p2_leaked=$(count_jira_tmp_artifacts)
+if [ "$p2_leaked" -eq 0 ]; then
+	pass "P2: no-args leaves zero jira.work.*/jira.curlconfig.* temp files"
+else
+	fail "P2: no-args leaves zero jira.work.*/jira.curlconfig.* temp files" "found $p2_leaked under $WORK"
+fi
+
+run nocurl sh "$JIRA" -h
+TESTS_RUN=$((TESTS_RUN + 1))
+p2_leaked=$(count_jira_tmp_artifacts)
+if [ "$p2_leaked" -eq 0 ]; then
+	pass "P2: -h leaves zero jira.work.*/jira.curlconfig.* temp files"
+else
+	fail "P2: -h leaves zero jira.work.*/jira.curlconfig.* temp files" "found $p2_leaked under $WORK"
+fi
+
+# P4 — every command's validate_<cmd>_args() must ACCEPT a valid argument set
+# (returning 0) AND REJECT an invalid one (exiting 2). The split turned one
+# 513-line `case` into 26 functions, and a function that falls off its end
+# returning the status of its last test would abort the dispatcher under
+# `set -e` before the command ever ran. Each wrapper therefore ends with an
+# explicit `return 0`, and this asserts all 26 do.
+#
+# EVERY ACCEPT CASE IS PAIRED WITH A REJECT CASE, deliberately: an accept-only
+# set would pass in full against a validator gutted to `return 0`, which is the
+# exact regression this gate exists to catch. The reject half proves the guard
+# still fires; the accept half proves it does not over-fire.
+#
+# The driver sources the units exactly as jira.sh does and REPLAYS jira.sh's own
+# OPT_* initializer block rather than keeping a hand-written copy of the
+# defaults, so this test cannot drift from the engine it is checking. It brackets
+# that block on the STABLE MARKER COMMENTS jira.sh carries (not on the names of
+# the first and last variables, which a behaviour-preserving rename or reorder
+# would silently invalidate — emptying the range and turning all 26 checks into
+# unbound-variable noise), and it FAILS LOUDLY if the extraction comes back
+# empty.
+P4_DRIVER="$WORK/validate-driver.sh"
+cat >"$P4_DRIVER" <<'P4_DRIVER_EOF'
+#!/usr/bin/env sh
+set -eu
+p4_script_dir=$1
+p4_case_file=$2
+SCRIPT_DIR=$p4_script_dir
+LIB_DIR="$p4_script_dir/../lib"
+MD_TO_ADF="$p4_script_dir/md-to-adf.sh"
+PROG=jira.sh
+for p4_unit in "$LIB_DIR"/*.sh; do
+	. "$p4_unit"
+done
+p4_opts=$(mktemp "${TMPDIR:-/tmp}/jira-p4-opts.XXXXXX")
+sed -n '/OPT DEFAULTS BEGIN/,/OPT DEFAULTS END/p' "$p4_script_dir/jira.sh" >"$p4_opts"
+# A non-empty extraction is the driver's own precondition: if the markers ever
+# stop matching, say so in one clear line instead of failing 52 times with an
+# unbound-variable error that names the wrong culprit.
+if [ ! -s "$p4_opts" ]; then
+	printf 'P4 DRIVER: the OPT DEFAULTS marker block in jira.sh extracted EMPTY\n' >&2
+	rm -f "$p4_opts"
+	exit 90
+fi
+. "$p4_opts"
+rm -f "$p4_opts"
+set +e
+. "$p4_case_file"
+p4_rc=$?
+set -e
+printf '%s\n' "$p4_rc"
+P4_DRIVER_EOF
+
+P4_FILE="$WORK/p4-attachment.txt"
+printf 'x\n' >"$P4_FILE"
+
+# p4_run COMMAND ASSIGNMENTS — write one case file and run the driver on it.
+p4_run() {
+	p4_case_file="$WORK/p4-case.sh"
+	{
+		printf 'COMMAND=%s\n' "$1"
+		printf '%s\n' "$2"
+		printf 'validate_%s_args\n' "$(printf '%s' "$1" | tr '-' '_')"
+	} >"$p4_case_file"
+	p4_fn="validate_$(printf '%s' "$1" | tr '-' '_')_args"
+	run nocurl sh "$P4_DRIVER" "$SCRIPTS_DIR" "$p4_case_file"
+}
+
+# p4_accept COMMAND ASSIGNMENTS — the wrapper must return 0 for a VALID set.
+p4_accept() {
+	p4_run "$1" "$2"
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if [ "$CUR_RC" -eq 0 ] && [ "$CUR_OUT" = "0" ]; then
+		pass "P4: $p4_fn accepts a valid argument set (\$? = 0)"
+	else
+		fail "P4: $p4_fn accepts a valid argument set (\$? = 0)" \
+			"driver rc=$CUR_RC stdout='$CUR_OUT' stderr='$CUR_ERR'"
+	fi
+}
+
+# p4_reject COMMAND ASSIGNMENTS WHY — the wrapper must exit 2 (usage error) for
+# an INVALID set. The validators exit rather than return, so the exit status
+# lands on the driver process itself; rc 90 is the driver's own marker-block
+# precondition failure and is reported separately so it can never be mistaken
+# for a validator verdict.
+p4_reject() {
+	p4_run "$1" "$2"
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if [ "$CUR_RC" -eq 2 ]; then
+		pass "P4: $p4_fn rejects $3 (exit 2)"
+	else
+		fail "P4: $p4_fn rejects $3 (exit 2)" \
+			"driver rc=$CUR_RC stdout='$CUR_OUT' stderr='$CUR_ERR'"
+	fi
+}
+
+p4_accept view       'TICKET_KEY=PROJ-1'
+p4_reject view       ':' 'a missing ticket key'
+p4_accept search     'OPT_PROJECT=PROJ'
+p4_reject search     ':' 'a filterless query'
+p4_accept workflow   'TICKET_KEY=PROJ-1'
+p4_reject workflow   'TICKET_KEY=not-a-key' 'a malformed ticket key'
+p4_accept create     'OPT_PROJECT=PROJ
+OPT_TITLE="A title"'
+p4_reject create     'OPT_TITLE="A title"' 'a missing --project'
+p4_accept comment    "TICKET_KEY=PROJ-1
+OPT_TEXT_FILE=$P4_FILE"
+p4_reject comment    'TICKET_KEY=PROJ-1' 'a missing --text-file'
+p4_accept transition 'TICKET_KEY=PROJ-1
+OPT_STATUS=Done'
+p4_reject transition 'TICKET_KEY=PROJ-1' 'a missing --status'
+p4_accept update     'TICKET_KEY=PROJ-1
+OPT_TITLE="A title"'
+p4_reject update     'OPT_TITLE="A title"' 'a missing ticket key'
+p4_accept link       'TICKET_KEY=PROJ-1
+OPT_TO=PROJ-2
+OPT_LINK_TYPE=Blocks'
+p4_reject link       'TICKET_KEY=PROJ-1
+OPT_TO=PROJ-2' 'a missing --link-type'
+p4_accept link-types ':'
+p4_reject link-types 'TICKET_KEY=PROJ-1' 'a stray positional'
+p4_accept children   'TICKET_KEY=PROJ-1'
+p4_reject children   ':' 'a missing ticket key'
+p4_accept discover   'TICKET_KEY=PROJ'
+p4_reject discover   'TICKET_KEY=../../etc' 'a traversal-shaped project key'
+p4_accept worklog    'TICKET_KEY=PROJ-1
+OPT_TIME_SPENT=2h'
+p4_reject worklog    'TICKET_KEY=PROJ-1' 'a missing --time-spent'
+p4_accept watch      'TICKET_KEY=PROJ-1'
+p4_reject watch      'TICKET_KEY=PROJ-1
+OPT_LIST=1
+OPT_REMOVE=1' 'mutually exclusive --list --remove'
+p4_accept vote       'TICKET_KEY=PROJ-1'
+p4_reject vote       'TICKET_KEY=PROJ-1
+OPT_LIST=1
+OPT_REMOVE=1' 'mutually exclusive --list --remove'
+p4_accept version    'OPT_LIST=1
+OPT_PROJECT=PROJ'
+p4_reject version    'OPT_PROJECT=PROJ' 'no mode flag at all'
+p4_accept component  'OPT_LIST=1
+OPT_PROJECT=PROJ'
+p4_reject component  'OPT_LIST=1
+OPT_RELEASE=1
+OPT_PROJECT=PROJ' 'a foreign (version) mode flag'
+p4_accept attach     "TICKET_KEY=PROJ-1
+OPT_FILES='$P4_FILE
+'"
+p4_reject attach     'TICKET_KEY=PROJ-1' 'no mode flag at all'
+p4_accept bulk       'OPT_OP=transition
+OPT_KEYS=PROJ-1
+OPT_STATUS=Done'
+p4_reject bulk       'OPT_KEYS=PROJ-1
+OPT_STATUS=Done' 'a missing --op'
+p4_accept boards     ':'
+p4_reject boards     'TICKET_KEY=826' 'a stray positional'
+p4_accept board      'TICKET_KEY=826'
+p4_reject board      'TICKET_KEY=not-numeric' 'a non-numeric board id'
+p4_accept sprints    'TICKET_KEY=826'
+p4_reject sprints    'TICKET_KEY=826
+OPT_STATE=bogus' 'an out-of-allow-list --state'
+p4_accept sprint     'TICKET_KEY=2212'
+p4_reject sprint     'TICKET_KEY=2212
+OPT_CREATE=1
+OPT_UPDATE=1' 'two write modes at once'
+p4_accept backlog    'TICKET_KEY=826'
+p4_reject backlog    'TICKET_KEY=not-numeric' 'a non-numeric board id'
+p4_accept epics      'TICKET_KEY=826'
+p4_reject epics      ':' 'a missing board id'
+p4_accept epic       'TICKET_KEY=91591
+OPT_ISSUES=1'
+p4_reject epic       'TICKET_KEY=91591' 'a missing --issues'
+p4_accept schedule   'OPT_TO_SPRINT=2212
+OPT_KEYS=PROJ-1'
+p4_reject schedule   'OPT_TO_SPRINT=2212
+OPT_TO_BACKLOG=1
+OPT_KEYS=PROJ-1' 'two target ops at once'
+
+# P5 — every `curl` invocation must live in lib/http.sh, and there must be
+# exactly three of them (jira_curl, jira_curl_multipart, resolve_media_uuid).
+# This is the split's single most load-bearing structural claim: the transport's
+# security properties (token off argv, host pinned, --proto '=https', no -L) are
+# reviewed ONCE because there is only one place to review. A fourth call site
+# anywhere else silently voids that.
+#
+# The gate matches the INVOCATION PATTERN — `curl` in command position followed
+# by the start of an ARGUMENT — rather than the literal string 'curl -sS'. A
+# future call written with an extra space, a reordered flag, or a different
+# first option is still a fourth transport, and an exact-string gate would wave
+# it through. Three shapes count as an argument start: an option (`-`), a
+# quoted word (`"` or `'`), and an expansion (`$`). The last two exist because a
+# call whose URL precedes every flag — `curl "$url" -o f` — is just as much a
+# fourth transport as `curl -o f "$url"`, and a `-`-only matcher would miss it.
+#
+# Two normalizations run BEFORE the match:
+#   * comment lines are stripped, so a unit header that TALKS about curl is not
+#     miscounted as a call;
+#   * line continuations are FOLDED, so a call split as `curl \` + flags on the
+#     next line is seen as the single logical command it is. Without the fold,
+#     that reformatting alone evades the gate — a false negative, the exact
+#     opposite of what a structural guard may do.
+# `command -v curl` (jira.sh's dependency probe) stays excluded by construction:
+# what follows it is a redirection or end-of-line, never an argument start.
+P5_LIB_DIR=$(cd "$SCRIPTS_DIR/../lib" && pwd)
+P5_INVOCATION_RE='(^|[^A-Za-z0-9_])curl[[:space:]]+["$'"'"'-]'
+
+# p5_fold_continuations — join each backslash-continued line with its successor,
+# so a multi-line command is matched as one line. awk, not sed: folding needs an
+# embedded newline in a substitution, which BSD and GNU sed spell differently.
+p5_fold_continuations() {
+	awk '
+		{ p5_line = p5_line $0 }
+		/\\$/  { sub(/\\$/, "", p5_line); next }
+		       { print p5_line; p5_line = "" }
+		END    { if (p5_line != "") print p5_line }
+	'
+}
+
+# p5_invocations FILE -> that file's curl-invocation lines (comments stripped,
+# continuations folded).
+p5_invocations() {
+	grep -v '^[[:space:]]*#' "$1" | p5_fold_continuations | grep -E "$P5_INVOCATION_RE" || true
+}
+
+P5_HITS=""
+P5_COUNT=0
+for p5_file in "$P5_LIB_DIR"/*.sh "$SCRIPTS_DIR"/*.sh; do
+	[ -f "$p5_file" ] || continue
+	p5_n=$(p5_invocations "$p5_file" | grep -c . | tr -d ' ')
+	[ "$p5_n" -gt 0 ] || continue
+	P5_COUNT=$((P5_COUNT + p5_n))
+	P5_HITS="$P5_HITS $p5_file"
+done
+P5_HITS=${P5_HITS# }
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$P5_COUNT" -eq 3 ]; then
+	pass "P5: exactly 3 curl invocations across every unit"
+else
+	fail "P5: exactly 3 curl invocations across every unit" "found $P5_COUNT in: $P5_HITS"
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$P5_HITS" = "$P5_LIB_DIR/http.sh" ]; then
+	pass "P5: every curl invocation lives in lib/http.sh"
+else
+	fail "P5: every curl invocation lives in lib/http.sh" "files with a hit: $P5_HITS"
+fi
+
+# The gate must itself be falsifiable: a synthetic unit carrying a curl call the
+# gate is claimed to catch has to actually be counted. Without these probes, a
+# matcher that stopped matching anything would report "exactly 3" forever — a
+# broken analyzer looking identical to a clean tree. Each probe below is one
+# rewriting a fourth transport could plausibly arrive in.
+P5_PROBE="$WORK/p5-probe.sh"
+
+# p5_probe_count TEXT -> how many curl invocations the gate finds in TEXT.
+p5_probe_count() {
+	printf '%s\n' "$1" >"$P5_PROBE"
+	p5_invocations "$P5_PROBE" | grep -c . | tr -d ' '
+}
+
+# shellcheck disable=SC2016  # every probe below is literal shell TEXT written to a file, not an expansion this script wants performed
+equals "P5: the gate counts a REFORMATTED curl invocation (and not the comment)" \
+	"$(p5_probe_count '# a comment mentioning curl -sS must NOT be counted
+p5_probe() { curl  --proto "=https" -sS -o /dev/null "$1"; }')" "1"
+
+# shellcheck disable=SC2016  # see the SC2016 note on the first probe
+equals "P5: the gate counts a curl invocation whose flags sit on a CONTINUATION line" \
+	"$(p5_probe_count 'p5_probe() {
+	curl \
+		--proto "=https" \
+		-sS -o /dev/null "$1"
+}')" "1"
+
+# shellcheck disable=SC2016  # see the SC2016 note on the first probe
+equals "P5: the gate counts a curl invocation whose URL precedes every flag" \
+	"$(p5_probe_count 'p5_probe() { curl "$1" -o /dev/null; }')" "1"
+
+# The widened matcher must not swing the other way: `command -v curl` is the
+# dependency probe every entry point runs, and counting it would report a fourth
+# transport that does not exist — noise that trains the reader to ignore P5.
+equals "P5: the gate does NOT count the command -v curl dependency probe" \
+	"$(p5_probe_count 'command -v curl >/dev/null 2>&1 || { error "curl is not installed"; exit 1; }')" "0"
 
 # ===========================================================================
 # Summary

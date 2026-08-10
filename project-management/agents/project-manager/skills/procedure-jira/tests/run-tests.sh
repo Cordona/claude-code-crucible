@@ -68,7 +68,7 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
 FIXTURES_DIR="$TESTS_DIR/fixtures"
 CONVERTER="$SCRIPTS_DIR/md-to-adf.sh"
 
@@ -192,7 +192,22 @@ golden_match() {
 # non-empty href, the containers that must never be content:[] (tableRow,
 # tableCell/tableHeader, bulletList/orderedList, listItem, blockquote,
 # panel, table) all have at least one child, and blockquote/panel/table-
-# cell children are always paragraphs (never raw text). Prints a JSON array
+# cell children are always paragraphs (never raw text).
+#
+# Task lists (landmine #8) get five rules of their own, because a taskList
+# is NOT shaped like a bulletList and a "fix" that makes it look like one is
+# exactly the silent regression these catch: taskList/taskItem both carry a
+# localId; a taskList's FIRST child must be a taskItem (ADF rejects a
+# taskList that opens with a nested taskList); EVERY taskList child must be a
+# taskItem or a taskList (a bulletList/orderedList there is a 400 — see the
+# same-indent-escape regression in the task-list section below, which is the
+# exact defect this rule exists to catch); a taskItem's state is the
+# two-value enum TODO/DONE; and a taskItem's children are INLINE nodes
+# directly — a paragraph wrapper there (the listItem shape) is itself a 400.
+# An empty taskItem legitimately omits `content` entirely, so taskItem is
+# deliberately NOT in needs_child.
+#
+# Prints a JSON array
 # of violation strings — empty means valid. Optional REAL ADF-schema
 # validation (e.g. a JSON Schema validator) is deliberately NOT wired in:
 # no such validator is a guaranteed-present dependency for this suite (see
@@ -200,7 +215,8 @@ golden_match() {
 # structural sweep is the guarded, always-available equivalent.
 # shellcheck disable=SC2016  # single-quoted on purpose: this is a jq program, not a shell expansion
 ADF_STRUCTURAL_VALIDATOR='
-def needs_child: IN("tableRow","tableCell","tableHeader","bulletList","orderedList","listItem","blockquote","panel","table");
+def needs_child: IN("tableRow","tableCell","tableHeader","bulletList","orderedList","listItem","blockquote","panel","table","taskList");
+def is_inline_node: IN("text","hardBreak","emoji","mention","date","status","inlineCard","placeholder");
 [
   (if .type != "doc" or .version != 1 then "root is not {type:\"doc\",version:1,...}" else empty end),
   (.. | objects | select(.type == "text" and ((.text // "") == "")) | "empty text node"),
@@ -213,7 +229,12 @@ def needs_child: IN("tableRow","tableCell","tableHeader","bulletList","orderedLi
   (.. | objects | select(has("marks")) | .marks[] | select(.type == "link") | select(((.attrs.href // "") | length) == 0) | "link mark missing href"),
   (.. | objects | select(.type | needs_child) | select(((.content // []) | length) == 0) | "\(.type) has empty/missing content"),
   (.. | objects | select(.type == "blockquote" or .type == "panel") | (.content // [])[] | select(.type != "paragraph") | "blockquote/panel child is not a paragraph"),
-  (.. | objects | select(.type == "tableCell" or .type == "tableHeader") | (.content // [])[] | select(.type != "paragraph") | "table cell child is not a paragraph")
+  (.. | objects | select(.type == "tableCell" or .type == "tableHeader") | (.content // [])[] | select(.type != "paragraph") | "table cell child is not a paragraph"),
+  (.. | objects | select(.type == "taskList" or .type == "taskItem") | select(((.attrs.localId // "") | length) == 0) | "\(.type) missing attrs.localId"),
+  (.. | objects | select(.type == "taskList") | select((((.content // [])[0]).type) != "taskItem") | "taskList first child is not a taskItem"),
+  (.. | objects | select(.type == "taskList") | (.content // [])[] | select(.type != "taskItem" and .type != "taskList") | "taskList child is neither a taskItem nor a taskList: \(.type)"),
+  (.. | objects | select(.type == "taskItem") | .attrs.state as $st | select((["TODO","DONE"] | index($st)) == null) | "invalid taskItem state: \($st)"),
+  (.. | objects | select(.type == "taskItem") | (.content // [])[] | select((.type | is_inline_node) | not) | "taskItem child is not an inline node: \(.type)")
 ]
 '
 
@@ -255,6 +276,46 @@ assert_invalid_adf() {
 	fi
 }
 
+# convert_md MD_TEXT — runs the REAL converter (real jq, real Oniguruma) over
+# MD_TEXT and prints the resulting ADF document as compact JSON. The entry
+# point for cases asserted by SHAPE (via assert_jq) rather than diffed against
+# a golden file — see the task-list section for why some cases must not pin a
+# golden.
+#
+# Deliberately returns 0 even when the converter dies: md-to-adf.sh carries
+# runtime assertions that exit 1 rather than emit invalid ADF (see
+# list_pop_and_fold), and every caller uses this inside `X=$(convert_md …)`,
+# where a non-zero status would trip this file's own `set -e` and kill the run
+# at that line — hiding every case after it behind a silent abort. Swallowing
+# the status here leaves the output empty instead, so the caller's assertions
+# report a NAMED failure. The status itself is not lost: a case that cares
+# asserts it explicitly with the run/expect_rc pair above.
+convert_md() {
+	printf '%s\n' "$1" >"$WORK/case.md"
+	env -i HOME="$WORK/home" PATH="$TOOLBOX" TMPDIR="$WORK" \
+		sh "$CONVERTER" --file "$WORK/case.md" 2>"$WORK/case_err" || true
+}
+
+# assert_jq NAME DOC FILTER EXPECTED — applies FILTER to DOC with `jq -c` and
+# asserts the compact-JSON result is exactly EXPECTED. Both the filter and the
+# expected value stay at the call site (each case reads on its own); only the
+# compare-and-report mechanics live here.
+assert_jq() {
+	aj_name=$1
+	aj_doc=$2
+	aj_filter=$3
+	aj_expected=$4
+	TESTS_RUN=$((TESTS_RUN + 1))
+	aj_actual=$(printf '%s' "$aj_doc" | jq -c "$aj_filter")
+	if [ "$aj_actual" = "$aj_expected" ]; then
+		pass "$aj_name"
+	else
+		fail "$aj_name" "filter:   $aj_filter
+       actual:   $aj_actual
+       expected: $aj_expected"
+	fi
+}
+
 section() { printf '\n== %s ==\n' "$1"; }
 
 # ===========================================================================
@@ -282,6 +343,35 @@ assert_invalid_adf "invalid-adf: panelType bogus" \
 assert_invalid_adf "invalid-adf: heading level 7" \
 	'{"type":"doc","version":1,"content":[{"type":"heading","attrs":{"level":7},"content":[{"type":"text","text":"x"}]}]}'
 
+# Task-list rules (landmine #8) — one negative per rule, so none of the four
+# can silently become a no-op.
+assert_invalid_adf "invalid-adf: taskList missing attrs.localId" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"}}]}]}'
+
+assert_invalid_adf "invalid-adf: taskItem missing attrs.localId" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"state":"TODO"}}]}]}'
+
+assert_invalid_adf "invalid-adf: taskList with content:[]" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[]}]}'
+
+assert_invalid_adf "invalid-adf: taskList opening with a nested taskList instead of a taskItem" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskList","attrs":{"localId":"taskList-2"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"}}]}]}]}'
+
+# The shape the same-indent-escape defect produced: a legal taskItem FIRST
+# (so the first-child rule above stays silent), with a bulletList
+# sibling-appended after it. Only the every-child rule can see this one.
+assert_invalid_adf "invalid-adf: taskList holding a bulletList sibling after its taskItem" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"},"content":[{"type":"text","text":"a"}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"c"}]}]}]}]}]}'
+
+assert_invalid_adf "invalid-adf: taskList holding an orderedList sibling after its taskItem" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"},"content":[{"type":"text","text":"a"}]},{"type":"orderedList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"c"}]}]}]}]}]}'
+
+assert_invalid_adf "invalid-adf: taskItem state outside the TODO/DONE enum" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"IN_PROGRESS"},"content":[{"type":"text","text":"x"}]}]}]}'
+
+assert_invalid_adf "invalid-adf: taskItem wrapping its text in a paragraph (the listItem shape)" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"},"content":[{"type":"paragraph","content":[{"type":"text","text":"x"}]}]}]}]}'
+
 # Positive control alongside the negatives: a KNOWN-GOOD minimal doc must
 # still pass, proving the validator rejects the bad ones FOR A REASON
 # (their specific defect) and not because it rejects everything.
@@ -298,6 +388,20 @@ assert_valid_adf_json() {
 }
 assert_valid_adf_json "invalid-adf: positive control (minimal valid doc still passes)" \
 	'{"type":"doc","version":1,"content":[{"type":"paragraph"}]}'
+
+# Positive controls for the task-list rules: the two legal shapes the four
+# negatives above must not be rejecting by accident — a taskItem carrying
+# inline text, and an EMPTY taskItem that omits `content` entirely.
+assert_valid_adf_json "invalid-adf: positive control (a valid taskList doc still passes)" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-2"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"DONE"},"content":[{"type":"text","text":"x"}]}]}]}'
+
+assert_valid_adf_json "invalid-adf: positive control (a content-less taskItem is legal, not an empty container)" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-2"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"}}]}]}'
+
+# The every-child rule must reject a bulletList sibling WITHOUT also rejecting
+# the one nesting ADF does allow: a taskList sibling after a taskItem.
+assert_valid_adf_json "invalid-adf: positive control (a nested taskList sibling after a taskItem is legal)" \
+	'{"type":"doc","version":1,"content":[{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"TODO"},"content":[{"type":"text","text":"a"}]},{"type":"taskList","attrs":{"localId":"taskList-2"},"content":[{"type":"taskItem","attrs":{"localId":"taskItem-2","state":"TODO"},"content":[{"type":"text","text":"b"}]}]}]}]}'
 
 # ===========================================================================
 # usage / argument errors
@@ -543,6 +647,229 @@ if [ "$nested_shape" = '["paragraph","bulletList"]' ]; then
 else
 	fail "golden: nested-list — nested list is a sibling of the paragraph" "got: $nested_shape"
 fi
+
+# ===========================================================================
+# Task lists (GitHub-style checkboxes) — the third list-stack type. Asserted
+# by SHAPE (convert_md + assert_jq) rather than against golden fixtures,
+# deliberately: every taskList/taskItem carries a localId drawn from a
+# monotonic counter, and the CONTRACT is only that those ids are unique
+# WITHIN the document (see md-to-adf.sh's next_task_local_id note) — the
+# particular numbers are an implementation detail. A golden file would pin
+# them and turn a legitimate renumbering into a red suite.
+#
+# The shape asserted below is ground truth, not a guess: a real ticket was
+# created against the live Jira Cloud API with a task list, and Jira's own
+# response echoed back exactly these taskList/taskItem nodes.
+# ===========================================================================
+section "md-to-adf.sh — task lists: single items and marker variants"
+
+TASK_UNCHECKED=$(convert_md '- [ ] alpha')
+assert_jq "tasklist: '- [ ] x' produces ONE top-level taskList block" \
+	"$TASK_UNCHECKED" '[.content[].type]' '["taskList"]'
+assert_jq "tasklist: an unchecked item is a taskItem with state TODO" \
+	"$TASK_UNCHECKED" '[.content[0].content[] | {type: .type, state: .attrs.state}]' \
+	'[{"type":"taskItem","state":"TODO"}]'
+assert_jq "tasklist: taskItem content is the INLINE nodes DIRECTLY (never a paragraph wrapper)" \
+	"$TASK_UNCHECKED" '.content[0].content[0].content' \
+	'[{"type":"text","text":"alpha"}]'
+assert_valid_adf_json "valid-adf: single unchecked task list" "$TASK_UNCHECKED"
+
+TASK_CHECKED=$(convert_md '- [x] beta')
+assert_jq "tasklist: '- [x] x' is a taskItem with state DONE" \
+	"$TASK_CHECKED" '[.content[0].content[] | {type: .type, state: .attrs.state}]' \
+	'[{"type":"taskItem","state":"DONE"}]'
+assert_valid_adf_json "valid-adf: single checked task list" "$TASK_CHECKED"
+
+TASK_CHECKED_UPPER=$(convert_md '- [X] gamma')
+assert_jq "tasklist: an UPPERCASE '- [X]' marker is also DONE (case-insensitive check mark)" \
+	"$TASK_CHECKED_UPPER" '[.content[0].content[] | {type: .type, state: .attrs.state}]' \
+	'[{"type":"taskItem","state":"DONE"}]'
+
+TASK_STAR_MARKER=$(convert_md '* [ ] delta')
+assert_jq "tasklist: the '*' bullet marker yields the same taskList/taskItem shape as '-'" \
+	"$TASK_STAR_MARKER" '[.content[0] | {type: .type, item: .content[0].type, state: .content[0].attrs.state}]' \
+	'[{"type":"taskList","item":"taskItem","state":"TODO"}]'
+
+# CommonMark reads the ENTIRE whitespace run after a bullet marker as part of
+# the marker, so a second space changes nothing about what the line IS (see
+# strip_bullet_marker). This used to leave a leading space that parse_task_item
+# could not match, silently degrading the line to a bullet reading " [ ] x".
+TASK_DOUBLE_SPACE_MARKER=$(convert_md '-  [ ] epsilon')
+assert_jq "tasklist: '-  [ ] x' (TWO spaces after the marker) is still a checkbox, not a bullet reading ' [ ] x'" \
+	"$TASK_DOUBLE_SPACE_MARKER" \
+	'{blocks: [.content[].type], state: .content[0].content[0].attrs.state, text: .content[0].content[0].content[0].text}' \
+	'{"blocks":["taskList"],"state":"TODO","text":"epsilon"}'
+assert_valid_adf_json "valid-adf: double-space checkbox marker" "$TASK_DOUBLE_SPACE_MARKER"
+
+# The documented collateral of that same fix, pinned so it cannot silently
+# drift back: a PLAIN bullet with extra marker whitespace normalizes the same
+# way, so its text is "plain text" and no longer " plain text".
+BULLET_DOUBLE_SPACE_MARKER=$(convert_md '-  plain text')
+assert_jq "bullet: '-  plain text' yields text without a leading space (the whole marker whitespace run is marker)" \
+	"$BULLET_DOUBLE_SPACE_MARKER" \
+	'{blocks: [.content[].type], text: .content[0].content[0].content[0].content[0].text}' \
+	'{"blocks":["bulletList"],"text":"plain text"}'
+
+section "md-to-adf.sh — task lists: multiple items, localIds, nesting"
+
+TASK_MIXED=$(convert_md '- [ ] one
+- [x] two
+- [ ] three')
+assert_jq "tasklist: a mixed checked/unchecked run is ONE taskList, not one per item" \
+	"$TASK_MIXED" '[.content[].type]' '["taskList"]'
+assert_jq "tasklist: each item keeps its own state, in document order" \
+	"$TASK_MIXED" '[.content[0].content[].attrs.state]' '["TODO","DONE","TODO"]'
+assert_jq "tasklist: every localId in the document is present and distinct (3 items + 1 list)" \
+	"$TASK_MIXED" \
+	'[.. | objects | select(has("attrs")) | .attrs.localId | select(. != null)] | [length, (unique | length)]' \
+	'[4,4]'
+assert_valid_adf_json "valid-adf: mixed-state task list" "$TASK_MIXED"
+
+TASK_NESTED=$(convert_md '- [ ] parent
+  - [x] child')
+assert_jq "tasklist: a nested checkbox list is a SIBLING inside the parent taskList's content" \
+	"$TASK_NESTED" '[.content[0].content[].type]' '["taskItem","taskList"]'
+assert_jq "tasklist: the nested taskList's first child is a taskItem (ADF schema requirement)" \
+	"$TASK_NESTED" '.content[0].content[1].content[0] | {type: .type, state: .attrs.state}' \
+	'{"type":"taskItem","state":"DONE"}'
+assert_jq "tasklist: no taskItem anywhere holds a block node (the nested list never folds into one)" \
+	"$TASK_NESTED" \
+	'[.. | objects | select(.type == "taskItem") | (.content // [])[] | select(.type != "text")]' '[]'
+assert_jq "tasklist: nested localIds stay distinct across both levels (2 items + 2 lists)" \
+	"$TASK_NESTED" \
+	'[.. | objects | select(has("attrs")) | .attrs.localId | select(. != null)] | [length, (unique | length)]' \
+	'[4,4]'
+assert_valid_adf_json "valid-adf: nested task list" "$TASK_NESTED"
+
+section "md-to-adf.sh — task lists: boundaries with other list types"
+
+TASK_ADJACENT_BULLETS=$(convert_md '- plain one
+- [ ] checkbox
+- plain two')
+assert_jq "tasklist: a checkbox between two plain bullets yields THREE sibling top-level blocks" \
+	"$TASK_ADJACENT_BULLETS" '[.content[].type]' '["bulletList","taskList","bulletList"]'
+assert_jq "tasklist: the surrounding bullets stay listItems wrapping a paragraph (unchanged shape)" \
+	"$TASK_ADJACENT_BULLETS" '[.content[0].content[0].content[].type, .content[2].content[0].content[].type]' \
+	'["paragraph","paragraph"]'
+assert_valid_adf_json "valid-adf: checkbox list adjacent to plain bullet lists" "$TASK_ADJACENT_BULLETS"
+
+# The documented degradation (see md-to-adf.sh's "Task lists" note, point c,
+# and list_open_item's second guard loop): ADF's taskItem cannot hold a block
+# node, so a plain bullet indented under a checkbox CLOSES the task list and
+# continues at the nearest level that can parent it — top level here. The
+# nesting is what degrades; the content never is.
+TASK_BULLET_NESTED_UNDER=$(convert_md '- [ ] parent
+  - plain child')
+assert_jq "tasklist: a plain bullet under a checkbox closes the taskList and continues as a top-level bulletList" \
+	"$TASK_BULLET_NESTED_UNDER" '[.content[].type]' '["taskList","bulletList"]'
+assert_jq "tasklist: that degradation drops the nesting, never the content" \
+	"$TASK_BULLET_NESTED_UNDER" '[.. | objects | select(.type == "text") | .text]' \
+	'["parent","plain child"]'
+assert_valid_adf_json "valid-adf: plain bullet nested under a checkbox" "$TASK_BULLET_NESTED_UNDER"
+
+# Regression (the same-indent escape): a plain list REPLACING a checkbox list at
+# the SAME indent while an OUTER checkbox list is still open. The type change is
+# an ordinary pop+push, so nothing about the line itself says "close the
+# ancestor" — yet the popped bulletList would then be folded into that still-open
+# ancestor taskList as a sibling of its taskItems, which is invalid ADF. What
+# forbids it is list_open_item's taskList-closing guard comparing `-le` (not
+# `-lt`) against the new line's indent: the EQUAL case is exactly this one.
+# Asserted as TWO top-level blocks, because the escaped list has nowhere legal to
+# nest and must therefore land at top level.
+#
+# Exit status is asserted on its own first: list_pop_and_fold FAILS LOUD (exit 1)
+# when a non-taskList level is about to be folded into a taskList, so "the
+# converter exits 0 here" is a distinct observable outcome from "its output has
+# the right shape", and only checking the shape would confuse the two.
+SAME_INDENT_BULLET_MD="$WORK/same-indent-bullet.md"
+printf -- '- [ ] a\n  - [ ] b\n  - c\n' >"$SAME_INDENT_BULLET_MD"
+run "$TOOLBOX" sh "$CONVERTER" --file "$SAME_INDENT_BULLET_MD"
+expect_rc "tasklist: the same-indent escape converts cleanly (the invalid-ADF assertion never fires)" 0
+
+TASK_SAME_INDENT_BULLET=$(convert_md '- [ ] a
+  - [ ] b
+  - c')
+assert_jq "tasklist: a same-indent bullet under an open ancestor taskList yields TWO top-level blocks" \
+	"$TASK_SAME_INDENT_BULLET" '[.content[].type]' '["taskList","bulletList"]'
+assert_jq "tasklist: the ancestor taskList keeps ONLY its taskItem and the nested taskList — the bulletList never joins it" \
+	"$TASK_SAME_INDENT_BULLET" '[.content[0].content[].type]' '["taskItem","taskList"]'
+assert_jq "tasklist: the escaped bulletList is a top-level sibling holding exactly the plain item" \
+	"$TASK_SAME_INDENT_BULLET" '.content[1]' \
+	'{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"c"}]}]}]}'
+assert_jq "tasklist: the same-indent escape drops the nesting, never the content" \
+	"$TASK_SAME_INDENT_BULLET" '[.. | objects | select(.type == "text") | .text]' '["a","b","c"]'
+assert_valid_adf_json "valid-adf: same-indent bullet escaping an ancestor taskList" "$TASK_SAME_INDENT_BULLET"
+
+# The mirror case: an ORDERED list escapes identically. taskList rejects a
+# listItem-bearing child whatever its parent list type is spelled, so a guard
+# that only handled bulletList would leave this half of the defect live.
+SAME_INDENT_ORDERED_MD="$WORK/same-indent-ordered.md"
+printf -- '- [ ] a\n  - [ ] b\n  1. c\n' >"$SAME_INDENT_ORDERED_MD"
+run "$TOOLBOX" sh "$CONVERTER" --file "$SAME_INDENT_ORDERED_MD"
+expect_rc "tasklist: the same-indent ORDERED escape converts cleanly (the invalid-ADF assertion never fires)" 0
+
+TASK_SAME_INDENT_ORDERED=$(convert_md '- [ ] a
+  - [ ] b
+  1. c')
+assert_jq "tasklist: a same-indent ORDERED item under an open ancestor taskList yields TWO top-level blocks" \
+	"$TASK_SAME_INDENT_ORDERED" '[.content[].type]' '["taskList","orderedList"]'
+assert_jq "tasklist: the ancestor taskList keeps ONLY its taskItem and the nested taskList — the orderedList never joins it" \
+	"$TASK_SAME_INDENT_ORDERED" '[.content[0].content[].type]' '["taskItem","taskList"]'
+assert_jq "tasklist: the ordered escape drops the nesting, never the content" \
+	"$TASK_SAME_INDENT_ORDERED" '[.. | objects | select(.type == "text") | .text]' '["a","b","c"]'
+assert_valid_adf_json "valid-adf: same-indent ordered item escaping an ancestor taskList" "$TASK_SAME_INDENT_ORDERED"
+
+section "md-to-adf.sh — task lists: empty item, lookalikes, ordered limitation"
+
+TASK_EMPTY_ITEM=$(convert_md '- [ ]')
+assert_jq "tasklist: an item with no text OMITS the content key entirely (never content:[])" \
+	"$TASK_EMPTY_ITEM" '.content[0].content[0] | has("content")' 'false'
+assert_jq "tasklist: that empty item still carries a localId and a TODO state" \
+	"$TASK_EMPTY_ITEM" '.content[0].content[0] | {type: .type, state: .attrs.state, has_id: ((.attrs.localId | length) > 0)}' \
+	'{"type":"taskItem","state":"TODO","has_id":true}'
+assert_valid_adf_json "valid-adf: empty checkbox item" "$TASK_EMPTY_ITEM"
+
+# Regression guard: a bullet that merely LOOKS like a checkbox must keep
+# falling through to the plain-bullet path it took before task lists existed.
+TASK_LOOKALIKE_BAD_MARK=$(convert_md '- [z] text')
+assert_jq "tasklist: '- [z] text' is NOT a checkbox — a plain bulletList with literal '[z]' text" \
+	"$TASK_LOOKALIKE_BAD_MARK" \
+	'{blocks: [.content[].type], text: .content[0].content[0].content[0].content[0].text}' \
+	'{"blocks":["bulletList"],"text":"[z] text"}'
+
+TASK_LOOKALIKE_NO_MARK=$(convert_md '- [] text')
+assert_jq "tasklist: '- [] text' (no marker char) is NOT a checkbox — a plain bulletList" \
+	"$TASK_LOOKALIKE_NO_MARK" \
+	'{blocks: [.content[].type], text: .content[0].content[0].content[0].content[0].text}' \
+	'{"blocks":["bulletList"],"text":"[] text"}'
+
+# '-[ ] text' has no space after the '-', so it was never a bullet line even
+# before task lists existed — it degrades to a paragraph, and must keep doing so.
+TASK_LOOKALIKE_NO_SPACE=$(convert_md '-[ ] text')
+assert_jq "tasklist: '-[ ] text' (no space after the marker) stays a plain paragraph, verbatim" \
+	"$TASK_LOOKALIKE_NO_SPACE" \
+	'{blocks: [.content[].type], text: .content[0].content[0].text}' \
+	'{"blocks":["paragraph"],"text":"-[ ] text"}'
+
+# Documented existing limitation, pinned so a future "fix" is a deliberate
+# decision rather than a silent behavior change: the ordered-list classifier
+# runs first and claims the line, leaving '[ ]' as literal text.
+TASK_ORDERED_CHECKBOX=$(convert_md '1. [ ] text')
+assert_jq "tasklist: an ORDERED checkbox '1. [ ] x' is NOT recognized — orderedList with literal '[ ]' text" \
+	"$TASK_ORDERED_CHECKBOX" \
+	'{blocks: [.content[].type], text: .content[0].content[0].content[0].content[0].text}' \
+	'{"blocks":["orderedList"],"text":"[ ] text"}'
+
+section "md-to-adf.sh — task lists: inline marks inside an item"
+
+# shellcheck disable=SC2016  # single-quoted on purpose: the backticks are a markdown code span in the FIXTURE text, not a command substitution
+TASK_INLINE_MARKS=$(convert_md '- [ ] **bold** and `code`')
+assert_jq "tasklist: inline marks inside a checkbox item survive as marked text nodes" \
+	"$TASK_INLINE_MARKS" '.content[0].content[0].content' \
+	'[{"type":"text","text":"bold","marks":[{"type":"strong"}]},{"type":"text","text":" and "},{"type":"text","text":"code","marks":[{"type":"code"}]}]'
+assert_jq "tasklist: those marked nodes sit DIRECTLY in the taskItem, not inside a paragraph" \
+	"$TASK_INLINE_MARKS" '[.content[0].content[0].content[].type] | unique' '["text"]'
+assert_valid_adf_json "valid-adf: task item carrying inline marks" "$TASK_INLINE_MARKS"
 
 section "md-to-adf.sh — golden-file: tables"
 

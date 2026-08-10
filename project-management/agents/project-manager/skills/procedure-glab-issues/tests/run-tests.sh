@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # run-tests.sh — self-contained, zero-dependency POSIX test harness for the
 #                procedure-glab-issues script suite (create-issue.sh,
@@ -91,7 +92,12 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
+# `2>/dev/null` + an explicit failure branch: without them a MISSING lib/ dir
+# aborts right here under `set -e`, with a raw `cd` error, before the friendly
+# per-file preflight below can ever run — i.e. the preflight could not fire in
+# its single most likely failure mode.
+LIB_DIR=$(cd "$TESTS_DIR/../skill/lib" 2>/dev/null && pwd) || { printf 'FATAL: missing lib dir: %s\n' "$TESTS_DIR/../skill/lib" >&2; exit 1; }
 CREATE="$SCRIPTS_DIR/create-issue.sh"
 FINDDUP="$SCRIPTS_DIR/find-duplicate.sh"
 LINKKIDS="$SCRIPTS_DIR/link-children.sh"
@@ -126,6 +132,14 @@ link_tool() {
 }
 for t in sh env mktemp grep sed cat diff awk rm head cp mv; do
 	link_tool "$t"
+done
+
+# Every command script sources its libs at startup, so a missing lib file would
+# surface as 600+ identical, unreadable failures. Fail once, loudly, instead —
+# beside the link_tool fatals above and deliberately NOT counted in TESTS_RUN,
+# so the check totals stay comparable.
+for f in pm-diag.sh pm-validate.sh pm-glab-env.sh pm-glab-preconditions.sh pm-glab-labels.sh pm-glab-url.sh pm-lists.sh; do
+	[ -r "$LIB_DIR/$f" ] || { printf 'FATAL: missing lib file: %s\n' "$LIB_DIR/$f" >&2; exit 1; }
 done
 
 # ---------------------------------------------------------------------------
@@ -545,32 +559,54 @@ line_count_eq() {
 	[ "$(grep -Fxc -- "$2" "$1" 2>/dev/null || true)" -eq "$3" ]
 }
 
+# ---------------------------------------------------------------------------
+# argv assertions — the three helpers below share ONE scoping prelude.
+#
+# ARGV_SCOPE is the awk program prefix every argv assertion is built on. It
+# reduces the stub's log to the tokens that genuinely came from log_argv, and
+# maintains the per-block state the helpers read (in_argv, want, next_is_first),
+# so each helper is left as nothing but its own comparison rule. Sharing ONE
+# prelude is also what keeps the three sound in the same way — the previous
+# per-helper copies had drifted, and the drift was a real hole (below).
+#
+# WHY THE PAYLOAD SUPPRESSION MUST COME FIRST, BEFORE the ARGV_BEGIN rule: the
+# same log file also holds the stub's DESCRIPTION_VALUE / MESSAGE_VALUE blocks,
+# i.e. untrusted fixture payload bytes. Gating on ARGV_BEGIN/ARGV_END ALONE is
+# NOT enough, because a payload line reading exactly `ARGV_BEGIN` re-opens that
+# gate and hands the following payload lines to the comparison as though the
+# script had passed them — a positive assertion would pass without being earned,
+# and a negative one would be defeated. Skipping the payload blocks outright is
+# what makes the gate sound; the "harness self-check" section below pins it.
+# ---------------------------------------------------------------------------
+# shellcheck disable=SC2016  # $0 here is awk's whole-line, not a shell parameter — single quotes are required
+ARGV_SCOPE='
+	$0 == "DESCRIPTION_VALUE_START" || $0 == "MESSAGE_VALUE_START" { in_payload = 1; next }
+	$0 == "DESCRIPTION_VALUE_END"   || $0 == "MESSAGE_VALUE_END"   { in_payload = 0; next }
+	in_payload == 1 { next }
+	$0 == "ARGV_BEGIN" { in_argv = 1; want = 0; next_is_first = 1; next }
+	$0 == "ARGV_END"   { in_argv = 0; want = 0; next_is_first = 0; next }
+	in_argv != 1 { next }
+'
+
 # argv_has_pair LOGFILE FLAG VALUE — true iff FLAG appears immediately followed
 # by VALUE as two CONSECUTIVE lines inside the log's token-per-line
 # ARGV_BEGIN/ARGV_END block. Proves VALUE reached glab as ONE argv token right
 # after FLAG — a word-splitting regression would show as extra lines instead.
 #
-# SCOPED TO THE ARGV BLOCK, the same way argv_first_is is scoped via its
-# ARGV_BEGIN-adjacency rule (here the scoping mechanism is an explicit in_argv
-# open/close gate; there it is adjacency to the ARGV_BEGIN marker — different
-# mechanisms, the same property). Scoping is what makes either sound: the SAME log
-# file also holds the stub's DESCRIPTION_VALUE / MESSAGE_VALUE marker blocks, i.e.
-# untrusted fixture payload bytes. An unscoped scan could be satisfied by two
-# adjacent payload lines that merely LOOK like a flag+value pair, passing a positive
-# assertion the script never actually earned (and, symmetrically, defeating a
-# negative one).
-#
 # FLAG and VALUE travel through the ENVIRONMENT, not through `awk -v`, because
 # `-v` assignment performs ESCAPE PROCESSING: a `\t` or `\\` inside an expected
 # value would silently be rewritten and never match the literal bytes the script
 # actually passed. ENVIRON does no such rewriting.
+#
+# Each comparison concatenates "" onto BOTH sides. `$0` and ENVIRON values are awk
+# STRNUMs: when both look numeric, `==` compares them NUMERICALLY, so a logged token
+# of `007` would match an expected value of `7` — and an issue iid is exactly the kind
+# of numeric-looking argv this suite asserts on. Concatenation forces the BYTE-EXACT
+# string comparison these argv assertions actually mean.
 argv_has_pair() {
-	ARGV_FLAG=$2 ARGV_VALUE=$3 awk '
-		$0 == "ARGV_BEGIN" { in_argv = 1; want = 0; next }
-		$0 == "ARGV_END"   { in_argv = 0; want = 0; next }
-		in_argv != 1 { next }
-		$0 == ENVIRON["ARGV_FLAG"] { want = 1; next }
-		want == 1 { if ($0 == ENVIRON["ARGV_VALUE"]) { found = 1 }; want = 0 }
+	ARGV_FLAG=$2 ARGV_VALUE=$3 awk "$ARGV_SCOPE"'
+		($0 "") == (ENVIRON["ARGV_FLAG"] "") { want = 1; next }
+		want == 1 { if (($0 "") == (ENVIRON["ARGV_VALUE"] "")) { found = 1 }; want = 0 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -582,12 +618,11 @@ argv_has_pair() {
 # passed" (the non-clobber guard) must not be defeated — or satisfied — by a
 # fixture whose body happens to contain a line reading exactly `--description`.
 # TOKEN travels via ENVIRON for the same no-escape-processing reason as
-# argv_has_pair's.
+# argv_has_pair's, and is compared with the same ""-concatenation on both sides for
+# the same strnum reason.
 argv_has_token() {
-	ARGV_TOKEN=$2 awk '
-		$0 == "ARGV_BEGIN" { in_argv = 1; next }
-		$0 == "ARGV_END"   { in_argv = 0; next }
-		in_argv == 1 && $0 == ENVIRON["ARGV_TOKEN"] { found = 1 }
+	ARGV_TOKEN=$2 awk "$ARGV_SCOPE"'
+		($0 "") == (ENVIRON["ARGV_TOKEN"] "") { found = 1 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -602,10 +637,16 @@ argv_has_token() {
 # block, i.e. it was passed POSITIONALLY rather than behind a flag. This is what
 # proves update-issue.sh / comment.sh / close-issue.sh forward the issue iid the
 # way glab takes it (positional <id>), not as an invented --issue flag.
+#
+# VALUE travels via ENVIRON and is compared with the same ""-concatenation on both
+# sides as argv_has_pair/argv_has_token, for the same two reasons — and this helper
+# is where BOTH bite hardest, because the value it asserts is an issue iid. A bare
+# `==` between two strnum operands compares NUMERICALLY: a regression that logged
+# `007` where the test searched `7` (or `7.0`, or `+7`) would compare equal and
+# pass an assertion it never earned. Concatenating "" forces a byte comparison.
 argv_first_is() {
-	awk -v value="$2" '
-		$0 == "ARGV_BEGIN" { next_is_first = 1; next }
-		next_is_first == 1 { if ($0 == value) { found = 1 }; next_is_first = 0 }
+	ARGV_FIRST_VALUE=$2 awk "$ARGV_SCOPE"'
+		next_is_first == 1 { if (($0 "") == (ENVIRON["ARGV_FIRST_VALUE"] "")) { found = 1 }; next_is_first = 0 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -652,6 +693,51 @@ FULL_LABEL_PAGE=$(awk 'BEGIN { for (i = 1; i <= 100; i++) printf "filler-%d\n", 
 printf -- '-\n' >"$WORK/dash-body.md"
 
 # ===========================================================================
+# Harness self-check — the argv helpers are NOT fooled by payload bytes
+#
+# WHY A TEST OF THE TEST HARNESS. argv_has_pair / argv_has_token /
+# argv_first_is are the primitives most assertions below are expressed in, so a
+# false positive in one of them silently disarms every assertion built on it —
+# the suite stays green while verifying nothing. That failure mode is invisible
+# from the outside, which is exactly why it gets a direct test rather than trust.
+#
+# The fixture is a genuine argv block followed by a description payload that
+# IMPERSONATES a second one: a payload line reading exactly `ARGV_BEGIN`, followed
+# by lines the assertions below search for. Before ARGV_SCOPE gained its payload
+# suppression, that impersonation re-opened the argv gate and every negative check
+# here passed a value the script never sent. Mirrors procedure-gh-issues' section
+# of the same name.
+# ===========================================================================
+section "harness self-check — argv helpers ignore the description payload block"
+
+ARGV_POISON_LOG="$WORK/argv-poison-log"
+cat >"$ARGV_POISON_LOG" <<'POISON_EOF'
+ARGV_BEGIN
+9
+--repo
+group/project
+ARGV_END
+DESCRIPTION_VALUE_START
+ARGV_BEGIN
+42
+--yes
+--label
+sneaky
+DESCRIPTION_VALUE_END
+POISON_EOF
+
+check "self-check: argv_first_is still finds the REAL positional '9'" "the helper stopped seeing a genuine first token" \
+	"$( argv_first_is "$ARGV_POISON_LOG" '9' && echo 0 || echo 1 )"
+check "self-check: argv_first_is does NOT accept '42' from the payload's fake ARGV_BEGIN" "a description line was mistaken for a positional argument" \
+	"$( argv_first_is "$ARGV_POISON_LOG" '42' && echo 1 || echo 0 )"
+check "self-check: argv_has_pair still finds the REAL --repo group/project" "the helper stopped seeing a genuine flag/value pair" \
+	"$( argv_has_pair "$ARGV_POISON_LOG" '--repo' 'group/project' && echo 0 || echo 1 )"
+check "self-check: argv_has_pair does NOT accept a flag/value pair from the payload" "two description lines were mistaken for a flag and its value" \
+	"$( argv_has_pair "$ARGV_POISON_LOG" '--label' 'sneaky' && echo 1 || echo 0 )"
+check "self-check: argv_has_token does NOT accept a token from the payload" "a description line was mistaken for an argv token" \
+	"$( argv_has_token "$ARGV_POISON_LOG" '--yes' && echo 1 || echo 0 )"
+
+# ===========================================================================
 # --confirmed-host: REQUIRED on every script, and it PINS glab's target host
 # (SEC-001)
 #
@@ -676,9 +762,11 @@ printf -- '-\n' >"$WORK/dash-body.md"
 #
 # PINNED_HOST is deliberately a SELF-MANAGED host with a port, never glab's
 # gitlab.com default, so a script that ignored the flag would record something
-# else. It is deliberately NOT the host in the fixture URLs either: the URL
-# extractors filter on the PROJECT path, not on the host, so the two are
-# independent — pinning where the write GOES is this section's subject, and which
+# else. Any fixture URL a case in this section feeds back must therefore be ON
+# PINNED_HOST: the extractors require a candidate's authority to equal the
+# CONFIRMED host literally (SEC-002), and glab is pinned to exactly one instance
+# per invocation, so a response URL on some OTHER host is not a situation that can
+# arise in reality. Pinning where the write GOES is this section's subject; which
 # URL is relayed BACK is the SEC-002 sections' subject.
 #
 # These cases live together, before the per-script blocks, because the contract is
@@ -701,7 +789,13 @@ expect_rc "create(scheme-qualified --confirmed-host): -> exit 2 (one spelling on
 stderr_has "create(scheme-qualified --confirmed-host): diagnostic" "no scheme"
 CH_ENV_CREATE="$WORK/ch-env-create"
 CH_ARGV_CREATE="$WORK/ch-argv-create"
+# The create output is spelled out rather than left on the stub default, whose URL
+# is on gitlab.com: create-issue.sh's URL is load-bearing, so a response URL that
+# is not on the confirmed host yields no candidate and exits 1 — see the
+# PINNED_HOST note above for why a foreign-host response cannot occur in reality.
 run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_ENV_LOG=$CH_ENV_CREATE" "GLAB_STUB_CREATE_LOG=$CH_ARGV_CREATE" \
+	"GLAB_STUB_CREATE_OUT=#7 Add the export feature
+ https://$PINNED_HOST/group/sub/proj/-/work_items/7" \
 	sh "$CREATE" --repo group/sub/proj --title x --body-file "$CH_BODY" --confirmed-host "$PINNED_HOST"
 expect_rc "create(pinned host): -> exit 0" 0
 check "create(pinned host): glab issue create saw GITLAB_HOST equal to --confirmed-host" \
@@ -864,6 +958,97 @@ check "close(pinned host): NO glab invocation ran with GITLAB_HOST unset" \
 	"$( grep -Fq -- 'GITLAB_HOST=<unset>' "$CH_ENV_CLOSE" && echo 1 || echo 0 )"
 check "close(pinned host): --confirmed-host is NOT forwarded into the glab argv" "--confirmed-host leaked into the glab argv" \
 	"$( argv_has_token "$CH_ARGV_CLOSE" '--confirmed-host' && echo 1 || echo 0 )"
+
+# ===========================================================================
+# lib/pm-validate.sh — DIRECT unit coverage of the pure predicates
+#
+# WHY THIS BLOCK EXISTS, AND WHY IT IS THE ONLY ONE THAT SOURCES A LIB.
+# Every other test in this file is black-box: it invokes a script through the
+# isolated toolbox and asserts on stdout/stderr/exit code. That is the right
+# altitude for a CLI — but it can only reach a predicate through whatever
+# inputs some command's argument parser happens to forward, so most of each
+# predicate's truth table is simply unreachable from out there (a CLI test can
+# show that "o/.." is rejected; it cannot cheaply enumerate "g//p", "./p",
+# "a..b", "" and the rest).
+#
+# pm-validate.sh is sourceable here precisely BECAUSE its functions are pure:
+# no $PROG, no usage(), no exiting, no globals, no binary on PATH. Sourcing it
+# into the harness's own shell costs nothing and pins the full truth table
+# directly — including the edge inputs above, which is where a rewrite of a
+# `case` pattern actually goes wrong.
+#
+# This block deliberately does NOT run under `run` / `env -i`: there is no
+# subprocess and no PATH involved, so the toolbox is irrelevant to it.
+# ===========================================================================
+section "lib/pm-validate.sh — pure predicate truth tables (unit)"
+
+# shellcheck source=../skill/lib/pm-validate.sh
+. "$LIB_DIR/pm-validate.sh"
+
+# pred_true NAME FN VALUE — assert FN accepts VALUE (exit 0).
+pred_true() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if "$2" "$3"; then pass "$1"
+	else fail "$1" "$2 rejected a value it must accept: [$3]"; fi
+}
+
+# pred_false NAME FN VALUE — assert FN rejects VALUE (exit 1).
+pred_false() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if "$2" "$3"; then fail "$1" "$2 accepted a value it must reject: [$3]"
+	else pass "$1"; fi
+}
+
+pred_true  "is_positive_int: '1'"                       is_positive_int 1
+pred_true  "is_positive_int: '42'"                      is_positive_int 42
+pred_false "is_positive_int: '0' (the --child 0 incident)" is_positive_int 0
+pred_false "is_positive_int: '007' (would have linked issue 7)" is_positive_int 007
+pred_false "is_positive_int: '' (empty)"                is_positive_int ""
+pred_false "is_positive_int: '1x' (trailing non-digit)" is_positive_int 1x
+pred_false "is_positive_int: '-1' (negative)"           is_positive_int "-1"
+pred_false "is_positive_int: '1 2' (embedded space)"    is_positive_int "1 2"
+
+# The GitLab path predicate accepts SUBGROUPS (any depth >= 2 segments) — the
+# single most important difference from the GitHub sibling, which caps at one '/'.
+pred_true  "is_valid_gitlab_project_path: 'g/p'"                    is_valid_gitlab_project_path g/p
+pred_true  "is_valid_gitlab_project_path: 'group/sub/proj' (subgroup)" is_valid_gitlab_project_path group/sub/proj
+pred_true  "is_valid_gitlab_project_path: 'a/b/c/d' (deep subgroup)" is_valid_gitlab_project_path a/b/c/d
+pred_true  "is_valid_gitlab_project_path: dots/dashes/underscores"  is_valid_gitlab_project_path my-org.x/my_repo.js
+pred_false "is_valid_gitlab_project_path: 'noslash' (bare name)"    is_valid_gitlab_project_path noslash
+pred_false "is_valid_gitlab_project_path: '' (empty)"               is_valid_gitlab_project_path ""
+pred_false "is_valid_gitlab_project_path: 'o/..' (traversal)"       is_valid_gitlab_project_path 'o/..'
+pred_false "is_valid_gitlab_project_path: '../r' (traversal)"       is_valid_gitlab_project_path '../r'
+pred_false "is_valid_gitlab_project_path: '..' (bare traversal)"    is_valid_gitlab_project_path '..'
+pred_false "is_valid_gitlab_project_path: 'g//p' (empty segment)"   is_valid_gitlab_project_path 'g//p'
+pred_false "is_valid_gitlab_project_path: '/g/p' (leading slash)"   is_valid_gitlab_project_path '/g/p'
+pred_false "is_valid_gitlab_project_path: 'g/p/' (trailing slash)"  is_valid_gitlab_project_path 'g/p/'
+pred_false "is_valid_gitlab_project_path: '.' (bare current-dir)"   is_valid_gitlab_project_path '.'
+pred_false "is_valid_gitlab_project_path: './p' (leading current-dir)" is_valid_gitlab_project_path './p'
+pred_false "is_valid_gitlab_project_path: 'g/./p' (inner current-dir)" is_valid_gitlab_project_path 'g/./p'
+pred_false "is_valid_gitlab_project_path: 'o r/x' (space)"          is_valid_gitlab_project_path 'o r/x'
+
+pred_true  "is_valid_confirmed_host: 'gitlab.com'"                  is_valid_confirmed_host gitlab.com
+pred_true  "is_valid_confirmed_host: 'host:8080' (port allowed)"    is_valid_confirmed_host host:8080
+pred_true  "is_valid_confirmed_host: 'a.b.c'"                       is_valid_confirmed_host a.b.c
+pred_true  "is_valid_confirmed_host: 'my_host' (underscore)"        is_valid_confirmed_host my_host
+pred_false "is_valid_confirmed_host: 'https://gitlab.com' (scheme rejected on purpose)" is_valid_confirmed_host 'https://gitlab.com'
+pred_false "is_valid_confirmed_host: '-evil' (leading dash)"        is_valid_confirmed_host '-evil'
+pred_false "is_valid_confirmed_host: '' (empty)"                    is_valid_confirmed_host ""
+pred_false "is_valid_confirmed_host: '.lead' (leading dot)"         is_valid_confirmed_host '.lead'
+pred_false "is_valid_confirmed_host: 'trail.' (trailing dot)"       is_valid_confirmed_host 'trail.'
+pred_false "is_valid_confirmed_host: 'a..b' (empty label)"          is_valid_confirmed_host 'a..b'
+pred_false "is_valid_confirmed_host: 'ho st' (space)"               is_valid_confirmed_host 'ho st'
+pred_false "is_valid_confirmed_host: 'gitlab.com/x' (path)"         is_valid_confirmed_host 'gitlab.com/x'
+
+# The '#' spelling IS accepted here — the deliberate divergence from the GitHub
+# sibling, whose is_valid_hex_color rejects it (gh wants the bare form).
+pred_true  "is_valid_hex_color: 'ff0000'"                           is_valid_hex_color ff0000
+pred_true  "is_valid_hex_color: '#ff0000' (glab's own default spelling)" is_valid_hex_color '#ff0000'
+pred_true  "is_valid_hex_color: 'FF00aa' (mixed case)"              is_valid_hex_color FF00aa
+pred_false "is_valid_hex_color: 'zzzzzz' (non-hex)"                 is_valid_hex_color zzzzzz
+pred_false "is_valid_hex_color: '#zzzzzz' (non-hex with '#')"       is_valid_hex_color '#zzzzzz'
+pred_false "is_valid_hex_color: 'ff00' (too short)"                 is_valid_hex_color ff00
+pred_false "is_valid_hex_color: '' (empty)"                         is_valid_hex_color ""
 
 # ===========================================================================
 # create-issue.sh
@@ -1065,7 +1250,7 @@ section "create-issue.sh — a REPEATED flag accumulates as well as a comma-list
 # The documented contract is "repeatable AND/OR comma-separated", but every case
 # above exercised only the comma-list half, so the repeated-occurrence half was
 # untested for both list flags. An accumulator that OVERWROTE instead of appending
-# (the obvious regression in a value-returning `accumulate`) would have kept the
+# (the obvious regression in a value-returning `csv_accumulate`) would have kept the
 # whole suite green.
 CREATE_LOG_REPEAT="$WORK/create-log-repeated-flags"
 run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_LABELS=first
@@ -1130,11 +1315,16 @@ section "create-issue.sh — the URL is found by SHAPE inside glab's decorated o
 # '/-/issues/<iid>' path must keep working, because an older self-managed
 # instance may still emit it even though gitlab.com has migrated to
 # '/-/work_items/<iid>' (which the stub default covers, above).
+#
+# --confirmed-host MATCHES THE FIXTURE URL'S OWN HOST, for the same reason --repo
+# must match its project path: the extractor requires the candidate's authority to
+# equal the confirmed host literally (SEC-002), so a mismatched host would reject
+# the token before its PATH SHAPE — the subject of this case — was ever consulted.
 run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_CREATE_OUT=Creating issue in deep/group/nest/proj
 
 #123 A title
  https://gitlab.example.com/deep/group/nest/proj/-/issues/123" \
-	sh "$CREATE" --confirmed-host gitlab.com --repo deep/group/nest/proj --title t --body-file "$BODY1"
+	sh "$CREATE" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --title t --body-file "$BODY1"
 expect_rc "create(decorated-output): -> exit 0" 0
 stdout_has "create(decorated-output): iid taken from the URL tail, not the '#123' banner" "PM_ISSUE_NUMBER=123"
 stdout_has "create(decorated-output): self-managed CLASSIC '/-/issues/' URL relayed intact" "PM_ISSUE_URL=https://gitlab.example.com/deep/group/nest/proj/-/issues/123"
@@ -1145,11 +1335,12 @@ section "create-issue.sh — the work-items URL shape survives glab's decoration
 # "reported success but printed no issue URL" on an issue it HAD created. A
 # decorated multi-line block is asserted separately from the stub default because
 # the matcher scans token-by-token across every line, not just line 1.
+# --confirmed-host matches the fixture URL's host — see the case above for why.
 run 1 "GLAB_STUB_AUTHED=1" "GLAB_STUB_CREATE_OUT=Creating issue in deep/group/nest/proj
 
 #456 A title
  https://gitlab.example.com/deep/group/nest/proj/-/work_items/456" \
-	sh "$CREATE" --confirmed-host gitlab.com --repo deep/group/nest/proj --title t --body-file "$BODY1"
+	sh "$CREATE" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --title t --body-file "$BODY1"
 expect_rc "create(work-items-decorated): -> exit 0, NOT the 'printed no issue URL' abort" 0
 stdout_has "create(work-items-decorated): iid taken from the work-items URL tail" "PM_ISSUE_NUMBER=456"
 stdout_has "create(work-items-decorated): self-managed work-items URL relayed intact" "PM_ISSUE_URL=https://gitlab.example.com/deep/group/nest/proj/-/work_items/456"
@@ -1269,17 +1460,105 @@ run 1 "GLAB_STUB_AUTHED=1" \
 expect_rc "create(project path buried deeper, sole candidate): -> exit 1" 1
 stderr_has "create(buried project path): reports NO URL" "printed no issue URL"
 
-# The anchor deliberately does NOT check the host itself, so a FOREIGN host that
-# carries the repo path directly IS still a candidate — and the pre-existing
-# ambiguity guard is what must fail it closed. Asserted so the anchor's scope stays
-# honest: it removes the extra-segment/any-depth hole, not the host question.
+# A FOREIGN host carrying the repo path DIRECTLY — no extra segment, so the path
+# anchor alone cannot reject it — is rejected by the HOST test instead: the
+# candidate's authority must equal the confirmed host literally. It therefore never
+# becomes a candidate at all, which leaves the genuine URL as the SOLE candidate and
+# the create succeeds normally. This is strictly stronger than the behavior it
+# replaced, where the spoof DID become a candidate and the run had to be failed
+# closed by the ambiguity guard: a legitimate create no longer pays for an
+# attacker's title, and the spoof can no longer inflate the candidate count.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_CREATE_OUT=#7 See https://evil.example/group/sub/proj/-/issues/9
  https://gitlab.com/group/sub/proj/-/work_items/7" \
 	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj \
 		--title "See https://evil.example/group/sub/proj/-/issues/9" --body-file "$BODY1"
-expect_rc "create(foreign host, no extra segment): -> exit 1 (the ambiguity guard fails it closed)" 1
-stderr_has "create(foreign host, no extra segment): fails through the ambiguity guard" "MORE THAN ONE distinct issue URL"
+expect_rc "create(foreign host, no extra segment): -> exit 0 (the spoof is not a candidate)" 0
+stdout_has "create(foreign host, no extra segment): the genuine URL is the sole survivor" "PM_ISSUE_URL=https://gitlab.com/group/sub/proj/-/work_items/7"
+stdout_has "create(foreign host, no extra segment): PM_ISSUE_NUMBER is the REAL iid, not the spoof's '9'" "PM_ISSUE_NUMBER=7"
+check "create(foreign host, no extra segment): the foreign-host URL is never relayed" \
+	"a URL on an unconfirmed host was relayed as this project's issue URL" \
+	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
+
+# The same spoof with NO genuine URL beside it: zero candidates, so create-issue.sh
+# — whose URL is load-bearing — must abort rather than relay it. Without this case
+# the host test could be deleted and the case above would still pass on the genuine
+# URL's own merits.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_CREATE_OUT=#9 See https://evil.example/group/sub/proj/-/issues/9" \
+	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj \
+		--title "See https://evil.example/group/sub/proj/-/issues/9" --body-file "$BODY1"
+expect_rc "create(foreign host, sole candidate): -> exit 1 (no URL found at all)" 1
+stderr_has "create(foreign host, sole candidate): reports NO URL rather than accepting the spoof" "printed no issue URL"
+check "create(foreign host, sole candidate): the foreign-host URL is never relayed" \
+	"a URL on an unconfirmed host was relayed as this project's issue URL" \
+	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
+
+section "create-issue.sh — the host compare FOLDS ASCII case (SHELL-001)"
+# Host names are case-insensitive by definition (RFC 4343), so "GitLab.Com" and
+# "gitlab.com" name ONE server — but the SEC-002 host test above started life as a
+# byte-literal compare, which rejected EVERY candidate whenever the two spellings
+# differed. The consequence is strictly worse than the attack SEC-002 closed: zero
+# candidates makes create-issue.sh — whose URL is load-bearing — exit 1 with
+# "printed no issue URL" for an issue it HAD genuinely created, a false failure on
+# an unretractable write that then invites a duplicate.
+#
+# BOTH sides of the compare are folded, so both directions need their own case:
+# glab spelling the host differently from --confirmed-host, and --confirmed-host
+# spelling it differently from glab. Either one alone would leave the other half of
+# the fold deletable with every test still green.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_CREATE_OUT=#7 As a user, I can export
+ https://GitLab.Com/group/sub/proj/-/work_items/7" \
+	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj --title x --body-file "$BODY1"
+expect_rc "create(host case-variant in glab's output): -> exit 0" 0
+stdout_has "create(host case-variant): PM_ISSUE_URL relayed in glab's OWN spelling" "PM_ISSUE_URL=https://GitLab.Com/group/sub/proj/-/work_items/7"
+stdout_has "create(host case-variant): PM_ISSUE_NUMBER=7" "PM_ISSUE_NUMBER=7"
+
+# The mirror image: glab prints the canonical lowercase host while the CONFIRMED
+# host carries the case variant. is_valid_confirmed_host allows [A-Za-z0-9._:-], so
+# an uppercase --confirmed-host reaches the extractor unchanged and the fold is the
+# only thing that can still recognize the URL.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_CREATE_OUT=#7 As a user, I can export
+ https://gitlab.com/group/sub/proj/-/work_items/7" \
+	sh "$CREATE" --confirmed-host GitLab.Com --repo group/sub/proj --title x --body-file "$BODY1"
+expect_rc "create(case-variant --confirmed-host): -> exit 0" 0
+stdout_has "create(case-variant --confirmed-host): the URL is still recognized" "PM_ISSUE_URL=https://gitlab.com/group/sub/proj/-/work_items/7"
+
+section "create-issue.sh — case-variant spellings of ONE url are ONE candidate (SHELL-006)"
+# THE SECOND HALF OF THE CASE-FOLD, and the half a passing SHELL-001 case cannot
+# reach: folding the HOST TEST without folding the DEDUP KEY leaves the two halves
+# disagreeing about what "the same URL" means. Before the fold only ONE spelling
+# could survive the host test, so keying `seen[]` on the raw token was sufficient.
+# After it, both spellings survive — and on a raw-token key they count as TWO
+# DISTINCT candidates for ONE issue, handing the ambiguity guard a false positive
+# that fails a completed, unretractable create. That is precisely the class of false
+# failure SHELL-001 existed to remove, reappearing one line further down.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_CREATE_OUT=#7 Supersedes https://GitLab.Com/group/sub/proj/-/work_items/7
+ https://gitlab.com/group/sub/proj/-/work_items/7" \
+	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj \
+		--title "Supersedes https://GitLab.Com/group/sub/proj/-/work_items/7" --body-file "$BODY1"
+expect_rc "create(case-variant spellings of one url): -> exit 0 (one candidate, not two)" 0
+stdout_has "create(case-variant spellings): PM_ISSUE_URL is the FIRST-seen spelling, verbatim" "PM_ISSUE_URL=https://GitLab.Com/group/sub/proj/-/work_items/7"
+stdout_has "create(case-variant spellings): PM_ISSUE_NUMBER=7" "PM_ISSUE_NUMBER=7"
+check "create(case-variant spellings): the ambiguity guard did NOT fire" "one real URL was reported as ambiguous" \
+	"$( printf '%s\n' "$CUR_ERR" | grep -Fq -- 'MORE THAN ONE distinct issue URL' && echo 1 || echo 0 )"
+
+# THE OVER-COLLAPSE GUARD: the key normalizes CASE and nothing else, so two
+# genuinely different iids must still be two candidates even when their hosts are
+# spelled differently. Without this case the key could be collapsed far harder — to
+# the iid alone, or to a fully lowercased URL — and the case above would still pass
+# while the ambiguity guard silently stopped catching real ambiguity.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_CREATE_OUT=#7 Duplicate of https://GitLab.Com/group/sub/proj/-/issues/4
+ https://gitlab.com/group/sub/proj/-/issues/4
+ https://gitlab.com/group/sub/proj/-/work_items/7" \
+	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj \
+		--title "Duplicate of https://GitLab.Com/group/sub/proj/-/issues/4" --body-file "$BODY1"
+expect_rc "create(case-variants + a genuinely different iid): -> exit 1 (still fails closed)" 1
+stderr_has "create(case-variants + different iid): says why it refused" "MORE THAN ONE distinct issue URL"
 
 section "create-issue.sh — TWO distinct project URLs fail CLOSED rather than guessing (SEC-001)"
 # When the output really is ambiguous — two DIFFERENT issues of THIS project —
@@ -1314,8 +1593,9 @@ stdout_has "create(url-on-stderr): PM_ISSUE_NUMBER recovered from stderr" "PM_IS
 section "create-issue.sh — a spoof on stdout cannot outrank the genuine URL on stderr (SEC-003)"
 # THE RESIDUAL GAP THIS PINS, and why SEC-001's fix did not already cover it: the
 # extractor used to scan stdout FIRST and consult stderr only as a FALLBACK, when
-# stdout had yielded nothing at all. The repo filter checks that a candidate's PATH
-# contains "/<repo>/" — it does NOT check the HOST. So when glab put the real URL on
+# stdout had yielded nothing at all. The repo filter checked only that a candidate's
+# PATH contained "/<repo>/" — it did NOT check the HOST (SEC-002 has since closed
+# that half). So when glab put the real URL on
 # stderr while echoing a URL-shaped TITLE on stdout, an attacker-crafted title
 # carrying this project's path under a foreign host was the ONLY candidate the
 # ambiguity guard ever saw (stderr was never read) and won by default — the exact
@@ -1323,31 +1603,32 @@ section "create-issue.sh — a spoof on stdout cannot outrank the genuine URL on
 # PM_ISSUE_NUMBER afterwards (comment.sh, link-children.sh) would then write to
 # whatever the title said.
 #
-# The fix pools BOTH streams before extracting, so the spoof and the genuine URL are
-# seen together as 2 distinct candidates and the existing guard fails closed. Note
-# the spoofed iid is 7 — the SAME as the real issue's — so nothing but the unified
-# scan can tell them apart here.
+# The fix pools BOTH streams before extracting, so stderr's genuine URL is always
+# seen — a spoof on stdout can no longer be the only token the extraction ever
+# looks at. WHAT THE POOLING NOW BUYS, since SEC-002's host test rejects the
+# foreign-host spoof before it can become a candidate: the genuine URL survives as
+# the SOLE candidate and is relayed. Drop the pooling and stdout alone yields
+# nothing, so this case would abort with "printed no issue URL" instead — which is
+# exactly what the exit-0 assertion below pins. Note the spoofed iid is 7 — the SAME
+# as the real issue's — so no iid comparison can be what tells them apart here.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_CREATE_OUT=#7 See also https://evil.example/group/sub/proj/-/issues/7" \
 	"GLAB_STUB_CREATE_ERR_OUT= https://gitlab.com/group/sub/proj/-/work_items/7" \
 	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj --title "See also https://evil.example/group/sub/proj/-/issues/7" --body-file "$BODY1"
-expect_rc "create(stdout spoof vs stderr URL): -> exit 1 (fails closed, never guesses)" 1
-stderr_has "create(stdout spoof vs stderr URL): both streams' candidates reached the ambiguity guard" "MORE THAN ONE distinct issue URL"
-check "create(stdout spoof vs stderr URL): the attacker URL is never relayed as PM_ISSUE_URL" "the spoofed stdout URL won because stderr was not consulted" \
+expect_rc "create(stdout spoof vs stderr URL): -> exit 0 (stderr's genuine URL is the sole candidate)" 0
+stdout_has "create(stdout spoof vs stderr URL): PM_ISSUE_URL is the genuine stderr URL" "PM_ISSUE_URL=https://gitlab.com/group/sub/proj/-/work_items/7"
+stdout_has "create(stdout spoof vs stderr URL): PM_ISSUE_NUMBER comes from that URL" "PM_ISSUE_NUMBER=7"
+check "create(stdout spoof vs stderr URL): the attacker URL is never relayed as PM_ISSUE_URL" "the spoofed stdout URL was relayed to the caller" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
-check "create(stdout spoof vs stderr URL): NO PM_ISSUE_URL is printed at all" "a URL was relayed despite the ambiguity" \
-	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'PM_ISSUE_URL=' && echo 1 || echo 0 )"
-check "create(stdout spoof vs stderr URL): NO PM_ISSUE_NUMBER is printed at all" "an iid was relayed despite the ambiguity" \
-	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'PM_ISSUE_NUMBER=' && echo 1 || echo 0 )"
 
-# The mirror image — spoof on STDERR, genuine URL on stdout — must fail closed too:
+# The mirror image — spoof on STDERR, genuine URL on stdout — behaves identically:
 # the pool is symmetric, so neither stream is privileged.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_CREATE_OUT= https://gitlab.com/group/sub/proj/-/work_items/7" \
 	"GLAB_STUB_CREATE_ERR_OUT=note: see https://evil.example/group/sub/proj/-/issues/7" \
 	sh "$CREATE" --confirmed-host gitlab.com --repo group/sub/proj --title x --body-file "$BODY1"
-expect_rc "create(stderr spoof vs stdout URL): -> exit 1 (the pool is symmetric)" 1
-stderr_has "create(stderr spoof vs stdout URL): same fail-closed diagnostic" "MORE THAN ONE distinct issue URL"
+expect_rc "create(stderr spoof vs stdout URL): -> exit 0 (the pool is symmetric)" 0
+stdout_has "create(stderr spoof vs stdout URL): PM_ISSUE_URL is the genuine stdout URL" "PM_ISSUE_URL=https://gitlab.com/group/sub/proj/-/work_items/7"
 check "create(stderr spoof vs stdout URL): the attacker URL is never relayed" "the spoof was accepted from stderr" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
 
@@ -2073,23 +2354,28 @@ section "comment.sh — both issue-URL path shapes are accepted, with and withou
 # glab actually prints (live-verified). These four cases pin the rest of the
 # matrix: the CLASSIC '/-/issues/' path (an older self-managed instance) and the
 # anchorless form of each, all of which must still populate PM_COMMENT_URL.
+#
+# --confirmed-host MATCHES THE FIXTURE URL'S OWN HOST, for the same reason --repo
+# must match its project path: the extractor requires the candidate's authority to
+# equal the confirmed host literally (SEC-002), so a mismatched host would reject
+# the token before its PATH SHAPE — the subject of these cases — was ever consulted.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_NOTE_OUT=https://gitlab.example.com/deep/group/nest/proj/-/issues/5#note_42" \
-	sh "$COMMENT" --confirmed-host gitlab.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
+	sh "$COMMENT" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
 expect_rc "comment(classic-shape-anchored): -> exit 0" 0
 stdout_has "comment(classic-shape-anchored): classic '/-/issues/' + note anchor still accepted" \
 	"PM_COMMENT_URL=https://gitlab.example.com/deep/group/nest/proj/-/issues/5#note_42"
 
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_NOTE_OUT=https://gitlab.example.com/deep/group/nest/proj/-/issues/5" \
-	sh "$COMMENT" --confirmed-host gitlab.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
+	sh "$COMMENT" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
 expect_rc "comment(classic-shape-bare): -> exit 0" 0
 stdout_has "comment(classic-shape-bare): classic '/-/issues/' with NO anchor still accepted" \
 	"PM_COMMENT_URL=https://gitlab.example.com/deep/group/nest/proj/-/issues/5"
 
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_NOTE_OUT=https://gitlab.example.com/deep/group/nest/proj/-/work_items/5" \
-	sh "$COMMENT" --confirmed-host gitlab.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
+	sh "$COMMENT" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --issue 5 --body-file "$CBODY"
 expect_rc "comment(work-items-bare): -> exit 0" 0
 stdout_has "comment(work-items-bare): '/-/work_items/' with NO anchor accepted" \
 	"PM_COMMENT_URL=https://gitlab.example.com/deep/group/nest/proj/-/work_items/5"
@@ -2183,6 +2469,23 @@ stdout_re "comment(ambiguous URLs): PM_COMMENT_URL is empty, never guessed" '^PM
 stderr_has "comment(ambiguous URLs): warns why the field is empty" "MORE THAN ONE distinct issue/note URL"
 stderr_has "comment(ambiguous URLs): points at find-duplicate.sh" "find-duplicate.sh"
 
+section "comment.sh — case-variant spellings of ONE note url are ONE candidate (SHELL-006)"
+# The SECOND extractor carries its own copy of the dedup key, so the create-side
+# case above cannot cover it: extract_note_url_candidates could keep a raw-token key
+# with every create-issue.sh test still green. The consequence differs per call site
+# — here the note was already posted, so a false ambiguity does not fail the run, it
+# silently empties the courtesy field the caller relays.
+#
+# BOTH fixture URLs carry iid 5 because comment.sh cross-checks the surviving
+# candidate's iid against --issue: a different iid would empty PM_COMMENT_URL via
+# the mismatch path instead, and the dedup would never be what the case proves.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_NOTE_OUT=on https://GitLab.Com/group/sub/proj/-/work_items/5#note_42
+https://gitlab.com/group/sub/proj/-/work_items/5#note_42" \
+	sh "$COMMENT" --confirmed-host gitlab.com --repo group/sub/proj --issue 5 --body-file "$CBODY"
+expect_rc "comment(case-variant spellings of one note url): -> exit 0" 0
+stdout_has "comment(case-variant spellings): PM_COMMENT_URL is populated, not emptied by a false ambiguity" "PM_COMMENT_URL=https://GitLab.Com/group/sub/proj/-/work_items/5#note_42"
+
 section "comment.sh — the URL arriving ONLY on stderr still populates PM_COMMENT_URL"
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_NOTE_ERR_OUT=https://gitlab.com/group/sub/proj/-/work_items/5#note_42" \
@@ -2195,17 +2498,19 @@ section "comment.sh — a spoof on stdout cannot outrank the genuine URL on stde
 # stdout was scanned FIRST and stderr only as a fallback, so a URL-shaped token
 # echoed on stdout — from the COMMENT BODY or the issue title — carrying THIS
 # project's path under a foreign host won unopposed whenever glab put the real URL on
-# stderr. Both streams now form ONE pool. The spoofed issue iid is 5 — the same issue
-# this run is commenting on — so the iid cross-check below cannot be what saves this
-# case; only the unified scan can.
+# stderr. Both streams now form ONE pool, and SEC-002's host test additionally
+# rejects the foreign-host spoof before it can become a candidate — so the genuine
+# stderr URL is the SOLE candidate and IS relayed. Drop the pooling and stdout alone
+# yields nothing, leaving PM_COMMENT_URL empty, which is what the populated-key
+# assertion below pins. The spoofed issue iid is 5 — the same issue this run is
+# commenting on — so the iid cross-check cannot be what tells them apart here.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_NOTE_OUT=on https://evil.example/group/sub/proj/-/issues/5" \
 	"GLAB_STUB_NOTE_ERR_OUT=https://gitlab.com/group/sub/proj/-/work_items/5#note_42" \
 	sh "$COMMENT" --confirmed-host gitlab.com --repo group/sub/proj --issue 5 --body-file "$CBODY"
 expect_rc "comment(stdout spoof vs stderr URL): -> exit 0 (the note WAS posted)" 0
-stdout_re "comment(stdout spoof vs stderr URL): PM_COMMENT_URL is empty, never the spoof" '^PM_COMMENT_URL=$'
-stderr_has "comment(stdout spoof vs stderr URL): both streams' candidates reached the ambiguity guard" "MORE THAN ONE distinct issue/note URL"
-check "comment(stdout spoof vs stderr URL): the attacker URL never reaches stdout" "the spoofed stdout URL won because stderr was not consulted" \
+stdout_has "comment(stdout spoof vs stderr URL): PM_COMMENT_URL is the genuine stderr URL" "PM_COMMENT_URL=https://gitlab.com/group/sub/proj/-/work_items/5#note_42"
+check "comment(stdout spoof vs stderr URL): the attacker URL never reaches stdout" "the spoofed stdout URL was relayed to the caller" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
 
 section "comment.sh — a URL naming a DIFFERENT issue than --issue is refused (SEC-003)"
@@ -2370,9 +2675,14 @@ section "update-issue.sh — both issue-URL path shapes are accepted"
 # actually prints (live-verified, where matching only '/-/issues/' left
 # PM_ISSUE_URL empty on a perfectly successful update). This case pins the
 # CLASSIC path, which must keep working for an older self-managed instance.
+#
+# --confirmed-host MATCHES THE FIXTURE URL'S OWN HOST, for the same reason --repo
+# must match its project path: the extractor requires the candidate's authority to
+# equal the confirmed host literally (SEC-002), so a mismatched host would reject
+# the token before its PATH SHAPE — the subject of this case — was ever consulted.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_UPDATE_OUT=https://gitlab.example.com/deep/group/nest/proj/-/issues/5" \
-	sh "$UPDATE" --confirmed-host gitlab.com --repo deep/group/nest/proj --issue 5 --title x
+	sh "$UPDATE" --confirmed-host gitlab.example.com --repo deep/group/nest/proj --issue 5 --title x
 expect_rc "update(classic-shape): -> exit 0" 0
 stdout_has "update(classic-shape): classic '/-/issues/' URL still accepted" \
 	"PM_ISSUE_URL=https://gitlab.example.com/deep/group/nest/proj/-/issues/5"
@@ -2422,7 +2732,7 @@ check "update(unanchored spoof): the attacker URL never reaches stdout" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'attacker.example' && echo 1 || echo 0 )"
 
 section "update-issue.sh — a REPEATED flag accumulates as well as a comma-list does (TEST-002)"
-# All four accumulators share ONE value-returning `accumulate` helper, and every
+# All four accumulators share ONE value-returning `csv_accumulate` helper, and every
 # case above exercised only the comma-list half of the "repeatable AND/OR
 # comma-separated" contract. An accumulator that OVERWROTE instead of appending
 # would have kept the whole suite green.
@@ -2460,6 +2770,38 @@ check "update(glob guard): the literal '*' reached --unlabel (it was NOT filenam
 	"the '*' was glob-expanded against the cwd instead of staying literal" \
 	"$( argv_has_pair "$UPDATE_LOG_TRIM" '--unlabel' '*' && echo 0 || echo 1 )"
 
+section "update-issue.sh — a NOTE-ANCHORED URL is not an issue URL (pins the two extractors apart)"
+# THE ONE-ANCHOR DIFFERENCE, PINNED. comment.sh's extract_note_url_candidates
+# accepts an optional "#note_<id>" suffix; update-issue.sh's
+# extract_issue_url_candidates must NOT — they are two functions differing by
+# exactly that anchor, and nothing exercised the difference from the update side.
+# Feeding update a note-anchored token for its OWN iid must therefore yield NO
+# candidate at all (empty key), never a match. Without this test the two
+# extractors could be unified behind one regex and every other assertion in this
+# harness would still pass.
+run 1 "GLAB_STUB_AUTHED=1" \
+	"GLAB_STUB_UPDATE_OUT=https://gitlab.com/group/sub/proj/-/issues/5#note_9" \
+	sh "$UPDATE" --confirmed-host gitlab.com --repo group/sub/proj --issue 5 --title x
+expect_rc "update(note-anchor): -> exit 0 (the update DID happen)" 0
+stdout_re "update(note-anchor): PM_ISSUE_URL is EMPTY — a note URL is not an issue URL" '^PM_ISSUE_URL=$'
+check "update(note-anchor): the note-anchored token was never relayed as the issue URL" \
+	"a '#note_' URL matched update's issue-only extractor — the two extractors have been unified" \
+	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- '#note_' && echo 1 || echo 0 )"
+# THE DISCRIMINATING ASSERTION — without it this section is false confidence.
+# An empty PM_ISSUE_URL alone does NOT prove the extractor rejected the token:
+# if the extractor DID accept it, the downstream iid cross-check would empty the
+# key anyway (the candidate's trailing segment parses as "5#note_9", never "5"),
+# so the key is empty under BOTH the correct and the broken implementation. The
+# two are told apart ONLY by stderr: a rejected-at-extraction token produces NO
+# candidate and therefore NO diagnostic at all, whereas an accepted one reaches
+# the cross-check and warns "not the issue that was updated". Asserting that
+# warning is ABSENT is what actually pins the anchor difference. (Verified by
+# mutation: adding "(#note_[0-9]+)?" to update's extractor fails this check and
+# only this check.)
+check "update(note-anchor): rejected at EXTRACTION, not merely by the iid cross-check" \
+	"the note URL became a candidate and was only caught downstream — update's extractor now accepts a note anchor" \
+	"$( printf '%s\n' "$CUR_ERR" | grep -Fq -- 'not the issue that was updated' && echo 1 || echo 0 )"
+
 section "update-issue.sh — TWO distinct project URLs leave PM_ISSUE_URL EMPTY + warn (SEC-001)"
 # The DELIBERATE difference from create-issue.sh: the edit itself already succeeded
 # and PM_ISSUE_URL is a documented courtesy field, so ambiguity must not invent a
@@ -2484,17 +2826,19 @@ section "update-issue.sh — a spoof on stdout cannot outrank the genuine URL on
 # Same residual gap as create-issue.sh's (see that section for the full mechanism):
 # stdout was scanned FIRST and stderr only as a fallback, so a title-borne URL
 # carrying THIS project's path under a foreign host won unopposed whenever glab put
-# the real URL on stderr. Both streams now form ONE pool. The spoofed iid is 5 — the
-# same issue this run is updating — so the iid cross-check below cannot be what saves
-# this case; only the unified scan can.
+# the real URL on stderr. Both streams now form ONE pool, and SEC-002's host test
+# additionally rejects the foreign-host spoof before it can become a candidate — so
+# the genuine stderr URL is the SOLE candidate and IS relayed. Drop the pooling and
+# stdout alone yields nothing, leaving PM_ISSUE_URL empty, which is what the
+# populated-key assertion below pins. The spoofed iid is 5 — the same issue this run
+# is updating — so the iid cross-check cannot be what tells them apart here.
 run 1 "GLAB_STUB_AUTHED=1" \
 	"GLAB_STUB_UPDATE_OUT=#5 See https://evil.example/group/sub/proj/-/issues/5" \
 	"GLAB_STUB_UPDATE_ERR_OUT= https://gitlab.com/group/sub/proj/-/work_items/5" \
 	sh "$UPDATE" --confirmed-host gitlab.com --repo group/sub/proj --issue 5 --title "See https://evil.example/group/sub/proj/-/issues/5"
 expect_rc "update(stdout spoof vs stderr URL): -> exit 0 (the update DID happen)" 0
-stdout_re "update(stdout spoof vs stderr URL): PM_ISSUE_URL is empty, never the spoof" '^PM_ISSUE_URL=$'
-stderr_has "update(stdout spoof vs stderr URL): both streams' candidates reached the ambiguity guard" "MORE THAN ONE distinct issue URL"
-check "update(stdout spoof vs stderr URL): the attacker URL never reaches stdout" "the spoofed stdout URL won because stderr was not consulted" \
+stdout_has "update(stdout spoof vs stderr URL): PM_ISSUE_URL is the genuine stderr URL" "PM_ISSUE_URL=https://gitlab.com/group/sub/proj/-/work_items/5"
+check "update(stdout spoof vs stderr URL): the attacker URL never reaches stdout" "the spoofed stdout URL was relayed to the caller" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'evil.example' && echo 1 || echo 0 )"
 
 section "update-issue.sh — a URL naming a DIFFERENT iid than --issue is refused (SEC-003)"

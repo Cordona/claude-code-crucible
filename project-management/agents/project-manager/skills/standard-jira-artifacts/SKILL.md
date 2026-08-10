@@ -18,18 +18,24 @@ Before writing or auditing any Jira artifact, apply `standard-backlog-artifacts`
 
 Jira stores rich text as Atlassian Document Format (ADF) JSON, not markdown. Every write command that accepts body text — `create --description-file`, `update --description-file` / `--append-file` / `--acceptance-file` / `--review-file`, `comment --text-file` — takes a **markdown file**, converted to ADF by `md-to-adf.sh` before it reaches the API. **Always author in markdown. Never write Jira wiki notation** (`h2.`, `*bold*`, `{code}`) — it is not converted and renders as raw text.
 
-The converter supports a **flat** subset only:
+The converter supports a defined subset of markdown:
 
 | Markdown | Renders as |
 |---|---|
 | `## Heading` / `### Heading` | ADF heading, level 2 / 3 |
 | `- item` / `* item` (a consecutive run) | One bullet list |
 | `1. item` (a consecutive run) | One ordered list |
+| An indented `- item` under a list item | A **real nested list** — the deeper list becomes a child of its parent list item, not a flattened or degraded block |
+| `- [ ] item` / `- [x] item` (a consecutive run) | One **native Jira task list** — real checkboxes a reader can tick, not a decorated bullet (`[x]`/`[X]` = done) |
+| A GFM pipe table (header row + `\|---\|---\|` separator + body rows) | An ADF table |
+| A triple-backtick fenced block (optionally with a language tag) | An ADF code block |
 | `**bold**`, `` `code` ``, `[text](url)` | Inline marks (a link whose scheme isn't http(s)/mailto drops its href, keeps the text) |
 | A line that is exactly `---` | A horizontal rule |
-| Anything else (tables, fenced code, nested lists) | Degrades to a plain paragraph |
+| Anything the converter doesn't recognize (footnotes, raw HTML, definition lists, …) | Degrades to a plain paragraph |
 
-Write flat markdown — a blank line between blocks, no nested lists — so nothing degrades unexpectedly. A `standard-jira-<client>` overlay's ticket template must stay inside this subset.
+The subset is wider than the table above (blockquotes, `> [!NOTE]`-style panels, `_italic_`, `~~strike~~`, hard breaks, headings 1 and 4–6 all convert too); `md-to-adf.sh`'s own header comment is the authoritative list. **As a matter of style, prefer flat markdown** — a blank line between blocks, shallow nesting — because a Jira ticket read in a narrow side panel is easier to scan that way, not because deeper structure fails to convert. A `standard-jira-<client>` overlay's ticket template must stay inside this subset.
+
+**Task-list caveat:** a plain bullet cannot live inside a task list (ADF's `taskItem` holds inline text only), so an indented `- plain item` under a checkbox **closes the task list** and lands as a sibling block instead of a nested one — the content survives, the nesting does not. Keep a checklist to checkboxes only.
 
 ## Workflow status: the axis neither GitHub nor GitLab has an analog for
 

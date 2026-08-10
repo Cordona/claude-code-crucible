@@ -61,7 +61,8 @@ Each item: **what · where · context/how · constraints.** Inbox ids are noted 
   `jira.sh sprint <id> --issues --confirmed-site <site>` prints USAGE when `--confirmed-site`
   arrives via an unquoted shell var, but the **byte-identical literal argv works** — reproducible,
   clean bytes. Suspected arg-parse ordering bug in `cmd_sprint` (likely also `cmd_epics` /
-  `cmd_backlog`) in `procedure-jira/scripts/jira.sh`. Find root cause, fix, add a regression test.
+  `cmd_backlog`) — now `procedure-jira/skill/lib/cmd-sprint.sh` / `cmd-epics.sh` /
+  `cmd-backlog.sh`, one file per command. Find root cause, fix, add a regression test.
 - **LOW review follow-ups on `cmd_schedule`:** (1) `validate_numeric_id` accepts a bare `0`, so
   `--to-sprint 0` / `--board 0` reach the API (fail closed at the server) — optionally add an
   op-local pre-flight reject; (2) pin the method more tightly in the `--jql` move test. Non-gating.
