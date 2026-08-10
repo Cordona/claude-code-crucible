@@ -211,22 +211,35 @@ their costs differ wildly and shouldn't all be paid on every build:
    multi-tech-pair work, and on request for a single repo. `software-architect` drafts a contract,
    the human approves it, and every parallel tech pair builds against that same document.
 2. **Implement** ([`flow-implementation`](./software-development/flows/flow-implementation)) —
-   brief → gate → the `{tech}-developer` builds → the `{tech}-reviewer` reviews for correctness → a
-   bounded fix loop (round 1 fixes gating findings, round 2 verifies, a 3rd only on an open
-   CRITICAL/HIGH). **Never a lens.** This is the safety net every real build gets.
+   brief → gate → the `{tech}-developer` builds, on one of two named paths, chosen by open
+   judgment (not a strict live-source-exists/doesn't rule — see that skill's §1):
+   - **Validate-First** — a usable live source exists: the developer builds alone, the reviewer
+     is deferred until after live validation + a `flow-testing` detour.
+   - **Pair-First** — no usable live source (none exists, or the change touches a
+     security-sensitive path — auth, crypto/secrets, untrusted input — where a live check can't
+     substitute for review): the `{tech}-developer` and `{tech}-reviewer` build together
+     immediately.
+
+   Either way, a bounded fix loop follows (round 1 fixes gating findings, round 2 verifies, a 3rd
+   only on an open CRITICAL/HIGH). **Never a lens.** The reviewer always runs — deferred or
+   immediate — before the effort is called done; this is the safety net every real build gets.
 3. **Review** ([`flow-review`](./software-development/flows/flow-review)) — *on demand only.*
    Derives a lens roster from the confirmed scope, gates it, dispatches the swarm in parallel, and
    persists a durable, trackable report. Runs no fix loop of its own; findings re-enter step 2.
-4. **Test** ([`flow-testing`](./software-development/flows/flow-testing)) — *last, on demand only.*
-   Fires once the human confirms the implementation is right. `tests-developer` writes the tests —
-   never the developer that wrote the code under test — and `lens-test-quality-reviewer` verifies
-   them.
+4. **Test** ([`flow-testing`](./software-development/flows/flow-testing)) — *on demand only, never
+   before confirmation.* Fires once the human confirms the implementation is right — including a
+   live-validation confirmation on a not-yet-reviewed Validate-First build, in which case tests run
+   before the `{tech}-reviewer`. `tests-developer` writes
+   the tests — never the developer that wrote the code under test — and `lens-test-quality-reviewer`
+   verifies them.
 
 **Nothing here fires from repository state.** An earlier design keyed the full review swarm off
 `git status`, which is exactly how a misjudged cross-repo build could burn hours and millions of
 tokens polishing the wrong implementation before a human got a cheap look at it. The one surviving
-state-based check is the **commit gate**: before any commit, it asks whether the diff has been
-through at least step 2, and won't assume either answer if unsure. A question, not a swarm.
+state-based check is the **commit gate**: before any commit, it asks whether step 2's correctness
+floor has actually closed for the diff — not merely that step 2 ran, since a live-validated and
+tested build can still have its reviewer pending — and won't assume either answer if unsure. A
+question, not a swarm.
 
 ---
 
@@ -238,7 +251,7 @@ defined in [`CLAUDE.md`](./CLAUDE.md).
 
 | Mode | Trigger | What runs |
 |---|---|---|
-| **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer → `{tech}`-reviewer → gated fix loop — tech pair only, never a lens |
+| **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer (alone first when live-testable) → *[live-validate → tests]* → `{tech}`-reviewer → gated fix loop — reviewer deferred or immediate, never a lens |
 | **Spec** | cross-repo work, parallel tech pairs, a forked interface decision, or an explicit spec-first ask | `software-architect` drafts a contract → gate → durable artifact every pair builds against |
 | **Review** | an explicit ask for a full/lens review — never automatic | Scope confirmed → lens swarm derived from it → gate → durable, trackable report |
 | **Test** | the human's explicit confirmation an implementation is right | `tests-developer` writes tests → mandatory test-quality pass → bounded fix loop |
