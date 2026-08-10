@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # close-issue.sh — close a GitLab issue, with an optional closing comment
 #                  always handed over by the caller as a FILE, never built in
@@ -97,29 +98,36 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-# Pin glab's own optional output/behavior so stdout stays parseable and this
-# non-interactive script can never block on a prompt. NOTE: neither
-# `glab issue close` nor `glab issue note` has a `--yes` flag (verified against
-# glab 1.112.0's --help), so GLAB_NO_PROMPT is the only prompt suppression
-# available here — passing `--yes` would make glab reject the whole invocation as
-# an unknown flag. Always passing `--message` is what keeps the note out of
-# glab's editor.
-GLAB_NO_PROMPT=true
-GLAB_CHECK_UPDATE=false
-GLAB_SHOW_WHATS_NEW=false
-export GLAB_NO_PROMPT GLAB_CHECK_UPDATE GLAB_SHOW_WHATS_NEW
+for _pm_lib in pm-diag.sh pm-glab-env.sh pm-validate.sh pm-glab-preconditions.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-glab-env.sh
+. "$PM_LIB_DIR/pm-glab-env.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-glab-preconditions.sh
+. "$PM_LIB_DIR/pm-glab-preconditions.sh"
 
 usage() {
 	cat <<EOF
@@ -152,66 +160,6 @@ Exit codes:
   1  glab absent / not authenticated / comment post failed / close failed
   2  usage error
 EOF
-}
-
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the iid GitLab would echo back. Both used to slip through and
-# surface as a confusing `glab` failure (exit 1) instead of the usage error
-# (exit 2) they are.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_gitlab_project_path VALUE — allow-list: letters, digits, '.', '_',
-# '-' per segment, and ONE OR MORE '/'-separated segments, with no empty
-# segment and no '.'/'..' path segment.
-#
-# WHY this is NOT procedure-gh-issues' is_valid_repo_slug: a GitHub slug is
-# always exactly OWNER/REPO (that validator hard-rejects a second '/'), but
-# GitLab supports nested groups, so a real project path can be
-# "group/subgroup/project" or deeper. Rejecting the extra segments would make
-# every subgroup project unreachable. A LONE segment with no '/' at all is
-# still rejected: a bare project name is never a valid full path.
-is_valid_gitlab_project_path() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;   # character allow-list
-		*//*) return 1 ;;                 # empty segment
-		/*|*/) return 1 ;;                # leading / trailing slash
-		..|../*|*/..|*/../*) return 1 ;;  # parent-dir traversal segment
-		.|./*|*/.|*/./*) return 1 ;;      # current-dir segment
-		*/*) return 0 ;;                  # at least one separator: accept
-		*) return 1 ;;                    # a single bare segment: reject
-	esac
-}
-
-# is_valid_confirmed_host VALUE — allow-list for the host the ACCOUNT GATE
-# confirmed, before it becomes this process's GITLAB_HOST: letters, digits, '.',
-# '-', '_' and an optional ':port'. Rejects whitespace, shell metacharacters, a
-# leading '-', and any empty label. Spelled the way `glab auth status` reports a
-# host — and the way manage_glab_accounts.sh's own is_valid_hostname accepts one
-# — so the gate's answer can be passed straight through.
-#
-# A SCHEME-QUALIFIED value ("https://gitlab.com") is rejected on purpose: glab
-# accepts both spellings, so allowing them here would let two different strings
-# name one host, and the whole point of this flag is a single unambiguous target
-# the caller and this script agree on.
-is_valid_confirmed_host() {
-	case "$1" in
-		'') return 1 ;;
-		*[!A-Za-z0-9._:-]*) return 1 ;;
-		-*) return 1 ;;
-		.*|*.|*..*) return 1 ;;
-		*) return 0 ;;
-	esac
 }
 
 # ---------------------------------------------------------------------------
@@ -287,35 +235,16 @@ is_valid_confirmed_host "$OPT_CONFIRMED_HOST" || { usage >&2; error "--confirmed
 # child of THIS process inherits it — which is also what keeps the optional
 # closing note and the close itself on ONE instance; nothing outside this process
 # is touched. See "HOST PINNING" in this file's header.
-GITLAB_HOST=$OPT_CONFIRMED_HOST
-export GITLAB_HOST
+pm_pin_gitlab_host "$OPT_CONFIRMED_HOST"
 
 # ---------------------------------------------------------------------------
 # glab preconditions
 # ---------------------------------------------------------------------------
-if ! command -v glab >/dev/null 2>&1; then
-	error "GitLab CLI (glab) is not installed"
-	warn  "install it from https://gitlab.com/gitlab-org/cli then re-run"
-	exit 1
-fi
+require_glab_cli
 
-# The bare form checks only the current context's instance, so --all is the
-# fallback before declaring glab unauthenticated (same as procedure-glab-mr).
-if ! glab auth status >/dev/null 2>&1 && ! glab auth status --all >/dev/null 2>&1; then
-	error "glab is installed but not authenticated"
-	warn  "authenticate with: glab auth login"
-	exit 1
-fi
+require_glab_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-glab-close-issue.err.XXXXXX")
-# TWO traps, not one combined `EXIT INT TERM`: a Ctrl-C during a slow `glab`
-# call would otherwise leak the temp file, but a combined handler would clean up
-# and then RESUME the interrupted command's error path, which goes on to read the
-# file it just unlinked. The INT/TERM handler therefore terminates the script
-# itself (130 = SIGINT's conventional status). The EXIT trap still runs after it,
-# and a second `rm -f` on an already-removed path is a no-op.
-trap 'rm -f "$TMP_ERR"' EXIT
-trap 'rm -f "$TMP_ERR"; exit 130' INT TERM
+init_tmp_err pm-glab-close-issue
 
 # ---------------------------------------------------------------------------
 # 1. Post the closing comment FIRST, if requested — as a separate note, the
@@ -328,7 +257,7 @@ if [ -n "$OPT_COMMENT_FILE" ]; then
 	set -- glab issue note "$OPT_ISSUE" --repo "$OPT_REPO" --message "$COMMENT"
 	if ! "$@" >/dev/null 2>"$TMP_ERR"; then
 		error "failed to post closing comment on issue #$OPT_ISSUE"
-		sed 's/^/  /' "$TMP_ERR" >&2
+		emit_captured_stderr
 		exit 1
 	fi
 	COMMENT_POSTED=1
@@ -347,7 +276,7 @@ if ! "$@" >/dev/null 2>"$TMP_ERR"; then
 	if [ "$COMMENT_POSTED" -eq 1 ]; then
 		warn "the closing comment was ALREADY POSTED — retry WITHOUT --comment-file to avoid posting it twice"
 	fi
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

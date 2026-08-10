@@ -137,25 +137,41 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`.
+#
+# Sources `lib/glab-mr-common.sh` + `lib/glab-mr-output.sh` from the sibling
+#   lib/ directory (resolved from $0 by parameter expansion — see the preamble
+#   below). The first holds diagnostics, glab's chattiness pins, argument
+#   validators, `glab` preconditions and comma-list parsing; the second holds
+#   the helpers that read glab's untrusted output. usage() and the `glab` argv
+#   builder stay in THIS file. The libs are skill-local: nothing outside this
+#   skill is ever sourced, so this skill still deploys and runs on its own.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
-
-# Pin glab's own optional output/behavior so stdout stays parseable and this
-# non-interactive script can never block on a prompt. GLAB_NO_PROMPT is a second
-# belt alongside the mandatory `--yes` below.
-GLAB_NO_PROMPT=true
-GLAB_CHECK_UPDATE=false
-GLAB_SHOW_WHATS_NEW=false
-export GLAB_NO_PROMPT GLAB_CHECK_UPDATE GLAB_SHOW_WHATS_NEW
-
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# Resolve the sibling lib/ from THIS script's own location — see find-mr.sh for
+# why this uses parameter expansion instead of dirname/readlink/realpath.
+case $0 in
+	*/*) MR_LIB_DIR=${0%/*}/../lib ;;
+	*)   MR_LIB_DIR=../lib ;;
+esac
+# GUARD THE SOURCES: a `.` on an unreadable file aborts with a raw `.: not found`
+# that names neither this script nor the path it tried — worst of all via the
+# `*)` bare-name arm above, which resolves against an arbitrary cwd. warn() and
+# error() live in the lib and do not exist yet, so this is the ONE diagnostic in
+# this file that formats itself; everything after this line uses the lib's.
+# The loop variable is PREFIXED and unset immediately after: this script and the
+# libs it sources share ONE flat POSIX namespace, so a bare, never-unset `lib`
+# would silently collide with any same-named variable a lib introduces later.
+# Same shape as the PM families' `_pm_lib`.
+for _mr_lib in glab-mr-common.sh glab-mr-output.sh; do
+	[ -r "$MR_LIB_DIR/$_mr_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_mr_lib" "$MR_LIB_DIR" >&2; exit 1; }
+done
+unset _mr_lib
+# shellcheck source=SCRIPTDIR/../lib/glab-mr-common.sh
+. "$MR_LIB_DIR/glab-mr-common.sh"
+# shellcheck source=SCRIPTDIR/../lib/glab-mr-output.sh
+. "$MR_LIB_DIR/glab-mr-output.sh"
 
 usage() {
 	cat <<EOF
@@ -203,137 +219,12 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the iid GitLab would echo back. Both used to slip through and
-# surface as a confusing `glab` failure (exit 1) instead of the usage error
-# (exit 2) they are.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_gitlab_project_path VALUE — allow-list: letters, digits, '.', '_',
-# '-' per segment, and ONE OR MORE '/'-separated segments, with no empty
-# segment and no '.'/'..' path segment.
-#
-# WHY this is NOT procedure-gh-pr's is_valid_repo_slug: a GitHub slug is always
-# exactly OWNER/REPO (that validator hard-rejects a second '/'), but GitLab
-# supports nested groups, so a real project path can be
-# "group/subgroup/project" or deeper. Rejecting the extra segments would make
-# every subgroup project unreachable. A LONE segment with no '/' at all is still
-# rejected: a bare project name is never a valid full path.
-is_valid_gitlab_project_path() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;   # character allow-list
-		*//*) return 1 ;;                 # empty segment
-		/*|*/) return 1 ;;                # leading / trailing slash
-		..|../*|*/..|*/../*) return 1 ;;  # parent-dir traversal segment
-		.|./*|*/.|*/./*) return 1 ;;      # current-dir segment
-		*/*) return 0 ;;                  # at least one separator: accept
-		*) return 1 ;;                    # a single bare segment: reject
-	esac
-}
-
-# is_valid_confirmed_host VALUE — allow-list for the host the ACCOUNT GATE
-# confirmed, before it becomes this process's GITLAB_HOST: letters, digits, '.',
-# '-', '_' and an optional ':port'. Rejects whitespace, shell metacharacters, a
-# leading '-', and any empty label. Spelled the way `glab auth status` reports a
-# host — and the way manage_glab_accounts.sh's own is_valid_hostname accepts one
-# — so the gate's answer can be passed straight through.
-#
-# A SCHEME-QUALIFIED value ("https://gitlab.com") is rejected on purpose: glab
-# accepts both spellings, so allowing them here would let two different strings
-# name one host, and the whole point of this flag is a single unambiguous target
-# the caller and this script agree on.
-is_valid_confirmed_host() {
-	case "$1" in
-		'') return 1 ;;
-		*[!A-Za-z0-9._:-]*) return 1 ;;
-		-*) return 1 ;;
-		.*|*.|*..*) return 1 ;;
-		*) return 0 ;;
-	esac
-}
-
-# extract_mr_url_candidates TEXT REPO — print every DISTINCT whitespace-delimited
-# token in TEXT that is a merge-request URL OF THIS PROJECT, one per line, in
-# first-appearance order. glab's update output decoration is not a documented
-# contract, so the URL is located by SHAPE rather than by position. awk always
-# exits 0, so this never trips `set -e`.
-#
-# THE ONE PLACE THE DEDUP/AMBIGUITY RATIONALE IS WRITTEN OUT — every call site
-# below points here instead of restating it:
-#   * glab prints the MR TITLE on the line BEFORE the URL, so a title that merely
-#     LOOKS like an MR URL used to be picked up instead of the real one: the first
-#     shape match in the whole captured output won, and PM_MR_URL then pointed at
-#     something else entirely.
-#   * So a candidate must be a URL of the CONFIRMED --repo project, ALL distinct
-#     candidates are reported, and the dedup keeps the FIRST occurrence of each
-#     distinct value while dropping every later repeat.
-#   * Therefore the output holds AT MOST ONE LINE PER DISTINCT URL. A caller never
-#     chooses between occurrences: it either takes the single survivor, or sees
-#     2+ lines — which can only mean genuinely different URLs, i.e. ambiguity or a
-#     spoof — and fails closed. Identical repeats collapse to one candidate, so a
-#     title quoting the real URL verbatim is harmless.
-#
-# HOW THE PROJECT MATCH IS ANCHORED (SEC-002): the repo path must follow the HOST
-# DIRECTLY. An unanchored `index($i, "/" repo "/")` substring test accepted the
-# project path at ANY depth under ANY host, so
-# "https://attacker.example/x/<repo>/-/merge_requests/5" qualified — the ambiguity
-# guard usually caught it (a genuine URL is normally present too, making 2+
-# candidates), but the filter must not lean on that backstop alone. So: scheme +
-# host are stripped, the remainder's LITERAL prefix must be "<repo>/", and what
-# follows must be GitLab's own MR route. The prefix test is a literal string
-# compare, never a regex, so a '.' in a project path cannot act as a wildcard and
-# no metacharacter escaping is needed.
-extract_mr_url_candidates() {
-	printf '%s\n' "$1" | awk -v repo="$2" '
-		{
-			for (i = 1; i <= NF; i++) {
-				tok = $i
-				if (tok !~ /^https?:\/\/[^\/]+\//) continue
-				path = tok
-				sub(/^https?:\/\/[^\/]+\//, "", path)
-				if (substr(path, 1, length(repo) + 1) != repo "/") continue
-				rest = substr(path, length(repo) + 2)
-				if (rest !~ /^(-\/)?merge_requests\/[0-9]+$/) continue
-				if (tok in seen) continue
-				seen[tok] = 1
-				print tok
-			}
-		}
-	'
-}
-
-# count_lines TEXT — number of lines in TEXT, 0 for the empty string. awk's
-# END{print NR} counts RECORDS, so a final line with no trailing newline still
-# counts (unlike `wc -l`, which counts newline BYTES), and it always exits 0.
-count_lines() {
-	[ -n "$1" ] || { printf '0\n'; return 0; }
-	printf '%s\n' "$1" | awk 'END { print NR }'
-}
-
 # ---------------------------------------------------------------------------
-# List accumulators (POSIX sh has no arrays; a newline-separated string is
-# the portable stand-in). Six of them need IDENTICAL comma-split + trim +
-# append behavior, so the whole job is TWO shared helpers — split_csv_list
-# (tokenize) and accumulate (append, VALUE-RETURNING) — rather than six
-# byte-identical-except-for-the-variable-name append functions, which is what
-# used to live here.
-#
-# `accumulate` RETURNS the new list on stdout instead of mutating a global
-# chosen by a name argument: `ADD_LABELS=$(accumulate "$ADD_LABELS" "$2")` keeps
-# the target variable at the call site, where the reader can see it, and needs
-# no `eval` and no string-keyed dispatcher — the pattern this codebase's own
-# conventions reject.
+# List accumulators (POSIX sh has no arrays; a newline-separated string is the
+# portable stand-in). The comma-split + trim + append behavior they all share
+# lives in the lib's split_csv_list + accumulate; each list keeps its own
+# variable at the call site below, so no `eval` and no name-keyed dispatcher is
+# ever needed.
 # ---------------------------------------------------------------------------
 ADD_LABELS=""
 REMOVE_LABELS=""
@@ -341,47 +232,6 @@ ADD_ASSIGNEES=""
 REMOVE_ASSIGNEES=""
 ADD_REVIEWERS=""
 REMOVE_REVIEWERS=""
-
-# split_csv_list VALUE — print each comma-separated, trimmed, non-empty token in
-# VALUE on its own line (stdout).
-#
-# `accumulate` below reads this through a HEREDOC, never by piping into its
-# `while read`: the loop must stay in accumulate's OWN shell so its `acc`
-# variable survives to the final printf. Piping would put the loop in a further
-# subshell and lose every appended token.
-split_csv_list() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		printf '%s\n' "$tok"
-	done
-}
-
-# accumulate CURRENT VALUE — print CURRENT with every comma-separated token of
-# VALUE appended as its own line. CURRENT may be empty (then the result is just
-# the new tokens). VALUE contributing no usable token leaves CURRENT unchanged,
-# so a `--add-label ,,` cannot introduce a blank entry.
-accumulate() {
-	acc=$1
-	while IFS= read -r tok; do
-		[ -n "$tok" ] || continue
-		if [ -z "$acc" ]; then acc=$tok
-		else acc="$acc
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$2")
-EOF
-	printf '%s' "$acc"
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -485,38 +335,13 @@ fi
 # ---------------------------------------------------------------------------
 # glab preconditions
 # ---------------------------------------------------------------------------
-if ! command -v glab >/dev/null 2>&1; then
-	error "GitLab CLI (glab) is not installed"
-	warn  "install it from https://gitlab.com/gitlab-org/cli then re-run"
-	exit 1
-fi
+require_glab
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required to read the MR URL back)"
-	exit 1
-fi
+require_awk "required to read the MR URL back"
 
-# See find-mr.sh: the bare form checks only the current context's instance, so
-# --all is the fallback before declaring glab unauthenticated.
-if ! glab auth status >/dev/null 2>&1 && ! glab auth status --all >/dev/null 2>&1; then
-	error "glab is installed but not authenticated"
-	warn  "authenticate with: glab auth login"
-	exit 1
-fi
+require_glab_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-update-mr.err.XXXXXX")
-# Make the path ABSOLUTE: mktemp echoes back the template it was given, so a
-# RELATIVE $TMPDIR yields a relative path. This script never changes directory
-# (only create-mr.sh does), so the normalization is defensive here — it is
-# applied in all three MR scripts so the siblings cannot drift.
-case $TMP_ERR in
-	/*) ;;
-	*) TMP_ERR="$PWD/$TMP_ERR" ;;
-esac
-# INT/TERM as well as EXIT: a Ctrl-C during a slow `glab mr update` would
-# otherwise leak the temp file.
-trap 'rm -f "$TMP_ERR"' EXIT
-trap 'rm -f "$TMP_ERR"; exit 130' INT TERM
+init_tmp_err pm-update-mr
 
 # ---------------------------------------------------------------------------
 # Build the `glab mr update` argv as POSITIONAL PARAMETERS — POSIX sh's array
@@ -596,7 +421,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! UPDATE_OUT=$("$@" 2>"$TMP_ERR"); then
 	error "glab mr update failed for MR !$OPT_MR"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

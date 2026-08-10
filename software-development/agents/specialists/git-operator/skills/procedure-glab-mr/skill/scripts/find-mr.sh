@@ -46,7 +46,8 @@
 #
 #     --repo PATH             Target project path (required). GitLab paths may
 #                             have MORE than two segments — see
-#                             is_valid_gitlab_project_path below.
+#                             is_valid_gitlab_project_path in
+#                             lib/glab-mr-common.sh.
 #     --source-branch BRANCH  The source branch to check (required). GitLab's
 #                             equivalent of a GitHub PR's "head".
 #     --confirmed-host HOST   The GitLab host the account gate already CONFIRMED
@@ -83,28 +84,46 @@
 #
 # Portability: POSIX sh only (no bashisms). Read-only: never writes to the
 #   tracker. Every external binary is guarded with `command -v`.
-#   Self-contained: sources nothing.
+#
+# Sources `lib/glab-mr-common.sh` + `lib/glab-mr-output.sh` from the sibling
+#   lib/ directory (resolved from $0 by parameter expansion — see the preamble
+#   below). The first holds diagnostics, glab's chattiness pins, argument
+#   validators, `glab` preconditions and comma-list parsing; the second holds
+#   the helpers that read glab's untrusted output. usage() and the `glab` argv
+#   builder stay in THIS file. The libs are skill-local: nothing outside this
+#   skill is ever sourced, so this skill still deploys and runs on its own.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
-
-# Pin glab's own optional output/behavior so stdout stays deterministic and this
-# non-interactive script can never block on a prompt:
-#   GLAB_NO_PROMPT        — glab must never ask this script anything.
-#   GLAB_CHECK_UPDATE     — suppresses the "new version available" notice and
-#                           the network round-trip that produces it.
-#   GLAB_SHOW_WHATS_NEW   — suppresses the one-time post-upgrade banner.
-GLAB_NO_PROMPT=true
-GLAB_CHECK_UPDATE=false
-GLAB_SHOW_WHATS_NEW=false
-export GLAB_NO_PROMPT GLAB_CHECK_UPDATE GLAB_SHOW_WHATS_NEW
-
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# Resolve the sibling lib/ from THIS script's own location, using only shell
+# parameter expansion: `dirname`/`readlink`/`realpath`/`basename` are all
+# deliberately absent from the test harness's isolated PATH toolbox, so any of
+# them here would break the suite (and any minimal deployment) outright. The
+# `*)` arm covers an invocation with no '/' at all (`sh find-mr.sh` from inside
+# scripts/), where $0 is a bare name and the sibling lib is at ../lib.
+case $0 in
+	*/*) MR_LIB_DIR=${0%/*}/../lib ;;
+	*)   MR_LIB_DIR=../lib ;;
+esac
+# GUARD THE SOURCES: a `.` on an unreadable file aborts with a raw `.: not found`
+# that names neither this script nor the path it tried — worst of all via the
+# `*)` bare-name arm above, which resolves against an arbitrary cwd. warn() and
+# error() live in the lib and do not exist yet, so this is the ONE diagnostic in
+# this file that formats itself; everything after this line uses the lib's.
+# The loop variable is PREFIXED and unset immediately after: this script and the
+# libs it sources share ONE flat POSIX namespace, so a bare, never-unset `lib`
+# would silently collide with any same-named variable a lib introduces later.
+# Same shape as the PM families' `_pm_lib`.
+for _mr_lib in glab-mr-common.sh glab-mr-output.sh; do
+	[ -r "$MR_LIB_DIR/$_mr_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_mr_lib" "$MR_LIB_DIR" >&2; exit 1; }
+done
+unset _mr_lib
+# shellcheck source=SCRIPTDIR/../lib/glab-mr-common.sh
+. "$MR_LIB_DIR/glab-mr-common.sh"
+# normalize_mr_rows lives in the output lib — this script reads `glab mr list`'s
+# rendered rows, so it needs that file even though it never parses an MR URL.
+# shellcheck source=SCRIPTDIR/../lib/glab-mr-output.sh
+. "$MR_LIB_DIR/glab-mr-output.sh"
 
 usage() {
 	cat <<EOF
@@ -138,76 +157,6 @@ Exit codes:
   1  glab/awk absent / not authenticated / query failed
   2  usage error
 EOF
-}
-
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_valid_gitlab_project_path VALUE — allow-list: letters, digits, '.', '_',
-# '-' per segment, and ONE OR MORE '/'-separated segments, with no empty
-# segment and no '.'/'..' path segment.
-#
-# WHY this is NOT procedure-gh-pr's is_valid_repo_slug: a GitHub slug is always
-# exactly OWNER/REPO (that validator hard-rejects a second '/'), but GitLab
-# supports nested groups, so a real project path can be
-# "group/subgroup/project" or deeper. Rejecting the extra segments would make
-# every subgroup project unreachable. A LONE segment with no '/' at all is still
-# rejected: a bare project name is never a valid full path.
-#
-# VALUE is interpolated into `glab` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "g/..", "../p") before that
-# ever happens.
-is_valid_gitlab_project_path() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;   # character allow-list
-		*//*) return 1 ;;                 # empty segment
-		/*|*/) return 1 ;;                # leading / trailing slash
-		..|../*|*/..|*/../*) return 1 ;;  # parent-dir traversal segment
-		.|./*|*/.|*/./*) return 1 ;;      # current-dir segment
-		*/*) return 0 ;;                  # at least one separator: accept
-		*) return 1 ;;                    # a single bare segment: reject
-	esac
-}
-
-# is_valid_confirmed_host VALUE — allow-list for the host the ACCOUNT GATE
-# confirmed, before it becomes this process's GITLAB_HOST: letters, digits, '.',
-# '-', '_' and an optional ':port'. Rejects whitespace, shell metacharacters, a
-# leading '-', and any empty label. Spelled the way `glab auth status` reports a
-# host — and the way manage_glab_accounts.sh's own is_valid_hostname accepts one
-# — so the gate's answer can be passed straight through.
-#
-# A SCHEME-QUALIFIED value ("https://gitlab.com") is rejected on purpose: glab
-# accepts both spellings, so allowing them here would let two different strings
-# name one host, and the whole point of this flag is a single unambiguous target
-# the caller and this script agree on.
-is_valid_confirmed_host() {
-	case "$1" in
-		'') return 1 ;;
-		*[!A-Za-z0-9._:-]*) return 1 ;;
-		-*) return 1 ;;
-		.*|*.|*..*) return 1 ;;
-		*) return 0 ;;
-	esac
-}
-
-# normalize_mr_rows VALUE — print the `glab mr list --jq` result as clean
-# "iid<TAB>web_url" lines, dropping empties.
-#
-# Two normalizations, both no-ops for the expected output and both cheap
-# insurance against glab's --jq string rendering differing from `gh`'s: a
-# JSON-encoded "\t" is turned back into a real tab, and any double quotes glab
-# may have kept around the rendered string are removed. Neither an iid nor a
-# GitLab web_url can legitimately contain a quote, so the stripping cannot
-# corrupt a good value. awk always exits 0, so this never trips `set -e`.
-normalize_mr_rows() {
-	printf '%s\n' "$1" | awk '
-		{
-			gsub(/\\t/, "\t")
-			gsub(/"/, "")
-			if ($0 != "") print
-		}
-	'
 }
 
 OPT_REPO=""
@@ -246,46 +195,18 @@ export GITLAB_HOST
 # ---------------------------------------------------------------------------
 # glab preconditions
 # ---------------------------------------------------------------------------
-if ! command -v glab >/dev/null 2>&1; then
-	error "GitLab CLI (glab) is not installed"
-	warn  "install it from https://gitlab.com/gitlab-org/cli then re-run"
-	exit 1
-fi
+require_glab
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required to count results)"
-	exit 1
-fi
+require_awk "required to count results"
 
-# A bare `glab auth status` only checks the instance of the CURRENT CONTEXT, so
-# a caller working on a self-managed project from an unrelated cwd could fail it
-# spuriously; `--all` covers every configured instance. Try the bare form first
-# (it is the cheapest and works on any glab), then --all. Only both failing means
-# glab is genuinely not authenticated anywhere.
-if ! glab auth status >/dev/null 2>&1 && ! glab auth status --all >/dev/null 2>&1; then
-	error "glab is installed but not authenticated"
-	warn  "authenticate with: glab auth login"
-	exit 1
-fi
+require_glab_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-find-mr.err.XXXXXX")
-# Make the path ABSOLUTE: mktemp echoes back the template it was given, so a
-# RELATIVE $TMPDIR yields a relative path. This script never changes directory
-# (only create-mr.sh does), so the normalization is defensive here — it is
-# applied in all three MR scripts so the siblings cannot drift.
-case $TMP_ERR in
-	/*) ;;
-	*) TMP_ERR="$PWD/$TMP_ERR" ;;
-esac
-# INT/TERM as well as EXIT: a Ctrl-C during a slow `glab mr list` would otherwise
-# leak the temp file.
-trap 'rm -f "$TMP_ERR"' EXIT
-trap 'rm -f "$TMP_ERR"; exit 130' INT TERM
+init_tmp_err pm-find-mr
 
 if ! RAW=$(glab mr list --repo "$OPT_REPO" --source-branch "$OPT_SOURCE_BRANCH" \
 	--output json --jq '.[] | "\(.iid)\t\(.web_url)"' 2>"$TMP_ERR"); then
 	error "glab mr list failed"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

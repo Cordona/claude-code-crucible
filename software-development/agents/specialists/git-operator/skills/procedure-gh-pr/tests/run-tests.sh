@@ -58,7 +58,12 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
+# `2>/dev/null` + an explicit failure branch: without them a MISSING lib/ dir
+# aborts right here under `set -e`, with a raw `cd` error, before the friendly
+# per-file preflight below can ever run — i.e. the preflight could not fire in
+# its single most likely failure mode.
+LIB_DIR=$(cd "$TESTS_DIR/../skill/lib" 2>/dev/null && pwd) || { printf 'FATAL: missing lib dir: %s\n' "$TESTS_DIR/../skill/lib" >&2; exit 1; }
 FINDPR="$SCRIPTS_DIR/find-pr.sh"
 CREATEPR="$SCRIPTS_DIR/create-pr.sh"
 UPDATEPR="$SCRIPTS_DIR/update-pr.sh"
@@ -83,6 +88,15 @@ link_tool() {
 }
 for t in sh mktemp grep sed cat diff awk rm; do
 	link_tool "$t"
+done
+
+# Every command script sources its lib at startup, so a missing lib file would
+# surface as 100+ identical, unreadable failures. Fail once, loudly, instead —
+# beside the link_tool fatals above and deliberately NOT counted in TESTS_RUN,
+# so the check totals stay comparable across this refactor.
+# shellcheck disable=SC2043  # one lib today; kept a loop so adding a second is a one-word edit, and so this preflight stays the same shape as procedure-glab-mr's two-file version
+for f in gh-pr-common.sh; do
+	[ -f "$LIB_DIR/$f" ] || { printf 'FATAL: missing lib file: %s\n' "$LIB_DIR/$f" >&2; exit 1; }
 done
 
 # ---------------------------------------------------------------------------
@@ -278,10 +292,49 @@ file_missing() {
 # followed by VALUE as two CONSECUTIVE lines inside the log's token-per-line
 # ARGV_BEGIN/ARGV_END block. Proves VALUE reached gh as ONE argv token right
 # after FLAG — a word-splitting regression would show as extra lines instead.
+#
+# SCOPED TO THE ARGV BLOCK via an explicit in_argv open/close gate. Scoping is
+# what makes the check sound: the SAME log file also holds the stub's
+# BODY_FILE_CONTENTS marker block, i.e. untrusted fixture payload bytes. An
+# unscoped scan could be satisfied by two adjacent BODY lines that merely LOOK
+# like a flag+value pair, passing a positive assertion the script never actually
+# earned (and, symmetrically, defeating a negative one).
+#
+# FLAG and VALUE travel through the ENVIRONMENT, not through `awk -v`, because
+# `-v` assignment performs ESCAPE PROCESSING: a backslash sequence inside an
+# expected value (a label of 'a\tb' is legal input here) would silently become a
+# real tab in awk and never match the literal backslash-t the script actually
+# passed. ENVIRON does no such rewriting.
+#
+# Each comparison concatenates "" onto BOTH sides. `$0` and ENVIRON values are awk
+# STRNUMs: when both look numeric, `==` compares them NUMERICALLY, so a logged token
+# of `007` would match an expected value of `7` — and a PR number is exactly the kind
+# of numeric-looking argv this suite asserts on. Concatenation forces the BYTE-EXACT
+# string comparison these argv assertions actually mean.
 argv_has_pair() {
-	awk -v flag="$2" -v value="$3" '
-		$0 == flag { want = 1; next }
-		want == 1 { if ($0 == value) { found = 1 }; want = 0 }
+	ARGV_FLAG=$2 ARGV_VALUE=$3 awk '
+		$0 == "ARGV_BEGIN" { in_argv = 1; want = 0; next }
+		$0 == "ARGV_END"   { in_argv = 0; want = 0; next }
+		in_argv != 1 { next }
+		($0 "") == (ENVIRON["ARGV_FLAG"] "") { want = 1; next }
+		want == 1 { if (($0 "") == (ENVIRON["ARGV_VALUE"] "")) { found = 1 }; want = 0 }
+		END { exit(found ? 0 : 1) }
+	' "$1"
+}
+
+# argv_has_token LOGFILE TOKEN — true iff TOKEN appears as a WHOLE LINE inside an
+# ARGV_BEGIN/ARGV_END block. The scoped replacement for a bare
+# `grep -Fxq -- 'TOKEN' logfile`, which scanned the BODY_FILE_CONTENTS payload
+# block too: an assertion that "no --label token was passed" must not be defeated
+# by a fixture whose PR body happens to contain a line reading exactly `--label`.
+# TOKEN travels via ENVIRON for the same no-escape-processing reason as
+# argv_has_pair's, and is compared with the same ""-concatenation on both sides for
+# the same strnum reason.
+argv_has_token() {
+	ARGV_TOKEN=$2 awk '
+		$0 == "ARGV_BEGIN" { in_argv = 1; next }
+		$0 == "ARGV_END"   { in_argv = 0; next }
+		in_argv == 1 && ($0 "") == (ENVIRON["ARGV_TOKEN"] "") { found = 1 }
 		END { exit(found ? 0 : 1) }
 	' "$1"
 }
@@ -326,6 +379,15 @@ run 1 sh "$FINDPR" --repo 'o/..' --head feat/x
 expect_rc "findpr(malformed --repo): -> exit 2" 2
 stderr_has "findpr(malformed --repo): diagnostic" "OWNER/REPO"
 
+# The ONE arm that distinguishes is_valid_repo_slug from procedure-glab-mr's
+# is_valid_gitlab_project_path: a GitHub slug is EXACTLY owner/repo, so a second
+# '/' is rejected outright — where the GitLab validator accepts arbitrary
+# subgroup depth. Nothing exercised that arm before, so the two validators could
+# have been "unified" with the whole suite staying green.
+run 1 sh "$FINDPR" --repo a/b/c --head feat/x
+expect_rc "findpr(triple-segment --repo): -> exit 2 (a GitHub slug is exactly OWNER/REPO)" 2
+stderr_has "findpr(triple-segment --repo): diagnostic" "OWNER/REPO"
+
 run 1 sh "$FINDPR" --bogus
 expect_rc "findpr(unknown option): -> exit 2" 2
 stderr_has "findpr(unknown option): diagnostic" "unknown option"
@@ -342,8 +404,8 @@ LIST_LOG1="$WORK/pr-list-log1"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=42	https://github.com/octo/repo/pull/42" "GH_STUB_PR_LIST_LOG=$LIST_LOG1" \
 	sh "$FINDPR" --repo octo/repo --head feat/x
 expect_rc "findpr(hit): -> exit 0" 0
-stdout_has "findpr(hit): PM_PR_COUNT=1" "PM_PR_COUNT=1"
-stdout_has "findpr(hit): PM_PR_NUMBER=42" "PM_PR_NUMBER=42"
+stdout_re "findpr(hit): PM_PR_COUNT=1" '^PM_PR_COUNT=1$'
+stdout_re "findpr(hit): PM_PR_NUMBER=42" '^PM_PR_NUMBER=42$'
 stdout_has "findpr(hit): PM_PR_URL" "PM_PR_URL=https://github.com/octo/repo/pull/42"
 check "findpr(hit): --repo passed as one token" "repo missing/misplaced in argv" \
 	"$( argv_has_pair "$LIST_LOG1" '--repo' 'octo/repo' && echo 0 || echo 1 )"
@@ -355,7 +417,7 @@ check "findpr(hit): --state open passed as one token" "state missing/misplaced i
 section "find-pr.sh — miss (no open PR, count 0 is success)"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" sh "$FINDPR" --repo o/r --head feat/y
 expect_rc "findpr(miss): -> exit 0 (zero is not a failure)" 0
-stdout_has "findpr(miss): PM_PR_COUNT=0" "PM_PR_COUNT=0"
+stdout_re "findpr(miss): PM_PR_COUNT=0" '^PM_PR_COUNT=0$'
 check "findpr(miss): no PM_PR_NUMBER line printed" "PM_PR_NUMBER was printed despite zero results" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'PM_PR_NUMBER=' && echo 1 || echo 0 )"
 check "findpr(miss): no PM_PR_URL line printed" "PM_PR_URL was printed despite zero results" \
@@ -366,7 +428,7 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=42	https://github.com/octo/repo/pull/4
 43	https://github.com/octo/repo/pull/43" \
 	sh "$FINDPR" --repo octo/repo --head feat/shared
 expect_rc "findpr(count-2): -> exit 0 (still a clean query)" 0
-stdout_has "findpr(count-2): PM_PR_COUNT=2" "PM_PR_COUNT=2"
+stdout_re "findpr(count-2): PM_PR_COUNT=2" '^PM_PR_COUNT=2$'
 check "findpr(count-2): no PM_PR_NUMBER line printed (only emitted when count==1)" "PM_PR_NUMBER was printed despite count=2" \
 	"$( printf '%s\n' "$CUR_OUT" | grep -Fq -- 'PM_PR_NUMBER=' && echo 1 || echo 0 )"
 check "findpr(count-2): no PM_PR_URL line printed (only emitted when count==1)" "PM_PR_URL was printed despite count=2" \
@@ -416,6 +478,10 @@ run 1 sh "$CREATEPR" --repo 'o/..' --head feat/x --base main --title t --body-fi
 expect_rc "createpr(malformed --repo): -> exit 2" 2
 stderr_has "createpr(malformed --repo): diagnostic" "OWNER/REPO"
 
+run 1 sh "$CREATEPR" --repo a/b/c --head feat/x --base main --title t --body-file "$PRBODY"
+expect_rc "createpr(triple-segment --repo): -> exit 2 (a GitHub slug is exactly OWNER/REPO)" 2
+stderr_has "createpr(triple-segment --repo): diagnostic" "OWNER/REPO"
+
 run 1 sh "$CREATEPR" --bogus
 expect_rc "createpr(unknown option): -> exit 2" 2
 stderr_has "createpr(unknown option): diagnostic" "unknown option"
@@ -448,7 +514,7 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_URL=https://github.c
 	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title "Add the export feature" \
 		--body-file "$PRBODY" --draft --reviewer "alice,bob" --label "type:feature,needs-review" --assignee carol
 expect_rc "createpr(success): -> exit 0" 0
-stdout_has "createpr(success): PM_PR_NUMBER" "PM_PR_NUMBER=7"
+stdout_re "createpr(success): PM_PR_NUMBER" '^PM_PR_NUMBER=7$'
 stdout_has "createpr(success): PM_PR_URL" "PM_PR_URL=https://github.com/octo/repo/pull/7"
 check "createpr(success): --head passed as one token" "head missing/misplaced in argv" \
 	"$( argv_has_pair "$CREATE_LOG2" '--head' 'feat/x' && echo 0 || echo 1 )"
@@ -457,7 +523,7 @@ check "createpr(success): --base passed as one token" "base missing/misplaced in
 check "createpr(success): --title passed as one token (even multi-word)" "title missing/misplaced in argv" \
 	"$( argv_has_pair "$CREATE_LOG2" '--title' 'Add the export feature' && echo 0 || echo 1 )"
 check "createpr(success): --draft flag present" "no --draft token in argv" \
-	"$( grep -Fxq -- '--draft' "$CREATE_LOG2" && echo 0 || echo 1 )"
+	"$( argv_has_token "$CREATE_LOG2" '--draft' && echo 0 || echo 1 )"
 check "createpr(success): --reviewer alice passed" "reviewer alice missing from argv" \
 	"$( argv_has_pair "$CREATE_LOG2" '--reviewer' 'alice' && echo 0 || echo 1 )"
 check "createpr(success): --reviewer bob passed" "reviewer bob missing from argv" \
@@ -469,9 +535,95 @@ check "createpr(success): --label needs-review (from the SAME comma-list) also p
 check "createpr(success): --assignee carol passed" "assignee missing from argv" \
 	"$( argv_has_pair "$CREATE_LOG2" '--assignee' 'carol' && echo 0 || echo 1 )"
 check "createpr(success): argv uses --body-file (the injection-safety mechanism)" "no --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$CREATE_LOG2" && echo 0 || echo 1 )"
+	"$( argv_has_token "$CREATE_LOG2" '--body-file' && echo 0 || echo 1 )"
 check "createpr(success): argv has NO bare --body token" "a bare --body flag was found in argv" \
-	"$( grep -Fxq -- '--body' "$CREATE_LOG2" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CREATE_LOG2" '--body' && echo 1 || echo 0 )"
+
+section "create-pr.sh — a REPEATED flag accumulates as well as a comma-list does"
+# The documented contract is "repeatable AND/OR comma-separated", but every case
+# above exercised only the comma-list half, so the repeated-occurrence half was
+# untested for all three list flags. An accumulator that OVERWROTE instead of
+# appending would have kept the whole suite green. Ported from the sibling
+# procedure-glab-mr harness, which already covered this.
+CREATE_LOG_REPEAT="$WORK/pr-create-log-repeated-flags"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG_REPEAT" \
+	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title t --body-file "$PRBODY" \
+		--reviewer alice --reviewer bob --label first --label second --assignee carol --assignee dave
+expect_rc "createpr(repeated flags): -> exit 0" 0
+check "createpr(repeated flags): the FIRST --reviewer survived" "an earlier --reviewer was overwritten by the later one" \
+	"$( argv_has_pair "$CREATE_LOG_REPEAT" '--reviewer' 'alice' && echo 0 || echo 1 )"
+check "createpr(repeated flags): the SECOND --reviewer arrived too" "the repeated --reviewer never reached argv" \
+	"$( argv_has_pair "$CREATE_LOG_REPEAT" '--reviewer' 'bob' && echo 0 || echo 1 )"
+check "createpr(repeated flags): both repeated --label values arrived" "a repeated --label was lost" \
+	"$( argv_has_pair "$CREATE_LOG_REPEAT" '--label' 'first' && argv_has_pair "$CREATE_LOG_REPEAT" '--label' 'second' && echo 0 || echo 1 )"
+check "createpr(repeated flags): both repeated --assignee values arrived" "a repeated --assignee was lost" \
+	"$( argv_has_pair "$CREATE_LOG_REPEAT" '--assignee' 'carol' && argv_has_pair "$CREATE_LOG_REPEAT" '--assignee' 'dave' && echo 0 || echo 1 )"
+
+section "create-pr.sh — a comma-list with SPACES and EMPTY elements is trimmed and skipped"
+# split_csv_list trims each token and drops empty ones, but no fixture anywhere
+# contained a space or an empty element, so both behaviors were unexercised: a
+# dropped trim would have sent gh the label " urgent" (a different label), and a
+# dropped empty-skip would have sent it an empty argv value.
+CREATE_LOG_TRIM="$WORK/pr-create-log-trim"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG_TRIM" \
+	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title t --body-file "$PRBODY" \
+		--label "bug, urgent ,,"
+expect_rc "createpr(csv trim): -> exit 0" 0
+check "createpr(csv trim): 'bug' arrived clean" "the first token was mangled" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' 'bug' && echo 0 || echo 1 )"
+check "createpr(csv trim): ' urgent ' arrived TRIMMED to 'urgent'" "surrounding whitespace was not trimmed" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' 'urgent' && echo 0 || echo 1 )"
+check "createpr(csv trim): the UNTRIMMED ' urgent ' never reached argv" "an untrimmed token was passed to gh" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' ' urgent ' && echo 1 || echo 0 )"
+check "createpr(csv trim): the empty elements produced NO empty --label value" "an empty label value was passed to gh" \
+	"$( argv_has_pair "$CREATE_LOG_TRIM" '--label' '' && echo 1 || echo 0 )"
+
+section "create-pr.sh — a list token with a SPACE stays ONE token; an all-separator value contributes NONE"
+# The two properties accumulate()'s NEWLINE-separated-list design exists to
+# preserve, and the two the characterization set above never pinned:
+#   * a token with an INTERNAL space ('needs review') has to reach gh as ONE
+#     argv token. An accumulator that joined its entries on spaces instead of
+#     newlines would pass the whole comma-list suite above (no fixture there
+#     contains a space) while silently turning one label into two.
+#   * an ALL-separator value (',,') has to contribute NOTHING — not an empty
+#     token, and not a dangling --label flag with no value behind it.
+CREATE_LOG_SPACE="$WORK/pr-create-log-space-label"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG_SPACE" \
+	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title t --body-file "$PRBODY" \
+		--label 'needs review' --label ready
+expect_rc "createpr(space in label): -> exit 0" 0
+check "createpr(space in label): 'needs review' reached gh as ONE argv token" "the label was word-split into separate argv tokens" \
+	"$( argv_has_pair "$CREATE_LOG_SPACE" '--label' 'needs review' && echo 0 || echo 1 )"
+check "createpr(space in label): no bare 'needs' token exists in argv (proof it was NOT split)" "the label was split on its internal space" \
+	"$( argv_has_token "$CREATE_LOG_SPACE" 'needs' && echo 1 || echo 0 )"
+check "createpr(space in label): the NEXT label in the list still arrived intact" "a space-bearing entry corrupted the rest of the accumulated list" \
+	"$( argv_has_pair "$CREATE_LOG_SPACE" '--label' 'ready' && echo 0 || echo 1 )"
+
+CREATE_LOG_ALLSEP="$WORK/pr-create-log-all-separator-label"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG_ALLSEP" \
+	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title 'all separators' --body-file "$PRBODY" \
+		--label ',,'
+expect_rc "createpr(all-separator label): -> exit 0 (a value yielding no token is not an error)" 0
+# Asserted FIRST so the --label absence below cannot pass merely because gh was
+# never invoked and the log is missing entirely.
+check "createpr(all-separator label): gh pr create DID run (the argv log is real)" "no create was logged, so the absence assertion below would be vacuous" \
+	"$( argv_has_pair "$CREATE_LOG_ALLSEP" '--title' 'all separators' && echo 0 || echo 1 )"
+check "createpr(all-separator label): NO --label token reached gh at all" "an empty or dangling --label was passed to gh" \
+	"$( argv_has_token "$CREATE_LOG_ALLSEP" '--label' && echo 1 || echo 0 )"
+
+section "create-pr.sh — a GLOB metacharacter in a comma-list stays literal"
+# split_csv_list wraps its `set -- $value` in `set -f` precisely so the unquoted
+# split cannot ALSO filename-expand. No fixture contained a glob character, so
+# deleting that guard broke nothing visible — while in real use a label of '*'
+# would have been replaced by the cwd's file names.
+CREATE_LOG_GLOB="$WORK/pr-create-log-glob"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG_GLOB" \
+	sh "$CREATEPR" --repo octo/repo --head feat/x --base main --title t --body-file "$PRBODY" \
+		--label '*'
+expect_rc "createpr(glob label): -> exit 0" 0
+check "createpr(glob label): the literal '*' reached argv (it was NOT filename-expanded)" \
+	"the '*' was glob-expanded against the cwd instead of staying literal" \
+	"$( argv_has_pair "$CREATE_LOG_GLOB" '--label' '*' && echo 0 || echo 1 )"
 
 section "create-pr.sh — non-draft create: --draft is ABSENT from argv (symmetry with no-body-clobber)"
 CREATE_LOG4="$WORK/pr-create-log4"
@@ -479,7 +631,7 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_LOG=$CREATE_LOG4" \
 	sh "$CREATEPR" --repo octo/repo --head feat/y --base main --title t --body-file "$PRBODY"
 expect_rc "createpr(non-draft): -> exit 0" 0
 check "createpr(non-draft): argv has NO --draft token (an always-draft regression would fail this)" "a --draft token was found even though --draft was never requested" \
-	"$( grep -Fxq -- '--draft' "$CREATE_LOG4" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CREATE_LOG4" '--draft' && echo 1 || echo 0 )"
 
 section "create-pr.sh — gh pr create itself fails"
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_RC=1" \
@@ -523,9 +675,9 @@ check "createpr(adversarial): body-file contents reached gh BYTE-IDENTICAL to th
 	"$(cat "$WORK/body_block_diff" 2>/dev/null)" \
 	"$BODY_DIFF_RC"
 check "createpr(adversarial): argv uses --body-file (the injection-safety mechanism)" "no --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$CREATE_LOG3" && echo 0 || echo 1 )"
+	"$( argv_has_token "$CREATE_LOG3" '--body-file' && echo 0 || echo 1 )"
 check "createpr(adversarial): argv has NO bare --body token" "a bare --body flag was found in argv" \
-	"$( grep -Fxq -- '--body' "$CREATE_LOG3" && echo 1 || echo 0 )"
+	"$( argv_has_token "$CREATE_LOG3" '--body' && echo 1 || echo 0 )"
 
 # ===========================================================================
 # update-pr.sh
@@ -555,6 +707,10 @@ run 1 sh "$UPDATEPR" --repo 'o/..' --pr 1 --title x
 expect_rc "updatepr(malformed --repo): -> exit 2" 2
 stderr_has "updatepr(malformed --repo): diagnostic" "OWNER/REPO"
 
+run 1 sh "$UPDATEPR" --repo a/b/c --pr 1 --title x
+expect_rc "updatepr(triple-segment --repo): -> exit 2 (a GitHub slug is exactly OWNER/REPO)" 2
+stderr_has "updatepr(triple-segment --repo): diagnostic" "OWNER/REPO"
+
 run 1 sh "$UPDATEPR" --bogus
 expect_rc "updatepr(unknown option): -> exit 2" 2
 stderr_has "updatepr(unknown option): diagnostic" "unknown option"
@@ -574,9 +730,9 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/pull/5" 
 expect_rc "updatepr(no-body-clobber): -> exit 0" 0
 stdout_has "updatepr(no-body-clobber): PM_PR_URL" "PM_PR_URL=https://github.com/octo/repo/pull/5"
 check "updatepr(no-body-clobber): argv has NO --body-file token" "a --body-file token was found even though none was given — this would CLOBBER the body" \
-	"$( grep -Fxq -- '--body-file' "$EDIT_LOG1" && echo 1 || echo 0 )"
+	"$( argv_has_token "$EDIT_LOG1" '--body-file' && echo 1 || echo 0 )"
 check "updatepr(no-body-clobber): argv has NO bare --body token either" "a bare --body flag was found" \
-	"$( grep -Fxq -- '--body' "$EDIT_LOG1" && echo 1 || echo 0 )"
+	"$( argv_has_token "$EDIT_LOG1" '--body' && echo 1 || echo 0 )"
 check "updatepr(no-body-clobber): --title passed as one token" "title missing/misplaced in argv" \
 	"$( argv_has_pair "$EDIT_LOG1" '--title' 'renamed' && echo 0 || echo 1 )"
 check "updatepr(no-body-clobber): --base passed as one token" "base missing/misplaced in argv" \
@@ -600,7 +756,7 @@ run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=https://github.com/octo/repo/pull/5" 
 	sh "$UPDATEPR" --repo octo/repo --pr 5 --body-file "$UBODY"
 expect_rc "updatepr(body-replace): -> exit 0" 0
 check "updatepr(body-replace): argv HAS --body-file token" "expected a --body-file token in argv" \
-	"$( grep -Fxq -- '--body-file' "$EDIT_LOG2" && echo 0 || echo 1 )"
+	"$( argv_has_token "$EDIT_LOG2" '--body-file' && echo 0 || echo 1 )"
 check "updatepr(body-replace): body-file contents relayed verbatim" "body content missing" \
 	"$( body_block "$EDIT_LOG2" | grep -Fq -- '## Updated' && echo 0 || echo 1 )"
 
@@ -613,6 +769,114 @@ section "update-pr.sh — successful edit with NO URL returned (still success, c
 run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_URL=" sh "$UPDATEPR" --repo o/r --pr 1 --title x
 expect_rc "updatepr(empty-url): -> exit 0 (the URL is a courtesy, not proof of success)" 0
 stdout_re "updatepr(empty-url): PM_PR_URL is empty" '^PM_PR_URL=$'
+
+section "update-pr.sh — a REPEATED flag accumulates as well as a comma-list does"
+# All four accumulators share ONE split_csv_list, and every case above exercised
+# only the comma-list half of the "repeatable AND/OR comma-separated" contract.
+# An accumulator that OVERWROTE instead of appending would have kept the whole
+# suite green. Ported from the sibling procedure-glab-mr harness.
+EDIT_LOG_REPEAT="$WORK/pr-edit-log-repeated-flags"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_LOG=$EDIT_LOG_REPEAT" \
+	sh "$UPDATEPR" --repo octo/repo --pr 5 \
+		--add-label first --add-label second \
+		--remove-label stale --remove-label old \
+		--add-reviewer alice --add-reviewer bob \
+		--remove-reviewer grace --remove-reviewer heidi
+expect_rc "updatepr(repeated flags): -> exit 0" 0
+check "updatepr(repeated flags): both --add-label values arrived" "a repeated --add-label was lost" \
+	"$( argv_has_pair "$EDIT_LOG_REPEAT" '--add-label' 'first' && argv_has_pair "$EDIT_LOG_REPEAT" '--add-label' 'second' && echo 0 || echo 1 )"
+check "updatepr(repeated flags): both --remove-label values arrived" "a repeated --remove-label was lost" \
+	"$( argv_has_pair "$EDIT_LOG_REPEAT" '--remove-label' 'stale' && argv_has_pair "$EDIT_LOG_REPEAT" '--remove-label' 'old' && echo 0 || echo 1 )"
+check "updatepr(repeated flags): both --add-reviewer values arrived" "a repeated --add-reviewer was lost" \
+	"$( argv_has_pair "$EDIT_LOG_REPEAT" '--add-reviewer' 'alice' && argv_has_pair "$EDIT_LOG_REPEAT" '--add-reviewer' 'bob' && echo 0 || echo 1 )"
+check "updatepr(repeated flags): both --remove-reviewer values arrived" "a repeated --remove-reviewer was lost" \
+	"$( argv_has_pair "$EDIT_LOG_REPEAT" '--remove-reviewer' 'grace' && argv_has_pair "$EDIT_LOG_REPEAT" '--remove-reviewer' 'heidi' && echo 0 || echo 1 )"
+
+section "update-pr.sh — comma-list trimming, empty-skip and the glob guard"
+EDIT_LOG_TRIM="$WORK/pr-edit-log-trim"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_LOG=$EDIT_LOG_TRIM" \
+	sh "$UPDATEPR" --repo octo/repo --pr 5 --add-label "bug, urgent ,," --remove-label '*'
+expect_rc "updatepr(csv trim + glob): -> exit 0" 0
+check "updatepr(csv trim): 'bug' arrived clean" "the first token was mangled" \
+	"$( argv_has_pair "$EDIT_LOG_TRIM" '--add-label' 'bug' && echo 0 || echo 1 )"
+check "updatepr(csv trim): ' urgent ' arrived TRIMMED" "surrounding whitespace was not trimmed" \
+	"$( argv_has_pair "$EDIT_LOG_TRIM" '--add-label' 'urgent' && echo 0 || echo 1 )"
+check "updatepr(csv trim): the UNTRIMMED ' urgent ' never reached argv" "an untrimmed token was passed to gh" \
+	"$( argv_has_pair "$EDIT_LOG_TRIM" '--add-label' ' urgent ' && echo 1 || echo 0 )"
+check "updatepr(csv trim): the empty elements produced NO empty --add-label value" "an empty label value was passed to gh" \
+	"$( argv_has_pair "$EDIT_LOG_TRIM" '--add-label' '' && echo 1 || echo 0 )"
+check "updatepr(glob guard): the literal '*' reached --remove-label (it was NOT filename-expanded)" \
+	"the '*' was glob-expanded against the cwd instead of staying literal" \
+	"$( argv_has_pair "$EDIT_LOG_TRIM" '--remove-label' '*' && echo 0 || echo 1 )"
+
+section "update-pr.sh — a list token with a SPACE stays ONE token; an all-separator value contributes NONE"
+# The same two accumulate() properties as create-pr.sh's section above, asserted
+# through update-pr.sh's own accumulators — they share the lib helper, but only
+# this script's argv proves the newline list survives the --add-label emit loop.
+EDIT_LOG_SPACE="$WORK/pr-edit-log-space-label"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_LOG=$EDIT_LOG_SPACE" \
+	sh "$UPDATEPR" --repo octo/repo --pr 5 --add-label 'needs review' --add-label ready
+expect_rc "updatepr(space in label): -> exit 0" 0
+check "updatepr(space in label): 'needs review' reached gh as ONE argv token" "the label was word-split into separate argv tokens" \
+	"$( argv_has_pair "$EDIT_LOG_SPACE" '--add-label' 'needs review' && echo 0 || echo 1 )"
+check "updatepr(space in label): no bare 'needs' token exists in argv (proof it was NOT split)" "the label was split on its internal space" \
+	"$( argv_has_token "$EDIT_LOG_SPACE" 'needs' && echo 1 || echo 0 )"
+check "updatepr(space in label): the NEXT label in the list still arrived intact" "a space-bearing entry corrupted the rest of the accumulated list" \
+	"$( argv_has_pair "$EDIT_LOG_SPACE" '--add-label' 'ready' && echo 0 || echo 1 )"
+
+# --title carries the edit here: an all-separator --add-label contributes no
+# token, so on its own it would trip the "at least one field to change" guard
+# and this case could never reach gh at all.
+EDIT_LOG_ALLSEP="$WORK/pr-edit-log-all-separator-label"
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_EDIT_LOG=$EDIT_LOG_ALLSEP" \
+	sh "$UPDATEPR" --repo octo/repo --pr 5 --title 'all separators' --add-label ',,'
+expect_rc "updatepr(all-separator label): -> exit 0 (a value yielding no token is not an error)" 0
+check "updatepr(all-separator label): gh pr edit DID run (the argv log is real)" "no edit was logged, so the absence assertion below would be vacuous" \
+	"$( argv_has_pair "$EDIT_LOG_ALLSEP" '--title' 'all separators' && echo 0 || echo 1 )"
+check "updatepr(all-separator label): NO --add-label token reached gh at all" "an empty or dangling --add-label was passed to gh" \
+	"$( argv_has_token "$EDIT_LOG_ALLSEP" '--add-label' && echo 1 || echo 0 )"
+
+section "update-pr.sh — --pr rejects 0 and leading-zero forms (usage error, not a gh failure)"
+run 1 sh "$UPDATEPR" --repo o/r --pr 0 --title x
+expect_rc "updatepr(--pr 0): -> exit 2" 2
+stderr_has "updatepr(--pr 0): diagnostic" "positive integer"
+run 1 sh "$UPDATEPR" --repo o/r --pr 007 --title x
+expect_rc "updatepr(--pr 007): -> exit 2 (007 is not the number GitHub echoes back)" 2
+stderr_has "updatepr(--pr 007): diagnostic" "positive integer"
+
+# ===========================================================================
+# Deploy-shape probes (TEST-003) — the sibling lib resolves in the shape this
+# skill is actually DEPLOYED in, not just the shape the suite runs it in.
+#
+# Every case above invokes a script by its absolute path from the repo checkout,
+# with the harness's own cwd. Neither half of the real deployment is exercised
+# that way: the hub installs this skill as a SYMLINK
+# ($HOME/.claude/skills/procedure-gh-pr -> the repo's skill/), and the agent
+# invokes it from whatever directory it happens to be working in. Each script
+# now derives its lib from $0 by parameter expansion (`${0%/*}/../lib`) with no
+# `cd` normalization — so both claims have to hold, and before the split there
+# was no sibling lib/ to reach and no deployment symlink in the test path.
+# Ported from procedure-jira's run-write-tests.sh P3 probes.
+# ===========================================================================
+section "deploy shape — the lib resolves from an unrelated cwd and through a symlinked skill/"
+
+mkdir -p "$WORK/unrelated"
+DEPLOY_SAVED_CWD=$(pwd)
+cd "$WORK/unrelated" || { printf 'FATAL: cannot cd into the probe dir\n' >&2; exit 1; }
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_URL=https://github.com/octo/repo/pull/301" \
+	sh "$CREATEPR" --repo octo/repo --head feat/cwd-probe --base main --title "cwd probe" --body-file "$PRBODY"
+cd "$DEPLOY_SAVED_CWD" || { printf 'FATAL: cannot restore the original cwd\n' >&2; exit 1; }
+expect_rc "deploy(unrelated cwd): create-pr.sh -> exit 0" 0
+stdout_has "deploy(unrelated cwd): gh-pr-common.sh still resolved (the run reached a real create)" "PM_PR_URL=https://github.com/octo/repo/pull/301"
+
+DEPLOY_SKILL_DIR=$(cd "$SCRIPTS_DIR/.." && pwd)
+ln -s "$DEPLOY_SKILL_DIR" "$WORK/skill-link"
+DEPLOY_CREATEPR_VIA_LINK="$WORK/skill-link/scripts/create-pr.sh"
+
+run 1 "GH_STUB_AUTHED=1" "GH_STUB_PR_LIST=" "GH_STUB_CREATE_URL=https://github.com/octo/repo/pull/302" \
+	sh "$DEPLOY_CREATEPR_VIA_LINK" --repo octo/repo --head feat/symlink-probe --base main --title "symlink probe" --body-file "$PRBODY"
+expect_rc "deploy(symlinked skill/): create-pr.sh -> exit 0" 0
+stdout_has "deploy(symlinked skill/): gh-pr-common.sh still resolved through the link" "PM_PR_URL=https://github.com/octo/repo/pull/302"
 
 # ===========================================================================
 # Summary

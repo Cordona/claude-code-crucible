@@ -65,17 +65,31 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`.
+#
+# Sources `lib/gh-pr-common.sh` from the sibling lib/ directory (resolved from
+#   $0 by parameter expansion — see the preamble below). That file holds the
+#   diagnostics, argument validators, `gh` preconditions and comma-list parsing
+#   shared by all three scripts here; usage() and the `gh` argv builder stay in
+#   THIS file. The lib is skill-local: nothing outside this skill is ever
+#   sourced, so this skill still deploys and runs on its own.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
-
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# Resolve the sibling lib/ from THIS script's own location — see find-pr.sh for
+# why this uses parameter expansion instead of dirname/readlink/realpath.
+case $0 in
+	*/*) PR_LIB_DIR=${0%/*}/../lib ;;
+	*)   PR_LIB_DIR=../lib ;;
+esac
+# GUARD THE SOURCE: a `.` on an unreadable file aborts with a raw `.: not found`
+# that names neither this script nor the path it tried — worst of all via the
+# `*)` bare-name arm above, which resolves against an arbitrary cwd. warn() and
+# error() live in the lib and do not exist yet, so this is the ONE diagnostic in
+# this file that formats itself; everything after this line uses the lib's.
+[ -r "$PR_LIB_DIR/gh-pr-common.sh" ] || { printf '%s: error: cannot locate gh-pr-common.sh at %s (invoke this script by its absolute path)\n' "${0##*/}" "$PR_LIB_DIR" >&2; exit 1; }
+# shellcheck source=SCRIPTDIR/../lib/gh-pr-common.sh
+. "$PR_LIB_DIR/gh-pr-common.sh"
 
 usage() {
 	cat <<EOF
@@ -113,116 +127,17 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the number GitHub would echo back. Both used to slip through and
-# surface as a confusing `gh` failure (exit 1) instead of the usage error
-# (exit 2) they are. Kept byte-identical to procedure-glab-mr's update-mr.sh so
-# the two siblings cannot drift apart.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 # ---------------------------------------------------------------------------
-# List accumulators (POSIX sh has no arrays; a newline-separated string is
-# the portable stand-in). Four accumulators need IDENTICAL comma-split +
-# trim behavior, so that parsing is factored into split_csv_list (prints one
-# trimmed, non-empty token per line) and each accumulator gets its own tiny
-# append function — not a single function keyed by a "which list" string
-# argument, which would be a flag parameter switching behavior in disguise.
+# List accumulators (POSIX sh has no arrays; a newline-separated string is the
+# portable stand-in). The comma-split + trim + append behavior they all share
+# lives in the lib's split_csv_list + accumulate; each list keeps its own
+# variable at the call site below, so no `eval` and no name-keyed dispatcher is
+# ever needed.
 # ---------------------------------------------------------------------------
 ADD_LABELS=""
 REMOVE_LABELS=""
 ADD_REVIEWERS=""
 REMOVE_REVIEWERS=""
-
-# split_csv_list VALUE — print each comma-separated, trimmed, non-empty
-# token in VALUE on its own line (stdout). Read via a heredoc (never piped
-# into a `while read`), so the caller's loop stays in the CURRENT shell and
-# can mutate its own accumulator — piping into the loop would run it in a
-# subshell and lose that mutation on exit.
-split_csv_list() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		printf '%s\n' "$tok"
-	done
-}
-
-add_add_label() {
-	while IFS= read -r tok; do
-		if [ -z "$ADD_LABELS" ]; then ADD_LABELS=$tok
-		else ADD_LABELS="$ADD_LABELS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_remove_label() {
-	while IFS= read -r tok; do
-		if [ -z "$REMOVE_LABELS" ]; then REMOVE_LABELS=$tok
-		else REMOVE_LABELS="$REMOVE_LABELS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_add_reviewer() {
-	while IFS= read -r tok; do
-		if [ -z "$ADD_REVIEWERS" ]; then ADD_REVIEWERS=$tok
-		else ADD_REVIEWERS="$ADD_REVIEWERS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_remove_reviewer() {
-	while IFS= read -r tok; do
-		if [ -z "$REMOVE_REVIEWERS" ]; then REMOVE_REVIEWERS=$tok
-		else REMOVE_REVIEWERS="$REMOVE_REVIEWERS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -240,10 +155,10 @@ while [ $# -gt 0 ]; do
 		--title)             need_arg "$1" "${2:-}"; OPT_TITLE=$2; shift ;;
 		--body-file)          need_arg "$1" "${2:-}"; OPT_BODY_FILE=$2; shift ;;
 		--base)               need_arg "$1" "${2:-}"; OPT_BASE=$2; shift ;;
-		--add-label)          need_arg "$1" "${2:-}"; add_add_label "$2"; shift ;;
-		--remove-label)       need_arg "$1" "${2:-}"; add_remove_label "$2"; shift ;;
-		--add-reviewer)       need_arg "$1" "${2:-}"; add_add_reviewer "$2"; shift ;;
-		--remove-reviewer)    need_arg "$1" "${2:-}"; add_remove_reviewer "$2"; shift ;;
+		--add-label)          need_arg "$1" "${2:-}"; ADD_LABELS=$(accumulate "$ADD_LABELS" "$2"); shift ;;
+		--remove-label)       need_arg "$1" "${2:-}"; REMOVE_LABELS=$(accumulate "$REMOVE_LABELS" "$2"); shift ;;
+		--add-reviewer)       need_arg "$1" "${2:-}"; ADD_REVIEWERS=$(accumulate "$ADD_REVIEWERS" "$2"); shift ;;
+		--remove-reviewer)    need_arg "$1" "${2:-}"; REMOVE_REVIEWERS=$(accumulate "$REMOVE_REVIEWERS" "$2"); shift ;;
 		-h|--help)            usage; exit 0 ;;
 		--)                   shift; break ;;
 		-*)                   usage >&2; error "unknown option: $1"; exit 2 ;;
@@ -278,20 +193,11 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-update-pr.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-update-pr
 
 # ---------------------------------------------------------------------------
 # Build the `gh pr edit` argv as POSITIONAL PARAMETERS — POSIX sh's array
@@ -347,7 +253,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! PR_URL=$("$@" 2>"$TMP_ERR"); then
 	error "gh pr edit failed for PR #$OPT_PR"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

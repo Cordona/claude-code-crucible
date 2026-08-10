@@ -60,17 +60,31 @@
 # the calling agent BEFORE this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`.
+#
+# Sources `lib/gh-pr-common.sh` from the sibling lib/ directory (resolved from
+#   $0 by parameter expansion — see the preamble below). That file holds the
+#   diagnostics, argument validators, `gh` preconditions and comma-list parsing
+#   shared by all three scripts here; usage() and the `gh` argv builder stay in
+#   THIS file. The lib is skill-local: nothing outside this skill is ever
+#   sourced, so this skill still deploys and runs on its own.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
-
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# Resolve the sibling lib/ from THIS script's own location — see find-pr.sh for
+# why this uses parameter expansion instead of dirname/readlink/realpath.
+case $0 in
+	*/*) PR_LIB_DIR=${0%/*}/../lib ;;
+	*)   PR_LIB_DIR=../lib ;;
+esac
+# GUARD THE SOURCE: a `.` on an unreadable file aborts with a raw `.: not found`
+# that names neither this script nor the path it tried — worst of all via the
+# `*)` bare-name arm above, which resolves against an arbitrary cwd. warn() and
+# error() live in the lib and do not exist yet, so this is the ONE diagnostic in
+# this file that formats itself; everything after this line uses the lib's.
+[ -r "$PR_LIB_DIR/gh-pr-common.sh" ] || { printf '%s: error: cannot locate gh-pr-common.sh at %s (invoke this script by its absolute path)\n' "${0##*/}" "$PR_LIB_DIR" >&2; exit 1; }
+# shellcheck source=SCRIPTDIR/../lib/gh-pr-common.sh
+. "$PR_LIB_DIR/gh-pr-common.sh"
 
 usage() {
 	cat <<EOF
@@ -106,86 +120,16 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 # ---------------------------------------------------------------------------
-# List accumulators (POSIX sh has no arrays; a newline-separated string is
-# the portable stand-in).
+# List accumulators (POSIX sh has no arrays; a newline-separated string is the
+# portable stand-in). The comma-split + trim + append behavior they all share
+# lives in the lib's split_csv_list + accumulate; each list keeps its own
+# variable at the call site below, so no `eval` and no name-keyed dispatcher is
+# ever needed.
 # ---------------------------------------------------------------------------
 REVIEWERS=""
 LABELS=""
 ASSIGNEES=""
-
-# split_csv_list VALUE — print each comma-separated, trimmed, non-empty
-# token in VALUE on its own line (stdout). Read via a heredoc (never piped
-# into a `while read`), so the caller's loop stays in the CURRENT shell and
-# can mutate its own accumulator — piping into the loop would run it in a
-# subshell and lose that mutation on exit.
-split_csv_list() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		printf '%s\n' "$tok"
-	done
-}
-
-add_reviewer() {
-	while IFS= read -r tok; do
-		if [ -z "$REVIEWERS" ]; then REVIEWERS=$tok
-		else REVIEWERS="$REVIEWERS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_label() {
-	while IFS= read -r tok; do
-		if [ -z "$LABELS" ]; then LABELS=$tok
-		else LABELS="$LABELS
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
-
-add_assignee() {
-	while IFS= read -r tok; do
-		if [ -z "$ASSIGNEES" ]; then ASSIGNEES=$tok
-		else ASSIGNEES="$ASSIGNEES
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$1")
-EOF
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -205,9 +149,9 @@ while [ $# -gt 0 ]; do
 		--title)     need_arg "$1" "${2:-}"; OPT_TITLE=$2; shift ;;
 		--body-file) need_arg "$1" "${2:-}"; OPT_BODY_FILE=$2; shift ;;
 		--draft)     OPT_DRAFT=1 ;;
-		--reviewer)  need_arg "$1" "${2:-}"; add_reviewer "$2"; shift ;;
-		--label)     need_arg "$1" "${2:-}"; add_label "$2"; shift ;;
-		--assignee)  need_arg "$1" "${2:-}"; add_assignee "$2"; shift ;;
+		--reviewer)  need_arg "$1" "${2:-}"; REVIEWERS=$(accumulate "$REVIEWERS" "$2"); shift ;;
+		--label)     need_arg "$1" "${2:-}"; LABELS=$(accumulate "$LABELS" "$2"); shift ;;
+		--assignee)  need_arg "$1" "${2:-}"; ASSIGNEES=$(accumulate "$ASSIGNEES" "$2"); shift ;;
 		-h|--help)   usage; exit 0 ;;
 		--)          shift; break ;;
 		-*)          usage >&2; error "unknown option: $1"; exit 2 ;;
@@ -237,25 +181,13 @@ fi
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required for the duplicate-PR pre-check)"
-	exit 1
-fi
+require_awk "required for the duplicate-PR pre-check"
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-create-pr.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-create-pr
 
 # ---------------------------------------------------------------------------
 # Idempotency pre-check: refuse to open a duplicate PR for this head.
@@ -263,7 +195,7 @@ trap 'rm -f "$TMP_ERR"' EXIT
 if ! PRECHECK=$(gh pr list --repo "$OPT_REPO" --head "$OPT_HEAD" --state open \
 	--json number,url --jq '.[] | "\(.number)\t\(.url)"' 2>"$TMP_ERR"); then
 	error "failed to check for an existing PR on head '$OPT_HEAD'"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 
@@ -321,7 +253,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! PR_URL=$("$@" 2>"$TMP_ERR"); then
 	error "gh pr create failed"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

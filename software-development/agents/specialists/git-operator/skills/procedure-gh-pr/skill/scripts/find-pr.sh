@@ -31,17 +31,34 @@
 #
 # Portability: POSIX sh only (no bashisms). Read-only: never writes to the
 #   tracker. Every external binary is guarded with `command -v`.
-#   Self-contained: sources nothing.
+#
+# Sources `lib/gh-pr-common.sh` from the sibling lib/ directory (resolved from
+#   $0 by parameter expansion — see the preamble below). That file holds the
+#   diagnostics, argument validators, `gh` preconditions and comma-list parsing
+#   shared by all three scripts here; usage() and the `gh` argv builder stay in
+#   THIS file. The lib is skill-local: nothing outside this skill is ever
+#   sourced, so this skill still deploys and runs on its own.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
-
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# Resolve the sibling lib/ from THIS script's own location, using only shell
+# parameter expansion: `dirname`/`readlink`/`realpath`/`basename` are all
+# deliberately absent from the test harness's isolated PATH toolbox, so any of
+# them here would break the suite (and any minimal deployment) outright. The
+# `*)` arm covers an invocation with no '/' at all (`sh find-pr.sh` from inside
+# scripts/), where $0 is a bare name and the sibling lib is at ../lib.
+case $0 in
+	*/*) PR_LIB_DIR=${0%/*}/../lib ;;
+	*)   PR_LIB_DIR=../lib ;;
+esac
+# GUARD THE SOURCE: a `.` on an unreadable file aborts with a raw `.: not found`
+# that names neither this script nor the path it tried — worst of all via the
+# `*)` bare-name arm above, which resolves against an arbitrary cwd. warn() and
+# error() live in the lib and do not exist yet, so this is the ONE diagnostic in
+# this file that formats itself; everything after this line uses the lib's.
+[ -r "$PR_LIB_DIR/gh-pr-common.sh" ] || { printf '%s: error: cannot locate gh-pr-common.sh at %s (invoke this script by its absolute path)\n' "${0##*/}" "$PR_LIB_DIR" >&2; exit 1; }
+# shellcheck source=SCRIPTDIR/../lib/gh-pr-common.sh
+. "$PR_LIB_DIR/gh-pr-common.sh"
 
 usage() {
 	cat <<EOF
@@ -69,25 +86,6 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_valid_repo_slug VALUE — allow-list: letters, digits, '.', '_', '-', and
-# EXACTLY ONE '/' separating owner/repo, with NO ".." path segment. VALUE is
-# interpolated into `gh` arguments, so this rejects both disallowed
-# characters and dot-segment path traversal (e.g. "o/..", "../r") before
-# that ever happens.
-is_valid_repo_slug() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;
-		..|../*|*/..|*/../*) return 1 ;;
-		*/*/*) return 1 ;;
-		*/*) return 0 ;;
-		*) return 1 ;;
-	esac
-}
-
 OPT_REPO=""
 OPT_HEAD=""
 
@@ -112,30 +110,18 @@ is_valid_repo_slug "$OPT_REPO" || { usage >&2; error "--repo must be OWNER/REPO 
 # ---------------------------------------------------------------------------
 # gh preconditions
 # ---------------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-	error "GitHub CLI (gh) is not installed"
-	warn  "install it from https://cli.github.com/ then re-run"
-	exit 1
-fi
+require_gh
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required to count results)"
-	exit 1
-fi
+require_awk "required to count results"
 
-if ! gh auth status >/dev/null 2>&1; then
-	error "gh is installed but not authenticated"
-	warn  "authenticate with: gh auth login"
-	exit 1
-fi
+require_gh_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-find-pr.err.XXXXXX")
-trap 'rm -f "$TMP_ERR"' EXIT
+init_tmp_err pm-find-pr
 
 if ! RESULT=$(gh pr list --repo "$OPT_REPO" --head "$OPT_HEAD" --state open \
 	--json number,url --jq '.[] | "\(.number)\t\(.url)"' 2>"$TMP_ERR"); then
 	error "gh pr list failed"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 

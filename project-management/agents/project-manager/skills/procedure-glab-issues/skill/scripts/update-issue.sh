@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck source-path=SCRIPTDIR
 #
 # update-issue.sh — edit fields of an existing GitLab issue via
 #                    `glab issue update`, with the body (when changed at all)
@@ -149,28 +150,40 @@
 # this script (see this skill's SKILL.md).
 #
 # Portability: POSIX sh only (no bashisms). Every external binary is guarded
-#   with `command -v`. Self-contained: sources nothing.
+#   with `command -v`. Sources this skill's own lib/ (see the
+#   PM_LIB_DIR preamble below); depends on nothing outside this skill directory.
 #
 set -eu
 
-LC_ALL=C
-export LC_ALL
+# Locate this skill's lib/ RELATIVE TO THIS SCRIPT, using only parameter
+# expansion. Never dirname/readlink/realpath/basename: the test harness runs
+# every command under a minimal PATH toolbox that deliberately excludes all
+# four, so any of them would break the whole suite. The `*)` branch is
+# unreachable in practice (the harness and SKILL.md always invoke these scripts
+# by an absolute path) but exists so `set -u` can never see an unset
+# PM_LIB_DIR.
+case "$0" in
+	*/*) PM_LIB_DIR=${0%/*}/../lib ;;
+	*)   PM_LIB_DIR=../lib ;;
+esac
 
-# Pin glab's own optional output/behavior so stdout stays parseable and this
-# non-interactive script can never block on a prompt. NOTE: unlike
-# `glab issue create`, `glab issue update` has NO `--yes` flag at all (verified
-# against glab 1.112.0's --help), so GLAB_NO_PROMPT is the only prompt
-# suppression available here — passing `--yes` would make glab reject the whole
-# invocation as an unknown flag.
-GLAB_NO_PROMPT=true
-GLAB_CHECK_UPDATE=false
-GLAB_SHOW_WHATS_NEW=false
-export GLAB_NO_PROMPT GLAB_CHECK_UPDATE GLAB_SHOW_WHATS_NEW
+for _pm_lib in pm-diag.sh pm-glab-env.sh pm-validate.sh pm-glab-preconditions.sh pm-glab-url.sh pm-lists.sh; do
+	[ -r "$PM_LIB_DIR/$_pm_lib" ] || { printf '%s: error: cannot locate %s at %s (invoke this script by its absolute path)\n' "${0##*/}" "$_pm_lib" "$PM_LIB_DIR" >&2; exit 1; }
+done
+unset _pm_lib
 
-PROG=${0##*/}
-
-warn()  { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
-error() { printf '%s: error: %s\n'   "$PROG" "$*" >&2; }
+# shellcheck source=../lib/pm-diag.sh
+. "$PM_LIB_DIR/pm-diag.sh"
+# shellcheck source=../lib/pm-glab-env.sh
+. "$PM_LIB_DIR/pm-glab-env.sh"
+# shellcheck source=../lib/pm-validate.sh
+. "$PM_LIB_DIR/pm-validate.sh"
+# shellcheck source=../lib/pm-glab-preconditions.sh
+. "$PM_LIB_DIR/pm-glab-preconditions.sh"
+# shellcheck source=../lib/pm-glab-url.sh
+. "$PM_LIB_DIR/pm-glab-url.sh"
+# shellcheck source=../lib/pm-lists.sh
+. "$PM_LIB_DIR/pm-lists.sh"
 
 usage() {
 	cat <<EOF
@@ -214,142 +227,15 @@ Exit codes:
 EOF
 }
 
-need_arg() {
-	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
-}
-
-# is_positive_int VALUE — 0 only for a canonical positive decimal integer.
-# Digits-only is NOT enough: a bare '0' is not positive, and a leading-zero form
-# ('007') is not the iid GitLab would echo back. Both used to slip through and
-# surface as a confusing `glab` failure (exit 1) instead of the usage error
-# (exit 2) they are.
-is_positive_int() {
-	case "$1" in
-		''|*[!0-9]*) return 1 ;;   # empty or a non-digit
-		0*) return 1 ;;            # a bare '0', and any leading-zero form
-		*) return 0 ;;
-	esac
-}
-
-# is_valid_gitlab_project_path VALUE — allow-list: letters, digits, '.', '_',
-# '-' per segment, and ONE OR MORE '/'-separated segments, with no empty
-# segment and no '.'/'..' path segment.
-#
-# WHY this is NOT procedure-gh-issues' is_valid_repo_slug: a GitHub slug is
-# always exactly OWNER/REPO (that validator hard-rejects a second '/'), but
-# GitLab supports nested groups, so a real project path can be
-# "group/subgroup/project" or deeper. Rejecting the extra segments would make
-# every subgroup project unreachable. A LONE segment with no '/' at all is
-# still rejected: a bare project name is never a valid full path.
-is_valid_gitlab_project_path() {
-	case "$1" in
-		*[!A-Za-z0-9._/-]*) return 1 ;;   # character allow-list
-		*//*) return 1 ;;                 # empty segment
-		/*|*/) return 1 ;;                # leading / trailing slash
-		..|../*|*/..|*/../*) return 1 ;;  # parent-dir traversal segment
-		.|./*|*/.|*/./*) return 1 ;;      # current-dir segment
-		*/*) return 0 ;;                  # at least one separator: accept
-		*) return 1 ;;                    # a single bare segment: reject
-	esac
-}
-
-# is_valid_confirmed_host VALUE — allow-list for the host the ACCOUNT GATE
-# confirmed, before it becomes this process's GITLAB_HOST: letters, digits, '.',
-# '-', '_' and an optional ':port'. Rejects whitespace, shell metacharacters, a
-# leading '-', and any empty label. Spelled the way `glab auth status` reports a
-# host — and the way manage_glab_accounts.sh's own is_valid_hostname accepts one
-# — so the gate's answer can be passed straight through.
-#
-# A SCHEME-QUALIFIED value ("https://gitlab.com") is rejected on purpose: glab
-# accepts both spellings, so allowing them here would let two different strings
-# name one host, and the whole point of this flag is a single unambiguous target
-# the caller and this script agree on.
-is_valid_confirmed_host() {
-	case "$1" in
-		'') return 1 ;;
-		*[!A-Za-z0-9._:-]*) return 1 ;;
-		-*) return 1 ;;
-		.*|*.|*..*) return 1 ;;
-		*) return 0 ;;
-	esac
-}
-
-# extract_issue_url_candidates TEXT REPO — print every DISTINCT
-# whitespace-delimited token in TEXT that is an issue URL OF THIS PROJECT, one per
-# line, in first-appearance order. glab's update output decoration is not a
-# documented contract, so the URL is located by SHAPE rather than by position. awk
-# always exits 0, so this never trips `set -e`.
-#
-# WHY BOTH path segments are accepted: GitLab migrated issue URLs to the
-# work-items path, and current `glab issue update` prints
-# ".../-/work_items/<iid>" — live-confirmed against a real project, where
-# matching only "/issues/" left PM_ISSUE_URL empty despite glab printing a
-# perfectly good URL. The classic "/issues/<iid>" shape is kept rather than
-# swapped out, because an older self-managed instance or a future glab talking to
-# a differently-configured server may still emit it; accepting either is strictly
-# safer than trading one hard assumption for another.
-#
-# THE ONE PLACE THE DEDUP/AMBIGUITY RATIONALE IS WRITTEN OUT — every call site
-# below points here instead of restating it:
-#   * glab prints the issue TITLE on the line BEFORE the URL, so a title that
-#     merely LOOKS like an issue URL used to be picked up instead of the real one:
-#     the first shape match in the whole captured output won, and PM_ISSUE_URL then
-#     pointed at something else entirely.
-#   * So a candidate must be a URL of the CONFIRMED --repo project, ALL distinct
-#     candidates are reported, and the dedup keeps the FIRST occurrence of each
-#     distinct value while dropping every later repeat.
-#   * Therefore the output holds AT MOST ONE LINE PER DISTINCT URL. The caller
-#     never chooses between occurrences: it either takes the single survivor, or
-#     sees 2+ — which can only mean genuinely different URLs, i.e. ambiguity or a
-#     spoof — and fails closed. Identical repeats collapse to one candidate, so a
-#     title quoting the real URL verbatim is harmless.
-#
-# HOW THE PROJECT MATCH IS ANCHORED (SEC-002): the repo path must follow the HOST
-# DIRECTLY. An unanchored `index($i, "/" repo "/")` substring test accepted the
-# project path at ANY depth under ANY host, so
-# "https://attacker.example/x/<repo>/-/issues/5" qualified — the ambiguity guard
-# usually caught it (a genuine URL is normally present too, making 2+
-# candidates), but the filter must not lean on that backstop alone. So: scheme +
-# host are stripped, the remainder's LITERAL prefix must be "<repo>/", and what
-# follows must be one of GitLab's own issue routes. The prefix test is a literal
-# string compare, never a regex, so a '.' in a project path cannot act as a
-# wildcard and no metacharacter escaping is needed.
-extract_issue_url_candidates() {
-	printf '%s\n' "$1" | awk -v repo="$2" '
-		{
-			for (i = 1; i <= NF; i++) {
-				tok = $i
-				if (tok !~ /^https?:\/\/[^\/]+\//) continue
-				path = tok
-				sub(/^https?:\/\/[^\/]+\//, "", path)
-				if (substr(path, 1, length(repo) + 1) != repo "/") continue
-				rest = substr(path, length(repo) + 2)
-				if (rest !~ /^(-\/)?(issues|work_items)\/[0-9]+$/) continue
-				if (tok in seen) continue
-				seen[tok] = 1
-				print tok
-			}
-		}
-	'
-}
-
-# count_lines TEXT — number of lines in TEXT, 0 for the empty string. awk's
-# END{print NR} counts RECORDS, so a final line with no trailing newline still
-# counts (unlike `wc -l`, which counts newline BYTES), and it always exits 0.
-count_lines() {
-	[ -n "$1" ] || { printf '0\n'; return 0; }
-	printf '%s\n' "$1" | awk 'END { print NR }'
-}
-
 # ---------------------------------------------------------------------------
 # List accumulators (POSIX sh has no arrays; a newline-separated string is the
 # portable stand-in). All four need IDENTICAL comma-split + trim + append
-# behavior, so the whole job is TWO shared helpers — split_csv_list (tokenize) and
-# accumulate (append, VALUE-RETURNING) — rather than four
-# byte-identical-except-for-the-variable-name append functions.
+# behavior, so the whole job is TWO shared helpers in lib/pm-lists.sh —
+# split_csv_list (tokenize) and csv_accumulate (append, VALUE-RETURNING) — rather
+# than four byte-identical-except-for-the-variable-name append functions.
 #
-# `accumulate` RETURNS the new list on stdout instead of mutating a global chosen
-# by a name argument: `ADD_LABELS=$(accumulate "$ADD_LABELS" "$2")` keeps the
+# csv_accumulate RETURNS the new list on stdout instead of mutating a global
+# chosen by a name argument: `ADD_LABELS=$(csv_accumulate "$ADD_LABELS" "$2")` keeps the
 # target variable at the call site, where the reader can see it, and needs no
 # `eval` and no string-keyed dispatcher — the pattern this codebase's own
 # conventions reject.
@@ -358,47 +244,6 @@ ADD_LABELS=""
 REMOVE_LABELS=""
 ADD_ASSIGNEES=""
 REMOVE_ASSIGNEES=""
-
-# split_csv_list VALUE — print each comma-separated, trimmed, non-empty token in
-# VALUE on its own line (stdout).
-#
-# `accumulate` below reads this through a HEREDOC, never by piping into its
-# `while read`: the loop must stay in accumulate's OWN shell so its `acc`
-# variable survives to the final printf. Piping would put the loop in a further
-# subshell and lose every appended token.
-split_csv_list() {
-	value=$1
-	old_ifs=$IFS
-	IFS=','
-	set -f
-	# shellcheck disable=SC2086  # deliberate split of a comma-list on IFS=','; -f (above) blocks globbing
-	set -- $value
-	set +f
-	IFS=$old_ifs
-	for tok in "$@"; do
-		tok=$(printf '%s' "$tok" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-		[ -n "$tok" ] || continue
-		printf '%s\n' "$tok"
-	done
-}
-
-# accumulate CURRENT VALUE — print CURRENT with every comma-separated token of
-# VALUE appended as its own line. CURRENT may be empty (then the result is just
-# the new tokens). VALUE contributing no usable token leaves CURRENT unchanged,
-# so a `--add-label ,,` cannot introduce a blank entry.
-accumulate() {
-	acc=$1
-	while IFS= read -r tok; do
-		[ -n "$tok" ] || continue
-		if [ -z "$acc" ]; then acc=$tok
-		else acc="$acc
-$tok"
-		fi
-	done <<EOF
-$(split_csv_list "$2")
-EOF
-	printf '%s' "$acc"
-}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -417,10 +262,10 @@ while [ $# -gt 0 ]; do
 		--issue)            need_arg "$1" "${2:-}"; OPT_ISSUE=$2; shift ;;
 		--title)            need_arg "$1" "${2:-}"; OPT_TITLE=$2; shift ;;
 		--body-file)        need_arg "$1" "${2:-}"; OPT_BODY_FILE=$2; shift ;;
-		--add-label)        need_arg "$1" "${2:-}"; ADD_LABELS=$(accumulate "$ADD_LABELS" "$2"); shift ;;
-		--remove-label)     need_arg "$1" "${2:-}"; REMOVE_LABELS=$(accumulate "$REMOVE_LABELS" "$2"); shift ;;
-		--add-assignee)     need_arg "$1" "${2:-}"; ADD_ASSIGNEES=$(accumulate "$ADD_ASSIGNEES" "$2"); shift ;;
-		--remove-assignee)  need_arg "$1" "${2:-}"; REMOVE_ASSIGNEES=$(accumulate "$REMOVE_ASSIGNEES" "$2"); shift ;;
+		--add-label)        need_arg "$1" "${2:-}"; ADD_LABELS=$(csv_accumulate "$ADD_LABELS" "$2"); shift ;;
+		--remove-label)     need_arg "$1" "${2:-}"; REMOVE_LABELS=$(csv_accumulate "$REMOVE_LABELS" "$2"); shift ;;
+		--add-assignee)     need_arg "$1" "${2:-}"; ADD_ASSIGNEES=$(csv_accumulate "$ADD_ASSIGNEES" "$2"); shift ;;
+		--remove-assignee)  need_arg "$1" "${2:-}"; REMOVE_ASSIGNEES=$(csv_accumulate "$REMOVE_ASSIGNEES" "$2"); shift ;;
 		--milestone)        need_arg "$1" "${2:-}"; OPT_MILESTONE=$2; shift ;;
 		-h|--help)          usage; exit 0 ;;
 		--)                 shift; break ;;
@@ -493,40 +338,18 @@ is_valid_confirmed_host "$OPT_CONFIRMED_HOST" || { usage >&2; error "--confirmed
 # child of THIS process inherits it; nothing outside this process is touched.
 # This must happen before the auth precondition below, so even that check asks
 # about the host the caller confirmed. See "HOST PINNING" in this file's header.
-GITLAB_HOST=$OPT_CONFIRMED_HOST
-export GITLAB_HOST
+pm_pin_gitlab_host "$OPT_CONFIRMED_HOST"
 
 # ---------------------------------------------------------------------------
 # glab preconditions
 # ---------------------------------------------------------------------------
-if ! command -v glab >/dev/null 2>&1; then
-	error "GitLab CLI (glab) is not installed"
-	warn  "install it from https://gitlab.com/gitlab-org/cli then re-run"
-	exit 1
-fi
+require_glab_cli
 
-if ! command -v awk >/dev/null 2>&1; then
-	error "awk is not installed (required to read the issue URL back)"
-	exit 1
-fi
+require_awk "read the issue URL back"
 
-# The bare form checks only the current context's instance, so --all is the
-# fallback before declaring glab unauthenticated (same as procedure-glab-mr).
-if ! glab auth status >/dev/null 2>&1 && ! glab auth status --all >/dev/null 2>&1; then
-	error "glab is installed but not authenticated"
-	warn  "authenticate with: glab auth login"
-	exit 1
-fi
+require_glab_auth
 
-TMP_ERR=$(mktemp "${TMPDIR:-/tmp}/pm-glab-update-issue.err.XXXXXX")
-# TWO traps, not one combined `EXIT INT TERM`: a Ctrl-C during a slow `glab`
-# call would otherwise leak the temp file, but a combined handler would clean up
-# and then RESUME the interrupted command's error path, which goes on to read the
-# file it just unlinked. The INT/TERM handler therefore terminates the script
-# itself (130 = SIGINT's conventional status). The EXIT trap still runs after it,
-# and a second `rm -f` on an already-removed path is a no-op.
-trap 'rm -f "$TMP_ERR"' EXIT
-trap 'rm -f "$TMP_ERR"; exit 130' INT TERM
+init_tmp_err pm-glab-update-issue
 
 # ---------------------------------------------------------------------------
 # Build the `glab issue update` argv as POSITIONAL PARAMETERS — POSIX sh's array
@@ -589,7 +412,7 @@ fi
 # ---------------------------------------------------------------------------
 if ! UPDATE_OUT=$("$@" 2>"$TMP_ERR"); then
 	error "glab issue update failed for issue #$OPT_ISSUE"
-	sed 's/^/  /' "$TMP_ERR" >&2
+	emit_captured_stderr
 	exit 1
 fi
 
@@ -600,7 +423,7 @@ fi
 # URL are seen together — two distinct candidates — and fail closed. An absent URL
 # is NOT a failure (courtesy contract): the key prints empty.
 ISSUE_URL_CANDIDATES=$(extract_issue_url_candidates \
-	"$(printf '%s\n%s\n' "$UPDATE_OUT" "$(cat "$TMP_ERR")")" "$OPT_REPO")
+	"$(printf '%s\n%s\n' "$UPDATE_OUT" "$(cat "$TMP_ERR")")" "$OPT_REPO" "$OPT_CONFIRMED_HOST")
 
 # FAIL CLOSED on ambiguity — see extract_issue_url_candidates's header: at most one
 # candidate per distinct URL, so 2+ means genuine ambiguity or a spoof. THE
@@ -616,6 +439,8 @@ ISSUE_URL_CANDIDATES=$(extract_issue_url_candidates \
 # project-matching URL for some OTHER issue (a URL-shaped title naming a different
 # iid) therefore cannot be relayed as this issue's URL. A mismatch is treated
 # exactly like "no candidate found": empty key + warn, still exit 0.
+# pm_url_matching_iid (lib/pm-glab-url.sh) owns that comparison, and comment.sh
+# calls the same helper — the two used to hand-roll it and had already drifted.
 ISSUE_URL=""
 if [ "$(count_lines "$ISSUE_URL_CANDIDATES")" -gt 1 ]; then
 	warn "glab issue update printed MORE THAN ONE distinct issue URL for project '$OPT_REPO'; refusing to guess, so PM_ISSUE_URL is left empty — resolve it with find-duplicate.sh (an issue TITLE that looks like a URL produces this)"
@@ -623,11 +448,9 @@ if [ "$(count_lines "$ISSUE_URL_CANDIDATES")" -gt 1 ]; then
 elif [ -n "$ISSUE_URL_CANDIDATES" ]; then
 	# The one surviving candidate — the guard above rejected 2+, so this is the
 	# whole value (see extract_issue_url_candidates's header).
-	CANDIDATE_IID=${ISSUE_URL_CANDIDATES##*/}
-	if [ "$CANDIDATE_IID" = "$OPT_ISSUE" ]; then
-		ISSUE_URL=$ISSUE_URL_CANDIDATES
-	else
-		warn "glab issue update printed an issue URL for iid #$CANDIDATE_IID, not the issue that was updated (#$OPT_ISSUE), so PM_ISSUE_URL is left empty — resolve it with find-duplicate.sh (an issue TITLE that looks like a URL produces this)"
+	ISSUE_URL=$(pm_url_matching_iid "$ISSUE_URL_CANDIDATES" "$OPT_ISSUE")
+	if [ -z "$ISSUE_URL" ]; then
+		warn "glab issue update printed an issue URL for iid #$(pm_url_iid "$ISSUE_URL_CANDIDATES"), not the issue that was updated (#$OPT_ISSUE), so PM_ISSUE_URL is left empty — resolve it with find-duplicate.sh (an issue TITLE that looks like a URL produces this)"
 		printf '%s\n' "$ISSUE_URL_CANDIDATES" | sed 's/^/  /' >&2
 	fi
 fi
