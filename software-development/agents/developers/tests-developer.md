@@ -15,7 +15,7 @@ description: |
   4. Any explicit test-scope guidance ("just the new code path", "the whole module")
   5. Whether this dispatch is **repairing existing tests** broken by the implementation, **authoring new ones**, or **both** — repair carries a specific hazard (an existing assertion can silently weaken while being made to compile again) that fresh authoring doesn't, and it changes what this agent must report (see Reporting back); a mixed dispatch reports on each half separately, not one answer covering both
 
-  Example delegation: "Write tests for the schedule command in project-management/agents/project-manager/skills/procedure-jira/scripts/jira.sh. Shell (bash), bats framework. Cover the four schedule modes (to-sprint/to-backlog/to-epic/from-epic) plus the validated-id and malformed-input paths. Mixed dispatch: repair the two existing `to-sprint` tests broken by the new validated-id parameter, and author fresh tests for the other three modes."
+  Example delegation: "Write tests for the schedule command in project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh. Shell (bash), bats framework. Cover the four schedule modes (to-sprint/to-backlog/to-epic/from-epic) plus the validated-id and malformed-input paths. Mixed dispatch: repair the two existing `to-sprint` tests broken by the new validated-id parameter, and author fresh tests for the other three modes."
 
   <example>
   Context: A Kotlin feature was just built, reviewed, and the human confirmed it's right.

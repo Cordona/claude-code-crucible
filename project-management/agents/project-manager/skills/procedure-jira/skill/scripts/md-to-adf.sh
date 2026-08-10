@@ -10,6 +10,12 @@
 #   #  .. ######        -> heading (level 1-6)
 #   - x  / * x            -> a run of consecutive bullets -> ONE bulletList
 #   1. x                   -> a run of consecutive numbered lines -> ONE orderedList
+#   - [ ] x / - [x] x       -> a run of consecutive GitHub-style checkbox lines
+#     (also * [ ] / * [x])     -> ONE taskList of taskItems (Jira's NATIVE
+#                               checkbox, not a decorated bullet). See the
+#                               "Task lists" design note below for the exact
+#                               node shapes and the three ways they differ
+#                               from bulletList/orderedList.
 #     (NESTED lists: increasing leading-whitespace opens a deeper level; a
 #      listItem's content is [paragraph, <nested list>] — the nested list is
 #      a SIBLING of the paragraph, never its own top-level block. See the
@@ -159,6 +165,14 @@
 #   7. blockquote/panel/table-cell wrap block nodes, never raw text -> every
 #      buffered child is always a full {type:"paragraph",...} object; text
 #      nodes are only ever placed INSIDE a paragraph's content array.
+#   8. taskList/taskItem need a localId, and taskItem's state must be
+#      exactly "TODO" or "DONE" -> every localId comes from
+#      next_task_local_id (an internal counter, never input-derived); the
+#      state is collapsed to the two-value enum inside the SAME jq
+#      expression that emits it (see append_list_item), so no caller can
+#      put a third value there. taskItem also wraps NOTHING: its content
+#      is inline nodes directly, so a listItem-shaped paragraph wrapper
+#      there is itself a 400 (see the "Task lists" design note below).
 #
 # Design notes (POSIX sh has no arrays):
 #   Every node accumulates as ONE COMPACT JSON OBJECT PER LINE in a temp
@@ -491,13 +505,141 @@ emit_code_block() {
 		|| { error "internal jq failure (code block assembly)"; exit 1; }
 }
 
-# append_list_item TEXT — adds one listItem (wrapping a paragraph) to the
-# CURRENTLY OPEN (innermost) list level's buffer file.
+# ---------------------------------------------------------------------------
+# Task lists (GitHub-style checkboxes) — the THIRD list-stack type, alongside
+# bulletList and orderedList.
+#
+# `- [ ] text` / `- [x] text` / `- [X] text` (and the `* ` marker variants)
+# are Jira's NATIVE checkbox construct, not decorated bullets, so they get
+# their own stack type rather than a special case inside the bullet branch.
+# The ADF shapes (per Atlassian's published ADF JSON schema):
+#
+#   {"type":"taskList","attrs":{"localId":"..."},
+#    "content":[ <taskItem>, (<taskItem>|<taskList>)... ]}
+#   {"type":"taskItem","attrs":{"localId":"...","state":"TODO"|"DONE"},
+#    "content":[ <inline nodes> ]}
+#
+# THREE ways these differ from bulletList/orderedList. Each is a Jira-400
+# landmine of its own (see landmine #8), so none of them is optional:
+#   a. taskItem's content is the INLINE nodes DIRECTLY (text + marks), NOT
+#      wrapped in a paragraph the way listItem wraps its content — taskItem
+#      accepts inline children only and rejects a block node outright.
+#      `content` is not a required key on taskItem at all, so an EMPTY item
+#      omits it entirely, the same "omit it, never content:[]" rule this
+#      script already applies to the empty paragraph.
+#   b. BOTH nodes require a `localId` (see next_task_local_id).
+#   c. A NESTED taskList is a SIBLING of the taskItems inside the PARENT
+#      taskList's content array — it is NOT folded into a taskItem the way a
+#      nested bulletList is folded into a listItem, because (a) leaves
+#      taskItem unable to hold a block node at all. The CONVERSE nesting is
+#      legal and needs no special case: listItem's content DOES accept a
+#      taskList, so a checkbox list indented under a plain bullet folds in
+#      exactly like any other nested list (see list_pop_and_fold).
+#
+# The one shape ADF cannot express is a bulletList/orderedList nested INSIDE
+# a taskList (taskList accepts taskItem/taskList children and nothing else).
+# A plain bullet indented under a checkbox therefore CLOSES the task list and
+# continues at the nearest level that CAN parent it — see the guard loop in
+# list_open_item. No content is ever dropped; only the visual nesting of that
+# one shape is, which beats emitting a document Jira rejects. The SAME
+# closing happens when a plain bullet merely REPLACES a checkbox at the same
+# indent while an outer checkbox list is still open (`- [ ] a` / `  - [ ] b` /
+# `  - c`): the plain bullet cannot live inside that outer taskList either,
+# so every enclosing taskList closes and the bullet continues at the nearest
+# non-task level (top level, in that example).
+#
+# Extra whitespace after the bullet marker is part of the marker, not the
+# item: `-  [ ] x` is the same checkbox as `- [ ] x`, and `-  x` the same
+# bullet as `- x` (CommonMark reads the marker's trailing whitespace run as
+# marker, not content). The marker is stripped ONCE, before the checkbox
+# classifier runs, so both list kinds normalize identically.
+#
+# NOT recognized (documented limitation, not a defect): an ORDERED checkbox
+# (`1. [ ] x`). The ordered-list classifier runs first and claims the line, so
+# `[ ]` stays literal text inside an orderedList item — exactly as it did
+# before task lists existed.
+# ---------------------------------------------------------------------------
+
+# next_task_local_id PREFIX — sets $TASK_LOCAL_ID to the next document-unique
+# id, "PREFIX-N". ADF requires a localId to be unique WITHIN the document,
+# never globally, so ONE monotonic counter per invocation is sufficient and
+# correct — no UUID generation is needed (and none is available: neither
+# uuidgen nor openssl is in this script's tool set, which is deliberately
+# limited to the coreutils the test harness's isolated PATH toolbox provides).
+# PREFIX is cosmetic, there only to make a document's JSON readable to a
+# human; uniqueness comes from the shared counter alone, so two different
+# prefixes drawing from it can never collide.
+#
+# Sets a GLOBAL rather than printing (the same shape as leading_ws_count and
+# its $INDENT) DELIBERATELY: a `$(next_task_local_id ...)` command
+# substitution would run the increment in a SUBSHELL, the parent's counter
+# would never advance, and every localId in the document would come out as
+# "PREFIX-1" — silently invalid, since the whole point of the value is
+# uniqueness.
+TASK_LOCAL_ID_SEQ=0
+TASK_LOCAL_ID=""
+next_task_local_id() {
+	ntli_prefix=$1
+	TASK_LOCAL_ID_SEQ=$((TASK_LOCAL_ID_SEQ + 1))
+	TASK_LOCAL_ID="${ntli_prefix}-${TASK_LOCAL_ID_SEQ}"
+}
+
+# parse_task_item ITEM_TEXT — ITEM_TEXT is a bullet line's text with its `- `/
+# `* ` marker ALREADY stripped. Returns 0 and sets $TASK_ITEM_STATE
+# ("TODO"/"DONE") + $TASK_ITEM_TEXT (the text after the checkbox) iff
+# ITEM_TEXT opens with a GitHub-style checkbox; returns 1 and touches nothing
+# otherwise, so the caller falls through to the ordinary bullet branch.
+#
+# The state is produced ONLY by these fixed case arms — never a string
+# derived from the input — the same fixed-enum discipline detect_panel_type
+# applies to panelType (landmine #5/#8).
+#
+# The bare `[ ]`/`[x]`/`[X]` arms exist because $trimmed has already had its
+# trailing whitespace stripped, so a checkbox line with no text is `- [ ]`,
+# not `- [ ] `; without them it would degrade to a bullet reading "[ ]".
+TASK_ITEM_STATE=""
+TASK_ITEM_TEXT=""
+parse_task_item() {
+	pti_text=$1
+	case "$pti_text" in
+		'[ ] '*)     TASK_ITEM_STATE="TODO"; TASK_ITEM_TEXT=${pti_text#'[ ] '} ;;
+		'[x] '*)     TASK_ITEM_STATE="DONE"; TASK_ITEM_TEXT=${pti_text#'[x] '} ;;
+		'[X] '*)     TASK_ITEM_STATE="DONE"; TASK_ITEM_TEXT=${pti_text#'[X] '} ;;
+		'[ ]')       TASK_ITEM_STATE="TODO"; TASK_ITEM_TEXT="" ;;
+		'[x]'|'[X]') TASK_ITEM_STATE="DONE"; TASK_ITEM_TEXT="" ;;
+		*) return 1 ;;
+	esac
+}
+
+# append_list_item TEXT [STATE] — adds one item to the CURRENTLY OPEN
+# (innermost) list level's buffer file, shaped by that level's TYPE:
+#   * bulletList/orderedList -> a listItem WRAPPING a paragraph;
+#   * taskList               -> a taskItem carrying STATE, whose content is
+#                               the inline nodes DIRECTLY (no paragraph — see
+#                               the "Task lists" note above, point (a)).
+# STATE is defaulted and then collapsed to the two-value ADF enum inside the
+# same jq expression that emits it, so the attribute is correct by
+# construction no matter what a caller passes.
 append_list_item() {
-	item_text=$1
-	inline_content=$(tokenize_inline "$item_text") || return 1
-	jq -n -c --argjson content "$inline_content" \
-		'{type:"listItem", content:[{type:"paragraph", content:$content}]}' >>"$(list_top_buffer)"
+	ali_item_text=$1
+	ali_state=${2:-}
+	ali_inline_content=$(tokenize_inline "$ali_item_text") || return 1
+	if [ "$(list_top_type)" = "taskList" ]; then
+		next_task_local_id taskItem
+		# shellcheck disable=SC2016  # single-quoted: $localId/$state/$content are jq syntax, not shell
+		jq -n -c --arg localId "$TASK_LOCAL_ID" --arg state "$ali_state" \
+			--argjson content "$ali_inline_content" \
+			'{type:"taskItem",
+			  attrs:{localId:$localId, state:(if $state == "DONE" then "DONE" else "TODO" end)}}
+			 + (if ($content | length) == 0 then {} else {content:$content} end)' \
+			>>"$(list_top_buffer)" \
+			|| { error "internal jq failure (task item assembly)"; exit 1; }
+	else
+		jq -n -c --argjson content "$ali_inline_content" \
+			'{type:"listItem", content:[{type:"paragraph", content:$content}]}' \
+			>>"$(list_top_buffer)" \
+			|| { error "internal jq failure (list item assembly)"; exit 1; }
+	fi
 }
 
 # ---------------------------------------------------------------------------
@@ -505,7 +647,7 @@ append_list_item() {
 # as one '|'-delimited string, innermost level last: "indent:type:buffer".
 #
 # Indent is always a plain decimal integer and type is
-# always exactly "bulletList"/"orderedList" — both are internally
+# always exactly "bulletList"/"orderedList"/"taskList" — both are internally
 # generated, fixed-shape, colon-free, pipe-free. buffer is the one
 # variable-content field: an `mktemp` path under $TMPDIR, which is
 # EXTERNALLY supplied and could in principle contain a ':' or '|'.
@@ -586,15 +728,42 @@ fold_block_into_last_item() {
 }
 
 # list_pop_and_fold — assembles the current top level into one compact
-# bulletList/orderedList block, pops it, and either folds it into the new
-# top's last item (nested case) or appends it straight to $BLOCKS_FILE
-# (the level was the outermost).
+# bulletList/orderedList/taskList block, pops it, and either folds it into the
+# new top's last item (nested case), appends it as a SIBLING of the new top's
+# items (nested-inside-a-taskList case — see the "Task lists" note, point c),
+# or appends it straight to $BLOCKS_FILE (the level was the outermost).
 list_pop_and_fold() {
 	fold_type=$(list_top_type)
 	fold_buffer=$(list_top_buffer)
-	ensure_nonempty_buffer "$fold_buffer" '{"type":"listItem","content":[{"type":"paragraph"}]}'
-	fold_block=$(jq -s -c --arg type "$fold_type" '{type:$type, content:.}' "$fold_buffer") \
-		|| { error "internal jq failure (list assembly)"; exit 1; }
+	if [ "$fold_type" = "taskList" ]; then
+		# The empty-buffer fallback (landmine #6) must be a real taskItem,
+		# not a listItem — same "shaped for what it actually assembles"
+		# rule ensure_nonempty_buffer's own note states. The ONLY value
+		# interpolated into this JSON literal is our own counter-derived
+		# localId, never anything input-derived.
+		#
+		# The `-s` test in front is not a duplicate of the one inside
+		# ensure_nonempty_buffer: building this fallback has a SIDE EFFECT
+		# (it consumes a localId), and a shell argument is evaluated
+		# eagerly, so minting it unconditionally would leave a gap in every
+		# document's id sequence for a fallback that is never used. The
+		# fallback itself stays defensive — a level always receives its
+		# first item at push time, so this is unreachable today.
+		if [ ! -s "$fold_buffer" ]; then
+			next_task_local_id taskItem
+			ensure_nonempty_buffer "$fold_buffer" \
+				"{\"type\":\"taskItem\",\"attrs\":{\"localId\":\"$TASK_LOCAL_ID\",\"state\":\"TODO\"}}"
+		fi
+		next_task_local_id taskList
+		# shellcheck disable=SC2016  # single-quoted: $localId is jq syntax, not shell
+		fold_block=$(jq -s -c --arg localId "$TASK_LOCAL_ID" \
+			'{type:"taskList", attrs:{localId:$localId}, content:.}' "$fold_buffer") \
+			|| { error "internal jq failure (task list assembly)"; exit 1; }
+	else
+		ensure_nonempty_buffer "$fold_buffer" '{"type":"listItem","content":[{"type":"paragraph"}]}'
+		fold_block=$(jq -s -c --arg type "$fold_type" '{type:$type, content:.}' "$fold_buffer") \
+			|| { error "internal jq failure (list assembly)"; exit 1; }
+	fi
 	# Optional-perf note (reviewed, addressed): free the buffer the instant
 	# it's fully consumed rather than leaving it for the final EXIT trap —
 	# a deeply-nested-list document would otherwise accumulate one
@@ -604,6 +773,25 @@ list_pop_and_fold() {
 	list_pop
 	if [ "$LIST_DEPTH" -eq 0 ]; then
 		printf '%s\n' "$fold_block" >>"$BLOCKS_FILE"
+	elif [ "$(list_top_type)" = "taskList" ]; then
+		# A taskList parents its nested list as a SIBLING of its taskItems
+		# (point c above) — one more NDJSON line in its buffer, never a
+		# splice into the last item. $fold_block is guaranteed to BE a
+		# taskList here: list_open_item's guard loop is what makes a
+		# non-task level under an open taskList unreachable, and taskList
+		# accepts no other child type.
+		#
+		# That guarantee is ASSERTED, not assumed. It is free (the popped
+		# level's type is already in hand, no extra process), and the
+		# failure it guards is the worst kind: silently emitting a
+		# bulletList/orderedList inside a taskList, which is invalid ADF
+		# that only surfaces later as an opaque Jira 400. Fail loud here
+		# instead — reaching this is a defect in the guard loop above.
+		if [ "$fold_type" != "taskList" ]; then
+			error "internal error: $fold_type cannot be nested inside a taskList (invalid ADF suppressed)"
+			exit 1
+		fi
+		printf '%s\n' "$fold_block" >>"$(list_top_buffer)"
 	else
 		fold_block_into_last_item "$(list_top_buffer)" "$fold_block"
 	fi
@@ -620,15 +808,55 @@ list_close_all() {
 	done
 }
 
-# list_open_item INDENT TYPE ITEM_TEXT — the nested-list state machine's
-# entry point for one bullet/ordered line. See the header's design note for
-# the pop/continue/replace/push decision table this implements.
+# list_open_item INDENT TYPE ITEM_TEXT [TASK_STATE] — the nested-list state
+# machine's entry point for one bullet/ordered/checkbox line. See the header's
+# design note for the pop/continue/replace/push decision table this
+# implements. TASK_STATE is meaningful only when TYPE is "taskList" and is
+# ignored for the other two types.
+#
+# A type CHANGE at the SAME indent (the pop+push arm below) is what makes a
+# checkbox line adjacent to a plain bullet close one list and open the other
+# as a SIBLING block — the identical mechanism that already switched between
+# bulletList and orderedList, with taskList simply registered as a third type
+# rather than special-cased anywhere in it.
 list_open_item() {
 	open_indent=$1
 	open_type=$2
 	open_item_text=$3
+	open_task_state=${4:-}
 
 	while [ "$LIST_DEPTH" -gt 0 ] && [ "$(list_top_indent)" -gt "$open_indent" ]; do
+		list_pop_and_fold
+	done
+
+	# ADF's taskList accepts ONLY taskItem/taskList children, and taskItem's
+	# content is inline-only — so, unlike listItem, an open taskList level
+	# CANNOT parent a bulletList/orderedList AT ALL, at ANY relative indent.
+	# Close every taskList level that would end up parenting the new
+	# non-task level, so it lands on the nearest ancestor that can legally
+	# hold it, or at top level if there is none. The alternative — emitting
+	# the nested list inside the taskList anyway — is a document Jira rejects
+	# outright, which is strictly worse than losing one level of visual
+	# indentation.
+	#
+	# The comparison is `-le`, not `-lt`, and that is the whole guard: an
+	# indent STRICTLY LESS than the new line's is the deeper-nesting case
+	# (`- [ ] a` / `    - b`), but an indent EQUAL to it is a same-indent TYPE
+	# CHANGE (`  - [ ] b` / `  - c`), which the decision table below would
+	# otherwise handle as an ordinary pop+push — leaving any taskList
+	# ANCESTOR still open, so the popped bulletList would later be folded
+	# into THAT ancestor as a sibling of its taskItems. That is invalid ADF
+	# (a taskList takes taskItem/taskList children and nothing else) and was
+	# a real defect until this loop was widened to cover it.
+	#
+	# This loop is therefore the construction behind the invariant
+	# list_pop_and_fold relies on — no non-taskList level ever sits directly
+	# above a taskList level, so a taskList parent only ever receives a
+	# taskList child. list_pop_and_fold asserts it rather than assuming it.
+	while [ "$LIST_DEPTH" -gt 0 ] \
+		&& [ "$open_type" != "taskList" ] \
+		&& [ "$(list_top_type)" = "taskList" ] \
+		&& [ "$(list_top_indent)" -le "$open_indent" ]; do
 		list_pop_and_fold
 	done
 
@@ -641,7 +869,7 @@ list_open_item() {
 		list_push "$open_indent" "$open_type"
 	fi
 
-	append_list_item "$open_item_text"
+	append_list_item "$open_item_text" "$open_task_state"
 }
 
 # leading_ws_count RAW_LINE — sets $INDENT to the count of leading
@@ -657,6 +885,35 @@ leading_ws_count() {
 		esac
 	done
 	INDENT=$ws_count
+}
+
+# strip_bullet_marker TRIMMED_LINE — sets $BULLET_ITEM_TEXT to TRIMMED_LINE
+# with its leading `-`/`*` bullet marker AND the ENTIRE whitespace run that
+# follows it removed. Callers have already matched `'- '*|'* '*`, so a marker
+# plus at least one space is guaranteed to be there.
+#
+# This is the ONE place that knows how a bullet marker is spelled: the
+# checkbox classifier and the plain-bullet branch both consume its result,
+# so neither re-derives it (they used to strip `${trimmed#??}` independently).
+# Removing the whole whitespace run — not exactly two characters — is what
+# makes `-  [ ] x` the same checkbox as `- [ ] x` (two spaces after the marker
+# previously left a leading space that parse_task_item could not match, so the
+# line silently degraded to a bullet reading " [ ] x"), and it normalizes the
+# plain-bullet text the same way, matching CommonMark's reading of the
+# marker's trailing whitespace as part of the marker.
+#
+# Sets a GLOBAL rather than printing, the same shape (and for the same
+# subshell reason) as leading_ws_count and its $INDENT.
+BULLET_ITEM_TEXT=""
+strip_bullet_marker() {
+	sbm_text=${1#?}
+	while :; do
+		case $sbm_text in
+			' '*|'	'*) sbm_text=${sbm_text#?} ;;
+			*) break ;;
+		esac
+	done
+	BULLET_ITEM_TEXT=$sbm_text
 }
 
 # ---------------------------------------------------------------------------
@@ -1191,12 +1448,22 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 		continue
 	fi
 
+	# --- bullet line: ONE arm for both list kinds. The marker is stripped
+	# once (strip_bullet_marker owns how a marker is spelled), and only THEN
+	# does the checkbox classifier run: `- [ ] x` becomes a native taskList
+	# item, and anything parse_task_item does not recognize — including a
+	# literal "[z]"/"[]" lookalike — stays a plain bulletList item with that
+	# text intact. ---
 	case "$trimmed" in
 		'- '*|'* '*)
 			flush_paragraph
 			leading_ws_count "$raw_line"
-			item_text=${trimmed#??}
-			list_open_item "$INDENT" "bulletList" "$item_text"
+			strip_bullet_marker "$trimmed"
+			if parse_task_item "$BULLET_ITEM_TEXT"; then
+				list_open_item "$INDENT" "taskList" "$TASK_ITEM_TEXT" "$TASK_ITEM_STATE"
+			else
+				list_open_item "$INDENT" "bulletList" "$BULLET_ITEM_TEXT"
+			fi
 			continue ;;
 	esac
 

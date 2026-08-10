@@ -9,8 +9,9 @@
 # folding four more commands' worth of scenarios into it would blur two
 # genuinely separate concerns (read-path plumbing vs. write-path plumbing)
 # into one file, hurting "a reader learns what the system does from the
-# tests" (standard-testing). Same harness SHAPE, deliberately duplicated —
-# see run-engine-tests.sh's own header for why a hand-rolled harness at all.
+# tests" (standard-testing). The harness MECHANICS are not duplicated: the
+# runner primitives and the curl stub are dot-sourced from tests/lib/ — see
+# run-engine-tests.sh's own header for why a hand-rolled harness at all.
 #
 # Usage:  sh run-write-tests.sh              # run all tests
 #         VERBOSE=1 sh run-write-tests.sh
@@ -24,8 +25,15 @@ set -eu
 # Locations
 # ---------------------------------------------------------------------------
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
-SCRIPTS_DIR=$(cd "$TESTS_DIR/../scripts" && pwd)
+SCRIPTS_DIR=$(cd "$TESTS_DIR/../skill/scripts" && pwd)
 JIRA="$SCRIPTS_DIR/jira.sh"
+
+# Shared harness mechanics (runner primitives + the curl stub) — one copy for
+# all three Jira suites; see lib/harness.sh's header for what stays local.
+# shellcheck source=SCRIPTDIR/lib/harness.sh
+. "$TESTS_DIR/lib/harness.sh"
+# shellcheck source=SCRIPTDIR/lib/curl-stub.sh
+. "$TESTS_DIR/lib/curl-stub.sh"
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/jira-write-tests.XXXXXX")
 TOOLBOX="$WORK/toolbox"          # real tools, curl NEVER here
@@ -39,93 +47,35 @@ trap cleanup EXIT INT TERM
 # ---------------------------------------------------------------------------
 # Isolated PATH toolbox: symlink only the real tools jira.sh + md-to-adf.sh
 # need. curl is NEVER here (it comes from the stub dir).
+#
+# dirname/readlink/realpath/basename are DELIBERATELY ABSENT, and that absence
+# is a load-bearing regression guard, not an oversight: jira.sh resolves
+# skill/lib/ and md-to-adf.sh from its own $0 with pure parameter expansion
+# (see its Portability header), and a future regression to
+# `SCRIPT_DIR=$(dirname "$0")` must break this suite loudly instead of passing
+# green. Adding any of the four back here silently voids that claim.
 # ---------------------------------------------------------------------------
-ORIG_PATH=$PATH
-link_tool() {
-	target_dir=$1
-	tool_name=$2
-	tool_path=$(PATH="$ORIG_PATH" command -v "$tool_name" 2>/dev/null || true)
-	[ -n "$tool_path" ] || { printf 'FATAL: required tool not found: %s\n' "$tool_name" >&2; exit 1; }
-	ln -s "$tool_path" "$target_dir/$tool_name"
-}
-for t in sh mktemp sed grep tr cat rm chmod cp dirname tail; do
+harness_init "$WORK"
+for t in sh mktemp sed grep tr cat rm chmod cp tail; do
 	link_tool "$TOOLBOX" "$t"
 done
 link_tool "$TOOLBOX" jq
 
-# ---------------------------------------------------------------------------
-# The curl stub — a canned-response QUEUE, identical mechanism to
-# run-engine-tests.sh's stub (see that file's header for the full rationale).
-# ---------------------------------------------------------------------------
-cat >"$STUBCURL_DIR/curl" <<'CURL_STUB'
-#!/usr/bin/env sh
-set -eu
+# The canned-response-queue curl stub (lib/curl-stub.sh owns the mechanism).
+init_curl_stub "$STUBCURL_DIR" "$WORK"
 
-n=0
-[ -f "$CURL_STUB_COUNTER_FILE" ] && n=$(cat "$CURL_STUB_COUNTER_FILE")
-n=$((n + 1))
-printf '%s' "$n" >"$CURL_STUB_COUNTER_FILE"
-
-if [ -n "${CURL_STUB_ARGV_LOG:-}" ]; then
-	{
-		printf 'CALL_%s_BEGIN\n' "$n"
-		for a in "$@"; do printf '%s\n' "$a"; done
-		printf 'CALL_%s_END\n' "$n"
-	} >>"$CURL_STUB_ARGV_LOG"
-fi
-
-out_file=""
-data_at=""
-url=""
-prev=""
-for a in "$@"; do
-	[ "$prev" = "-o" ] && out_file=$a
-	case "$a" in
-		@*) data_at=${a#@} ;;
+# run SELECTOR [VAR=VALUE...] COMMAND... — the PATH-toolbox selector map, the
+# one part of the runner that is genuinely per-suite. Everything else lives in
+# lib/harness.sh's harness_run.
+run() {
+	selector=$1; shift
+	case "$selector" in
+		full)   r_path="$STUBCURL_DIR:$TOOLBOX" ;;
+		nocurl) r_path="$TOOLBOX" ;;
+		*) printf 'FATAL: bad run() selector: %s\n' "$selector" >&2; exit 1 ;;
 	esac
-	url=$a
-	prev=$a
-done
-
-if [ -n "$data_at" ] && [ -n "${CURL_STUB_BODY_LOG_DIR:-}" ]; then
-	cat "$data_at" >"$CURL_STUB_BODY_LOG_DIR/call-$n.body"
-fi
-
-resp_body="$CURL_STUB_RESP_DIR/resp-$n.body"
-resp_code="$CURL_STUB_RESP_DIR/resp-$n.code"
-if [ ! -f "$resp_body" ] || [ ! -f "$resp_code" ]; then
-	printf 'STUB curl: no canned response configured for call #%s (url=%s)\n' "$n" "$url" >&2
-	exit 99
-fi
-
-[ -z "$out_file" ] || cat "$resp_body" >"$out_file"
-cat "$resp_code"
-CURL_STUB
-chmod +x "$STUBCURL_DIR/curl"
-
-# ---------------------------------------------------------------------------
-# Curl-stub control: queue + logs, reset before every test that uses curl.
-# ---------------------------------------------------------------------------
-CURL_STUB_RESP_DIR="$WORK/curlresp"
-CURL_STUB_COUNTER_FILE="$WORK/curl-counter"
-CURL_STUB_ARGV_LOG="$WORK/curl-argv.log"
-CURL_STUB_BODY_LOG_DIR="$WORK/curl-bodies"
-
-reset_curl_stub() {
-	rm -rf "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	mkdir -p "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	printf '0' >"$CURL_STUB_COUNTER_FILE"
-	: >"$CURL_STUB_ARGV_LOG"
+	harness_run "$r_path" "$@"
 }
-
-# set_stub_response N BODY CODE — the Nth curl call gets this response.
-set_stub_response() {
-	n=$1; body=$2; code=$3
-	printf '%s' "$body" >"$CURL_STUB_RESP_DIR/resp-$n.body"
-	printf '%s' "$code" >"$CURL_STUB_RESP_DIR/resp-$n.code"
-}
-
-call_count() { cat "$CURL_STUB_COUNTER_FILE" 2>/dev/null || printf '0'; }
 
 # call_body N -> the parsed JSON body jira.sh sent as the Nth call's --data @file.
 call_body() { jq -c . "$CURL_STUB_BODY_LOG_DIR/call-$1.body"; }
@@ -145,100 +95,6 @@ assert_no_leaked_workdir() {
 		fail "$1: no jira.work.* dir survives" "found $leaked leaked dir(s) under $WORK"
 	fi
 }
-
-# ---------------------------------------------------------------------------
-# Runner primitives (identical shape to run-engine-tests.sh — see that file
-# for the run() VAR=VALUE / env leading-assignment idiom).
-# ---------------------------------------------------------------------------
-TESTS_RUN=0
-TESTS_FAIL=0
-CUR_OUT=""
-CUR_ERR=""
-CUR_RC=0
-
-run() {
-	selector=$1; shift
-	case "$selector" in
-		full)   r_path="$STUBCURL_DIR:$TOOLBOX" ;;
-		nocurl) r_path="$TOOLBOX" ;;
-		*) printf 'FATAL: bad run() selector: %s\n' "$selector" >&2; exit 1 ;;
-	esac
-	set +e
-	env -i \
-		HOME="$WORK/home" \
-		PATH="$r_path" \
-		TMPDIR="$WORK" \
-		CURL_STUB_RESP_DIR="$CURL_STUB_RESP_DIR" \
-		CURL_STUB_COUNTER_FILE="$CURL_STUB_COUNTER_FILE" \
-		CURL_STUB_ARGV_LOG="$CURL_STUB_ARGV_LOG" \
-		CURL_STUB_BODY_LOG_DIR="$CURL_STUB_BODY_LOG_DIR" \
-		"$@" >"$WORK/out" 2>"$WORK/err"
-	CUR_RC=$?
-	set -e
-	CUR_OUT=$(cat "$WORK/out"); CUR_ERR=$(cat "$WORK/err")
-	rm -f "$WORK/out" "$WORK/err"
-	if [ "${VERBOSE:-0}" = "1" ]; then
-		printf '    rc=%s\n' "$CUR_RC"
-		printf '%s\n' "$CUR_OUT" | sed 's/^/    out| /'
-		printf '%s\n' "$CUR_ERR" | sed 's/^/    err| /'
-	fi
-}
-
-pass() { printf '  ok   %s\n' "$1"; }
-fail() { printf '  FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; TESTS_FAIL=$((TESTS_FAIL + 1)); }
-
-expect_rc() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$CUR_RC" -eq "$2" ]; then pass "$1"
-	else fail "$1" "expected exit $2, got $CUR_RC; stderr: $CUR_ERR"; fi
-}
-
-stdout_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stdout missing: $2
-       stdout was: $CUR_OUT"; fi
-}
-
-stderr_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then pass "$1"
-	else fail "$1" "stderr missing: $2
-       stderr was: $CUR_ERR"; fi
-}
-
-file_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then pass "$1"
-	else fail "$1" "$2 missing: $3"; fi
-}
-
-file_not_has() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then fail "$1" "$2 unexpectedly contains: $3"
-	else pass "$1"; fi
-}
-
-argv_log_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then pass "$1"
-	else fail "$1" "argv log missing the exact token: $2"; fi
-}
-
-argv_log_not_has_token() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if grep -Fxq -- "$2" "$CURL_STUB_ARGV_LOG"; then fail "$1" "argv log unexpectedly contains the exact token: $2"
-	else pass "$1"; fi
-}
-
-equals() {
-	TESTS_RUN=$((TESTS_RUN + 1))
-	if [ "$2" = "$3" ]; then pass "$1"
-	else fail "$1" "expected: $3
-       got:      $2"; fi
-}
-
-section() { printf '\n== %s ==\n' "$1"; }
 
 # ---------------------------------------------------------------------------
 # Shared fixtures: a project config with custom fields + a workflow graph.
@@ -830,6 +686,209 @@ equals "update --append-file: original paragraph survives" \
 	"$(printf '%s' "$SENT_BODY" | jq -r '.fields.description.content[0].content[0].text')" "Original."
 equals "update --append-file: new paragraph appended after it" \
 	"$(printf '%s' "$SENT_BODY" | jq -r '.fields.description.content[1].content[0].text')" "Appended paragraph."
+
+# ---------------------------------------------------------------------------
+# --append-file + localId UNIQUENESS ACROSS THE MERGE.
+#
+# ADF requires a taskList/taskItem localId to be unique WITHIN THE DOCUMENT,
+# and md-to-adf.sh's counter restarts at 1 on every invocation — correct for a
+# document it converts whole. Appending is the ONE place two independently
+# converted documents become one, so a stored tool-generated checklist's
+# taskList-1/taskItem-1 would meet the fresh conversion's taskList-1/taskItem-1
+# and ship DUPLICATE ids. build_appended_description renumbers the appended
+# blocks above the highest "<prefix>-<digits>" id already stored.
+#
+# WHY THESE ASSERT PROPERTIES, NOT LITERAL IDS: the particular numbers the
+# converter mints are an implementation detail (run-tests.sh's task-list
+# section says the same, and for the same reason — a golden file would turn a
+# legitimate renumbering into a red suite). What IS contractual is document-wide
+# uniqueness, that appended ids sort ABOVE every stored one, and that stored
+# ids are left exactly as they were. Those are what the three cases below pin.
+# ---------------------------------------------------------------------------
+
+# description_local_ids CALL_N -> a compact JSON array of EVERY localId anywhere
+# in the description the Nth curl call PUT, in document order. The collector is
+# document-WIDE (`..`) rather than a hand-picked path, because the property
+# under test is document-wide: a hand-picked path could miss a nested taskList
+# and report "unique" about only part of the document.
+description_local_ids() {
+	call_body "$1" | jq -c '[.fields.description | .. | objects | select(has("attrs"))
+	                         | .attrs | objects | select(has("localId")) | .localId]'
+}
+
+# A stored description that ALREADY holds a tool-generated checklist: ids
+# taskList-1 / taskItem-1 / taskItem-2, so the highest stored suffix is 2 —
+# and a fresh conversion, restarting at 1, is guaranteed to collide with it.
+STORED_DESC_WITH_TASKLIST='{"fields":{"description":{"type":"doc","version":1,"content":[
+	{"type":"paragraph","content":[{"type":"text","text":"Original."}]},
+	{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[
+		{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"DONE"},"content":[{"type":"text","text":"stored one"}]},
+		{"type":"taskItem","attrs":{"localId":"taskItem-2","state":"TODO"},"content":[{"type":"text","text":"stored two"}]}]}]}}}'
+STORED_MAX_LOCAL_ID=2
+
+section "jira.sh update — --append-file onto an EXISTING checklist renumbers the appended ids above it"
+
+APPEND_TASKS_FILE="$WORK/append-tasks.md"
+printf -- '- [ ] fresh one\n- [x] fresh two\n' >"$APPEND_TASKS_FILE"
+
+reset_curl_stub
+set_stub_response 1 "$STORED_DESC_WITH_TASKLIST" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --append-file "$APPEND_TASKS_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update --append-file checklist-onto-checklist -> exit 0" 0
+equals "update --append-file checklist-onto-checklist: TWO calls (fetch existing, then PUT)" "$(call_count)" "2"
+SENT_BODY=$(call_body 2)
+equals "update --append-file checklist-onto-checklist: merged doc is paragraph + BOTH task lists" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[].type]')" \
+	'["paragraph","taskList","taskList"]'
+# THE defect this whole renumbering exists to prevent: two ids the same inside
+# one document. Collected document-wide, then compared as [total, distinct].
+equals "update --append-file checklist-onto-checklist: NO duplicate localId anywhere in the merged document" \
+	"$(description_local_ids 2 | jq -c '[length, (unique | length)]')" '[6,6]'
+# The appended blocks are the ONLY ones that may move, and they must clear the
+# stored maximum outright — "unique" alone would also be satisfied by ids that
+# merely happened not to collide.
+equals "update --append-file checklist-onto-checklist: all THREE appended ids sort strictly above the stored max ($STORED_MAX_LOCAL_ID)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c --argjson stored_max "$STORED_MAX_LOCAL_ID" \
+		'[.fields.description.content[2] | .. | objects | select(has("attrs"))
+		  | .attrs | objects | select(has("localId")) | .localId | split("-")[1] | tonumber]
+		 | {count: length, allAboveStoredMax: all(. > $stored_max)}')" \
+	'{"count":3,"allAboveStoredMax":true}'
+# The mirror obligation: the STORED ids are Jira's own record of that checklist
+# and must not shift under the caller — only the incoming blocks are renumbered.
+equals "update --append-file checklist-onto-checklist: the stored checklist's ids are untouched" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[1] | .. | objects
+	                                      | select(has("attrs")) | .attrs.localId]')" \
+	'["taskList-1","taskItem-1","taskItem-2"]'
+equals "update --append-file checklist-onto-checklist: the appended items carry the new markdown's text" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[2].content[].content[0].text]')" \
+	'["fresh one","fresh two"]'
+
+section "jira.sh update — --append-file onto a description with NO checklist leaves the fresh ids at their baseline"
+
+# The overwhelmingly common case: nothing to compute a maximum from, so the
+# offset is 0 and the whole renumbering transform is a documented no-op. It
+# must still merge cleanly (a `max` over an empty set is the one place this
+# could break) and must NOT shift the fresh ids off their natural baseline.
+STORED_DESC_NO_TASKLIST='{"fields":{"description":{"type":"doc","version":1,"content":[
+	{"type":"paragraph","content":[{"type":"text","text":"First paragraph."}]},
+	{"type":"paragraph","content":[{"type":"text","text":"Second paragraph."}]}]}}}'
+
+reset_curl_stub
+set_stub_response 1 "$STORED_DESC_NO_TASKLIST" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --append-file "$APPEND_TASKS_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update --append-file checklist-onto-plain -> exit 0" 0
+SENT_BODY=$(call_body 2)
+equals "update --append-file checklist-onto-plain: both stored paragraphs survive, checklist appended after them" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[].type]')" \
+	'["paragraph","paragraph","taskList"]'
+equals "update --append-file checklist-onto-plain: stored paragraph text is unchanged" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[0,1].content[0].text]')" \
+	'["First paragraph.","Second paragraph."]'
+equals "update --append-file checklist-onto-plain: the three fresh ids are still distinct" \
+	"$(description_local_ids 2 | jq -c '[length, (unique | length)]')" '[3,3]'
+equals "update --append-file checklist-onto-plain: with no prior max, the fresh ids keep their baseline of 1" \
+	"$(description_local_ids 2 | jq -c '[.[] | split("-")[1] | tonumber] | {count: length, min: min}')" \
+	'{"count":3,"min":1}'
+
+section "jira.sh update — --append-file of PLAIN markdown mints no ids and renumbers nothing"
+
+# The over-application guard. Appending id-free content to a description that
+# DOES hold a checklist must leave that checklist exactly as Jira stored it: an
+# offset applied to the wrong side of the merge would silently rewrite ids the
+# caller never asked to touch.
+APPEND_PLAIN_FILE="$WORK/append-plain.md"
+printf 'Just a plain follow-up paragraph.\n' >"$APPEND_PLAIN_FILE"
+
+reset_curl_stub
+set_stub_response 1 "$STORED_DESC_WITH_TASKLIST" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --append-file "$APPEND_PLAIN_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update --append-file plain-onto-checklist -> exit 0" 0
+SENT_BODY=$(call_body 2)
+equals "update --append-file plain-onto-checklist: the plain paragraph lands after the stored checklist" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[].type]')" \
+	'["paragraph","taskList","paragraph"]'
+equals "update --append-file plain-onto-checklist: appended text is the markdown's own" \
+	"$(printf '%s' "$SENT_BODY" | jq -r '.fields.description.content[2].content[0].text')" \
+	"Just a plain follow-up paragraph."
+# Both halves of "renumbers nothing" in one compare: the stored ids are byte-for
+# -byte what came back from Jira (nothing shifted), and there are no others
+# (nothing spurious minted).
+equals "update --append-file plain-onto-checklist: the document's ids are EXACTLY the stored three, unshifted" \
+	"$(description_local_ids 2)" '["taskList-1","taskItem-1","taskItem-2"]'
+
+section "jira.sh update — --append-file: an ABSURDLY long stored localId suffix cannot collapse the appended ids"
+
+# REGRESSION GUARD for the IEEE-double precision defect that re-opened the very
+# duplicate-localId hole the three cases above close.
+#
+# jq's numbers are IEEE doubles. Before the 12-digit bound, a stored suffix past
+# 2^53 became max_local_id, and ($seq + $by) then ROUNDED TO THE SAME double for
+# $seq = 1, 2, 3 — so every appended id rendered as the identical
+# "<prefix>-1e+20" and the merged document shipped duplicate localIds again,
+# silently, with jq reporting no error at all.
+#
+# The stored fixture below is the trigger in its smallest honest form: a
+# PARTICIPATING id (taskItem-1) and an absurd 20-digit one SIDE BY SIDE inside
+# one stored checklist. The bound must exclude the absurd one from the maximum
+# while still honouring the real one — excluding it is safe precisely because a
+# 20-digit suffix cannot STRING-collide with a shifted "<prefix>-<n>" the
+# converter's per-invocation counter mints.
+#
+# Assertions stay PROPERTY-based, exactly as the three cases above: the contract
+# is document-wide uniqueness plus "the appended ids are plain, distinct,
+# bounded-length integers", never the particular numbers the converter picked.
+STORED_DESC_WITH_ABSURD_LOCAL_ID='{"fields":{"description":{"type":"doc","version":1,"content":[
+	{"type":"taskList","attrs":{"localId":"taskList-1"},"content":[
+		{"type":"taskItem","attrs":{"localId":"taskItem-1","state":"DONE"},"content":[{"type":"text","text":"stored small"}]},
+		{"type":"taskItem","attrs":{"localId":"taskItem-99999999999999999999","state":"TODO"},"content":[{"type":"text","text":"stored absurd"}]}]}]}}}'
+# The highest suffix that may PARTICIPATE in the offset: the 20-digit sibling is
+# excluded by the bound, so the real maximum is taskList-1/taskItem-1's 1.
+STORED_PARTICIPATING_MAX_LOCAL_ID=1
+
+reset_curl_stub
+set_stub_response 1 "$STORED_DESC_WITH_ABSURD_LOCAL_ID" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --append-file "$APPEND_TASKS_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update --append-file onto an absurd stored localId -> exit 0" 0
+equals "update --append-file absurd stored id: TWO calls (fetch existing, then PUT)" "$(call_count)" "2"
+SENT_BODY=$(call_body 2)
+# THE defect, stated as the same document-wide property the sibling cases use:
+# under the precision bug this reads [6,5] — the three appended ids collapse
+# onto two distinct strings ("taskList-1e+20" plus ONE "taskItem-1e+20").
+equals "update --append-file absurd stored id: NO duplicate localId anywhere in the merged document" \
+	"$(description_local_ids 2 | jq -c '[length, (unique | length)]')" '[6,6]'
+# The mechanism behind that uniqueness, pinned directly: every appended suffix is
+# still a PLAIN run of ASCII digits within the participating bound — never jq's
+# "1e+20" float rendering — and the three remain distinct from each other.
+equals "update --append-file absurd stored id: the appended ids are plain, distinct, bounded-length integers (not float-formatted)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c \
+		'[.fields.description.content[1] | .. | objects | select(has("attrs"))
+		  | .attrs | objects | select(has("localId")) | .localId | split("-")[1]]
+		 | {count: length, distinct: (unique | length),
+		    allPlainDigits: all(explode | all(. >= 48 and . <= 57)),
+		    allWithinTheTwelveDigitBound: all(length <= 12)}')" \
+	'{"count":3,"distinct":3,"allPlainDigits":true,"allWithinTheTwelveDigitBound":true}'
+# Excluding the absurd id from the maximum must not disable the renumbering: the
+# appended ids still clear the highest PARTICIPATING stored suffix.
+equals "update --append-file absurd stored id: the appended ids still sort above the participating stored max ($STORED_PARTICIPATING_MAX_LOCAL_ID)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c --argjson participating_max "$STORED_PARTICIPATING_MAX_LOCAL_ID" \
+		'[.fields.description.content[1] | .. | objects | select(has("attrs"))
+		  | .attrs | objects | select(has("localId")) | .localId | split("-")[1] | tonumber]
+		 | {count: length, allAboveParticipatingMax: all(. > $participating_max)}')" \
+	'{"count":3,"allAboveParticipatingMax":true}'
+# The stored side is Jira's own record — the absurd id included — and only the
+# INCOMING blocks are renumbered, so it must come back byte-for-byte.
+equals "update --append-file absurd stored id: the stored ids (absurd one included) are untouched" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '[.fields.description.content[0] | .. | objects
+	                                      | select(has("attrs")) | .attrs.localId]')" \
+	'["taskList-1","taskItem-1","taskItem-99999999999999999999"]'
 
 section "jira.sh update — --developer resolves via accountId, {accountId: ...} shape (distinct from assignee's {id: ...})"
 
@@ -1521,20 +1580,37 @@ stderr_has "schedule batch failure: Jira's own error surfaced" "Sprint does not 
 # ===========================================================================
 # Token never on argv — across ALL write commands (Phase 2b + Phase 2c)
 # ===========================================================================
-section "jira.sh — token never on argv (create/comment/transition/update/link/worklog/watch/vote)"
+section "jira.sh — token never on argv (create/comment/transition/update/link/worklog/watch/vote/schedule)"
+
+# EVERY case here pairs its negative assertions with a POSITIVE CONTROL — the
+# command's exit code, the number of curl calls it actually made, and the
+# presence of the -K config-file handoff that is the token's real channel.
+# Without that control the block is vacuous: a command that regressed to exit
+# before its first curl call would make the argv log EMPTY, and an empty log
+# satisfies "the token is not in it" perfectly. Same shape as
+# run-engine-tests.sh's own credential-handoff block.
+#
+# assert_token_off_argv NAME EXPECTED_CALLS — the shared verdict for one case.
+assert_token_off_argv() {
+	expect_rc "$1: -> exit 0 (the write actually ran)" 0
+	equals "$1: made $2 curl call(s)" "$(call_count)" "$2"
+	argv_log_has_token "$1: -K (the config-file handoff) IS on argv" "-K"
+	file_not_has "$1: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+	argv_log_not_has_token "$1: -u absent" "-u"
+	argv_log_not_has_token "$1: --user absent" "--user"
+}
 
 reset_curl_stub
 set_stub_response 1 '{"id":"1","key":"PROJ-1","self":"x"}' 201
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" create --project PROJ --title "t" --confirmed-site foo.atlassian.net
-file_not_has "create: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
-argv_log_not_has_token "create: -u absent" "-u"
+assert_token_off_argv create 1
 
 reset_curl_stub
 set_stub_response 1 '{"id":"1","body":{}}' 201
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" comment PROJ-1 --text-file "$COMMENT_FILE" --confirmed-site foo.atlassian.net
-file_not_has "comment: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv comment 1
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
@@ -1543,44 +1619,93 @@ set_stub_response 3 '' 204
 set_stub_response 4 '{"fields":{"status":{"name":"In Progress"}}}' 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" "JIRA_PROJECTS_DIR=$WORK/projects" \
 	sh "$JIRA" transition PROJ-1 --status "In Progress" --confirmed-site foo.atlassian.net
-file_not_has "transition: token absent from argv across the whole walk" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv "transition (the whole walk)" 4
 
 reset_curl_stub
 set_stub_response 1 '' 204
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" update PROJ-1 --title "t" --confirmed-site foo.atlassian.net
-file_not_has "update: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv update 1
 
 reset_curl_stub
 set_stub_response 1 '' 201
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" link PROJ-1 --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
-file_not_has "link: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv link 1
 
 reset_curl_stub
 set_stub_response 1 '{"id":"1","timeSpent":"1h"}' 201
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" worklog PROJ-1 --time-spent 1h --confirmed-site foo.atlassian.net
-file_not_has "worklog: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv worklog 1
 
 reset_curl_stub
 set_stub_response 1 '{"accountId":"acc-token-check"}' 200
 set_stub_response 2 '' 204
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" watch PROJ-1 --confirmed-site foo.atlassian.net
-file_not_has "watch: token absent from argv across the whole flow" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv "watch (resolve + POST)" 2
 
 reset_curl_stub
 set_stub_response 1 '' 204
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" vote PROJ-1 --confirmed-site foo.atlassian.net
-file_not_has "vote: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv vote 1
 
 reset_curl_stub
 set_stub_response 1 '' 204
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" schedule --to-sprint 2212 --keys "PROJ-1" --confirmed-site foo.atlassian.net
-file_not_has "schedule: token absent from argv" "$CURL_STUB_ARGV_LOG" "distinctive-write-token"
+assert_token_off_argv schedule 1
+
+# ===========================================================================
+# Split-parity assertion P3 — converter resolution survives the split
+#
+# jira.sh derives SCRIPT_DIR from $0 and hands md-to-adf.sh's path to the ADF
+# unit, and LIB_DIR is "$SCRIPT_DIR/../lib" with no `cd` normalization. Both
+# claims have to hold from an unrelated working directory AND through a symlink
+# on the skill directory — which is exactly how this skill is DEPLOYED
+# ($HOME/.claude/skills/procedure-jira -> the repo's skill/). Nothing in the
+# pre-split suite exercised either, because before the split there was no
+# sibling lib/ to reach and no deployment symlink in the test path.
+# ===========================================================================
+section "jira.sh — split parity (converter + lib resolution from any cwd / through a symlink)"
+
+P3_DESC="$WORK/p3-description.md"
+printf 'Hello **world**.\n' >"$P3_DESC"
+
+p3_prime_create_stub() {
+	reset_curl_stub
+	set_stub_response 1 '{"id":"10001","key":"PROJ-301","self":"https://foo.atlassian.net/rest/api/3/issue/10001"}' 201
+}
+
+# --- from an UNRELATED cwd ---------------------------------------------------
+mkdir -p "$WORK/unrelated"
+P3_SAVED_CWD=$(pwd)
+cd "$WORK/unrelated"
+p3_prime_create_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title "cwd probe" \
+	--description-file "$P3_DESC" --confirmed-site foo.atlassian.net
+cd "$P3_SAVED_CWD"
+expect_rc "P3: create --description-file from an unrelated cwd -> exit 0" 0
+stdout_has "P3: unrelated cwd still resolves md-to-adf.sh" "JIRA_ISSUE_KEY=PROJ-301"
+equals "P3: unrelated cwd — description converted to an ADF doc" \
+	"$(call_body 1 | jq -r '.fields.description.type')" "doc"
+
+# --- through a SYMLINKED skill/ directory (the deployment shape) -------------
+P3_SKILL_DIR=$(cd "$SCRIPTS_DIR/.." && pwd)
+ln -s "$P3_SKILL_DIR" "$WORK/skill-link"
+P3_JIRA_VIA_LINK="$WORK/skill-link/scripts/jira.sh"
+
+p3_prime_create_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$P3_JIRA_VIA_LINK" create --project PROJ --title "symlink probe" \
+	--description-file "$P3_DESC" --confirmed-site foo.atlassian.net
+expect_rc "P3: create through a symlinked skill/ -> exit 0" 0
+stdout_has "P3: symlinked skill/ still resolves md-to-adf.sh" "JIRA_ISSUE_KEY=PROJ-301"
+equals "P3: symlinked skill/ — description converted to an ADF doc" \
+	"$(call_body 1 | jq -r '.fields.description.type')" "doc"
 
 # ===========================================================================
 # Summary
