@@ -1,6 +1,6 @@
 ---
 name: standard-shell-script
-description: The single definition of idiomatic, correct, safe shell — the shared language rubric that the shell-script-developer BUILDS to and the shell-script-reviewer REVIEWS against. Applies whenever Bash / POSIX shell is written, changed, or reviewed (deployment automation, CI/CD steps, cron jobs, CLI tools, container entrypoints, sysadmin scripts). Defines strict mode and set -e's blind spots, defensive quoting and word-splitting (SC2086), building commands as arrays, the exit-status-masking and subshell-scope-loss traps (SC2155, cmd | while read), eval/command-injection safety, temp-file/TOCTOU hygiene (mktemp + trap), secrets and permissions, [[ ]] / (( )) comparison idioms, portability (bashisms, GNU vs BSD, macOS Bash 3.2), and shellcheck SC-code discipline. This is WHAT good shell looks like; it does not define builder workflow (build-core), the reviewer's correctness-detective method / scope-boundary / severity / category vocabulary / SC-code scoring (the shell-script-reviewer), or the build/report envelopes (build-report-standards / review-report-standards).
+description: The single rubric for idiomatic, correct, safe shell. Applies whenever Bash/POSIX shell is written, changed, or reviewed. Defines only WHAT good shell looks like — not builder workflow (build-core), reviewer method/severity/scoring (shell-script-reviewer), or build/report envelopes (build-report-standards / review-report-standards).
 ---
 
 # Standard: Shell Script

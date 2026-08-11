@@ -11,43 +11,22 @@ description: |
 
   **When to trigger:**
   - User asks to review a repository/DAO, query, entity/model, transaction, or migration
-  - Code persists or reads domain state, or changes the database schema
   - After persistence code is written or before merging a PR, as one lens of a parallel review swarm
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files/dirs to review
   2. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   3. **The target store and its relevant guarantees** (e.g. "Postgres 16, read-committed" / "DynamoDB, single-item atomic, eventual reads") — or the store name so the reviewer can establish them
   4. The primary language(s) + data-access library (JPA/Hibernate, SQLx, Eloquent, Mongoose, the AWS SDK, …)
   5. For a re-review: the prior round's findings + any prior store-guarantee note (so it reuses finding IDs and does not re-derive — see the review-report-standards skill)
 
-  Example delegation: "Persistence review of the order repository + the new migration under src/order/. Diff/PR mode. Kotlin/Spring Data JPA, Postgres 16 (read-committed). Round 1."
-
-  <example>
-  Context: A developer added a repository method that loads orders and their line items.
-  user: "Review the order repository."
-  assistant: "I'll run lens-persistence-reviewer — it will note the store's guarantees, then check for N+1 on the line-item load, missing transaction boundaries, and unbounded result sets."
-  <commentary>
-  It establishes the store's guarantees first, then judges access-pattern and atomicity correctness against standard-persistence.
-  </commentary>
-  </example>
-
   <example>
   Context: A schema migration adds a non-null column and renames another.
   user: "Check this migration before I ship it."
-  assistant: "I'll use lens-persistence-reviewer to verify expand-contract (nullable/backfill), that the rename won't break the running code mid-rollout, and that no large-table lock blocks writes."
+  assistant: "I'll use lens-persistence-reviewer to verify the expand-contract backfill, mid-rollout safety of the rename, and whether the migration locks the table."
   <commentary>
   The migration's DATA axis is owned here — backfill/expand-contract, the locking-rewrite check, the destructive-op guard. If a downstream service also reads the renamed column, that break is lens-compatibility's; flag the data risk, hand off the consumer risk.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A pure in-memory formatter with no store access.
-  user: "Persistence-review this date formatter."
-  assistant: "I'll use lens-persistence-reviewer; with no durable-store access it will state there is no persistence surface rather than invent findings."
-  <commentary>
-  The persistence-surface gate prevents manufacturing findings on code that touches no store.
   </commentary>
   </example>
 tools: Read, Grep, Glob, WebFetch, mcp__context7

@@ -1,6 +1,6 @@
 ---
 name: review-report-standards
-description: Uniform structured reporting contract for all reviewer subagents. Applies whenever a reviewer (clean-code, security, test-quality, consistency, observability, or a language-specific reviewer) reports findings to the primary agent, or when a review iterates across rounds. Binds the externalized finding-schema contract (deployed under crucible/contracts/) and owns stable finding IDs, the status lifecycle, severity and verdict rules, and both table and JSON renderings so reports merge across reviewers and track across fix cycles.
+description: Uniform structured reporting contract every reviewer subagent uses to report findings to the primary agent. Owns stable finding IDs, the status lifecycle, severity/verdict rules, and the JSON/table renderings. Pair with `review-core`, which owns reviewer conduct — this skill governs reporting only, never what to review or a lens's own scoring criteria.
 ---
 
 # Review Report Standards

@@ -1,6 +1,6 @@
 ---
 name: standard-observability
-description: The single definition of observable code — the shared rubric that developers BUILD to and the observability lens REVIEWS against. Applies whenever code runs in production (services, jobs, handlers, CLIs) in any language. Grounded in OpenTelemetry, W3C Trace Context, Google SRE, OWASP, GDPR, and 12-factor. Defines instrument-by-shape (the pillar applicability by codebase shape), structured logging with correlation and levels, no sensitive data / no PII / log-injection neutralization, error context logged once, metrics (RED/USE, instruments, cardinality, units), trace-context propagation and span quality, resource attributes, auditability, telemetry flush, and the logging facade. This is WHAT good looks like; it does not define builder workflow (build-core), the reviewer's pillar-gate procedure / convention-profiling / severity / vocabulary (the lens), or broad data protection beyond logs (security).
+description: The single rubric for observable code that developers BUILD to and the observability lens REVIEWS against, covering logs, metrics, traces, and PII/secrets handling in logs. Applies whenever code runs in production (services, jobs, handlers, CLIs), in any language. Does NOT define builder workflow (`build-core`), the reviewer's gate procedure/severity/vocabulary (the lens itself), or broad data protection beyond logs (`standard-security`).
 ---
 
 # Standard: Observability

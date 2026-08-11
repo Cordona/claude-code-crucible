@@ -1,6 +1,6 @@
 ---
 name: procedure-git-ops
-description: The procedure the git-operator runs to check readiness, branch, commit, push, and tag — the framework's most dangerous scripts, because they mutate git history and push it. It wraps five highly-portable, deterministic scripts — scripts/preflight.sh (READ-ONLY: work-tree/branch/in-progress-operation/dirty-file readiness check), scripts/create-branch.sh (idempotent `type/ticket-desc` branch creation, never checks out), scripts/commit.sh (commits the CURRENTLY-STAGED index from a message FILE, fail-closed on signature verification), scripts/push.sh (refuses a direct push to a protected branch outright, detects but never auto-resolves a non-fast-forward, idempotent no-op when already up to date), and scripts/create-tag.sh (signed annotated tag, refuses outright to re-tag/move a published version, fail-closed on verification). Every message (commit or tag) is ALWAYS a file, never built in a string/heredoc/$() — the same injection-safety rule as procedure-gh-issues/procedure-gh-pr/procedure-glab-issues/procedure-glab-mr. It does NOT define commit/branch/PR/tag CONVENTIONS (those are standard-git-commit/branch/pr/tag) or resolve/confirm the signing IDENTITY (procedure-git-identity — a separate, MANDATORY precondition the caller runs before commit.sh/create-tag.sh) — this skill only executes the git operation and verifies its result.
+description: The procedure the `git-operator` runs to execute git mechanics — preflight, branch, commit, push, and tag — via deterministic scripts, never hand-authored git commands. Requires the commit-plan/tag-consent gate (`standard-git-commit`/`standard-git-tag`) and the signing-identity gate (`procedure-git-identity`) cleared before commit or tag. Does NOT define commit/branch/tag conventions (those `standard-git-*` skills) or resolve signing identity — it only executes and verifies the git operation's result.
 ---
 
 # Procedure: Git Operations (`git` wrapper scripts)
@@ -88,7 +88,7 @@ $HOME/.claude/skills/procedure-git-ops/scripts/create-tag.sh --repo PATH \
 - Prints `GITOP_TAG=<version>` on success.
 - Exit `0` created and verified · `1` tag already exists / `--sha` doesn't resolve to a commit / `git tag` itself failed / verification failed · `2` usage error.
 
-## The gates the CALLER (git-operator) must clear — NOT owned by this skill
+## The gates the CALLER (the orchestrator — git-operator only plans) must clear — NOT owned by this skill
 
 This skill only executes the git operation and verifies its result; it never decides *whether* to act or *who* acts:
 

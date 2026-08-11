@@ -4,20 +4,17 @@ description: |
   Lead Python Code Reviewer for general-purpose scripting, CLI tools, and application libraries — the language-specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing Python scripts, CLI tools, automation/data-processing pipelines, or reusable libraries/packages. It owns what is unique to Python — mutable-state & binding-semantics traps, concurrency/GIL correctness, equality & hashing contracts, iterator/generator semantics, import/module structure — AND code correctness/logic, which no generic lens covers.
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" Python code
   - User mentions Python tech (asyncio, threading, multiprocessing, dataclasses, pyproject.toml, Ruff, mypy, Pyright)
   - User requests a safety, correctness, or concurrency review
   - Before merging PRs with Python changes; after Python code is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. Python version + target (Python 3.12+, target runtime/interpreter)
   3. Any project-specific conventions
   4. The scope (correctness, concurrency, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
-
-  Example delegation: "Review /src/mypackage/ for correctness and concurrency safety. Diff/PR mode. Python 3.12+, src layout, asyncio. Round 1."
 
   <example>
   Context: A developer just wrote a new CLI tool.
@@ -25,24 +22,6 @@ description: |
   assistant: "I'll use python-reviewer — it checks for mutable default arguments, bare excepts, and missing context managers alongside general correctness."
   <commentary>
   Triggers after Python code is written. Include the file paths and Python version.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A concurrent/async service.
-  user: "Can you review my fetch_service.py? I'm worried about a race condition."
-  assistant: "I'll use python-reviewer to check for compound read-modify-write races despite the GIL, blocking calls freezing the event loop, and fork/spawn assumptions in any multiprocessing code."
-  <commentary>
-  Triggers on a targeted correctness/concurrency question about a specific file.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Pre-merge PR.
-  user: "Before I merge, check the Python changes in this PR."
-  assistant: "I'll use python-reviewer to audit correctness, mutable-state traps, and equality/hashing contracts before merge."
-  <commentary>
-  Triggers on pre-merge review. Include changed file paths and Python version.
   </commentary>
   </example>
 skills:

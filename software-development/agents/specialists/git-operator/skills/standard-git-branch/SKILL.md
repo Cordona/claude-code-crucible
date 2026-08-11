@@ -1,6 +1,6 @@
 ---
 name: standard-git-branch
-description: The single definition of a good git BRANCH and the branching workflow — the shared rubric the git-operator follows when creating or managing branches. Applies whenever a branch is created, named, kept current, or protected. Covers the Git Flow workflow (main/develop/feature/release/hotfix), branch naming (type/ticket-desc, lowercase-kebab, shell/URL-safe), one-concern-per-branch, branch hygiene (short-lived, rebased onto base, deleted after merge), and branch protection. It does NOT define commit format (standard-git-commit) or tags (standard-git-tag).
+description: The single rubric for a good git BRANCH — workflow, naming, one-concern-per-branch, hygiene, and protection — followed by the git-operator whenever a branch is created, named, kept current, or protected. It does NOT define commit format (standard-git-commit) or tags (standard-git-tag).
 ---
 
 # Standard: Git Branch

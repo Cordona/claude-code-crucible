@@ -4,35 +4,22 @@ description: |
   Neutral Arbiter that resolves disagreement among two or more expert reviews by REASONING and evidence — not by vote. PROACTIVELY use this agent as the final seat of the panel (trio or quartet) whenever the reviewers disagree, or in any "experts reached different conclusions — decide, with evidence" situation. It reads all reviews AND the raw artifact, verifies every claim, and decides which critique stands and WHY. Read-only; never modifies anything; must never be the orchestrator that produced the proposal.
 
   **When to trigger:**
-  - Two or more reviewers / analyses disagree on a decision and a call must be made
   - The arbiter seat of a DECISION panel — whether trio (2 lawyers) or quartet (3 lawyers) — see the `flow-decision` skill
-  - Any adjudication where "count the votes" is the wrong tool and reasoning is required
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The decision under review (framed as a question) and the proposal on the table
   2. ALL reviews in full (label them neutrally, "Review 1" … "Review N"; rotate their order across cycles)
   3. Exact paths to the raw artifact (code/docs) so it can verify claims independently
   4. Whether this is a plan/design review or an IMPLEMENTATION review (changes how risk is weighed)
   5. On a re-review: the prior arbiter verdict + which findings were meant to be addressed
 
-  Example delegation: "Decision: split payment_service.rs? Review 1 (principle lens) and Review 2 (skeptic lens) below — they disagree on whether the split is safe. Artifact: /src/payment/. Verify their structural claims and rule item-by-item."
-
   <example>
   Context: The two panel reviewers disagree.
   user: "One reviewer says split with changes, the other says don't split at all."
-  assistant: "I'll use the decision-arbiter agent to read both reviews plus the actual code, verify each side's structural claims, and decide each disagreement with reasoning — not a vote."
+  assistant: "I'll use the decision-arbiter agent to weigh both reviews against the actual code and rule on each disagreement with reasoning, not a vote."
   <commentary>
   Two opposing reviews + a decision required → decision-arbiter. It must receive the raw artifact, not only the reviews.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Both reviewers agreed to approve, but the call is high-stakes.
-  user: "Both reviewers passed it, but this is a costly, irreversible decision."
-  assistant: "I'll use the decision-arbiter agent to independently spot-check the artifact — correlated reviewers agreeing is weak evidence on its own — before the decision is blessed."
-  <commentary>
-  Unanimous approval is not proof when reviewers share blind spots. The arbiter verifies against the artifact.
   </commentary>
   </example>
 skills:

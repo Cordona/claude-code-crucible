@@ -1,9 +1,6 @@
 ---
 name: standard-jira-artifacts
-description: |
-  The Jira-specific delta on top of `standard-backlog-artifacts` — the shared rubric the project-manager BUILDS to whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers ONLY what Jira adds that neither GitHub nor GitLab has an analog for: the markdown-to-ADF authoring surface (`md-to-adf.sh`'s supported flat subset — never Jira wiki notation), Jira's config-driven workflow-STATUS state machine and the readiness-audit-against-status mechanism (auditing a ticket's content against what its CURRENT status requires), and how a confirmed Jira site selects a private per-client overlay skill (`standard-jira-<client>`) through a data-driven site-to-skill registry, never a client name hardcoded here.
-
-  Does NOT restate artifact taxonomy, INVEST, Given/When/Then, DoR/DoD, or the audience matrix — those live in `standard-backlog-artifacts` and apply to Jira artifacts unchanged. Does NOT define any per-client template, label, or status-gate content (that is a `standard-jira-<client>` overlay) or the `procedure-jira`/`procedure-jira-auth` CLI mechanics.
+description: "The Jira-specific delta on top of `standard-backlog-artifacts` — bind whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers only what Jira adds: markdown-to-ADF authoring, the workflow-status state machine and its readiness-audit mechanism, and how a confirmed site selects a client overlay. Does not restate artifact craft/taxonomy (that's `standard-backlog-artifacts`), define per-client template/label/status content (a `standard-jira-<client>` overlay), or cover the `procedure-jira`/`procedure-jira-auth` CLI mechanics."
 ---
 
 # Standard: Jira Artifacts

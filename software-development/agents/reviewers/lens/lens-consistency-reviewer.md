@@ -15,39 +15,19 @@ description: |
   - After code is written or before merging a PR, together with the language-specific reviewer
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. Whether this is a DIFF/PR (review only changed code) or a FULL AUDIT (review the whole target) — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   3. The primary language(s) of the code
   4. Any explicit architecture docs or style/lint config if present (e.g. `docs/adr/`, `ARCHITECTURE.md`, `.editorconfig`, ESLint/ktlint/Checkstyle) — these override inferred conventions
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review the changed files in src/order/ for project-consistency. Diff/PR mode. Language: Kotlin. Architecture doc at docs/adr/0003-hexagonal.md. Round 1."
-
   <example>
   Context: New code was added; the primary agent wants an architecture-conformance pass alongside the language reviewer.
   user: "Review the new payment adapter."
-  assistant: "I'll run consistency-reviewer alongside kotlin-reviewer — consistency checks that the adapter fits the project's hexagonal structure and dependency direction; kotlin-reviewer checks the language particulars."
+  assistant: "I'll run consistency-reviewer alongside kotlin-reviewer to check the adapter's fit with the project's hexagonal structure and dependency direction."
   <commentary>
   One lens of a swarm. It judges conformance to the project's own patterns, not universal quality or language correctness.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User suspects a new class breaks the architecture.
-  user: "Does this service respect our layering, or is it reaching into infrastructure?"
-  assistant: "I'll use consistency-reviewer to profile the project's dependency rules and check whether this service violates them."
-  <commentary>
-  Dependency-direction / layering conformance is this reviewer's highest-severity concern.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants naming/placement conformance.
-  user: "Is this DTO named and placed like the rest of our DTOs?"
-  assistant: "I'll use consistency-reviewer to compare it against the project's established DTO naming and location convention."
-  <commentary>
-  Conformance to the repo's own convention, anchored to existing example files.
   </commentary>
   </example>
 tools: Read, Grep, Glob

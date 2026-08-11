@@ -1,6 +1,6 @@
 ---
 name: standard-rust
-description: The single definition of good Rust — the shared rubric the Rust developer builds to and the Rust reviewer judges against. Covers ownership/borrowing, error handling, arithmetic overflow & lossy casts, the type system, std trait contracts, traits/generics, lifetimes, concurrency, the unsafe principle, async hazards, iterators/idioms, allocations, and lint/format discipline. This is WHAT good Rust looks like; it does NOT define builder workflow (build-core), the reviewer's correctness-detective method, the unsafe soundness-analysis method, or reviewer scoring — severity, category vocabulary, and false-positive guards live in the rust-reviewer.
+description: The single rubric for good Rust, built to by rust-developer and judged against by rust-reviewer. Does NOT define builder workflow (build-core), or the reviewer's correctness-detective method, unsafe soundness-analysis method, severity, or scoring (rust-reviewer).
 ---
 
 # Standard: Rust

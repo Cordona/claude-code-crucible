@@ -4,14 +4,13 @@ description: |
   Lead Rust Code Reviewer for systems and application development — the language-specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing Rust code, async services, CLI tools, web APIs, or any Rust-based components. It owns what is unique to Rust — memory safety, ownership/lifetimes, unsafe soundness, async hazards — AND code correctness/logic (which no generic lens judges).
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" Rust code
   - User mentions Rust technologies (Tokio, Axum, Actix, SQLx, Serde, etc.)
   - User requests security or safety review of Rust applications
   - Before merging pull requests containing Rust code changes
   - After writing or modifying any Rust code (trigger rust-reviewer PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. The Rust edition and MSRV (if applicable)
   3. Any project-specific conventions or requirements
@@ -19,41 +18,12 @@ description: |
   5. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   6. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review the Rust modules in /src/api/ for safety and correctness. Diff/PR mode. Rust 2021 edition, Tokio runtime, Axum framework. Round 1. Apply project standards from /docs/rust-style-guide.md."
-
   <example>
-  Context: User has just written an Axum REST handler
-  user: "Create a REST API for managing products with CRUD operations"
-  assistant: "Here's the Axum handler implementation. Now let me use the rust-reviewer agent to perform a safety- and correctness-focused review of this Rust code."
+  Context: A developer wrote an Axum REST handler.
+  user: "Review the products REST API."
+  assistant: "I'll run rust-reviewer — it checks unsafe soundness, ownership/lifetime correctness, and panic surface."
   <commentary>
-  Triggers PROACTIVELY after Rust code is written. Primary agent must include file paths, Rust edition, and framework context when delegating.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User is working on an async service implementation
-  user: "Can you review my order_service.rs for any issues?"
-  assistant: "I'll use the rust-reviewer agent to review your service module for correctness, ownership patterns, error handling, and async hazards."
-  <commentary>
-  Triggers on explicit review request for Rust code. Include module paths and async runtime context in delegation.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User has created database models with SQLx
-  user: "Here's my new domain model with SQLx queries for the customer module"
-  assistant: "I'll use the rust-reviewer agent to analyze these modules for type safety, query correctness, and potential runtime panics."
-  <commentary>
-  Triggers on database/persistence code review. Include module paths and database context in delegation.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User is preparing a PR with Rust code changes
-  user: "Before I merge, can you check the Rust changes in this PR?"
-  assistant: "I'll use the rust-reviewer agent to audit your Rust code changes against safety and correctness before merge."
-  <commentary>
-  Triggers on pre-merge review request. Include changed file paths, edition, and any relevant context.
+  Triggers after Rust code is written. Include file paths, Rust edition, and framework context.
   </commentary>
   </example>
 skills:

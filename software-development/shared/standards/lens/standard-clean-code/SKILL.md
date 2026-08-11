@@ -1,6 +1,6 @@
 ---
 name: standard-clean-code
-description: The single definition of clean, self-documenting, well-structured code — the shared rubric that developers BUILD to and the clean-code lens REVIEWS against. Applies whenever non-trivial production code is written, changed, or reviewed in any language. Defines self-documenting naming and the comment classification (redundant vs why vs functional vs public-API-doc), small/flat functions (SRP, guard clauses, nesting, parameters, no flag params), DRY with DRY-vs-YAGNI arbitration, low coupling (Law of Demeter, command-query separation, dependency injection), design for extension (OCP/LSP/ISP/DIP), no dead code, and file layout / ordering (the newspaper/stepdown rule). This is WHAT good looks like; it does not define builder workflow (build-core), review scoring (the lens supplies severity, vocabulary, and false-positive guards), performance (standard-performance), or language-specific idioms (the {tech} pair).
+description: The single rubric for clean, self-documenting code, bound by developers and the clean-code lens reviewer alike. Applies whenever non-trivial production code is written, changed, or reviewed in any language. Defines WHAT good looks like — naming/comments, small flat functions, DRY, low coupling, design for extension, no dead code, file layout. Does NOT define builder workflow (build-core), review scoring/severity (the lens), performance (standard-performance), or language-specific idioms (the tech pair).
 ---
 
 # Standard: Clean Code

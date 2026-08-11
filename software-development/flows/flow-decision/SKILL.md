@@ -1,17 +1,6 @@
 ---
 name: flow-decision
-description: >-
-  The panel — the reviewers + arbiter pattern for costly, forked decisions of ANY kind (a design
-  or architecture call, a refactor-vs-rewrite call, a technical approach — not architecture only).
-  Runs 2 (trio) or 3 (quartet) BLIND reviewers seated on ONE disposition-neutral base agent DERIVED
-  from the fork (§1a — `software-architect` for a design fork, the matching `{tech}`-reviewer for a
-  technical one, and so on), each given an OPPOSITE/orthogonal role briefing, plus a neutral
-  `decision-arbiter` agent that resolves disagreement by reasoning, not vote. All seats on Opus.
-  Neutralizes orchestrator bias on reversible-but-costly calls with multiple defensible answers. Default is the trio
-  (soundness + skeptic); the quartet adds an operability-&-evolution lens for decisions with
-  heavy run-it/change-it weight. Invoke on an explicit user request or a user-APPROVED offer
-  — NEVER auto-run. This skill holds the role briefings (inject verbatim) and the procedure;
-  the arbiter's mandate lives in the `decision-arbiter` agent (which binds the shared `standard-judging` constitution).
+description: The panel — a blind-reviewers-plus-arbiter pattern for neutralizing orchestrator bias on any complex, costly-to-undo, forked decision with multiple defensible answers — of any kind, not architecture only. Invoke ONLY on an explicit user request or a user-APPROVED offer — never auto-run. Owns the role briefings and procedure; the arbiter's own mandate lives in the `decision-arbiter` agent, not here.
 ---
 
 # Flow: Decision — the panel (sizes: trio / quartet)

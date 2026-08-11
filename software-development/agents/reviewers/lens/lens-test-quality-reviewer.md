@@ -14,39 +14,19 @@ description: |
   - As one lens of a parallel review swarm dispatched by the primary agent
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific test files (and the production files they cover) to review
   2. Whether this is a DIFF/PR (review the changed tests + whether the change's new behavior is tested) or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   3. The primary language(s) and, if known, the test framework
   4. Any explicit testing guide / conventions doc if present
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review the tests under src/test/ for the new pause-command flow (prod at command/PauseHandler.kt). Diff/PR mode. Kotlin, JUnit5. Round 1."
-
   <example>
   Context: A developer just implemented a feature; the swarm reviews it.
   user: "Review the new payment flow."
-  assistant: "I'll run lens-test-quality-reviewer on the payment tests — it checks the tests verify behavior through real boundaries, aren't false-confidence noise, avoid mocks, and that the new flow is actually covered."
+  assistant: "I'll run lens-test-quality-reviewer on the payment tests to check they verify real behavior, aren't false-confidence noise, and actually cover the new flow."
   <commentary>
   It reviews the tests and whether the change's behavior is tested; it does NOT review the payment code's own correctness (that's the language/clean-code lenses).
-  </commentary>
-  </example>
-
-  <example>
-  Context: User suspects weak tests.
-  user: "Are these tests actually testing anything or just for coverage?"
-  assistant: "I'll use lens-test-quality-reviewer to run its false-confidence check — do these tests fail if the behavior they claim to verify breaks?"
-  <commentary>
-  The flagship check: a test that passes regardless of the behavior is worse than no test.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User dislikes mocks.
-  user: "Did they mock stuff they shouldn't have?"
-  assistant: "I'll use lens-test-quality-reviewer to flag mocks of internal collaborators and check external boundaries use real/containerized dependencies instead."
-  <commentary>
-  Internal mocks are forbidden; external boundaries prefer real/containers/config-swap over mocking.
   </commentary>
   </example>
 tools: Read, Grep, Glob

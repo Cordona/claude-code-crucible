@@ -4,20 +4,17 @@ description: |
   PHP Technical Lead for enterprise PHP application development. PROACTIVELY use this agent when creating, implementing, or refactoring PHP applications, Laravel services, Symfony components, REST APIs, or Doctrine/Eloquent persistence.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" PHP code
   - User asks to "refactor", "modernize", or "migrate" a PHP application
   - User needs Laravel/Symfony services, REST APIs, or ORM entities
   - User mentions PHP frameworks (Laravel, Symfony, Slim, Laminas)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (class/service/module, purpose)
   2. PHP version + framework (PHP 8.3, Laravel 11 / Symfony 7)
   3. Project structure and namespace conventions
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, queues)
-
-  Example delegation: "Create a Laravel REST API for user management with CRUD. PHP 8.3, Laravel 11, Eloquent + PostgreSQL. Follow conventions in /app/."
 
   <example>
   Context: User needs a new REST controller
@@ -25,24 +22,6 @@ description: |
   assistant: "I'll use the php-developer agent to implement a REST controller with Form-Request validation, a service layer, and error handling."
   <commentary>
   Triggers on API creation. Include PHP version, framework, namespace structure.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants a service layer
-  user: "Implement the order processing service with validation"
-  assistant: "I'll use the php-developer agent to create the service with transaction management and domain exceptions."
-  <commentary>
-  Triggers on service implementation. Include domain model, interfaces, integration points.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs a persistence layer
-  user: "Create Doctrine entities and repositories for the customer domain"
-  assistant: "I'll use the php-developer agent to implement typed Doctrine entities with proper relationships and repositories."
-  <commentary>
-  Triggers on persistence request. Include database type, entity patterns, query needs.
   </commentary>
   </example>
 skills:

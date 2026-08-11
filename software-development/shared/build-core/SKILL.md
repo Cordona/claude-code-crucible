@@ -1,6 +1,6 @@
 ---
 name: build-core
-description: Shared builder conduct and implementation workflow for all developer subagents (Rust, Java, Kotlin, PHP, React, Shell, DevOps) and for the primary agent implementing directly. Applies whenever code is written or refactored. Defines the builder role, universal engineering principles (SRP/DRY/KISS/YAGNI + defensive practices), the requirements→discovery→design→implement→validate workflow, convention conformance, contract preservation, and project-guidelines conflict handling. Pair with the shared standards (standard-clean-code, standard-observability, standard-performance, standard-security, standard-testing) — WHAT to build well — and build-report-standards, which defines how you report back to the primary agent.
+description: Shared builder conduct and implementation workflow for every developer subagent and for the primary agent implementing directly. Applies whenever code is written or refactored. Does not define WHAT good code looks like for a concern (pair with the standard-* skills) or how to report back (build-report-standards); constructive twin of review-core, not a reviewer skill.
 ---
 
 # Build Core — Builder Conduct

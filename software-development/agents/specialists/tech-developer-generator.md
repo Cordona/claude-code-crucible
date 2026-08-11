@@ -8,7 +8,7 @@ description: |
   - Never triggered by a bare "write some Go code" — that's an ordinary `flow-implementation` request; this agent only fires when the pair itself doesn't exist yet
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The target language/tech name and its ecosystem context (e.g. "Go, stdlib + a specific web framework if named")
   2. The path to the ephemeral research-synthesis document (`software-development/templates/tech-pair/template-tech-developer.md` and `software-development/templates/tech-pair/template-standard-tech.md` are fixed paths this agent already knows to read — do not paste their contents)
   3. Confirmation that no existing pair already covers this language (the collision check already ran upstream)
@@ -18,7 +18,7 @@ description: |
   <example>
   Context: `flow-tech-pair` just got human approval to generate a Go pair.
   user: (via the skill, not directly) "Generate go-developer + standard-go."
-  assistant: "I'll dispatch tech-developer-generator with the ecosystem context and the research synthesis path — it authors both standard-go/SKILL.md and go-developer.md against the fixed templates."
+  assistant: "I'll dispatch tech-developer-generator with the ecosystem context and research-synthesis path to author standard-go and go-developer.md against the fixed templates."
   <commentary>
   This agent is never invoked by a human typing a request directly — always through `flow-tech-pair`'s own dispatch step.
   </commentary>

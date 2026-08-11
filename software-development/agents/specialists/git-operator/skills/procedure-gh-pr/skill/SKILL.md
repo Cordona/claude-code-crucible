@@ -1,6 +1,6 @@
 ---
 name: procedure-gh-pr
-description: The procedure the git-operator runs to find, open, and edit GitHub pull requests without ever hand-authoring shell. It wraps three highly-portable, deterministic scripts — scripts/find-pr.sh (READ-ONLY: is there already an open PR for this head branch?), scripts/create-pr.sh (OUTWARD WRITE: opens a PR, body ALWAYS via --body-file, and refuses to create a duplicate — it runs the same open-PR check first and fails rather than opening a second PR for the same head), and scripts/update-pr.sh (OUTWARD WRITE: edits title/body/base/labels/reviewers — the body is changed ONLY if --body-file is given, never clobbered otherwise, mirroring update-issue.sh's non-clobber mechanism exactly). Same injection-safety rule as procedure-gh-issues: any PR body is ALWAYS a file, never built in a string/heredoc/$(), and no script here ever eval's anything — the PR TITLE, by contrast, is safe to pass as a plain `--title "$VALUE"` argv token because it is never shell-constructed either. It does NOT define the artifact's craft/content (standard-git-pr) or the GitHub-account confirmation gate (procedure-github-auth — a separate, MANDATORY precondition run by the caller before any of these scripts write).
+description: The procedure the git-operator runs to find, open, and edit GitHub pull requests via deterministic scripts, never a hand-authored `gh pr` command or a shell-built PR body. Before any create/update write, the caller must already hold explicit user write-consent and have cleared the `procedure-github-auth` account gate — not performed here. It does NOT define PR body/title craft or content (`standard-git-pr`); its GitLab merge-request counterpart is `procedure-glab-mr`.
 ---
 
 # Procedure: GitHub Pull Requests (`gh` wrapper scripts)
@@ -63,7 +63,7 @@ $HOME/.claude/skills/procedure-gh-pr/scripts/update-pr.sh \
 - Prints `PM_PR_URL=<url>` **if gh returns one** — same soft "courtesy, not proof of success" contract as `comment.sh` in `procedure-gh-issues`: a successful edit that returns no URL still exits `0` with this key empty.
 - Exit `0` updated · `1` gh absent/unauthenticated/`gh pr edit` itself failed · `2` usage error.
 
-## The gates the CALLER (git-operator) must clear before invoking a WRITE
+## The gates the CALLER (the orchestrator — git-operator only plans) must clear before invoking a WRITE
 
 `create-pr.sh` and `update-pr.sh` write to a live, notifying, hard-to-retract tracker. **`find-pr.sh` is the only read-only, ungated script.** Before calling either write script:
 

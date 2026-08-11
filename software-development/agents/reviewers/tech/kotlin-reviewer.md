@@ -4,20 +4,17 @@ description: |
   Lead Kotlin Code Reviewer for JVM application development — the language-specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing Kotlin code, coroutine-based services, Ktor APIs, or Spring Boot (Kotlin) components. It owns what is unique to Kotlin — null-safety, coroutines, the type system, immutability — AND code correctness/logic, which no generic lens covers.
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" Kotlin code
   - User mentions Kotlin tech (Ktor, Exposed, coroutines, Flow, kotlinx.serialization)
   - User requests a safety, correctness, or coroutine review
   - Before merging PRs with Kotlin changes; after Kotlin code is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. Kotlin version + JVM target (Kotlin 2.0, JVM 21)
   3. Any project-specific conventions
   4. The scope (correctness, coroutines, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
-
-  Example delegation: "Review /src/main/kotlin/com/example/service/ for coroutine safety and correctness. Diff/PR mode. Kotlin 2.0, JVM 21, Ktor 2.x, Exposed. Round 1."
 
   <example>
   Context: A developer wrote a Ktor handler.
@@ -25,24 +22,6 @@ description: |
   assistant: "I'll run kotlin-reviewer — it checks null-safety (`!!`, platform types), coroutine structure, and `when` exhaustiveness."
   <commentary>
   Triggers after Kotlin code is written. Include Kotlin version and framework.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A coroutine service.
-  user: "Can you review my OrderService.kt?"
-  assistant: "I'll use kotlin-reviewer to look for GlobalScope, blocking on the wrong dispatcher, non-cooperative cancellation, and swallowed async exceptions."
-  <commentary>
-  Triggers on explicit review request. Include coroutine context.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Pre-merge PR.
-  user: "Before I merge, check the Kotlin changes in this PR."
-  assistant: "I'll use kotlin-reviewer to audit correctness, coroutines, and null-safety before merge."
-  <commentary>
-  Triggers on pre-merge review. Include changed file paths and Kotlin version.
   </commentary>
   </example>
 skills:

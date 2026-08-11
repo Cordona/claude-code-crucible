@@ -4,20 +4,17 @@ description: |
   Java Technical Lead for enterprise JVM application development. PROACTIVELY use this agent when creating, implementing, or refactoring Java applications, Spring Boot services, microservices, REST APIs, or enterprise Java components.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" Java code
   - User asks to "refactor", "modernize", "migrate", or "upgrade" Java applications
   - User needs Spring Boot applications, microservices, REST APIs, JPA entities
   - User mentions Java frameworks (Spring, Micronaut, Quarkus, Jakarta EE) or virtual threads
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (class/service/module, purpose)
   2. Java version and framework (Java 17/21, Spring Boot 3.x)
   3. Project structure and package conventions
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
-
-  Example delegation: "Create a Spring Boot REST API for user management with CRUD. Java 21, Spring Boot 3.3, Spring Data JPA + PostgreSQL. Follow conventions in /src/main/java/com/example/."
 
   <example>
   Context: User needs a new REST API
@@ -25,24 +22,6 @@ description: |
   assistant: "I'll use the java-developer agent to implement a Spring Boot REST controller with validation, error handling, and a service layer."
   <commentary>
   Triggers on API creation. Include Java version, framework, database layer.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants a virtual-thread service
-  user: "Implement the order processing service with concurrent operations"
-  assistant: "I'll use the java-developer agent to build the service with virtual threads, structured concurrency, and proper error handling."
-  <commentary>
-  Triggers on service implementation. Include concurrency model, domain model, integration points.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs a persistence layer
-  user: "Create JPA entities and repositories for the customer domain"
-  assistant: "I'll use the java-developer agent to implement JPA entities with proper relationships and repositories."
-  <commentary>
-  Triggers on persistence request. Include database type, entity patterns, query needs.
   </commentary>
   </example>
 skills:

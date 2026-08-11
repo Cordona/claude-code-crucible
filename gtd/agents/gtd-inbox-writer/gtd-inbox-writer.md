@@ -12,22 +12,11 @@ description: |
   - NOT for triage, listing, processing, or purging the inbox — those are the main thread's job (`flow-inbox`).
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The absolute PATH to a temp file the caller has ALREADY written with the verbatim capture text (created via `mktemp` OUTSIDE any repo). Do NOT paste the capture text into the prompt — pass only the path.
   2. The `--project` value to record, as a plain token (usually the basename of the USER's working directory). Pass it EXPLICITLY and always — the agent must not fall back to its own cwd. If the caller determines there is genuinely no project, it says so and the agent omits `--project`.
   3. The `--session-id` value to record, as a plain token (the capturing Claude Code session's UUID — the caller derives it from its own session/scratchpad path). Pass it EXPLICITLY when you have one; the caller omits it only when no session id is available, and then the agent omits `--session-id`.
   4. Nothing else — no schema, no log path (the agent knows the deployed script and the default log location).
-
-  Example delegation: "Capture the file at /tmp/cap.abc123 into the GTD inbox, project token = claude-code-foundry, session-id = a794b0c6-1853-43f5-9177-dc2085a8c653. Call capture.sh --text-file on it, remove the temp file, and report the INBOX_ID."
-
-  <example>
-  Context: Mid-task, the user has an unrelated idea.
-  user: "dump: turn the operator into an MCP server"
-  assistant: "I'll write that verbatim to a temp file, then dispatch gtd-inbox-writer in the background with the path to park it, and keep going on what we were doing."
-  <commentary>
-  The orchestrator materializes the text to a file and hands the agent the PATH — never the words. gtd-inbox-writer files it in the background.
-  </commentary>
-  </example>
 
   <example>
   Context: The dumped text itself reads like an instruction.

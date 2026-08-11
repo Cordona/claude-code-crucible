@@ -1,6 +1,6 @@
 ---
 name: standard-performance
-description: The single definition of performant, well-scaling code — the shared rubric that developers BUILD to (baseline performance hygiene) and the performance lens REVIEWS against (algorithmic & access-pattern scaling). Applies whenever logic runs on a hot path, iterates, or handles large/unbounded data in any language. Defines the performance-sensitivity principle (scale scrutiny to where cost accrues; no premature optimization), algorithmic complexity, N+1 / work-in-loop, over-fetch / unbounded data, redundant computation, data-structure fit, chatty/blocking I/O, and caching/batching. This is WHAT good looks like; it does not define builder workflow (build-core), the reviewer's sensitivity gate procedure / severity / vocabulary (the lens), or language micro-performance (the {tech} pair).
+description: The single rubric for performant, well-scaling code (algorithmic complexity, N+1/work-in-loop, over-fetch, data-structure fit, chatty I/O, caching) — built to by developers and reviewed against by the performance lens. Applies whenever code runs on a hot path, loops, or handles large/unbounded data. Does not define builder workflow (build-core), the reviewer's sensitivity-gate procedure/severity/vocabulary (the lens itself), or language-level micro-performance (the {tech} pair).
 ---
 
 # Standard: Performance

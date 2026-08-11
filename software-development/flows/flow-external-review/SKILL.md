@@ -1,15 +1,6 @@
 ---
 name: flow-external-review
-description: >-
-  The External Review procedure — turns an external/automated PR (GitHub) or MR (GitLab) review
-  (human comments + bot/static-analysis passes) into a DETERMINISTIC, TERMINATING, SELF-AUDITING
-  run that adjudicates every finding with independent agents, fixes only what is genuinely broken,
-  and posts one consolidated response. Roster-aware: findings route to the framework's own reviewers
-  as cold PRO/CON advocates (the {tech}-reviewer for correctness/language, the matching lens-*
-  reviewer for a concern, software-architect for a design finding), the `review-arbiter` is the
-  judge, the {tech}-developer/{tech}-reviewer pair does fixes, and a general-purpose verifier
-  re-derives ground truth at every gate. Bind this skill (as the ORCHESTRATOR) when a PR or MR has
-  received a review and you've been asked to address it. Judge conduct lives in `standard-judging`.
+description: Turns an external/automated PR (GitHub) or MR (GitLab) review into a deterministic, terminating run that adjudicates every finding with independent framework agents, fixes only what's genuinely broken, and posts one consolidated response. Bind this skill as the ORCHESTRATOR only when a PR/MR has already received a review and you've been explicitly asked to address it — never to perform the review itself. A new review pass — including one your own push triggers — is always a fresh invocation, never auto-continued. Judge conduct lives in `standard-judging`.
 ---
 
 # Flow: External Review — the panel, run per finding (v6, GitHub + GitLab)

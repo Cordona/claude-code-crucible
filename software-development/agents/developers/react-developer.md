@@ -4,45 +4,24 @@ description: |
   React Technical Lead for production TypeScript React applications (including the React meta-frameworks Next.js and Remix). PROACTIVELY use this agent when creating, implementing, or refactoring React components, hooks, pages, or client/server-rendered UI in TypeScript.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" React / `.tsx` code
   - User asks to "refactor", "modernize", or "migrate" a React application
   - User needs React components, custom hooks, pages, or state/data-fetching layers
   - User mentions React or its ecosystem (Next.js, Remix, TanStack Query, Zustand, React Hook Form)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (component/hook/page/feature, purpose)
   2. React version and meta-framework (React 18/19, Next.js App Router, Remix) — and whether the React Compiler is enabled
   3. Project structure and component/styling conventions
   4. Existing patterns or design system to follow
   5. Integration requirements (APIs, state management, forms, styling)
 
-  Example delegation: "Create a data table with sorting, filtering, and pagination. React 19 + TypeScript, TanStack Table + TanStack Query, Tailwind. Follow conventions in /src/components/."
-
   <example>
   Context: User needs a new component.
   user: "Create a reusable modal with animations"
-  assistant: "I'll use the react-developer agent to build an accessible modal — focus trap, Esc-to-close, return-focus, typed props."
+  assistant: "I'll use the react-developer agent to build an accessible modal with a focus trap and keyboard handling."
   <commentary>
   Triggers on component creation. Include React version, styling, and whether the React Compiler is on.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants data on a page.
-  user: "Implement the dashboard page with server data and widgets"
-  assistant: "I'll use the react-developer agent — Server Components for data fetching, client leaves only where interactive, TanStack Query for cache."
-  <commentary>
-  Triggers on page implementation. Include meta-framework and data-fetching strategy.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs state.
-  user: "Create a shopping cart store"
-  assistant: "I'll use the react-developer agent to implement a typed Zustand store with derived selectors and persistence."
-  <commentary>
-  Triggers on state management. Include the state library and persistence needs.
   </commentary>
   </example>
 skills:

@@ -31,7 +31,7 @@ description: |
   <!-- FILL: 2-3 more bullets naming the language's own common frameworks/runtimes/needs -->
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (module/service/feature, purpose)
   2. {{Tech}} version + target <!-- FILL: e.g. "(Go 1.22, module mode)" -->
   3. Project structure and package conventions

@@ -4,45 +4,23 @@ description: |
   Lead Shell Script Developer for Bash, POSIX shell, and automation scripting. PROACTIVELY use this agent when creating, implementing, or refactoring shell scripts, deployment automation, CI/CD bash steps, system-administration scripts, CLI tools, or container entrypoints.
 
   **When to trigger:**
-  - User asks to "create", "write", "build", "implement", or "develop" shell scripts
   - User asks to "refactor", "improve", or "fix" existing shell scripts
   - User needs deployment/automation scripts, CLI tools, cron jobs, backup scripts, or Docker entrypoints
-  - User mentions shell scripting, Bash, or POSIX `sh`
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What the script should do (and the problem it solves)
   2. Target shell (Bash 4+, POSIX sh, zsh) and environment (Linux, macOS, containers)
   3. Input/output contract (arguments, stdin, files, exit codes)
   4. Existing scripts or patterns to follow
   5. Security requirements / sensitive-data handling
 
-  Example delegation: "Create a Bash 4+ deployment script for our K8s clusters. Multi-environment (dev/staging/prod) via args, rollback support, logging. Follow conventions in /scripts/."
-
   <example>
   Context: User needs deployment automation
   user: "Create a deployment script that supports blue-green deployments"
-  assistant: "I'll use the shell-script-developer agent to implement a script with strict mode, cleanup traps, rollback, and shellcheck-clean code."
+  assistant: "I'll use the shell-script-developer agent to implement a script with strict mode, cleanup traps, and rollback support."
   <commentary>
   Triggers on script creation. Include target environment, strategy, existing patterns.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants a CLI tool
-  user: "Build a bash CLI for managing our dev environments"
-  assistant: "I'll use the shell-script-developer agent to create a CLI with getopts parsing, subcommands, help text, and defined exit codes."
-  <commentary>
-  Triggers on CLI creation. Include subcommands and UX requirements.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs a Docker entrypoint
-  user: "Create an entrypoint.sh that handles signals and configures the app"
-  assistant: "I'll use the shell-script-developer agent to build an entrypoint with proper signal handling (trap), config templating, and graceful shutdown."
-  <commentary>
-  Triggers on container script. Include base image, config sources, signal requirements.
   </commentary>
   </example>
 skills:

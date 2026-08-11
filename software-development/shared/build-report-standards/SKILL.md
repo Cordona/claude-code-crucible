@@ -1,6 +1,6 @@
 ---
 name: build-report-standards
-description: Uniform implementation-report contract for all developer subagents. Applies whenever a developer (rust, java, kotlin, php, react, shell, devops) reports an implementation back to the primary agent, or reports what it changed while fixing review findings. Defines the report envelope — technology, files, summary, key decisions, validation gates, and handoff-to-reviewer — as a light inline narrative (not a finding schema) so every developer reports the same way and the primary agent can brief the review swarm and track fixes across rounds. Pair with build-core (conduct/workflow).
+description: Defines the inline narrative report a developer subagent gives the primary agent after building or fixing review findings. Bind alongside build-core (HOW to build) — this owns HOW to report it. Does not define the reviewer's finding schema (review-report-standards).
 ---
 
 # Build Report Standards

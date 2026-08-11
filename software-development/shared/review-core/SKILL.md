@@ -1,6 +1,6 @@
 ---
 name: review-core
-description: Shared reviewer conduct for all reviewer subagents (clean-code, consistency, test-quality, security, observability, and language-specific reviewers). Applies whenever a reviewer analyzes code and reports findings. Defines the reviewer role and report-only mandate, the diff-scope rule, finding-quality discipline, the handoff pattern for out-of-scope observations, universal edge cases, and the severity philosophy. Pair with the review-report-standards skill, which defines the report format.
+description: Shared conduct every reviewer subagent follows when analyzing code and reporting findings — the report-only role, diff-scope discipline, finding-quality bar, and severity philosophy. Always pair with `review-report-standards`, which owns the report format. Does not define a lens's own WHAT-to-review scope or which lens owns an overlapping finding (`review-boundaries`).
 ---
 
 # Review Core — Reviewer Conduct

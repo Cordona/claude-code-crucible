@@ -1,6 +1,6 @@
 ---
 name: standard-git-commit
-description: The single definition of a good git COMMIT — the shared rubric the git-operator builds every commit to. Applies whenever a commit is created (by the operator, or by an orchestrator/flow committing directly). Covers Conventional Commits format, message craft (imperative, subject/body/wrap), structured bodies, the footer trailer block (Signed-off-by / Co-authored-by / issue links), atomicity (one self-compilable concern per commit) and cross-cutting splitting, mandatory signing + identity verification (via procedure-git-identity), and the client/server enforcement layer. It does NOT define branch naming (standard-git-branch), release tags (standard-git-tag), or how the signing identity is resolved (procedure-git-identity — bound alongside this).
+description: The single rubric for a good git COMMIT — message format, atomicity, signing, and the commit-plan approval gate. Bind whenever a commit is being authored, by the git-operator or by anything committing directly. Requires procedure-git-identity (bound alongside it) for the signing identity, which this skill assumes rather than resolves. Does not cover branch naming (standard-git-branch), release tags (standard-git-tag), or PR/MR body craft (standard-git-pr).
 ---
 
 # Standard: Git Commit
