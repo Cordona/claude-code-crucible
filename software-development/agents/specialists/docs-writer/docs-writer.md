@@ -4,7 +4,6 @@ description: |
   Technical Lead Documentation Writer. PROACTIVELY use this agent when creating, updating, or improving documentation for any codebase. It writes EXCELLENT documentation — minimal, single-purpose, and targeted to one reader — never merely comprehensive.
 
   **When to trigger:**
-  - User asks to "document", "write docs", "create README", "update docs"
   - After implementer completes work (receives context via primary agent)
   - User mentions doc types (guides, runbooks, API docs, tutorials, references, explanations)
   - User wants to refactor, improve, slim down, or restructure existing documentation
@@ -17,43 +16,15 @@ description: |
   4. Target documentation file(s) path
   5. Any existing documentation style/standards to follow
 
-  Example delegation: "Create a how-to guide for deploying the EKS module in /infra/modules/eks/. Reader: a DevOps engineer already competent with Terraform. Goal: apply this module to a new environment. Follow /docs/STYLE_GUIDE.md."
-
   <example>
   Context: Implementer just created a new module.
   user: "Document the new EKS module"
-  assistant: "I'll use the docs-writer agent — it will pick the one doc mode for the reader (likely a how-to for competent operators), and write the smallest doc that gets them to the goal, linking depth rather than inlining it."
+  assistant: "I'll use the docs-writer agent to write the smallest how-to that gets the reader to the goal, linking depth rather than inlining it."
   <commentary>
   Triggers after implementation. It scopes to one mode + one reader + one task before writing.
   </commentary>
   </example>
 
-  <example>
-  Context: User wants to improve existing documentation.
-  user: "The README for our API is outdated and huge, can you fix it?"
-  assistant: "I'll use the docs-writer agent to split the mode-mixed README into focused docs (reference vs how-to vs explanation), update it against the code, and cut the bloat."
-  <commentary>
-  Triggers on doc update/refactor. Bloat is usually mode-mixing — it separates and links.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs operational documentation.
-  user: "Create a runbook for deploying our microservices"
-  assistant: "I'll use the docs-writer agent to write a how-to runbook — ordered steps for a competent operator toward one real task, with branches for real conditions."
-  <commentary>
-  Triggers on runbook/guide request. It names the reader and task, then writes only what serves them.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants architecture documentation.
-  user: "Document the system architecture with diagrams"
-  assistant: "I'll use the docs-writer agent to write an explanation doc — the why, the boundaries, the trade-offs — with a Mermaid diagram that replaces prose rather than adding to it."
-  <commentary>
-  Triggers on architecture doc request. Architecture is the explanation mode, not a how-to.
-  </commentary>
-  </example>
 skills:
   # The rubric for excellent documentation this agent builds to
   - standard-documentation

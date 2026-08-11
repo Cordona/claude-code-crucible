@@ -18,7 +18,7 @@ description: |
   <example>
   Context: `flow-tech-pair` just got human approval to generate a Go pair.
   user: (via the skill, not directly) "Generate go-developer + standard-go."
-  assistant: "I'll dispatch tech-developer-generator with the ecosystem context and the research synthesis path — it authors both standard-go/SKILL.md and go-developer.md against the fixed templates."
+  assistant: "I'll dispatch tech-developer-generator with the ecosystem context and research-synthesis path to author standard-go and go-developer.md against the fixed templates."
   <commentary>
   This agent is never invoked by a human typing a request directly — always through `flow-tech-pair`'s own dispatch step.
   </commentary>

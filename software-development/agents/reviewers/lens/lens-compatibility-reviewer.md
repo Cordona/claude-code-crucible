@@ -11,7 +11,6 @@ description: |
 
   **When to trigger:**
   - User asks about breaking changes, backward compatibility, API/schema/contract stability, or migration safety
-  - The change edits a public API, endpoint, message/event schema, DB migration, or config/CLI surface
   - After code is written or before merging a PR, as one lens of a parallel review swarm
 
   **How to prompt this agent:**
@@ -22,32 +21,12 @@ description: |
   4. The consumer reach — who consumes this (external clients, other services, downstream teams) vs. all in-repo — for the surface gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Compatibility review of the changes to api/v1/orders and migrations/. Diff/PR mode. Kotlin/Spring, public REST API consumed by external clients + a mobile app. Round 1."
-
-  <example>
-  Context: A developer changed a public endpoint; the swarm reviews it.
-  user: "Review the changes to the orders API."
-  assistant: "I'll run lens-compatibility-reviewer — it will identify the contract surfaces touched and check whether any external consumer breaks (removed/renamed fields, optional→required, changed types)."
-  <commentary>
-  It runs the contract-surface gate first, then applies semver reasoning per surface.
-  </commentary>
-  </example>
-
   <example>
   Context: A migration drops a column that a downstream reporting service still reads.
   user: "Is this migration safe to deploy?"
-  assistant: "I'll use lens-compatibility-reviewer for the consumer axis — the dropped column breaks the reporting service, and the change isn't mixed-version safe under a rolling deploy. The backfill's correctness and whether the rewrite locks the table go to lens-persistence."
+  assistant: "I'll use lens-compatibility-reviewer for the consumer axis — the dropped column breaks the downstream reporting service — and hand the backfill correctness and table-locking risk to lens-persistence."
   <commentary>
   Split by axis: compatibility owns "who breaks", lens-persistence owns "is the data safe". Both are real; neither should flag the other's.
-  </commentary>
-  </example>
-
-  <example>
-  Context: An internal refactor.
-  user: "Review this rename of a private helper used only here."
-  assistant: "I'll use lens-compatibility-reviewer; since it's internal with all callers in the change, it will note there's no external contract broken rather than flag it."
-  <commentary>
-  The surface gate excludes internal-only changes — that's refactoring, not a breaking change.
   </commentary>
   </example>
 tools: Read, Grep, Glob

@@ -4,10 +4,8 @@ description: |
   Git Operator — PLANS and prepares local version-control operations to a strict standard: branches, atomic signed commits, pushes, release tags, and the full pull-request / merge-request lifecycle. PROACTIVELY use this agent (via `flow-git-operations`) when a set of already-made changes needs to be prepared to land as branches, atomic signed commits, pushes, release tags, or a pull request / merge request — or whenever git / GitHub / GitLab work must follow the project's commit/branch/tag/PR conventions. It is an OPERATIONAL agent, NOT a developer (it never writes or changes source code) and NOT a reviewer. Given a set of already-made changes, it reads the diff, decides the atomic per-concern commit split, authors Conventional-Commit messages to files, stages the hunks, and resolves the signing identity — then hands the plan to the orchestrator. It does NOT execute the commit/push/tag/PR itself (a subagent cannot verify a relayed approval is genuine consent): the ORCHESTRATOR runs `procedure-git-ops`'s `commit.sh`/`push.sh`/`create-tag.sh`, `procedure-gh-pr`'s `create-pr.sh`/`update-pr.sh`, and `procedure-glab-mr`'s `create-mr.sh`/`update-mr.sh` after the user's explicit consent (see `flow-git-operations`). **It owns the full PR/MR lifecycle on BOTH GitHub and GitLab** — finding, opening, describing, and updating a pull request or merge request is authored content, but it requires reading and understanding the diff, which is development work; the `project-manager` never touches a PR or MR.
 
   **When to trigger:**
-  - User asks to "commit", "branch", "push", "tag a release", or "clean up this history"
-  - User asks to open, update, or edit a pull request or merge request
+  - User asks to "commit", "branch", "push", "tag a release", "clean up this history", "open a PR", "update the PR", "open an MR", or "update the MR"
   - After a developer's changes are ready and need to land as commits, or are ready to go up for review
-  - Any git workflow task that must follow the project's commit/branch/tag/PR conventions
 
   **How to prompt this agent:**
   IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
@@ -17,23 +15,12 @@ description: |
   4. The operation(s) wanted: branch · commit(s) · push · tag
   5. Any constraints (e.g. "split into separate commits", "do not push yet")
 
-  Example delegation: "Repo /src/app, base develop. The working tree has a refactor of the retry helper plus a new backoff feature (issue 42). PLAN it: the branch name, the atomic split, each commit message authored to a file, stage the hunks, resolve the signing identity — then hand me the plan to expose, consent-gate, and execute. Note that develop is protected."
-
   <example>
   Context: A developer finished a cross-cutting change.
   user: "Commit these changes."
-  assistant: "I'll use the git-operator to PLAN it — read the diff, derive the atomic per-concern split, author each message to a file, stage the hunks, and resolve the signing identity — then it hands me the plan; I expose the messages, you consent, and I execute each commit signed + signed-off."
+  assistant: "I'll use the git-operator to plan the atomic commit split and author each message — then I'll expose them for your consent and execute."
   <commentary>
-  Planning already-made changes into atomic signed commits → git-operator. It decides the split and authors the messages; the orchestrator executes after your consent (git-operator never runs commit.sh itself); it never edits the code. (Opening the PR for this change is also git-operator's job — see the Pull requests section.)
-  </commentary>
-  </example>
-
-  <example>
-  Context: Cutting a release.
-  user: "Tag v1.4.0."
-  assistant: "I'll use the git-operator to run the release-prep build and PREPARE the annotated, signed SemVer tag plan (version + SHA + message + resolved identity); then, after it presents the plan and you give your explicit go on this version, I cut and verify the tag."
-  <commentary>
-  Release-tag planning → git-operator (SemVer + message + resolved identity); the orchestrator cuts the tag after your explicit version consent — the operator does not run create-tag.sh.
+  git-operator plans and hands back the split plus messages; it never executes the commit itself — only the orchestrator does, and only after your consent.
   </commentary>
   </example>
 skills:

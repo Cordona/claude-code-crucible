@@ -21,30 +21,10 @@ description: |
   4. The exposure/intent — externally reachable? handles auth/PII/money/privileged ops? — for the threat-surface gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Security review of the new order API under src/order/. Diff/PR mode. Kotlin/Spring, internet-facing, handles auth + payment. Round 1."
-
-  <example>
-  Context: A developer added a public endpoint; the swarm reviews it.
-  user: "Review the new order endpoint."
-  assistant: "I'll run lens-security-reviewer — it will scope scrutiny to the endpoint's attack surface, then trace untrusted input to sinks for injection, and check access control and secrets."
-  <commentary>
-  It runs the threat-surface gate first, then the taint engine, then the category checklist.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User worried about a specific class.
-  user: "Do we have any SQL injection here?"
-  assistant: "I'll use lens-security-reviewer to trace user input to query sinks and confirm parameterization."
-  <commentary>
-  Injection is a source→sink→control check; framework-parameterized queries are the control being present.
-  </commentary>
-  </example>
-
   <example>
   Context: Pure internal utility.
   user: "Security-review this internal date formatter."
-  assistant: "I'll use lens-security-reviewer; with no untrusted input, sink, or secret, it will note there's no meaningful attack surface rather than invent findings."
+  assistant: "I'll use lens-security-reviewer, which will find no meaningful attack surface here since there's no untrusted input, sink, or secret."
   <commentary>
   The threat-surface gate prevents manufacturing security findings on no-surface code.
   </commentary>

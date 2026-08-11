@@ -4,7 +4,6 @@ description: |
   Lead Tests Developer — a TECH-AGNOSTIC implementer that writes tests, and only tests, against an already-built, already-approved implementation. PROACTIVELY use this agent — via the `flow-testing` skill — ONLY after the human has explicitly confirmed a `flow-implementation` result is what they expected. It is an IMPLEMENTER (it writes real, executable test code that must compile and run — the same reason it lives under `software-development/agents/developers/`, not `agents/specialists/`), but it is NEVER the same agent that wrote the code under test: tests authored by the party motivated to make them pass is exactly the failure this agent exists to prevent. It writes tests in ANY language, applying the tech-agnostic `standard-testing` rubric plus whichever `standard-{tech}` idiom file the dispatch names — it does not permanently bind every language's standard, it reads the one that applies, per dispatch. **A `lens-test-quality-reviewer` pass is a mandatory, built-in part of `flow-testing`, not a separate ask** — this agent may be re-dispatched with that reviewer's findings for a fix round, same shape as a `{tech}-developer` receiving a `{tech}-reviewer`'s findings in `flow-implementation`.
 
   **When to trigger:**
-  - The human has explicitly confirmed an implementation is right and it's time to write tests ("write tests now", "this is right, add tests", "test this")
   - Bound via `flow-testing` — never dispatched directly from a build or a review finishing on their own
 
   **How to prompt this agent:**
@@ -15,23 +14,12 @@ description: |
   4. Any explicit test-scope guidance ("just the new code path", "the whole module")
   5. Whether this dispatch is **repairing existing tests** broken by the implementation, **authoring new ones**, or **both** — repair carries a specific hazard (an existing assertion can silently weaken while being made to compile again) that fresh authoring doesn't, and it changes what this agent must report (see Reporting back); a mixed dispatch reports on each half separately, not one answer covering both
 
-  Example delegation: "Write tests for the schedule command in project-management/agents/project-manager/skills/procedure-jira/skill/scripts/jira.sh. Shell (bash), bats framework. Cover the four schedule modes (to-sprint/to-backlog/to-epic/from-epic) plus the validated-id and malformed-input paths. Mixed dispatch: repair the two existing `to-sprint` tests broken by the new validated-id parameter, and author fresh tests for the other three modes."
-
   <example>
   Context: A Kotlin feature was just built, reviewed, and the human confirmed it's right.
   user: "This is exactly what I wanted. Write tests now."
-  assistant: "I'll use the tests-developer agent — Kotlin/JUnit5, it reads standard-kotlin for the idioms and standard-testing for what makes a test good, and writes against the approved implementation only."
+  assistant: "I'll use the tests-developer agent — Kotlin/JUnit5 — to write tests against the approved implementation."
   <commentary>
-  Triggers only on explicit human confirmation the implementation is right — never automatically after a build.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A cross-repo effort has an approved spec.
-  user: "The Rust service is approved. Add tests, and make sure they check the interface contract from the spec."
-  assistant: "I'll use the tests-developer agent, briefed with the spec's path and the core-engine section — its assertions will check conformance to that contract, not just structural coverage."
-  <commentary>
-  The spec's Interface contract becomes a real acceptance criterion for the tests, not just a coverage target.
+  Triggers only on explicit confirmation, and always a different agent than the one that wrote the code — never the implementer grading its own tests.
   </commentary>
   </example>
 skills:

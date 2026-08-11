@@ -11,7 +11,6 @@ description: |
 
   **When to trigger:**
   - User asks to review performance, efficiency, scalability, latency, or "will this scale?"
-  - The change adds loops, queries/calls in iteration, data loading, or hot-path logic
   - After code is written or before merging a PR, as one lens of a parallel review swarm
 
   **How to prompt this agent:**
@@ -22,30 +21,10 @@ description: |
   4. The path's exposure — hot path? per-request? batch? expected data volume / frequency — for the sensitivity gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Performance review of the order-listing endpoint under src/order/. Diff/PR mode. Kotlin/Spring + Postgres. Per-request path, up to ~10k orders/user. Round 1."
-
-  <example>
-  Context: A developer added a listing endpoint; the swarm reviews it.
-  user: "Review the new order-listing endpoint."
-  assistant: "I'll run lens-performance-reviewer — it will gate on whether this is a hot path, then check for N+1 queries, over-fetch, and O(n²) work over the order set."
-  <commentary>
-  It runs the sensitivity gate first, then reasons about complexity and access patterns.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User suspects a scaling problem.
-  user: "Why does this get slow with lots of items?"
-  assistant: "I'll use lens-performance-reviewer to look for work-in-loop and quadratic patterns that scale with the item count."
-  <commentary>
-  Scaling-with-input is the core signal; a fixed small cost is not.
-  </commentary>
-  </example>
-
   <example>
   Context: A rarely-run internal utility.
   user: "Performance-review this one-time migration script."
-  assistant: "I'll use lens-performance-reviewer; since it runs once over bounded data, it will note there's no hot-path concern rather than flag micro-optimizations."
+  assistant: "I'll use lens-performance-reviewer, which will flag no hot-path concern here since this script runs once over bounded data."
   <commentary>
   The gate prevents premature micro-optimization on cold paths.
   </commentary>

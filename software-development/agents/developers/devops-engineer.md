@@ -4,10 +4,8 @@ description: |
   Lead DevOps Engineer for Infrastructure as Code. PROACTIVELY use this agent when creating or refactoring Terraform/OpenTofu modules, Helm charts, Kustomize overlays, Ansible playbooks, Pulumi stacks, CloudFormation, Kubernetes manifests, Dockerfiles, or CI/CD pipelines.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "set up", or "write" infrastructure code
   - User asks to "refactor", "reorganize", or "migrate" infrastructure
   - User needs IaC modules/charts/manifests/pipelines, containerization, or CI/CD automation
-  - User mentions infrastructure provisioning or deployment automation
 
   **How to prompt this agent:**
   IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
@@ -17,32 +15,12 @@ description: |
   4. Existing infrastructure patterns to follow (module layout, state backend)
   5. Any project-specific standards
 
-  Example delegation: "Create a Terraform module for an AWS EKS cluster with managed node groups. us-east-1, production. Follow conventions in /infra/modules/."
-
   <example>
   Context: User needs a new Terraform module
   user: "Create a Terraform module for an S3 bucket for static website hosting"
   assistant: "I'll use the devops-engineer agent to implement a secure, production-ready S3 static-website module (private-by-default, encrypted, versioned)."
   <commentary>
   Triggers on IaC creation. Include cloud provider, target directory, existing module patterns.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants containerization
-  user: "Create a Dockerfile for my Node.js app with a multi-stage build"
-  assistant: "I'll use the devops-engineer agent to create an optimized, non-root, minimal Dockerfile."
-  <commentary>
-  Triggers on Dockerfile creation. Include app type, base image, security requirements.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs CI/CD
-  user: "Set up a GitHub Actions workflow to test and deploy to Kubernetes"
-  assistant: "I'll use the devops-engineer agent to build a pipeline with test/scan stages, least-privilege secrets, and a gated deploy."
-  <commentary>
-  Triggers on CI/CD setup. Include target environment, secrets approach, deploy gates.
   </commentary>
   </example>
 skills:

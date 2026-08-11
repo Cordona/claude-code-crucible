@@ -22,32 +22,12 @@ description: |
   4. The scope (design only, self-documenting-code only, or both) — and whether this is a DIFF/PR or a FULL AUDIT; for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review src/order/ for clean-code (design + gratuitous comments). Language: Kotlin. INTERNAL application code (not a published library). Apply the self-documenting-code rule strictly. Round 1."
-
   <example>
   Context: A language reviewer already ran; the primary agent wants a structural pass too.
   user: "Review the new order module."
   assistant: "I'll run clean-code-reviewer alongside kotlin-reviewer so we get both the structural/self-documenting-code view and the Kotlin-specific safety view."
   <commentary>
   This agent is one lens of a swarm. It does NOT replace the language reviewer; the primary agent runs both and merges findings by the shared report schema.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User is enforcing a self-documenting-code standard.
-  user: "The team keeps adding comments that just restate the code. Flag them."
-  assistant: "I'll use clean-code-reviewer to classify every comment and flag the ones a rename or extraction would make unnecessary."
-  <commentary>
-  Triggers on the self-documenting-code rule. Tell it whether the code is internal or a public API surface.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User suspects over-engineering.
-  user: "Is this factory-of-factories actually needed or did we over-abstract?"
-  assistant: "I'll use clean-code-reviewer to weigh the abstraction against actual usage (YAGNI vs DRY) and report whether it earns its complexity."
-  <commentary>
-  The design lens arbitrates competing principles (DRY vs YAGNI) that a single-principle checker cannot.
   </commentary>
   </example>
 tools: Read, Grep, Glob

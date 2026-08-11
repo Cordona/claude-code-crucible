@@ -21,30 +21,10 @@ description: |
   4. The codebase's shape & intent (library / CLI / single service / distributed / async) — needed for the pillar evaluation
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review the observability of the new order service under src/order/. Diff/PR mode. Kotlin, SLF4J + OpenTelemetry. Shape: user-facing service in a microservices system. Round 1."
-
-  <example>
-  Context: A developer added a new service endpoint; the swarm reviews it.
-  user: "Review the new payment flow."
-  assistant: "I'll run lens-observability-reviewer — it will decide which pillars a payment service needs, then check logs for PII leakage, correct levels, trace-context propagation, and the required audit events."
-  <commentary>
-  It evaluates pillar applicability first, then reviews against the applicable rules.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User worried about leaking data.
-  user: "Are we logging anything sensitive?"
-  assistant: "I'll use lens-observability-reviewer to run the deny-list and PII checks — credentials, tokens, headers, and full-object dumps."
-  <commentary>
-  Privacy/PII is a first-class, high-severity check.
-  </commentary>
-  </example>
-
   <example>
   Context: A shared library.
   user: "Review the logging in our SDK."
-  assistant: "I'll use lens-observability-reviewer; for a library it will require API-only instrumentation and will NOT demand exporter config or full tracing setup."
+  assistant: "I'll use lens-observability-reviewer, which will require only API-level instrumentation here rather than a full exporter/tracing setup."
   <commentary>
   The pillar gate prevents forcing service-grade observability onto a library.
   </commentary>

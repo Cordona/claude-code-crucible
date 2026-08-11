@@ -4,7 +4,6 @@ description: |
   Lead DevOps Code Reviewer for Infrastructure as Code — the specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing Terraform/OpenTofu, Helm, Kustomize, Ansible, Pulumi, CloudFormation, Kubernetes manifests, Dockerfiles, or CI/CD pipelines. It owns what is unique to infrastructure — INFRASTRUCTURE CORRECTNESS & SAFETY (idempotency, state/drift, destructive changes, scope, rollout safety) and CLOUD SECURITY POSTURE (IAM, network exposure, encryption, secrets, container hardening, supply chain) — neither of which a generic lens covers. Reviews statically; never runs `apply`/`plan`.
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" infrastructure code
   - User mentions IaC tech (Terraform, Helm, K8s, Docker, Ansible, CI/CD)
   - User requests a security or deployment-safety review of infra
   - Before merging infrastructure PRs; after infra is written (trigger PROACTIVELY)
@@ -17,32 +16,12 @@ description: |
   4. The scope (security posture, deployment safety, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review /infra/modules/vpc for security posture and deployment safety. Diff/PR mode. Terraform, AWS, remote state in S3. Round 1."
-
   <example>
   Context: A developer wrote a Terraform S3 module.
   user: "Review my S3 module."
   assistant: "I'll run devops-reviewer — it checks public exposure, encryption, IAM scope, and whether the change would destroy/recreate the bucket."
   <commentary>
   Triggers after IaC is written. Include cloud provider and state context.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A K8s manifest.
-  user: "Can you review my deployment.yaml?"
-  assistant: "I'll use devops-reviewer to check securityContext (non-root), resource limits, probes, RBAC, and NetworkPolicy."
-  <commentary>
-  Triggers on K8s review. Include cluster/namespace context.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Pre-merge CI/CD change.
-  user: "Before I merge, check my GitHub Actions deploy pipeline."
-  assistant: "I'll use devops-reviewer to audit secrets handling, runner privileges, and deploy-gate safety before merge."
-  <commentary>
-  Triggers on pre-merge review. Include the deployment target.
   </commentary>
   </example>
 skills:

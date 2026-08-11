@@ -4,7 +4,6 @@ description: |
   Python Technical Lead for general-purpose scripting, CLI tools, and application libraries. PROACTIVELY use this agent when creating, implementing, or refactoring Python applications, CLI tools, automation/data-processing scripts, or reusable libraries/packages.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" Python code
   - User asks to "refactor", "modernize", or "migrate" a Python application or library
   - User needs a CLI tool (argparse/click/typer), an automation or data-processing script, or a general-purpose library/package
   - User mentions Python packaging/typing tooling (pyproject.toml, pip, uv, Poetry, mypy, Pyright, Ruff) or concurrency needs (asyncio, threading, multiprocessing)
@@ -17,32 +16,12 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
 
-  Example delegation: "Create a Typer-based CLI tool that batch-validates and reformats CSV files. Python 3.12+, src layout, pyproject.toml, structured logging. Follow conventions in /src/mypackage/."
-
   <example>
   Context: User needs a new CLI tool
   user: "Create a CLI tool that processes log files and reports error summaries"
-  assistant: "I'll use the python-developer agent to implement the CLI with argument parsing, structured error handling, and a testable core module separate from the entry point."
+  assistant: "I'll use the python-developer agent to implement the CLI with argument parsing and a testable core module separate from the entry point."
   <commentary>
-  Triggers on CLI creation. Include the CLI framework choice, expected arguments/output, and existing conventions.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants a concurrent/async data-fetching service
-  user: "Implement a service that fetches data from several APIs concurrently and aggregates the results"
-  assistant: "I'll use the python-developer agent to build it with asyncio, bounded concurrency, and timeouts on every call — never assuming threads give real parallelism here."
-  <commentary>
-  Triggers on concurrent/async implementation. Include I/O vs CPU-bound shape, rate limits, and failure-handling expectations.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs a persistence/data-access layer
-  user: "Create a data-access module for the customer domain backed by Postgres"
-  assistant: "I'll use the python-developer agent to implement it with parameterized queries, explicit transaction boundaries, and connection-pool cleanup on the error path."
-  <commentary>
-  Triggers on persistence request. Include the database/driver choice, query patterns, and migration needs.
+  Triggers on CLI creation. Include the CLI framework choice and existing conventions.
   </commentary>
   </example>
 skills:

@@ -18,9 +18,9 @@ description: |
   <example>
   Context: `tech-developer-generator` just finished standard-go + go-developer.md.
   user: (via the skill, not directly) "Now generate go-reviewer."
-  assistant: "I'll dispatch tech-reviewer-generator with the standard-go path and the research synthesis — it authors go-reviewer.md against the fixed template, with a correctness-floor section grounded in the real pitfalls research turned up, not generic advice."
+  assistant: "I'll dispatch tech-reviewer-generator with the standard-go path and the research synthesis to author go-reviewer.md, grounding its correctness-floor section in real pitfalls research."
   <commentary>
-  Always the second of the two generators, always reading the first one's actual output rather than re-researching idioms from scratch — that's what keeps the pair from drifting apart.
+  Always runs second, reading the first generator's actual output rather than re-researching idioms from scratch — that's what keeps the pair from drifting apart.
   </commentary>
   </example>
 tools: Read, Grep, Glob, Edit, Write, WebFetch, WebSearch, mcp__context7

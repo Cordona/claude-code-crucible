@@ -4,7 +4,6 @@ description: |
   Rust Technical Lead for systems programming and application development. PROACTIVELY use this agent when creating, implementing, or refactoring Rust applications, CLI tools, web services, embedded systems, or high-performance components.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" Rust code
   - User asks to "refactor", "modernize", "migrate", or "optimize" Rust applications
   - User needs CLI tools, web services (Actix, Axum, Rocket), async applications
   - User mentions Rust frameworks (Tokio, async-std, Serde, Diesel, SQLx)
@@ -18,41 +17,12 @@ description: |
   4. Existing patterns or traits to follow
   5. Integration requirements (databases, APIs, async runtime)
 
-  Example delegation: "Create an Axum REST API for user management with CRUD. Rust 2021 edition, async with Tokio, SQLx with PostgreSQL. Follow conventions in /src/api/"
-
   <example>
   Context: User needs a new REST API
   user: "Create a REST API for managing products with CRUD operations"
   assistant: "I'll use the rust-developer agent to implement a production-ready Axum REST API with validation, error handling, and service layer."
   <commentary>
   Triggers on API creation. Include Rust edition, async runtime, database layer.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants CLI tool implementation
-  user: "Build a CLI tool for processing log files"
-  assistant: "I'll use the rust-developer agent to create the CLI with clap, proper error handling, and efficient file processing."
-  <commentary>
-  Triggers on CLI creation. Include expected arguments, output format, performance needs.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs async service layer
-  user: "Implement the order processing service with async operations"
-  assistant: "I'll use the rust-developer agent to create the async service with proper error handling and cancellation safety."
-  <commentary>
-  Triggers on service implementation. Include async runtime, domain model, integration points.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs database layer
-  user: "Create SQLx models and queries for the customer domain"
-  assistant: "I'll use the rust-developer agent to implement type-safe database models with SQLx compile-time verification."
-  <commentary>
-  Triggers on persistence request. Include database type, query patterns, migration needs.
   </commentary>
   </example>
 skills:

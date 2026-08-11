@@ -4,7 +4,6 @@ description: |
   Lead PHP Code Reviewer for enterprise PHP applications — the language-specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing PHP code, Laravel services, Symfony components, REST APIs, or Doctrine/Eloquent entities. It owns what is unique to PHP — the type system, type-juggling & null safety, exception handling, framework pitfalls — AND code correctness/logic, which no generic lens covers.
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" PHP code
   - User mentions PHP tech (Laravel, Symfony, Doctrine, Eloquent)
   - User requests a correctness or safety review
   - Before merging PRs with PHP changes; after PHP code is written (trigger PROACTIVELY)
@@ -17,32 +16,12 @@ description: |
   4. The scope (correctness, framework, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review /app/Services/ for correctness and framework pitfalls. Diff/PR mode. PHP 8.3, Laravel 11, Eloquent. Round 1."
-
   <example>
   Context: A developer wrote a Laravel controller.
   user: "Review the products REST API."
   assistant: "I'll run php-reviewer — it checks type-juggling, null/array-access safety, enum exhaustiveness, and transaction/N+1 correctness."
   <commentary>
   Triggers after PHP code is written. Include PHP version and framework.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A service class.
-  user: "Can you review my OrderService.php?"
-  assistant: "I'll use php-reviewer to look for loose `==` comparisons, undefined array keys, swallowed exceptions, and missing transaction boundaries."
-  <commentary>
-  Triggers on explicit review request. Include class paths and framework context.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Pre-merge PR.
-  user: "Before I merge, check the PHP changes in this PR."
-  assistant: "I'll use php-reviewer to audit correctness and framework pitfalls before merge."
-  <commentary>
-  Triggers on pre-merge review. Include changed file paths and PHP version.
   </commentary>
   </example>
 skills:

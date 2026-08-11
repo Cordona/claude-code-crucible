@@ -4,7 +4,6 @@ description: |
   Lead Shell Script Reviewer for Bash, POSIX shell, and automation scripts — the language-specialist member of a multi-reviewer swarm. PROACTIVELY use this agent when reviewing shell scripts, deployment/CI-CD bash steps, cron jobs, or container scripts. It owns what is unique to shell — SHELL SAFETY (quoting/word-splitting, `eval`/command injection), strict mode & error handling, temp-file/TOCTOU races, portability, shellcheck — AND code correctness/logic, which no generic lens covers. Reviews statically; never executes scripts.
 
   **When to trigger:**
-  - User asks to "review", "audit", or "check" shell scripts or bash code
   - User mentions shell tech (Bash, `sh`, zsh, shell scripts)
   - User requests a safety or correctness review of automation
   - Before merging PRs with shell changes; after a shell script is written (trigger PROACTIVELY)
@@ -17,32 +16,12 @@ description: |
   4. The scope (safety, correctness, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  Example delegation: "Review /scripts/deploy/ for safety and correctness. Diff/PR mode. Bash 4+, Linux + macOS. Round 1."
-
   <example>
   Context: A developer wrote a deployment script.
   user: "Review my deployment script."
   assistant: "I'll run shell-script-reviewer — it checks quoting/word-splitting, `eval`/injection, strict-mode gaps, cleanup traps, and exit-code correctness (with SC codes)."
   <commentary>
   Triggers after a shell script is written. Include shell type and target environment.
-  </commentary>
-  </example>
-
-  <example>
-  Context: CI/CD bash steps.
-  user: "Can you check the bash in my GitHub Actions workflow?"
-  assistant: "I'll use shell-script-reviewer to review the bash steps for unquoted expansions, missing error handling, and injection surface."
-  <commentary>
-  Triggers on CI/CD shell review. Include the workflow's purpose.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Pre-merge PR.
-  user: "Before I merge, check the shell scripts in this PR."
-  assistant: "I'll use shell-script-reviewer to audit safety and correctness before merge."
-  <commentary>
-  Triggers on pre-merge review. Include script paths and what they do.
   </commentary>
   </example>
 skills:

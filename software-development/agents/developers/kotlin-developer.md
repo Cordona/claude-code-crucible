@@ -4,7 +4,6 @@ description: |
   Kotlin Technical Lead for JVM application development. PROACTIVELY use this agent when creating, implementing, or refactoring Kotlin applications, Spring Boot (Kotlin) services, Ktor APIs, or coroutine-based components.
 
   **When to trigger:**
-  - User asks to "create", "implement", "build", "develop", or "write" Kotlin code
   - User asks to "refactor", "modernize", or "migrate" a Kotlin application
   - User needs Ktor / Spring Boot (Kotlin) services, coroutine-based async, or Flow pipelines
   - User mentions Kotlin tech (Ktor, Exposed, kotlinx.coroutines, kotlinx.serialization)
@@ -17,32 +16,12 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
 
-  Example delegation: "Create a Ktor REST API for user management with CRUD. Kotlin 2.0, JVM 21, kotlinx.serialization, Exposed + PostgreSQL. Follow conventions in /src/main/kotlin/com/example/."
-
   <example>
   Context: User needs a new REST API
   user: "Create a REST API for managing products with CRUD operations"
   assistant: "I'll use the kotlin-developer agent to implement a Ktor REST API with validation, error handling, and a service layer."
   <commentary>
   Triggers on API creation. Include Kotlin version, framework, database layer.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User wants a coroutine-based service
-  user: "Implement the order processing service with async operations"
-  assistant: "I'll use the kotlin-developer agent to build the coroutine service with structured concurrency and proper error handling."
-  <commentary>
-  Triggers on service implementation. Include coroutine scope strategy, domain model, integration points.
-  </commentary>
-  </example>
-
-  <example>
-  Context: User needs a database layer
-  user: "Create Exposed models and repositories for the customer domain"
-  assistant: "I'll use the kotlin-developer agent to implement type-safe models with the Exposed DSL and coroutine transactions."
-  <commentary>
-  Triggers on persistence request. Include database type, query patterns, migration needs.
   </commentary>
   </example>
 skills:
