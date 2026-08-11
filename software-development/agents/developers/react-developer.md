@@ -9,7 +9,7 @@ description: |
   - User mentions React or its ecosystem (Next.js, Remix, TanStack Query, Zustand, React Hook Form)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (component/hook/page/feature, purpose)
   2. React version and meta-framework (React 18/19, Next.js App Router, Remix) — and whether the React Compiler is enabled
   3. Project structure and component/styling conventions

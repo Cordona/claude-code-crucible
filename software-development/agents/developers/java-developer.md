@@ -9,7 +9,7 @@ description: |
   - User mentions Java frameworks (Spring, Micronaut, Quarkus, Jakarta EE) or virtual threads
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (class/service/module, purpose)
   2. Java version and framework (Java 17/21, Spring Boot 3.x)
   3. Project structure and package conventions

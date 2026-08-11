@@ -8,7 +8,7 @@ description: |
   - Any per-finding "is this a real defect, and what do we do about it?" that must be settled by evidence, not a vote
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The finding — the claim, the cited `file:line`, its source/channel, and (optionally) its `provisional_severity` — a triage hint ONLY, never a grade you should defer to
   2. The advocate positions IN FULL (PRO + CON), labeled neutrally ("Position 1" / "Position 2", order-rotated)
   3. Exact paths to the cited code so it can verify independently, AND the reviewed-SHA→HEAD delta (commits landed since the review) so it can detect ALREADY_RESOLVED

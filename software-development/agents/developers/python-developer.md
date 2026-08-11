@@ -9,7 +9,7 @@ description: |
   - User mentions Python packaging/typing tooling (pyproject.toml, pip, uv, Poetry, mypy, Pyright, Ruff) or concurrency needs (asyncio, threading, multiprocessing)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (module/script/package, purpose)
   2. Python version + target (Python 3.12+, target runtime/interpreter)
   3. Project structure and package conventions

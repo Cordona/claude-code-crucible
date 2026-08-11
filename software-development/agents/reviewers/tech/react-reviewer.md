@@ -9,7 +9,7 @@ description: |
   - Before merging PRs containing React changes; after React code is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. React version + meta-framework (React 18/19, Next.js App Router, Remix), and whether the React Compiler is enabled
   3. Any project-specific conventions

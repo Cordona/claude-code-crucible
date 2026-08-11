@@ -15,7 +15,7 @@ description: |
   - After code is written or before merging a PR, together with the language-specific reviewer
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. The primary language(s) of the code (so it applies the correct comment/docstring syntax)
   3. Whether the target is INTERNAL application code or a PUBLIC library surface (changes how doc comments are judged)

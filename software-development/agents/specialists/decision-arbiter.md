@@ -7,7 +7,7 @@ description: |
   - The arbiter seat of a DECISION panel — whether trio (2 lawyers) or quartet (3 lawyers) — see the `flow-decision` skill
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The decision under review (framed as a question) and the proposal on the table
   2. ALL reviews in full (label them neutrally, "Review 1" … "Review N"; rotate their order across cycles)
   3. Exact paths to the raw artifact (code/docs) so it can verify claims independently

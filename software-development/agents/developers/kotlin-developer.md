@@ -9,7 +9,7 @@ description: |
   - User mentions Kotlin tech (Ktor, Exposed, kotlinx.coroutines, kotlinx.serialization)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (module/service/feature, purpose)
   2. Kotlin version + target (Kotlin 2.0, JVM 21)
   3. Project structure and package conventions

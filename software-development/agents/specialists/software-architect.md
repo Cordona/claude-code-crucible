@@ -9,7 +9,7 @@ description: |
   - As one seat in a decision panel — trio or quartet (invoked with a specific role briefing); also as a PRO/CON advocate on a design finding in the external-review pattern
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The decision to be made (framed as a question) and any proposal on the table
   2. The candidate options (or ask it to enumerate them)
   3. Exact file/dir paths + the relevant code/docs so it can ground claims in the artifact

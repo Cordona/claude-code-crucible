@@ -31,7 +31,7 @@ description: |
   - Before merging PRs with {{Tech}} changes; after {{Tech}} code is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. {{Tech}} version + target
   3. Any project-specific conventions

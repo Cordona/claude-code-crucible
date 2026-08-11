@@ -8,7 +8,7 @@ description: |
   - After a developer's changes are ready and need to land as commits, or are ready to go up for review
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The repository path and the current branch / target base branch
   2. What changed and why (so it can author messages) — or tell it to read the working-tree diff
   3. The ticket / issue id (for the branch name and the commit issue link)

@@ -15,7 +15,7 @@ description: |
   - After code is written or before merging a PR, together with the language-specific reviewer
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. Whether this is a DIFF/PR (review only changed code) or a FULL AUDIT (review the whole target) — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   3. The primary language(s) of the code

@@ -14,7 +14,7 @@ description: |
   - As one lens of a parallel review swarm dispatched by the primary agent
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific test files (and the production files they cover) to review
   2. Whether this is a DIFF/PR (review the changed tests + whether the change's new behavior is tested) or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   3. The primary language(s) and, if known, the test framework

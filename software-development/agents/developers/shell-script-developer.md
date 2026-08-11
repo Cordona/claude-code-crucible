@@ -8,7 +8,7 @@ description: |
   - User needs deployment/automation scripts, CLI tools, cron jobs, backup scripts, or Docker entrypoints
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What the script should do (and the problem it solves)
   2. Target shell (Bash 4+, POSIX sh, zsh) and environment (Linux, macOS, containers)
   3. Input/output contract (arguments, stdin, files, exit codes)

@@ -12,7 +12,7 @@ description: |
   - NOT for triage, listing, processing, or purging the inbox — those are the main thread's job (`flow-inbox`).
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The absolute PATH to a temp file the caller has ALREADY written with the verbatim capture text (created via `mktemp` OUTSIDE any repo). Do NOT paste the capture text into the prompt — pass only the path.
   2. The `--project` value to record, as a plain token (usually the basename of the USER's working directory). Pass it EXPLICITLY and always — the agent must not fall back to its own cwd. If the caller determines there is genuinely no project, it says so and the agent omits `--project`.
   3. The `--session-id` value to record, as a plain token (the capturing Claude Code session's UUID — the caller derives it from its own session/scratchpad path). Pass it EXPLICITLY when you have one; the caller omits it only when no session id is available, and then the agent omits `--session-id`.

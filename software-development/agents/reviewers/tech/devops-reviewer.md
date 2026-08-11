@@ -9,7 +9,7 @@ description: |
   - Before merging infrastructure PRs; after infra is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. The IaC technology + target (Terraform/AWS, Helm/EKS, …)
   3. Any project-specific conventions / state backend

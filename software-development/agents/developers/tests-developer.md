@@ -7,7 +7,7 @@ description: |
   - Bound via `flow-testing` — never dispatched directly from a build or a review finishing on their own
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The final, approved implementation — exact file paths, not pasted content
   2. The tech stack and test framework in use (e.g. "Kotlin, JUnit5", "Python, pytest", "TypeScript, Vitest") — it reads the matching `standard-{tech}` file itself on this cue
   3. The `flow-spec` artifact (path + a short navigational hint), if one governs this work — its Interface contract sections become acceptance criteria the tests should assert

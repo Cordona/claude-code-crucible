@@ -8,7 +8,7 @@ description: |
   - After a decision or a piece of work needs to be captured as trackable backlog artifacts
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The raw request / the work to capture (what problem, what outcome, any context)
   2. **The AUDIENCE — this is REQUIRED, never let the agent guess it:** `agent` · `human` · `both`. If `human` or `both`, also the **register**: `technical` · `non-technical` · `business`.
   3. The repository / target tracker + any project conventions (labels, milestone, project board, ticket id scheme)

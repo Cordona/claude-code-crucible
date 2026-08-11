@@ -8,7 +8,7 @@ description: |
   - Never triggered by a bare "review my Go code" — that's an ordinary `flow-implementation`/`flow-review` request; this agent only fires when the pair itself doesn't exist yet
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The target language/tech name and its finding-ID prefix (the full real name, in caps — e.g. GOLANG, PYTHON, never an abbreviation, per this repo's own prefix convention)
   2. The path to the just-authored `standard-{tech}/SKILL.md` (read it — never re-derive its content)
   3. The path to the same ephemeral research-synthesis document `tech-developer-generator` used, specifically for its pitfalls/correctness-bugs angle — this grounds your mandatory correctness-floor section

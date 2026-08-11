@@ -10,7 +10,7 @@ description: |
   - After writing or modifying any Rust code (trigger rust-reviewer PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. The Rust edition and MSRV (if applicable)
   3. Any project-specific conventions or requirements

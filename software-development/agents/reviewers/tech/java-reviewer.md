@@ -9,7 +9,7 @@ description: |
   - Before merging PRs with Java changes; after Java code is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific files or directories to review
   2. Java version + framework (Java 17/21, Spring Boot 3.x)
   3. Any project-specific conventions

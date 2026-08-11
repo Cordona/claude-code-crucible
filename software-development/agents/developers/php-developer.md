@@ -9,7 +9,7 @@ description: |
   - User mentions PHP frameworks (Laravel, Symfony, Slim, Laminas)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. What to implement (class/service/module, purpose)
   2. PHP version + framework (PHP 8.3, Laravel 11 / Symfony 7)
   3. Project structure and namespace conventions

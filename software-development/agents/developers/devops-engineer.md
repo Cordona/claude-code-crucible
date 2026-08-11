@@ -8,7 +8,7 @@ description: |
   - User needs IaC modules/charts/manifests/pipelines, containerization, or CI/CD automation
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific infrastructure to implement (what resources, what purpose)
   2. The IaC technology (Terraform, Helm, Kustomize, Ansible, …)
   3. Target environment (cloud provider, cluster, region)

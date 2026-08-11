@@ -9,7 +9,7 @@ description: |
   - User wants to refactor, improve, slim down, or restructure existing documentation
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The documentation task (create, update, refactor)
   2. Context from implementer (if available) — purpose, audience, key components
   3. File paths to code/infrastructure to document

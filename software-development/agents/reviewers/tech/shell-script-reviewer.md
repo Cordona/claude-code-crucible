@@ -9,7 +9,7 @@ description: |
   - Before merging PRs with shell changes; after a shell script is written (trigger PROACTIVELY)
 
   **How to prompt this agent:**
-  IMPORTANT: This agent has NO context of previous conversations. When delegating, you MUST include:
+  IMPORTANT: No memory of prior turns. You MUST include:
   1. The specific script files or directories to review
   2. Target shell (Bash 4+, POSIX sh, zsh) and environment
   3. Any project-specific conventions
