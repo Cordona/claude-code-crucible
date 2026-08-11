@@ -1,6 +1,6 @@
 ---
 name: standard-git-pr
-description: The single definition of an EXCELLENT pull-request (GitHub) or merge-request (GitLab) body — the shared rubric the git-operator BUILDS to, for EITHER backend. Applies whenever a PR/MR is opened or its body/title is edited. A PR/MR body has a FIXED audience (technical-human reviewers; agents read it fine too), so unlike a backlog artifact it never takes an audience question. Defines the required shape (What / Why / How-to-test / risk / linked issue), the title convention (Conventional-Commit-style), and the anti-pattern list. Sibling to standard-git-commit/-branch/-tag — this is the git-operator's own PR/MR-craft rubric, not the project-manager's. Deliberately backend-agnostic — there is no separate `standard-git-mr`, since a reviewer's needs (what changed, why, how to verify, what's risky) don't differ by tracker. It does NOT define the PR mechanics (procedure-gh-pr), the MR mechanics (procedure-glab-mr), or either account gate (procedure-github-auth / procedure-gitlab-auth).
+description: The single rubric for an excellent pull-request (GitHub) or merge-request (GitLab) body/title. Bind whenever a PR/MR is opened or its body/title is edited, to write or judge that content. Does NOT define PR mechanics (procedure-gh-pr), MR mechanics (procedure-glab-mr), either account gate (procedure-github-auth / procedure-gitlab-auth), or backlog-artifact craft (that's the project-manager's standard-backlog-artifacts, not this).
 ---
 
 # Standard: Git PR/MR Bodies

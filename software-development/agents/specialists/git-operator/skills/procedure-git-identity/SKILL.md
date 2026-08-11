@@ -1,6 +1,6 @@
 ---
 name: procedure-git-identity
-description: The single definition of how the git-operator resolves, reconciles, and CONFIRMS the signing identity before any commit or signed tag. Applies before every commit and every signed tag. It wraps a small suite of deterministic, highly-portable shell scripts (scripts/: resolve, list, switch identity) that programmatically pinpoint the committer identity, the signing key (GPG or SSH), and the Signed-off-by it will write, assert they agree, and — if the user rejects the proposal — deterministically list and switch to another identity/key. The operator presents the resolved identity for the user's explicit confirmation before committing, and never improvises git commands for identity/signing. It does NOT define commit format (standard-git-commit) or tag policy (standard-git-tag); those bind this skill for the signing/identity gate.
+description: The git-operator's gate for resolving, reconciling, and getting the user's explicit confirmation of the signing identity (committer email, signing key, sign-off) before any commit or signed tag. Does NOT define commit format (standard-git-commit) or tag policy (standard-git-tag); those bind this skill for the signing/identity gate.
 ---
 
 # Procedure: Git Signing Identity

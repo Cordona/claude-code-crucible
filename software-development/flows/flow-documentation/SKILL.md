@@ -1,6 +1,6 @@
 ---
 name: flow-documentation
-description: The orchestrator's on-demand procedure for a DOCUMENTATION request — the steps the primary agent runs when the user explicitly asks to document something. Bind this skill when a documentation request fires ("document this", "write a README", "generate API docs", "add documentation"). Covers the doc-type routing, delegation to docs-writer, exposing the docs report, delegation to the matching {tech}-reviewer to FACT-CHECK the docs against the code and external sources, the docs-review report, and the fix loop until approved — plus the validation tools (WebFetch/WebSearch/context7) both docs-writer and the reviewer must use for accuracy. It does NOT define how documentation is written well (that is the docs-writer agent + the standard-documentation skill); it defines the orchestration procedure only.
+description: "Orchestrator's procedure for a documentation request — bind only when the user explicitly asks (\"document this\", \"write a README\", \"generate API docs\"). Delegates to `docs-writer`, then to the matching `{tech}-reviewer` to fact-check the docs against the code, looping fixes until approved. Does not define how documentation is written well — that's `docs-writer` + `standard-documentation`; this is orchestration only."
 ---
 
 # Flow: Documentation (on-demand)

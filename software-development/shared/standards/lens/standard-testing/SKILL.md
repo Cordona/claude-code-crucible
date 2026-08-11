@@ -1,6 +1,6 @@
 ---
 name: standard-testing
-description: The single definition of a good test suite — the shared rubric that developers BUILD to and the test-quality lens REVIEWS against. Applies whenever tests are written, changed, or reviewed in any language. Defines behavior-through-the-public-contract testing, the false-confidence rule, AAA structure and scenario naming, mocking discipline (internal collaborators forbidden; boundaries via real→container→fake→stub), negative-path and boundary coverage, golden/snapshot masking, determinism and isolation (no fixed sleeps, no wall-clock coupling), test-code cleanliness, and coverage as an indicator. This is WHAT good looks like; it does not define builder workflow (build-core) or review scoring (the lens supplies severity, category vocabulary, and false-positive guards).
+description: The single definition of a good test suite — the rubric developers BUILD to and lens-test-quality-reviewer REVIEWS against, in any language. Does not define builder workflow (build-core) or lens-test-quality-reviewer's own scoring machinery.
 ---
 
 # Standard: Testing

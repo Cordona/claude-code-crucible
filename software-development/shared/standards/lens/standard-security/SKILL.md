@@ -1,6 +1,6 @@
 ---
 name: standard-security
-description: The single definition of secure code — the shared rubric that developers BUILD to and the security lens REVIEWS against. Applies whenever code handles untrusted input, authentication/authorization, secrets, queries, crypto, external calls, deserialization, or privileged operations in any language. Grounded in OWASP Top 10:2025, ASVS 5.0, and the CWE Top 25. Defines the taint model (source→sink→control), boundary input validation, injection prevention, secrets handling, auth/session/JWT, least-privilege authorization, safe cryptography, transport security, fail-secure error handling, SSRF/XXE/open-redirect/CSRF/mass-assignment/deserialization, security misconfiguration, and supply-chain integrity. This is WHAT good looks like; it does not define builder workflow (build-core), the reviewer's threat-surface gate / taint-trace procedure / severity / vocabulary (the lens), language memory-safety mechanics (the {tech} pair), or security logging (observability).
+description: The single rubric for secure code — what developers BUILD to and the security lens REVIEWS against. Applies whenever code handles untrusted input, auth, secrets, queries, crypto, external calls, deserialization, or privileged operations, in any language. Does NOT define builder workflow (build-core), reviewer conduct (the lens), language memory-safety mechanics (the {tech} pair), or security logging (observability).
 ---
 
 # Standard: Security

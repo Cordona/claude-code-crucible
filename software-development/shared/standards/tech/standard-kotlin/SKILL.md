@@ -1,6 +1,6 @@
 ---
 name: standard-kotlin
-description: The single definition of idiomatic, correct Kotlin — the shared language rubric that the kotlin-developer BUILDS to and the kotlin-reviewer REVIEWS against. Applies whenever Kotlin code is written, changed, or reviewed (JVM services, Spring Boot Kotlin, Ktor, coroutines, Flow, Exposed, kotlinx.serialization, KMP). Defines null-safety discipline, data-class/copy() invariant semantics, value-class boxing, coroutines & structured concurrency, Flow/StateFlow/SharedFlow configuration, equals/hashCode contracts, when exhaustiveness, scope-function discipline, sealed hierarchies, immutability, extension functions, Kotlin-over-Java idioms, and the Spring/JPA compiler-plugin needs. This is WHAT good Kotlin looks like; it does not define builder workflow (build-core), the reviewer's correctness-detective method / scope-boundary / severity / category vocabulary (the kotlin-reviewer), or the build/report envelopes (build-report-standards / review-report-standards).
+description: The single rubric for idiomatic, correct Kotlin — what the kotlin-developer BUILDS to and the kotlin-reviewer REVIEWS against. Applies whenever Kotlin code is written, changed, or reviewed. Does NOT define builder workflow (build-core), the reviewer's method/severity/category vocabulary (kotlin-reviewer), or the build/report envelopes (build-report-standards / review-report-standards).
 ---
 
 # Standard: Kotlin

@@ -1,6 +1,6 @@
 ---
 name: review-boundaries
-description: The single owner of the lens ownership map — who scores what when two reviewers' domains overlap. Applies whenever a lens reviewer is dispatched as part of a swarm and a neighbouring lens might claim the same territory (store vs non-store access patterns, a migration's data axis vs its consumer axis, code correctness). Defines the contested-territory table, the defer-don't-double-flag rule, the not-on-the-roster disclosure rule, and the standard-vs-swarm rule (your bound standard-* is not narrowed by this table). This is WHO OWNS a finding; it does NOT define reviewer conduct (review-core), the report format or severity scale (review-report-standards), or what good looks like in a domain (the standard-* rubrics).
+description: Decides which lens scores a finding two lenses could both claim. Bind alongside review-core and review-report-standards whenever a lens reviewer runs as part of a swarm. Does NOT define reviewer conduct (review-core), report format/severity (review-report-standards), or what good looks like in a domain (the standard-* rubrics).
 ---
 
 # Review Boundaries — the lens ownership map
