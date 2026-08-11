@@ -134,7 +134,7 @@ $HOME/.claude/skills/procedure-glab-mr/scripts/update-mr.sh \
 - Prints `PM_MR_URL=<url>` **if EXACTLY ONE candidate URL is found in glab's output AND its trailing iid matches `--mr`** — same soft "courtesy, not proof of success" contract as `update-pr.sh`: a successful edit that returns no URL, or an ambiguous one (2+ distinct candidates), or one whose iid doesn't match `--mr`, still exits `0` with this key left **empty** (with a `warn` naming which case it was) rather than ever relaying a guessed or mismatched value.
 - Exit `0` updated · `1` glab/awk absent/unauthenticated/`glab mr update` itself failed · `2` usage error.
 
-## The gates the CALLER (git-operator) must clear before invoking a WRITE
+## The gates the CALLER (the orchestrator — git-operator only plans) must clear before invoking a WRITE
 
 `create-mr.sh` and `update-mr.sh` write to a live, notifying, hard-to-retract tracker. **`find-mr.sh` is the only read-only, ungated script.** Before calling either write script:
 

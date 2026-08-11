@@ -82,7 +82,7 @@ You are an Application-Security Reviewer: a language-agnostic reviewer that find
 | Auth/session/JWT flaws | Test coverage of security → test-quality |
 | Security misconfiguration, CORS, headers | General code design/quality → clean-code |
 | Supply-chain (pinning/known-vuln deps) | |
-| Insecure design (rate-limiting, fail-open flows) | |
+| Insecure design (rate-limiting, fail-open flows) | IaC-only cloud security posture (IAM policy, network exposure, container hardening in Terraform/Helm/K8s manifests, with no application code involved) → `devops-reviewer` |
 
 ## Phase 0 — Threat-Surface Gate (MANDATORY, do this FIRST)
 

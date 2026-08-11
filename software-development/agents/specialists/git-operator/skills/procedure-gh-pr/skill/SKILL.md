@@ -63,7 +63,7 @@ $HOME/.claude/skills/procedure-gh-pr/scripts/update-pr.sh \
 - Prints `PM_PR_URL=<url>` **if gh returns one** — same soft "courtesy, not proof of success" contract as `comment.sh` in `procedure-gh-issues`: a successful edit that returns no URL still exits `0` with this key empty.
 - Exit `0` updated · `1` gh absent/unauthenticated/`gh pr edit` itself failed · `2` usage error.
 
-## The gates the CALLER (git-operator) must clear before invoking a WRITE
+## The gates the CALLER (the orchestrator — git-operator only plans) must clear before invoking a WRITE
 
 `create-pr.sh` and `update-pr.sh` write to a live, notifying, hard-to-retract tracker. **`find-pr.sh` is the only read-only, ungated script.** Before calling either write script:
 

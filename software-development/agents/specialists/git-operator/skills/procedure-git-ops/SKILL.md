@@ -88,7 +88,7 @@ $HOME/.claude/skills/procedure-git-ops/scripts/create-tag.sh --repo PATH \
 - Prints `GITOP_TAG=<version>` on success.
 - Exit `0` created and verified · `1` tag already exists / `--sha` doesn't resolve to a commit / `git tag` itself failed / verification failed · `2` usage error.
 
-## The gates the CALLER (git-operator) must clear — NOT owned by this skill
+## The gates the CALLER (the orchestrator — git-operator only plans) must clear — NOT owned by this skill
 
 This skill only executes the git operation and verifies its result; it never decides *whether* to act or *who* acts:
 

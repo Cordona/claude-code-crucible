@@ -26,6 +26,7 @@ Invoke the `docs-writer` subagent with:
 - **Documentation type** (README, API docs, guide, etc.)
 - **Target audience** (developers, operators, end-users)
 - **File paths** to the implementation being documented
+- **Target documentation file(s) path** — where the doc should be created/updated
 - **Project context** (tech stack, conventions)
 
 `docs-writer` builds to its bound `standard-documentation` skill (one Diátaxis mode + one reader + one task; smallest doc that serves the reader). It MUST use `WebFetch`, `WebSearch`, and the `context7` MCP to validate technical accuracy against external sources (see Validation Tools).
