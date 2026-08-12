@@ -73,6 +73,31 @@ non-interactively — it stays menu-only.
 ./deploy/hub/crucible-hub
 ```
 
+### Make it available from anywhere
+
+`./deploy/hub/crucible-hub` only works while you're standing in this clone. To call it as a bare
+`crucible` from any directory, in any terminal, run this once from the repo root (macOS/Linux —
+`crucible-hub` is a POSIX shell script, so on Windows use WSL):
+
+```sh
+mkdir -p ~/.local/bin
+ln -sfn "$(pwd)/deploy/hub/crucible-hub" ~/.local/bin/crucible
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) echo "Done — try 'crucible doctor' from any directory." ;;
+  *)
+    echo "Add this line to your shell's rc file (~/.zshrc or ~/.bashrc), then open a new terminal:"
+    # shellcheck disable=SC2016  # literal text to paste into an rc file, not meant to expand now
+    echo '  export PATH="$HOME/.local/bin:$PATH"'
+    ;;
+esac
+```
+
+It's a plain symlink — safe to re-run (it just replaces the link), and `crucible-hub` resolves its
+own symlink chain before sourcing anything, so this isn't a workaround, it's the intended way to
+put it on `PATH`. Two things worth knowing: it follows whichever branch this clone has checked
+out, and it isn't yet tracked by the hub itself — `uninstall --all` removes the 83 deployed
+framework items but leaves this link in place; remove it yourself with `rm ~/.local/bin/crucible`.
+
 The Main menu opens (a TTY is required — off a terminal, use the commands below):
 
 ```
@@ -129,7 +154,7 @@ and confirmation.
 > your own domains, or the flag form naming them (`install --domains=... --technologies=... --apply`)
 > — after any pull that changed which agents/skills exist (not just their content) to pick up the
 > new names; `--all --apply` also works but installs *everything*, not just what you already had, so
-> reach for it only if that's actually what you want. Then run `crucible-hub doctor` (which reports
+> reach for it only if that's actually what you want. Then run `crucible doctor` (which reports
 > the stale link as **orphaned** and
 > offers to remove it) to clear the old one. `List` also reports it, but Doctor is where cleanup
 > happens — an orphan is a dangling link, not a legitimate component, so it is no longer offered
@@ -142,19 +167,20 @@ and confirmation.
 
 ### Every screen, as a command
 
-Run any of these directly, or as `crucible-hub SUBCOMMAND`. Add `--help` to any one for its full
-option reference.
+Run any of these directly as `crucible SUBCOMMAND` (once it's on `PATH` — see above), or as
+`./deploy/hub/crucible-hub SUBCOMMAND` from the repo root if it isn't. Add `--help` to any one for
+its full option reference.
 
 | Menu screen | Command |
 |---|---|
-| *(no Main-menu row any more †)* | `crucible-hub status` |
-| List | `crucible-hub list` |
-| Doctor | `crucible-hub doctor` |
-| Accounts | `crucible-hub accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
-| Install | `crucible-hub install --domains=CSV [--technologies=CSV] [--sd-vcs=CSV] [--pm-trackers=CSV] --apply` |
-| Install all | `crucible-hub install --all --apply` |
-| Uninstall | `crucible-hub uninstall --components=CSV --apply` |
-| Uninstall all | `crucible-hub uninstall --all --apply --confirm=UNINSTALL` |
+| *(no Main-menu row any more †)* | `crucible status` |
+| List | `crucible list` |
+| Doctor | `crucible doctor` |
+| Accounts | `crucible accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
+| Install | `crucible install --domains=CSV [--technologies=CSV] [--sd-vcs=CSV] [--pm-trackers=CSV] --apply` |
+| Install all | `crucible install --all --apply` |
+| Uninstall | `crucible uninstall --components=CSV --apply` |
+| Uninstall all | `crucible uninstall --all --apply --confirm=UNINSTALL` |
 
 † `Status` was folded into Doctor and dropped from the interactive Main menu, but it survives as
 this standalone, agent-friendly subcommand.
@@ -194,7 +220,7 @@ does.
 
 Exit codes: `0` preview shown, nothing to do, cancelled, or applied · `1` blocked, a write failure,
 or an operational error (an unresolvable `--source`, `--format=json` without `jq`) · `2` usage
-error · `3` a subcommand's own interactive screen was quit (a bare interactive `crucible-hub`
+error · `3` a subcommand's own interactive screen was quit (a bare interactive `crucible`
 translates that back to exit `0` at its own Main menu).
 
 The design rationale behind each screen lives in the script headers under
@@ -272,7 +298,7 @@ executes only on consent.
 
 ## What's in each domain
 
-Install any subset of the three domains. Run `crucible-hub list` for the live, exhaustive
+Install any subset of the three domains. Run `crucible list` for the live, exhaustive
 inventory — each agent and skill documents itself in its own file, so the list below is a map, not
 a catalogue.
 
@@ -324,10 +350,10 @@ The hub's Accounts screen is the front door for GitHub, GitLab, and Jira alike �
 three states and delegates to each procedure's own script:
 
 ```sh
-crucible-hub accounts status          # who the framework will act as
-crucible-hub accounts switch-github   # switch between, or log in to, GitHub accounts
-crucible-hub accounts switch-gitlab   # switch between, or log in to, GitLab accounts
-crucible-hub accounts configure-jira  # add a Jira site
+crucible accounts status          # who the framework will act as
+crucible accounts switch-github   # switch between, or log in to, GitHub accounts
+crucible accounts switch-gitlab   # switch between, or log in to, GitLab accounts
+crucible accounts configure-jira  # add a Jira site
 ```
 
 **GitHub** uses the GitHub CLI. `gh auth login` works exactly as it always does; `gh auth switch`
@@ -358,7 +384,7 @@ $HOME/.claude/skills/procedure-jira-auth/scripts/jira-accounts.sh set-default --
 
 ## Requirements
 
-`crucible-hub doctor` checks the external tools below (`git`, `gh`, `glab`, `jq`, `curl`,
+`crucible doctor` checks the external tools below (`git`, `gh`, `glab`, `jq`, `curl`,
 `gpg`-or-`ssh-keygen`) plus GitHub/GitLab/Jira account health, and tells you which are missing. The
 first two bullets are assumed, not checked by Doctor — you need them just to run the hub at all.
 
@@ -366,7 +392,7 @@ first two bullets are assumed, not checked by Doctor — you need them just to r
 - **A POSIX shell** (`sh`) — the hub and every `procedure-*` script are POSIX `sh`.
 - **`git`** — for the VCS operations.
 - **`gh`** (GitHub CLI) — for GitHub issues and pull requests.
-- **`glab`** (GitLab CLI) — for GitLab issues and merge requests. `crucible-hub doctor` checks for both
+- **`glab`** (GitLab CLI) — for GitLab issues and merge requests. `crucible doctor` checks for both
   `gh` and `glab` — but only reports the one you don't have as a blocking problem if something you've
   already installed actually needs that host; otherwise it's a non-blocking note, since choosing GitHub
   or GitLab (or neither) is optional.
