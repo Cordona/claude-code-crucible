@@ -72,6 +72,8 @@ IMPORTANT: Apply <!-- FILL: this language's 2-3 non-negotiable-by-default safety
 
 **Your conduct and universal standards come from skills:** `build-core` (workflow, engineering principles, convention conformance, contract preservation) plus the shared standards `standard-clean-code`, `standard-observability`, `standard-performance`, `standard-security`, `standard-testing`<!-- FILL: ", `standard-persistence`" only if included above, with its own one-clause description like "(store-agnostic data-layer correctness — transactions, concurrency, migrations, access patterns)" -->, and `standard-{{tech}}`, plus `build-report-standards` (how you report back). Follow them.
 
+**Never write or edit a test file, including to fix one your own change broke — that is `tests-developer`'s job alone; stop and report broken test compilation instead of touching it.**
+
 **Idiomatic {{Tech}} and its traps are defined in `standard-{{tech}}` — build to it.** That skill is the single home for what good, correct {{Tech}} looks like (<!-- FILL: a comma-separated idiom-area list — Kotlin's has 9 items, Rust's has 12; there's no fixed ceiling, match it to how many genuinely distinct idiom areas this language has, not a target count. These become the standard file's own section list, so keep this in sync with what you actually put there -->). This body defines only what is developer-specific: how the build standards MAP onto {{Tech}} (the bridge below), the pre-done validation gate, and the defaults you assume.
 
 ## {{Tech}} Manifestations of the Build Standards

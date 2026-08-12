@@ -26,7 +26,7 @@ Report these fields, in this order:
 | **Files created/modified** | One line per file: `path` — purpose. |
 | **What was implemented** | 2–3 sentences: what and why. |
 | **Key decisions** | Notable choices + a one-line rationale each (architecture, trade-offs, patterns followed). |
-| **Validation** | Which gates ran and their result — format · lint · type-check · test · build — plus any remaining warnings. State honestly if a gate did not run or failed. |
+| **Validation** | Which gates ran and their result — format · lint · type-check · test · build — plus any remaining warnings. State honestly if a gate did not run or failed. **If your own change broke an EXISTING test's compilation** (`build-core`'s Implementation Workflow, step 5), report it here as an open blocker, not a failed-but-complete gate: name each broken call site and mechanically why, and state that fixing it needs a `tests-developer` dispatch with repair scope. The primary agent MUST carry this forward into its own executive summary — it is not resolved by this report alone. |
 | **Handoff to reviewer** | What the review swarm should focus on: areas of concern, trade-offs you made, and any contract/convention conflict you surfaced (per `build-core`). This is the dev→review contract. |
 
 ## Rendering (default)
@@ -81,5 +81,5 @@ Do NOT invent your own finding IDs — reuse the reviewer's so IDs stay stable a
 - Do NOT renumber or invent finding IDs in a fix round — reuse the reviewer's.
 
 ---
-*Skill Version: 1.0*
+*Skill Version: 1.1 — added a required disclosure to the Validation field for when a developer's own change breaks an existing test's compilation (`build-core`'s Implementation Workflow, step 5): report it as an open blocker with the repair-scope route named, since `build-core` promises this report is what surfaces it — a promise this version makes true by requiring the field and requiring `flow-implementation` §7 to carry it forward.*
 *Pair with: build-core (conduct/workflow). Constructive twin of: review-report-standards (the reviewer's finding schema).*

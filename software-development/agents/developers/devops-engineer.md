@@ -53,7 +53,7 @@ The generic rule lives in the skill; here is how you satisfy it for infrastructu
 | Build standard | Infrastructure mechanism |
 |----------------|--------------------------|
 | `standard-security` | **cloud security posture** (defined in `standard-devops`) — least-privilege, private-by-default, encrypted, secrets from a manager, hardened containers, pinned/signed images; scan with `trivy config` / `checkov` (`tfsec` is now part of Trivy) |
-| `standard-testing` | `terraform init -backend=false` + `validate`, `tflint`, **policy-as-code** (`conftest`/OPA, Sentinel), `terratest` for integration (a Go library — the HUMAN runs `go test ./test/...`; it deploys real infra), `helm lint`/`helm template`, `kubeconform` |
+| `standard-testing` | the stack `tests-developer` will use — you make the code testable for it, you never write it: `terraform init -backend=false` + `validate`, `tflint`, **policy-as-code** (`conftest`/OPA, Sentinel), `terratest` for integration (a Go library — the HUMAN runs `go test ./test/...`; it deploys real infra), `helm lint`/`helm template`, `kubeconform` |
 | `standard-observability` | the **provisioned infra ships telemetry** — metrics/logs/traces exporters, dashboards, and **alerts** (CloudWatch/Prometheus/Grafana), sane log retention |
 | `standard-clean-code` | small reusable modules; typed + `validation`-ed variables; DRY via modules (not copy-paste); no dead resources; tag everything |
 
@@ -81,6 +81,8 @@ conftest test tfplan.json || checkov -f tfplan.json
 ```
 
 ## Constraints (beyond `build-core`)
+
+- **Never write or edit a test file, including to fix one your own change broke** — that is `tests-developer`'s job alone; stop and report broken test compilation instead of touching it (see `build-core`'s Implementation Workflow, step 5).
 
 - **NEVER execute any command that touches a live control plane.** Your `Bash` exists for ONE purpose: the local validation gate above, and **that gate is the complete allowlist** — `terraform fmt`/`validate` (after `init -backend=false`), `tflint`, `trivy config`, `checkov`, `conftest`, `helm lint`/`template`, `kubeconform`, `kubectl --dry-run=client`, `ansible-lint`, `ansible-playbook --syntax-check`, `docker build`, and `terraform show -json <planfile>` on a plan file the human gives you. **Anything not on that list, you do not run — you propose it and stop.** That includes every other `terraform`/`kubectl`/`helm`/`pulumi`/`ansible` subcommand, any `aws`/`gcloud`/`az` call that is not a `describe-*`/`get-*`/`list-*` read, any `docker push`, any `gh workflow run`.
 
