@@ -7,6 +7,10 @@
 #           invariants before sending:
 #             * the token stays in the -K config file, never on argv;
 #             * the URL's host is re-checked against $CONFIRMED_HOST (fail closed);
+#             * under $JIRA_READ_ONLY, a non-GET method is refused (fail closed)
+#               — the sink-side counterpart of jira.sh's one-shot
+#               require_write_allowed; resolve_media_uuid needs no check of its
+#               own because its method is a literal GET, not a parameter;
 #             * `--proto '=https'`, never -L, never -k/--insecure.
 #
 # FLAG ORDER IS PART OF THE HARDENING, not cosmetic. curl applies its options
@@ -45,6 +49,22 @@ jira_curl() {
 		https://*) : ;;
 		*) error "internal: refusing a non-https URL: $url"; exit 1 ;;
 	esac
+
+	# Read-only re-check — the SAME defense-in-depth invariant as the host
+	# re-check above, applied to lib/readonlygate.sh's gate. jira.sh asserts
+	# require_write_allowed ONCE, at dispatch; that classification is correct
+	# today, so nothing this engine can currently dispatch reaches here with a
+	# non-GET method under $JIRA_READ_ONLY. It is an assertion against a FUTURE
+	# bug in a security-critical sink — a newly added command classified as a
+	# read by omission, or a "read" command that grows a write path (an
+	# attachment upload is already reachable from create/update/comment) — at
+	# the one place such a bug is still catchable: the network egress itself.
+	# GET is the only method this engine reads with, so any other method IS the
+	# write the gate refuses. Fails closed (exit 1), like every check above it.
+	if is_read_only_requested && [ "$method" != GET ]; then
+		error "internal: \$JIRA_READ_ONLY is set: refusing to send $method $url — read-only mode permits GET only (fail closed)"
+		exit 1
+	fi
 
 	ensure_workdir
 	RESP_COUNTER=$((RESP_COUNTER + 1))
@@ -92,6 +112,18 @@ jira_curl_multipart() {
 		https://*) : ;;
 		*) error "internal: refusing a non-https URL: $mp_url"; exit 1 ;;
 	esac
+
+	# Read-only re-check — the same fail-closed assertion jira_curl() carries
+	# (see its note for why a once-asserted gate is re-checked at the sink),
+	# re-stated here rather than inherited, exactly as the host re-check is.
+	# It bites hardest in THIS helper: the multipart egress is an attachment
+	# upload, reachable from create/update/comment's inline-image path as well
+	# as from `attach`, so a future misclassification of any of those would land
+	# here first.
+	if is_read_only_requested && [ "$mp_method" != GET ]; then
+		error "internal: \$JIRA_READ_ONLY is set: refusing to send $mp_method $mp_url — read-only mode permits GET only (fail closed)"
+		exit 1
+	fi
 
 	ensure_workdir
 	RESP_COUNTER=$((RESP_COUNTER + 1))

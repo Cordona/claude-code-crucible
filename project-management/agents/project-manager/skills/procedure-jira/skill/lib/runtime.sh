@@ -13,7 +13,7 @@
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
 #
-# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 42
+# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 43
 
 # ---------------------------------------------------------------------------
 # Diagnostics (all to stderr — stdout stays machine-clean)
@@ -40,7 +40,7 @@ NL='
 # unique to that function. Because POSIX sh has no `local`, a name reused
 # across two functions that can appear in the same call chain (e.g. one helper
 # calling another) will silently clobber the caller's copy — and since the
-# engine was split into 43 sourced units, the two colliding functions are
+# engine was split into 44 sourced units, the two colliding functions are
 # rarely on the same screen any more.
 #
 # The form that survives that split is a SHORT PER-FUNCTION PREFIX, derived
@@ -113,6 +113,14 @@ urlencode() {
 # possibly differently-cased --status/--resolution value; the
 # CANONICAL (API-reported or config-graph) casing is always what gets
 # displayed/stored, never the downcased form itself.
+#
+# SECOND CALLER, and the reason a change here is not local: credentials.sh's
+# resolve_credential_config() folds both halves of its $JIRA_CURL_CONFIG-
+# basename-vs-$CONFIRMED_HOST binding check through this helper — a fail-closed
+# SECURITY comparison (hostnames are case-insensitive, so a byte-exact compare
+# would refuse a credential that does belong to the confirmed site and report it
+# as a cross-site violation). Which bytes this folds is therefore part of that
+# gate, not a display detail.
 downcase() {
 	# shellcheck disable=SC2018,SC2019  # deliberately ASCII-only (LC_ALL=C, matches this script's ascii_downcase-based jq comparisons — Jira status names are ASCII), not locale-dependent [:upper:]/[:lower:]
 	printf '%s' "$1" | tr 'A-Z' 'a-z'

@@ -8,13 +8,13 @@
 #            is consumed by a sourced unit, never by this file — which is what
 #            makes it a dispatcher rather than an implementation.
 #
-# SHAPE. The engine is one process assembled from 43 sourced-only units in
+# SHAPE. The engine is one process assembled from 44 sourced-only units in
 # ../lib, in two families:
 #   lib/<concern>.sh   the shared core, sourced first and in dependency order:
-#                      runtime, usage, sitegate, credentials, http, validate,
-#                      projectconfig, accounts, jql, adf, inline-images,
-#                      fields, refs, search-core, agile-paging, issue-set,
-#                      batch-report.
+#                      runtime, usage, sitegate, readonlygate, credentials,
+#                      http, validate, projectconfig, accounts, jql, adf,
+#                      inline-images, fields, refs, search-core, agile-paging,
+#                      issue-set, batch-report.
 #   lib/cmd-<name>.sh  one file per command, each owning that command's
 #                      validate_<name>_args() + cmd_<name>() and its private
 #                      helpers. There are 26, listed in the sourcing loop and
@@ -68,7 +68,9 @@
 #
 # Exit codes:
 #   0  success
-#   1  curl/jq absent · credentials unavailable · confirmed-site host not in
+#   1  curl/jq absent · credentials unavailable · $JIRA_READ_ONLY set on a
+#      write command · $JIRA_CURL_CONFIG's basename not matching the confirmed
+#      site · confirmed-site host not in
 #      the allow-list · intended-site/confirmed-site mismatch · a Jira API
 #      call failed (non-2xx) · no Jira user found for an --assignee/
 #      --developer value · a project config file exists but is not valid
@@ -95,9 +97,16 @@
 #
 # The credential-handoff INTERFACE is fixed now, before its real
 # implementation exists: if $JIRA_CURL_CONFIG names an existing, readable
-# file, this engine uses it AS-IS via `curl -K` and never asks how it got
+# file WHOSE BASENAME IS "<confirmed-host>.cfg", this engine uses it AS-IS via
+# `curl -K` and never asks how it got
 # there — that is procedure-jira-auth's job (Phase 3), a seam that precedes
-# its consumer. Until that skill exists, this engine falls back to
+# its consumer. The basename assertion BINDS that file to the confirmed site
+# (procedure-jira-auth stores one file per site as <site>.cfg): a stale or
+# mis-paired path would otherwise be spent, silently, against the wrong Jira —
+# see resolve_credential_config()'s own note. It applies ONLY to an externally
+# supplied file, never to the engine's own mktemp fallback below, whose random
+# name was never meant to carry a site. Until that skill exists, this engine
+# falls back to
 # resolving credentials itself from $JIRA_SITE/$JIRA_EMAIL/$JIRA_TOKEN and
 # building its OWN curl-config file the same secure way. Env vars are the
 # LAST-RESORT tier of the plan's token-at-rest ordering (keychain -> 600
@@ -127,6 +136,26 @@
 #   5. `--proto '=https'` on every curl call, never `-L` (no redirect
 #      following — a redirect could silently retarget the request to an
 #      unpinned host), never `-k`/`--insecure`.
+#   6. The credential file itself is bound to the confirmed site: an
+#      externally supplied $JIRA_CURL_CONFIG must be named
+#      "<confirmed-host>.cfg" — compared case-insensitively, because
+#      hostnames are — or this refuses to use it (exit 1). See the
+#      credential-handoff note above.
+#
+# Read-only mode ($JIRA_READ_ONLY), the third IN-SCRIPT gate. Set it and
+# every WRITE command is refused (exit 1) before any network call and before
+# a credential is resolved — see lib/readonlygate.sh for the write/read
+# classification and for why a scope enforced only by prose is not enforced:
+# the caller reading a ticket's live comments and changelog is reading
+# UNTRUSTED text while holding a real credential, so "it was told not to
+# write" is exactly the assurance an injected instruction attacks. The
+# authoritative classification lives in SKILL.md; that unit is its executable
+# form. It covers the one LOCAL write too: `discover --write` overwrites the
+# per-project config the write commands later read, so it is classified a
+# write even though it changes nothing at the Jira site. And like the host
+# pin, the gate is re-asserted at the sink: lib/http.sh's curl helpers refuse
+# any non-GET request under $JIRA_READ_ONLY (item 4's "assertion against a
+# FUTURE bug", applied to this gate).
 #
 # The JQL builder is NOT "parameterized" (Jira's REST API has no
 # bind-variable API for JQL). Safety instead comes from: field names and
@@ -208,7 +237,7 @@
 # ONLY for its `@uri`/`@csv`-style builtins and static, hardcoded programs
 # fed via `--arg`/`--argjson`/`--rawfile` — never a dynamically built
 # program string, and no Oniguruma regex dependency (unlike this skill's
-# sibling md-to-adf.sh). The 43 units this file sources are resolved with pure
+# sibling md-to-adf.sh). The 44 units this file sources are resolved with pure
 # parameter expansion, never dirname/readlink/realpath/basename — the engine
 # and write-test suites run every command under a minimal PATH toolbox that
 # deliberately excludes all four, so any of them would break those suites.
@@ -231,7 +260,7 @@ PROG=${0##*/}
 # practice (SKILL.md and the harness always invoke this script by an absolute
 # path) but exists so `set -u` can never see an unset SCRIPT_DIR.
 #
-# LIB_DIR holds the 43 sourced-only units; MD_TO_ADF is the markdown->ADF
+# LIB_DIR holds the 44 sourced-only units; MD_TO_ADF is the markdown->ADF
 # converter, a SIBLING script in this same scripts/ dir consumed BY PATH as a
 # subprocess — never sourced, never inlined. Both must be resolved from $0
 # rather than a bare relative path, which would resolve against the CALLER's
@@ -261,6 +290,7 @@ MD_TO_ADF="$SCRIPT_DIR/md-to-adf.sh"
 # ---------------------------------------------------------------------------
 for _jira_unit in \
 	"$LIB_DIR/runtime.sh" "$LIB_DIR/usage.sh" "$LIB_DIR/sitegate.sh" \
+	"$LIB_DIR/readonlygate.sh" \
 	"$LIB_DIR/credentials.sh" "$LIB_DIR/http.sh" "$LIB_DIR/validate.sh" \
 	"$LIB_DIR/projectconfig.sh" "$LIB_DIR/accounts.sh" "$LIB_DIR/jql.sh" \
 	"$LIB_DIR/adf.sh" "$LIB_DIR/inline-images.sh" "$LIB_DIR/fields.sh" \
@@ -533,6 +563,28 @@ case "$COMMAND" in
 	epic)       validate_epic_args ;;
 	schedule)   validate_schedule_args ;;
 esac
+
+# ---------------------------------------------------------------------------
+# Read-only gate ($JIRA_READ_ONLY) — HERE, and deliberately not elsewhere.
+#
+# AFTER the per-command validation above, because that is what makes the
+# classification a single check per command rather than a second, drifting
+# re-derivation of each command's mode: "exactly one mode", watch/vote's
+# --list-vs---remove exclusivity, and each command's own foreign-flag
+# refusals — per-command, not exhaustive; see readonlygate.sh's
+# write_mode_flag note on the two cases where a foreign carrier survives —
+# have all already fired, so is_write_invocation() reads the same OPT_*
+# carriers the command's own validator and cmd_*() read. It also keeps the
+# ordering a caller expects — their own typo still surfaces as a usage error
+# (exit 2) first.
+#
+# BEFORE the tool/site/credential preconditions below, because nothing about
+# refusing to write depends on curl or jq being installed, on the site
+# resolving, or on a credential existing — and refusing here means a read-only
+# invocation of a write command never opens a credential file at all, let alone
+# reaches lib/http.sh. No network call is possible before this point.
+# ---------------------------------------------------------------------------
+require_write_allowed
 
 # ---------------------------------------------------------------------------
 # Preconditions + dispatch

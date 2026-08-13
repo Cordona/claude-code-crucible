@@ -173,6 +173,32 @@
 #                            --json shape).
 #   -h, --help                  Show this help.
 #
+# The ENVIRONMENT is not a flag surface, but two variables change what the
+# engine will do at all, so they belong in the same reference:
+#
+#   $JIRA_READ_ONLY            Set it (any value but empty or "0") and EVERY
+#                            write command is REFUSED — exit 1, before any
+#                            network call and before a credential is
+#                            resolved. Reads are untouched. It exists so the
+#                            "this credential may only read" scope of an
+#                            analysis pass is enforced by the ENGINE rather
+#                            than by prose the caller is trusted to follow —
+#                            that caller reads untrusted, attacker-authorable
+#                            ticket text while holding the credential. The
+#                            write/read classification (the one read-mode
+#                            carve-out, `transition --plan`, and the one
+#                            LOCAL write it refuses, `discover --write`)
+#                            lives in lib/readonlygate.sh.
+#   $JIRA_CURL_CONFIG          The credential handoff from procedure-jira-auth
+#                            — a `curl -K` config file, consumed as-is and
+#                            never deleted by this engine. Its BASENAME must
+#                            be "<confirmed-host>.cfg" (the one-file-per-site
+#                            name that skill stores; compared
+#                            case-insensitively, because hostnames are), or
+#                            the engine refuses it (exit 1) rather than spend
+#                            a credential that may belong to a different Jira
+#                            site.
+#
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
@@ -281,13 +307,25 @@ Usage (AGILE WRITE — issue scheduling, base /rest/agile/1.0/ + api/3):
 or if it mismatches the intended site — see the script header). See the
 script header for the full flag reference and transition --plan's contract.
 
+Environment:
+  JIRA_READ_ONLY     Set (any value but empty or "0") -> every WRITE command
+                     is refused with exit 1 before any network call; reads
+                     and transition --plan still work. discover --write counts
+                     as a write (it overwrites the local project config).
+  JIRA_CURL_CONFIG   The -K credential-config path from
+                     procedure-jira-auth. Its basename must be
+                     "<confirmed-host>.cfg" (case-insensitive) or it is
+                     refused (exit 1).
+
 link direction: \`link FROM --to TO --link-type NAME\` reads "FROM <type>
 TO" in active voice (FROM -> inwardIssue, TO -> outwardIssue; verified
 live). Run link-types first to see a type's exact inward/outward wording.
 
 Exit codes:
   0  success
-  1  curl/jq absent / credentials unavailable / site gate failed / an API
+  1  curl/jq absent / credentials unavailable / JIRA_READ_ONLY set on a write
+     command / JIRA_CURL_CONFIG not named for the confirmed site /
+     site gate failed / an API
      call failed / no user found for --assignee/--developer/--account /
      invalid project config / an unconfigured custom field required by
      --acceptance-file/--review-file/--developer / no valid transition path /
