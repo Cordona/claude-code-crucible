@@ -122,6 +122,12 @@ cmd_create() {
 	[ -z "$OPT_LABELS" ]   || merge_labels_field "$create_fields_acc" "$OPT_LABELS"
 	[ -z "$OPT_DUE_DATE" ] || merge_string_field "$create_fields_acc" duedate "$OPT_DUE_DATE"
 	[ -z "$OPT_PARENT" ]   || merge_ref_field "$create_fields_acc" parent key "$OPT_PARENT"
+	# --priority is STRICTLY OPT-IN and deliberately UNVALIDATED locally: a
+	# priority scheme is per-project on Jira's side, so the site is the only
+	# source of truth for the allowed names (an unknown one 400s clearly). Same
+	# reasoning as --resolution's opt-in contract — never defaulted, because a
+	# project whose create screen has no priority field 400s if we set one unasked.
+	[ -z "$OPT_PRIORITY" ] || merge_ref_field "$create_fields_acc" priority name "$OPT_PRIORITY"
 
 	# Attach flags resolve NAME -> id against the project's live version/
 	# component lists (versions fetched once, components once) and merge

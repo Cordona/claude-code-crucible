@@ -83,6 +83,22 @@
 #   --fields LIST              (view, search) Comma-separated field list.
 #   --due-date YYYY-MM-DD      (create, update) -> fields.duedate.
 #   --parent KEY                (create, update) -> fields.parent.key.
+#   --priority NAME              (create, update) -> fields.priority.name.
+#                            STRICTLY OPT-IN: the field is sent ONLY when this
+#                            flag is given, and is never defaulted (a project
+#                            whose screen carries no priority field 400s if the
+#                            script sets one unasked — the same reasoning as
+#                            --resolution below). NAME is NOT validated locally
+#                            against a fixed enum, because a priority scheme is
+#                            per-project on the Jira side: the site is the only
+#                            source of truth, and an unknown name 400s clearly.
+#                            Accepted by create, update and `bulk --op update`
+#                            (which loops update) and by NOTHING else: every
+#                            other command REJECTS it (usage error, exit 2)
+#                            rather than ignore it — a dropped --priority would
+#                            never appear in the --plan/consent disclosure, so
+#                            the caller would believe they set a priority the
+#                            engine never sent.
 #   --developer VALUE            (update only) Resolved to accountId, merged
 #                            under the project config's custom_fields.
 #                            developer field id as {"accountId": accountId}
@@ -237,7 +253,7 @@ Usage (WRITE):
          [--description-file PATH] [--acceptance-file PATH]
          [--review-file PATH] [--type STR] [--assignee VALUE]
          [--labels LIST] [--due-date YYYY-MM-DD] [--parent KEY]
-         [--fix-version NAME]... [--affects-version NAME]...
+         [--priority NAME] [--fix-version NAME]... [--affects-version NAME]...
          [--component NAME]... [--json]
   $PROG comment <KEY> --text-file PATH --confirmed-site SITE [--json]
   $PROG transition <KEY> --status TARGET --confirmed-site SITE
@@ -246,7 +262,7 @@ Usage (WRITE):
          [--title STR] [--description-file PATH | --append-file PATH]
          [--acceptance-file PATH] [--review-file PATH]
          [--assignee VALUE] [--developer VALUE] [--labels LIST]
-         [--due-date YYYY-MM-DD] [--parent KEY]
+         [--due-date YYYY-MM-DD] [--parent KEY] [--priority NAME]
          [--fix-version NAME]... [--affects-version NAME]...
          [--component NAME]... [--json]
   $PROG link <FROM> --to TO --link-type NAME --confirmed-site SITE
@@ -281,7 +297,7 @@ Usage (WRITE):
          (--keys "K-1,K-2,..." | --jql QUERY)
          [transition: --status TARGET [--resolution STR]]
          [comment: --text-file PATH]
-         [update: --title/--labels/--assignee/--due-date/--parent/... ]
+         [update: --title/--labels/--assignee/--due-date/--parent/--priority/... ]
          [--plan|--dry-run] [--json]
 
 Usage (AGILE WRITE — sprint lifecycle, base /rest/agile/1.0/):

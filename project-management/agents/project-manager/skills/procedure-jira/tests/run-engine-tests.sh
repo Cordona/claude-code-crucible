@@ -119,6 +119,28 @@ run() {
 	harness_run "$r_path" "$@"
 }
 
+# ---------------------------------------------------------------------------
+# Shared diagnostic needles
+#
+# PRIORITY_SCOPE_DIAG — jira.sh's --priority foreign-flag refusal (asserted at
+# four sites below: view, and bulk's transition/comment/ordering cases; the
+# transition site lives in the sibling run-write-tests.sh, which defines its own
+# copy because the two suites are separate processes with no shared state).
+#
+# The `error: ` prefix is LOAD-BEARING, not decoration. Every exit-2 guard dumps
+# the full usage() text to stderr BEFORE its diagnostic, and usage.sh's file-
+# header COMMENT already documents this exact scoping rule in near-identical
+# prose (not the printed usage() heredoc itself, which carries no "only valid"
+# text today) — so if that comment's wording ever migrates into the heredoc, a
+# needle made of the bare sentence alone would become satisfiable by the usage
+# dump, proving only "some guard exited 2", not "THIS guard fired". Only
+# runtime.sh's error() writer emits the `<prog>: error: <msg>` form; usage()
+# can never carry it, today or after such a migration. The same prefix is what
+# makes the stderr_not_has ordering assertion below meaningful: absence of the
+# sentence is only evidence when usage()'s copy of it cannot satisfy the needle.
+# ---------------------------------------------------------------------------
+PRIORITY_SCOPE_DIAG="error: --priority is only valid with create, update, and bulk --op update"
+
 # ===========================================================================
 # usage / argument errors
 # ===========================================================================
@@ -308,6 +330,25 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" view PROJ-9 --confirmed-site foo.atlassian.net
 expect_rc "view 200-with-non-JSON-body -> exit 1 (NOT jq's own exit 2)" 1
 stderr_has "view 200-with-non-JSON-body: diagnostic" "not valid JSON"
+
+# jira.sh's --priority scoping block keys off the COMMAND NAME, not off the
+# read/write classification readonlygate.sh owns, so a PURE READ must refuse the
+# flag exactly as a write command does. view is that read: `view PROJ-1` is
+# otherwise fully valid here (well-shaped key, validator passes), so the exit 2
+# can only come from the scoping block and not from an unrelated usage error.
+#
+# Runs under `full` (the stub curl IS on PATH) and asserts ZERO calls, so
+# "refused before the network" is a real observation rather than an artifact of
+# curl being unavailable.
+section "jira.sh — view: a stray --priority is refused before any network call (--priority belongs to create/update/bulk --op update)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --priority High --confirmed-site foo.atlassian.net
+expect_rc "view + --priority -> exit 2" 2
+stderr_has "view stray --priority: diagnostic names the three commands that DO support it" \
+	"$PRIORITY_SCOPE_DIAG"
+equals "view stray --priority: ZERO curl calls (the issue is never fetched)" "$(call_count)" "0"
 
 # ===========================================================================
 # workflow <KEY>
@@ -2837,6 +2878,67 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "bulk stray positional -> exit 2" 2
 stderr_has "bulk stray positional: diagnostic" "takes no positional"
 
+# --- --priority is scoped to `--op update` ---------------------------------
+# bulk reaches cmd_update — and therefore reads OPT_PRIORITY — ONLY for
+# `--op update`. On every other op the flag would be accepted and SILENTLY
+# DROPPED, so jira.sh's central scoping block refuses it there through the
+# engine's own require_foreign_flag_unset. The `--op update` half of this
+# contract is covered further down ("bulk --op update --priority: accepted ALONE
+# by the guard, disclosed by --plan, and actually sent").
+#
+# Each op gets its OWN case rather than a loop: the ops carry different required
+# args (--status vs --text-file), and one shared/looped assertion would let a
+# single op's rejection regress while the section stayed green.
+section "jira.sh — bulk --priority on a NON-update op: refused (exit 2) before any network call"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op transition --keys "PSWS-1,PSWS-2" --status Done --priority High --confirmed-site foo.atlassian.net
+expect_rc "bulk --op transition + --priority -> exit 2" 2
+stderr_has "bulk transition stray --priority: diagnostic names the three commands that DO support it" \
+	"$PRIORITY_SCOPE_DIAG"
+equals "bulk transition stray --priority: ZERO curl calls (nothing was transitioned)" "$(call_count)" "0"
+
+# The --text-file below is a REAL readable file, so the exit 2 cannot be coming
+# from cmd_bulk's readability guard instead of the scoping block.
+BULK_PRIORITY_MD="$WORK/bulk-priority-comment.md"
+printf 'note\n' >"$BULK_PRIORITY_MD"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op comment --keys "PSWS-1" --text-file "$BULK_PRIORITY_MD" --priority High --confirmed-site foo.atlassian.net
+expect_rc "bulk --op comment + --priority -> exit 2" 2
+stderr_has "bulk comment stray --priority: diagnostic names the three commands that DO support it" \
+	"$PRIORITY_SCOPE_DIAG"
+equals "bulk comment stray --priority: ZERO curl calls (no comment was posted)" "$(call_count)" "0"
+
+# --- ORDERING: per-command validation still runs FIRST ---------------------
+# The scoping block sits AFTER the per-command validate_*_args dispatch on
+# purpose: a caller whose REAL mistake is `--op frobnicate` must read THAT
+# diagnostic, not a lecture about --priority. An `expect_rc 2` alone would pass
+# whichever guard fired, so BOTH halves are asserted — the --op message present,
+# the --priority message ABSENT.
+#
+# --keys IS given here on purpose, exactly as --status is on the transition case
+# in run-write-tests.sh: it makes the invocation valid in every respect EXCEPT
+# the --op, so the only two guards in play are the ones this ordering claim is
+# about. Without it, "the --op error wins" would also be riding on
+# validate_bulk_args' own INTERNAL order (its --op case at cmd-bulk.sh:163 runs
+# before its set-selector requirement at :174) — an ordering this test never
+# claims to assert, and whose reversal would silently change which diagnostic
+# this case is really observing.
+section "jira.sh — bulk: an invalid --op reports the --op error, NOT the --priority scoping error (validation order)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op frobnicate --keys "PSWS-1" --priority High --confirmed-site foo.atlassian.net
+expect_rc "bulk invalid --op + --priority -> exit 2" 2
+stderr_has "bulk invalid --op + --priority: the --op diagnostic is the one reported" \
+	"invalid --op 'frobnicate' (must be transition|comment|update)"
+stderr_not_has "bulk invalid --op + --priority: the --priority scoping diagnostic is NOT reported" \
+	"$PRIORITY_SCOPE_DIAG"
+equals "bulk invalid --op + --priority: ZERO curl calls" "$(call_count)" "0"
+
 # --- --plan DRY RUN: --keys makes ZERO requests ----------------------------
 section "jira.sh — bulk --plan (--keys): resolves + discloses, writes NOTHING, ZERO curl calls"
 
@@ -3141,6 +3243,39 @@ expect_rc "bulk --plan comment -> exit 0" 0
 equals "bulk --plan comment: ZERO curl calls" "$(call_count)" "0"
 stdout_has "bulk --plan comment: names the comment intent phrase" "add a comment from"
 stdout_has "bulk --plan comment: states nothing was written" "NOTHING WAS WRITTEN"
+
+# --- --priority flows through the update verb AND its own hand-kept surfaces --
+# bulk delegates to cmd_update, so --priority reaches the wire for free. bulk's
+# own at-least-one-field guard and its --plan disclosure both now derive from
+# cmd-update.sh's update_field_summary()/has_update_field_request() — a single
+# shared source, not two hand-maintained copies — and this test guards that the
+# shared list actually reaches both surfaces for a real field, not just that
+# they happen to agree today.
+section "jira.sh — bulk --op update --priority: accepted ALONE by the guard, disclosed by --plan, and actually sent"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op update --priority High --keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan update --priority alone -> exit 0 (not the 'at least one field' usage error)" 0
+equals "bulk --plan update --priority: ZERO curl calls" "$(call_count)" "0"
+stdout_has "bulk --plan update --priority: the field-summary NAMES the priority change" "update field(s): priority"
+stdout_has "bulk --plan update --priority: states nothing was written" "NOTHING WAS WRITTEN"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op update --priority High --keys "PSWS-1,PSWS-2" --confirmed-site foo.atlassian.net
+expect_rc "bulk real update --priority -> exit 0" 0
+equals "bulk real update --priority: 2 calls (one PUT per issue)" "$(call_count)" "2"
+# The stdout channel is asserted BEFORE the body reads: a regression that makes
+# the per-issue verb fail leaves no call-N.body at all, and reading one first
+# would abort the suite before this line ever ran.
+stdout_has "bulk real update --priority: both issues reported succeeded" "JIRA_BULK_SUMMARY=2/2 succeeded"
+BULK_PRIORITY_SENT=$(jq -c '.fields.priority' "$CURL_STUB_BODY_LOG_DIR/call-1.body")
+equals "bulk real update --priority: PSWS-1's PUT body carries {name: High}" "$BULK_PRIORITY_SENT" '{"name":"High"}'
+BULK_PRIORITY_SENT_2=$(jq -c '.fields.priority' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "bulk real update --priority: PSWS-2's PUT body carries it too" "$BULK_PRIORITY_SENT_2" '{"name":"High"}'
 
 # --- empty-set boundaries: whitespace-only --keys and a zero-resolve --jql ---
 section "jira.sh — bulk empty-set boundaries: whitespace-only --keys (exit 2) and zero-resolve --jql (exit 1)"

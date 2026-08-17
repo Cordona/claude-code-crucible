@@ -213,6 +213,13 @@ cmd_update() {
 		validate_ticket_key "$OPT_PARENT" || { error "invalid parent ticket key: $OPT_PARENT"; exit 1; }
 		merge_ref_field "$update_fields_acc" parent key "$OPT_PARENT"
 	fi
+	# Opt-in only, unvalidated locally — the project's own priority scheme is the
+	# source of truth; see cmd_create's identical call for the full reasoning.
+	# Placed AFTER --parent to keep create's and update's field order identical
+	# (assignee -> labels -> due-date -> parent -> priority -> attach), which is
+	# also the order update_field_summary and jira.sh's own OPT declarations
+	# list them in.
+	[ -z "$OPT_PRIORITY" ] || merge_ref_field "$update_fields_acc" priority name "$OPT_PRIORITY"
 
 	# Attach flags — same NAME -> id resolution as create, but the project is
 	# derived from the ticket key being updated (TICKET_KEY is shape-validated
@@ -242,6 +249,50 @@ cmd_update() {
 	fi
 }
 
+# update_field_summary -> a space-joined list of the update aspects the caller
+# asked to change ("assignee labels priority"), or the empty string when they
+# named none. It is the SINGLE SOURCE OF TRUTH for which fields the update verb
+# can change, and has two consumers, both of which derive from it rather than
+# re-enumerating the set: cmd-bulk.sh's bulk_intent_phrase (the --plan
+# disclosure a consent gate reads) and has_update_field_request below (the
+# at-least-one-field guard behind both `update` and `bulk --op update`).
+#
+# WHY IT IS ONE FUNCTION AND NOT THREE LISTS. The set used to be enumerated in
+# all three places, byte-identically, with nothing enforcing that; adding
+# --priority meant editing all three, and the --plan copy is the one whose
+# omission fails SILENTLY — the gate would disclose a write it never names.
+# Deriving both the guard and the disclosure from one list makes a forgotten
+# field impossible rather than merely unlikely.
+#
+# It lives HERE, beside the verb that owns the fields, and is purely
+# descriptive: it reads only the OPT_* carriers and never touches the network.
+update_field_summary() {
+	ufs_fields=""
+	[ -z "$OPT_TITLE" ]            || ufs_fields="$ufs_fields title"
+	[ -z "$OPT_DESCRIPTION_FILE" ] || ufs_fields="$ufs_fields description"
+	[ -z "$OPT_APPEND_FILE" ]      || ufs_fields="$ufs_fields description(append)"
+	[ -z "$OPT_ACCEPTANCE_FILE" ]  || ufs_fields="$ufs_fields acceptance"
+	[ -z "$OPT_REVIEW_FILE" ]      || ufs_fields="$ufs_fields review"
+	[ -z "$OPT_ASSIGNEE" ]         || ufs_fields="$ufs_fields assignee"
+	[ -z "$OPT_DEVELOPER" ]        || ufs_fields="$ufs_fields developer"
+	[ -z "$OPT_LABELS" ]           || ufs_fields="$ufs_fields labels"
+	[ -z "$OPT_DUE_DATE" ]         || ufs_fields="$ufs_fields due-date"
+	[ -z "$OPT_PARENT" ]           || ufs_fields="$ufs_fields parent"
+	[ -z "$OPT_PRIORITY" ]         || ufs_fields="$ufs_fields priority"
+	[ -z "$OPT_FIX_VERSIONS" ]     || ufs_fields="$ufs_fields fix-version"
+	[ -z "$OPT_AFFECTS_VERSIONS" ] || ufs_fields="$ufs_fields affects-version"
+	[ -z "$OPT_COMPONENTS" ]       || ufs_fields="$ufs_fields component"
+	# strip the single leading space
+	printf '%s' "${ufs_fields# }"
+}
+
+# has_update_field_request -> 0 if the caller named at least one updatable
+# field, 1 if none — which is exactly "the summary above is non-empty", so the
+# predicate carries no field list of its own to drift from it.
+has_update_field_request() {
+	[ -n "$(update_field_summary)" ]
+}
+
 # validate_update_args() — `update`'s per-command argument validation, called by
 # jira.sh BEFORE any tool/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
@@ -252,10 +303,7 @@ validate_update_args() {
 		error "--description-file and --append-file are mutually exclusive"
 		exit 2
 	fi
-	if [ -z "$OPT_TITLE" ] && [ -z "$OPT_DESCRIPTION_FILE" ] && [ -z "$OPT_APPEND_FILE" ] \
-		&& [ -z "$OPT_ACCEPTANCE_FILE" ] && [ -z "$OPT_REVIEW_FILE" ] && [ -z "$OPT_ASSIGNEE" ] \
-		&& [ -z "$OPT_DEVELOPER" ] && [ -z "$OPT_LABELS" ] && [ -z "$OPT_DUE_DATE" ] && [ -z "$OPT_PARENT" ] \
-		&& [ -z "$OPT_FIX_VERSIONS" ] && [ -z "$OPT_AFFECTS_VERSIONS" ] && [ -z "$OPT_COMPONENTS" ]; then
+	if ! has_update_field_request; then
 		usage >&2
 		error "update requires at least one field to change"
 		exit 2

@@ -96,6 +96,13 @@ assert_no_leaked_workdir() {
 	fi
 }
 
+# PRIORITY_SCOPE_DIAG — jira.sh's --priority foreign-flag refusal, asserted on
+# the transition case below. The `error: ` prefix is load-bearing: see
+# run-engine-tests.sh's definition of the same needle for why usage()'s own
+# near-identical prose makes a bare-sentence needle insufficient. Defined twice
+# rather than shared because the two suites are separate processes.
+PRIORITY_SCOPE_DIAG="error: --priority is only valid with create, update, and bulk --op update"
+
 # ---------------------------------------------------------------------------
 # Shared fixtures: a project config with custom fields + a workflow graph.
 # ---------------------------------------------------------------------------
@@ -274,6 +281,66 @@ equals "create: labels array" "$(printf '%s' "$SENT_BODY" | jq -c '.fields.label
 equals "create: duedate" "$(printf '%s' "$SENT_BODY" | jq -r '.fields.duedate')" "2026-01-15"
 equals "create: parent.key" "$(printf '%s' "$SENT_BODY" | jq -r '.fields.parent.key')" "PROJ-1"
 
+section "jira.sh create — --priority is STRICTLY opt-in: given -> priority.name, omitted -> NO priority key at all"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10007","key":"PROJ-107","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title "Prioritized" --priority High \
+	--confirmed-site foo.atlassian.net
+expect_rc "create --priority -> exit 0" 0
+SENT_BODY=$(call_body 1)
+equals "create --priority: {name: ...} ref shape (the same shape issuetype uses)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.priority')" '{"name":"High"}'
+
+# The OMITTED case is the load-bearing half: a project whose create screen
+# carries no priority field 400s if one is set unasked, so the flag must leave
+# fields{} untouched — never "Medium", never null, never an empty object.
+reset_curl_stub
+set_stub_response 1 '{"id":"10008","key":"PROJ-108","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title "Unprioritized" --confirmed-site foo.atlassian.net
+expect_rc "create without --priority -> exit 0" 0
+SENT_BODY=$(call_body 1)
+equals "create without --priority: fields{} has NO priority key (never defaulted)" \
+	"$(printf '%s' "$SENT_BODY" | jq '.fields | has("priority")')" "false"
+
+section "jira.sh create — --priority is NOT validated locally against a fixed enum: an off-enum project-specific name reaches Jira unchanged"
+
+# The DELIBERATE ABSENCE of local validation is a contract, not an omission
+# (cmd-create.sh's --priority comment, usage.sh's --priority entry): a priority
+# scheme is per-project on Jira's side, so the site is the only source of truth
+# and an unknown name must 400 THERE, not be rejected here. "Blocker-P0" is in
+# no standard scheme, so a future `case "$OPT_PRIORITY" in High|Highest|...)`
+# guard — or any hardcoded allow-list — turns this exit 0 into a local failure.
+# This section exists so that guard is caught by a test whose STATED purpose is
+# this contract, independent of the escaping test below (whose non-enum payload
+# would otherwise be the only thing accidentally covering it).
+reset_curl_stub
+set_stub_response 1 '{"id":"10010","key":"PROJ-110","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title "Off-enum priority" --priority 'Blocker-P0' \
+	--confirmed-site foo.atlassian.net
+expect_rc "create --priority with an off-enum project-specific name -> exit 0 (no local enum check)" 0
+SENT_BODY=$(call_body 1)
+equals "create --priority off-enum: the name is passed through verbatim as {name: ...}" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.priority')" '{"name":"Blocker-P0"}'
+
+section "jira.sh create — a --priority carrying JSON metacharacters is escaped exactly once"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10009","key":"PROJ-109","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title "Odd priority" --priority 'P1 "urgent" & critical' \
+	--confirmed-site foo.atlassian.net
+expect_rc "create --priority with a quote + ampersand -> exit 0" 0
+SENT_BODY=$(call_body 1)
+# Decoding the sent body back to the exact input is what distinguishes correct
+# escaping from BOTH failure modes: a double-escaped value decodes to the
+# literal P1 \"urgent\", and a broken one never parses as JSON at all.
+equals "create --priority: the quote/ampersand value round-trips intact (escaped once, not twice)" \
+	"$(printf '%s' "$SENT_BODY" | jq -r '.fields.priority.name')" 'P1 "urgent" & critical'
+
 section "jira.sh create — non-2xx surfaces Jira's own error"
 
 reset_curl_stub
@@ -384,6 +451,33 @@ run nocurl "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" transition PROJ-1 --confirmed-site foo.atlassian.net
 expect_rc "transition without --status -> exit 2" 2
 stderr_has "transition without --status: diagnostic" "requires --status"
+
+# --priority is parsed by jira.sh's GLOBAL arg loop into one shared OPT_PRIORITY
+# carrier, but only create, update and `bulk --op update` ever READ it. On
+# transition it would otherwise be accepted and SILENTLY DROPPED — and unlike a
+# dropped --plan, nothing in transition's output ever names a flag the engine
+# ignored, so the caller would believe they set a priority that was never sent.
+# jira.sh's central scoping block refuses it instead, through the engine's own
+# require_foreign_flag_unset.
+#
+# --status IS given here on purpose: without it this invocation exits 2 on
+# "requires --status" and the test would pass for the wrong reason. With it, the
+# per-command validator passes and the exit 2 can only come from the scoping
+# block.
+#
+# It runs under the `full` selector (the stub curl IS on PATH) and asserts ZERO
+# calls, so "refused before the network" is a real observation rather than an
+# artifact of curl being unavailable — the same technique attach's foreign-flag
+# cases use.
+section "jira.sh transition — a stray --priority is refused before any network call (it belongs to create/update/bulk --op update)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --priority High --confirmed-site foo.atlassian.net
+expect_rc "transition + --priority -> exit 2" 2
+stderr_has "transition stray --priority: diagnostic names the three commands that DO support it" \
+	"$PRIORITY_SCOPE_DIAG"
+equals "transition stray --priority: ZERO curl calls (the issue is never read, never transitioned)" "$(call_count)" "0"
 
 section "jira.sh transition — --plan emits the multi-step path WITHOUT any POST firing"
 
@@ -669,6 +763,23 @@ expect_rc "update --assignee -> exit 0" 0
 SENT_BODY=$(call_body 2)
 equals "update --assignee: {id: accountId} shape" \
 	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.assignee')" '{"id":"acc-update-assignee"}'
+
+section "jira.sh update — --priority ALONE satisfies the at-least-one-field guard and sends priority.name"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --priority Highest --confirmed-site foo.atlassian.net
+# --priority as the ONLY flag is the guard case: before it was added to
+# validate_update_args' field list this same invocation was a usage error (exit
+# 2, "requires at least one field"), never a PUT.
+expect_rc "update --priority alone -> exit 0 (not the 'at least one field' usage error)" 0
+argv_log_has_token "update --priority alone: uses PUT" "PUT"
+SENT_BODY=$(call_body 1)
+equals "update --priority: {name: ...} ref shape" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.priority')" '{"name":"Highest"}'
+equals "update --priority alone: priority is the ONLY field sent (nothing tagged along)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields | keys')" '["priority"]'
 
 section "jira.sh update — --append-file fetches the existing ADF, then appends (not replaces)"
 

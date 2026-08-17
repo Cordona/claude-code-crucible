@@ -2,11 +2,14 @@
 #
 # jira.sh — the DISPATCHER of a single CLI (`jira.sh <command> ...`) over Jira
 #            Cloud REST v3 + Agile 1.0, using pure `curl` + `jq`. This file
-#            itself does exactly four things: source the engine's units, parse
-#            argv into OPT_* globals, run the command's validate_*_args()
-#            wrapper, and call its cmd_*() entry point. Every option it parses
-#            is consumed by a sourced unit, never by this file — which is what
-#            makes it a dispatcher rather than an implementation.
+#            itself does five things: source the engine's units, parse argv
+#            into OPT_* globals, run the command's validate_*_args() wrapper,
+#            enforce the cross-command scope of a flag carrier shared by
+#            several commands (see the --priority scoping block below), and
+#            call its cmd_*() entry point. Every option it parses is consumed
+#            by a sourced unit — except where the dispatcher itself must scope
+#            a shared carrier across commands — which is what makes it a
+#            dispatcher rather than an implementation.
 #
 # SHAPE. The engine is one process assembled from 44 sourced-only units in
 # ../lib, in two families:
@@ -362,6 +365,7 @@ OPT_REVIEW_FILE=""
 OPT_TEXT_FILE=""
 OPT_DUE_DATE=""
 OPT_PARENT=""
+OPT_PRIORITY=""
 OPT_DEVELOPER=""
 OPT_RESOLUTION=""
 OPT_PLAN=0
@@ -458,6 +462,7 @@ while [ $# -gt 0 ]; do
 		--text-file)               need_arg "$1" "${2:-}"; OPT_TEXT_FILE=$2; shift ;;
 		--due-date)                need_arg "$1" "${2:-}"; OPT_DUE_DATE=$2; shift ;;
 		--parent)                  need_arg "$1" "${2:-}"; OPT_PARENT=$2; shift ;;
+		--priority)                need_arg "$1" "${2:-}"; OPT_PRIORITY=$2; shift ;;
 		--developer)               need_arg "$1" "${2:-}"; OPT_DEVELOPER=$2; shift ;;
 		--resolution)              need_arg "$1" "${2:-}"; OPT_RESOLUTION=$2; shift ;;
 		--plan|--dry-run)          OPT_PLAN=1 ;;
@@ -563,6 +568,28 @@ case "$COMMAND" in
 	epic)       validate_epic_args ;;
 	schedule)   validate_schedule_args ;;
 esac
+
+# --priority is parsed by the GLOBAL arg loop above (one shared OPT_PRIORITY
+# carrier), but only THREE invocations ever read it: create, update, and
+# `bulk --op update` — which loops cmd_update and so inherits the field for
+# free. On every other command the flag would be accepted and SILENTLY dropped,
+# which is the exact failure require_flag_off exists to prevent for --plan and
+# worse here: the --plan/consent disclosure never names a flag the engine
+# ignored, so the caller believes they set a priority they did not. Before this
+# flag existed, `transition K --status Done --priority High` exited 2 ("unknown
+# option"); this keeps that refusal loud rather than turning it into a silent
+# no-op, using the engine's own foreign-flag guard.
+#
+# It runs AFTER the per-command validation above, deliberately: a caller whose
+# real mistake is `bulk --op frobnicate` must read THAT diagnostic, not this one.
+priority_is_supported=0
+case "$COMMAND" in
+	create|update) priority_is_supported=1 ;;
+	bulk)          [ "$OPT_OP" != "update" ] || priority_is_supported=1 ;;
+esac
+if [ "$priority_is_supported" -eq 0 ]; then
+	require_foreign_flag_unset --priority "$OPT_PRIORITY" "create, update, and bulk --op update"
+fi
 
 # ---------------------------------------------------------------------------
 # Read-only gate ($JIRA_READ_ONLY) — HERE, and deliberately not elsewhere.

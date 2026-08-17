@@ -29,30 +29,14 @@
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
 
-# bulk_update_field_summary -> a space-joined list of the update aspects the
-# caller asked to change, for the --plan disclosure (human + json). Mirrors the
-# single-verb flag set; purely descriptive, so it never touches the network.
-bulk_update_field_summary() {
-	bulk_fields=""
-	[ -z "$OPT_TITLE" ]            || bulk_fields="$bulk_fields title"
-	[ -z "$OPT_DESCRIPTION_FILE" ] || bulk_fields="$bulk_fields description"
-	[ -z "$OPT_APPEND_FILE" ]      || bulk_fields="$bulk_fields description(append)"
-	[ -z "$OPT_ACCEPTANCE_FILE" ]  || bulk_fields="$bulk_fields acceptance"
-	[ -z "$OPT_REVIEW_FILE" ]      || bulk_fields="$bulk_fields review"
-	[ -z "$OPT_ASSIGNEE" ]         || bulk_fields="$bulk_fields assignee"
-	[ -z "$OPT_DEVELOPER" ]        || bulk_fields="$bulk_fields developer"
-	[ -z "$OPT_LABELS" ]           || bulk_fields="$bulk_fields labels"
-	[ -z "$OPT_DUE_DATE" ]         || bulk_fields="$bulk_fields due-date"
-	[ -z "$OPT_PARENT" ]           || bulk_fields="$bulk_fields parent"
-	[ -z "$OPT_FIX_VERSIONS" ]     || bulk_fields="$bulk_fields fix-version"
-	[ -z "$OPT_AFFECTS_VERSIONS" ] || bulk_fields="$bulk_fields affects-version"
-	[ -z "$OPT_COMPONENTS" ]       || bulk_fields="$bulk_fields component"
-	# strip the single leading space
-	printf '%s' "${bulk_fields# }"
-}
-
 # bulk_intent_phrase -> one human phrase describing the change --plan would
 # apply, per --op (the "intended change" the plan discloses).
+#
+# The update arm's field list comes from cmd-update.sh's update_field_summary —
+# the ONE enumeration of the update verb's fields, shared with the
+# at-least-one-field guard (see that function's header). bulk loops the single
+# verb, so it discloses the verb's own list rather than a copy that could drift
+# from what the loop actually writes.
 bulk_intent_phrase() {
 	case "$OPT_OP" in
 		transition)
@@ -63,7 +47,7 @@ bulk_intent_phrase() {
 			fi
 			;;
 		comment) printf 'add a comment from %s' "$OPT_TEXT_FILE" ;;
-		update)  printf 'update field(s): %s' "$(bulk_update_field_summary)" ;;
+		update)  printf 'update field(s): %s' "$(update_field_summary)" ;;
 	esac
 }
 
@@ -210,10 +194,10 @@ validate_bulk_args() {
 			[ -n "$OPT_TEXT_FILE" ] || { usage >&2; error "bulk --op comment requires --text-file PATH"; exit 2; }
 			;;
 		update)
-			if [ -z "$OPT_TITLE" ] && [ -z "$OPT_DESCRIPTION_FILE" ] && [ -z "$OPT_APPEND_FILE" ] \
-				&& [ -z "$OPT_ACCEPTANCE_FILE" ] && [ -z "$OPT_REVIEW_FILE" ] && [ -z "$OPT_ASSIGNEE" ] \
-				&& [ -z "$OPT_DEVELOPER" ] && [ -z "$OPT_LABELS" ] && [ -z "$OPT_DUE_DATE" ] && [ -z "$OPT_PARENT" ] \
-				&& [ -z "$OPT_FIX_VERSIONS" ] && [ -z "$OPT_AFFECTS_VERSIONS" ] && [ -z "$OPT_COMPONENTS" ]; then
+			# The SAME predicate `update` itself uses (cmd-update.sh's
+			# has_update_field_request), so the batch can never accept a
+			# field set the single verb would reject, or vice versa.
+			if ! has_update_field_request; then
 				usage >&2
 				error "bulk --op update requires at least one field to change"
 				exit 2

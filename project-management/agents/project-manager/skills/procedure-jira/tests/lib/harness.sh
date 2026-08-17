@@ -117,6 +117,16 @@ stderr_has() {
        stderr was: $CUR_ERR"; fi
 }
 
+# stderr_not_has — the stdout_not_has twin, for the case where TWO guards could
+# each produce the same exit code and the test must prove WHICH one fired: an
+# `expect_rc 2` alone passes for either, so the losing guard's diagnostic has to
+# be asserted ABSENT for the ordering claim to mean anything.
+stderr_not_has() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then fail "$1" "stderr unexpectedly contains: $2"
+	else pass "$1"; fi
+}
+
 file_has() {
 	TESTS_RUN=$((TESTS_RUN + 1))
 	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then pass "$1"
