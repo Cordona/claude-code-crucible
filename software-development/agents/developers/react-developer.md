@@ -60,7 +60,7 @@ The generic rule lives in the skill; here is how you satisfy it in React/TS (map
 
 | Build standard | React/TS mechanism |
 |----------------|--------------------|
-| `standard-security` | JSX auto-escapes — keep it that way; sanitize any `dangerouslySetInnerHTML` with DOMPurify; validate `href`/`src` (reject `javascript:`/`data:`); never put secrets/tokens in client code or `localStorage`; `pnpm audit` |
+| `standard-security` | output safety and Server Action/route-handler authorization per `standard-react` §9 in full (JSX auto-escape, sanitized `dangerouslySetInnerHTML`, `href`/`src` scheme validation, no secrets in client code or `localStorage`, deny-by-default authorization with identity from the server session only); Zod validation at every boundary (`standard-typescript` §2); `pnpm audit` + pinned dependencies for supply chain |
 | `standard-testing` | the stack `tests-developer` will use — you make the code testable for it, you never write it: React Testing Library with **user-facing queries** (`getByRole`), not implementation details; `jest-axe` for a11y; `msw` to fake the network; Playwright for critical E2E flows |
 | `standard-observability` | error boundaries + an error-tracking sink; report Core Web Vitals (LCP/INP/CLS) |
 | `standard-clean-code` | small composable components; extract stateful logic into custom hooks; the props interface is the typed contract |
@@ -68,12 +68,14 @@ The generic rule lives in the skill; here is how you satisfy it in React/TS (map
 ## Validation (run before declaring done — extends `build-core`'s gate)
 
 ```bash
-tsc --noEmit                 # type check (zero errors)
-eslint .                     # incl. react-hooks + jsx-a11y plugins
-vitest run                   # unit/component (or jest)
-npm run build                # production build — see note
+npx --no-install tsc --noEmit    # type check (zero errors)
+npx --no-install eslint .        # incl. react-hooks + jsx-a11y plugins
+npx --no-install vitest run      # unit/component (or jest)
+npm run build                    # production build — see note
 # optional: playwright test (E2E) · jest-axe (a11y assertions)
 ```
+
+`--no-install` makes a missing local binary fail loudly instead of silently fetching-and-executing from the registry — never drop it.
 
 **Why `npm run build` STAYS in the per-change gate** (unlike Rust's `cargo build --release`, which moved to release prep): `tsc --noEmit` does not bundle. The production build is the **only** gate here that resolves imports, runs the bundler, and evaluates env-specific code — so it catches breakage nothing above it can see. It is not a redundant optimized rebuild; it is the first time the app is actually assembled. It remains narrowable by an explicit brief per `build-core`'s precedence rule — report it if you skip it.
 
