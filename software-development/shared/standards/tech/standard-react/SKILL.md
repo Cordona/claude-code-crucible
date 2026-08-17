@@ -1,15 +1,17 @@
 ---
 name: standard-react
-description: The single definition of idiomatic, correct, accessible React + TypeScript — the shared rubric the react-developer BUILDS to and the react-reviewer REVIEWS against. Applies whenever React/`.tsx` code (including Next.js and Remix) is written, changed, or reviewed; covers TypeScript strictness, state/hooks/effects, forms, SSR/hydration, render performance, and WCAG 2.2 accessibility. Defines WHAT good looks like only — not builder workflow (build-core), reviewer scoring/severity/audit method (the react-reviewer), or the universal cross-cutting standards (clean-code, testing, security, performance, observability).
+description: The single definition of idiomatic, correct, accessible React — the shared rubric the react-developer BUILDS to and the react-reviewer REVIEWS against, composed alongside `standard-typescript` for language-level TypeScript/Zod discipline. Applies whenever React/`.tsx` code (including Next.js and Remix) is written, changed, or reviewed; covers TypeScript-in-components idioms, state/hooks/effects, forms, SSR/hydration, render performance, and WCAG 2.2 accessibility. Defines WHAT good looks like only — not TypeScript language discipline (`standard-typescript`), builder workflow (build-core), reviewer scoring/severity/audit method (the react-reviewer), or the universal cross-cutting standards (clean-code, testing, security, performance, observability).
 ---
 
-# Standard: React + TypeScript
+# Standard: React
 
-The **one** definition of idiomatic, correct, and accessible React + TypeScript. The `react-developer` builds to it; the `react-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we build React and how we review it — a rule changed here moves both sides at once.
+The **one** definition of idiomatic, correct, and accessible React. The `react-developer` builds to it; the `react-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we build React and how we review it — a rule changed here moves both sides at once.
 
-This skill defines **WHAT good looks like**. It deliberately does NOT contain: the builder's workflow (`build-core`) or dev-only tooling gate; the reviewer's scoring machinery — severity, `category` vocabulary, scope-boundary/handoff, the correctness-detective framing, and the accessibility *audit method* (how to verify) all live in the reviewer; or the universal cross-cutting standards (`standard-clean-code`, `standard-testing`, `standard-security`, `standard-performance`, `standard-observability`).
+**This standard composes with `standard-typescript`, not against it.** Strict-mode discipline, the `any`/`unknown` boundary, discriminated unions/exhaustive matching, and Zod schema/validation conventions live there — this file owns only what's specific to *applying* TypeScript inside a React component (props typing) and everything else that's React-specific. Any React pair binds both skills; neither restates the other's rules.
 
-Assume fluent React and TypeScript. This is **not a tutorial** — it encodes the non-default priorities, idioms, and easy-to-miss traps that separate correct, accessible React from code that merely renders.
+This skill defines **WHAT good looks like**. It deliberately does NOT contain: TypeScript language discipline (`standard-typescript`), the builder's workflow (`build-core`) or dev-only tooling gate; the reviewer's scoring machinery — severity, `category` vocabulary, scope-boundary/handoff, the correctness-detective framing, and the accessibility *audit method* (how to verify) all live in the reviewer; or the universal cross-cutting standards (`standard-clean-code`, `standard-testing`, `standard-security`, `standard-performance`, `standard-observability`).
+
+Assume fluent React and TypeScript, and strict-mode discipline per `standard-typescript`. This is **not a tutorial** — it encodes the non-default priorities, idioms, and easy-to-miss traps that separate correct, accessible React from code that merely renders.
 
 ## Philosophy
 
@@ -17,13 +19,12 @@ Assume fluent React and TypeScript. This is **not a tutorial** — it encodes th
 - **Accessibility is a build-to property, not a bolt-on.** Semantic, operable, perceivable UI is part of "done" — not a later pass.
 - **The type system is a design tool.** Make illegal states unrepresentable; let the compiler prove what tests would otherwise chase.
 
-## 1. TypeScript strictness
+## 1. Props & component typing
 
-- `strict: true`. **Never `any`** — use `unknown` and narrow. `as` assertions and non-null `!` are escape hatches; each one must be justified, not habitual.
-- Model domain state with **discriminated unions**; make **illegal states unrepresentable**; use an **exhaustive `switch` with a `never` default** so a new variant fails to compile until handled.
-- Type props and boundaries **explicitly**; let inference handle the rest. Props are the typed contract of a component.
-- Mutation-sensitive props should be `readonly`; don't accept loosely- or `any`-typed props.
-- **Null-safety:** narrow nullable values explicitly; do not let optional chaining (`?.`) silently mask a value that is genuinely missing when it shouldn't be.
+Base TypeScript language discipline is `standard-typescript`'s (see the composition note above) — this section covers only how it applies to a component's own surface.
+
+- **Type props and boundaries explicitly; let inference handle the rest.** Props are the typed contract of a component — an untyped or loosely-typed prop breaks that contract for every caller.
+- **Mutation-sensitive props should be `readonly`.** A component that mutates a prop object/array in place corrupts the parent's state without either side's types catching it.
 
 ## 2. State & derived state
 
@@ -53,6 +54,7 @@ Assume fluent React and TypeScript. This is **not a tutorial** — it encodes th
 - **Controlled vs uncontrolled:** choose one explicitly. A `value` without an `onChange` freezes the input; flipping between `value` and `defaultValue` is a bug.
 - **List keys must be stable and identity-based** — never the array index when the list can reorder, insert, or delete, because index keys bind component state to the wrong row. Conversely, a **deliberately changing `key`** is the idiomatic way to remount and reset a subtree when the underlying entity changes.
 - **Forms:** React Hook Form + a **Zod schema as the single source of truth**; share that schema client↔server and **re-validate on the server** — client validation is UX, never a trust boundary.
+- **A Zod parse failure becomes a component-level field-error state, mapped from the schema's issues — never the raw `ZodError`/its default message rendered into the UI** (`standard-typescript` §2 requires the conversion generally; this is what a React form converts into). A default Zod message leaking a field path or the schema's internal shape to the user is a defect, not a minor polish issue.
 - **Async UI is not done until its states are:** loading, empty, and error states — plus error boundaries and Suspense where appropriate — are part of "done," not extras.
 
 ## 6. Server Components, hydration & SSR-safety
@@ -85,4 +87,4 @@ Accessibility is owned by React code, not a separate concern — semantic, opera
 - **Id integrity:** `aria-describedby`/`labelledby`/`controls` must point at a present, **non-duplicated** id — in list-rendered components, generate ids with `useId` (§3).
 
 ---
-*Standard Version: 1.0 — the shared React + TypeScript rubric. Built to by the react-developer (via build-core); reviewed against by the react-reviewer.*
+*Standard Version: 2.0 — the shared React rubric, composed alongside `standard-typescript`. Built to by the react-developer (via build-core); reviewed against by the react-reviewer. Version bumped from 1.0: base TypeScript language discipline (see the composition note above) was extracted to `standard-typescript`; §1 now covers only how that discipline applies to component props.*
