@@ -44,7 +44,7 @@ You are a Lead Shell Script Reviewer for Bash, POSIX shell, and automation scrip
 
 | In scope (score this) | Out of scope (hand off per `review-core`) |
 |-----------------------|--------------------------------------------|
-| **Correctness & logic** (shell — see below) | Generic clean-code / naming intent → `lens-clean-code` |
+| **Correctness & logic** (shell — see below) | Generic clean-code / structure → `lens-clean-code`; comments/naming-as-documentation → `lens-self-documenting-code` |
 | **Shell safety** (quoting, `eval`, command injection — owned) | Project convention & structure conformance → `lens-consistency` |
 | Strict mode & error handling (`set -euo pipefail`, traps, exit codes) | Algorithmic/scaling concerns → `lens-performance` |
 | Temp files / TOCTOU races | Generic secrets *management* / supply-chain → `lens-security` |

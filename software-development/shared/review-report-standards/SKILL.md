@@ -33,7 +33,7 @@ Two field-level notes the schema deliberately leaves to this skill:
 ## Finding IDs (Stable Across Rounds)
 
 - Format: `PREFIX-NNN`, zero-padded sequence (e.g. `CLEAN-001`, `CLEAN-002`).
-- The `PREFIX` identifies the reviewer so IDs never collide when the primary agent merges reports from a review swarm. Recommended prefixes — the natural, real-word form of the concept, never an artificial letter-drop: `CLEAN` (clean-code), `SEC` (security), `TEST` (test-quality), `CONS` (consistency), `OBS` (observability), `PERF` (performance), `COMPAT` (compatibility), `PERS` (persistence); language/tech reviewers use their actual full name (e.g. `RUST`, `JAVA`, `KOTLIN`, `PHP`, `REACT`, `SHELL`, `DEVOPS`).
+- The `PREFIX` identifies the reviewer so IDs never collide when the primary agent merges reports from a review swarm. Recommended prefixes — the natural, real-word form of the concept, never an artificial letter-drop: `CLEAN` (clean-code), `DOC` (self-documenting-code), `SEC` (security), `TEST` (test-quality), `CONS` (consistency), `OBS` (observability), `PERF` (performance), `COMPAT` (compatibility), `PERS` (persistence); language/tech reviewers use their actual full name (e.g. `RUST`, `JAVA`, `KOTLIN`, `PHP`, `REACT`, `SHELL`, `DEVOPS`).
 - An `id` is assigned once and **reused unchanged** in every later round for the same finding. Never renumber. Global uniqueness comes from composing the report header (`reviewer` + `target` + `round`) with the local `id` — do NOT bloat the `id` with names or timestamps.
 
 ## Status Lifecycle
@@ -160,5 +160,6 @@ If the prior findings are not provided, state that you are reviewing without pri
 - Do NOT pad with prose beyond the delimited `## Notes` block (Handoff / Pre-existing / Conflict) — otherwise the schema is the report.
 
 ---
+*Skill Version: 1.1 — added `DOC` (self-documenting-code) to the recommended-prefix list — a compatibility-lens review of the new `lens-self-documenting-code-reviewer` found its live `DOC` prefix absent from this registry, the collision-prevention mechanism this list exists to be.*
 *Skill Version: 1.0*
 *Pair with: review-core (reviewer conduct). Constructive twin of: build-report-standards.*

@@ -67,7 +67,7 @@ You are a Data-Persistence Reviewer: a language- and store-agnostic reviewer tha
 | | **Whether an EXTERNAL consumer breaks** (a dropped/renamed column read downstream, another service, a published contract) → `lens-compatibility`** |
 | Reliability: idempotency, durable-ack, idempotent consumer, destructive-op guard, partial-failure, TTL | **Encryption at rest / PII erasure / retention policy** → `lens-security` / compliance |
 | Value representation & equality (uniqueness semantics, exact value, instant, key immutability, serialized-value compat) | **Backup / PITR / DR, replica topology & failover tuning** → devops / ops |
-| Connection/cursor/transaction leaks, unbounded materialization | General code design / naming / SOLID → `lens-clean-code`; data-layer test coverage → `lens-test-quality` |
+| Connection/cursor/transaction leaks, unbounded materialization | General code design / SOLID structure → `lens-clean-code`; comments/naming-as-documentation → `lens-self-documenting-code`; data-layer test coverage → `lens-test-quality` |
 
 ## Phase 0 — Store-Guarantee Gate (MANDATORY, do this FIRST)
 

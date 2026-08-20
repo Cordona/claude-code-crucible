@@ -1,54 +1,13 @@
 ---
 name: standard-clean-code
-description: The single rubric for clean, self-documenting code, bound by developers and the clean-code lens reviewer alike. Applies whenever non-trivial production code is written, changed, or reviewed in any language. Defines WHAT good looks like — naming/comments, small flat functions, DRY, low coupling, design for extension, no dead code, file layout. Does NOT define builder workflow (build-core), review scoring/severity (the lens), performance (standard-performance), or language-specific idioms (the tech pair).
+description: The single rubric for structurally clean code, bound by developers and the clean-code lens reviewer alike. Applies whenever non-trivial code — production or test — is written, changed, or reviewed in any language. Defines WHAT good structure looks like — SRP, small flat functions, DRY, low coupling, design for extension, no dead code, file layout. Does NOT define naming/comments/docstrings (standard-self-documenting-code), builder workflow (build-core), review scoring/severity (the lens), performance (standard-performance), or language-specific idioms (the tech pair).
 ---
 
 # Standard: Clean Code
 
-The **one** definition of structurally clean, self-documenting code. Developers build to it; the `lens-clean-code-reviewer` judges against it. Both bind this single skill, so there is no daylight between how we build and how we review — a rule changed here moves both sides at once.
+The **one** definition of structurally clean code. Developers build to it; `lens-clean-code-reviewer` judges against it for production code. Both bind this single skill, so there is no daylight between how we build and how we review — a rule changed here moves both sides at once. **This applies uniformly to production and test code** — there is no separate, looser structural bar for tests (comment/docstring discipline is a separate concern, entirely owned by `standard-self-documenting-code`).
 
-This skill defines **WHAT good looks like**. It does NOT contain: the builder's workflow (`build-core`); the reviewer's scoring machinery (severity, `category` vocabulary, false-positive guards, comment-hunting method — those live in the lens); **performance** (its own `standard-performance`); or **language-specific idioms** (memory safety, async, framework conventions, per-language layout — the `{tech}` developer/reviewer).
-
-## Philosophy
-
-Code should explain itself. A comment is a **last resort**, not a habit. Names carry the meaning; structure carries the intent.
-
-## Self-Documenting Code
-
-Make the code readable without prose — the name IS the documentation.
-
-| Element | Standard | Example |
-|---------|----------|---------|
-| Functions | verb + noun, reveals the action | `validateUserInput()`, `calculate_total_price()` |
-| Variables | describes the content | `activeUserCount`, `pending_orders` |
-| Booleans | reads as a question | `isValid`, `has_permission`, `should_retry` |
-| Constants | names the meaning (no magic numbers) | `MAX_RETRY_COUNT`, `DEFAULT_TIMEOUT_MS` |
-| Classes/Types | noun, reveals responsibility | `OrderProcessor`, `UserValidator` |
-
-**Never abbreviate to save typing** (`d`, `tmp`, `data2`) — a name that doesn't reveal intent is a defect even if the code compiles.
-
-```
-// BAD — restates the code
-counter++; // increment counter
-// GOOD — the name is the documentation
-let activeSubscribers = users.filter(u => u.isActive && u.hasSubscription);
-// GOOD — WHY, not what
-// Service accounts bypass the normal auth flow, so skip the session check.
-if (user.isServiceAccount) return true;
-```
-
-### Comment classification — what a comment may and may not be
-
-A comment is warranted ONLY for: WHY a non-obvious decision was made · a genuinely non-obvious algorithm · an external constraint the code can't express · a minimal public-API contract in a library · a regulatory requirement. Every comment falls in one bucket:
-
-| Bucket | Definition | Verdict |
-|--------|------------|---------|
-| **REDUNDANT** | Restates the code, or compensates for a bad name / an overlong unit | remove it — fix the *code* (rename, extract, named constant) so it's unnecessary |
-| **WHY / RATIONALE** | Explains what code cannot: a workaround + issue link, non-obvious ordering, a constant from an external spec, a deliberate deviation | keep |
-| **FUNCTIONAL** | Changes behavior/tooling, not documentation — shebangs, license/SPDX headers, `// eslint-disable-*`, `@ts-expect-error`, `@ts-ignore`, `/// <reference>`, `# type: ignore`, `# noqa`, `# pragma: no cover`, `//go:build`, `//go:generate`, `//nolint`, `# shellcheck disable=…`, framework-significant annotations | keep — it is not a comment in the documentary sense |
-| **PUBLIC-API DOC** | A doc comment on a *published library surface* (docs.rs, Javadoc, godoc, TSDoc) | keep — it is a consumer contract, unless it only restates the signature |
-
-Never write a comment that restates the code, never leave commented-out code, never leave an ownerless `TODO`. **Internal application code** is held strictly (redundant comments are removed by rewriting the code); a **public library surface** keeps its doc comments as a consumer contract.
+This skill defines **WHAT good structure looks like**. It does NOT contain: naming, comments, or docstrings (`standard-self-documenting-code` — the felt need for a comment is itself the signal this standard's own SRP/extraction rules exist to resolve); the builder's workflow (`build-core`); the reviewer's scoring machinery (severity, `category` vocabulary, false-positive guards — those live in the lens); **performance** (its own `standard-performance`); or **language-specific idioms** (memory safety, async, framework conventions, per-language layout — the `{tech}` developer/reviewer).
 
 ## Small & Flat
 
@@ -103,4 +62,7 @@ These principles pull against each other; a good judgment names the trade-off:
 Judge by concrete harm: if you cannot name the harm a structure causes (a change made harder, a bug hidden, a test blocked), it is clean enough — clarity is the goal, not principle-compliance for its own sake.
 
 ---
+*Standard Version: 1.3 — extracted naming/comments/docstrings out entirely into the new first-class `standard-self-documenting-code` (Philosophy, the naming table, comment classification, and the proportionality rule all moved there — that standard's own footer records the extraction rationale in full). This standard's own scope was widened at the same time: "production code" became "production or test, no distinction," since SOLID/DRY/coupling/nesting/dead-code/layout apply identically to test code and there was never a real reason to say otherwise — `tests-developer` already bound this skill before this version. Note: `lens-clean-code-reviewer` still hands off ALL test files to `lens-test-quality-reviewer` as of this version — closing the review-side gap for test-file structural quality (binding this standard to `lens-test-quality-reviewer` and having it score structural findings on test files directly) is a disclosed, planned follow-up, not yet wired. A new `review-boundaries` row was added in the same round to route comments/docstrings/naming-as-documentation to `lens-self-documenting-code-reviewer` regardless of file type.*
+*Standard Version: 1.2 — a consistency-lens finding on v1.1's proportionality rule found the two numeric judgment bars it implies (volume needs recurrence across units; placement fires on a single duplicated instance) were left unstated here and instead asserted directly in `lens-clean-code-reviewer`'s body — a layering violation, since this standard owns WHAT good looks like (including numeric bars, per the existing function-length precedent) and the lens is supposed to only cite it. Made both bars explicit here as two distinct failure shapes with two distinct thresholds; the lens now cites them instead of restating them.*
+*Standard Version: 1.1 — a real-world consumer report (a PHP MR carrying a 1.9:1 and 2.3:1 comment-to-code ratio, rejected by the team that received it) found the comment-classification table governed comment KIND but never VOLUME: every line in the offending docblocks classified correctly as WHY, so the rubric licensed unlimited prose as long as it was individually justified. Added an explicit proportionality rule, mirroring the existing function-length heuristic, that applies even to correctly-classified WHY/PUBLIC-API DOC content, plus a cross-artifact-duplication signal (the same rationale surviving in the code, the commit, and the PR/MR is a placement problem regardless of any one copy's accuracy). The matching enforcement mechanism — an aggregate pass that isn't vetoed by the per-comment rewrite guard — lives in lens-clean-code-reviewer; the matching generation-time self-check lives in build-core.*
 *Standard Version: 1.0 — the shared clean-code rubric. Built to by developers (via build-core); reviewed against by lens-clean-code-reviewer. Performance lives in standard-performance; language idioms in the {tech} pair.*

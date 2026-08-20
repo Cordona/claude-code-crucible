@@ -46,7 +46,7 @@
       "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
-          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CLEAN, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS, or the reviewer's full language/tech name e.g. RUST, JAVA, KOTLIN, PHP, REACT, SHELL, DEVOPS).",
+          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CLEAN, DOC, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS, or the reviewer's full language/tech name e.g. RUST, JAVA, KOTLIN, PHP, REACT, SHELL, DEVOPS).",
           "type": "string",
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },

@@ -3,12 +3,12 @@ TEMPLATE — never deployed (deploy/hub/lib/hub-discovery.sh excludes anything t
 by two independent checks — never rely on directory location alone).
 
 Extracted from kotlin-reviewer.md, rust-reviewer.md, and shell-script-reviewer.md. The Scope
-Boundary table's RIGHT column (the handoffs to generic lenses) is the SAME SEVEN TARGETS
-(clean-code, consistency, performance, security, test-quality, observability, compatibility), in
-the same order, across all three existing reviewers — but the exact wording of each row varies per
-file (don't copy any one of them verbatim; match the shape, write natural wording). tools/model/
-color/permissionMode ARE identical across all three, genuinely — those four fields are safe to
-copy exactly.
+Boundary table's RIGHT column (the handoffs to generic lenses) is the SAME EIGHT TARGETS
+(clean-code, self-documenting-code, consistency, performance, security, test-quality, observability,
+compatibility), in the same order, across every existing reviewer — but the exact wording of each
+row varies per file (don't copy any one of them verbatim; match the shape, write natural wording).
+tools/model/color/permissionMode ARE identical across all three, genuinely — those four fields are
+safe to copy exactly.
 
 Tokens:
   {{tech}}        lowercase slug, e.g. "go"
@@ -64,10 +64,11 @@ You are a Lead {{Tech}} Code Reviewer for {{TECH_DOMAIN}}. You are the **languag
 
 | In scope (score this) | Out of scope (hand off per `review-core`) |
 |-----------------------|--------------------------------------------|
-| **Correctness & logic** ({{Tech}} — see below) | Generic clean-code / naming intent → `lens-clean-code` |
+| **Correctness & logic** ({{Tech}} — see below) | Generic clean-code / SOLID / structure → `lens-clean-code` |
 <!-- FILL: 3-6 more LEFT-column rows — this language's owned concerns, one per row. The RIGHT
-column has 7 total targets across the whole table (clean-code above, plus the 6 below) — don't
+column has 8 total targets across the whole table (clean-code above, plus the 7 below) — don't
 miscount when checking your own work against this. -->
+| | Comments/docstrings/naming-as-documentation, in any file → `lens-self-documenting-code` |
 | | Project convention & structure conformance → `lens-consistency` |
 | | Algorithmic/scaling concerns → `lens-performance` |
 | | Generic secrets *management* / supply-chain → `lens-security` |
@@ -76,11 +77,11 @@ miscount when checking your own work against this. -->
 | | Interface / flag / exit-code / wire / schema breaking changes → `lens-compatibility` |
 
 <!--
-FILL: the RIGHT column above carries the SAME SEVEN TARGETS every existing tech reviewer hands off
-to (clean-code, consistency, performance, security, test-quality, observability, compatibility), in
-this order — do not drop, add, or reorder them, but write natural wording for each row rather than
-copying any single existing file's exact phrasing. Merge them alongside your LEFT-column rows (pad
-with blank LEFT cells as needed).
+FILL: the RIGHT column above carries the SAME EIGHT TARGETS every existing tech reviewer hands off
+to (clean-code, self-documenting-code, consistency, performance, security, test-quality,
+observability, compatibility), in this order — do not drop, add, or reorder them, but write natural
+wording for each row rather than copying any single existing file's exact phrasing. Merge them
+alongside your LEFT-column rows (pad with blank LEFT cells as needed).
 -->
 
 You may run WITH the swarm or standalone. Running standalone, briefly note which generic concerns you did not deeply audit so the primary agent can dispatch the matching lenses.

@@ -304,7 +304,7 @@ a catalogue.
 
 | Domain | What you get | Sub-selection |
 |---|---|---|
-| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 8 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies**, plus an OPTIONAL **VCS host** — GitHub, GitLab, or both |
+| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 9 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies**, plus an OPTIONAL **VCS host** — GitHub, GitLab, or both |
 | [`project-management/`](./project-management) | The `project-manager` agent: authors backlog artifacts tuned to a declared audience and operates the tracker | **GitHub**, **GitLab**, **Jira**, or any combination |
 | [`gtd/`](./gtd) | `gtd-inbox-writer` for zero-judgment capture, plus `flow-inbox` for triage and processing | none |
 
@@ -318,9 +318,9 @@ in Software Development — `shared/` (the `standard-*` rubrics developers build
 judge against) and `templates/` (never deployed).
 
 **Software Development** carries the correctness floor and the quality lenses, and the difference
-matters. A `{tech}`-reviewer owns correctness for its stack and runs on **every** build. The eight
-`lens-*` reviewers — clean-code, security, performance, observability, test-quality, consistency,
-persistence, compatibility — are language-agnostic and run **only** when a human asks for a review
+matters. A `{tech}`-reviewer owns correctness for its stack and runs on **every** build. The nine
+`lens-*` reviewers — clean-code, self-documenting-code, security, performance, observability,
+test-quality, consistency, persistence, compatibility — are language-agnostic and run **only** when a human asks for a review
 pass. Test authoring is separate again: `tests-developer` is tech-agnostic, and
 [`build-core`](./software-development/shared/build-core) structurally forbids a `{tech}`-developer
 from touching a test file at all.
