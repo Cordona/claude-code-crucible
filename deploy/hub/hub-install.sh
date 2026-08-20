@@ -7,9 +7,9 @@
 #
 # Usage:
 #   hub-install.sh [--domains=a,b] [--technologies=a,b] [--sd-vcs=a,b]
-#                  [--pm-trackers=a,b] [--all] [--apply] [--non-interactive]
-#                  [--accessible] [--details] [--target DIR] [--source DIR]
-#                  [--format=text|env|json] [--no-color] [-h|--help]
+#                  [--pm-trackers=a,b] [--all] [--baseline-only] [--apply]
+#                  [--non-interactive] [--accessible] [--details] [--target DIR]
+#                  [--source DIR] [--format=text|env|json] [--no-color] [-h|--help]
 #
 #   --domains CSV       Install exactly these domains. Each domain always brings
 #                        its own baseline; a domain with a sub-selection also
@@ -25,6 +25,16 @@
 #                        "no PR/MR automation" answer, never a blocked run.
 #   --pm-trackers CSV   Project Management only: github, gitlab, jira, or any combination.
 #   --all               Every domain, every technology, every VCS host, every tracker.
+#   --baseline-only     Every domain in --domains is to be installed with its
+#                        REQUIRED content only: no sub-selection, just what the
+#                        domain installs unconditionally. Asserts an intent rather
+#                        than unlocking capability — omitting a sub-selection flag
+#                        already reaches the same outcome for a domain that
+#                        qualifies (see hi_baseline_only_eligible) — and REFUSES,
+#                        with a message saying so, for one that does not, where the
+#                        bare omission blocks with the generic selection_required
+#                        text instead. Mutually exclusive with --all and with any
+#                        non-empty sub-selection flag; requires --domains.
 #   --apply             Perform the writes. Absent: preview only (the dry run) —
 #                        on EVERY path, including a TTY. A flag-driven selection
 #                        without --apply prints its preview and stops there; it
@@ -80,6 +90,19 @@
 #                        hi_domain_kind_has_present for why an empty selection can
 #                        be a satisfiable request.
 #
+#                        --baseline-only REUSES THIS MEMBER rather than adding one,
+#                        with a message of its own. The set is published in that
+#                        spec, not here, and this header's own rule above is that a
+#                        member is added there explicitly rather than invented at
+#                        the point of use — while the CONDITION --baseline-only
+#                        refuses on is precisely this member's definition: a
+#                        mandatory sub-selection is unanswered and the target holds
+#                        none of that kind. The flag changes what the caller MEANT,
+#                        not what the run found, so an agent branching on
+#                        HUB_BLOCKED_REASON gets the same actionable verdict either
+#                        way ("name a sub-selection") and the distinguishing detail
+#                        rides in HUB_MESSAGE, which is where prose belongs.
+#
 # HUB_BASELINE_ONLY (--format=env) / baseline_only (--format=json) — the domains
 # whose MANDATORY sub-selection was left empty and accepted anyway under that
 # third clause, as a CSV (env) or an array (json), empty when it never fired.
@@ -134,9 +157,9 @@ hub_workspace_init
 usage() {
 	cat <<EOF
 Usage: $HUB_PROG [--domains=a,b] [--technologies=a,b] [--sd-vcs=a,b]
-                  [--pm-trackers=a,b] [--all] [--apply] [--non-interactive]
-                  [--accessible] [--details] [--target DIR] [--source DIR]
-                  [--format=text|env|json] [--no-color] [-h|--help]
+                  [--pm-trackers=a,b] [--all] [--baseline-only] [--apply]
+                  [--non-interactive] [--accessible] [--details] [--target DIR]
+                  [--source DIR] [--format=text|env|json] [--no-color] [-h|--help]
 
 With no --domains and no --all on a TTY, runs the interactive domain onboarding.
 A flag-driven selection without --apply previews only and stops; it never reaches
@@ -155,6 +178,12 @@ Options:
                        it (or giving it nothing) is a valid answer, never a block.
   --pm-trackers CSV   Project Management only: github, gitlab, jira, or any combination.
   --all               Every domain, every technology, every VCS host, every tracker.
+  --baseline-only     Install each --domains domain's REQUIRED content only, with no
+                       sub-selection. Refuses, naming the domain, when that domain
+                       holds nothing it needs a choice about yet — there is no
+                       required-install gap to close on its own there. Mutually
+                       exclusive with --all and with any non-empty sub-selection
+                       flag; requires --domains.
   --apply             Perform the writes. Absent: preview only, on EVERY path,
                        including a TTY. A flag-driven selection without --apply
                        prints its preview and stops, so a bare Enter cannot turn a
@@ -180,6 +209,7 @@ OPT_TECHNOLOGIES=""
 OPT_PM_TRACKERS=""
 OPT_SD_VCS=""
 OPT_ALL=0
+OPT_BASELINE_ONLY=0
 OPT_APPLY=0
 OPT_NONINTERACTIVE=0
 OPT_DETAILS=0
@@ -238,6 +268,16 @@ while [ $# -gt 0 ]; do
 		FLAG_DRIVEN=1
 		shift
 		;;
+	# NOT FLAG_DRIVEN, deliberately: this flag narrows a selection, it never makes
+	# one. On its own it names no domain to install, so leaving FLAG_DRIVEN at 0 is
+	# what lets the --domains requirement below refuse it instead of a
+	# selection-less run reaching the plan stage with nothing selected. Same shape
+	# as --apply and --details, which likewise modify a request rather than being
+	# one.
+	--baseline-only)
+		OPT_BASELINE_ONLY=1
+		shift
+		;;
 	--apply)
 		OPT_APPLY=1
 		shift
@@ -284,6 +324,23 @@ if [ -n "$OPT_DOMAINS" ] && [ "$OPT_ALL" -eq 1 ]; then
 fi
 if [ "$OPT_NONINTERACTIVE" -eq 1 ] && [ "$FLAG_DRIVEN" -eq 0 ]; then
 	die_usage "--non-interactive requires --domains or --all"
+fi
+
+# A FLAG THAT COULD SILENTLY DO NOTHING IS WORSE THAN ONE THAT REFUSES — the rule
+# hub-doctor.sh states for its own --clean-orphans/--apply pairing, applied to the
+# two ways --baseline-only can be self-contradicting. It names WHICH domains are to
+# be reduced to their required content, so with no --domains it names nothing and
+# has nothing to assert; and --all asks for every sub-selection of every domain,
+# which is the exact opposite request. Accepting either would let a caller believe
+# a narrowing was honored when the run either could not act at all or installed
+# everything. The third contradiction — a real sub-selection passed alongside — is
+# checked after the split, where "real" (a non-empty value) can actually be seen.
+if [ "$OPT_BASELINE_ONLY" -eq 1 ]; then
+	# The --all clause is tested FIRST so `--baseline-only --all` is answered by the
+	# contradiction it actually contains, not by the --domains requirement it also
+	# happens to fail.
+	[ "$OPT_ALL" -eq 0 ] || die_usage "--baseline-only and --all are mutually exclusive"
+	[ -n "$OPT_DOMAINS" ] || die_usage "--baseline-only requires --domains"
 fi
 
 [ -n "$OPT_TARGET" ] || OPT_TARGET=$(hub_default_target)
@@ -736,6 +793,104 @@ hi_domain_kind_has_present() {
 	return 1
 }
 
+# hi_baseline_only_eligible DOMAIN -> exit 0 when EVERY mandatory sub-selection kind
+# DOMAIN has already holds something present at the target, i.e. when the guard
+# above would accept an empty selection at every screen this domain owns; exit 1 as
+# soon as one mandatory kind holds nothing.
+#
+# THE ONE VERDICT BOTH REQUIRED-ONLY ENTRY POINTS ASK, and the reason they cannot
+# disagree with the empty-selection guard: this is a domain-wide fold of
+# hi_domain_kind_has_present, the same predicate hi_empty_selection_blocks turns on,
+# never a second rule about the same question. `r` on the domains checklist and
+# --baseline-only are therefore ERGONOMIC ROUTES TO AN OUTCOME THE GUARD ALREADY
+# PERMITS: everything they reach was reachable by ticking the domain and declining
+# each screen (or by omitting each flag), and neither touches the guard's own
+# blocking logic.
+#
+# WHY BOTH ROUTES ARE SCOPED TO AN ALREADY-PRESENT DOMAIN, stated here because it is
+# the constraint a future editor will want to relax: a domain the target has never
+# been touched for BLOCKS today, on every entry point, and must keep blocking — an
+# empty selection there installs a bare baseline nobody asked for (the argument is
+# at hi_domain_kind_has_present above). Extending either route to such a domain
+# would not be a shortcut to an existing outcome; it would be a second, disagreeing
+# way through a guard that deliberately refuses. That is why this predicate is a
+# PRECONDITION on both, not an advisory: with it, neither route can widen what
+# installs, only shorten the path to it.
+#
+# A DOMAIN WITH NO MANDATORY KIND AT ALL IS VACUOUSLY ELIGIBLE, and correctly so:
+# nothing about it is ever unanswered, so its baseline was always installable by
+# picking the domain alone and no guard has ever stood between the two. It records
+# nothing in HI_BASELINE_ONLY either (hi_baseline_only_record's own first clause),
+# which is right — its empty selection was never a mandatory kind's.
+#
+# THE KINDS ARE ASSIGNED AND `|| die`d, never inlined in the `for` list — the same
+# call hi_domain_pending makes about the same dying accessor, and for the same
+# swallow direction: an empty list here would fall through to `return 0` and declare
+# a domain eligible, which is the direction that DISARMS a precondition. Every
+# caller asks it in a condition or an `… || …`, so errexit is suspended for this
+# body and only an unconditional `die` aborts.
+hi_baseline_only_eligible() {
+	hiboe_kinds=$(hub_domain_selection_kind "$1") ||
+		die "hi_baseline_only_eligible: cannot read $1's selection kinds"
+	for hiboe_kind in $hiboe_kinds; do
+		[ "$hiboe_kind" != none ] || continue
+		! hub_selection_kind_optional "$hiboe_kind" || continue
+		hi_domain_kind_has_present "$1" "$hiboe_kind" || return 1
+	done
+	return 0
+}
+
+# hi_baseline_only_actionable DOMAIN OUTFILE -> exit 0 when a required-only install
+# of DOMAIN would genuinely ADD something: it is eligible (above) AND some unit of
+# its baseline is not installed yet. OUTFILE is left holding that unit list, so a
+# caller that wants to itemize it does not walk the domain twice.
+#
+# THE TWO HALVES ANSWER DIFFERENT QUESTIONS and both are needed: eligibility says
+# the route is ALLOWED, the pending list says it would DO something. A domain whose
+# baseline is already complete fails the second half and belongs on neither the
+# "Required install" block (there is nothing to install) nor the `r` key's own
+# candidate set (pressing it would promise a no-op) — while still being perfectly
+# installable through its own screens for whatever else it has left.
+hi_baseline_only_actionable() {
+	hi_baseline_only_eligible "$1" || return 1
+	hub_domain_pending_baseline "$1" "$2"
+	[ -s "$2" ]
+}
+
+# hi_baseline_only_gap_message DOMAIN -> the prose --baseline-only is refused with
+# when DOMAIN is not eligible: what the caller asked for, why this target cannot
+# honor it, and which flag would.
+#
+# IT DECIDES NOTHING. hi_baseline_only_eligible above owns the verdict and this runs
+# only after that verdict is already "no"; the presence question is asked again here
+# purely to NAME the kind whose flag is missing, so a domain with two mandatory kinds
+# would point at the one that actually has nothing rather than at both. That is why
+# the walk is repeated instead of shared: a single function returning both a status
+# and a flag list would have to publish the list through a command substitution,
+# where the accessors' own `die` is swallowed — and a swallowed die on the VERDICT
+# side reads as "eligible" and disarms the precondition, while on the message side it
+# costs only a vaguer refusal.
+#
+# WHY IT IS NOT hub_domain_empty_selection_message: that message answers "you gave a
+# domain nothing to do" and tells the reader to choose something. This one answers a
+# different question — "you asked for required content alone, and there is none to be
+# had here yet" — which that text would misdescribe as a forgotten flag. Composed from
+# the registry (label, flag) rather than written per domain, so it names no domain
+# literal.
+hi_baseline_only_gap_message() {
+	hibogm_flags=""
+	hibogm_kinds=$(hub_domain_selection_kind "$1") ||
+		die "hi_baseline_only_gap_message: cannot read $1's selection kinds"
+	for hibogm_kind in $hibogm_kinds; do
+		[ "$hibogm_kind" != none ] || continue
+		! hub_selection_kind_optional "$hibogm_kind" || continue
+		hi_domain_kind_has_present "$1" "$hibogm_kind" ||
+			hibogm_flags="${hibogm_flags:+$hibogm_flags }$(hub_selection_kind_flag "$hibogm_kind")"
+	done
+	printf -- '--baseline-only asks for the required content of %s alone, but this target holds nothing that domain needs a choice about yet, so its required content has nothing to arrive alongside and no gap to close. Name a selection with %s, or drop --baseline-only.' \
+		"$(hub_domain_label "$1")" "$hibogm_flags"
+}
+
 # hi_drop_unsatisfiable_domain DOMAIN WHAT SELFILE -> report that DOMAIN has no
 # candidates of its sub-selection kind at all in this --source, and take it back
 # out of the selection.
@@ -841,11 +996,117 @@ hi_last_selection_step() {
 	printf '%s' "$hilss_last"
 }
 
-# hi_domains_pending_baseline_block -> the informational block the DOMAINS checklist
-# shows above its checkboxes: an indented "Required install:" lead-in, then one
-# sub-header per OFFERED domain that has never-installed baseline content, with that
-# domain's units itemized beneath it. EMPTY OUTPUT when no offered domain has anything
-# pending — same rule as its per-screen sibling below, no baseline gap, no block.
+# ---------------------------------------------------------------------------
+# `r` — the DOMAINS checklist's required-only shortcut. The interactive twin of
+# --baseline-only, and the same three parts: which domains it may act on
+# (hi_baseline_only_actionable, the shared precondition), adding them to the
+# selection, and taking their now-pointless screens out of the walk.
+#
+# WHAT IT IS: one keystroke for "install the required content of every domain on
+# this screen that can take it, and don't ask me about the rest". Every domain it
+# touches could have been reached by ticking it and pressing Enter through each of
+# its screens — see hi_baseline_only_eligible for why that equivalence is the whole
+# design, and why a never-touched domain is excluded from it.
+#
+# WHY IT IS OFFERED ON THIS SCREEN ONLY: it is a bulk answer to "which domains", and
+# the domains checklist is the one screen that asks that question. A sub-selection
+# screen is already inside one domain, where the same outcome is one Enter away.
+# ---------------------------------------------------------------------------
+HI_REQUIRED_ONLY_KEY=r
+HI_REQUIRED_ONLY_LABEL='install required only'
+
+# hi_baseline_only_candidates OUTFILE -> every domain OFFERED on the domains
+# checklist that a required-only install would both be allowed to and actually add
+# something for, one per line, in the screen's own row order. Empty OUTFILE when
+# there is none, which is exactly the condition that hides the `r` key.
+#
+# THE ROW SET IS DOMAIN_ROWS', never a fresh walk of VALID_DOMAINS, for the reason
+# hi_domains_pending_baseline_block states about itself: that file IS this screen's
+# checkbox list, so a candidate named here is guaranteed to be a domain the user can
+# see — and re-deriving admission here would be a second copy of hi_domain_pending's
+# rule, free to disagree with the list it acts on.
+#
+# RECOMPUTED ON EVERY ENTRY to the screen rather than cached: `b` from a later step
+# re-enters this screen, and eligibility is read from a live target.
+hi_baseline_only_candidates() {
+	: >"$1"
+	hiboc_pending="$HUB_WORK/required-only-pending.txt"
+	while IFS="$HUB_TAB" read -r hiboc_domain _; do
+		[ -n "$hiboc_domain" ] || continue
+		hi_baseline_only_actionable "$hiboc_domain" "$hiboc_pending" || continue
+		printf '%s\n' "$hiboc_domain" >>"$1"
+	done <"$DOMAIN_ROWS"
+}
+
+# hi_baseline_only_select CANDIDATEFILE -> add every candidate to the selection,
+# keeping whatever the user had already ticked.
+#
+# APPENDED AND THEN DEDUPLICATED, never written over the top: `r` is an addition to
+# the selection, not a replacement for it, so a domain ticked by hand for a full
+# walk survives — and a domain that is BOTH ticked and a candidate must appear once,
+# or the plan stage would count it twice on the consent surface (the same accuracy
+# fix the --domains split states for `--domains=gtd,gtd`).
+hi_baseline_only_select() {
+	cat "$1" >>"$SEL_DOMAINS"
+	hub_dedup_first_field "$SEL_DOMAINS"
+}
+
+# hi_baseline_only_skip_steps CANDIDATEFILE -> for every candidate: empty each of
+# its sub-selection files, record the baseline-only outcome, and take its steps out
+# of HI_STEPS so the walk goes straight to the confirm screen.
+#
+# THE FILES ARE EMPTIED, not assumed empty. They usually are — but a user can tick a
+# domain, walk into its technology screen, pick something, press `b` back to here and
+# then press `r`, and that stale selection would install alongside a "required only"
+# request, i.e. the one thing the key promises not to do.
+#
+# EVERY KIND, INCLUDING AN OPTIONAL ONE: "required only" declines an optional screen
+# as surely as a mandatory one, so its step goes too. hi_baseline_only_record is
+# still safe to call bare for it — its own first clause drops an optional kind, which
+# is what keeps HUB_BASELINE_ONLY meaning what its contract says (see that
+# function's header).
+#
+# THE STEP IS REMOVED BY LINE, reusing the same hub_remove_line mechanism
+# hi_select_interactive's empty-ROWS branch uses rather than inventing a second way
+# to drop a step — and for the same reason it cannot be done by rebuilding from
+# SEL_DOMAINS: these domains deliberately STAY selected, so a rebuild would put
+# their steps straight back. Re-entering this screen rebuilds them and this function
+# removes them again, self-healing either way.
+hi_baseline_only_skip_steps() {
+	while IFS= read -r hiboss_domain; do
+		[ -n "$hiboss_domain" ] || continue
+		# ASSIGNED, never inlined — see hi_selection_kinds' own note. The `|| die` is
+		# what aborts here rather than silently walking a domain's zero kinds: this
+		# runs inside hi_select_interactive, whose caller suspends errexit for the
+		# whole body.
+		hiboss_kinds=$(hub_domain_selection_kind "$hiboss_domain") ||
+			die "hi_baseline_only_skip_steps: cannot read $hiboss_domain's selection kinds"
+		for hiboss_kind in $hiboss_kinds; do
+			[ "$hiboss_kind" != none ] || continue
+			: >"$(hi_sel_file "$hiboss_kind")"
+			hi_baseline_only_record "$hiboss_domain" "$hiboss_kind"
+			hub_remove_line "$HI_STEPS" "$hiboss_kind"
+		done
+	done <"$1"
+}
+
+# hi_domains_pending_baseline_block CANDIDATEFILE -> the informational block the
+# DOMAINS checklist shows above its checkboxes: an indented "Required install:"
+# lead-in, then one sub-header per domain in CANDIDATEFILE, with that domain's
+# never-installed baseline units itemized beneath it. EMPTY OUTPUT for an empty
+# CANDIDATEFILE — same rule as its per-screen sibling below, no baseline gap, no
+# block.
+#
+# THE DOMAIN SET IS hi_baseline_only_candidates', which is DOMAIN_ROWS narrowed by
+# hi_baseline_only_actionable, and taking it as an argument rather than deriving it
+# is what makes this block and the `r` key ONE list: what this screen calls
+# "Required install" is exactly what `r` can act on, and neither can grow an entry
+# the other lacks. A domain that is offered here but NOT eligible (nothing of a
+# mandatory kind present) is deliberately absent — its required content is real, but
+# it arrives only alongside a first sub-selection, so naming it under a heading this
+# screen's own shortcut cannot honor would advertise an action that refuses. That
+# fuller, unconditional picture is hub-list.sh's Required install section, which
+# claims no action and still shows it.
 #
 # WHY THE FIRST SCREEN NEEDS IT TOO, when hi_pending_baseline_block below already
 # states the same list on every sub-selection screen: a live test session against a
@@ -868,20 +1129,24 @@ hi_last_selection_step() {
 # hub-list.sh's own Required install group's, one level deeper throughout for the
 # lead-in these sub-headers now sit under.
 #
-# THE DOMAINS COME FROM DOMAIN_ROWS, never a fresh walk of VALID_DOMAINS: that file IS
-# this checklist's row set (hi_domain_pending decided every line of it), so a domain
-# named here is guaranteed to have a `[ ]` row below to go and find. Re-deriving
-# admission here would be a second copy of that rule, free to disagree with the very
-# list it annotates.
+# THE CANDIDATE LIST IS ULTIMATELY DOMAIN_ROWS', never a fresh walk of VALID_DOMAINS:
+# that file IS this checklist's row set (hi_domain_pending decided every line of it),
+# so a domain named here is guaranteed to have a `[ ]` row below to go and find.
+# Re-deriving admission here would be a second copy of that rule, free to disagree
+# with the very list it annotates.
 hi_domains_pending_baseline_block() {
 	hidpbb_file="$HUB_WORK/pending-baseline-domains.txt"
 	hidpbb_any=0
 	# Hoisted out of the loop, per hub_print_pending_items' own note on a die swallowed
 	# inside a printf argument.
 	hidpbb_glyph=$(hub_glyph_new)
-	while IFS="$HUB_TAB" read -r hidpbb_domain _; do
+	while IFS= read -r hidpbb_domain; do
 		[ -n "$hidpbb_domain" ] || continue
 		hub_domain_pending_baseline "$hidpbb_domain" "$hidpbb_file"
+		# Every candidate has pending content by construction (that is the second half
+		# of hi_baseline_only_actionable), but this function states its own contract in
+		# terms of what it FINDS rather than trusting the list it was handed — the
+		# cheaper of the two ways to keep an empty sub-header off the screen.
 		[ -s "$hidpbb_file" ] || continue
 		# The lead-in is owed to the first domain that has something, not to the screen:
 		# printed before the walk it would head an empty section on a target whose every
@@ -897,7 +1162,7 @@ hi_domains_pending_baseline_block() {
 		hidpbb_label=$(hub_domain_label "$hidpbb_domain")
 		printf '    %s\n' "$hidpbb_label"
 		hub_print_pending_items "$hidpbb_file" "$hidpbb_glyph" '      '
-	done <"$DOMAIN_ROWS"
+	done <"$1"
 }
 
 # hi_pending_baseline_block DOMAIN -> the informational block a sub-selection screen
@@ -914,13 +1179,23 @@ hi_domains_pending_baseline_block() {
 # unconditionally the moment the domain is picked), which is exactly why it has to be
 # stated in prose instead.
 #
-# A DOMAIN-LEVEL QUESTION, deliberately NOT the kind-scoped
-# hi_domain_kind_has_present. That predicate decides whether an EMPTY SELECTION IS
-# ALLOWED for one specific kind — a guard, with a per-kind answer and a blocking
-# consequence. This decides only whether an informational block is worth SHOWING, and
-# its subject is the whole domain's baseline regardless of which kind's screen is
-# currently rendering. Reusing the guard here would tie a display to a rule it has
-# nothing to do with, and would ask the wrong question besides.
+# STILL A DOMAIN-LEVEL QUESTION, and now gated on one: the block renders only for a
+# domain hi_baseline_only_actionable admits. That is NOT the kind-scoped
+# hi_domain_kind_has_present borrowed for a display decision — the objection this
+# paragraph has always recorded, and it still stands — it is the domain-wide fold of
+# it (hi_baseline_only_eligible), asked as "can a required-only install of this domain
+# happen at all", whose subject is the same whole-domain baseline this block is about
+# and does not change with which kind's screen is rendering.
+#
+# WHAT THE GATE COSTS, AND WHY THAT COST IS RIGHT: on a NEVER-TOUCHED domain's screen
+# the block now stays silent. The paragraph above is what makes that correct rather
+# than a regression — there, a user who declines every row does NOT proceed: the
+# empty-selection guard refuses and re-prompts, so the "pressing Enter STILL writes
+# real content" surprise this block exists to prevent is unreachable on that screen.
+# The content arrives only beside a real selection, which such a user will have made.
+# In exchange, "Required install" means exactly one thing on both of Install's own
+# screens — content a required-only route can actually deliver — while hub-list.sh
+# keeps showing the fuller picture, as a report that claims no action.
 #
 # THE LIST ITSELF IS hub_domain_pending_baseline's, and the item lines are
 # hub_print_pending_items' — the same two functions hub-list.sh's own Required install
@@ -942,8 +1217,7 @@ hi_domains_pending_baseline_block() {
 # leaving the other screen silent.
 hi_pending_baseline_block() {
 	hipbb_file="$HUB_WORK/pending-baseline-screen.txt"
-	hub_domain_pending_baseline "$1" "$hipbb_file"
-	[ -s "$hipbb_file" ] || return 0
+	hi_baseline_only_actionable "$1" "$hipbb_file" || return 0
 	printf '  %s:\n' "$HUB_PENDING_INSTALL_LABEL"
 	hub_print_pending_items "$hipbb_file" "$(hub_glyph_new)" '    '
 }
@@ -983,12 +1257,25 @@ hi_select_interactive() {
 			HI_DOMAINS_SUBTITLE='Which domain(s) do you want to install?'
 			# Recomputed on every pass, like its sub-selection counterpart: `b` from a
 			# later step re-enters this screen, and a block computed once outside the loop
-			# would be a stale answer read from a live target.
-			HI_DOMAINS_PENDING=$(hi_domains_pending_baseline_block)
+			# would be a stale answer read from a live target. THE CANDIDATE SET IS
+			# COMPUTED FIRST because both the block and the `r` key are derived from it —
+			# one list, so what the screen calls "Required install" and what `r` installs
+			# are the same thing by construction rather than by two agreeing walks.
+			HI_BASELINE_CANDIDATES="$HUB_WORK/baseline-only-candidates.txt"
+			hi_baseline_only_candidates "$HI_BASELINE_CANDIDATES"
+			HI_DOMAINS_PENDING=$(hi_domains_pending_baseline_block "$HI_BASELINE_CANDIDATES")
 			[ -z "$HI_DOMAINS_PENDING" ] ||
 				HI_DOMAINS_SUBTITLE=$(printf '%s\n\n%s' "$HI_DOMAINS_SUBTITLE" "$HI_DOMAINS_PENDING")
+			# THE `r` KEY IS OFFERED ONLY WHEN IT WOULD DO SOMETHING. An empty candidate
+			# file leaves the key unset, hub_checklist recognizes no such reply and its
+			# hint line stays exactly as it is on every other screen — a key advertised
+			# where it cannot act is the "flag that could silently do nothing" this hub
+			# refuses to ship (hub-doctor.sh states the rule).
+			HI_OFFER_REQUIRED_ONLY=""
+			[ ! -s "$HI_BASELINE_CANDIDATES" ] || HI_OFFER_REQUIRED_ONLY=$HI_REQUIRED_ONLY_KEY
 			hub_checklist 'Welcome to the Crucible Management Hub' \
-				"$HI_DOMAINS_SUBTITLE" "$DOMAIN_ROWS" "$SEL_DOMAINS" || HI_RC=$?
+				"$HI_DOMAINS_SUBTITLE" "$DOMAIN_ROWS" "$SEL_DOMAINS" 0 \
+				"$HI_OFFER_REQUIRED_ONLY" "$HI_REQUIRED_ONLY_LABEL" || HI_RC=$?
 			case $HI_RC in
 			# `b` on the FIRST checklist has no earlier step to return to, so it
 			# leaves the capability entirely — through hi_ok_exit, never a bare
@@ -998,6 +1285,13 @@ hi_select_interactive() {
 			# from a crash before any output.
 			1) hi_ok_exit false 'Nothing changed — went back without choosing a domain.' ;;
 			2) exit 3 ;;
+			# `r`. It ADDS to the selection and then falls through into the very code an
+			# ordinary Enter runs — the empty check, the per-kind clearing, the
+			# accumulator truncation, the step rebuild — rather than branching into a
+			# path of its own. That is the whole point: the shortcut must not be able to
+			# reach a plan a hand-walked selection could not, so the only thing it does
+			# differently is drop the screens it has already answered, below.
+			4) hi_baseline_only_select "$HI_BASELINE_CANDIDATES" ;;
 			esac
 			if [ ! -s "$SEL_DOMAINS" ]; then
 				printf '\n' >&3
@@ -1018,6 +1312,11 @@ hi_select_interactive() {
 			# that no longer installs it at all.
 			: >"$HI_BASELINE_ONLY"
 			hi_steps_build
+			# AFTER the rebuild, never before: hi_steps_build rewrites HI_STEPS from
+			# SEL_DOMAINS, so any step removed ahead of it would come straight back.
+			# Only the domains `r` acted on lose their screens; a domain the user
+			# ticked by hand keeps every one of its own, walked normally.
+			[ "$HI_RC" -ne 4 ] || hi_baseline_only_skip_steps "$HI_BASELINE_CANDIDATES"
 			HI_STEP=$(hi_step_next domains)
 			[ -n "$HI_STEP" ] || return 0
 			continue
@@ -1203,6 +1502,24 @@ elif [ "$FLAG_DRIVEN" -eq 1 ]; then
 				die_usage "$(hub_selection_kind_flag "$HI_KIND") requires $HI_DOMAIN in --domains"
 		done
 	done
+
+	# --baseline-only AND A REAL SUB-SELECTION ARE CONTRADICTORY REQUESTS, refused
+	# rather than silently resolved either way — the same rule the --all clause above
+	# the parser applies, checked here because "real" means a NON-EMPTY value and only
+	# the split can tell that: `--technologies=` (nothing after the `=`) is not a
+	# selection and is no contradiction, while `--technologies=alpha` is.
+	#
+	# ONE CHECK OVER THE KINDS COVERS EVERY DOMAIN, and it needs no per-domain
+	# reasoning: --baseline-only applies to every domain in --domains, and the loop
+	# just above has already refused any sub-selection flag whose domain is NOT in
+	# --domains. So a non-empty selection file at this point necessarily belongs to a
+	# domain this flag claims to be reducing to its baseline.
+	if [ "$OPT_BASELINE_ONLY" -eq 1 ]; then
+		for HI_KIND in $(hi_selection_kinds); do
+			[ -s "$(hi_sel_file "$HI_KIND")" ] || continue
+			die_usage "--baseline-only and $(hub_selection_kind_flag "$HI_KIND") are mutually exclusive"
+		done
+	fi
 else
 	if ! hub_interactive; then
 		die_usage "no TTY and no --domains/--all given"
@@ -1244,6 +1561,34 @@ else
 	fi
 
 	HI_STEP=domains
+fi
+
+# THE --baseline-only ASSERTION, and it runs BEFORE the generic check below because
+# the two refuse the SAME target state — a mandatory kind holding nothing, with no
+# selection given. Both would fire, and whichever runs first is the message the
+# caller actually receives, so the specific one goes first or is never seen.
+#
+# NO INTERACTIVE_SELECTION GUARD is needed, unlike the check below: --baseline-only
+# requires --domains (see the parser's own gate), so a selection reaching here with
+# the flag set was flag-driven by construction.
+#
+# THIS IS THE FLAG'S WHOLE IMPLEMENTATION. There is no success branch, deliberately:
+# for an eligible domain the empty selection files it insists on are exactly what the
+# existing guard below already accepts, so the plan, the payload and the recorded
+# HUB_BASELINE_ONLY are produced by the same code as any other run. What the flag
+# adds is a refusal where the intent cannot be honored — nothing else, on purpose.
+if [ "$OPT_BASELINE_ONLY" -eq 1 ]; then
+	while IFS= read -r HI_DOMAIN; do
+		[ -n "$HI_DOMAIN" ] || continue
+		if ! hi_baseline_only_eligible "$HI_DOMAIN"; then
+			# ASSIGNED, never inlined as hi_blocked's argument — the same hazard the
+			# generic message's own hoist below states: a swallowed die inside a command
+			# substitution used as an argument would hand a machine caller a refusal
+			# with an empty HUB_MESSAGE, i.e. one it cannot act on or report.
+			HI_GAP_MSG=$(hi_baseline_only_gap_message "$HI_DOMAIN")
+			hi_blocked selection_required "$HI_GAP_MSG"
+		fi
+	done <"$SEL_DOMAINS"
 fi
 
 # THE MANDATORY SUB-SELECTION CHECK, for BOTH non-interactive entry points — it

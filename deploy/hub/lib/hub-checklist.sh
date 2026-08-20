@@ -93,11 +93,11 @@ HUB_CHECKLIST_MAX_RANGE_BOUND=100
 # digits, since it is the right-hand side of that numeric comparison.
 HUB_CHECKLIST_MAX_RANGE_DIGITS=18
 
-# hub_checklist_hint_text ROW_COUNT -> the legend line, stated once so all four
-# screens agree. A function rather than a constant because the `·` separators
-# degrade to `,` under accessible mode (hub_sep_text), and HUB_ASCII is set by
-# flag parsing AFTER this file is sourced — a constant would have frozen the
-# Unicode form before --accessible was ever seen.
+# hub_checklist_hint_text ROW_COUNT [EXTRA_KEY EXTRA_LABEL] -> the legend line,
+# stated once so all four screens agree. A function rather than a constant because
+# the `·` separators degrade to `,` under accessible mode (hub_sep_text), and
+# HUB_ASCII is set by flag parsing AFTER this file is sourced — a constant would
+# have frozen the Unicode form before --accessible was ever seen.
 #
 # ROW_COUNT is the screen's TOTAL row count (not the currently-filtered-visible
 # count): whether filtering is worth advertising is a property of the list's
@@ -132,9 +132,19 @@ HUB_CHECKLIST_MAX_RANGE_DIGITS=18
 # color the word "or" as part of the key, advertising something the prompt does
 # not accept. It sits immediately after the toggle clause because it elaborates
 # on that clause rather than standing alone.
+#
+# EXTRA_KEY LEADS THE LINE when the caller offered one, ahead of even the toggle
+# clause. Every other key here is present on every render of every screen, so its
+# position teaches nothing; an extra key is offered by ONE screen and only in the
+# target states where it would actually do something (hub-install.sh's `r`), so it
+# is both the thing a reader has not seen before and the shortcut that saves the
+# most work. Buried mid-list it would have to be noticed appearing.
 hub_checklist_hint_text() {
 	hcht_sep=$(hub_sep_text)
 	hcht_hint="$(hub_dim 'number or name to select/deselect')"
+	if [ -n "${2:-}" ]; then
+		hcht_hint="$(hub_hint_segment "$2" "${3:-}")${hcht_sep}${hcht_hint}"
+	fi
 	if [ "$1" -gt "$HUB_CHECKLIST_MULTISELECT_THRESHOLD" ]; then
 		hcht_hint="${hcht_hint}${hcht_sep}$(hub_hint_segment '1,3-5' multiple)"
 	fi
@@ -311,8 +321,8 @@ hub_checklist_expand_token() {
 	done
 }
 
-# hub_checklist TITLE SUBTITLE ROWSFILE OUTFILE [GROUPED] -> render an
-# interactive checklist and write the selected row keys, one per line, to
+# hub_checklist TITLE SUBTITLE ROWSFILE OUTFILE [GROUPED] [EXTRAKEY EXTRALABEL] ->
+# render an interactive checklist and write the selected row keys, one per line, to
 # OUTFILE.
 #
 # SUBTITLE is an optional second line under the title (the onboarding screen's
@@ -394,6 +404,20 @@ hub_checklist_expand_token() {
 # based tables cannot express safely, and this table does not use `read` to
 # read it.
 #
+# EXTRAKEY/EXTRALABEL are OPTIONAL and default to none, in which case this widget
+# behaves byte-identically to every call that omits them. Together they let ONE
+# caller offer ONE screen-specific reply — advertised as the leading hint segment
+# (hub_checklist_hint_text) and reported back as exit status 4 — without this
+# generic widget learning anything about what the reply MEANS. That knowledge stays
+# entirely with the caller: hub-install.sh's `r` ("install required only") decides
+# its own eligibility, offers the key only where it applies, and acts on status 4
+# itself. A widget that instead grew a domain- or baseline-aware branch would be a
+# capability's rule living in the shared list renderer all four screens share.
+#
+# THE EXTRA KEY IS MATCHED AFTER every built-in reply below, never before, so a
+# caller cannot shadow `a`/`n`/`b`/`q`/`?`/`/` or Enter by passing one of them —
+# the worst a bad EXTRAKEY can do is never fire.
+#
 # Exit status:
 #   0  confirmed — OUTFILE holds the selection (possibly empty; the CALLER owns
 #      the "empty selection" policy, because it differs per screen: onboarding
@@ -401,12 +425,18 @@ hub_checklist_expand_token() {
 #   1  the user went back one level (b)
 #   2  the user quit the hub (q), having passed the discard guard if a
 #      non-empty selection was pending
+#   4  the user typed EXTRAKEY (unreachable unless the caller passed one). OUTFILE
+#      holds the selection exactly as status 0 leaves it, so the caller can add to
+#      what was already ticked rather than replacing it. NOT 3, which this hub
+#      spends on "the user quit the program" at the capability level.
 hub_checklist() {
 	hcl_title=$1
 	hcl_subtitle=$2
 	hcl_rows=$3
 	hcl_out=$4
 	hcl_grouped=${5:-0}
+	hcl_extra_key=${6:-}
+	hcl_extra_label=${7:-}
 
 	hcl_scratch=$(hub_mktemp_dir)
 	hcl_selected="$hcl_scratch/selected.txt"
@@ -578,7 +608,7 @@ hub_checklist() {
 
 		hcl_count=$(hub_count_lines "$hcl_selected")
 		printf '\n  %s selected\n\n' "$hcl_count"
-		printf '%s\n> ' "$(hub_checklist_hint_text "$hcl_total_rows")"
+		printf '%s\n> ' "$(hub_checklist_hint_text "$hcl_total_rows" "$hcl_extra_key" "$hcl_extra_label")"
 		} >&2
 
 		IFS= read -r hcl_reply || hcl_reply=q
@@ -620,6 +650,18 @@ hub_checklist() {
 			continue
 			;;
 		esac
+
+		# THE CALLER'S EXTRA KEY, tested here rather than as one more `case` arm
+		# above: a literal arm cannot be built from a variable without exposing
+		# EXTRAKEY to pattern matching (a caller passing `*` would swallow every
+		# reply), and sitting AFTER the esac is what makes shadowing a built-in key
+		# impossible — see this function's own header. The selection is written out
+		# exactly as the Enter arm writes it, because status 4 is a confirm that
+		# also carries an instruction, not a discard.
+		if [ -n "$hcl_extra_key" ] && [ "$hcl_reply" = "$hcl_extra_key" ]; then
+			cat "$hcl_selected" >"$hcl_out"
+			return 4
+		fi
 
 		# Anything else is a toggle list: comma- or space-separated row numbers,
 		# numeric ranges and/or row keys, so "1,3", "1-5", "python,react",
