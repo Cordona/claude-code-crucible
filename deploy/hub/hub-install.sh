@@ -842,7 +842,7 @@ hi_last_selection_step() {
 }
 
 # hi_domains_pending_baseline_block -> the informational block the DOMAINS checklist
-# shows above its checkboxes: an indented "Pending install:" lead-in, then one
+# shows above its checkboxes: an indented "Required install:" lead-in, then one
 # sub-header per OFFERED domain that has never-installed baseline content, with that
 # domain's units itemized beneath it. EMPTY OUTPUT when no offered domain has anything
 # pending — same rule as its per-screen sibling below, no baseline gap, no block.
@@ -865,7 +865,7 @@ hi_last_selection_step() {
 # its single domain. This screen spans every offered domain, so the units must be
 # attributed; and attributing them only above some threshold would make the block's
 # shape depend on the target, which is a layout a reader cannot learn once. Nesting is
-# hub-list.sh's own Pending install group's, one level deeper throughout for the
+# hub-list.sh's own Required install group's, one level deeper throughout for the
 # lead-in these sub-headers now sit under.
 #
 # THE DOMAINS COME FROM DOMAIN_ROWS, never a fresh walk of VALID_DOMAINS: that file IS
@@ -901,7 +901,7 @@ hi_domains_pending_baseline_block() {
 }
 
 # hi_pending_baseline_block DOMAIN -> the informational block a sub-selection screen
-# shows above its checkboxes: an indented "Pending install:" lead-in followed by one
+# shows above its checkboxes: an indented "Required install:" lead-in followed by one
 # `+ <name>` line per unit of DOMAIN's baseline that is not installed yet. EMPTY
 # OUTPUT when there is nothing pending — a fully-installed baseline prints no block
 # at all, not an empty header.
@@ -923,7 +923,7 @@ hi_domains_pending_baseline_block() {
 # nothing to do with, and would ask the wrong question besides.
 #
 # THE LIST ITSELF IS hub_domain_pending_baseline's, and the item lines are
-# hub_print_pending_items' — the same two functions hub-list.sh's own Pending install
+# hub_print_pending_items' — the same two functions hub-list.sh's own Required install
 # group calls, so the two screens cannot disagree about which units are pending or
 # how they are rendered. Only the glyph and the indent differ, which is why they are
 # that function's parameters: `+` (hub_glyph_new — this is a PLAN, previewing what
@@ -932,7 +932,7 @@ hi_domains_pending_baseline_block() {
 # NO DOMAIN SUB-HEADER, unlike List's copy and hi_domains_pending_baseline_block
 # above: this screen's own title already names the domain, so repeating it would be a
 # heading over a heading — the other two both span domains and must attribute their
-# units. Hence the shallower indent, and hence a `Pending install:` lead-in with a
+# units. Hence the shallower indent, and hence a `Required install:` lead-in with a
 # colon rather than List's bare section heading — same text
 # (HUB_PENDING_INSTALL_LABEL owns it), composed for its own context.
 #

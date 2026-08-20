@@ -153,7 +153,7 @@ hl_rows_of_state() {
 #      NEITHER THE COLLAPSED LINE NOR AN ITEMIZED LENS APPEARS IN THE `available`
 #      PASS: a baseline is not choosable, so nothing about it belongs under a
 #      heading of things a human could pick. A never-installed baseline unit is
-#      reported by the trailing "Pending install" group instead, itemized by name
+#      reported by the trailing "Required install" group instead, itemized by name
 #      per domain — see hub_domain_pending_baseline, which is also what
 #      hub-install.sh's checklist previews.
 #   4. A group that belongs to no domain at all — the cross-domain shared auth
@@ -397,9 +397,11 @@ hl_domain_feature_lines() {
 		"$HL_FEATURES"
 }
 
-# hl_baseline_summary DOMAIN -> sets HL_BS_STATE / HL_BS_COUNT to this domain's
-# baseline aggregate: the state and item count of the collapsed
-# "Framework baseline (N items)" line.
+# hl_baseline_summary DOMAIN -> sets HL_BS_STATE / HL_BS_COUNT /
+# HL_BS_PENDING / HL_BS_INSTALLED_COUNT to this domain's baseline aggregate: the
+# state, the total item count, how many of those are not installed, and how many
+# are — the last being what the collapsed "Framework baseline (N items)" line
+# actually renders (see that variable's own note on why it is not the total).
 #
 # THE LENS EXCLUSION IS THE BUCKET, not a second pass. A lens reviewer unit is
 # tagged `lens` by hub_domain_buckets and is therefore not a `baseline` row at
@@ -453,13 +455,27 @@ hl_baseline_summary() {
 			"$HL_BUCKETS" >"$HL_BS_KEYED"
 		hub_state_collapse "$HL_BS_KEYED" "$hl_bs_domain" >"$HL_BS_TMP"
 	fi
-	# THREE fields, not two, and the third DISCARDED into `_` — this hub's own
-	# throwaway name (lib/hub-state.sh's own baseline walks read `_ _ src` the same
-	# way). hub_state_collapse's third column is the pending count, which a LISTING
-	# has no use for (see hl_features_build), but reading only two names would leave
-	# the tab and that value inside HL_BS_COUNT, which the caller compares with
-	# `-gt` — a shell arithmetic error rather than a wrong number.
-	IFS="$HUB_TAB" read -r HL_BS_STATE HL_BS_COUNT _ <"$HL_BS_TMP"
+	# THREE fields, and the third is KEPT now — it used to be discarded into `_` as
+	# "a pending count a LISTING has no use for". It has one: subtracted from the
+	# total it is the only place on this screen that knows how many baseline units
+	# are ACTUALLY INSTALLED, as opposed to how many exist. Reading only two names
+	# would leave the tab and that value inside HL_BS_COUNT, which the caller
+	# compares with `-gt` — a shell arithmetic error rather than a wrong number.
+	IFS="$HUB_TAB" read -r HL_BS_STATE HL_BS_COUNT HL_BS_PENDING <"$HL_BS_TMP"
+	# HL_BS_INSTALLED_COUNT — the count the `installed` pass renders, which is NOT
+	# HL_BS_COUNT. HL_BS_COUNT is the whole slice (installed + never-installed +
+	# broken) and is the right number only for a baseline that is ENTIRELY
+	# installed; the collapsed line used to be gated on exactly that, so a PARTIAL
+	# baseline — Software Development's real state, ~34 units in place and 3 not —
+	# printed nothing at all under "Installed" while those 34 were also (correctly)
+	# excluded from "Available" and from the DIVERGED pass's broken-only
+	# itemization. 34 installed units were representable on no line of this screen.
+	# Derived by subtraction rather than by a fourth awk pass because
+	# hub_state_collapse already counted them: its third column is total-minus-
+	# installed by construction, so total minus THAT is the installed count exactly,
+	# for the residual row of a featured domain (which carries the same three
+	# columns) as much as for the collapse itself.
+	HL_BS_INSTALLED_COUNT=$((HL_BS_COUNT - HL_BS_PENDING))
 
 	# HL_BS_BROKEN_FILE — HL_BS_COUNT alone cannot tell apart two very different
 	# situations that hub_state_collapse's three-way branch both label DIVERGED the
@@ -471,7 +487,7 @@ hl_baseline_summary() {
 	# derived here: the pending half used to be too, and is now
 	# hub_domain_pending_baseline's answer instead, because THIS table is the
 	# `baseline` bucket alone — it could never see the lens reviewers, which are the
-	# very units the Pending install block exists to name. Sourced from the SAME
+	# very units the Required install block exists to name. Sourced from the SAME
 	# HL_BS_KEYED table hub_state_collapse just read above, filtered to this call's
 	# own domain (HL_BS_KEYED spans every domain's baseline rows, not just this one —
 	# hub_state_collapse does its own per-domain filtering on column 1 the same way).
@@ -622,7 +638,7 @@ hl_print_status_group() {
 		# a lens reviewer is not one — it is baseline content that arrives
 		# unconditionally with its domain (lib/hub-domains.sh's GROUP KEY GRAMMAR on
 		# `baseline:<domain>`), so itemizing it here claimed a choice that does not
-		# exist. A never-installed lens is reported by the Pending install block
+		# exist. A never-installed lens is reported by the Required install block
 		# below instead, which says the same fact without implying the choice. An
 		# INSTALLED or DIVERGED lens keeps its row: both are reports of something
 		# that is actually there, which is exactly what those headings mean.
@@ -641,22 +657,36 @@ hl_print_status_group() {
 			# Only a GENUINELY broken unit belongs under this heading, and it is
 			# named individually, like every other row on this screen — never
 			# folded into a count. A merely-pending unit is this pass's business
-			# not at all; the Pending install block after all three passes owns it,
+			# not at all; the Required install block after all three passes owns it,
 			# derived per domain straight from hub_domain_pending_baseline.
 			if [ "$HL_BS_STATE" = DIVERGED ] && [ "$HL_BS_BROKEN_COUNT" -gt 0 ]; then
 				cat "$HL_BS_BROKEN_FILE" >>"$HL_DOMAIN_TMP"
 			fi
-		# THE COLLAPSED LINE IS SUPPRESSED IN THE `available` PASS, for the reason
-		# the lens exclusion above gives: "Framework baseline (34 items)" under a
-		# heading of choosable things offered a choice that does not exist, and the
-		# Pending install block below now names those same 34 units individually, so
-		# leaving it would also report one baseline twice on one screen. The
-		# `installed` pass keeps it — a collapsed count is the right summary for
-		# content that is already there and needs no action.
-		elif [ "$hl_psg_state" != available ] &&
-			[ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
+		# THE COLLAPSED LINE BELONGS TO THE `installed` PASS ALONE, and it counts
+		# INSTALLED UNITS rather than the whole baseline slice. It is suppressed in
+		# the `available` pass for the reason the lens exclusion above gives:
+		# "Framework baseline (34 items)" under a heading of choosable things offered
+		# a choice that does not exist, and the required-install block below names
+		# those same 34 units individually, so leaving it would also report one
+		# baseline twice on one screen. The `installed` pass keeps it — a collapsed
+		# count is the right summary for content that is already there and needs no
+		# action.
+		#
+		# THE GATE IS THE COUNT, NOT THE COLLAPSED STATE. This used to require
+		# `HL_BS_STATE = installed`, which is "every counted unit is installed" —
+		# so a baseline that is a MIX qualified for no pass at all and its installed
+		# units vanished from the screen (HL_BS_INSTALLED_COUNT's own note has the
+		# numbers). Asking "are any installed" instead is the question this heading
+		# means, and for a fully-installed baseline the two are identical: pending is
+		# 0 there, so HL_BS_INSTALLED_COUNT equals HL_BS_COUNT and the rendered line
+		# is byte-for-byte the one this branch printed before. `= installed` is now
+		# spelled out rather than `!= available`, since the DIVERGED arm above
+		# already claimed the only other state and the old double negative hid which
+		# single pass this branch was really for.
+		elif [ "$hl_psg_state" = installed ] && [ "$HL_BS_INSTALLED_COUNT" -gt 0 ]; then
 			hl_psg_bs_line=$(printf '%s (%s %s)' "$HUB_BASELINE_LABEL" \
-				"$HL_BS_COUNT" "$(hub_plural "$HL_BS_COUNT" item items)")
+				"$HL_BS_INSTALLED_COUNT" \
+				"$(hub_plural "$HL_BS_INSTALLED_COUNT" item items)")
 		fi
 		[ -s "$HL_DOMAIN_TMP" ] || [ -n "$hl_psg_bs_line" ] || continue
 		hl_psg_heading_once

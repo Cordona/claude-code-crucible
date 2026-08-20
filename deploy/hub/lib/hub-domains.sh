@@ -959,20 +959,31 @@ HUB_BASELINE_LABEL='Framework baseline'
 
 # HUB_PENDING_INSTALL_LABEL — what the block naming a domain's NEVER-INSTALLED
 # baseline content is called, on every screen that renders one: hub-list.sh's own
-# trailing section (a report of what is missing) and hub-install.sh's sub-selection
-# checklist (a preview of what pressing Enter will write anyway).
+# trailing section (a report of what is missing), hub-install.sh's sub-selection
+# checklist and its domains checklist (a preview of what pressing Enter will write
+# anyway), and hub_print_domain_status_lines' warning detail on Status and Doctor.
 #
-# ONE CONSTANT for the same reason HUB_BASELINE_LABEL above is one: the two screens
-# must name the same concept identically or a user reading both cannot tell they are
-# looking at the same list. The two differ only in PUNCTUATION and GLYPH — List
-# prints it as a bare status-group heading in `○` (an absence being reported),
-# Install as an indented `…:` lead-in in `+` (an addition being previewed) — and
-# both compose those around this one text.
+# "REQUIRED", NOT "PENDING", and the constant's NAME is deliberately left alone:
+# `pending` reads as "queued, maybe later, up to you", which is the one thing this
+# content is not. A baseline unit installs UNCONDITIONALLY the moment its domain is
+# chosen (lib/hub-domains.sh's GROUP KEY GRAMMAR on `baseline:<domain>`) — it was
+# never offered as a choice and cannot be declined — so the label has to say
+# REQUIRED or it undersells the fact the block exists to state. Renaming the
+# identifier as well would churn every call site to say the same thing the string
+# already says; one wording, one place, whatever the variable is called.
+#
+# ONE CONSTANT for the same reason HUB_BASELINE_LABEL above is one: the screens
+# must name the same concept identically or a user reading two of them cannot tell
+# they are looking at the same list. They differ only in PUNCTUATION and GLYPH —
+# List prints it as a bare status-group heading in `○` (an absence being reported),
+# Install as an indented `…:` lead-in in `+` (an addition being previewed), Status
+# and Doctor as a `· …(N items)` detail fragment — and all of them compose those
+# around this one text, exactly as HUB_BASELINE_LABEL's own consumers do.
 #
 # NOT a lookup and not per-domain, for the same reason as HUB_BASELINE_LABEL: the
 # question ("what has never been installed here") has one name regardless of which
 # domain is being reported.
-HUB_PENDING_INSTALL_LABEL='Pending install'
+HUB_PENDING_INSTALL_LABEL='Required install'
 
 # hub_domain_feature_keys DOMAIN -> DOMAIN's feature keys as shell words, or
 # nothing at all for a domain that declares none.

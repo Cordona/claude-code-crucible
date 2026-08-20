@@ -404,16 +404,44 @@ hub_domain_detail() {
 # the label", "the colon belongs to the detail, not the label") — differing
 # only in indent and variable prefix. One owner means one place absorbs the
 # next tweak, not two.
+#
+# THE WARNING GLYPH NAMES ITS OWN CAUSE, which it could not before. `partial` here
+# is hub_domain_state's answer, and that function reads the domain's BASELINE group
+# and nothing else (see its header) — so `!` fired for a required-install gap while
+# the only detail beside it was hub_domain_detail's sub-selection parenthetical,
+# which is derived from entirely different groups. "! Software Development:
+# (GitHub, GitLab; 9/10 technologies)" therefore invited exactly the wrong reading:
+# that 9-of-10 technologies is the problem, when an unchosen technology is the
+# normal state of this hub and never a warning at all. The gap the `!` is actually
+# about now says so, in the same words List's own section uses for the same units.
 hub_print_domain_status_lines() {
 	hpdsl_root=$1
 	hpdsl_indent=$2
+	# ONE SCRATCH FILE FOR THE WHOLE RENDER, created here rather than inside
+	# hub_required_install_fragment below for the reason that function's header
+	# gives (it runs inside a `$(…)`, where a cached path would not survive the
+	# return). This function is called exactly once per process by exactly one
+	# screen, so "once here" genuinely is once per process — no lazy guard needed.
+	hpdsl_scratch="$(hub_mktemp_dir)/pending-baseline.txt"
 	for hpdsl_domain in $HUB_DOMAIN_KEYS; do
 		hub_domain_exists "$hpdsl_root" "$hpdsl_domain" || continue
 		hpdsl_state=$(hub_domain_state "$hpdsl_domain")
 		hpdsl_detail=$(hub_domain_detail "$hpdsl_domain")
 		case $hpdsl_state in
 		installed) hpdsl_glyph=$(hub_glyph_ok) ;;
-		partial) hpdsl_glyph=$(hub_glyph_warn) ;;
+		partial)
+			hpdsl_glyph=$(hub_glyph_warn)
+			# ASSIGNED THEN GUARDED, never handed straight to hub_join_append:
+			# that helper special-cases an empty LIST but not an empty VALUE, so
+			# a domain whose `partial` has no baseline component at all (the
+			# multi-group arm of hub_domain_state, which can be partial with no
+			# baseline group to be pending) would print a dangling " · " with
+			# nothing after it. Same reason the zero-count case returns empty
+			# rather than "(0 items)".
+			hpdsl_gap=$(hub_required_install_fragment "$hpdsl_domain" "$hpdsl_scratch")
+			[ -z "$hpdsl_gap" ] ||
+				hpdsl_detail=$(hub_join_append "$hpdsl_detail" "$hpdsl_gap" ' · ')
+			;;
 		*)
 			printf '%s%s %s: not installed\n' "$hpdsl_indent" "$(hub_glyph_absent)" "$(hub_domain_short_label "$hpdsl_domain")"
 			continue
@@ -428,6 +456,46 @@ hub_print_domain_status_lines() {
 			printf '%s%s %s\n' "$hpdsl_indent" "$hpdsl_glyph" "$(hub_domain_short_label "$hpdsl_domain")"
 		fi
 	done
+}
+
+# hub_required_install_fragment DOMAIN SCRATCH -> "Required install (N items)" for a
+# domain with N > 0 never-installed baseline units, or NOTHING AT ALL for one with
+# none — including a domain that has no baseline group to have any. SCRATCH is a
+# writable path the function may clobber.
+#
+# THE ONE CONSUMER is hub_print_domain_status_lines' `partial` arm above, and it is
+# a function rather than four inline lines there because the arm is already a case
+# label inside a loop inside a renderer: the count, the plural tail, the label and
+# the zero guard are one fact about a DOMAIN, not four steps of drawing a line.
+#
+# SCRATCH IS THE CALLER'S, not a hub_mktemp_dir of its own, because this function is
+# invoked inside a `$(…)`: a directory cached in a variable here would be created in
+# the SUBSHELL and lost on return, so the "created once per process" guard
+# hub_domain_pending_baseline uses for HUB_PENDING_DIR cannot work at this call
+# site — it would silently leak one directory per partial domain while claiming not
+# to. The caller has no subshell around it and can hold the path honestly.
+#
+# WORDING AND ANNOTATION ARE BOTH BORROWED, neither invented here.
+# HUB_PENDING_INSTALL_LABEL is the same text List heads its own section with, so a
+# reader who sees "Required install (3 items)" on Doctor and the three named units
+# under "Required install" on List can tell those are the same three; and the
+# "(N items)" shape is HUB_BASELINE_LABEL's own screen-side annotation convention,
+# reused rather than re-styled as ", 3 required installs" so the two collapsed
+# counts a user meets on these screens read alike.
+#
+# THE COUNT IS hub_domain_pending_baseline's, never re-derived: that function is
+# already the single owner of "which of this domain's baseline units were never
+# installed at all", down to the `available`-only rule that keeps a broken unit out
+# of it (a REPAIR, which Doctor's diverged section reports separately — see its
+# header). Counting the file it writes is the whole of this function's arithmetic.
+hub_required_install_fragment() {
+	hrif_domain=$1
+	hrif_file=$2
+	hub_domain_pending_baseline "$hrif_domain" "$hrif_file"
+	hrif_n=$(hub_count_lines "$hrif_file")
+	[ "$hrif_n" -gt 0 ] || return 0
+	printf '%s (%s %s)' "$HUB_PENDING_INSTALL_LABEL" \
+		"$hrif_n" "$(hub_plural "$hrif_n" item items)"
 }
 
 # hub_domain_pending_baseline DOMAIN OUTFILE -> one display name per line, for every
