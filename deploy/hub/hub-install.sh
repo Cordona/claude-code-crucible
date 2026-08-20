@@ -841,6 +841,65 @@ hi_last_selection_step() {
 	printf '%s' "$hilss_last"
 }
 
+# hi_domains_pending_baseline_block -> the informational block the DOMAINS checklist
+# shows above its checkboxes: an indented "Pending install:" lead-in, then one
+# sub-header per OFFERED domain that has never-installed baseline content, with that
+# domain's units itemized beneath it. EMPTY OUTPUT when no offered domain has anything
+# pending — same rule as its per-screen sibling below, no baseline gap, no block.
+#
+# WHY THE FIRST SCREEN NEEDS IT TOO, when hi_pending_baseline_block below already
+# states the same list on every sub-selection screen: a live test session against a
+# target with 9 of 10 technologies installed found the pending baseline discoverable
+# ONLY by ticking the domain and drilling into its technology screen. The one screen
+# where a user decides whether a domain is worth entering at all said nothing about the
+# content entering it installs unconditionally.
+#
+# ABOVE THE WHOLE CHECKBOX LIST, never nested under an individual domain's row: a
+# `[ ]` row is an OPTIONAL choice, and baseline content is the opposite of one (it
+# arrives the moment the domain is picked — lib/hub-domains.sh's GROUP KEY GRAMMAR on
+# `baseline:<domain>`). Rendered inside the list it would read as one more thing to
+# tick or skip, so it is its own section, stated first.
+#
+# THE DOMAIN SUB-HEADER PRINTS EVEN WHEN ONLY ONE DOMAIN HAS PENDING CONTENT — today's
+# common case — unlike hi_pending_baseline_block below, whose screen title already names
+# its single domain. This screen spans every offered domain, so the units must be
+# attributed; and attributing them only above some threshold would make the block's
+# shape depend on the target, which is a layout a reader cannot learn once. Nesting is
+# hub-list.sh's own Pending install group's, one level deeper throughout for the
+# lead-in these sub-headers now sit under.
+#
+# THE DOMAINS COME FROM DOMAIN_ROWS, never a fresh walk of VALID_DOMAINS: that file IS
+# this checklist's row set (hi_domain_pending decided every line of it), so a domain
+# named here is guaranteed to have a `[ ]` row below to go and find. Re-deriving
+# admission here would be a second copy of that rule, free to disagree with the very
+# list it annotates.
+hi_domains_pending_baseline_block() {
+	hidpbb_file="$HUB_WORK/pending-baseline-domains.txt"
+	hidpbb_any=0
+	# Hoisted out of the loop, per hub_print_pending_items' own note on a die swallowed
+	# inside a printf argument.
+	hidpbb_glyph=$(hub_glyph_new)
+	while IFS="$HUB_TAB" read -r hidpbb_domain _; do
+		[ -n "$hidpbb_domain" ] || continue
+		hub_domain_pending_baseline "$hidpbb_domain" "$hidpbb_file"
+		[ -s "$hidpbb_file" ] || continue
+		# The lead-in is owed to the first domain that has something, not to the screen:
+		# printed before the walk it would head an empty section on a target whose every
+		# offered domain has its baseline already in place.
+		if [ "$hidpbb_any" -eq 0 ]; then
+			printf '  %s:\n' "$HUB_PENDING_INSTALL_LABEL"
+			hidpbb_any=1
+		fi
+		# ASSIGNED, never inlined as the printf argument — hub-list.sh's own copy of this
+		# sub-header states the reason: hub_domain_label is a closed lookup that dies on a
+		# key outside its set, and a swallowed die leaves this domain's units standing
+		# under an empty sub-header.
+		hidpbb_label=$(hub_domain_label "$hidpbb_domain")
+		printf '    %s\n' "$hidpbb_label"
+		hub_print_pending_items "$hidpbb_file" "$hidpbb_glyph" '      '
+	done <"$DOMAIN_ROWS"
+}
+
 # hi_pending_baseline_block DOMAIN -> the informational block a sub-selection screen
 # shows above its checkboxes: an indented "Pending install:" lead-in followed by one
 # `+ <name>` line per unit of DOMAIN's baseline that is not installed yet. EMPTY
@@ -870,11 +929,12 @@ hi_last_selection_step() {
 # that function's parameters: `+` (hub_glyph_new — this is a PLAN, previewing what
 # Enter will add) against List's `○` (a report of what is absent).
 #
-# NO DOMAIN SUB-HEADER, unlike List's copy: this screen's own title already names the
-# domain, so repeating it would be a heading over a heading. Hence the shallower
-# indent, and hence a `Pending install:` lead-in with a colon rather than List's bare
-# section heading — same text (HUB_PENDING_INSTALL_LABEL owns it), composed for its
-# own context.
+# NO DOMAIN SUB-HEADER, unlike List's copy and hi_domains_pending_baseline_block
+# above: this screen's own title already names the domain, so repeating it would be a
+# heading over a heading — the other two both span domains and must attribute their
+# units. Hence the shallower indent, and hence a `Pending install:` lead-in with a
+# colon rather than List's bare section heading — same text
+# (HUB_PENDING_INSTALL_LABEL owns it), composed for its own context.
 #
 # RENDERS ON EVERY SCREEN THE DOMAIN HAS, and repeating it is correct: it is
 # information, not a selection, so a domain with both a `technology` and a `vcs`
@@ -906,8 +966,29 @@ hi_select_interactive() {
 		# set -e and kill the script instead of navigating.
 		HI_RC=0
 		if [ "$HI_STEP" = domains ]; then
+			# THE PENDING-BASELINE BLOCK RIDES IN THE SUBTITLE SLOT here too, for the
+			# reason the sub-selection call further down states in full: that slot is the
+			# one insertion point re-rendered on every pass of hub_checklist's own loop,
+			# so the block survives a filter, a toggle and a `?`, where a printf before
+			# the call would scroll away on the first keystroke.
+			#
+			# BUT THE SLOT IS OCCUPIED ON THIS SCREEN, unlike a sub-selection screen's:
+			# it already carries the question being asked, which hub_checklist renders at
+			# full brightness under the header. So the block is APPENDED beneath that
+			# question with a blank line between, never substituted for it — the question
+			# is the whole point of the screen and must not be displaced by an
+			# informational aside. hub_checklist prints the slot with a single `%s\n` and
+			# a blank line of its own after it, so a multi-line value lands exactly as
+			# composed, with the checkboxes below.
+			HI_DOMAINS_SUBTITLE='Which domain(s) do you want to install?'
+			# Recomputed on every pass, like its sub-selection counterpart: `b` from a
+			# later step re-enters this screen, and a block computed once outside the loop
+			# would be a stale answer read from a live target.
+			HI_DOMAINS_PENDING=$(hi_domains_pending_baseline_block)
+			[ -z "$HI_DOMAINS_PENDING" ] ||
+				HI_DOMAINS_SUBTITLE=$(printf '%s\n\n%s' "$HI_DOMAINS_SUBTITLE" "$HI_DOMAINS_PENDING")
 			hub_checklist 'Welcome to the Crucible Management Hub' \
-				'Which domain(s) do you want to install?' "$DOMAIN_ROWS" "$SEL_DOMAINS" || HI_RC=$?
+				"$HI_DOMAINS_SUBTITLE" "$DOMAIN_ROWS" "$SEL_DOMAINS" || HI_RC=$?
 			case $HI_RC in
 			# `b` on the FIRST checklist has no earlier step to return to, so it
 			# leaves the capability entirely — through hi_ok_exit, never a bare

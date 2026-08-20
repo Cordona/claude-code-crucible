@@ -501,14 +501,16 @@ hub_domain_pending_baseline() {
 # hub_print_pending_items FILE GLYPH INDENT -> "<indent><glyph> <name>" for every
 # line of FILE, in FILE's order; nothing at all for an empty FILE.
 #
-# THE ONE LOOP BOTH PENDING-BASELINE CALLERS RENDER THROUGH, so the two screens
-# cannot drift in how they list the same units. hub-list.sh and hub-install.sh
-# differ in exactly two things, and both are arguments: the GLYPH (List reports
-# current state and passes hub_glyph_absent's `○`; Install previews a plan and
+# THE ONE LOOP EVERY PENDING-BASELINE CALLER RENDERS THROUGH, so no two screens can
+# drift in how they list the same units. The three call sites — hub-list.sh's Pending
+# install group, hub-install.sh's domains checklist and its per-domain sub-selection
+# checklists — differ in exactly two things, and both are arguments: the GLYPH (List
+# reports current state and passes hub_glyph_absent's `○`; Install previews a plan and
 # passes hub_glyph_new's `+` — see hub_glyph_for_state on why a listing never uses
-# `+`) and the INDENT (List nests these under a domain sub-header of its own,
-# Install's screen names the domain in its title and so has none). Everything else
-# about the line is identical, which is why it is written once.
+# `+`) and the INDENT (a screen that spans domains nests these under a domain
+# sub-header of its own, while a sub-selection screen names its one domain in its
+# title and so has none, sitting one level shallower). Everything else about the line
+# is identical, which is why it is written once.
 #
 # GLYPH IS TAKEN ALREADY-RENDERED, not as a state to look up: the caller hoists
 # `$(hub_glyph_absent)` out of its own loop for the reason hub-list.sh's
