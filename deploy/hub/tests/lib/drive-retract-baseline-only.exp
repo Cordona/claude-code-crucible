@@ -1,0 +1,64 @@
+#!/usr/bin/env expect
+#
+# drive-retract-baseline-only.exp — decline a mandatory sub-selection, then go back
+#                                   to that same screen and pick something real.
+#
+# WHAT IS FRAGILE HERE, and why it is NOT the sibling de-select case: `b` on the
+# confirm screen re-enters the LAST sub-selection screen that ran, WITHOUT passing
+# the domains checklist — so the domains screen's own truncation of the accumulator
+# never runs on this route. The only thing that can retract the row is the
+# sub-selection screen itself, on being answered non-emptily the second time. Get
+# that wrong and the payload claims a baseline-only run beside the very technology
+# it just installed, which is a worse lie than a merely stale entry: the field's
+# whole purpose is telling a caller its selection was reduced to nothing.
+#
+# THE KEY SEQUENCE:
+#   1. select the one domain
+#   2. decline VCS (optional)               not an exemption; must not be recorded
+#   3. decline technologies (mandatory)      exemption fires -> the row is written
+#   4. `b` at the confirm prompt             lands straight back on step 3's screen
+#   5. pick a real technology, confirm       the retraction under test
+#   6. confirm                               apply, and print the payload
+# Step 4 landing on the technology screen rather than the domains screen is the
+# whole point: it is what makes step 5 the only code that can undo step 3.
+#
+# The spawn, the screen helper and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-retract-baseline-only.exp SRC TARGET INSTALL HOME PATH
+#        with CHOSE_MARKER, APPLIED_MARKER and BASELINE_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+set chose_marker $env(CHOSE_MARKER)
+
+expect_screen "Which domain(s)" "domains-screen"
+send "software-development\r"
+expect_screen "1 selected" "domain-toggled"
+send "\r"
+
+expect_screen "select VCS" "vcs-screen"
+send "\r"
+
+expect_screen "select technologies" "technology-screen"
+send "\r"
+
+# The exemption has fired, so the accumulator names this domain.
+expect_screen "Proceed?" "confirm-screen"
+send "b\r"
+
+# THE RETRACTION. Back on the very screen that was declined, and this time answered:
+# alpha by KEY, and "1 selected" is what confirms the toggle landed rather than being
+# read as a filter or rejected as an unknown row.
+expect_screen "select technologies" "technology-screen-revisited"
+send "alpha\r"
+expect_screen "1 selected" "technology-chosen"
+puts $chose_marker
+send "\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so
+# the walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen-final"
+send "\r"
+
+report_baseline_only_payload

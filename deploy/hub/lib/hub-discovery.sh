@@ -960,7 +960,9 @@ hub_group_label_in_context() {
 }
 
 # hub_selectable_groups SELKIND -> every selectable group of one kind
-# ("technology" | "pm-tracker"), in canonical order.
+# ("technology" | "vcs" | "pm-tracker"), in canonical order. For a MULTI-KIND
+# domain's own groups of one kind, hub_domain_selectable_groups_of_kind below is
+# the accessor to reach for; this one crosses domains by construction.
 hub_selectable_groups() {
 	hub_discovery_require
 	hsg_kind="$1" awk -F '\t' '$5 == ENVIRON["hsg_kind"] { print $1 }' "$HUB_GROUPS"
@@ -975,10 +977,56 @@ hub_selectable_groups() {
 # as a state the registry permits — under which a kind-filtered answer would hand
 # one domain the other domain's groups. hub-uninstall.sh's own per-domain scan
 # already filters by domain for the same reason.
+#
+# ONE KIND of a MULTI-KIND domain is a different question this cannot answer — it
+# spans every kind the domain has. hub_domain_selectable_groups_of_kind below is
+# the accessor for that.
 hub_domain_selectable_groups() {
 	hub_discovery_require
 	hdsg_domain="$1" awk -F '\t' \
 		'$4 == "selectable" && $3 == ENVIRON["hdsg_domain"] { print $1 }' "$HUB_GROUPS"
+}
+
+# hub_domain_selectable_groups_of_kind DOMAIN SELKIND -> every selectable group
+# that is BOTH of one kind AND of one domain, in canonical order.
+#
+# THE INTERSECTION NEITHER SIBLING ABOVE ANSWERS, and a caller that needs it must
+# not settle for either half. hub_domain_selectable_groups is domain-only, so on a
+# MULTI-KIND domain it answers across kinds: Software Development has two
+# (`technology`, `vcs`), and a caller asking about one of them would be answered
+# partly about the other. The other half — kind alone crossing domain boundaries —
+# is the hazard hub_domain_selectable_groups states for itself directly above.
+# Both are load-bearing, so both columns are filtered here — which is why this
+# header, not any caller, is where the "domain and kind together, never kind alone"
+# argument is kept; hub-install.sh's hi_domain_kind_has_present points back here.
+#
+# The domain column is `$3` and the kind column `$5` — the same two columns the
+# siblings use, so nothing new is being parsed. `$4 == "selectable"` is deliberately
+# NOT re-tested: a non-empty selkind is what MAKES a group selectable (the group
+# table stamps the two together; see lib/hub-domains.sh's blast-radius note on
+# hub_disc_render_tables' PASS 2), so the kind filter already implies it, exactly as
+# hub_selectable_groups relies on above.
+#
+# DIES ON AN EMPTY SELKIND, like every closed lookup keyed by kind
+# (lib/hub-domains.sh's hub_selection_kind_domain states the same rule for itself).
+# An empty kind is not a narrower query, it is a DIFFERENT one: the group table
+# stamps an empty selkind on a domain's BASELINE row (baseline content is never a
+# selectable row; see lib/hub-domains.sh's GROUP KEY GRAMMAR), on an `atomic:`
+# domain's one group, and on every `shared:` row (domain `_shared`) — the three
+# shapes the atomic arm of the role-classification pass above already names as
+# governed by no sub-selection screen. So `$5 == ""` would return exactly the rows
+# no such screen governs, as though they were selectable groups OF a kind. Every
+# caller's kind comes out of the registry (hub_domain_selection_kind, which never
+# yields an empty word), so an empty one is a caller bug — it fails in the dangerous
+# direction for the consumer this protects: hub-install.sh's
+# hi_domain_kind_has_present DISARMS the empty-selection guard on a non-empty
+# answer, so a matched baseline would read as "something of this kind is present"
+# and exempt a domain that should have been blocked.
+hub_domain_selectable_groups_of_kind() {
+	hub_discovery_require
+	[ -n "$2" ] || die "hub_domain_selectable_groups_of_kind: empty selection kind for domain '$1'"
+	hdsgok_domain="$1" hdsgok_kind="$2" awk -F '\t' \
+		'$3 == ENVIRON["hdsgok_domain"] && $5 == ENVIRON["hdsgok_kind"] { print $1 }' "$HUB_GROUPS"
 }
 
 # hub_domain_baseline_group DOMAIN -> DOMAIN's baseline group key, or NOTHING AT ALL

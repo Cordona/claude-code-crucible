@@ -206,7 +206,17 @@ does.
   install, Enter accepts (`5`/Install all works this way); `[y/N]` for uninstall, Enter declines. It
   is only off a terminal that `--apply` writes with no prompt at all.
 - **A missing sub-selection blocks rather than guesses.** `install --domains=software-development`
-  with no `--technologies` exits blocked (`selection_required`), never with some default stack.
+  with no `--technologies` exits blocked (`selection_required`) on a target that holds no technology
+  of that domain yet, and installs the domain's baseline and nothing more on one that already does —
+  never a guessed default stack. "Already has one" is judged per KIND, not per domain: a present VCS
+  host does not answer for an empty technology screen, and vice versa. A *partially installed or
+  diverged* item of the kind counts as present just as a fully installed one does — it is a live
+  footprint at the target, so the domain is not empty. The same rule on the interactive screens:
+  "select none" is a valid answer once the domain already has something of that same kind, so its
+  baseline stays reachable when the only candidates left are ones you don't want. Whenever that
+  happens, `--format=env|json` names the domains it happened to in `HUB_BASELINE_ONLY` /
+  `baseline_only` (empty when it didn't) — so a caller that simply forgot the flag can tell itself
+  apart from one that meant "baseline only".
 - **`uninstall --all` is the one critical-tier flow.** On a terminal you type the word `UNINSTALL`
   in full; without one you must pass `--confirm=UNINSTALL`, or the command fails loud rather than
   assuming consent. It removes everything installed plus `CLAUDE.md` and the contract schemas, and

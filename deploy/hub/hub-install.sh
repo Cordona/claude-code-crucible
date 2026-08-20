@@ -71,10 +71,48 @@
 # use:
 #   selection_required — a selected domain has a mandatory sub-selection
 #                        (Software Development's technologies, Project
-#                        Management's trackers) and none was given. Never
-#                        guessed: installing "some default technology" because
-#                        the caller did not say is exactly the silent
-#                        assumption the never-guess discipline forbids.
+#                        Management's trackers), none was given, AND the target
+#                        holds none of that kind yet. Never guessed: installing
+#                        "some default technology" because the caller did not say
+#                        is exactly the silent assumption the never-guess
+#                        discipline forbids. That third clause is part of the
+#                        member's definition rather than a loophole in it — see
+#                        hi_domain_kind_has_present for why an empty selection can
+#                        be a satisfiable request.
+#
+# HUB_BASELINE_ONLY (--format=env) / baseline_only (--format=json) — the domains
+# whose MANDATORY sub-selection was left empty and accepted anyway under that
+# third clause, as a CSV (env) or an array (json), empty when it never fired.
+# Emitted on EVERY ok exit, no-op paths included: without it, a caller that forgot
+# a sub-selection flag and a caller that deliberately asked for a baseline receive
+# byte-identical HUB_STATUS=ok payloads there, so an agent cannot tell that its
+# selection was silently reduced to nothing. Purely ADDITIVE to the published set —
+# no existing field changes meaning.
+#
+# A domain whose empty selection was accepted for a DIFFERENT reason is not listed:
+# an OPTIONAL kind (--sd-vcs) was never mandatory, so declining it is not a
+# baseline-only run. A MANDATORY kind whose every candidate is already installed IS
+# listed, and on every entry point alike — the interactive walk skips that screen
+# instead of showing it, which is the same answer arrived at without asking, so both
+# paths publish the same value for the same target.
+#
+# Testing — two runners, and the split is about reachability, not speed:
+#   tests/run-tests.sh              the suite that must pass EVERYWHERE. Covers
+#                                   the NON-INTERACTIVE empty-selection guard's
+#                                   every verdict (blocked, baseline-only,
+#                                   optional-kind, the other-kind-present case)
+#                                   against a synthetic --source, plus the
+#                                   hub_domain_selectable_groups_of_kind accessor
+#                                   the guard is built on. No dependencies, green
+#                                   under dash as well as sh.
+#   tests/run-tests-interactive.sh  the same guard's INTERACTIVE twin, which the
+#                                   above cannot reach: hub_is_tty gates that
+#                                   whole path, so driving it needs a pty and
+#                                   therefore expect(1). Opt-in, and it SKIPS
+#                                   cleanly with exit 0 when expect is absent
+#                                   rather than failing the run.
+# Run both before trusting a change to the selection rules. The first proves the
+# verdicts; the second proves the screen the human actually walks reaches them.
 #
 # Portability: POSIX sh only. jq is required ONLY for --format=json.
 set -eu
@@ -271,8 +309,105 @@ hub_states_build "$TARGET_DIR"
 # ---------------------------------------------------------------------------
 HI_ACTION=install
 
+# HI_BASELINE_ONLY — one `DOMAIN<TAB>KIND` row per sub-selection that was left
+# empty and accepted anyway under the already-present exemption. The header's
+# HUB_BASELINE_ONLY entry states what the field is for; this is where the answer is
+# accumulated.
+#
+# KEYED BY DOMAIN AND KIND even though the published field names DOMAINS only,
+# because the KIND is what the two transitions below have to be keyed on: a real
+# selection at one kind's screen retracts that kind's record, and on a domain
+# carrying two mandatory kinds a domain-only key would let one screen's real answer
+# silently clear the other screen's legitimate record. No domain carries two
+# mandatory kinds today (Software Development's second kind, `vcs`, is optional) —
+# this is the same kind-blind-key hazard hi_domain_pending was just tightened for,
+# declined a second time rather than left latent.
+#
+# TRUNCATED HERE, in the section that CONSUMES it rather than beside the selection
+# files that fill it, for the reason the fd 3 block above gives for itself: every
+# ok exit reads it, the earliest of them fires before the selection stage is
+# reached, and a payload path must never meet a file that does not exist yet.
+HI_BASELINE_ONLY="$HUB_WORK/baseline-only.tsv"
+: >"$HI_BASELINE_ONLY"
+
+# hi_baseline_only_record DOMAIN KIND -> remember that an empty selection of KIND
+# was accepted for DOMAIN under the already-present exemption.
+#
+# A NO-OP UNLESS THAT IS GENUINELY WHAT HAPPENED, and the two clauses live here
+# rather than at each caller: an OPTIONAL kind's empty screen is a different answer
+# (never baseline-only), and a domain holding nothing of the kind is not exempt at
+# all — it blocks. Guarding inside is what lets BOTH callers — the guard below and
+# hi_select_interactive's empty-ROWS skip, which reaches the same outcome by a
+# different route — call it bare. hi_empty_selection_blocks has already established
+# both clauses by the time it calls this; re-asking is two cheap table lookups on a
+# one-shot path, and it is what keeps the rule stated once.
+#
+# APPEND-ONCE, because the interactive walk can re-enter the same screen through `b`.
+hi_baseline_only_record() {
+	! hub_selection_kind_optional "$2" || return 0
+	hi_domain_kind_has_present "$1" "$2" || return 0
+	grep -qxF -- "$1$HUB_TAB$2" "$HI_BASELINE_ONLY" ||
+		printf '%s\t%s\n' "$1" "$2" >>"$HI_BASELINE_ONLY"
+}
+
+# hi_baseline_only_forget DOMAIN KIND -> drop that record, because a real selection
+# has superseded it. Exact-line removal, so the DOMAIN half of another row cannot
+# be matched by accident.
+hi_baseline_only_forget() {
+	hub_remove_line "$HI_BASELINE_ONLY" "$1$HUB_TAB$2"
+}
+
+# hi_baseline_only_csv -> the DOMAIN column of HI_BASELINE_ONLY as the CSV the
+# machine payload publishes, each domain once, empty when the exemption never
+# fired. Deduplicated because a domain with two exempt kinds is still ONE domain in
+# the field's own vocabulary; hub_dedup_first_field keeps the accumulation order
+# rather than sorting, matching every other ordered list in this hub. Same tr/sed
+# tail as the Result stage's own selection CSVs.
+hi_baseline_only_csv() {
+	hiboc_domains="$HUB_WORK/baseline-only-domains.txt"
+	cut -f 1 <"$HI_BASELINE_ONLY" >"$hiboc_domains"
+	hub_dedup_first_field "$hiboc_domains"
+	tr '\n' ',' <"$hiboc_domains" | sed 's/,$//'
+}
+
 # hi_ok_exit APPLIED MESSAGE -> a legitimate no-op or completed action, exit 0.
+#
+# HUB_BASELINE_ONLY IS ADDED HERE, not in hub_ok_exit: that function is shared
+# verbatim with hub-uninstall.sh, and this field is install-specific — the same
+# reason the Result stage below emits its own selection fields rather than pushing
+# them into the shared exit. Adding it at this ONE wrapper is what puts it on every
+# no-op path (a `b` out of the first checklist, an up-to-date target, a dry run, a
+# cancelled confirm) without a per-call-site edit that a future no-op exit could
+# forget.
+#
+# THE JSON BRANCH MERGES rather than prepends, because the shared exit's json
+# payload is a single document and a stray HUB_BASELINE_ONLY line beside it would
+# not parse. Its output is ASSIGNED AND CHECKED, never piped straight into jq: a
+# pipeline hands `set -e` only jq's status, and jq exits 0 on empty input — so a
+# failure inside hub_ok_exit would print nothing at all and still look like a
+# successful exit, which is exactly the silent-exit-0 outcome that function exists to
+# prevent. The `|| die` is what closes that, not the assignment: this wrapper is
+# reached from inside hi_select_interactive, which its own caller invokes as
+# `… || hi_select_interactive`, so errexit is suspended here and a failed assignment
+# would fall through to jq with empty input. The explicit `exit 0` after the pipeline
+# is required for the mirror-image reason: hub_ok_exit's own exit ends only the
+# command substitution's subshell.
 hi_ok_exit() {
+	hioe_baseline_only=$(hi_baseline_only_csv)
+	case $OPT_FORMAT in
+	env)
+		hub_env_kv HUB_BASELINE_ONLY "$hioe_baseline_only"
+		;;
+	json)
+		have jq || die "--format=json requires jq, which is not installed"
+		hioe_json=$(hub_ok_exit "$HI_ACTION" "$1" "$2") ||
+			die "hi_ok_exit: the shared ok payload could not be generated"
+		printf '%s\n' "$hioe_json" |
+			jq --arg baseline_only "$hioe_baseline_only" \
+				'. + {baseline_only:($baseline_only | if . == "" then [] else split(",") end)}'
+		exit 0
+		;;
+	esac
 	hub_ok_exit "$HI_ACTION" "$1" "$2"
 }
 
@@ -466,14 +601,137 @@ hi_domain_pending() {
 	# stay pending while EITHER its technology OR its VCS fan-out still has
 	# something available, and a domain whose kind list is the single word
 	# `none` (GTD) correctly finds nothing here and falls through to `return 1`.
-	# ASSIGNED, never inlined — see hi_selection_kinds' own note on why a die
-	# inside a for-list command substitution is swallowed under `set -e`.
-	hidp_kinds=$(hub_domain_selection_kind "$hidp_domain")
+	# ASSIGNED AND CHECKED, never inlined — see hi_selection_kinds' own note on why a
+	# die inside a for-list command substitution is swallowed under `set -e`. The
+	# `|| die` is what an assignment alone does NOT buy in THIS function: its one
+	# caller invokes it as `hi_domain_pending … || continue`, which suspends errexit
+	# for the whole body, so a failed assignment would carry on with an empty list
+	# instead of aborting. `die` exits unconditionally and is immune to that.
+	hidp_kinds=$(hub_domain_selection_kind "$hidp_domain") ||
+		die "hi_domain_pending: cannot read $hidp_domain's selection kinds"
 	for hidp_kind in $hidp_kinds; do
 		[ "$hidp_kind" != none ] || continue
-		for hidp_group in $(hub_selectable_groups "$hidp_kind"); do
+		# DOMAIN AND KIND, tightened from the kind-only scan this used to be for the
+		# same reason hi_domain_kind_has_present below needed the intersection
+		# accessor in the first place: a kind-only answer crosses domain boundaries
+		# the day two domains share a kind, and crosses a multi-kind domain's own
+		# kinds. Harmless today only because no two domains share one.
+		#
+		# AND NOT INLINED IN THE `for` LIST, which is the opposite call of the one
+		# hi_domain_kind_has_present makes about this same dying accessor — because
+		# the swallow direction is opposite too. There an empty list yields "nothing
+		# present", which blocks MORE; here it makes this loop body never run, so the
+		# function falls through to `return 1` ("nothing pending") and SILENTLY DROPS
+		# an installable or repairable domain from the onboarding checklist. Failing
+		# toward less visibility is the one direction this function must not fail in.
+		hidp_groups=$(hub_domain_selectable_groups_of_kind "$hidp_domain" "$hidp_kind") ||
+			die "hi_domain_pending: cannot list $hidp_domain's $hidp_kind groups"
+		for hidp_group in $hidp_groups; do
 			[ "$(hub_group_state "$hidp_group")" = installed ] || return 0
 		done
+	done
+	return 1
+}
+
+# hi_empty_selection_blocks DOMAIN KIND SELFILE -> exit 0 when SELFILE being empty
+# must REFUSE the run (the interactive re-prompt, the non-interactive
+# selection_required block); exit 1 when an empty selection is acceptable.
+#
+# THE RULE ASSEMBLED ONCE, for both guards. It was written out twice — inline in
+# hi_select_interactive and again in the non-interactive loop, the second copy with
+# its optional-kind clause hoisted into an early `continue` — so the two could drift
+# on a question whose whole point is that every entry point answers it identically
+# (the human/agent parity requirement the Selection section states).
+#
+# Three clauses: an OPTIONAL kind (--sd-vcs) takes empty as a genuine answer ("no
+# PR/MR automation"); a non-empty selection is never in question; and a MANDATORY
+# kind takes empty once the domain already holds something of that kind — see
+# hi_domain_kind_has_present below for why that is answerable rather than
+# unanswered. The optional clause is tested FIRST so an optional kind's screen
+# never reaches either HI_BASELINE_ONLY transition at all.
+#
+# IT OWNS BOTH TRANSITIONS of HI_BASELINE_ONLY, not just the record, and the
+# retraction is the load-bearing half: `b` from the confirm screen re-enters the
+# LAST checklist that ran (hi_last_selection_step), which lands straight back on
+# this same sub-selection step WITHOUT passing the domains checklist — so the
+# domains-step truncation cannot see it. A user who declined the screen, went back,
+# and then picked something real would otherwise ship a payload claiming
+# baseline-only beside the very technologies it installed. Retracting on EVERY
+# non-empty pass, rather than only when the guard would have fired, is what makes
+# that self-correcting however many times the step is re-walked.
+hi_empty_selection_blocks() {
+	! hub_selection_kind_optional "$2" || return 1
+	if [ -s "$3" ]; then
+		hi_baseline_only_forget "$1" "$2"
+		return 1
+	fi
+	hi_domain_kind_has_present "$1" "$2" || return 0
+	hi_baseline_only_record "$1" "$2"
+	return 1
+}
+
+# hi_domain_kind_has_present DOMAIN KIND -> exit 0 when at least one of the groups
+# that is both DOMAIN's and of KIND is already PRESENT at the target
+# (hub_group_state != available, i.e. `installed` or `partial`); exit 1 when the
+# target holds nothing of that domain's own groups of that kind.
+#
+# AN EMPTY SUB-SELECTION CAN BE A SATISFIABLE REQUEST RATHER THAN AN UNANSWERED
+# QUESTION — the argument the guard above turns on, stated here once and pointed at
+# from every site that relies on it.
+#
+# Both guards used to treat every empty selection alike, which held a domain's
+# BASELINE hostage to its last unwanted candidate: with 9 of 10 technologies
+# installed and the 10th genuinely unwanted, "select none" hit the guard and the
+# only exits were installing something unwanted, dropping the domain, or quitting —
+# while the baseline the user came for (installed unconditionally on selection,
+# never a selectable row; see lib/hub-domains.sh's GROUP KEY GRAMMAR) had no other
+# route to it.
+#
+# So an empty selection beside something already present means "the baseline,
+# nothing more", which is answerable; a domain holding NOTHING of the kind still
+# blocks, because an empty selection there would install a bare baseline nobody
+# asked for. hi_select_interactive's empty-ROWS branch covers the neighbouring case
+# (EVERY candidate already installed) and cannot help here: one candidate remains,
+# so the rows file is not empty.
+#
+# "PRESENT", not "installed", and the width is load-bearing rather than loose: it
+# is the width hub-uninstall.sh's hu_domain_selection_remains applies to the
+# mirror-image question ("does the domain still have something AFTER a removal"),
+# through lib/hub-state.sh's hub_group_remains_present. A DIVERGED technology is a
+# live footprint at the target, so the domain's baseline is still serving something
+# and an empty selection beside it is not an empty domain.
+#
+# DOMAIN AND KIND TOGETHER, never kind alone — the argument is at
+# hub_domain_selectable_groups_of_kind's own header (lib/hub-discovery.sh), where
+# both filters live. It bites hardest here of anywhere, because this predicate
+# DISARMS a guard: an answer drawn one group too wide exempts a domain that should
+# have been blocked.
+#
+# NOT hi_domain_pending above, whose loop looks alike but answers the opposite
+# polarity: "is there anything left to DO" is true precisely BECAUSE a group is
+# still `available`, which is the state this predicate reads as nothing-there. Nor
+# hub_domain_content_groups, which answers for the baseline rather than for the
+# selectable set.
+#
+# THE STATE IS ASSIGNED AND CHECKED, never inlined as the `[` argument, and it is
+# the `|| die` — not the assignment — that does the work. hub_group_state dies via
+# hub_states_require; a die inside a command substitution used as an ARGUMENT is
+# swallowed, and the empty string it leaves would compare unequal to `available` and
+# be read as PRESENT, disarming the guard. But an assignment alone would not save it
+# either: BOTH call sites ask this predicate as `… || return 0` / `… || …`, which
+# suspends errexit for this whole body, so a failed assignment would carry on with an
+# empty state rather than aborting. `die` exits unconditionally and is immune to that
+# — the same reasoning hi_domain_pending states for its own accessor calls.
+#
+# THE ACCESSOR IN THE `for` LIST STAYS INLINED, for that same reason read the other
+# way: its die yields an empty group list, the loop body never runs, and `return 1`
+# says "nothing present", which is the conservative answer here. hi_domain_pending
+# cannot inline it because there the identical swallow fails toward LESS work.
+hi_domain_kind_has_present() {
+	for hidkhp_group in $(hub_domain_selectable_groups_of_kind "$1" "$2"); do
+		hidkhp_state=$(hub_group_state "$hidkhp_group") ||
+			die "hi_domain_kind_has_present: cannot read state of $hidkhp_group"
+		[ "$hidkhp_state" = available ] || return 0
 	done
 	return 1
 }
@@ -625,6 +883,12 @@ hi_select_interactive() {
 			for HI_KIND in $(hi_selection_kinds); do
 				hi_kind_required "$HI_KIND" || : >"$(hi_sel_file "$HI_KIND")"
 			done
+			# AND THE BASELINE-ONLY RECORD IS DROPPED WITH THEM, for the same
+			# reason: every kind this selection still needs is about to be walked
+			# again from here, so each will re-record itself, while a de-selected
+			# domain would otherwise stay named in HUB_BASELINE_ONLY on a payload
+			# that no longer installs it at all.
+			: >"$HI_BASELINE_ONLY"
 			hi_steps_build
 			HI_STEP=$(hi_step_next domains)
 			[ -n "$HI_STEP" ] || return 0
@@ -661,6 +925,19 @@ hi_select_interactive() {
 			# not the same as nothing to do.
 			if [ -n "$(hub_selectable_groups "$HI_KIND")" ] || hub_selection_kind_optional "$HI_KIND"; then
 				: >"$HI_SEL"
+				# THIS SKIP IS A BASELINE-ONLY OUTCOME TOO, and recording it here is
+				# what keeps the two entry points agreeing about the same target. The
+				# non-optional way into this branch is "every candidate of this kind is
+				# already installed" (hi_selection_rows drops installed groups, so an
+				# empty rows file beside existing candidates means exactly that) — the
+				# identical state on which the non-interactive loop reaches the guard,
+				# finds something present, and records. Skipping the record here would
+				# publish a different HUB_BASELINE_ONLY for the same target depending
+				# only on which entry point was used. The recorder's own two clauses
+				# (mandatory kind, something present) are what make this call safe to
+				# make bare: an optional kind's zero candidates is a different answer
+				# and is dropped there, not here.
+				hi_baseline_only_record "$HI_DOMAIN" "$HI_KIND"
 				# THE SKIPPED STEP COMES OUT OF THE SEQUENCE, and that is not
 				# bookkeeping — it is what keeps `b` working. hi_last_selection_step
 				# (the confirm screen's `b`) and hi_step_prev both read HI_STEPS, so a
@@ -699,8 +976,14 @@ hi_select_interactive() {
 			;;
 		2) exit 3 ;;
 		esac
-		if [ ! -s "$HI_SEL" ] && ! hub_selection_kind_optional "$HI_KIND"; then
-			# ASSIGNED, never inlined as the printf argument.
+		if hi_empty_selection_blocks "$HI_DOMAIN" "$HI_KIND" "$HI_SEL"; then
+			# THE DOMAIN HERE IS THE STEP'S OWN REVERSE LOOKUP, not the loop's
+			# subject: a step is a KIND (see this section's header), so what an
+			# accepted empty selection keeps in the plan is the baseline of the one
+			# domain that kind maps back to. Why an empty selection can be accepted
+			# at all is at hi_domain_kind_has_present's header.
+			#
+			# ASSIGNED AND CHECKED, never inlined as the printf argument.
 			# hub_domain_empty_selection_message is a closed lookup that DIES for a
 			# domain with no sub-selection, and a die inside a command substitution used
 			# as an ARGUMENT is swallowed — the substitution yields empty, printf still
@@ -711,11 +994,13 @@ hi_select_interactive() {
 			# structurally ties the two together. The same hoisting lib/hub-state.sh's
 			# hub_rows_build states and hi_shared_heading applies.
 			#
-			# THE OPTIONAL-KIND EXEMPTION is new: an empty `vcs` selection is a
-			# genuinely valid answer ("no PR/MR automation"), not an empty domain,
-			# so it never reaches this block at all — it falls straight through to
-			# advancing the step, exactly like a satisfied selection does.
-			HI_EMPTY_MSG=$(hub_domain_empty_selection_message "$HI_DOMAIN")
+			# The `|| die` is the half that actually aborts: this function is entered as
+			# `… || hi_select_interactive`, so errexit is suspended for its whole body and
+			# a bare assignment would carry the empty message straight into that silent
+			# forever-loop. The non-interactive copy of this hoist runs at top level, where
+			# errexit does fire, so it needs no such guard.
+			HI_EMPTY_MSG=$(hub_domain_empty_selection_message "$HI_DOMAIN") ||
+				die "hi_select_interactive: no empty-selection message for $HI_DOMAIN"
 			printf '\n%s %s\n' "$(hub_glyph_warn)" "$HI_EMPTY_MSG" >&3
 			continue
 		fi
@@ -838,13 +1123,14 @@ if [ "$INTERACTIVE_SELECTION" -eq 0 ]; then
 		HI_KINDS=$(hub_domain_selection_kind "$HI_DOMAIN")
 		for HI_KIND in $HI_KINDS; do
 			[ "$HI_KIND" != none ] || continue
-			# An OPTIONAL kind (vcs) is never mandatory here either — an empty
-			# selection of it is a valid answer on every entry point, not just
-			# the interactive one.
-			if hub_selection_kind_optional "$HI_KIND"; then
-				continue
-			fi
-			if [ ! -s "$(hi_sel_file "$HI_KIND")" ]; then
+			# THE DOMAIN HERE IS THIS LOOP'S OWN SEL_DOMAINS LINE, so the rule is
+			# asked about the domain actually being installed. Same predicate as the
+			# interactive screen, so the two cannot disagree about the verdict — but
+			# note this loop has no ROWS file and therefore no equivalent of that
+			# screen's skip branch, so the "every candidate already installed" state
+			# arrives HERE rather than there; the record is made on both routes (see
+			# hi_baseline_only_record) so the published field matches either way.
+			if hi_empty_selection_blocks "$HI_DOMAIN" "$HI_KIND" "$(hi_sel_file "$HI_KIND")"; then
 				# ASSIGNED, never inlined as hi_blocked's argument — same hazard as the
 				# interactive path's own copy of this message above, with a worse outcome
 				# here: a swallowed die would hand a MACHINE caller
@@ -2375,6 +2661,10 @@ HI_DOMAINS_CSV=$(tr '\n' ',' <"$SEL_DOMAINS" | sed 's/,$//')
 HI_TECH_CSV=$(tr '\n' ',' <"$SEL_TECHNOLOGIES" | sed 's/,$//')
 HI_SD_VCS_CSV=$(tr '\n' ',' <"$(hi_sel_file vcs)" | sed 's/,$//')
 HI_TRACKERS_CSV=$(tr '\n' ',' <"$SEL_TRACKERS" | sed 's/,$//')
+# Emitted on the SUCCESS path as well as on every no-op exit (hi_ok_exit adds it
+# there), for the reason HUB_APPLIED below is: a field that appears on only some of
+# a script's `ok` payloads forces a caller to guess what its absence meant.
+HI_BASELINE_ONLY_CSV=$(hi_baseline_only_csv)
 
 case $OPT_FORMAT in
 env)
@@ -2388,6 +2678,7 @@ env)
 	hub_env_kv HUB_TECHNOLOGIES "$HI_TECH_CSV"
 	hub_env_kv HUB_SD_VCS "$HI_SD_VCS_CSV"
 	hub_env_kv HUB_PM_TRACKERS "$HI_TRACKERS_CSV"
+	hub_env_kv HUB_BASELINE_ONLY "$HI_BASELINE_ONLY_CSV"
 	hub_env_kv HUB_ACTED_ON_COUNT "$RESULT_COUNT"
 	hub_env_kv HUB_ATTEMPTED_COUNT "$ATTEMPT_COUNT"
 	hub_env_kv HUB_BUNDLE_INSTALLED "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)"
@@ -2401,6 +2692,7 @@ json)
 		--arg domains "$HI_DOMAINS_CSV" --arg technologies "$HI_TECH_CSV" \
 		--arg sd_vcs "$HI_SD_VCS_CSV" \
 		--arg pm_trackers "$HI_TRACKERS_CSV" \
+		--arg baseline_only "$HI_BASELINE_ONLY_CSV" \
 		--arg bundle_backup "${HUB_BUNDLE_BACKUP:-}" \
 		--argjson acted_on_count "$RESULT_COUNT" --argjson attempted_count "$ATTEMPT_COUNT" \
 		--argjson bundle_installed "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)" \
@@ -2411,6 +2703,7 @@ json)
 		  technologies:($technologies | if . == "" then [] else split(",") end),
 		  sd_vcs:($sd_vcs | if . == "" then [] else split(",") end),
 		  pm_trackers:($pm_trackers | if . == "" then [] else split(",") end),
+		  baseline_only:($baseline_only | if . == "" then [] else split(",") end),
 		  acted_on_count:$acted_on_count, attempted_count:$attempted_count,
 		  bundle_installed:$bundle_installed, bundle_backup:$bundle_backup,
 		  foreign_blocked_count:$foreign_blocked_count,

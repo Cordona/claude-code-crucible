@@ -1,0 +1,92 @@
+#!/usr/bin/env expect
+#
+# drive-deselect-baseline-only.exp — record TWO domains as baseline-only, then take
+#                                    one of them back out of the selection through
+#                                    the domains checklist before confirming.
+#
+# WHAT IS FRAGILE HERE: the baseline-only record is an ACCUMULATOR filled mid-walk,
+# one row per sub-selection whose empty answer was accepted. The interactive walk
+# can revisit the domains checklist through `b` and DE-SELECT a domain that already
+# put itself in that file — after which the domain installs nothing, but a stale row
+# would still name it in the final payload. Nothing about the accepting screen can
+# notice that; only the domains screen's own re-entry can, and the non-interactive
+# suite cannot press `b` at all, so this is reachable nowhere else.
+#
+# THE KEY SEQUENCE, and why every step of it is load-bearing:
+#   1. select BOTH domains                    both need a mandatory sub-selection
+#   2. decline VCS (optional)                 not an exemption; must not be recorded
+#   3. decline technologies (mandatory)       exemption fires -> records domain 1
+#   4. decline trackers (mandatory)           exemption fires -> records domain 2
+#   5. `b` at the confirm prompt              lands on the LAST selection screen
+#   6. `b`, `b`, `b`                          trackers -> technologies -> VCS -> domains
+#   7. untick domain 2, confirm               the de-selection under test
+#   8. re-walk VCS and technologies           domain 1 re-records itself
+#   9. confirm                                apply, and print the payload
+# Steps 3 and 4 are what put two rows in the accumulator; step 7 is what must remove
+# exactly one of them; step 8 is what proves the truncation did not also discard the
+# domain that is still selected.
+#
+# The spawn, the screen helper and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-deselect-baseline-only.exp SRC TARGET INSTALL HOME PATH
+#        with DESELECTED_MARKER, APPLIED_MARKER and BASELINE_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+set deselected_marker $env(DESELECTED_MARKER)
+
+expect_screen "Which domain(s)" "domains-screen"
+# By KEY, never by row number — see drive-empty-technology.exp's own note: the
+# onboarding checklist offers only domains with something pending, so a row number
+# depends on the target's install state.
+send "software-development,project-management\r"
+expect_screen "2 selected" "both-domains-toggled"
+send "\r"
+
+expect_screen "select VCS" "vcs-screen"
+send "\r"
+
+expect_screen "select technologies" "technology-screen"
+send "\r"
+
+expect_screen "select tracker" "tracker-screen"
+send "\r"
+
+# Both exemptions have now fired, so the accumulator holds two domains.
+expect_screen "Proceed?" "confirm-screen"
+send "b\r"
+
+# `b` on the confirm screen lands on the LAST selection screen that ran, so the walk
+# back to the domains checklist is one `b` per sub-selection screen. Each is awaited
+# rather than blind-sent: a `b` typed at a screen that has not rendered yet would be
+# answered by the wrong checklist.
+expect_screen "select tracker" "tracker-screen-revisited"
+send "b\r"
+expect_screen "select technologies" "technology-screen-revisited"
+send "b\r"
+expect_screen "select VCS" "vcs-screen-revisited"
+send "b\r"
+
+# THE DE-SELECTION. The screen is pre-seeded with both domains ticked, so naming one
+# toggles it OFF, and "1 selected" is what confirms the untick landed rather than
+# being read as a filter or rejected as an unknown row.
+expect_screen "Which domain(s)" "domains-screen-revisited"
+send "project-management\r"
+expect_screen "1 selected" "domain-deselected"
+puts $deselected_marker
+send "\r"
+
+# Only the surviving domain's own screens are walked now, and its exemption fires
+# again — which is what the caller's expectation of a NON-empty field rests on.
+expect_screen "select VCS" "vcs-screen-final"
+send "\r"
+expect_screen "select technologies" "technology-screen-final"
+send "\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so
+# the walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen-final"
+send "\r"
+
+report_baseline_only_payload

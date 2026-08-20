@@ -1,0 +1,92 @@
+# drive-baseline-only-common.exp — the pty scaffolding every HUB_BASELINE_ONLY
+#                                   interactive driver shares: the spawn, the
+#                                   screen-waiting helper, and the payload readback.
+#
+# SOURCED, never run directly. Each driver beside it is then nothing but its own
+# key sequence, which is the only thing that actually differs between them and the
+# only thing a reader needs to follow.
+#
+# WHY expect(1) AND A pty AT ALL: lib/drive-empty-technology.exp's own header states
+# it — hub_is_tty gates the whole interactive path, and macOS script(1) is not a
+# substitute.
+#
+# WHY --format=env, unlike drive-empty-technology.exp: the answer these cases turn
+# on IS the machine payload, not a screen. Under --format=env the checklist screens
+# stay on stderr and the payload lands on stdout, both of which are this one pty, so
+# the walk is driven exactly as it would be under --format=text while the verdict
+# arrives in a parseable form.
+#
+# WHY THE DRIVERS REPORT MARKERS instead of asserting: expect owns the pty driving
+# and nothing else. Every assertion stays in run-tests-interactive.sh, on the same
+# vocabulary the non-interactive suite uses, so there is exactly one place that
+# decides what a pass means.
+#
+# Markers, on stdout. The caller exports them and these scripts echo them back, so
+# the strings emitted and the strings grepped for cannot drift apart:
+#   $env(BASELINE_MARKER)<v>  the HUB_BASELINE_ONLY value the payload carried,
+#                             delimited by <> so a caller's substring match on one
+#                             domain cannot also pass on a payload naming two.
+#   $env(APPLIED_MARKER)      the confirmed install reached that payload at all.
+#   MARKER:TIMEOUT-<stage>    a screen never arrived; <stage> names which. Literal
+#                             because no assertion greps for it: it is a diagnostic
+#                             for a run that already failed its exit-status check.
+#
+# Usage, from a driver beside this file:
+#   source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+# with argv = SRC TARGET INSTALL HOME PATH and the markers exported.
+
+set timeout 30
+log_user 0
+
+set fixture_source [lindex $argv 0]
+set target_dir     [lindex $argv 1]
+set install_script [lindex $argv 2]
+set isolated_home  [lindex $argv 3]
+set toolbox_path   [lindex $argv 4]
+
+# An absent marker aborts the driver with expect's own "no such variable" error and
+# a non-zero exit, which the caller's exit-status assertion reports — never a
+# silently empty marker the caller would read as "that screen never happened".
+set applied_marker  $env(APPLIED_MARKER)
+set baseline_marker $env(BASELINE_MARKER)
+
+# The SPAWNED process carries the same env -i isolation harness_run gives every
+# non-interactive case; only expect itself runs outside it, because expect is
+# deliberately not in the toolbox. TERM is set because a pty child is entitled to
+# expect one; --no-color is what actually keeps the captured screens byte-clean.
+spawn env -i HOME=$isolated_home PATH=$toolbox_path TMPDIR=$isolated_home TERM=dumb \
+	sh $install_script --source $fixture_source --target $target_dir \
+	--format=env --no-color
+
+# expect_screen PATTERN STAGE — wait for one screen, or report which one never came.
+proc expect_screen {pattern stage} {
+	expect {
+		-ex $pattern {}
+		timeout {
+			puts "MARKER:TIMEOUT-$stage"
+			exit 1
+		}
+	}
+}
+
+# report_baseline_only_payload — read HUB_BASELINE_ONLY out of the machine payload
+# the applied run printed, and echo it back with the applied marker.
+#
+# The value is captured rather than matched against an expected one: a driver that
+# knew the right answer could only report "matched" or "timed out", and a timeout is
+# indistinguishable from a screen that never arrived. Handing the actual value back
+# is what lets the caller's own assertion name what it got when it is wrong.
+proc report_baseline_only_payload {} {
+	global baseline_marker applied_marker
+	expect {
+		-re {HUB_BASELINE_ONLY='([^']*)'} {
+			puts "$baseline_marker<$expect_out(1,string)>"
+			puts $applied_marker
+			exit 0
+		}
+		timeout {
+			puts "MARKER:TIMEOUT-payload"
+			exit 1
+		}
+	}
+}
