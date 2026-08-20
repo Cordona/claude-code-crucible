@@ -25,7 +25,7 @@ Report these fields, in this order:
 | **Technology** | Language/framework + version (e.g. Rust 2021, Tokio). |
 | **Files created/modified** | One line per file: `path` — purpose. |
 | **What was implemented** | 2–3 sentences: what and why. |
-| **Key decisions** | Notable choices + a one-line rationale each (architecture, trade-offs, patterns followed). |
+| **Key decisions** | Notable choices + a one-line rationale each (architecture, trade-offs, patterns followed). **If `build-core`'s comment-economy self-check deferred a rationale to the commit/PR message instead of the file** (Implementation Workflow, step 4), name it here explicitly (`"kept in-file: X; deferred to the commit/PR message: Y"`) — the primary agent carries `Y` forward into whichever `git-operator` brief actually lands it: the commit brief (`flow-git-operations` G2) or the PR/MR brief (the Pull-Request/Merge-Request Path), whichever destination still exists. |
 | **Validation** | Which gates ran and their result — format · lint · type-check · test · build — plus any remaining warnings. State honestly if a gate did not run or failed. **If your own change broke an EXISTING test's compilation** (`build-core`'s Implementation Workflow, step 5), report it here as an open blocker, not a failed-but-complete gate: name each broken call site and mechanically why, and state that fixing it needs a `tests-developer` dispatch with repair scope. The primary agent MUST carry this forward into its own executive summary — it is not resolved by this report alone. |
 | **Handoff to reviewer** | What the review swarm should focus on: areas of concern, trade-offs you made, and any contract/convention conflict you surfaced (per `build-core`). This is the dev→review contract. |
 
@@ -81,5 +81,7 @@ Do NOT invent your own finding IDs — reuse the reviewer's so IDs stay stable a
 - Do NOT renumber or invent finding IDs in a fix round — reuse the reviewer's.
 
 ---
+*Skill Version: 1.3 — a round-4 consistency-lens sweep found this row still named only the `git-operator` commit brief as the deferred rationale's destination, after `flow-git-operations` 1.8 gave it a second one (a PR/MR body, when the commits it was meant for are already landed) — widened to name both.*
+*Skill Version: 1.2 — a consistency-lens finding on the comment-volume fix found `build-core` v1.4 promised a developer's deferred-to-commit rationale would reach the `git-operator` commit brief via the Key decisions field, without this skill (the field's owner) or `flow-git-operations` actually being amended to receive it — the identical shape of gap the v1.1 entry below already fixed once for the Validation field. Added the receiving clause to the Key decisions row, mirroring that precedent; `flow-git-operations` G2's brief list is amended in the same round.*
 *Skill Version: 1.1 — added a required disclosure to the Validation field for when a developer's own change breaks an existing test's compilation (`build-core`'s Implementation Workflow, step 5): report it as an open blocker with the repair-scope route named, since `build-core` promises this report is what surfaces it — a promise this version makes true by requiring the field and requiring `flow-implementation` §7 to carry it forward.*
 *Pair with: build-core (conduct/workflow). Constructive twin of: review-report-standards (the reviewer's finding schema).*
