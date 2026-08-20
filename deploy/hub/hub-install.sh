@@ -841,6 +841,53 @@ hi_last_selection_step() {
 	printf '%s' "$hilss_last"
 }
 
+# hi_pending_baseline_block DOMAIN -> the informational block a sub-selection screen
+# shows above its checkboxes: an indented "Pending install:" lead-in followed by one
+# `+ <name>` line per unit of DOMAIN's baseline that is not installed yet. EMPTY
+# OUTPUT when there is nothing pending — a fully-installed baseline prints no block
+# at all, not an empty header.
+#
+# WHY THE SCREEN NEEDS IT: this checklist offers technologies (or trackers, or a VCS)
+# and nothing else, so a user who declines every remaining row had no way to see that
+# pressing Enter STILL writes real content — the domain's lens reviewers, its
+# standards, its flows. That content is not a row here because it is not a choice
+# (lib/hub-domains.sh's GROUP KEY GRAMMAR on `baseline:<domain>`: a baseline installs
+# unconditionally the moment the domain is picked), which is exactly why it has to be
+# stated in prose instead.
+#
+# A DOMAIN-LEVEL QUESTION, deliberately NOT the kind-scoped
+# hi_domain_kind_has_present. That predicate decides whether an EMPTY SELECTION IS
+# ALLOWED for one specific kind — a guard, with a per-kind answer and a blocking
+# consequence. This decides only whether an informational block is worth SHOWING, and
+# its subject is the whole domain's baseline regardless of which kind's screen is
+# currently rendering. Reusing the guard here would tie a display to a rule it has
+# nothing to do with, and would ask the wrong question besides.
+#
+# THE LIST ITSELF IS hub_domain_pending_baseline's, and the item lines are
+# hub_print_pending_items' — the same two functions hub-list.sh's own Pending install
+# group calls, so the two screens cannot disagree about which units are pending or
+# how they are rendered. Only the glyph and the indent differ, which is why they are
+# that function's parameters: `+` (hub_glyph_new — this is a PLAN, previewing what
+# Enter will add) against List's `○` (a report of what is absent).
+#
+# NO DOMAIN SUB-HEADER, unlike List's copy: this screen's own title already names the
+# domain, so repeating it would be a heading over a heading. Hence the shallower
+# indent, and hence a `Pending install:` lead-in with a colon rather than List's bare
+# section heading — same text (HUB_PENDING_INSTALL_LABEL owns it), composed for its
+# own context.
+#
+# RENDERS ON EVERY SCREEN THE DOMAIN HAS, and repeating it is correct: it is
+# information, not a selection, so a domain with both a `technology` and a `vcs`
+# screen states the same pending baseline on each rather than mentioning it once and
+# leaving the other screen silent.
+hi_pending_baseline_block() {
+	hipbb_file="$HUB_WORK/pending-baseline-screen.txt"
+	hub_domain_pending_baseline "$1" "$hipbb_file"
+	[ -s "$hipbb_file" ] || return 0
+	printf '  %s:\n' "$HUB_PENDING_INSTALL_LABEL"
+	hub_print_pending_items "$hipbb_file" "$(hub_glyph_new)" '    '
+}
+
 # hi_select_interactive -> walk the onboarding checklist and then each selected
 # domain's own sub-selection screen, starting from whatever HI_STEP currently
 # holds, leaving SEL_DOMAINS plus the per-kind selection files as the selection. A
@@ -967,8 +1014,21 @@ hi_select_interactive() {
 			continue
 		fi
 
-		hub_checklist "$(hub_domain_label "$HI_DOMAIN") — $(hub_selection_kind_prompt "$HI_KIND")" '' \
-			"$HI_ROWS" "$HI_SEL" || HI_RC=$?
+		# THE PENDING-BASELINE BLOCK RIDES IN THE SUBTITLE SLOT, which this screen
+		# leaves empty (the question it asks is already in the title, from
+		# hub_selection_kind_prompt). That slot renders exactly where the block has to
+		# go — full brightness, under the header, with hub_checklist's own blank line
+		# after it and the checkboxes below — and, critically, it is re-rendered on
+		# every pass of hub_checklist's own loop, so the block survives a filter, a
+		# toggle and a `?`. Printed before the call instead, it would appear once and
+		# then scroll away on the first keystroke.
+		#
+		# Assigned outside the call rather than inlined as the argument: it is
+		# recomputed on each RE-ENTRY of this screen (`b` from a later step), which is
+		# what keeps it honest, and a hoist keeps the call itself readable.
+		HI_PENDING_BLOCK=$(hi_pending_baseline_block "$HI_DOMAIN")
+		hub_checklist "$(hub_domain_label "$HI_DOMAIN") — $(hub_selection_kind_prompt "$HI_KIND")" \
+			"$HI_PENDING_BLOCK" "$HI_ROWS" "$HI_SEL" || HI_RC=$?
 		case $HI_RC in
 		1)
 			HI_STEP=$HI_PREV

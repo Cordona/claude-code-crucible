@@ -150,6 +150,12 @@ hl_rows_of_state() {
 #      baselines actually split; both splits are keyed on data (the bucket
 #      column, the registry's feature list), never on a domain literal, so a
 #      second domain acquiring either would split with no edit here.
+#      NEITHER THE COLLAPSED LINE NOR AN ITEMIZED LENS APPEARS IN THE `available`
+#      PASS: a baseline is not choosable, so nothing about it belongs under a
+#      heading of things a human could pick. A never-installed baseline unit is
+#      reported by the trailing "Pending install" group instead, itemized by name
+#      per domain — see hub_domain_pending_baseline, which is also what
+#      hub-install.sh's checklist previews.
 #   4. A group that belongs to no domain at all — the cross-domain shared auth
 #      procedure — renders under its own trailing sub-header, per status group.
 #      See hl_nondomain_rows_build: it was previously rendered NOWHERE on this
@@ -455,27 +461,25 @@ hl_baseline_summary() {
 	# `-gt` — a shell arithmetic error rather than a wrong number.
 	IFS="$HUB_TAB" read -r HL_BS_STATE HL_BS_COUNT _ <"$HL_BS_TMP"
 
-	# HL_BS_BROKEN_FILE / HL_BS_PENDING_FILE — HL_BS_COUNT alone cannot tell apart
-	# two very different situations that hub_state_collapse's three-way branch
-	# both label DIVERGED the moment a baseline is a MIX rather than "all" or
-	# "none": a unit whose OWN state is the real, per-unit DIVERGED (hub_path_state:
-	# something wrong occupies its target — a foreign file, or a symlink pointing
-	# somewhere else — genuinely needs a re-sync) versus a unit that is simply
-	# "available" (never installed at all; nothing is wrong, it just hasn't been
-	# added yet). Sourced from the SAME HL_BS_KEYED table hub_state_collapse just
-	# read above, filtered to this call's own domain (HL_BS_KEYED spans every
-	# domain's baseline rows, not just this one — hub_state_collapse does its own
-	# per-domain filtering on column 1 the same way).
+	# HL_BS_BROKEN_FILE — HL_BS_COUNT alone cannot tell apart two very different
+	# situations that hub_state_collapse's three-way branch both label DIVERGED the
+	# moment a baseline is a MIX rather than "all" or "none": a unit whose OWN state
+	# is the real, per-unit DIVERGED (hub_path_state: something wrong occupies its
+	# target — a foreign file, or a symlink pointing somewhere else — genuinely needs
+	# a re-sync) versus a unit that is simply "available" (never installed at all;
+	# nothing is wrong, it just hasn't been added yet). Only the BROKEN half is
+	# derived here: the pending half used to be too, and is now
+	# hub_domain_pending_baseline's answer instead, because THIS table is the
+	# `baseline` bucket alone — it could never see the lens reviewers, which are the
+	# very units the Pending install block exists to name. Sourced from the SAME
+	# HL_BS_KEYED table hub_state_collapse just read above, filtered to this call's
+	# own domain (HL_BS_KEYED spans every domain's baseline rows, not just this one —
+	# hub_state_collapse does its own per-domain filtering on column 1 the same way).
 	HL_BS_BROKEN_FILE="$HUB_WORK/baseline-broken.txt"
-	HL_BS_PENDING_FILE="$HUB_WORK/baseline-pending.txt"
 	hl_bs_domain="$hl_bs_domain" awk -F '\t' -v OFS='\t' \
 		'$1 == ENVIRON["hl_bs_domain"] && $2 == "DIVERGED" { print $3 }' \
 		"$HL_BS_KEYED" >"$HL_BS_BROKEN_FILE"
-	hl_bs_domain="$hl_bs_domain" awk -F '\t' -v OFS='\t' \
-		'$1 == ENVIRON["hl_bs_domain"] && $2 == "available" { print $3 }' \
-		"$HL_BS_KEYED" >"$HL_BS_PENDING_FILE"
 	HL_BS_BROKEN_COUNT=$(hub_count_lines "$HL_BS_BROKEN_FILE")
-	HL_BS_PENDING_COUNT=$(hub_count_lines "$HL_BS_PENDING_FILE")
 }
 
 # THE COLLAPSED BASELINE LINE'S LABEL is lib/hub-domains.sh's HUB_BASELINE_LABEL,
@@ -612,7 +616,18 @@ hl_print_status_group() {
 		# THIS DOMAIN's lens rows, filtered by HL_LENS' own domain column — no
 		# `= software-development` literal any more. See hl_lens_rows_build on why
 		# that literal was both a hardcoded name and a misattribution bug.
-		hl_domain_lens_rows "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
+		#
+		# EXCEPT IN THE `available` PASS, which is the one status group a lens must
+		# never appear in: this heading lists things a human could go and choose, and
+		# a lens reviewer is not one — it is baseline content that arrives
+		# unconditionally with its domain (lib/hub-domains.sh's GROUP KEY GRAMMAR on
+		# `baseline:<domain>`), so itemizing it here claimed a choice that does not
+		# exist. A never-installed lens is reported by the Pending install block
+		# below instead, which says the same fact without implying the choice. An
+		# INSTALLED or DIVERGED lens keeps its row: both are reports of something
+		# that is actually there, which is exactly what those headings mean.
+		[ "$hl_psg_state" = available ] ||
+			hl_domain_lens_rows "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
 		# THIS DOMAIN's named features, appended to the row list like any other row.
 		hl_domain_feature_lines "$hl_psg_domain" "$hl_psg_state" >>"$HL_DOMAIN_TMP"
 		hl_baseline_summary "$hl_psg_domain"
@@ -626,19 +641,20 @@ hl_print_status_group() {
 			# Only a GENUINELY broken unit belongs under this heading, and it is
 			# named individually, like every other row on this screen — never
 			# folded into a count. A merely-pending unit is this pass's business
-			# not at all; hl_print_pending_group (after all three passes) owns it,
-			# fed by the same per-domain accumulation below.
+			# not at all; the Pending install block after all three passes owns it,
+			# derived per domain straight from hub_domain_pending_baseline.
 			if [ "$HL_BS_STATE" = DIVERGED ] && [ "$HL_BS_BROKEN_COUNT" -gt 0 ]; then
 				cat "$HL_BS_BROKEN_FILE" >>"$HL_DOMAIN_TMP"
 			fi
-			if [ "$HL_BS_STATE" = DIVERGED ] && [ "$HL_BS_PENDING_COUNT" -gt 0 ]; then
-				printf '%s\t%s\n' "$hl_psg_domain" "$HL_BS_PENDING_COUNT" >>"$HL_PENDING_SUMMARY"
-				while IFS= read -r hl_psg_pending_name; do
-					[ -n "$hl_psg_pending_name" ] || continue
-					printf '%s\t%s\n' "$hl_psg_domain" "$hl_psg_pending_name" >>"$HL_PENDING_DETAIL"
-				done <"$HL_BS_PENDING_FILE"
-			fi
-		elif [ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
+		# THE COLLAPSED LINE IS SUPPRESSED IN THE `available` PASS, for the reason
+		# the lens exclusion above gives: "Framework baseline (34 items)" under a
+		# heading of choosable things offered a choice that does not exist, and the
+		# Pending install block below now names those same 34 units individually, so
+		# leaving it would also report one baseline twice on one screen. The
+		# `installed` pass keeps it — a collapsed count is the right summary for
+		# content that is already there and needs no action.
+		elif [ "$hl_psg_state" != available ] &&
+			[ "$HL_BS_STATE" = "$hl_psg_state" ] && [ "$HL_BS_COUNT" -gt 0 ]; then
 			hl_psg_bs_line=$(printf '%s (%s %s)' "$HUB_BASELINE_LABEL" \
 				"$HL_BS_COUNT" "$(hub_plural "$HL_BS_COUNT" item items)")
 		fi
@@ -772,41 +788,53 @@ text)
 	hl_features_build
 	hl_nondomain_rows_build
 
-	# HL_PENDING_SUMMARY ("domain<TAB>count") / HL_PENDING_DETAIL
-	# ("domain<TAB>name") — accumulated across every domain during the Diverged
-	# pass below (hl_print_status_group), then rendered as their own "Pending
-	# install" group after it.
-	HL_PENDING_SUMMARY="$HUB_WORK/pending-summary.tsv"
-	HL_PENDING_DETAIL="$HUB_WORK/pending-detail.tsv"
-	: >"$HL_PENDING_SUMMARY"
-	: >"$HL_PENDING_DETAIL"
-
 	hl_print_status_group Installed installed
 	hl_print_status_group Available available
 	hl_print_status_group Diverged DIVERGED
 
-	if [ -s "$HL_PENDING_SUMMARY" ]; then
-		printf '\nPending install\n'
-		while IFS="$HUB_TAB" read -r HL_PI_DOMAIN HL_PI_COUNT; do
-			[ -n "$HL_PI_DOMAIN" ] || continue
-			HL_PI_LABEL=$(hub_domain_label "$HL_PI_DOMAIN")
-			printf '  %s\n' "$HL_PI_LABEL"
-			printf '    %s (%s %s never installed — run "Install" to add them)\n' \
-				"$HUB_BASELINE_LABEL" "$HL_PI_COUNT" "$(hub_plural "$HL_PI_COUNT" item items)"
-			# Filtered to a file first, never piped straight into the while: a
-			# pipeline's exit status is its LAST command's (the while), so an awk
-			# failure here would go unnoticed even under `set -e` — POSIX sh has no
-			# pipefail. Reading the file back is also what makes HL_PI_NAME visible
-			# to the loop body in the same shell, with no subshell in between.
-			HL_PI_DETAIL_TMP="$HUB_WORK/pending-detail-domain.txt"
-			HL_PI_DOMAIN="$HL_PI_DOMAIN" awk -F '\t' \
-				'$1 == ENVIRON["HL_PI_DOMAIN"] { print $2 }' "$HL_PENDING_DETAIL" >"$HL_PI_DETAIL_TMP"
-			while IFS= read -r HL_PI_NAME; do
-				[ -n "$HL_PI_NAME" ] || continue
-				printf '      %s %s\n' "$(hub_glyph_absent)" "$HL_PI_NAME"
-			done <"$HL_PI_DETAIL_TMP"
-		done <"$HL_PENDING_SUMMARY"
-	fi
+	# THE PENDING-INSTALL GROUP — every domain's never-installed baseline content,
+	# itemized by name under the domain it arrives with, in the same
+	# heading/sub-header/row shape the three status groups above use.
+	#
+	# WHY IT IS ITS OWN GROUP rather than rows under "Available": a baseline unit is
+	# not choosable (lib/hub-domains.sh's GROUP KEY GRAMMAR on `baseline:<domain>` —
+	# it installs unconditionally with its domain), so listing it beside the
+	# technologies a human picks claimed a choice that does not exist. Both the lens
+	# exclusion and the collapsed-line suppression in hl_print_status_group above
+	# hand their content to this block.
+	#
+	# DRIVEN PER DOMAIN OFF hub_domain_pending_baseline, not accumulated during the
+	# Diverged pass, which is what this block used to be and what made it wrong in
+	# two ways at once. That accumulation could only fire when a baseline was a MIX,
+	# so a domain whose baseline is entirely absent — the commonest case there is,
+	# a first install — reported nothing here; and it read the `baseline` bucket
+	# alone, so the lens reviewers were invisible to it and it could only ever print
+	# an aggregate count instead of the names. Asking the library the question
+	# directly answers both, and is the same list hub-install.sh's checklist screen
+	# previews, from the same function.
+	#
+	# THE GLYPH IS hub_glyph_absent's `○` — hoisted once, per hl_print_status_group's
+	# own note on swallowed dies inside a printf argument. This screen is a REPORT of
+	# current state, not a plan (hub_glyph_for_state states that rule), which is why
+	# it is not the `+` hub-install.sh's preview of the identical list uses.
+	HL_PENDING_FILE="$HUB_WORK/pending-baseline.txt"
+	HL_PENDING_GLYPH=$(hub_glyph_absent)
+	HL_PENDING_ANY=0
+	for HL_PI_DOMAIN in $HUB_DOMAIN_KEYS; do
+		hub_domain_exists "$FRAMEWORK_ROOT" "$HL_PI_DOMAIN" || continue
+		hub_domain_pending_baseline "$HL_PI_DOMAIN" "$HL_PENDING_FILE"
+		[ -s "$HL_PENDING_FILE" ] || continue
+		if [ "$HL_PENDING_ANY" -eq 0 ]; then
+			printf '\n%s\n' "$HUB_PENDING_INSTALL_LABEL"
+			HL_PENDING_ANY=1
+		fi
+		# Assigned, not inlined as the printf argument: hub_domain_label is a closed
+		# lookup that dies on a key outside its set, and a swallowed die here leaves
+		# a domain's items standing under an empty sub-header.
+		HL_PI_LABEL=$(hub_domain_label "$HL_PI_DOMAIN")
+		printf '  %s\n' "$HL_PI_LABEL"
+		hub_print_pending_items "$HL_PENDING_FILE" "$HL_PENDING_GLYPH" '    '
+	done
 
 	if [ "$ORPHAN_COUNT" -gt 0 ]; then
 		printf '\nOrphaned\n'

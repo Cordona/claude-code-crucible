@@ -430,6 +430,100 @@ hub_print_domain_status_lines() {
 	done
 }
 
+# hub_domain_pending_baseline DOMAIN OUTFILE -> one display name per line, for every
+# unit of DOMAIN's baseline group that is NOT INSTALLED AT ALL (unit state
+# `available`), in HUB_STATES' canonical order. OUTFILE is left EMPTY for a domain
+# whose baseline is fully installed, and for one that has no baseline group at all.
+#
+# THE QUESTION IT ANSWERS: "if this domain is chosen, what content arrives that the
+# user was never offered a choice about?" A domain's baseline installs
+# UNCONDITIONALLY the moment the domain is picked — it is never an individually
+# selectable row, by design (lib/hub-domains.sh's GROUP KEY GRAMMAR on
+# `baseline:<domain>`) — so every screen that lets a user act on a domain owes them
+# that list, and two of them were misreporting it. hub-list.sh itemized a
+# not-yet-installed LENS reviewer under its "Available" heading, which reads as "a
+# free-standing thing you could add on its own"; hub-install.sh's sub-selection
+# checklist said nothing at all, so declining every remaining technology looked
+# like declining everything, when pressing Enter still writes the lens, the
+# standards and the flows.
+#
+# `available` ONLY, never DIVERGED — the distinction is the whole point. This
+# answers "was this content NEVER installed", which is a first-time addition. A
+# DIVERGED unit HAS been installed and has since been replaced or broken, which is a
+# REPAIR; hub-doctor.sh's diverged-components section owns naming those, and folding
+# the two together would tell a user that re-syncing a tampered file is the same
+# event as new content arriving.
+#
+# BUILT ON hub_group_state_rows, the per-unit accessor that already carries both the
+# display name and the unit's own state, so nothing here re-derives either:
+# lib/hub-discovery.sh's display pass is what names a lens reviewer "Security review
+# lens" (the same names Doctor's diverged section prints), and hub_state_set is what
+# decided the unit is absent. Reading HUB_STATES directly would be a second place
+# that knows that table's column order.
+#
+# THE GROUP KEY COMES FROM hub_domain_baseline_group, never a constructed
+# `baseline:<domain>`, for the reason that accessor's own header gives: a domain
+# registered under `atomic:` has no baseline group, and must answer "none" rather
+# than silently matching zero rows of a group that does not exist.
+#
+# OUTFILE RATHER THAN STDOUT, matching hub_domain_buckets and
+# hub_domain_feature_rows: both consumers must ask "is there anything here at all"
+# before they print a heading over it, and a file answers that with one `[ -s ]`
+# instead of running the walk twice.
+#
+# THE INTERMEDIATE GOES TO A FILE, never a pipe into awk: hub_group_state_rows calls
+# hub_states_require, which DIES on an unbuilt states table — and a die on the LEFT
+# of a pipeline exits only that subshell, leaving the pipeline's status as awk's own
+# 0 and OUTFILE silently empty. POSIX sh has no pipefail.
+#
+# THE SCRATCH DIRECTORY IS CREATED ONCE PER PROCESS, the same shape (and for the
+# same reason) as hub_domain_buckets' HUB_BUCKETS_DIR: this is called once per domain
+# by every consumer, and a fresh hub_mktemp_dir per call would leave one directory
+# per domain behind for the lifetime of the workspace. HUB_PENDING_DIR's single file
+# is written and fully consumed inside this one function, so — unlike
+# hub_domain_buckets — no caller can be mid-way through reading it, and this
+# function carries no non-re-entrancy contract.
+hub_domain_pending_baseline() {
+	hdpb_domain=$1
+	hdpb_out=$2
+	: >"$hdpb_out"
+	hdpb_group=$(hub_domain_baseline_group "$hdpb_domain")
+	[ -n "$hdpb_group" ] || return 0
+	if [ -z "${HUB_PENDING_DIR:-}" ]; then
+		HUB_PENDING_DIR=$(hub_mktemp_dir)
+	fi
+	hdpb_rows="$HUB_PENDING_DIR/baseline-units.tsv"
+	hub_group_state_rows "$hdpb_group" >"$hdpb_rows"
+	# Columns are hub_group_state_rows' own: display is $4, state is $5.
+	awk -F '\t' '$5 == "available" { print $4 }' "$hdpb_rows" >"$hdpb_out"
+}
+
+# hub_print_pending_items FILE GLYPH INDENT -> "<indent><glyph> <name>" for every
+# line of FILE, in FILE's order; nothing at all for an empty FILE.
+#
+# THE ONE LOOP BOTH PENDING-BASELINE CALLERS RENDER THROUGH, so the two screens
+# cannot drift in how they list the same units. hub-list.sh and hub-install.sh
+# differ in exactly two things, and both are arguments: the GLYPH (List reports
+# current state and passes hub_glyph_absent's `○`; Install previews a plan and
+# passes hub_glyph_new's `+` — see hub_glyph_for_state on why a listing never uses
+# `+`) and the INDENT (List nests these under a domain sub-header of its own,
+# Install's screen names the domain in its title and so has none). Everything else
+# about the line is identical, which is why it is written once.
+#
+# GLYPH IS TAKEN ALREADY-RENDERED, not as a state to look up: the caller hoists
+# `$(hub_glyph_absent)` out of its own loop for the reason hub-list.sh's
+# hl_print_status_group states — a die inside a command substitution used as a
+# printf ARGUMENT is swallowed, and every row would silently lose its glyph.
+hub_print_pending_items() {
+	hppi_file=$1
+	hppi_glyph=$2
+	hppi_indent=$3
+	while IFS= read -r hppi_name; do
+		[ -n "$hppi_name" ] || continue
+		printf '%s%s %s\n' "$hppi_indent" "$hppi_glyph" "$hppi_name"
+	done <"$hppi_file"
+}
+
 # ---------------------------------------------------------------------------
 # The rows projection — the PER-UNIT table, read today by Doctor's
 # diverged-components section and by List's env/json payload (plus
