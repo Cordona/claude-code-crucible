@@ -957,20 +957,19 @@ HUB_FEATURE_RESIDUAL_KEY='(residual)'
 # what it is counting there.
 HUB_BASELINE_LABEL='Framework baseline'
 
-# HUB_PENDING_INSTALL_LABEL — what the block naming a domain's NEVER-INSTALLED
+# HUB_REQUIRED_INSTALL_LABEL — what the block naming a domain's NEVER-INSTALLED
 # baseline content is called, on every screen that renders one: hub-list.sh's own
 # trailing section (a report of what is missing), hub-install.sh's sub-selection
 # checklist and its domains checklist (a preview of what pressing Enter will write
 # anyway), and hub_print_domain_status_lines' warning detail on Status and Doctor.
 #
-# "REQUIRED", NOT "PENDING", and the constant's NAME is deliberately left alone:
-# `pending` reads as "queued, maybe later, up to you", which is the one thing this
-# content is not. A baseline unit installs UNCONDITIONALLY the moment its domain is
-# chosen (lib/hub-domains.sh's GROUP KEY GRAMMAR on `baseline:<domain>`) — it was
-# never offered as a choice and cannot be declined — so the label has to say
-# REQUIRED or it undersells the fact the block exists to state. Renaming the
-# identifier as well would churn every call site to say the same thing the string
-# already says; one wording, one place, whatever the variable is called.
+# "REQUIRED", NOT "PENDING", in the string AND in the identifier: `pending` reads as
+# "queued, maybe later, up to you", which is the one thing this content is not. A
+# baseline unit installs UNCONDITIONALLY the moment its domain is chosen (the GROUP
+# KEY GRAMMAR above, on `baseline:<domain>`) — it was never offered as a choice and
+# cannot be declined — so the label has to say REQUIRED or it undersells the fact the
+# block exists to state. The identifier says the same, because a constant whose name
+# and value disagree makes every reader check which one is current.
 #
 # ONE CONSTANT for the same reason HUB_BASELINE_LABEL above is one: the screens
 # must name the same concept identically or a user reading two of them cannot tell
@@ -983,7 +982,7 @@ HUB_BASELINE_LABEL='Framework baseline'
 # NOT a lookup and not per-domain, for the same reason as HUB_BASELINE_LABEL: the
 # question ("what has never been installed here") has one name regardless of which
 # domain is being reported.
-HUB_PENDING_INSTALL_LABEL='Required install'
+HUB_REQUIRED_INSTALL_LABEL='Required install'
 
 # hub_domain_feature_keys DOMAIN -> DOMAIN's feature keys as shell words, or
 # nothing at all for a domain that declares none.

@@ -405,15 +405,16 @@ hub_domain_detail() {
 # only in indent and variable prefix. One owner means one place absorbs the
 # next tweak, not two.
 #
-# THE WARNING GLYPH NAMES ITS OWN CAUSE, which it could not before. `partial` here
-# is hub_domain_state's answer, and that function reads the domain's BASELINE group
-# and nothing else (see its header) — so `!` fired for a required-install gap while
-# the only detail beside it was hub_domain_detail's sub-selection parenthetical,
-# which is derived from entirely different groups. "! Software Development:
-# (GitHub, GitLab; 9/10 technologies)" therefore invited exactly the wrong reading:
-# that 9-of-10 technologies is the problem, when an unchosen technology is the
-# normal state of this hub and never a warning at all. The gap the `!` is actually
-# about now says so, in the same words List's own section uses for the same units.
+# THE WARNING GLYPH NAMES ITS OWN CAUSE, and the two facts on the line come from
+# DIFFERENT groups, which is why both are needed. `partial` here is
+# hub_domain_state's answer, and that function reads the domain's BASELINE group and
+# nothing else (see its header) — so a `!` is always about a required-install gap,
+# while hub_domain_detail's parenthetical beside it counts SUB-SELECTION groups. A
+# line carrying only the parenthetical ("! Software Development: (GitHub, GitLab;
+# 9/10 technologies)") therefore invites the wrong reading: that an unchosen
+# technology is the problem, when that is the normal state of this hub and never a
+# warning. The required-install fragment is what makes the `!` self-explanatory, in
+# the same words List's own section uses for the same units.
 hub_print_domain_status_lines() {
 	hpdsl_root=$1
 	hpdsl_indent=$2
@@ -471,12 +472,22 @@ hub_print_domain_status_lines() {
 # SCRATCH IS THE CALLER'S, not a hub_mktemp_dir of its own, because this function is
 # invoked inside a `$(…)`: a directory cached in a variable here would be created in
 # the SUBSHELL and lost on return, so the "created once per process" guard
-# hub_domain_pending_baseline uses for HUB_PENDING_DIR cannot work at this call
-# site — it would silently leak one directory per partial domain while claiming not
-# to. The caller has no subshell around it and can hold the path honestly.
+# hub_domain_pending_baseline uses for HUB_PENDING_DIR cannot work at this call site —
+# it would allocate a fresh directory on every call while the caching code claimed to
+# allocate one. The caller has no subshell around it and can hold the path honestly.
+#
+# THIS CALL PATH IS STILL NOT ALLOCATION-FREE, and the honest accounting is worth more
+# here than a tidy claim: hub_domain_pending_baseline below runs its own
+# HUB_PENDING_DIR guard INSIDE this same `$(…)`, so Doctor and Status allocate one
+# hub_mktemp_dir per partial domain regardless. Bounded by the domain count and reaped
+# by HUB_WORK's own EXIT trap, so it is a cost, not a defect. Closing it would mean the
+# CALLER seeding HUB_PENDING_DIR from its own non-subshell scope — one renderer
+# reaching into another function's private cache variable — which buys a handful of
+# directories at the price of a coupling nothing else in this file has. Declined
+# deliberately, recorded so the next reader need not re-derive it.
 #
 # WORDING AND ANNOTATION ARE BOTH BORROWED, neither invented here.
-# HUB_PENDING_INSTALL_LABEL is the same text List heads its own section with, so a
+# HUB_REQUIRED_INSTALL_LABEL is the same text List heads its own section with, so a
 # reader who sees "Required install (3 items)" on Doctor and the three named units
 # under "Required install" on List can tell those are the same three; and the
 # "(N items)" shape is HUB_BASELINE_LABEL's own screen-side annotation convention,
@@ -494,7 +505,7 @@ hub_required_install_fragment() {
 	hub_domain_pending_baseline "$hrif_domain" "$hrif_file"
 	hrif_n=$(hub_count_lines "$hrif_file")
 	[ "$hrif_n" -gt 0 ] || return 0
-	printf '%s (%s %s)' "$HUB_PENDING_INSTALL_LABEL" \
+	printf '%s (%s %s)' "$HUB_REQUIRED_INSTALL_LABEL" \
 		"$hrif_n" "$(hub_plural "$hrif_n" item items)"
 }
 
@@ -570,7 +581,7 @@ hub_domain_pending_baseline() {
 # line of FILE, in FILE's order; nothing at all for an empty FILE.
 #
 # THE ONE LOOP EVERY PENDING-BASELINE CALLER RENDERS THROUGH, so no two screens can
-# drift in how they list the same units. The three call sites — hub-list.sh's Pending
+# drift in how they list the same units. The three call sites — hub-list.sh's Required
 # install group, hub-install.sh's domains checklist and its per-domain sub-selection
 # checklists — differ in exactly two things, and both are arguments: the GLYPH (List
 # reports current state and passes hub_glyph_absent's `○`; Install previews a plan and
@@ -906,7 +917,7 @@ hub_domain_buckets() {
 # A ZERO-COUNT ROW IS STILL EMITTED — for a feature whose units are all gone from
 # the source, and for the residual in the normal case where every unit is claimed.
 # Consumers guard on the count, exactly as hub-list.sh already guards its
-# collapsed baseline line on `HL_BS_COUNT -gt 0`; suppressing them here would make
+# collapsed baseline line on `HL_BS_INSTALLED_COUNT -gt 0`; suppressing them here would make
 # "the registry declares this feature" and "this screen mentions it" two different
 # questions answered in two places.
 #

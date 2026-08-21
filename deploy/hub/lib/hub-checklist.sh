@@ -337,7 +337,9 @@ hub_checklist_expand_token() {
 #
 # GROUPED is OPTIONAL, defaults to 0 (ungrouped — the ORIGINAL, unchanged shape,
 # and every existing call site before Uninstall's flat list omits it and is
-# untouched by anything below). Pass 1 to render:
+# untouched by anything below). It must be exactly 0 or 1; anything else DIES at
+# entry rather than being coerced, because the value that actually shows up there by
+# accident is a misplaced EXTRAKEY. Pass 1 to render:
 #   * a plain, un-numbered, un-selectable DOMAIN HEADING at the 2-space indent
 #     (matching hub-list.sh's own domain sub-headers), preceded by a blank line
 #     unless it is the very first heading on screen, before the first row of
@@ -414,9 +416,44 @@ hub_checklist_expand_token() {
 # itself. A widget that instead grew a domain- or baseline-aware branch would be a
 # capability's rule living in the shared list renderer all four screens share.
 #
-# THE EXTRA KEY IS MATCHED AFTER every built-in reply below, never before, so a
-# caller cannot shadow `a`/`n`/`b`/`q`/`?`/`/` or Enter by passing one of them —
-# the worst a bad EXTRAKEY can do is never fire.
+# EXTRAKEY MUST BE NONE OF: a built-in reply (`a`/`all`/`n`/`none`/`b`/`back`/`q`/
+# `quit`/`?`/`/`, Enter); a string carrying any character the TOGGLE PARSER reads
+# specially — a digit, a comma, a hyphen or whitespace; or any key in ROWSFILE. The
+# first is harmless and is enforced by placement alone — the extra key is matched
+# AFTER the built-in `case` below, so such an EXTRAKEY simply never fires. The other
+# two are NOT harmless and are enforced by a guard that DIES at entry: the extra-key
+# test sits BEFORE the row-toggle parser, so such an EXTRAKEY would swallow a toggle
+# instead — a row silently unselectable, which is the "flag that could silently do
+# nothing" hub-doctor.sh's own --clean-orphans note refuses to ship. Refusing at
+# entry is what keeps that a caller bug rather than a mystery at the prompt.
+#
+# WHY THE WHOLE CHARACTER CLASS AND NOT JUST A BARE NUMERAL: the parser accepts far
+# more than one number. It splits a reply on COMMAS AND SPACES and expands `N-M`
+# ranges (see hub_checklist_expand_token), so `1,2`, `1-3` and a leading-space ` 1`
+# are all live toggle spellings — and every one of them contains a non-digit and
+# equals no row key, so a bare-numeral test and an exact-key test both wave them
+# through. Rejecting the characters rather than enumerating the spellings is what
+# makes this guard independent of that parser's future grammar.
+#
+# WHICH PARTS ARE LOAD-BEARING, stated so a future editor does not "simplify" away the
+# half that is actually doing the work:
+#   digit    LOAD-BEARING — a bare numeral, and every comma/range spelling, resolves
+#            through the numbered map.
+#   comma    LOAD-BEARING — a split character, so `a,b` reaches the toggle loop as two
+#            tokens.
+#   SPACE    LOAD-BEARING — also a split character, and it is what makes ` 1` a live
+#            toggle spelling rather than an unknown key.
+#   hyphen   defensive only — a range needs digits on both sides and digits are already
+#            refused, so no hyphen-bearing EXTRAKEY can form one today.
+#   TAB      defensive only — not a split character at all, so a tab-bearing reply
+#            reaches the toggle loop as one unknown token.
+# The two defensive characters stay refused because a single-keystroke prompt shortcut
+# has no legitimate use for either, and dropping them would make this guard's
+# correctness depend on re-deriving another function's split rules.
+#
+# THE ROW-KEY CHECK IS PER-CALL, not a fixed deny-list, because ROWSFILE is: the same
+# EXTRAKEY can be safe on one screen and a collision on the next, and only the rows
+# actually being rendered can answer that.
 #
 # Exit status:
 #   0  confirmed — OUTFILE holds the selection (possibly empty; the CALLER owns
@@ -437,6 +474,40 @@ hub_checklist() {
 	hcl_grouped=${5:-0}
 	hcl_extra_key=${6:-}
 	hcl_extra_label=${7:-}
+
+	# GROUPED IS 0 OR 1, and a third value dies here rather than being read as truthy
+	# or falsy by whichever `[ ]` reaches it first. The shape that makes this worth a
+	# guard is positional: GROUPED sits immediately before EXTRAKEY, so a caller that
+	# omits the filler `0` slides its extra key into this slot — grouping silently on,
+	# the extra key silently gone. Same "refuse rather than misbehave quietly" rule as
+	# the EXTRAKEY guard below.
+	case $hcl_grouped in
+	0 | 1) : ;;
+	*) die "hub_checklist: GROUPED must be 0 or 1, got '$hcl_grouped'" ;;
+	esac
+
+	# THE SHADOWING GUARD, at entry rather than at the prompt — see this function's
+	# own header for which EXTRAKEYs are refused and why the other unsafe class
+	# (a built-in reply) needs no check. The awk existence test is the same
+	# column-1 comparison the toggle loop uses, never a tab-bearing grep pattern,
+	# for the reason stated there.
+	if [ -n "$hcl_extra_key" ]; then
+		# ONE arm, no matching `: ;` branch: every refused shape is refused for the
+		# same reason and the surviving shapes need no statement of their own. The
+		# trailing `-` inside the bracket expression is a LITERAL hyphen (POSIX: a
+		# hyphen last in a bracket expression is not a range operator), and the two
+		# quoted expansions are literal matches, the same form
+		# hub_checklist_next_field uses to test for a tab.
+		case $hcl_extra_key in
+		*[0-9,-]* | *" "* | *"$HUB_TAB"*)
+			die "hub_checklist: EXTRAKEY '$hcl_extra_key' carries a digit, comma, hyphen or whitespace and would shadow a row toggle"
+			;;
+		esac
+		hcl_extra_clash=$(hcl_extra_key="$hcl_extra_key" awk -F '\t' \
+			'$1 == ENVIRON["hcl_extra_key"] { print 1; exit }' "$hcl_rows")
+		[ -z "$hcl_extra_clash" ] ||
+			die "hub_checklist: EXTRAKEY '$hcl_extra_key' is also a row key on this screen"
+	fi
 
 	hcl_scratch=$(hub_mktemp_dir)
 	hcl_selected="$hcl_scratch/selected.txt"
@@ -655,9 +726,11 @@ hub_checklist() {
 		# above: a literal arm cannot be built from a variable without exposing
 		# EXTRAKEY to pattern matching (a caller passing `*` would swallow every
 		# reply), and sitting AFTER the esac is what makes shadowing a built-in key
-		# impossible — see this function's own header. The selection is written out
-		# exactly as the Enter arm writes it, because status 4 is a confirm that
-		# also carries an instruction, not a discard.
+		# impossible. It sits BEFORE the toggle parser, which is what the entry
+		# guard above exists to make safe — see this function's own header for both
+		# halves. The selection is written out exactly as the Enter arm writes it,
+		# because status 4 is a confirm that also carries an instruction, not a
+		# discard.
 		if [ -n "$hcl_extra_key" ] && [ "$hcl_reply" = "$hcl_extra_key" ]; then
 			cat "$hcl_selected" >"$hcl_out"
 			return 4

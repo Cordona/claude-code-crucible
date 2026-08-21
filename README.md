@@ -119,7 +119,12 @@ no mis-press there is destructive; each declines on anything it doesn't recogniz
 1. **Pick `6` (Install).** A checklist asks which domains you want: Software Development, Project
    Management, Getting Things Done. Type a row number or name and press Enter to select or
    deselect it; combine several with `1,3,5` or a range `1-5`; `a` selects all, `n` none. Enter on
-   an empty prompt confirms.
+   an empty prompt confirms. When a domain listed there already has a technology (or tracker) of
+   its own installed and is still missing part of the content it installs unconditionally, the
+   screen names that content under **Required install** and offers one more key: **`r`** — install
+   exactly that, for every domain listed, skipping their sub-selection screens entirely. It appears
+   only when it would do something, and it leaves alone (and says so) any domain you have already
+   answered a sub-selection for. `--baseline-only` is its flag-driven twin.
 2. **Choose each domain's sub-selection.** Software Development asks first, optionally, which VCS
    host(s) — GitHub, GitLab, or both — the git operator should talk to, then which technologies
    (each one installs its developer agent, its reviewer and its standard together). Project
@@ -190,7 +195,9 @@ Shared options: `--target DIR` (deployed config dir, default `$HOME/.claude`), `
 `text|env`), `--no-color`, `--accessible` (ASCII fallback for every non-ASCII symbol). `install`,
 `uninstall`, and `doctor` add `--non-interactive`; `install`/`uninstall` alone add `--details`
 (itemize a bulk result instead of summarizing it). `doctor` also takes `--clean-orphans --apply` —
-the flag-driven equivalent of the interactive "Remove them?" orphan-cleanup prompt.
+the flag-driven equivalent of the interactive "Remove them?" orphan-cleanup prompt. `install` takes
+`--baseline-only` alongside `--domains` — the flag-driven equivalent of the domains checklist's `r`
+key, installing each named domain's required content and no sub-selection.
 
 **`--format=env` and `--format=json` are what make the hub agent-drivable.** Both emit the same
 facts the text screen shows — per-domain state, per-component rows, counts, a `HUB_STATUS` of `ok`
@@ -217,6 +224,21 @@ does.
   happens, `--format=env|json` names the domains it happened to in `HUB_BASELINE_ONLY` /
   `baseline_only` (empty when it didn't) — so a caller that simply forgot the flag can tell itself
   apart from one that meant "baseline only".
+- **`--baseline-only` says "required content only" out loud.** It asserts, for every domain in
+  `--domains`, exactly the outcome the paragraph above reaches by omission — so it installs exactly
+  what omitting the sub-selection flag would and nothing beyond it, unlocking no capability of its
+  own, and refuses instead of guessing when the intent cannot be honored: a domain that holds
+  nothing it needs a choice about yet exits blocked, saying there is no required-install gap to
+  close, where a bare omission blocks with the generic "choose at least one" text instead.
+  **That refusal reuses `HUB_BLOCKED_REASON=selection_required`** — the same code the generic
+  refusal carries, because the underlying finding is the same one (a mandatory sub-selection is
+  unanswered and the target holds none of that kind); only `HUB_MESSAGE` differs. A caller that
+  needs to tell "you forgot a flag" from "there is no gap here to close" must match the message
+  text, not the reason code. A domain with no sub-selection at all (GTD) has nothing that could be
+  unanswered, so `--baseline-only` on it always succeeds and installs its whole group. Mutually
+  exclusive with `--all` and with any non-empty sub-selection flag (a flag that could silently do
+  nothing is worse than one that refuses); requires `--domains`. Its interactive twin is the `r`
+  key on the domains checklist.
 - **`uninstall --all` is the one critical-tier flow.** On a terminal you type the word `UNINSTALL`
   in full; without one you must pass `--confirm=UNINSTALL`, or the command fails loud rather than
   assuming consent. It removes everything installed plus `CLAUDE.md` and the contract schemas, and
