@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 #
-# run-tests.sh — the Management Hub's INSTALL sub-selection rules, at the two
-#                boundaries a non-TTY test process can reach: hub-install.sh's
-#                NON-INTERACTIVE empty-selection guard, and the
-#                hub_domain_selectable_groups_of_kind accessor that guard is
-#                built on.
+# run-tests.sh — the Management Hub's INSTALL sub-selection rules, at every
+#                boundary a non-TTY test process can reach: hub-install.sh's
+#                NON-INTERACTIVE empty-selection guard, its --baseline-only flag,
+#                the hub_domain_selectable_groups_of_kind accessor the guard is
+#                built on, and lib/hub-checklist.sh's own entry guards.
 #
 # The shared machinery lives in lib/: the runner primitives and the isolated
 # PATH toolbox in lib/harness.sh (which also states why this is hand-rolled
@@ -101,6 +101,51 @@ hub_discovery_build "$1"
 hub_domain_selectable_groups_of_kind "$2" "$3"
 PROBE_EOF
 probe_groups() { harness_run "HUB_LIB=$HUB_LIB" sh "$PROBE" "$SRC" "$1" "$2"; }
+
+# probe_checklist [ARG ...] -> lib/hub-checklist.sh's hub_checklist at its OWN
+# boundary, with ARG... forwarded VERBATIM as its trailing optional arguments
+# (GROUPED, EXTRAKEY, EXTRALABEL).
+#
+# FORWARDED WITH "$@" RATHER THAN AS FIXED POSITIONALS, because the ARGUMENT COUNT
+# is part of what is under test: GROUPED and EXTRAKEY are optional, three of the
+# widget's four production call sites omit one or both, and `${5:-0}` given an
+# explicit empty string is a different call from one where $5 is genuinely unset.
+# A probe with fixed slots could only ever exercise the always-passed shape.
+#
+# WHY THE WIDGET IS ASKED DIRECTLY rather than through a capability script: these
+# are ENTRY guards on a shared widget, and hub-install.sh offers exactly one
+# EXTRAKEY (`r`, which must NOT trip them) while hub-uninstall.sh offers exactly one
+# GROUPED (`1`, likewise) — so every REFUSED shape is unreachable through any
+# capability script by construction. The guards exist for the next call site, and
+# this is the only boundary at which that call site can be simulated.
+#
+# THE EXIT STATUS TELLS THE TWO OUTCOMES APART: 1 is `die` (a guard refused, and
+# its diagnostic is on stderr), 2 is hub_checklist's own "the user quit" return —
+# which is what a widget that ACCEPTED its arguments does here, since harness_run
+# hands it /dev/null on stdin and its first `read` therefore hits EOF. Neither
+# status is reachable from the other's path, so it needs no marker of its own.
+CHECKLIST_PROBE="$WORK/probe-checklist-guards.sh"
+cat >"$CHECKLIST_PROBE" <<'PROBE_EOF'
+set -eu
+# Set before sourcing: warn/die interpolate it, and `set -u` would abort on the
+# unset variable before either could print the diagnostic under test.
+HUB_PROG='crucible-hub probe'
+. "$HUB_LIB/hub-common.sh"
+. "$HUB_LIB/hub-render.sh"
+. "$HUB_LIB/hub-nav.sh"
+. "$HUB_LIB/hub-checklist.sh"
+hub_workspace_init
+# SIX columns, which is GROUPED=1's shape — and safe to feed a GROUPED=0 render
+# too, where the extra `group`/`subgroup` pair simply lands in the ungrouped
+# reading's `annotation` slot. One rows file for both modes is what keeps this
+# probe free of a branch on the very argument it is testing.
+hcp_rows="$HUB_WORK/rows.tsv"
+printf 'alpha\tAlpha\t0\tProbe group\t\tblurb\nbeta\tBeta\t0\tProbe group\t\tblurb\n' >"$hcp_rows"
+hcp_out="$HUB_WORK/selected.txt"
+: >"$hcp_out"
+hub_checklist 'Probe checklist' '' "$hcp_rows" "$hcp_out" "$@"
+PROBE_EOF
+probe_checklist() { harness_run "HUB_LIB=$HUB_LIB" sh "$CHECKLIST_PROBE" "$@"; }
 
 # ===========================================================================
 # lib/hub-discovery.sh — hub_domain_selectable_groups_of_kind
@@ -556,5 +601,310 @@ if harness_link_optional_tool jq; then
 else
 	skip 'the --format=json cases: jq is not installed, and --format=json requires it'
 fi
+
+# ===========================================================================
+# --baseline-only — the NON-INTERACTIVE required-only route, and the twin of the
+# domains checklist's `r` key (run-tests-interactive.sh drives that half).
+#
+# THE FLAG ADDS EXACTLY ONE THING to the run: a REFUSAL where the intent cannot be
+# honored. For an eligible domain it asserts an intent the empty-selection guard
+# above already accepts, so the success cases below assert that the flag does not
+# disturb that outcome — the payload, the receipt and what landed on disk are the
+# same ones the sections above already pin. The refusals are where the flag's own
+# behaviour lives, which is why there are more of them.
+# ===========================================================================
+# Matched on APOSTROPHE-FREE spans, for the reason BLOCKED_SD_MESSAGE states.
+# These are hi_baseline_only_gap_message's, and the WHOLE point of the field is
+# that they are NOT hub_domain_empty_selection_message's — the reason code is
+# shared (selection_required), so the message is the only thing that says which of
+# the two refusals a caller received.
+GAP_MESSAGE_SD='asks for the required content of Software Development alone'
+GAP_MESSAGE_PM='asks for the required content of Project Management alone'
+GAP_MESSAGE_FLAG='Name a selection with --technologies'
+
+section "--baseline-only on an ELIGIBLE domain -> the required content, and nothing else"
+# The same target state as install(empty/installed) above, asked for through the
+# flag instead of through an omitted --technologies. The outcome must be identical:
+# the flag asserts an intent, it does not unlock capability.
+TARGET_BO_OK="$WORK/target-baseline-only-ok"
+fx_target_reset "$TARGET_BO_OK"
+fx_link "$TARGET_BO_OK" "$FX_DEPLOYED_BETA_DEV" "$FX_SRC_BETA_DEV"
+run_install "$TARGET_BO_OK" --baseline-only --domains=software-development
+expect_rc "install(baseline-only/eligible): -> exit 0" 0
+stdout_has "install(baseline-only/eligible): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_lacks "install(baseline-only/eligible): not blocked" "HUB_BLOCKED_REASON"
+stdout_has "install(baseline-only/eligible): HUB_BASELINE_ONLY names the domain" "$BASELINE_ONLY_SD"
+stdout_has "install(baseline-only/eligible): the mandatory kind stays empty in the receipt" "HUB_TECHNOLOGIES=''"
+stdout_has "install(baseline-only/eligible): the optional kind stays empty too" "HUB_SD_VCS=''"
+path_exists "install(baseline-only/eligible): baseline lens reviewer installed" "$TARGET_BO_OK/$FX_DEPLOYED_LENS"
+path_exists "install(baseline-only/eligible): baseline specialist installed" "$TARGET_BO_OK/$FX_DEPLOYED_SPECIALIST"
+path_exists "install(baseline-only/eligible): baseline flow installed" "$TARGET_BO_OK/$FX_DEPLOYED_FLOW"
+path_absent "install(baseline-only/eligible): no technology installed" "$TARGET_BO_OK/$FX_DEPLOYED_ALPHA_DEV"
+path_absent "install(baseline-only/eligible): no VCS host installed" "$TARGET_BO_OK/$FX_DEPLOYED_VCS_GITHUB"
+
+section "--baseline-only on a NEVER-TOUCHED domain -> refused, with its own message"
+# THE FLAG'S WHOLE IMPLEMENTATION, and the one verdict the bare omission cannot
+# produce: a fresh target blocks either way, but only the flag can say WHY the
+# required-only intent specifically cannot be honored here. Both the presence of
+# its message and the ABSENCE of the generic one are asserted, because a refusal
+# that fell through to the generic guard would still be exit 1 with the same
+# reason code — indistinguishable on every other field in the payload.
+TARGET_BO_GAP="$WORK/target-baseline-only-gap"
+fx_target_reset "$TARGET_BO_GAP"
+run_install "$TARGET_BO_GAP" --baseline-only --domains=software-development
+expect_rc "install(baseline-only/gap): -> exit 1" 1
+stdout_has "install(baseline-only/gap): HUB_STATUS=blocked" "HUB_STATUS='blocked'"
+stdout_has "install(baseline-only/gap): the REUSED closed-set reason, not a new member" \
+	"HUB_BLOCKED_REASON='selection_required'"
+stdout_has "install(baseline-only/gap): the message names the domain and what was asked for" "$GAP_MESSAGE_SD"
+stdout_has "install(baseline-only/gap): and names the flag that would satisfy it" "$GAP_MESSAGE_FLAG"
+stdout_lacks "install(baseline-only/gap): it is NOT the generic empty-selection message" "$BLOCKED_SD_MESSAGE"
+stdout_lacks "install(baseline-only/gap): a blocked payload carries no HUB_BASELINE_ONLY" "HUB_BASELINE_ONLY"
+path_absent "install(baseline-only/gap): nothing was installed" "$TARGET_BO_GAP/$FX_DEPLOYED_LENS"
+
+section "--baseline-only over two domains, only one eligible -> refused, naming the other one"
+# The per-domain loop, and the half a single-domain case cannot see: the eligible
+# domain is named FIRST, so a loop that stopped at its first satisfied domain would
+# install both baselines and never reach the refusal at all.
+TARGET_BO_MIXED="$WORK/target-baseline-only-mixed"
+fx_target_reset "$TARGET_BO_MIXED"
+fx_link "$TARGET_BO_MIXED" "$FX_DEPLOYED_BETA_DEV" "$FX_SRC_BETA_DEV"
+run_install "$TARGET_BO_MIXED" --baseline-only "$MIXED_DOMAINS"
+expect_rc "install(baseline-only/mixed): -> exit 1" 1
+stdout_has "install(baseline-only/mixed): HUB_STATUS=blocked" "HUB_STATUS='blocked'"
+stdout_has "install(baseline-only/mixed): the message names the INELIGIBLE domain" "$GAP_MESSAGE_PM"
+stdout_lacks "install(baseline-only/mixed): not the eligible one it walked past" "$GAP_MESSAGE_SD"
+path_absent "install(baseline-only/mixed): the eligible domain's baseline was NOT installed either" \
+	"$TARGET_BO_MIXED/$FX_DEPLOYED_LENS"
+
+section "--baseline-only on a domain with NO mandatory kind -> vacuously eligible"
+# GTD, whose selection kind is `none`: nothing about it can be unanswered, so the
+# eligibility precondition is satisfied on a target that has never been touched at
+# all — the one state every other domain is refused on. Its whole atomic group
+# installs, and HUB_BASELINE_ONLY stays EMPTY, because no MANDATORY kind's empty
+# selection was ever accepted here (hi_baseline_only_record's own first clause).
+# That empty field beside a successful install is the case, not a missing
+# assertion: a domain that never had a question to decline is not a domain whose
+# answer was reduced to a baseline.
+TARGET_BO_GTD="$WORK/target-baseline-only-gtd"
+fx_target_reset "$TARGET_BO_GTD"
+run_install "$TARGET_BO_GTD" --baseline-only --domains=gtd
+expect_rc "install(baseline-only/no-mandatory-kind): -> exit 0" 0
+stdout_has "install(baseline-only/no-mandatory-kind): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_lacks "install(baseline-only/no-mandatory-kind): not blocked" "HUB_BLOCKED_REASON"
+stdout_has "install(baseline-only/no-mandatory-kind): HUB_BASELINE_ONLY stays empty" "HUB_BASELINE_ONLY=''"
+path_exists "install(baseline-only/no-mandatory-kind): the atomic group's agent installed" \
+	"$TARGET_BO_GTD/$FX_DEPLOYED_GTD_AGENT"
+path_exists "install(baseline-only/no-mandatory-kind): its nested skill installed" \
+	"$TARGET_BO_GTD/$FX_DEPLOYED_GTD_CAPTURE"
+path_exists "install(baseline-only/no-mandatory-kind): its flow installed" \
+	"$TARGET_BO_GTD/$FX_DEPLOYED_GTD_FLOW"
+# NO "and no unselected domain's baseline came with it" ASSERTION HERE, deliberately.
+# It would hold under every mutation this fixture can express: any change that widened
+# the flag to an unnamed domain would find that domain ineligible on this fresh target
+# and block the whole run, leaving the same empty result the correct behaviour leaves.
+# An assertion that cannot fail is worse than none. install(baseline-only/mixed) is
+# where "only the named domains" is actually falsifiable.
+
+# ---------------------------------------------------------------------------
+# --baseline-only's four USAGE contradictions. Each is exit 2 (die_usage) with a
+# diagnostic on stderr, never a run that silently narrows or widens what the caller
+# asked for — "a flag that could silently do nothing is worse than one that
+# refuses", which is the rule hub-install.sh's own parser cites for these.
+#
+# The DIAGNOSTIC is asserted, not just the status, because all four exit 2 and a
+# caller reading only the status cannot tell which contradiction it hit — and two
+# of them are refused by two different checks that a wrong order would swap.
+# ---------------------------------------------------------------------------
+section "--baseline-only + --all -> usage error, answered by the contradiction it contains"
+run_install "$WORK/target-unused-all" --baseline-only --all
+expect_rc "install(baseline-only/with-all): -> exit 2" 2
+stderr_has "install(baseline-only/with-all): the diagnostic names --all" \
+	'--baseline-only and --all are mutually exclusive'
+# THE ORDER OF THE TWO PARSER CHECKS, which is what this second assertion pins:
+# `--baseline-only --all` also fails the --domains requirement, so a swapped order
+# would answer a caller that named every domain with "you named none" — the same
+# exit 2, and indistinguishable from this one on every field but this message.
+stderr_lacks "install(baseline-only/with-all): NOT answered by the --domains requirement it also fails" \
+	'--baseline-only requires --domains'
+
+section "--baseline-only with no --domains -> usage error"
+# The flag names WHICH domains to reduce, so with none named it asserts nothing.
+#
+# harness_run DIRECTLY, without --non-interactive, and that is the case rather than a
+# convenience: `--non-interactive` carries its OWN "requires --domains or --all"
+# check, which the parser runs FIRST, so adding it here would assert a different
+# guard's message and leave this one unreached. Both diagnostics are honest and both
+# point at --domains; this is the one that names the flag actually under test.
+# --format=env is still passed so the run is byte-clean if it ever gets past the
+# parser, which is exactly what the exit-2 assertion says it must not.
+harness_run sh "$INSTALL" --source "$SRC" --target "$WORK/target-unused-nodomains" \
+	--no-color --format=env --baseline-only
+expect_rc "install(baseline-only/no-domains): -> exit 2" 2
+# THE DIAGNOSTIC, not just the status: without this guard the run falls through to the
+# no-TTY usage error, which is also exit 2 and also points at --domains, so the
+# message is the only thing that says this guard is the one that fired.
+stderr_has "install(baseline-only/no-domains): the diagnostic names the missing flag" \
+	'--baseline-only requires --domains'
+
+section "--baseline-only + a NON-EMPTY sub-selection -> usage error, per kind"
+# Checked after the CSV split rather than in the parser, which is what makes the
+# empty-value spelling below a different answer. Both a MANDATORY kind's flag and
+# an OPTIONAL one's are contradictions: "required only" declines an optional screen
+# as surely as a mandatory one.
+run_install "$WORK/target-unused-tech" --baseline-only --domains=software-development --technologies=alpha
+expect_rc "install(baseline-only/with-technologies): -> exit 2" 2
+stderr_has "install(baseline-only/with-technologies): the diagnostic names the conflicting flag" \
+	'--baseline-only and --technologies are mutually exclusive'
+
+run_install "$WORK/target-unused-vcs" --baseline-only --domains=software-development --sd-vcs=github
+expect_rc "install(baseline-only/with-optional-kind): an OPTIONAL kind conflicts too -> exit 2" 2
+stderr_has "install(baseline-only/with-optional-kind): the diagnostic names that flag" \
+	'--baseline-only and --sd-vcs are mutually exclusive'
+
+run_install "$WORK/target-unused-trackers" --baseline-only --domains=project-management --pm-trackers=jira
+expect_rc "install(baseline-only/with-trackers): -> exit 2" 2
+stderr_has "install(baseline-only/with-trackers): the diagnostic names that flag" \
+	'--baseline-only and --pm-trackers are mutually exclusive'
+
+section "--baseline-only + an EMPTY sub-selection value -> no contradiction at all"
+# `--technologies=` with nothing after the `=` is not a selection, so it is the
+# same request as omitting the flag — and it must NOT be read as one. The
+# distinction is only observable after the split, which is why the check lives
+# there; a parser-level test for the flag's mere PRESENCE would refuse this.
+TARGET_BO_EMPTY_VALUE="$WORK/target-baseline-only-empty-value"
+fx_target_reset "$TARGET_BO_EMPTY_VALUE"
+fx_link "$TARGET_BO_EMPTY_VALUE" "$FX_DEPLOYED_BETA_DEV" "$FX_SRC_BETA_DEV"
+run_install "$TARGET_BO_EMPTY_VALUE" --baseline-only --domains=software-development --technologies=
+expect_rc "install(baseline-only/empty-value): -> exit 0" 0
+stdout_has "install(baseline-only/empty-value): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_has "install(baseline-only/empty-value): HUB_BASELINE_ONLY names the domain" "$BASELINE_ONLY_SD"
+path_exists "install(baseline-only/empty-value): the baseline really was installed" \
+	"$TARGET_BO_EMPTY_VALUE/$FX_DEPLOYED_LENS"
+
+# ===========================================================================
+# List's OWN "Required install" section is DELIBERATELY UNFILTERED — the other side
+# of the asymmetry run-tests-interactive.sh pins on Install's two screens.
+#
+# WHY THIS IS A TEST AND NOT A NOTE: Install hides a never-touched domain's
+# required content because its own shortcut cannot deliver it, and the temptation
+# when reading that rule is to "make List consistent". List claims no action, so it
+# shows the fuller picture unconditionally — and on a FRESH target that is
+# precisely where the two screens must disagree. A single fixture, two opposite
+# expected answers, is what makes the asymmetry falsifiable in both directions.
+# ===========================================================================
+section "hub-list.sh reports a never-touched domain's required install anyway"
+TARGET_LIST_FRESH="$WORK/target-list-fresh"
+fx_target_reset "$TARGET_LIST_FRESH"
+harness_run sh "$HUB_DIR/hub-list.sh" --source "$SRC" --target "$TARGET_LIST_FRESH" --no-color
+expect_rc "list(fresh): -> exit 0" 0
+stdout_has "list(fresh): the Required install section is present" 'Required install'
+# THE UNITS, not the domain sub-header above them: List renders the identical
+# `  Software Development` heading over its Available group too, so an assertion on
+# that line would pass with this whole section deleted. The unit names appear nowhere
+# else in the report, which is what makes them the falsifiable form of "this section
+# reported this domain".
+stdout_has "list(fresh): and names its units, though Install shows none of this here" '○ Fixture review lens'
+stdout_has "list(fresh): every one of them" '○ Flow fixture'
+
+# ===========================================================================
+# lib/hub-checklist.sh's ENTRY GUARDS on its two optional trailing arguments.
+#
+# THE WIDGET IS SHARED BY FOUR SCREENS across two capabilities, which is why these
+# are entry guards and not prompt-time rejections: a bad EXTRAKEY would swallow a
+# row toggle at the prompt, leaving a row silently unselectable, and a bad GROUPED
+# would turn grouping on while losing the extra key. Both are CALLER bugs, and
+# refusing at entry is what keeps them that rather than a mystery on screen.
+#
+# THE TWO SHIPPED VALUES MUST NOT TRIP THEM, and those cases lead each pair below:
+# hub-install.sh's domains checklist passes EXTRAKEY=`r`, hub-uninstall.sh's flat
+# list passes GROUPED=1, and a guard that refused either would break the very
+# features it protects.
+# ===========================================================================
+CHECKLIST_TAB=$(printf '\t')
+GUARD_SHADOW='carries a digit, comma, hyphen or whitespace and would shadow a row toggle'
+GUARD_ROW_KEY='is also a row key on this screen'
+GUARD_GROUPED='GROUPED must be 0 or 1'
+
+section "hub_checklist: the shipped argument shapes are all accepted"
+# The hint line, WHOLE, in both of its two shapes. Asserted with stderr_has_line
+# rather than stderr_has because an extra-key segment is PREPENDED: every substring of
+# the plain line below survives in the augmented one, so only a whole-line compare can
+# say that no segment was added. See stderr_has_line's own header.
+HINT_TAIL='number or name to select/deselect · 1,3-5: multiple · a: all · n: none · b: back · q: quit · ?: help · Enter: confirm'
+
+probe_checklist
+expect_rc "checklist(omitted): both optional arguments omitted -> the widget runs" 2
+stdout_is "checklist(omitted): nothing reached the machine channel" ''
+stderr_has_line "checklist(omitted): the hint line carries no extra-key segment at all" "$HINT_TAIL"
+# GROUPED defaulted to 0, observed rather than assumed: the probe's rows carry a
+# `group` column, which an ungrouped render prints INLINE after the label and a grouped
+# one lifts onto a heading line of its own.
+stderr_has "checklist(omitted): GROUPED defaulted to 0, so the group column rendered inline" \
+	'1. Alpha Probe group'
+
+probe_checklist 0 r 'install required only'
+expect_rc "checklist(extrakey=r): hub-install.sh's own key is accepted -> the widget runs" 2
+# The LEADING segment, which is both halves of the contract in one line: the key was
+# accepted AND it is advertised ahead of the toggle clause, with everything else
+# unchanged.
+stderr_has_line "checklist(extrakey=r): and leads the hint line, ahead of the toggle clause" \
+	"r: install required only · $HINT_TAIL"
+
+probe_checklist 1
+expect_rc "checklist(grouped=1): hub-uninstall.sh's own shape is accepted -> the widget runs" 2
+stderr_has_line "checklist(grouped=1): and the group column became a heading line of its own" \
+	'  Probe group'
+
+section "hub_checklist: an EXTRAKEY the toggle parser would read specially DIES"
+# One case per LOAD-BEARING character plus the two defensive ones, because the
+# guard rejects a character CLASS rather than enumerating the toggle spellings —
+# so each character is an independent claim about that class's membership.
+probe_checklist 0 r1 'label'
+expect_rc "checklist(extrakey/digit): -> exit 1" 1
+stderr_has "checklist(extrakey/digit): the diagnostic says why" "$GUARD_SHADOW"
+
+probe_checklist 0 'a,b' 'label'
+expect_rc "checklist(extrakey/comma): -> exit 1" 1
+stderr_has "checklist(extrakey/comma): the diagnostic says why" "$GUARD_SHADOW"
+
+probe_checklist 0 'x y' 'label'
+expect_rc "checklist(extrakey/space): -> exit 1" 1
+stderr_has "checklist(extrakey/space): the diagnostic says why" "$GUARD_SHADOW"
+
+probe_checklist 0 'x-y' 'label'
+expect_rc "checklist(extrakey/hyphen): -> exit 1" 1
+stderr_has "checklist(extrakey/hyphen): the diagnostic says why" "$GUARD_SHADOW"
+
+probe_checklist 0 "x${CHECKLIST_TAB}y" 'label'
+expect_rc "checklist(extrakey/tab): -> exit 1" 1
+stderr_has "checklist(extrakey/tab): the diagnostic says why" "$GUARD_SHADOW"
+
+section "hub_checklist: an EXTRAKEY that IS a row key on this screen DIES"
+# A PER-CALL test, not a fixed deny-list: the same key is safe on a screen whose
+# rows do not use it. `alpha` is a row of the probe's own rows file, which is why
+# this refusal and the accepted `r` above differ in nothing but the key.
+probe_checklist 0 alpha 'label'
+expect_rc "checklist(extrakey/row-key): -> exit 1" 1
+stderr_has "checklist(extrakey/row-key): the diagnostic names the collision, not the character class" \
+	"$GUARD_ROW_KEY"
+# ON stderr, because that is where the widget RENDERS — a `stdout_is ''` here would
+# pass with the guard removed, since no screen ever reaches the machine channel. The
+# absent row is what says the refusal happened at ENTRY rather than at the prompt.
+stderr_lacks "checklist(extrakey/row-key): the guard fired at entry, so no screen rendered" \
+	'1. Alpha'
+
+section "hub_checklist: a GROUPED that is neither 0 nor 1 DIES"
+probe_checklist 2 r 'label'
+expect_rc "checklist(grouped/out-of-range): -> exit 1" 1
+stderr_has "checklist(grouped/out-of-range): the diagnostic states the admitted values" "$GUARD_GROUPED"
+
+# THE ACCIDENT THE GUARD EXISTS FOR, and it is positional rather than a typo: a
+# caller that omits the filler `0` slides its EXTRAKEY into the GROUPED slot, which
+# without this guard turns domain grouping silently on AND loses the extra key.
+probe_checklist r 'label'
+expect_rc "checklist(grouped/slid-extrakey): -> exit 1" 1
+stderr_has "checklist(grouped/slid-extrakey): the diagnostic quotes the value that landed there" \
+	"$GUARD_GROUPED, got 'r'"
 
 harness_summary

@@ -27,6 +27,8 @@
 #                             delimited by <> so a caller's substring match on one
 #                             domain cannot also pass on a payload naming two.
 #   $env(APPLIED_MARKER)      the confirmed install reached that payload at all.
+#   $env(SCREEN_MARKER)       a PREFIX, not a verdict — dump_screen below stamps it
+#                             on every line of a rendered screen it echoes back.
 #   MARKER:TIMEOUT-<stage>    a screen never arrived; <stage> names which. Literal
 #                             because no assertion greps for it: it is a diagnostic
 #                             for a run that already failed its exit-status check.
@@ -49,6 +51,7 @@ set toolbox_path   [lindex $argv 4]
 # silently empty marker the caller would read as "that screen never happened".
 set applied_marker  $env(APPLIED_MARKER)
 set baseline_marker $env(BASELINE_MARKER)
+set screen_marker   $env(SCREEN_MARKER)
 
 # The SPAWNED process carries the same env -i isolation harness_run gives every
 # non-interactive case; only expect itself runs outside it, because expect is
@@ -67,6 +70,67 @@ proc expect_screen {pattern stage} {
 			exit 1
 		}
 	}
+}
+
+# dump_screen STAGE — consume the screen currently rendering, up to and including the
+# `> ` prompt that closes it, and echo every line of it with a STAGE-qualified prefix.
+#
+# WHY A DRIVER EVER DUMPS INSTEAD OF MATCHING: the lines some cases turn on are ones
+# that may legitimately NOT EXIST — the `r` hint segment, the "Required install" block,
+# a domain row. A driver that waited for one would report a timeout, which is
+# indistinguishable from a screen that never rendered at all. Echoing the whole screen
+# back keeps every judgement in run-tests-interactive.sh (see WHY THE DRIVERS REPORT
+# MARKERS above) and lets a NEGATIVE assertion be made against text that is
+# demonstrably present.
+#
+# The trailing \r is stripped because a pty terminates lines with CRLF and the caller
+# asserts against the screen's own text, indentation included; leaving it on would put
+# an invisible character between every expected string and its own line ending.
+proc dump_screen {stage} {
+	global screen_marker
+	expect {
+		-ex "> " {
+			foreach dsline [split $expect_out(buffer) "\n"] {
+				puts "$screen_marker$stage|[string trimright $dsline "\r"]"
+			}
+		}
+		timeout {
+			puts "MARKER:TIMEOUT-$stage"
+			exit 1
+		}
+	}
+}
+
+# walk_back_to_domains — from the CONFIRM prompt, `b` all the way back to the domains
+# checklist, leaving it rendered and awaiting a reply.
+#
+# `b` on the confirm screen lands on the LAST selection screen that ran, so the walk
+# back is one `b` per sub-selection screen. Each is awaited rather than blind-sent: a
+# `b` typed at a screen that has not rendered yet would be answered by the wrong
+# checklist.
+#
+# SHARED because more than one case needs to REACH the domains checklist a second time
+# in order to press something there, and the four screens between are identical
+# scaffolding rather than any case's own subject — the same split this file's header
+# draws for the spawn and the payload readback. What each caller does on ARRIVAL is
+# what actually differs, and that stays in the caller.
+#
+# THE THREE SUB-SELECTION SCREENS ARE FIXED, not derived, and that is a real
+# precondition on the caller: it only walks a selection whose steps are Software
+# Development's `vcs` and `technology` plus Project Management's `pm-tracker`, i.e. a
+# selection holding BOTH of the registry's sub-selection domains. A caller that
+# selected only one of them has fewer screens to come back through and must not use
+# this — it would send a `b` at the domains checklist and leave the capability.
+proc walk_back_to_domains {} {
+	expect_screen "Proceed?" "confirm-screen"
+	send "b\r"
+	expect_screen "select tracker" "tracker-screen-revisited"
+	send "b\r"
+	expect_screen "select technologies" "technology-screen-revisited"
+	send "b\r"
+	expect_screen "select VCS" "vcs-screen-revisited"
+	send "b\r"
+	expect_screen "Which domain(s)" "domains-screen-revisited"
 }
 
 # report_baseline_only_payload — read HUB_BASELINE_ONLY out of the machine payload

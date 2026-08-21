@@ -27,8 +27,18 @@
 # so a block there cannot be an accident of the optional-kind path, and a MIXED
 # --domains selection has a second domain to iterate to.
 #
-# A partial --source (no gtd/, no accounts/, no CLAUDE.md) is a supported state,
-# not a degraded one — see lib/hub-domains.sh's hub_domain_exists.
+# GTD is shipped as the third registered domain because it is the registry's only
+# domain whose selection kind is `none` AND whose whole footprint is one `atomic:`
+# group rather than a `baseline:` group (lib/hub-domains.sh's GROUP KEY GRAMMAR).
+# That combination makes it the only reachable case of TWO separate rules at once:
+# it is VACUOUSLY eligible for a required-only install (no mandatory kind can be
+# unanswered), and it is simultaneously NOT actionable (with no baseline group,
+# hub_domain_pending_baseline reports nothing pending), so it must succeed under
+# --baseline-only while never being offered by the `r` key or named in either
+# Required-install block. Neither half is observable on a two-domain fixture.
+#
+# A partial --source (no accounts/, no CLAUDE.md) is a supported state, not a
+# degraded one — see lib/hub-domains.sh's hub_domain_exists.
 #
 # Sourced by the test runners — never executed directly.
 
@@ -36,6 +46,7 @@
 FX_SD_DEVELOPERS='software-development/agents/developers'
 FX_SD_SPECIALIST_SKILLS='software-development/agents/specialists/fixture-operator/skills'
 FX_PM_AGENT_SKILLS='project-management/agents/pm-fixture/skills'
+FX_GTD_AGENT='gtd/agents/gtd-fixture-writer'
 
 # The source paths a target-side symlink has to resolve to. Only the units some
 # test actually plants are named; the rest are only ever written, never linked.
@@ -46,6 +57,15 @@ FX_SRC_BETA_DEV="$FX_SD_DEVELOPERS/beta-developer.md"
 FX_SRC_GAMMA_DEV="$FX_SD_DEVELOPERS/gamma-developer.md"
 FX_SRC_VCS_GITHUB="$FX_SD_SPECIALIST_SKILLS/procedure-gh-fixture"
 FX_SRC_PM_TRACKER_GITHUB="$FX_PM_AGENT_SKILLS/procedure-gh-fixture-issues"
+
+# Software Development's BASELINE units — the three that install unconditionally
+# the moment the domain is picked, named here because fx_link_sd_baseline below
+# plants all three to reach the "eligible, but nothing left to install" state.
+FX_SRC_LENS='software-development/agents/reviewers/lens/lens-fixture-reviewer.md'
+FX_SRC_SPECIALIST='software-development/agents/specialists/fixture-operator/fixture-operator.md'
+FX_SRC_FLOW='software-development/flows/flow-fixture'
+FX_SRC_PM_AGENT='project-management/agents/pm-fixture/pm-fixture.md'
+FX_SRC_PM_FLOW='project-management/flows/flow-pm-fixture'
 
 # --- Deployed (target-side) paths -------------------------------------------
 #
@@ -67,6 +87,9 @@ FX_DEPLOYED_PM_AGENT='agents/pm-fixture.md'
 FX_DEPLOYED_PM_FLOW='skills/flow-pm-fixture'
 FX_DEPLOYED_PM_TRACKER_GITHUB='skills/procedure-gh-fixture-issues'
 FX_DEPLOYED_PM_TRACKER_JIRA='skills/procedure-jira-fixture'
+FX_DEPLOYED_GTD_AGENT='agents/gtd-fixture-writer.md'
+FX_DEPLOYED_GTD_CAPTURE='skills/procedure-gtd-fixture-capture'
+FX_DEPLOYED_GTD_FLOW='skills/flow-gtd-fixture'
 
 # fx_write_md PATH NAME -> one agent-shaped markdown file. The YAML frontmatter
 # `name:` is the only thing discovery reads out of it (lib/hub-discovery.sh's
@@ -102,6 +125,13 @@ fx_build_source() {
 	fx_write_skill "$FX_SRC/$FX_SRC_PM_TRACKER_GITHUB" procedure-gh-fixture-issues
 	fx_write_skill "$FX_SRC/$FX_PM_AGENT_SKILLS/procedure-jira-fixture" procedure-jira-fixture
 	fx_write_skill "$FX_SRC/project-management/flows/flow-pm-fixture" flow-pm-fixture
+	# GTD's three units, in the two subtrees lib/hub-discovery.sh's hub_disc_gtd
+	# walks: an agent (with a skill nested under it, the shape its `-maxdepth 2`
+	# agent walk exists for) and a flow. All three land in the one `atomic:gtd`
+	# group — see this file's header for why that group shape is the point.
+	fx_write_md "$FX_SRC/$FX_GTD_AGENT/gtd-fixture-writer.md" gtd-fixture-writer
+	fx_write_skill "$FX_SRC/$FX_GTD_AGENT/skills/procedure-gtd-fixture-capture" procedure-gtd-fixture-capture
+	fx_write_skill "$FX_SRC/gtd/flows/flow-gtd-fixture" flow-gtd-fixture
 }
 
 # fx_target_reset DIR -> DIR as a pristine, empty deployment target.
@@ -138,4 +168,29 @@ fx_link_every_technology() {
 	fx_link "$1" "$FX_DEPLOYED_ALPHA_STANDARD" "$FX_SRC_ALPHA_STANDARD"
 	fx_link "$1" "$FX_DEPLOYED_BETA_DEV" "$FX_SRC_BETA_DEV"
 	fx_link "$1" "$FX_DEPLOYED_GAMMA_DEV" "$FX_SRC_GAMMA_DEV"
+}
+
+# fx_link_sd_baseline TARGET -> every unit of Software Development's BASELINE
+# linked, so the domain has NO never-installed required content left.
+#
+# The third distinct target state the required-only routes turn on, and the only
+# one that separates their two preconditions: a domain here is still ELIGIBLE (a
+# technology is present, so no mandatory kind is unanswered) yet no longer
+# ACTIONABLE (nothing of its baseline is missing), which is exactly the state that
+# must hide the `r` key and the Required-install block while leaving the domain
+# itself perfectly installable through its own screens. Paired with fx_link of one
+# technology by every caller — this helper alone leaves the domain ineligible.
+fx_link_sd_baseline() {
+	fx_link "$1" "$FX_DEPLOYED_LENS" "$FX_SRC_LENS"
+	fx_link "$1" "$FX_DEPLOYED_SPECIALIST" "$FX_SRC_SPECIALIST"
+	fx_link "$1" "$FX_DEPLOYED_FLOW" "$FX_SRC_FLOW"
+}
+
+# fx_link_pm_baseline TARGET -> the same state for Project Management's two baseline
+# units. Its own helper rather than a `fx_link_every_baseline` covering both, because
+# the two domains are put into that state for different reasons in different cases and
+# a combined helper would force every caller to take both.
+fx_link_pm_baseline() {
+	fx_link "$1" "$FX_DEPLOYED_PM_AGENT" "$FX_SRC_PM_AGENT"
+	fx_link "$1" "$FX_DEPLOYED_PM_FLOW" "$FX_SRC_PM_FLOW"
 }

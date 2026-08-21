@@ -1,0 +1,53 @@
+#!/usr/bin/env expect
+#
+# drive-required-only-key.exp — press `r` on the domains checklist and confirm, without
+#                               ticking anything and without walking a single
+#                               sub-selection screen.
+#
+# WHAT THIS REACHES THAT NOTHING ELSE DOES: `r` is the interactive twin of
+# --baseline-only, and its three effects are only observable together on one walk — it
+# SELECTS every eligible-and-pending domain offered on the screen, RECORDS each of them
+# in HUB_BASELINE_ONLY, and REMOVES their sub-selection screens from the walk. The
+# non-interactive suite can reach the first two through the flag; the third exists
+# nowhere else, because only an interactive walk has screens to drop.
+#
+# THE ABSENCE OF KEYSTROKES IS THE ASSERTION. Between `r` and the confirm prompt this
+# driver sends nothing at all, so a sub-selection screen that still rendered would
+# swallow no Enter and simply never produce "Proceed?" — the walk stalls, this script
+# times out non-zero, and the caller's exit-status check reports it. A driver that
+# blind-sent an Enter or two there would have passed either way.
+#
+# THE KEY SEQUENCE:
+#   1. `r` at the domains checklist   selects the candidates, drops their screens
+#   2. …no sub-selection screens…     the effect under test
+#   3. confirm                        apply, and print the payload
+#
+# The spawn, the screen helper and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-required-only-key.exp SRC TARGET INSTALL HOME PATH
+#        with REQUIRED_ONLY_KEY, APPLIED_MARKER and BASELINE_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+expect_screen "Which domain(s)" "domains-screen"
+
+# THE SCREEN `r` IS ABOUT TO BE PRESSED ON, echoed back before anything is typed. Its
+# ROW LIST is what anchors the caller's "a domain that is NOT a candidate was not
+# selected" assertion: that claim is an absence on disk, and without evidence the
+# domain was offered here in the first place it would pass just as well on a screen
+# that never listed it. Consuming the prompt is not a keystroke — the walk is still
+# untouched between here and `r`.
+dump_screen domains
+
+# The key comes from the caller rather than being spelled here, the same discipline the
+# markers follow: a driver holding its own copy could drift from the key the caller
+# asserts the hint line advertises.
+send "$env(REQUIRED_ONLY_KEY)\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so the
+# walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen"
+send "\r"
+
+report_baseline_only_payload

@@ -143,15 +143,23 @@ expect_rc() {
 	else fail "$1" "expected exit $2, got $CUR_RC; stderr: $CUR_ERR"; fi
 }
 
+# `grep -Fq --` on every matcher below, never a bare `grep -Fq "$2"`: an EXPECTED
+# STRING THAT STARTS WITH `-` IS READ AS AN OPTION otherwise, and the failure is not
+# a false pass but a confusing one — grep exits 2 with its own usage text, the
+# assertion reports "missing" for a string that is present, and the noise looks like
+# a harness crash rather than a quoting bug. Reached the moment an assertion names a
+# FLAG, which every usage-error diagnostic does (`--baseline-only requires
+# --domains`). The `--` is the POSIX end-of-options marker and is honored by BSD and
+# GNU grep alike.
 stdout_has() {
 	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq "$2"; then pass "$1"
+	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then pass "$1"
 	else fail "$1" "stdout missing: $2"; fi
 }
 
 stdout_lacks() {
 	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_OUT" | grep -Fq "$2"; then fail "$1" "stdout unexpectedly contains: $2"
+	if printf '%s\n' "$CUR_OUT" | grep -Fq -- "$2"; then fail "$1" "stdout unexpectedly contains: $2"
 	else pass "$1"; fi
 }
 
@@ -172,8 +180,34 @@ stdout_is() {
 # about "the field is emitted on THIS path" cannot name the path.
 stderr_has() {
 	TESTS_RUN=$((TESTS_RUN + 1))
-	if printf '%s\n' "$CUR_ERR" | grep -Fq "$2"; then pass "$1"
+	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then pass "$1"
 	else fail "$1" "stderr missing: $2"; fi
+}
+
+# stderr_lacks — the negative half of stderr_has, and it earns a place beside it for
+# the same reason stdout_lacks does: two diagnostics that BOTH apply to one argument
+# list are told apart by which one did NOT print. A usage error's exit status is the
+# same either way, so the absent message is the only observable difference.
+stderr_lacks() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then fail "$1" "stderr unexpectedly contains: $2"
+	else pass "$1"; fi
+}
+
+# stderr_has_line — WHOLE-LINE compare (`grep -Fqx`), the per-line counterpart of
+# stdout_is, for a rendered line whose ABSENT content is the assertion.
+#
+# WHY A SUBSTRING MATCH CANNOT EXPRESS THIS: a checklist's hint line grows an extra
+# segment at its FRONT when the caller offers an extra key, so every substring of the
+# plain line is still a substring of the augmented one — `stderr_has` on it passes
+# either way and verifies nothing about the segment's absence. Pinning the whole line
+# is what makes "this line has no extra segment" falsifiable, in the one direction a
+# `lacks` check cannot reach (there is no string to name when the thing under test is
+# a prefix that was not added).
+stderr_has_line() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if printf '%s\n' "$CUR_ERR" | grep -Fqx -- "$2"; then pass "$1"
+	else fail "$1" "no stderr line is exactly: $2"; fi
 }
 
 # stdout_json_is NAME FILTER EXPECTED -> parse the WHOLE stdout as one JSON
