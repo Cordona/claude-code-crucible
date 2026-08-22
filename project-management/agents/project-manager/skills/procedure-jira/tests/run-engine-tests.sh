@@ -1372,14 +1372,9 @@ equals "version --delete --json: SYNTHESIZED body is exactly {id:\"11751\",delet
 # it. Every case below therefore pins the full sequence, not just a count.
 # ---------------------------------------------------------------------------
 
-# request_method_sequence -> the HTTP methods of the last run's curl calls, in
-# call order, joined by "/" (e.g. "GET/GET/DELETE"). http.sh's jira_curl always
-# passes the method as the argv token immediately following `-X`, and the stub
-# logs one argv token per line — so "the line after each `-X` line" IS the
-# method, in call order, with no parsing of the surrounding CALL_<n> markers.
-request_method_sequence() {
-	sed -n '/^-X$/{n;p;}' "$CURL_STUB_ARGV_LOG" | tr '\n' '/' | sed 's|/$||'
-}
+# request_method_sequence (lib/curl-stub.sh) is what every case below asserts
+# with — it was promoted out of this file once comment-edit's read-before-write
+# ordering in the write suite needed the same proof.
 
 # The owning project is reported by /version/<id> ONLY as a numeric projectId,
 # which is exactly why a second GET exists; the two ids are deliberately
@@ -3783,7 +3778,7 @@ stderr_has "boards: stray positional diagnostic" "takes no positional argument"
 # ===========================================================================
 section "jira.sh — regression: pre-existing + new commands still recognized (-h short-circuits before dispatch, so this proves recognition, not routing)"
 
-for pre_existing_command in view search workflow create comment transition update version component attach bulk boards board sprints sprint backlog epics epic; do
+for pre_existing_command in view search workflow create comment comment-edit transition update version component attach bulk boards board sprints sprint backlog epics epic; do
 	run nocurl sh "$JIRA" "$pre_existing_command" -h
 	expect_rc "regression: '$pre_existing_command -h' still exits 0 (command still recognized)" 0
 	stdout_has "regression: '$pre_existing_command -h' still prints usage" "Usage"
@@ -3805,9 +3800,292 @@ expect_rc "jq absent -> exit 1" 1
 stderr_has "jq absent: diagnostic" "jq is not installed"
 
 # ===========================================================================
+# The read-only gate ($JIRA_READ_ONLY) — its TWO halves, and the ONE exception.
+#
+# Half one is lib/readonlygate.sh's require_write_allowed, asserted at dispatch
+# through the real CLI below: a read runs, a write is refused (exit 1) before any
+# credential is opened or any curl call is made.
+#
+# Half two is lib/http.sh's own re-check at the network egress, and it is NOT a
+# plain "GET only" rule: it permits GET plus ONE exactly-matched method/URL pair,
+# POST /rest/api/3/search/jql, because Jira's REST v3 search takes its JQL in a
+# JSON body. `search` and `children` are reads that POST, so without that
+# exception the sink refused two of the five commands the read-only credential
+# scope names.
+#
+# WHY BOTH HALVES ARE ASSERTED, AND WHY THE SINK GETS ITS OWN PROBES. An
+# exception inside a fail-closed security check can fail in two opposite
+# directions, and only one of them is visible from the CLI: too NARROW breaks
+# `search` loudly (the end-to-end cases below catch it), while too WIDE — a
+# prefix match, a dropped method test, a look-alike host — breaks nothing a
+# passing command would notice. That direction is only observable by driving the
+# predicate itself across the URLs a widened match would start admitting.
+# ===========================================================================
+section "jira.sh — read-only gate: search/children/view RUN under \$JIRA_READ_ONLY"
+
+reset_curl_stub
+set_stub_response 1 '{"issues":[{"key":"PROJ-1","fields":{"summary":"a","status":{"name":"Open"}}}],"isLast":true}' 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --project PROJ
+expect_rc "read-only search -> exit 0" 0
+stdout_has "read-only search: the issue is rendered" "PROJ-1"
+argv_log_has_token "read-only search: the request really was a POST" "POST"
+argv_log_has_token "read-only search: to the exact permitted endpoint" \
+	"https://foo.atlassian.net/rest/api/3/search/jql"
+stderr_not_has "read-only search: no sink refusal on stderr" "refusing to send"
+
+reset_curl_stub
+set_stub_response 1 '{"issues":[{"key":"PROJ-2","fields":{"summary":"child","status":{"name":"Open"}}}],"isLast":true}' 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" children PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "read-only children -> exit 0" 0
+stdout_has "read-only children: the child issue is rendered" "PROJ-2"
+equals "read-only children: the parent JQL reached the wire" \
+	"$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-1.body")" 'parent = "PROJ-1"'
+
+# view is the CONTROL for the pair above: it is a GET, so it was permitted
+# before the exception existed and must still be. Without it, "search works
+# under read-only" could not be distinguished from "the gate stopped running".
+reset_curl_stub
+set_stub_response 1 '{"key":"PROJ-1","fields":{"summary":"a","status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "read-only view (a plain GET read) -> exit 0" 0
+argv_log_has_token "read-only view: the request really was a GET" "GET"
+
+section "jira.sh — read-only gate: the exception did NOT widen — writes stay refused, before the network"
+
+# assert_read_only_refusal NAME PHRASE — one write command's refusal: the
+# fail-closed exit code, the phrase naming WHICH invocation was refused (a bare
+# exit 1 is also what a network failure looks like), and ZERO curl calls. The
+# call count is what makes "before any network call" an observation rather than
+# a claim — every case runs under the `full` selector, so the stub curl IS on
+# PATH and reachable.
+assert_read_only_refusal() {
+	expect_rc "read-only $1 -> exit 1 (refused)" 1
+	stderr_has "read-only $1: the refusal names the invocation" "$2"
+	equals "read-only $1: made ZERO curl calls" "$(call_count)" "0"
+}
+
+READ_ONLY_TEXT_FILE="$WORK/read-only-comment.md"
+printf 'a comment body\n' >"$READ_ONLY_TEXT_FILE"
+
+reset_curl_stub
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment PROJ-1 --text-file "$READ_ONLY_TEXT_FILE" --confirmed-site foo.atlassian.net
+assert_read_only_refusal comment "'comment' — that command has no read mode"
+
+reset_curl_stub
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --title x --confirmed-site foo.atlassian.net
+assert_read_only_refusal update "'update' — that command has no read mode"
+
+reset_curl_stub
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project PROJ --title x --confirmed-site foo.atlassian.net
+assert_read_only_refusal create "'create' — that command has no read mode"
+
+# ===========================================================================
+# The sink half, driven directly: lib/http.sh's read-only re-check.
+#
+# WHY A SECOND DRIVER, and not P4's. It looks like the P4 validator driver
+# below and deliberately is not it, on three counts that do not co-change:
+# it needs no OPT_* replay (the sink reads none); it must PROPAGATE the sink's
+# own fail-closed `exit 1` as this process's exit status rather than catch and
+# print it, because that exit IS the behavior under test; and it runs with the
+# stub curl on PATH so a PERMITTED request can be observed reaching the
+# transport instead of only inferred from silence.
+# ===========================================================================
+HTTP_SINK_DRIVER="$WORK/http-sink-driver.sh"
+cat >"$HTTP_SINK_DRIVER" <<'HTTP_SINK_DRIVER_EOF'
+#!/usr/bin/env sh
+set -eu
+hsd_script_dir=$1
+hsd_case_file=$2
+shift 2
+SCRIPT_DIR=$hsd_script_dir
+LIB_DIR="$hsd_script_dir/../lib"
+MD_TO_ADF="$hsd_script_dir/md-to-adf.sh"
+PROG=jira.sh
+for hsd_unit in "$LIB_DIR"/*.sh; do
+	. "$hsd_unit"
+done
+# The host both sinks pin every request against. $CURL_CONFIG_FILE deliberately
+# keeps runtime.sh's empty default: the stub curl never reads its -K argument,
+# and minting a credential file here would be scaffolding with no reader.
+CONFIRMED_HOST=foo.atlassian.net
+# The remaining arguments are the case's own ($1/$2 inside it) — a method and a
+# URL travel as ARGUMENTS, never interpolated into the case text, so a
+# traversal- or query-shaped URL can never become shell syntax.
+. "$hsd_case_file"
+HTTP_SINK_DRIVER_EOF
+
+# The predicate case: prints its verdict rather than exiting with it, so a
+# driver that died before reaching the predicate (empty stdout) can never be
+# mistaken for a "refuse" — the failure mode a bare `expect_rc 1` would hide.
+# shellcheck disable=SC2016  # single-quoted on purpose: $1/$2 are the CASE FILE's positional parameters, expanded when the driver sources it, not this harness's
+SINK_PREDICATE_CASE='if is_read_only_search_post "$1" "$2"; then printf "permit\n"; else printf "refuse\n"; fi'
+
+# assert_search_post_verdict METHOD URL EXPECTED WHY — one is_read_only_search_post
+# probe. No curl is reachable (`nocurl`): the predicate is pure.
+assert_search_post_verdict() {
+	printf '%s\n' "$SINK_PREDICATE_CASE" >"$WORK/sink-case.sh"
+	run nocurl sh "$HTTP_SINK_DRIVER" "$SCRIPTS_DIR" "$WORK/sink-case.sh" "$1" "$2"
+	equals "sink: $1 $4 -> $3" "$CUR_OUT" "$3"
+}
+
+section "jira.sh — read-only sink: is_read_only_search_post admits ONE exact method/URL pair"
+
+SEARCH_JQL_URL="https://foo.atlassian.net/rest/api/3/search/jql"
+
+assert_search_post_verdict POST "$SEARCH_JQL_URL" permit "the exact search endpoint"
+
+# The METHOD half. GET never consults this predicate in production (jira_curl
+# short-circuits on it), so "refuse" here is the honest answer: this predicate's
+# whole job is naming the ONE non-GET pair, and it must not become a second,
+# looser opinion about GET.
+assert_search_post_verdict GET    "$SEARCH_JQL_URL" refuse "the search endpoint"
+assert_search_post_verdict PUT    "$SEARCH_JQL_URL" refuse "the search endpoint"
+assert_search_post_verdict DELETE "$SEARCH_JQL_URL" refuse "the search endpoint"
+assert_search_post_verdict post   "$SEARCH_JQL_URL" refuse "the search endpoint (method compare is case-SENSITIVE)"
+
+# The URL half — every shape a prefix/substring/glob match would start admitting.
+assert_search_post_verdict POST "$SEARCH_JQL_URL?maxResults=1" refuse "the search endpoint + a query string"
+assert_search_post_verdict POST "$SEARCH_JQL_URL/" refuse "the search endpoint + a trailing slash"
+assert_search_post_verdict POST "$SEARCH_JQL_URL/../../issue/PROJ-1" refuse "the search endpoint + a path-traversal tail"
+assert_search_post_verdict POST "https://foo.atlassian.net/rest/api/3/search" refuse "a PREFIX of the search endpoint"
+assert_search_post_verdict POST "https://foo.atlassian.net/rest/api/2/search/jql" refuse "the same path on API v2"
+assert_search_post_verdict POST "https://evil.atlassian.net/rest/api/3/search/jql" refuse "the search path on ANOTHER host"
+assert_search_post_verdict POST "https://foo.atlassian.net/rest/api/3/issue/PROJ-1/comment" refuse "an issue write"
+
+# sink_case_run CASE_TEXT METHOD URL [VAR=VALUE...] — write CASE_TEXT to a case
+# file and drive it once with METHOD/URL as its own $1/$2, under the stub-curl
+# PATH. Shared by both transport helpers below: their cases differ only in which
+# curl sender they call, so the run mechanics are one function, not two.
+sink_case_run() {
+	sink_case_text=$1; sink_method=$2; sink_url=$3; shift 3
+	printf '%s\n' "$sink_case_text" >"$WORK/sink-case.sh"
+	run full "$@" sh "$HTTP_SINK_DRIVER" "$SCRIPTS_DIR" "$WORK/sink-case.sh" \
+		"$sink_method" "$sink_url"
+}
+
+section "jira.sh — read-only sink: jira_curl's OWN composed check (not just the predicate it calls)"
+
+# WHY THIS SECTION EXISTS, given the 12 predicate probes above. Those drive
+# is_read_only_search_post as an isolated function; this drives the three-term
+# composition that actually guards the transport —
+#   is_read_only_requested && [ "$method" != GET ] && ! is_read_only_search_post
+# — which nothing else in the suite can reach. Every CLI-level write is stopped
+# by readonlygate.sh at DISPATCH with zero curl calls, so no command in the
+# engine arrives here with a non-GET method under $JIRA_READ_ONLY. That is the
+# point of the check (it is a fail-closed assertion against a FUTURE
+# misclassification, per its own note) and also exactly what makes it invisible
+# to a black-box test: deleting the whole if-block, or widening it to permit PUT
+# as well, changes no observable CLI behavior today. The multipart sibling below
+# already gets this treatment; this is the same treatment for the helper the
+# change under test actually edited.
+# shellcheck disable=SC2016  # single-quoted on purpose: $1/$2 are the CASE FILE's positional parameters (see the driver's note), not this harness's
+SINK_JIRA_CURL_CASE='jira_curl "$1" "$2"
+printf "sent:%s\n" "$JIRA_HTTP_CODE"'
+
+# The refusal wording is asserted, not just the exit code, because it is what
+# distinguishes THIS sink's refusal from the multipart sibling's plain "GET
+# only" — and because exit 1 alone is also what a transport error looks like.
+SINK_JIRA_CURL_REFUSAL="read-only mode permits GET, plus POST to /rest/api/3/search/jql alone"
+COMMENT_WRITE_URL="https://foo.atlassian.net/rest/api/3/issue/PROJ-1/comment"
+# Shared with the multipart section below, which sends the same endpoint through
+# the other curl helper.
+ATTACHMENTS_URL="https://foo.atlassian.net/rest/api/3/issue/PROJ-1/attachments"
+
+reset_curl_stub
+sink_case_run "$SINK_JIRA_CURL_CASE" PUT "$COMMENT_WRITE_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: jira_curl PUT to an issue-comment URL under read-only -> exit 1" 1
+stderr_has "sink: jira_curl's refusal names its own GET-plus-search policy" "$SINK_JIRA_CURL_REFUSAL"
+equals "sink: the refused PUT made ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+sink_case_run "$SINK_JIRA_CURL_CASE" POST "$ATTACHMENTS_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: jira_curl POST to a non-search URL under read-only -> exit 1" 1
+stderr_has "sink: the POST refusal carries the same GET-plus-search policy" "$SINK_JIRA_CURL_REFUSAL"
+equals "sink: the refused POST made ZERO curl calls" "$(call_count)" "0"
+
+# The METHOD term of the composition, isolated: the SAME URL the permit control
+# below sends successfully, with only the method changed. A widening that drops
+# or loosens the method test (permitting PUT alongside GET, say) is invisible to
+# every other case in this section — the two refusals above target non-search
+# URLs, so a method-only widening would still refuse them via the predicate.
+reset_curl_stub
+sink_case_run "$SINK_JIRA_CURL_CASE" PUT "$SEARCH_JQL_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: jira_curl PUT to the SEARCH URL under read-only -> exit 1 (the exception is POST-only)" 1
+stderr_has "sink: the search URL earns no exception for a non-POST method" "$SINK_JIRA_CURL_REFUSAL"
+equals "sink: the refused PUT to the search URL made ZERO curl calls" "$(call_count)" "0"
+
+# Positive controls — the permitted pair. Without these, an if-block hardened to
+# refuse everything would satisfy all three refusals above.
+reset_curl_stub
+set_stub_response 1 '{"issues":[],"isLast":true}' 200
+sink_case_run "$SINK_JIRA_CURL_CASE" POST "$SEARCH_JQL_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: jira_curl POST to the search URL under read-only reaches the transport -> exit 0" 0
+stdout_has "sink: the permitted search POST got the stubbed status back" "sent:200"
+equals "sink: the permitted search POST made exactly one curl call" "$(call_count)" "1"
+
+reset_curl_stub
+set_stub_response 1 '{}' 200
+sink_case_run "$SINK_JIRA_CURL_CASE" GET "$COMMENT_WRITE_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: jira_curl GET under read-only reaches the transport -> exit 0" 0
+equals "sink: the permitted GET made exactly one curl call" "$(call_count)" "1"
+
+section "jira.sh — read-only sink: jira_curl_multipart carries NO search exception (GET only)"
+
+# WHY THIS SECTION EXISTS. jira_curl's exception is deliberately NOT repeated in
+# the multipart helper: every caller there uploads an attachment, which is an
+# unambiguous write, so copying it over would widen the permitted surface for
+# zero capability. Nothing in the CLI can prove that — `attach` is classified a
+# write and never reaches this sink under read-only — so the helper is driven
+# directly. The second case is the one that bites: it sends the very URL
+# jira_curl permits, so a "for symmetry" copy of the exception into this helper
+# turns it green while every other test in the suite stays green too.
+SINK_UPLOAD_FILE="$WORK/sink-upload.txt"
+printf 'x\n' >"$SINK_UPLOAD_FILE"
+# The one value this case DOES interpolate is the upload path, which the harness
+# owns; the method and URL under test stay arguments (see the driver's note).
+SINK_MULTIPART_CASE="jira_curl_multipart \"\$1\" \"\$2\" '$SINK_UPLOAD_FILE
+'
+printf 'sent:%s\\n' \"\$JIRA_HTTP_CODE\""
+
+reset_curl_stub
+sink_case_run "$SINK_MULTIPART_CASE" POST "$ATTACHMENTS_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: multipart POST to the attachments endpoint under read-only -> exit 1" 1
+stderr_has "sink: multipart refusal says GET ONLY (not jira_curl's search-endpoint wording)" \
+	"read-only mode permits GET only"
+equals "sink: the refused multipart POST made ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+sink_case_run "$SINK_MULTIPART_CASE" POST "$SEARCH_JQL_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: multipart POST to the SEARCH endpoint under read-only is refused too -> exit 1" 1
+stderr_has "sink: the search-endpoint exception is absent from the multipart helper" \
+	"read-only mode permits GET only"
+equals "sink: the refused multipart search POST made ZERO curl calls" "$(call_count)" "0"
+
+# Positive controls. Without these, a helper mutated to refuse EVERYTHING would
+# satisfy both refusals above.
+reset_curl_stub
+set_stub_response 1 '[{"id":"99"}]' 200
+sink_case_run "$SINK_MULTIPART_CASE" POST "$ATTACHMENTS_URL"
+expect_rc "sink: multipart POST with read-only OFF reaches the transport -> exit 0" 0
+stdout_has "sink: read-only OFF — the upload got the stubbed status back" "sent:200"
+equals "sink: read-only OFF — exactly one curl call" "$(call_count)" "1"
+
+reset_curl_stub
+set_stub_response 1 '{}' 200
+sink_case_run "$SINK_MULTIPART_CASE" GET "$ATTACHMENTS_URL" "JIRA_READ_ONLY=1"
+expect_rc "sink: multipart GET under read-only is permitted (the guard is method-scoped) -> exit 0" 0
+equals "sink: multipart GET under read-only — exactly one curl call" "$(call_count)" "1"
+
+# ===========================================================================
 # Split-parity assertions (P1, P2, P4, P5)
 #
-# These cover gaps the split of jira.sh into 43 sourced units could silently
+# These cover gaps the split of jira.sh into 45 sourced units could silently
 # open and that the pre-split suite had no reason to check. They assert the
 # SHAPE of the split, not any command's behavior — the rest of this file
 # already covers behavior.
@@ -3866,10 +4144,10 @@ fi
 
 # P4 — every command's validate_<cmd>_args() must ACCEPT a valid argument set
 # (returning 0) AND REJECT an invalid one (exiting 2). The split turned one
-# 513-line `case` into 26 functions, and a function that falls off its end
+# 513-line `case` into 27 functions, and a function that falls off its end
 # returning the status of its last test would abort the dispatcher under
 # `set -e` before the command ever ran. Each wrapper therefore ends with an
-# explicit `return 0`, and this asserts all 26 do.
+# explicit `return 0`, and this asserts all 27 do.
 #
 # EVERY ACCEPT CASE IS PAIRED WITH A REJECT CASE, deliberately: an accept-only
 # set would pass in full against a validator gutted to `return 0`, which is the
@@ -3919,6 +4197,12 @@ P4_DRIVER_EOF
 P4_FILE="$WORK/p4-attachment.txt"
 printf 'x\n' >"$P4_FILE"
 
+# $P4_COVERED_LOG records every validator the cases below actually drove, so the
+# completeness gate after them can compare that against the set declared in
+# lib/*.sh instead of trusting this file's hand-written list.
+P4_COVERED_LOG="$WORK/p4-covered.txt"
+: >"$P4_COVERED_LOG"
+
 # p4_run COMMAND ASSIGNMENTS — write one case file and run the driver on it.
 p4_run() {
 	p4_case_file="$WORK/p4-case.sh"
@@ -3928,6 +4212,7 @@ p4_run() {
 		printf 'validate_%s_args\n' "$(printf '%s' "$1" | tr '-' '_')"
 	} >"$p4_case_file"
 	p4_fn="validate_$(printf '%s' "$1" | tr '-' '_')_args"
+	printf '%s\n' "$p4_fn" >>"$P4_COVERED_LOG"
 	run nocurl sh "$P4_DRIVER" "$SCRIPTS_DIR" "$p4_case_file"
 }
 
@@ -3971,6 +4256,22 @@ p4_reject create     'OPT_TITLE="A title"' 'a missing --project'
 p4_accept comment    "TICKET_KEY=PROJ-1
 OPT_TEXT_FILE=$P4_FILE"
 p4_reject comment    'TICKET_KEY=PROJ-1' 'a missing --text-file'
+p4_accept comment-edit "TICKET_KEY=PROJ-1
+OPT_COMMENT_ID=10501
+OPT_TEXT_FILE=$P4_FILE"
+p4_reject comment-edit "TICKET_KEY=PROJ-1
+OPT_TEXT_FILE=$P4_FILE" 'a missing --comment-id'
+# --comment-id becomes a REST URL PATH SEGMENT, so its SHAPE is validated here
+# and nowhere downstream; presence alone is not enough. Both rejected forms are
+# what validate_numeric_id refuses.
+p4_reject comment-edit "TICKET_KEY=PROJ-1
+OPT_COMMENT_ID=abc
+OPT_TEXT_FILE=$P4_FILE" 'a non-numeric --comment-id'
+p4_reject comment-edit "TICKET_KEY=PROJ-1
+OPT_COMMENT_ID=0105
+OPT_TEXT_FILE=$P4_FILE" 'a leading-zero --comment-id'
+p4_reject comment-edit 'TICKET_KEY=PROJ-1
+OPT_COMMENT_ID=10501' 'a missing --text-file'
 p4_accept transition 'TICKET_KEY=PROJ-1
 OPT_STATUS=Done'
 p4_reject transition 'TICKET_KEY=PROJ-1' 'a missing --status'
@@ -4039,6 +4340,65 @@ OPT_KEYS=PROJ-1'
 p4_reject schedule   'OPT_TO_SPRINT=2212
 OPT_TO_BACKLOG=1
 OPT_KEYS=PROJ-1' 'two target ops at once'
+
+# P4-COMPLETENESS — the case list above is HAND-WRITTEN, and until this gate
+# nothing made a MISSING entry fail. That is not hypothetical: when comment-edit
+# landed, `validate_comment_edit_args` sat unasserted and the whole suite stayed
+# green — it was found by diffing grep output by hand, which is exactly the check
+# a suite is supposed to perform for you. Every SIBLING structural gate here
+# already self-checks its own coverage rather than trusting a list (P5 counts
+# curl invocations from source; check-variable-collisions.sh aborts on an empty
+# derived table), so this one does too: derive the validator set from lib/*.sh,
+# compare it against what p4_run actually drove, and fail on a divergence in
+# EITHER direction.
+#
+# The pattern demands the `()` of a definition rather than matching a bare
+# line-initial name, so a future line-initial CALL cannot inflate the declared
+# set into a phantom "uncovered" validator.
+P4_DECLARED_VALIDATORS="$WORK/p4-declared.txt"
+grep -ho '^validate_[a-z_]*_args()' "$SCRIPTS_DIR"/../lib/*.sh \
+	| sed 's/()$//' | sort -u >"$P4_DECLARED_VALIDATORS"
+sort -u "$P4_COVERED_LOG" >"$WORK/p4-covered-unique.txt"
+
+# Non-emptiness is its OWN assertion, not an implementation detail: if both
+# derivations broke, two empty sets would compare equal and this gate would
+# report "complete" forever — a broken analyzer and a fully-covered engine
+# producing identical output, the same silent degradation
+# check-variable-collisions.sh's empty-table guard exists to stop.
+TESTS_RUN=$((TESTS_RUN + 1))
+p4_declared_count=$(grep -c . "$P4_DECLARED_VALIDATORS" || true)
+if [ "$p4_declared_count" -gt 0 ]; then
+	pass "P4-COMPLETENESS: the validator set was derived from lib/*.sh ($p4_declared_count found)"
+else
+	fail "P4-COMPLETENESS: the validator set was derived from lib/*.sh" \
+		"the definition grep over lib/*.sh matched NOTHING — the GATE is broken, not (necessarily) the engine"
+fi
+
+# Each direction's divergence is kept in a FILE and tested with `[ -s ]` rather
+# than captured into a variable: the diagnostic is only ever expanded on the
+# failure path, so a quoting slip there stays invisible on every green run. One
+# did — an em dash abutting the expansion made this very message die under
+# `set -u`, and only a mutation run reached it.
+comm -23 "$P4_DECLARED_VALIDATORS" "$WORK/p4-covered-unique.txt" >"$WORK/p4-unasserted.txt"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ ! -s "$WORK/p4-unasserted.txt" ]; then
+	pass "P4-COMPLETENESS: every validator defined in lib/*.sh is driven by a case above"
+else
+	fail "P4-COMPLETENESS: every validator defined in lib/*.sh is driven by a case above" \
+		"never driven (add a p4_accept/p4_reject pair for each): $(tr '\n' ' ' <"$WORK/p4-unasserted.txt")"
+fi
+
+# The other direction: a typo'd or stale p4_* entry names a function that does
+# not exist, which the driver would report as some unrelated failure rather than
+# as the bookkeeping error it is.
+comm -13 "$P4_DECLARED_VALIDATORS" "$WORK/p4-covered-unique.txt" >"$WORK/p4-phantom.txt"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ ! -s "$WORK/p4-phantom.txt" ]; then
+	pass "P4-COMPLETENESS: every case above names a validator that really exists"
+else
+	fail "P4-COMPLETENESS: every case above names a validator that really exists" \
+		"named but undefined: $(tr '\n' ' ' <"$WORK/p4-phantom.txt")"
+fi
 
 # P5 — every `curl` invocation must live in lib/http.sh, and there must be
 # exactly three of them (jira_curl, jira_curl_multipart, resolve_media_uuid).

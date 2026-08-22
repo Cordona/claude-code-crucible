@@ -4,14 +4,14 @@
 #            Cloud REST v3 + Agile 1.0, using pure `curl` + `jq`. This file
 #            itself does five things: source the engine's units, parse argv
 #            into OPT_* globals, run the command's validate_*_args() wrapper,
-#            enforce the cross-command scope of a flag carrier shared by
-#            several commands (see the --priority scoping block below), and
-#            call its cmd_*() entry point. Every option it parses is consumed
-#            by a sourced unit — except where the dispatcher itself must scope
-#            a shared carrier across commands — which is what makes it a
-#            dispatcher rather than an implementation.
+#            enforce the cross-command scope of a flag carrier only some
+#            commands read (see the --priority/--comment-id scoping blocks
+#            below), and call its cmd_*() entry point. Every option it parses
+#            is consumed by a sourced unit — except where the dispatcher itself
+#            must scope a shared carrier across commands — which is what makes
+#            it a dispatcher rather than an implementation.
 #
-# SHAPE. The engine is one process assembled from 44 sourced-only units in
+# SHAPE. The engine is one process assembled from 45 sourced-only units in
 # ../lib, in two families:
 #   lib/<concern>.sh   the shared core, sourced first and in dependency order:
 #                      runtime, usage, sitegate, readonlygate, credentials,
@@ -20,19 +20,19 @@
 #                      issue-set, batch-report.
 #   lib/cmd-<name>.sh  one file per command, each owning that command's
 #                      validate_<name>_args() + cmd_<name>() and its private
-#                      helpers. There are 26, listed in the sourcing loop and
+#                      helpers. There are 27, listed in the sourcing loop and
 #                      in the two `case "$COMMAND"` tables below.
 # Both families are SOURCED, never executed: ../scripts holds only the two real
 # entry points, this file and md-to-adf.sh (which is invoked as a subprocess by
 # path, never sourced). See SKILL.md for the layout convention this follows.
 #
-# WHY ONE PROCESS, not 26 standalone scripts: every command shares the SAME
+# WHY ONE PROCESS, not 27 standalone scripts: every command shares the SAME
 # heavy plumbing — auth/credential handoff, host+site gates, the curl
 # transport, the JQL builder, the accountId resolver, the project-config
 # loader, and (for every WRITE command) the markdown->ADF converter handoff.
 # One process means the security-critical plumbing (credential handling, host
 # pinning, JQL escaping, ADF-via-file-never-string) is written and reviewed
-# ONCE, not 26 times with 26 chances to drift.
+# ONCE, not 27 times with 27 chances to drift.
 #
 # WHY EAGERLY SOURCED UNITS, not one 8000-line file: the units are a
 # READABILITY split of that single process, not a library shared across
@@ -51,6 +51,7 @@
 #   prints a rendered summary; --json prints the raw response JSON. WRITE
 #   commands: human mode prints machine-parseable `JIRA_*=value` lines
 #   (create: JIRA_ISSUE_KEY/JIRA_ISSUE_URL; comment: JIRA_COMMENT_ID;
+#   comment-edit: JIRA_COMMENT_EDITED;
 #   transition: JIRA_TRANSITIONED_TO; update: JIRA_UPDATED; link:
 #   JIRA_LINKED; worklog: JIRA_WORKLOGGED; watch: JIRA_WATCHED/
 #   JIRA_UNWATCHED; vote: JIRA_VOTED/JIRA_UNVOTED; and the version/component/
@@ -158,7 +159,10 @@
 # write even though it changes nothing at the Jira site. And like the host
 # pin, the gate is re-asserted at the sink: lib/http.sh's curl helpers refuse
 # any non-GET request under $JIRA_READ_ONLY (item 4's "assertion against a
-# FUTURE bug", applied to this gate).
+# FUTURE bug", applied to this gate) — with ONE exactly-matched exception,
+# POST /rest/api/3/search/jql, because Jira's own search endpoint carries its
+# JQL in a JSON body; see is_read_only_search_post for why that is one named
+# endpoint rather than a general "POST is sometimes a read" rule.
 #
 # The JQL builder is NOT "parameterized" (Jira's REST API has no
 # bind-variable API for JQL). Safety instead comes from: field names and
@@ -240,7 +244,7 @@
 # ONLY for its `@uri`/`@csv`-style builtins and static, hardcoded programs
 # fed via `--arg`/`--argjson`/`--rawfile` — never a dynamically built
 # program string, and no Oniguruma regex dependency (unlike this skill's
-# sibling md-to-adf.sh). The 44 units this file sources are resolved with pure
+# sibling md-to-adf.sh). The 45 units this file sources are resolved with pure
 # parameter expansion, never dirname/readlink/realpath/basename — the engine
 # and write-test suites run every command under a minimal PATH toolbox that
 # deliberately excludes all four, so any of them would break those suites.
@@ -263,7 +267,7 @@ PROG=${0##*/}
 # practice (SKILL.md and the harness always invoke this script by an absolute
 # path) but exists so `set -u` can never see an unset SCRIPT_DIR.
 #
-# LIB_DIR holds the 44 sourced-only units; MD_TO_ADF is the markdown->ADF
+# LIB_DIR holds the 45 sourced-only units; MD_TO_ADF is the markdown->ADF
 # converter, a SIBLING script in this same scripts/ dir consumed BY PATH as a
 # subprocess — never sourced, never inlined. Both must be resolved from $0
 # rather than a bare relative path, which would resolve against the CALLER's
@@ -300,7 +304,8 @@ for _jira_unit in \
 	"$LIB_DIR/refs.sh" "$LIB_DIR/search-core.sh" "$LIB_DIR/agile-paging.sh" \
 	"$LIB_DIR/issue-set.sh" "$LIB_DIR/batch-report.sh" \
 	"$LIB_DIR/cmd-view.sh" "$LIB_DIR/cmd-workflow.sh" "$LIB_DIR/cmd-search.sh" \
-	"$LIB_DIR/cmd-create.sh" "$LIB_DIR/cmd-comment.sh" "$LIB_DIR/cmd-transition.sh" \
+	"$LIB_DIR/cmd-create.sh" "$LIB_DIR/cmd-comment.sh" \
+	"$LIB_DIR/cmd-comment-edit.sh" "$LIB_DIR/cmd-transition.sh" \
 	"$LIB_DIR/cmd-update.sh" "$LIB_DIR/cmd-link.sh" "$LIB_DIR/cmd-link-types.sh" \
 	"$LIB_DIR/cmd-children.sh" "$LIB_DIR/cmd-discover.sh" "$LIB_DIR/cmd-worklog.sh" \
 	"$LIB_DIR/cmd-watch.sh" "$LIB_DIR/cmd-vote.sh" "$LIB_DIR/cmd-version.sh" \
@@ -323,7 +328,7 @@ unset _jira_unit
 COMMAND=${1:-}
 case "$COMMAND" in
 	-h|--help) usage; exit 0 ;;
-	view|search|workflow|create|comment|transition|update|link|link-types|children|discover|worklog|watch|vote|version|component|attach|bulk|boards|board|sprints|sprint|backlog|epics|epic|schedule) shift ;;
+	view|search|workflow|create|comment|comment-edit|transition|update|link|link-types|children|discover|worklog|watch|vote|version|component|attach|bulk|boards|board|sprints|sprint|backlog|epics|epic|schedule) shift ;;
 	'') usage >&2; error "missing command"; exit 2 ;;
 	*) usage >&2; error "unknown command: $COMMAND"; exit 2 ;;
 esac
@@ -363,6 +368,10 @@ OPT_APPEND_FILE=""
 OPT_ACCEPTANCE_FILE=""
 OPT_REVIEW_FILE=""
 OPT_TEXT_FILE=""
+# comment-edit: the numeric id of the EXISTING comment whose body is replaced.
+# Read by that ONE command only — hence the foreign-flag guard below, in the
+# same shape as --priority's.
+OPT_COMMENT_ID=""
 OPT_DUE_DATE=""
 OPT_PARENT=""
 OPT_PRIORITY=""
@@ -460,6 +469,7 @@ while [ $# -gt 0 ]; do
 		--acceptance-file)         need_arg "$1" "${2:-}"; OPT_ACCEPTANCE_FILE=$2; shift ;;
 		--review-file)             need_arg "$1" "${2:-}"; OPT_REVIEW_FILE=$2; shift ;;
 		--text-file)               need_arg "$1" "${2:-}"; OPT_TEXT_FILE=$2; shift ;;
+		--comment-id)              need_arg "$1" "${2:-}"; OPT_COMMENT_ID=$2; shift ;;
 		--due-date)                need_arg "$1" "${2:-}"; OPT_DUE_DATE=$2; shift ;;
 		--parent)                  need_arg "$1" "${2:-}"; OPT_PARENT=$2; shift ;;
 		--priority)                need_arg "$1" "${2:-}"; OPT_PRIORITY=$2; shift ;;
@@ -546,6 +556,7 @@ case "$COMMAND" in
 	workflow)   validate_workflow_args ;;
 	create)     validate_create_args ;;
 	comment)    validate_comment_args ;;
+	comment-edit) validate_comment_edit_args ;;
 	transition) validate_transition_args ;;
 	update)     validate_update_args ;;
 	link)       validate_link_args ;;
@@ -591,6 +602,17 @@ if [ "$priority_is_supported" -eq 0 ]; then
 	require_foreign_flag_unset --priority "$OPT_PRIORITY" "create, update, and bulk --op update"
 fi
 
+# --comment-id is scoped the SAME way and for a sharper version of the same
+# reason: `comment-edit` is its only reader, and the command it is most likely to
+# be typed at by mistake is `comment`, which would ACCEPT it, drop it silently,
+# and POST a brand-new comment — so a caller who meant "fix what I said" would
+# instead duplicate it, and no disclosure would ever name the flag that was
+# ignored. Refusing it loudly (exit 2, before any network call) is the same
+# fail-closed direction --priority's guard above takes.
+if [ "$COMMAND" != "comment-edit" ]; then
+	require_foreign_flag_unset --comment-id "$OPT_COMMENT_ID" "comment-edit"
+fi
+
 # ---------------------------------------------------------------------------
 # Read-only gate ($JIRA_READ_ONLY) — HERE, and deliberately not elsewhere.
 #
@@ -632,6 +654,7 @@ case "$COMMAND" in
 	workflow)   cmd_workflow ;;
 	create)     cmd_create ;;
 	comment)    cmd_comment ;;
+	comment-edit) cmd_comment_edit ;;
 	transition) cmd_transition ;;
 	update)     cmd_update ;;
 	link)       cmd_link ;;

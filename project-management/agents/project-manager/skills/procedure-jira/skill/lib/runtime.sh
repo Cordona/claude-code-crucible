@@ -13,7 +13,7 @@
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
 #
-# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 43
+# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 44
 
 # ---------------------------------------------------------------------------
 # Diagnostics (all to stderr — stdout stays machine-clean)
@@ -40,7 +40,7 @@ NL='
 # unique to that function. Because POSIX sh has no `local`, a name reused
 # across two functions that can appear in the same call chain (e.g. one helper
 # calling another) will silently clobber the caller's copy — and since the
-# engine was split into 44 sourced units, the two colliding functions are
+# engine was split into 45 sourced units, the two colliding functions are
 # rarely on the same screen any more.
 #
 # The form that survives that split is a SHORT PER-FUNCTION PREFIX, derived
@@ -96,8 +96,19 @@ ensure_workdir() {
 # strip_control_ansi — reads stdin, writes stdout with ANSI CSI sequences
 # and C0/DEL control bytes removed. Deliberately implemented with sed/tr
 # (not jq regex) so this script has no Oniguruma dependency.
+#
+# TAB (\011) and NEWLINE (\012) are the two C0 bytes deliberately KEPT: callers
+# split multi-line values on newlines, and a tab is legitimate text (cmd-version.sh
+# and version --list's test both turn on that fact). CR (\015) is NOT kept, and it
+# is the one byte whose treatment changed: on a real terminal a CR returns the
+# cursor to column 0, so a CR inside a quoted, untrusted value could visually
+# overwrite the "  | " prefix cmd-comment-edit.sh uses to keep attacker-authorable
+# text off column 0 — defeating for a watching human what still held at the byte
+# level for grep. Nothing in this engine parses CRLF through this helper (http.sh's
+# redirect-Location parsing greps the raw header dump and never routes it here),
+# so deleting it is safe for all 44 other units.
 strip_control_ansi() {
-	sed "s/${ESC}\\[[0-9;]*[a-zA-Z]//g" | tr -d '\000-\010\013\014\016-\037\177'
+	sed "s/${ESC}\\[[0-9;]*[a-zA-Z]//g" | tr -d '\000-\010\013-\037\177'
 }
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,18 @@
 # neither to the Jira site nor (see `discover` below) to the local
 # project-config the write commands later read.
 #
+# WHERE THE SINK-SIDE HALF LIVES, and the one exception it carries. lib/http.sh
+# re-asserts this gate at the network egress (see jira_curl's read-only
+# re-check), and that re-check is NOT a plain "GET only" rule: it permits GET
+# plus ONE exactly-matched endpoint, POST /rest/api/3/search/jql, because Jira's
+# own REST v3 search takes its JQL in a JSON body. So the commands this file
+# classifies as reads and the methods that sink permits are two related but
+# DISTINCT lists — a read added here that POSTs to some other endpoint is still
+# refused there, by design, until its own exact arm is added and justified in
+# is_read_only_search_post. Changing either list without reading the other is
+# how `search`/`children` came to be classified reads here yet refused at the
+# sink.
+#
 # WHY A SEPARATE UNIT, not another half of sitegate.sh: the site gate answers
 # "is THIS SITE the one the human confirmed"; this gate answers "may this
 # invocation write AT ALL" — a different question, on different inputs, with
@@ -92,9 +104,12 @@ is_read_only_requested() {
 is_write_invocation() {
 	case "$COMMAND" in
 		# Unconditional writes: no flag turns any of these into a read.
-		# bulk/schedule are writes even with --plan/--dry-run — see the
-		# --plan note at the end of this function.
-		create|comment|update|link|worklog|bulk|schedule)
+		# bulk/schedule/comment-edit are writes even with --plan/--dry-run — see
+		# the --plan note at the end of this function. comment-edit belongs here
+		# and not with the mode-flag commands below for a second, independent
+		# reason as well: --comment-id SELECTS the target, it does not switch the
+		# command between a read and a write.
+		create|comment|comment-edit|update|link|worklog|bulk|schedule)
 			return 0
 			;;
 		# transition is a write UNLESS --plan/--dry-run, whose branch in
@@ -170,15 +185,22 @@ is_write_invocation() {
 	esac
 }
 #
-# ON --plan/--dry-run, and why only `transition` gets the carve-out. Four
-# commands implement a preview that writes nothing: transition, bulk, schedule
-# and version --delete. Only `transition --plan` is treated as a read here,
-# because that is the only one SKILL.md's read-only credential scope actually
-# authorizes. Blocking the other three under $JIRA_READ_ONLY is the
+# ON --plan/--dry-run, and why only `transition` gets the carve-out. FIVE
+# commands implement a preview that writes nothing: transition, bulk, schedule,
+# version --delete and comment-edit. Only `transition --plan` is treated as a
+# read here, because that is the only one SKILL.md's read-only credential scope
+# actually authorizes. Blocking the other four under $JIRA_READ_ONLY is the
 # conservative direction of a deliberately asymmetric call: the cost is a
 # refused preview a caller can re-run without the read-only credential, where
 # the cost of the opposite error is an unauthorized write. Widening the
 # carve-out is a scope decision for that document, not for this file.
+#
+# `comment-edit --plan` is the newest member of that list and the closest call in
+# it, because it is mechanically the SAME shape as the one carve-out: exactly one
+# GET, no write endpoint reached at all (see cmd-comment-edit.sh). It stays a
+# write anyway, on the rule above rather than on a mechanical re-judgement —
+# SKILL.md's scope names `transition --plan` and nothing else, and this file is
+# that enumeration's executable form, not a second opinion on it.
 
 # write_mode_flag -> prints the mode FLAG that made the current invocation a
 # write ("--remove", "--close", "--write", …), or nothing when that command's
@@ -247,7 +269,13 @@ write_refusal_phrase() {
 		discover)
 			printf "'discover --write' — only 'discover' without --write is permitted (it prints the config and persists nothing)"
 			;;
-		bulk|schedule)
+		# comment-edit joins bulk/schedule here rather than the arm below, now
+		# that it HAS a --plan preview: telling its caller "that command has no
+		# read mode" would be false, and a false refusal costs the caller the
+		# preview it really can run once it is holding a non-read-only
+		# credential — the exact miscue write_refusal_phrase's header note
+		# exists to avoid.
+		bulk|schedule|comment-edit)
 			printf "'%s' — it stays a write even under --plan/--dry-run, and has no permitted read mode" "$COMMAND"
 			;;
 		create|comment|update|link|worklog)

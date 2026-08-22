@@ -53,13 +53,31 @@
 #                            silently dropped the update.
 #   --review-file PATH        (create, update) Same as --acceptance-file, for
 #                            custom_fields.review_notes.
-#   --text-file PATH          (comment only) Markdown, converted to ADF and
-#                            posted as the comment body. REQUIRED — there is
+#   --text-file PATH          (comment, comment-edit) Markdown, converted to
+#                            ADF and posted as the comment body — a NEW comment
+#                            for `comment`, the REPLACEMENT body of an existing
+#                            one for `comment-edit`. REQUIRED on both — there is
 #                            deliberately no --text string flag, matching
 #                            this repo's own body-is-always-a-file rule
 #                            (see procedure-gh-issues) for the same reason:
 #                            large/arbitrary content should never be
 #                            interpolated into a caller's shell command.
+#   --comment-id N            (comment-edit only) REQUIRED. The numeric id of
+#                            the EXISTING comment to edit — the id `comment`
+#                            prints as JIRA_COMMENT_ID, or one read off a
+#                            `view --json`. The edit REPLACES that comment's
+#                            whole body (there is no append mode); run
+#                            --plan first and disclose WHAT it would discard
+#                            before asking a human to authorize it. The id is
+#                            checked against the live comment by a mandatory GET
+#                            on every invocation, before any image upload, so a
+#                            wrong-but-valid or stale id fails with nothing
+#                            written and nothing attached. Accepted by
+#                            comment-edit and NOTHING else: every other command
+#                            REJECTS it (usage error, exit 2) rather than ignore
+#                            it — passed to `comment` it would otherwise be
+#                            dropped and post a DUPLICATE comment instead of
+#                            editing the one named.
 #   --assignee VALUE          (search) "me" -> JQL currentUser(); "@me"/an
 #                            email -> resolved accountId. (create, update)
 #                            ALWAYS resolved to accountId ("@me" or an
@@ -116,21 +134,30 @@
 #                            one unasked; a workflow that genuinely
 #                            requires one 400s clearly either way, and the
 #                            caller re-runs with --resolution.
-#   --plan, --dry-run              (transition, bulk, schedule, version
-#                            --delete) One flag, one meaning everywhere:
+#   --plan, --dry-run              (transition, comment-edit, bulk, schedule,
+#                            version --delete) One flag, one meaning everywhere:
 #                            DISCLOSE what the real run would do and MUTATE
 #                            NOTHING — the reads a plan needs still happen, no
 #                            write ever does, and the output ends on the same
 #                            "NOTHING WAS WRITTEN (dry-run / --plan)" line.
 #                            transition prints the full walked path (+ any
-#                            resolution/injected comment); bulk/schedule print
-#                            the resolved issue set + the single change; and
+#                            resolution/injected comment); comment-edit prints
+#                            the targeted comment's author/date plus the stored
+#                            body text it would DISCARD (each quoted line
+#                            "  | "-prefixed, since that body is untrusted text
+#                            sharing a stream with this engine's own lines);
+#                            bulk/schedule print the resolved issue set + the
+#                            single change; and
 #                            version --delete prints what the --id actually
 #                            resolves to (name + owning project key) plus the
 #                            exact DELETE it would send — the site-global id
 #                            space is why seeing that first matters. This is
 #                            what the orchestrator's P4 consent gate discloses
-#                            BEFORE authorizing the real write.
+#                            BEFORE authorizing the real write. Only
+#                            `transition --plan` is also a READ to the
+#                            $JIRA_READ_ONLY gate; every other preview here,
+#                            comment-edit's included, stays a refused write
+#                            under it (see lib/readonlygate.sh).
 #                            The two SIBLING deletes — component --delete and
 #                            attach --delete — implement NO preview, so they
 #                            REJECT this flag (usage error, exit 2) rather than
@@ -256,6 +283,12 @@ Usage (WRITE):
          [--priority NAME] [--fix-version NAME]... [--affects-version NAME]...
          [--component NAME]... [--json]
   $PROG comment <KEY> --text-file PATH --confirmed-site SITE [--json]
+  $PROG comment-edit <KEY> --comment-id N --text-file PATH
+         --confirmed-site SITE [--plan|--dry-run] [--json]
+  (comment-edit REPLACES that comment's entire body — there is no append mode.
+  It always GETs the comment first, so a wrong/stale --comment-id fails before
+  any inline image is uploaded; --plan|--dry-run stops after that GET and prints
+  the body it would discard, writing nothing)
   $PROG transition <KEY> --status TARGET --confirmed-site SITE
          [--resolution STR] [--plan|--dry-run] [--json]
   $PROG update <KEY> --confirmed-site SITE

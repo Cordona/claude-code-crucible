@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 #
 # check-variable-collisions.sh — a static guard for the ONE invariant the
-# split of jira.sh into 43 units makes harder to eyeball.
+# split of jira.sh into 45 units makes harder to eyeball.
 #
 # WHY THIS EXISTS. POSIX sh has no `local`. Every variable a function assigns is
 # a PROCESS-GLOBAL, so a scratch name reused by two functions that can appear in

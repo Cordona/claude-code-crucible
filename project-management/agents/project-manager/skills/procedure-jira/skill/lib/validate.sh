@@ -74,10 +74,10 @@ extract_project_from_key() {
 }
 
 # validate_numeric_id VALUE -> 0 if VALUE is a non-empty run of ASCII digits
-# with NO leading zero (Jira's version/component/board/sprint ids — `^[1-9][0-9]*$`,
-# plus the bare "0"). Checked BEFORE the value becomes a REST URL path segment
-# (/version/<id>, /component/<id>) or a query value (?moveIssuesTo=<id>), the SAME
-# rule ticket/project keys follow. Uses `case` (not `grep -Eq '^...$'`) so an
+# with NO leading zero (Jira's version/component/board/sprint/comment ids —
+# `^[1-9][0-9]*$`, plus the bare "0"). Checked BEFORE the value becomes a REST
+# URL path segment (/version/<id>, /component/<id>, /comment/<id>) or a query
+# value (?moveIssuesTo=<id>), the SAME rule ticket/project keys follow. Uses `case` (not `grep -Eq '^...$'`) so an
 # EMBEDDED newline can't slip past a line-anchored match — identical reasoning to
 # validate_ticket_key.
 #

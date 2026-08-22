@@ -129,3 +129,18 @@ set_stub_headers() {
 
 # call_count -> how many curl calls the last `run` made.
 call_count() { cat "$CURL_STUB_COUNTER_FILE" 2>/dev/null || printf '0'; }
+
+# request_method_sequence -> the HTTP methods of the last run's curl calls, in
+# call order, joined by "/" (e.g. "GET/GET/DELETE"). http.sh's jira_curl always
+# passes the method as the argv token immediately following `-X`, and the stub
+# logs one argv token per line — so "the line after each `-X` line" IS the
+# method, in call order, with no parsing of the surrounding CALL_<n> markers.
+#
+# WHY IT BELONGS HERE rather than in one suite: it is the assertion of last
+# resort whenever a read and a write address the SAME url, so no URL assertion
+# can tell "read it" from "wrote it" apart — version --delete's plan/cross-check
+# gates in the engine suite, comment-edit's read-before-write ordering in the
+# write suite. It reads only this file's own argv log, exactly like call_count.
+request_method_sequence() {
+	sed -n '/^-X$/{n;p;}' "$CURL_STUB_ARGV_LOG" | tr '\n' '/' | sed 's|/$||'
+}

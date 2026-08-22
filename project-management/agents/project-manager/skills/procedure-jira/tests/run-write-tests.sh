@@ -443,6 +443,1105 @@ expect_rc "comment 404 -> exit 1" 1
 stderr_has "comment 404: Jira's own error message surfaced" "Issue does not exist"
 
 # ===========================================================================
+# comment-edit — PUT /issue/<KEY>/comment/<ID>, the REPLACE-not-append sibling
+# of `comment`.
+#
+# The cases below are the CLI-level half. validate_comment_edit_args() itself is
+# driven in isolation by run-engine-tests.sh's P4 block (accept + four reject
+# shapes); what these add is that jira.sh's dispatch table actually ROUTES to
+# that validator and to cmd_comment_edit, that the id reaches the URL as a path
+# segment, and that the read-only gate classifies the command as a write.
+#
+# EVERY successful comment-edit here queues TWO responses, because the command
+# makes TWO calls: a mandatory read-before-write GET of the target comment, then
+# the replacing PUT. That order is the fix for a real finding, not an
+# implementation detail these tests happen to observe — see the --plan and
+# bad-id sections below for the two assertions that pin it.
+# ===========================================================================
+section "jira.sh comment-edit — usage errors (routed to the validator, before any network call)"
+
+COMMENT_EDIT_FILE="$WORK/comment-edit.md"
+printf 'Corrected: ping [~accountId:5b10ac8d82e05b22cc7d4ef5] instead.\n' >"$COMMENT_EDIT_FILE"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --text-file "$COMMENT_EDIT_FILE" --confirmed-site foo.atlassian.net
+expect_rc "comment-edit without --comment-id -> exit 2" 2
+stderr_has "comment-edit without --comment-id: diagnostic" "comment-edit requires --comment-id"
+equals "comment-edit without --comment-id: made ZERO curl calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id abc --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with a non-numeric --comment-id -> exit 2" 2
+stderr_has "comment-edit non-numeric --comment-id: diagnostic names the value" "invalid --comment-id"
+equals "comment-edit non-numeric --comment-id: made ZERO curl calls" "$(call_count)" "0"
+
+section "jira.sh comment-edit — reads the comment first, then PUTs the replacement ADF body to that same URL"
+
+# EXISTING_COMMENT_RESPONSE — what the mandatory pre-PUT GET returns. Its body
+# text is distinctive so the --plan sections below can assert the engine
+# disclosed THIS comment's content and not an echo of the caller's own input.
+EXISTING_COMMENT_RESPONSE='{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"ORIGINAL text that would be destroyed"}]},{"type":"paragraph","content":[{"type":"text","text":"second original block"}]}]}}'
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit -> exit 0" 0
+# The machine line echoes the RESPONSE's id, so a server that edited a different
+# comment than the one requested would show up here rather than be masked by the
+# request's own value being printed back.
+stdout_has "comment-edit: prints JIRA_COMMENT_EDITED with the key and the edited id" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (10501)"
+equals "comment-edit: exactly two curl calls (the read-before-write GET, then the PUT)" "$(call_count)" "2"
+# THE ORDERED METHOD SEQUENCE is the load-bearing assertion, not the two token
+# greps below it: the GET and the PUT address the SAME url, so no URL assertion
+# and no unordered token grep can tell "read it first" from "read it after
+# writing it". request_method_sequence (lib/curl-stub.sh) pins the order itself.
+equals "comment-edit: the method sequence is exactly GET then PUT (read strictly before write)" \
+	"$(request_method_sequence)" "GET/PUT"
+# A GET with no --data is the shape of the read; the PUT below carries the body.
+argv_log_has_token "comment-edit: the first method is GET (the read-before-write)" "GET"
+argv_log_has_token "comment-edit: the method is PUT" "PUT"
+equals "comment-edit: the GET carried no request body of its own" \
+	"$([ -f "$CURL_STUB_BODY_LOG_DIR/call-1.body" ] && printf 'body' || printf 'no-body')" "no-body"
+argv_log_has_token "comment-edit: the URL carries the comment id as a path segment" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/comment/10501"
+argv_log_has_token "comment-edit: sent via --data (a file), never inline JSON on argv" "--data"
+COMMENT_EDIT_BODY=$(call_body 2)
+equals "comment-edit: the request body wraps the ADF document under .body" \
+	"$(printf '%s' "$COMMENT_EDIT_BODY" | jq -r '.body.type')" "doc"
+# The one place the mention tokenizer and this command meet: --text-file is
+# converted by the SAME md-to-adf.sh path `comment` uses, so a mention in the
+# replacement text has to arrive as a mention NODE, not as literal text.
+equals "comment-edit: a mention in the replacement text arrived as a mention node" \
+	"$(printf '%s' "$COMMENT_EDIT_BODY" | jq -c '[.body.content[0].content[] | select(.type == "mention")]')" \
+	'[{"type":"mention","attrs":{"id":"5b10ac8d82e05b22cc7d4ef5"}}]'
+assert_no_leaked_workdir "comment-edit"
+
+section "jira.sh comment-edit — --json passes Jira's updated-comment body through"
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+# The PUT's own response deliberately names a DIFFERENT author than the GET's, so
+# "passthrough" can only pass by echoing the WRITE response — passing the read's
+# body through instead would fail here.
+set_stub_response 2 '{"id":"10501","author":{"displayName":"A"},"body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --json -> exit 0" 0
+equals "comment-edit --json: stdout IS Jira's own PUT response body (passthrough, not synthesized)" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.author.displayName')" "A"
+stdout_not_has "comment-edit --json: no human machine line alongside the JSON" "JIRA_COMMENT_EDITED"
+stdout_not_has "comment-edit --json: a real edit carries no plan-only .executed field" "executed"
+
+section "jira.sh comment-edit — a REAL edit's machine line cannot be forged from the PUT response's .id"
+
+# THE FINDING: the real edit's success line is built from the WRITE response's
+# `.id` and prints at column 0, exactly like the --plan render's author/date —
+# but it went through strip_control_ansi alone, which deliberately KEEPS \012.
+# So a response id carrying an embedded newline put a second, attacker-chosen
+# `JIRA_COMMENT_EDITED=` line into the same stream, and a caller grepping for the
+# write would have believed a DIFFERENT ticket had been edited. A Jira-assigned
+# comment id is numeric, so this is defence in depth rather than a live hole —
+# but the forgeability of a machine line must not rest on trusting a server
+# field's shape, which is the property every other column-0 field here claims.
+CE_FORGED_RESULT_ID="42
+JIRA_COMMENT_EDITED=EVIL-9 (1)"
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 "$(jq -n -c --arg i "$CE_FORGED_RESULT_ID" \
+	'{id:$i,body:{type:"doc",version:1}}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with an LF-bearing .id in the PUT response -> exit 0" 0
+# THE COUNT is the assertion the finding turns on: `stdout_has` on the genuine
+# line passes just as happily with a forged SECOND line sitting beside it, and
+# stdout_no_line_starting_with cannot be used here because the engine's OWN line
+# legitimately starts with this prefix. Exactly one such line may exist.
+equals "comment-edit forged .id: EXACTLY ONE line starts with the write's machine prefix" \
+	"$(printf '%s\n' "$CUR_OUT" | grep -c '^JIRA_COMMENT_EDITED=' || true)" "1"
+# ...and it is the genuine one, with the forged tail JOINED onto it — which is
+# what proves the LF was DELETED rather than the whole id dropped or truncated.
+stdout_has "comment-edit forged .id: the surviving line is the engine's own, forged tail joined in as data" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (42JIRA_COMMENT_EDITED=EVIL-9 (1))"
+
+section "jira.sh comment-edit — non-2xx on the PUT surfaces Jira's own error"
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '{"errorMessages":["Comment cannot be edited"]}' 400
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit PUT 400 -> exit 1" 1
+stderr_has "comment-edit PUT 400: Jira's own error message surfaced" "Comment cannot be edited"
+
+# ===========================================================================
+# comment-edit — the read-before-write GET (SEC-002)
+#
+# THE FINDING: the inline-image pre-pass uploaded every own-line local image to
+# the ISSUE *before* the PUT, and the PUT was the first call that could reject a
+# bad --comment-id. So an edit that failed on a wrong/stale id left those images
+# permanently attached — a side effect no consent gate ever disclosed and the
+# failure did not undo.
+#
+# THE FIX these cases pin: the GET runs FIRST, unconditionally, so a bad id fails
+# with ZERO uploads. The negative assertion is the load-bearing one (no
+# attachments POST fired), and it is paired with a positive control — exactly ONE
+# call, which is the GET — so a regression that exited even earlier could not
+# satisfy it vacuously.
+# ===========================================================================
+section "jira.sh comment-edit — a bad --comment-id fails on the GET, BEFORE any inline image is uploaded"
+
+# An own-line local image that WOULD be uploaded by the pre-pass. The file really
+# exists, so the only thing standing between this invocation and an attachments
+# POST is the GET-first ordering — not a missing-file refusal.
+COMMENT_EDIT_IMAGE="$WORK/inline.png"
+printf 'PNGDATA\n' >"$COMMENT_EDIT_IMAGE"
+COMMENT_EDIT_IMG_FILE="$WORK/comment-edit-with-image.md"
+printf 'Corrected text.\n\n![shot](%s)\n' "$COMMENT_EDIT_IMAGE" >"$COMMENT_EDIT_IMG_FILE"
+
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["Comment does not exist"]}' 404
+# CALLS 2-4 ARE QUEUED DELIBERATELY, and none of them may be consumed. Without
+# them, a regression that let the upload/PUT run past the failed GET would hit
+# the stub's "no canned response configured" exit 99 — so the RUN would go red
+# for a fixture gap while the negative assertions below (the ones that actually
+# encode the finding) never got their chance, and the failure message would
+# point at the harness instead of the bug. With the whole happy-path queue
+# standing by, a broken guard produces a CLEAN, successful, fully-uploaded edit
+# and these assertions are the only thing standing in its way. Same reasoning
+# run-engine-tests.sh states for version --delete's always-queued 204.
+set_stub_response 2 '[{"id":"30001","filename":"inline.png"}]' 200
+set_stub_response 3 '' 303
+set_stub_headers 3 "HTTP/2 303
+Location: https://api.media.atlassian.com/file/12345678-90ab-cdef-1234-567890abcdef/binary
+content-length: 0"
+set_stub_response 4 '{"id":"99999","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 99999 --text-file "$COMMENT_EDIT_IMG_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit bad --comment-id -> exit 1" 1
+stderr_has "comment-edit bad id: Jira's own error message surfaced" "Comment does not exist"
+stderr_has "comment-edit bad id: the failure names the READ, not the edit" \
+	"fetch comment 99999 on PROJ-1"
+equals "comment-edit bad id: exactly ONE call (the GET) — nothing after it ran" "$(call_count)" "1"
+equals "comment-edit bad id: the method sequence is exactly GET — the failed read is the whole story" \
+	"$(request_method_sequence)" "GET"
+argv_log_not_has_token "comment-edit bad id: NO attachments upload fired (no orphaned image)" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/attachments"
+argv_log_not_has_token "comment-edit bad id: no POST method token anywhere" "POST"
+argv_log_not_has_token "comment-edit bad id: no PUT method token anywhere" "PUT"
+
+# The counterweight: the SAME image markdown on a GOOD id really does upload,
+# so the assertions above prove an ORDERING, not that this engine simply never
+# uploads from comment-edit.
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '[{"id":"30001","filename":"inline.png"}]' 200
+# call 3 is resolve_media_uuid's 303 + Location; the UUID must be the real
+# 36-char [a-f0-9-] shape the resolver validates.
+set_stub_response 3 '' 303
+set_stub_headers 3 "HTTP/2 303
+Location: https://api.media.atlassian.com/file/12345678-90ab-cdef-1234-567890abcdef/binary
+content-length: 0"
+set_stub_response 4 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_IMG_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with an inline image on a GOOD id -> exit 0" 0
+argv_log_has_token "comment-edit good id: the attachments upload DID fire (the ordering, not a missing feature)" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/attachments"
+# THE FULL ORDERED SEQUENCE, not a proxy. This assertion replaced a "call 1
+# carried no request body" check that only inferred the ordering: the attachments
+# POST sends its file with -F, which the stub does not log as a request body at
+# all, so "call 1 has no body" was satisfied by the upload just as happily as by
+# the read. The four methods in order — read the comment, upload the image,
+# resolve its media UUID, then replace the body — are the ordering itself, and
+# the read being FIRST is the whole finding.
+equals "comment-edit good id: the method sequence is GET(read)/POST(upload)/GET(media uuid)/PUT(edit)" \
+	"$(request_method_sequence)" "GET/POST/GET/PUT"
+# THE LEAK CHECK BELONGS ON *THIS* PATH, not only on the plain edit's. The plain
+# edit reaches jira_curl twice from the MAIN shell, so its own
+# assert_no_leaked_workdir can never observe the leak class the helper exists to
+# catch. It is the inline-image path that reaches jira_curl from inside a
+# `$(resolve_inline_images …)` command substitution — a WORKDIR created there
+# would die with the substitution and leave a jira.work.* dir behind, which is
+# exactly why cmd_comment_edit calls ensure_workdir as its FIRST statement.
+assert_no_leaked_workdir "comment-edit inline image"
+
+section "jira.sh comment-edit — an INHERITED \$COMMENT_EDIT_VERIFIED_KEY cannot stand in for the mandatory GET"
+
+# THE CHANNEL THIS CLOSES: the upload above consumes the read-before-write GET's
+# output as `${COMMENT_EDIT_VERIFIED_KEY:?…}` — that expansion is the structural
+# anchor keeping the GET ahead of every attachment upload (see
+# comment_edit_require_existing). While the variable was left undeclared, it was
+# also INHERITABLE: an exported COMMENT_EDIT_VERIFIED_KEY from the caller's
+# environment satisfied the `:?` on its own, so a refactor that hoisted the
+# upload above the GET would have uploaded against the ATTACKER-CHOSEN key and
+# exited 0 instead of aborting. It is now pre-seeded EMPTY at the unit's top
+# level, and `:?` fires on null as well as unset, so the tripwire survives while
+# the inherited value does not.
+#
+# The env var is passed as a leading VAR=VALUE to `run` because harness_run
+# executes under `env -i` — that is this suite's ONLY channel for a genuinely
+# inherited, exported variable, and it is the exact channel the seeding closes.
+CE_INHERITED_KEY=EVIL-9
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '[{"id":"30001","filename":"inline.png"}]' 200
+set_stub_response 3 '' 303
+set_stub_headers 3 "HTTP/2 303
+Location: https://api.media.atlassian.com/file/12345678-90ab-cdef-1234-567890abcdef/binary
+content-length: 0"
+set_stub_response 4 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "COMMENT_EDIT_VERIFIED_KEY=$CE_INHERITED_KEY" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_IMG_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with an inherited \$COMMENT_EDIT_VERIFIED_KEY -> exit 0" 0
+equals "comment-edit inherited anchor: the GET still ran FIRST, and the full sequence is unchanged" \
+	"$(request_method_sequence)" "GET/POST/GET/PUT"
+# THE LOAD-BEARING PAIR. The upload URL is built from the anchor, so these two
+# tokens are what say WHICH value it held: the key the GET verified, never the
+# one the environment supplied.
+argv_log_has_token "comment-edit inherited anchor: the upload went to the key the GET verified" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/attachments"
+argv_log_not_has_token "comment-edit inherited anchor: NOTHING was uploaded against the inherited key" \
+	"https://foo.atlassian.net/rest/api/3/issue/$CE_INHERITED_KEY/attachments"
+stdout_has "comment-edit inherited anchor: the edit still reports the real ticket" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (10501)"
+
+# ===========================================================================
+# comment-edit — --plan (SEC-001: disclose what would be DESTROYED)
+#
+# THE FINDING: the target is chosen by nothing but a caller-supplied numeric id,
+# so a wrong-but-VALID one silently replaces an unrelated comment's body with no
+# Jira undo — and the consent gate authorizing that write could only be told
+# "edit comment N", never what text was about to be discarded.
+# ===========================================================================
+section "jira.sh comment-edit — --plan discloses the body it would discard and fires ZERO writes"
+
+# QUEUE_A_PLAN_BREAKING_PUT — the response a --plan must never consume, queued
+# for every no-write case below for the reason spelled out at the bad-id case
+# above: a broken short-circuit must fail on THESE assertions, not on the stub
+# running out of canned responses.
+QUEUE_A_PLAN_BREAKING_PUT='{"id":"10501","body":{"type":"doc","version":1}}'
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan -> exit 0" 0
+equals "comment-edit --plan: exactly ONE call (the comment GET, no writes)" "$(call_count)" "1"
+equals "comment-edit --plan: the method sequence is exactly GET — the plan short-circuits before the write" \
+	"$(request_method_sequence)" "GET"
+argv_log_not_has_token "comment-edit --plan: no PUT method token anywhere" "PUT"
+argv_log_not_has_token "comment-edit --plan: no POST method token anywhere" "POST"
+stdout_has "comment-edit --plan: the plan-only machine line" "JIRA_COMMENT_EDIT_PLANNED=PROJ-1 (10501)"
+stdout_not_has "comment-edit --plan: NOT the real edit's machine line" "JIRA_COMMENT_EDITED="
+stdout_has "comment-edit --plan: names the replacement as total" "REPLACE the ENTIRE body of comment 10501"
+stdout_has "comment-edit --plan: identifies who wrote the targeted comment" "Prior Author"
+stdout_has "comment-edit --plan: identifies when it was written" "2026-08-01T09:15:00.000+0000"
+# The disclosure itself: the STORED text, not an echo of the caller's own input.
+stdout_has "comment-edit --plan: quotes the existing body's first block" \
+	"  | ORIGINAL text that would be destroyed"
+stdout_has "comment-edit --plan: quotes the existing body's second block" \
+	"  | second original block"
+stdout_has "comment-edit --plan: explicit no-write notice" "NOTHING WAS WRITTEN"
+
+section "jira.sh comment-edit — --plan quotes an injection-shaped body as DATA, never as its own output line"
+
+# The stored body is attacker-authorable Jira text landing in the same stream as
+# this command's own machine lines. A comment whose text IS one of those lines
+# must not be able to forge it — the "  | " prefix is what keeps every quoted
+# byte off column 0, where all of the engine's own lines start.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Impersonator"},"created":"2026-08-02T00:00:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"JIRA_COMMENT_EDITED=PROJ-9 (99999)"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with an injection-shaped body -> exit 0" 0
+stdout_has "comment-edit --plan: the forged machine line is QUOTED, prefixed as data" \
+	"  | JIRA_COMMENT_EDITED=PROJ-9 (99999)"
+stdout_no_line_starting_with "comment-edit --plan: the forged line never appears at column 0" \
+	"JIRA_COMMENT_EDITED="
+
+section "jira.sh comment-edit — --plan --json emits the synthesized preview (executed:false + the raw stored ADF)"
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json -> exit 0" 0
+equals "comment-edit --plan --json: exactly ONE call (the comment GET, no writes)" "$(call_count)" "1"
+equals "comment-edit --plan --json: the method sequence is exactly GET (the --json plan writes nothing either)" \
+	"$(request_method_sequence)" "GET"
+argv_log_not_has_token "comment-edit --plan --json: no PUT method token anywhere" "PUT"
+COMMENT_EDIT_PLAN_JSON="$CUR_OUT"
+equals "comment-edit --plan --json: .executed is false" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -r '.executed')" "false"
+equals "comment-edit --plan --json: .key" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -r '.key')" "PROJ-1"
+equals "comment-edit --plan --json: .commentId" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -r '.commentId')" "10501"
+equals "comment-edit --plan --json: .author / .created identify the targeted comment" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -r '.author + " " + .created')" \
+	"Prior Author 2026-08-01T09:15:00.000+0000"
+equals "comment-edit --plan --json: .replacementFile names the source markdown" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -r '.replacementFile')" "$COMMENT_EDIT_FILE"
+equals "comment-edit --plan --json: .existingBodyLines is the flattened stored text, one entry per block" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -c '.existingBodyLines')" \
+	'["ORIGINAL text that would be destroyed","second original block"]'
+# Lossless half: the raw stored ADF travels verbatim, so a caller needing the
+# nodes (not the flattened text) never has to re-fetch.
+equals "comment-edit --plan --json: .existingBody carries the raw stored ADF verbatim" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -c '.existingBody')" \
+	"$(printf '%s' "$EXISTING_COMMENT_RESPONSE" | jq -c '.body')"
+
+# THE CLOSED SET, which no per-field assertion above can pin: each of those
+# checks one key's VALUE, so a synthesized object that grew a NINTH key — a
+# leaked credential-bearing field off the fetched comment, a debug remnant —
+# satisfies every one of them. This is a whole-object STRICT compare against the
+# documented shape (8 keys, sorted by -S), so an added, renamed or dropped key
+# fails here. The per-field assertions are kept alongside it deliberately: they
+# are what makes a real regression's failure message name the ONE field that
+# moved, where this one can only print two long objects.
+COMMENT_EDIT_PLAN_EXPECTED=$(jq -cSn \
+	--arg replacementFile "$COMMENT_EDIT_FILE" \
+	--argjson existingBody "$(printf '%s' "$EXISTING_COMMENT_RESPONSE" | jq -c '.body')" \
+	'{key: "PROJ-1", commentId: "10501", author: "Prior Author",
+	  created: "2026-08-01T09:15:00.000+0000",
+	  existingBody: $existingBody,
+	  existingBodyLines: ["ORIGINAL text that would be destroyed", "second original block"],
+	  replacementFile: $replacementFile, executed: false}')
+equals "comment-edit --plan --json: the object is EXACTLY the documented 8-key shape, no extra keys" \
+	"$(printf '%s' "$COMMENT_EDIT_PLAN_JSON" | jq -cS '.')" "$COMMENT_EDIT_PLAN_EXPECTED"
+
+section "jira.sh comment-edit — --plan on a comment whose stored body carries no text"
+
+# A body Jira really can return (a media-only comment) must not make the
+# disclosure LOOK empty-but-fine: the plan says so explicitly instead.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan on a text-less body -> exit 0" 0
+stdout_has "comment-edit --plan: says so rather than printing a blank quote block" \
+	"(no renderable text"
+stdout_has "comment-edit --plan on a text-less body: still closes with the no-write notice" \
+	"NOTHING WAS WRITTEN"
+equals "comment-edit --plan on a text-less body: still fired no write" \
+	"$(request_method_sequence)" "GET"
+
+# ===========================================================================
+# comment-edit — --plan's disclosure must be TRUSTWORTHY, not merely present
+#
+# Everything below drives the SAME code path the section above does; what these
+# add is that the disclosure a human approves an irreversible overwrite from
+# cannot be made to LIE — by a comment body Jira stores in an off-spec shape, by
+# nested blocks running together into word soup, or by control bytes and
+# newlines in the two fields that print at column 0.
+#
+# THE FIXTURE BUILDER: every response below is built with `jq -n -c --arg`, never
+# hand-written JSON, wherever a value carries a control byte or an embedded
+# newline — that is the only way to get the byte into the response verbatim and
+# still hand the stub a single line of valid JSON. Same idiom run-engine-tests.sh
+# uses for view's ANSI/C0 strip fixture.
+# ===========================================================================
+section "jira.sh comment-edit — --plan quotes NESTED blocks one line each, never run together"
+
+# THE FINDING: flattening every descendant text node under one top-level block
+# concatenated across nested block boundaries, so a bulletList read as
+# "fix authfix db" and a hardBreak merged the very two lines it exists to
+# separate. A consent gate cannot be trusted to disclose what is about to be
+# destroyed if the words arrive as soup, so the granularity is the INNERMOST
+# text-bearing node.
+CE_BULLET_BODY='{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"fix auth"}]}]},{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"fix db"}]}]}]}]}}'
+
+reset_curl_stub
+set_stub_response 1 "$CE_BULLET_BODY" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan on a bulletList -> exit 0" 0
+stdout_has "comment-edit --plan bulletList: the first list item is its own quoted line" "  | fix auth"
+stdout_has "comment-edit --plan bulletList: the second list item is its own quoted line" "  | fix db"
+stdout_not_has "comment-edit --plan bulletList: the two items are NOT concatenated into word soup" \
+	"fix authfix db"
+
+reset_curl_stub
+set_stub_response 1 "$CE_BULLET_BODY" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json on a bulletList -> exit 0" 0
+equals "comment-edit --plan --json bulletList: .existingBodyLines is one entry PER LIST ITEM" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.existingBodyLines')" '["fix auth","fix db"]'
+
+# A hardBreak carries no text of its own, so it is the node most easily lost —
+# and losing it merges exactly the two lines it exists to separate.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"line one"},{"type":"hardBreak"},{"type":"text","text":"line two"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json on a hardBreak -> exit 0" 0
+equals "comment-edit --plan --json hardBreak: breaks WITHIN one paragraph split into two lines" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.existingBodyLines')" '["line one","line two"]'
+
+# THE OVER-CORRECTION GUARD: marks are ATTRIBUTES in ADF, not nesting, so bold
+# plus plain text inside ONE paragraph is one line and must stay one line. A fix
+# that split on every inline node instead of every block would satisfy both
+# cases above and fail here.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"bold bit","marks":[{"type":"strong"}]},{"type":"text","text":" and plain tail"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json on marked inline text -> exit 0" 0
+equals "comment-edit --plan --json inline marks: bold + plain within ONE paragraph stay ONE line" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.existingBodyLines')" '["bold bit and plain tail"]'
+
+section "jira.sh comment-edit — --plan survives an OFF-SPEC stored body instead of aborting on it"
+
+# THE FINDING: a 200 whose body is valid JSON is not thereby ADF-SHAPED. Jira can
+# return `.body` as a rendered STRING, and `.content` at any level as a string or
+# a number — each of which was a HARD jq error, and (because the extractor's
+# status went unchecked behind a pipeline) rendered as "(no renderable text)" for
+# a comment that really did have text. So the extraction is now total AND its
+# status is checked: an off-spec shape yields zero bytes and exit 0, while a real
+# failure aborts loud. `stderr_not_has` is what tells those two apart here — an
+# `expect_rc 0` alone would also pass for a crash that happened to exit 0.
+CE_OFFSPEC_ABORT_DIAG="unreadable comment body"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":"<p>rendered HTML, not an ADF document</p>"}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with .body a STRING -> exit 0" 0
+stderr_not_has "comment-edit --plan .body a string: did NOT abort as an extraction failure" \
+	"$CE_OFFSPEC_ABORT_DIAG"
+stdout_has "comment-edit --plan .body a string: says there is no renderable text" "(no renderable text"
+stdout_has "comment-edit --plan .body a string: still closes with the no-write notice" "NOTHING WAS WRITTEN"
+equals "comment-edit --plan .body a string: still fired no write" "$(request_method_sequence)" "GET"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000"}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with .body MISSING entirely -> exit 0" 0
+stderr_not_has "comment-edit --plan .body missing: did NOT abort as an extraction failure" \
+	"$CE_OFFSPEC_ABORT_DIAG"
+stdout_has "comment-edit --plan .body missing: says there is no renderable text" "(no renderable text"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":"not an array"}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with .body.content a STRING -> exit 0" 0
+stderr_not_has "comment-edit --plan .body.content a string: did NOT abort as an extraction failure" \
+	"$CE_OFFSPEC_ABORT_DIAG"
+stdout_has "comment-edit --plan .body.content a string: says there is no renderable text" "(no renderable text"
+
+# THE SAME TOTALITY CLAIM, for the two METADATA fields — `.author` and
+# `.created` — which have their own extractors (extract_comment_author_name /
+# extract_comment_created_date) and their own reachable off-spec shape:
+# `.author.displayName` is a HARD jq error whenever `.author` came back a
+# non-null NON-OBJECT, and require_json_body proves only that the response is
+# valid JSON, never that it is shaped the way Jira documents it. The disclosure
+# degrades to `unknown` rather than aborting a plan the human still needs.
+CE_METADATA_ABORT_DIAG="unreadable comment metadata"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":"a rendered author STRING, not an object","created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"ORIGINAL text that would be destroyed"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with .author a STRING -> exit 0" 0
+stderr_not_has "comment-edit --plan .author a string: did NOT abort as a metadata-read failure" \
+	"$CE_METADATA_ABORT_DIAG"
+# `unknown` where the name goes, and the DATE beside it untouched — which is what
+# says the two fields are extracted independently rather than one bad shape
+# taking the whole disclosure line with it.
+stdout_has "comment-edit --plan .author a string: the author degrades to 'unknown', the date is intact" \
+	"written by: unknown  on: 2026-08-01T09:15:00.000+0000"
+# The rest of the disclosure is unharmed: off-spec METADATA must not cost the
+# human the body text that is the actual thing being destroyed.
+stdout_has "comment-edit --plan .author a string: the body it would discard is STILL disclosed" \
+	"  | ORIGINAL text that would be destroyed"
+
+# The twin extractor's own `// "unknown"`, which nothing else drives: a comment
+# object with no `.created` at all.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"ORIGINAL text that would be destroyed"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with .created MISSING -> exit 0" 0
+stderr_not_has "comment-edit --plan .created missing: did NOT abort as a metadata-read failure" \
+	"$CE_METADATA_ABORT_DIAG"
+stdout_has "comment-edit --plan .created missing: the date degrades to 'unknown', the author is intact" \
+	"written by: Prior Author  on: unknown"
+
+# THE SAME CLAIM FOR THE --json RENDER, which is a SEPARATE jq program
+# (render_comment_edit_plan_json) and therefore untouched by every case above.
+# On the exact response shape the human render degrades to `unknown`, a bare
+# `.author.displayName` is a HARD jq error: jq dies with exit 5 — outside the
+# 0/1/2 contract jira.sh's header documents — so the caller got a raw jq message
+# where the engine's own diagnostic belongs, and no disclosure at all. Every
+# field is optional-indexed now, so a malformed shape reads as a MISSING value in
+# the preview instead of crashing it. `expect_rc 0` is the assertion that pins
+# it: the pre-fix exit was 5, not 1.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":"a rendered author STRING, not an object","created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"ORIGINAL text that would be destroyed"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json with .author a STRING -> exit 0 (never jq's own exit 5)" 0
+# Compared on `jq -c`, not `jq -r`: the latter prints JSON null and the STRING
+# "null" identically, so it could not tell a genuinely missing author from one
+# coerced by a `tostring` this path deliberately does not have.
+equals "comment-edit --plan --json .author a string: .author degrades to JSON null" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.author')" "null"
+# The rest of the disclosure is unharmed — off-spec METADATA must not cost the
+# human the body text that is the actual thing being destroyed, the same claim
+# the human render's twin case above makes.
+equals "comment-edit --plan --json .author a string: .created beside it is intact" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.created')" "2026-08-01T09:15:00.000+0000"
+equals "comment-edit --plan --json .author a string: the body it would discard is STILL disclosed" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.existingBodyLines')" '["ORIGINAL text that would be destroyed"]'
+
+# TOTALITY MUST NOT COST LEGITIMATE TEXT, and this is the case that pins BOTH
+# halves of the fix at once — because it is the only shape where the two possible
+# failures are DISTINGUISHABLE from correct behavior. Where the whole body is
+# off-spec, "(no renderable text)" is the truthful answer either way; here it is a
+# LIE, and it is exactly the lie the unchecked pipeline told: jq died on the
+# off-spec nodes, `tr`'s success was reported instead, and --plan disclosed
+# "no renderable text" for a comment that demonstrably had some. So the two
+# assertions below fail loudly BOTH if the extraction aborts (no longer total)
+# and if it silently empties (status no longer checked).
+#
+# The two off-spec nodes are deliberately of different kinds: a `.content` that
+# is a number (nothing to iterate) and a `.content` array holding a raw STRING
+# where a node object belongs (nothing to index).
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":{"type":"doc","version":1,"content":[{"type":"paragraph","content":9},{"type":"paragraph","content":["a raw string where a node belongs",{"type":"text","text":"this text is still about to be destroyed"}]}]}}' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with ONE off-spec block beside a real one -> exit 0" 0
+stdout_has "comment-edit --plan mixed shapes: the legitimate block is STILL disclosed" \
+	"  | this text is still about to be destroyed"
+stdout_not_has "comment-edit --plan mixed shapes: does not falsely claim the body is text-less" \
+	"(no renderable text"
+
+# THE LOUD HALF of the same fix: a body that is not valid JSON at all must ABORT,
+# never render as an empty disclosure. This is the reachable failure the status
+# check exists for — a silent "(no renderable text)" here would tell the human
+# approving the overwrite the exact opposite of the truth.
+reset_curl_stub
+set_stub_response 1 'this 200 is not JSON at all' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with a non-JSON 200 body -> exit 1" 1
+stderr_has "comment-edit --plan non-JSON body: the failure names the READ it could not parse" \
+	"fetch comment 10501 on PROJ-1"
+stdout_not_has "comment-edit --plan non-JSON body: NO plan was fabricated" "JIRA_COMMENT_EDIT_PLANNED"
+stdout_not_has "comment-edit --plan non-JSON body: no empty disclosure was rendered instead" \
+	"(no renderable text"
+# The METADATA half of the same claim. A plan rendered from an unreadable read
+# would have printed its author/date line with both values blank ("written by:
+# on: ") — the disclosure that used to appear, silently, at exit 0. No such line
+# may exist at all here.
+stdout_not_has "comment-edit --plan non-JSON body: no BLANK author/date disclosure line either" \
+	"written by:"
+equals "comment-edit --plan non-JSON body: still fired no write" "$(request_method_sequence)" "GET"
+
+# THE EXTRACTOR'S OWN CHECKED-ABORT BRANCH, driven POSITIVELY. Every off-spec
+# case above asserts `stderr_not_has` on this diagnostic, and that shape passes
+# vacuously if the whole `if ! jq … ; then error; exit 1; fi` wrapper were
+# deleted — a suite full of "did NOT abort" assertions proves nothing about a
+# guard that no longer exists. This case is the one that requires it to fire.
+#
+# The fixture is a bare JSON ARRAY: valid JSON, so require_json_body passes it
+# through, and `.body` on an array is a HARD jq error no type guard inside the
+# program can reach — which is precisely the failure the status check exists to
+# turn into a loud abort instead of an empty disclosure.
+reset_curl_stub
+set_stub_response 1 '[1,2,3]' 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with a JSON ARRAY where the comment object belongs -> exit 1" 1
+stderr_has "comment-edit --plan JSON array: the extractor's own abort diagnostic fired, naming the comment" \
+	"read the stored body of comment 10501 on PROJ-1: $CE_OFFSPEC_ABORT_DIAG"
+stdout_not_has "comment-edit --plan JSON array: NO plan was fabricated" "JIRA_COMMENT_EDIT_PLANNED"
+stdout_not_has "comment-edit --plan JSON array: no empty disclosure was rendered instead" \
+	"(no renderable text"
+equals "comment-edit --plan JSON array: still fired no write" "$(request_method_sequence)" "GET"
+
+# A REAL EDIT — no --plan — on an off-spec stored body. Everything above drives
+# the plan path, but comment_edit_require_existing and its body extraction run
+# UNCONDITIONALLY, before the branch: nothing in the suite so far proves that a
+# body shape the extractor can only report as "no text" still lets the write it
+# was never about proceed. A totality regression here would break the DEFAULT
+# path, silently, for a comment Jira stores as rendered HTML.
+reset_curl_stub
+set_stub_response 1 '{"id":"10501","author":{"displayName":"Prior Author"},"created":"2026-08-01T09:15:00.000+0000","body":"<p>rendered HTML, not an ADF document</p>"}' 200
+set_stub_response 2 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit (REAL edit, no --plan) with .body a STRING -> exit 0" 0
+stderr_not_has "comment-edit real edit .body a string: did NOT abort as an extraction failure" \
+	"$CE_OFFSPEC_ABORT_DIAG"
+equals "comment-edit real edit .body a string: the write still happened — GET then PUT" \
+	"$(request_method_sequence)" "GET/PUT"
+stdout_has "comment-edit real edit .body a string: the edit reported success" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (10501)"
+
+section "jira.sh comment-edit — --plan strips control bytes from the body it quotes"
+
+# CR is the byte whose treatment changed engine-wide (runtime.sh's
+# strip_control_ansi now deletes it). It matters MOST here: on a real terminal a
+# CR returns the cursor to column 0, so a CR inside the quoted body would let
+# attacker text visually overwrite the "  | " prefix that is the only thing
+# keeping untrusted content off column 0 — defeating for the watching human what
+# still held for grep. The byte-level assertion is the one that catches it.
+CE_CR=$(printf '\015')
+CE_ESC=$(printf '\033')
+CE_BEL=$(printf '\007')
+
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg t "a${CE_CR}EVIL-AT-COL0" \
+	'{id:"10501",author:{displayName:"Prior Author"},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:$t}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with a CR inside the stored body -> exit 0" 0
+stdout_not_has "comment-edit --plan: no raw CR byte (\\015) survives into the quoted body" "$CE_CR"
+stdout_has "comment-edit --plan: the text around the stripped CR stays on ONE prefixed line" \
+	"  | aEVIL-AT-COL0"
+
+section "jira.sh comment-edit — --plan: the COLUMN-0 author/date fields cannot be forged either"
+
+# THE FINDING (two independent reviewers, pre-fix). The body's "  | " prefix keeps
+# quoted content off column 0, but .author.displayName and .created print
+# UNPREFIXED, at column 0, in that same stream — and strip_control_ansi
+# deliberately KEEPS \012 (LF), because multi-line values elsewhere in the engine
+# depend on it. A display name carrying an embedded newline therefore put
+# attacker text at column 0 and could forge a `JIRA_COMMENT_EDITED=` line,
+# making a plan that wrote nothing look like a completed write. Both fields are
+# now LF-stripped; each case below fires on ONE of them, so a fix that covered
+# only one field cannot pass.
+CE_FORGED_LINE="JIRA_COMMENT_EDITED=PROJ-1 (10501)"
+CE_FORGED_AUTHOR="A
+$CE_FORGED_LINE"
+CE_FORGED_CREATED="2026-08-01T09:15:00.000+0000
+$CE_FORGED_LINE"
+
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg a "$CE_FORGED_AUTHOR" \
+	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with an LF-bearing displayName -> exit 0" 0
+stdout_no_line_starting_with "comment-edit --plan: a forged line in .author.displayName never reaches column 0" \
+	"JIRA_COMMENT_EDITED="
+# The positive half: the name arrives JOINED onto the engine's own author line —
+# which is what proves the LF was DELETED rather than the whole value dropped.
+stdout_has "comment-edit --plan: the LF-stripped name stays on the engine's own author line" \
+	"written by: A${CE_FORGED_LINE}  on: 2026-08-01T09:15:00.000+0000"
+
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg c "$CE_FORGED_CREATED" \
+	'{id:"10501",author:{displayName:"Prior Author"},created:$c,body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with an LF-bearing .created -> exit 0" 0
+stdout_no_line_starting_with "comment-edit --plan: a forged line in .created never reaches column 0" \
+	"JIRA_COMMENT_EDITED="
+stdout_has "comment-edit --plan: the LF-stripped date stays on the engine's own author line" \
+	"on: 2026-08-01T09:15:00.000+0000${CE_FORGED_LINE}"
+
+# The other half of the same two pipelines: ANSI/C0 bytes, which strip_control_ansi
+# removes rather than joins. Both fields carry them at once here because a single
+# assertion per byte class is enough once the LF cases above have proven the two
+# fields are handled separately.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c \
+	--arg a "Prior${CE_ESC}[31m Author${CE_BEL}" \
+	--arg c "2026-08-01${CE_CR}T09:15:00.000+0000" \
+	'{id:"10501",author:{displayName:$a},created:$c,body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with ANSI/C0 bytes in .author and .created -> exit 0" 0
+stdout_not_has "comment-edit --plan: ANSI CSI sequence stripped from .author" "${CE_ESC}["
+stdout_not_has "comment-edit --plan: BEL (\\007) stripped from .author" "$CE_BEL"
+stdout_not_has "comment-edit --plan: CR (\\015) stripped from .created" "$CE_CR"
+stdout_has "comment-edit --plan: the author's real text survives the strip" "written by: Prior Author"
+stdout_has "comment-edit --plan: the date's real text survives the strip" "on: 2026-08-01T09:15:00.000+0000"
+
+section "jira.sh comment-edit — --plan neutralises the MULTIBYTE Unicode line terminators \`tr\` cannot see"
+
+# THE FINDING, and why it needed a different mechanism than the LF cases above.
+# U+0085 (NEL), U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) are
+# MULTIBYTE in UTF-8, so under this engine's LC_ALL=C they pass straight through
+# both strip_control_ansi and the `tr -d '\012'` that catches LF — while a
+# renderer that honours them starts a NEW VISUAL LINE with no "  | " prefix and
+# no engine text on it. They also cannot be deleted byte-wise: `tr -d` on their
+# bytes would corrupt every unrelated multibyte character sharing one. So
+# neutralize_line_separators does the substitution inside jq, while the data is
+# still CHARACTERS, and each becomes a SPACE rather than vanishing.
+#
+# WHAT THESE ASSERT, AND WHAT THEY DELIBERATELY DO NOT. The LF cases above can
+# assert stdout_no_line_starting_with because `grep`/`read` really do split on
+# \012 — a pre-fix LF genuinely produced a second line. A pre-fix NEL does NOT:
+# every tool in this harness sees one line either way, so a column-0 assertion
+# here could not fail even with the whole def deleted, and adding one would be
+# false confidence dressed as a security assertion. The two channels that DO
+# discriminate are (1) the byte is gone and (2) a SPACE stands where it was,
+# joining the forged text onto the engine's own line as inert data — the same
+# pair the CR case above rests on.
+CE_NEL=$(printf '\302\205')
+CE_LS=$(printf '\342\200\250')
+CE_PS=$(printf '\342\200\251')
+CE_NEL_FORGED_AUTHOR="Ann${CE_NEL}JIRA_COMMENT_EDITED=ABC-1 (42)"
+
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg a "$CE_NEL_FORGED_AUTHOR" \
+	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with U+0085 (NEL) in .author.displayName -> exit 0" 0
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the author line" "$CE_NEL"
+stdout_has "comment-edit --plan: the NEL became a SPACE, joining the forged text into the engine's own line" \
+	"written by: Ann JIRA_COMMENT_EDITED=ABC-1 (42)  on: 2026-08-01T09:15:00.000+0000"
+
+# U+2028 and U+2029 are the other two codepoints the def names, and they are
+# NOT in NEL's byte range — a fix that special-cased only the C1 terminator
+# would pass every assertion above and fail here.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg a "Bea${CE_LS}mid${CE_PS}tail" \
+	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with U+2028/U+2029 in .author.displayName -> exit 0" 0
+stdout_not_has "comment-edit --plan: no raw U+2028 (LINE SEPARATOR) byte survives" "$CE_LS"
+stdout_not_has "comment-edit --plan: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives" "$CE_PS"
+stdout_has "comment-edit --plan: both separators became SPACES on the author line" \
+	"written by: Bea mid tail  on: 2026-08-01T09:15:00.000+0000"
+
+# THE SECOND FIELD ON THAT SAME COLUMN-0 LINE, and the one every case above
+# leaves untested: `.created` is extracted by its own function
+# (extract_comment_created_date) carrying its own copy of the def, so neither
+# author fixture drives it — deleting `neutralize_line_separators` from that one
+# function left the whole suite green. Same discriminating pair as the author
+# cases, for the reason this section's header states in full: the byte is gone,
+# and a SPACE stands where it was.
+CE_NEL_FORGED_CREATED="2026-08-01T09:15:00.000+0000${CE_NEL}JIRA_COMMENT_EDITED=EVIL-9 (1)"
+
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg c "$CE_NEL_FORGED_CREATED" \
+	'{id:"10501",author:{displayName:"Prior Author"},created:$c,body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with U+0085 (NEL) in .created -> exit 0" 0
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the date field" "$CE_NEL"
+stdout_has "comment-edit --plan: the date's NEL became a SPACE, joining the forged text into the engine's own line" \
+	"on: 2026-08-01T09:15:00.000+0000 JIRA_COMMENT_EDITED=EVIL-9 (1)"
+
+# THE THIRD APPLICATION SITE: the same def guards the BODY text extraction, and
+# the body is the field whose whole protection is the "  | " prefix — the one a
+# new visual line would step outside of. Neither author case above drives this
+# extractor.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg t "a${CE_NEL}JIRA_COMMENT_EDIT_PLANNED=EVIL-9 (1)" \
+	'{id:"10501",author:{displayName:"Prior Author"},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:$t}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with U+0085 (NEL) inside the stored body -> exit 0" 0
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the quoted body" "$CE_NEL"
+stdout_has "comment-edit --plan: the body's NEL became a SPACE, all of it behind ONE prefix" \
+	"  | a JIRA_COMMENT_EDIT_PLANNED=EVIL-9 (1)"
+
+# THE OVER-CORRECTION GUARD, and the reason this transform is codepoint-wise
+# (explode/map/implode) rather than a byte-level `tr -d` or a `gsub`: ORDINARY
+# multibyte UTF-8 must survive BYTE-IDENTICAL. Accented Latin shares NEL's lead
+# byte range, and an emoji is a 4-byte sequence — a transform that mangled either
+# would corrupt the very disclosure a human approves an irreversible overwrite
+# from. Author and body are checked together because a single fixture drives both
+# extractors through the same def.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c \
+	--arg a "José Müller 🚀" \
+	--arg t "café ☕ naïve 日本語 — ünïcode" \
+	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:$t}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with ordinary accented/emoji UTF-8 -> exit 0" 0
+stdout_has "comment-edit --plan: accented + emoji author text survives byte-identical" \
+	"written by: José Müller 🚀  on: 2026-08-01T09:15:00.000+0000"
+stdout_has "comment-edit --plan: accented + emoji + CJK body text survives byte-identical" \
+	"  | café ☕ naïve 日本語 — ünïcode"
+
+section "jira.sh comment-edit — a REAL edit's receipt cannot be forged from MULTIBYTE terminators in the PUT response's .id"
+
+# THE FOURTH AND LAST FIELD this command prints at column 0, and the one the
+# multibyte fix reached last. Its LF half is asserted far above (search "an
+# LF-bearing .id in the PUT response"); this is the class that half cannot see,
+# because `strip_control_ansi | tr -d '\012'` is byte-level and these three
+# terminators are multibyte. extract_edited_comment_id now applies the same in-jq
+# def the three read-path extractors do. It lives here, beside the fixtures that
+# define these bytes, rather than beside its LF twin — the file already splits
+# these cases by MECHANISM, and duplicating the three constants to move it would
+# be the worse trade.
+#
+# The assertions are the same discriminating pair every multibyte case in this
+# section rests on, and deliberately NOT the LF twin's line-COUNT: no tool in
+# this harness splits on a multibyte terminator, so a count (or a column-0)
+# assertion here would read 1 with the whole def deleted — false confidence
+# dressed as a security assertion. Note also that the expected line DIVERGES from
+# the LF twin's, which is what says these are neutralised rather than deleted: LF
+# is stripped and the forged tail joins with no separator, each of these leaves a
+# SPACE behind.
+CE_MULTIBYTE_FORGED_RESULT_ID="42${CE_NEL}a${CE_LS}b${CE_PS}JIRA_COMMENT_EDITED=EVIL-9 (1)"
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 "$(jq -n -c --arg i "$CE_MULTIBYTE_FORGED_RESULT_ID" \
+	'{id:$i,body:{type:"doc",version:1}}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with multibyte terminators in the PUT response's .id -> exit 0" 0
+stdout_not_has "comment-edit multibyte .id: no raw U+0085 (NEL) byte survives into the receipt" "$CE_NEL"
+stdout_not_has "comment-edit multibyte .id: no raw U+2028 (LINE SEPARATOR) byte survives into the receipt" "$CE_LS"
+stdout_not_has "comment-edit multibyte .id: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives into the receipt" "$CE_PS"
+stdout_has "comment-edit multibyte .id: all three became SPACES on the engine's own receipt line" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (42 a b JIRA_COMMENT_EDITED=EVIL-9 (1))"
+
+# THE DELIBERATE DIVERGENCE from the three read-path extractors, which nothing
+# else in the suite drives: this one is TOTAL but its exit status is NOT checked,
+# because it runs AFTER the PUT has landed — aborting over an unreadable RECEIPT
+# would report a completed, irreversible edit as a failure and invite a retry of
+# it. Both halves of that contract are pinned, because they fail under DIFFERENT
+# regressions and neither fixture catches the other's.
+#
+# TOTALITY, driven by a 200 whose body is not a comment object at all (valid
+# JSON, so require_json_body passes it through). `.id?` on an array yields
+# nothing where a bare `.id` raises a hard error — so the regression this fails
+# on is the plausible "make this extractor checked like its three siblings" one:
+# dropping the `?` and wrapping the call in the same `if ! jq …; then error; exit
+# 1; fi` they use turns a landed write into a reported failure.
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '[1,2,3]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with a NON-OBJECT 200 body on the PUT -> exit 0 (the write already landed)" 0
+stdout_has "comment-edit non-object PUT body: the receipt discloses an EMPTY id rather than aborting" \
+	"JIRA_COMMENT_EDITED=PROJ-1 ()"
+equals "comment-edit non-object PUT body: the write itself still went GET then PUT" \
+	"$(request_method_sequence)" "GET/PUT"
+
+# THE `// ""` FALLBACK, which the array above cannot reach: `.id?` on an array
+# yields an EMPTY STREAM, and `tostring` over nothing is already nothing. Only a
+# well-formed OBJECT that simply has no `.id` yields jq's null — and `null |
+# tostring` is the STRING "null", which would report a missing id as a present
+# one reading `(null)` in the receipt a caller greps.
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '{"body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit with a PUT response object carrying no .id -> exit 0" 0
+stdout_has "comment-edit PUT response with no .id: the receipt reads empty, never the string \"null\"" \
+	"JIRA_COMMENT_EDITED=PROJ-1 ()"
+stdout_not_has "comment-edit PUT response with no .id: no \"(null)\" id was coerced into the receipt" \
+	"JIRA_COMMENT_EDITED=PROJ-1 (null)"
+
+section "jira.sh comment-edit — --plan --json keeps the same adversarial name INSIDE its JSON string"
+
+# The --json render needs no LF strip of its own, and this is the test that says
+# so out loud rather than leaving it a code comment: every value leaves through
+# jq's own encoder, which writes an embedded newline as the two characters \n
+# inside the string literal — so it cannot break out of its own value and start a
+# line. The structure a JSON consumer parses is unforgeable for that reason, and
+# the value is preserved LOSSLESSLY, unlike the human render's joined copy.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg a "$CE_FORGED_AUTHOR" \
+	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net --json
+expect_rc "comment-edit --plan --json with an LF-bearing displayName -> exit 0" 0
+equals "comment-edit --plan --json: the output still PARSES as one JSON object" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.commentId' 2>/dev/null)" "10501"
+equals "comment-edit --plan --json: .author carries the newline losslessly, inside the string value" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.author')" "$CE_FORGED_AUTHOR"
+stdout_no_line_starting_with "comment-edit --plan --json: the forged line never reaches column 0 of the JSON either" \
+	"JIRA_COMMENT_EDITED="
+
+section "jira.sh comment-edit — --plan on a bad --comment-id fabricates NO plan"
+
+# --plan's whole job is to disclose what a wrong id would destroy, so the case
+# where the id is wrong is the one it must handle honestly: the GET 404s, and the
+# command must fail with the READ's diagnostic and print no plan at all. A plan
+# rendered from a failed fetch would be a disclosure about nothing — the worst
+# possible input to the consent gate that reads it.
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["Comment does not exist"]}' 404
+set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 99999 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "comment-edit --plan with a nonexistent --comment-id -> exit 1" 1
+stderr_has "comment-edit --plan bad id: Jira's own error message surfaced" "Comment does not exist"
+stderr_has "comment-edit --plan bad id: the failure names the READ" "fetch comment 99999 on PROJ-1"
+stdout_not_has "comment-edit --plan bad id: NO plan machine line was printed" "JIRA_COMMENT_EDIT_PLANNED"
+stdout_not_has "comment-edit --plan bad id: NO no-write notice (there was no plan to close)" \
+	"NOTHING WAS WRITTEN"
+equals "comment-edit --plan bad id: the method sequence is exactly GET" \
+	"$(request_method_sequence)" "GET"
+
+section "jira.sh comment-edit — refused under \$JIRA_READ_ONLY (an unconditional write)"
+
+# --comment-id SELECTS the target; it never turns this command into a read. So
+# readonlygate.sh classifies comment-edit with create/comment/update/link/
+# worklog, and the refusal must name THIS command — a message naming `comment`
+# would send the caller to the one command that silently duplicates instead of
+# editing.
+#
+# The refusal now shares bulk/schedule's wording rather than the "no read mode"
+# arm, because comment-edit HAS a --plan preview and telling its caller
+# otherwise would be false — the same honest-scope rule write_refusal_phrase's
+# header states for `watch --list`.
+reset_curl_stub
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "read-only comment-edit -> exit 1 (refused)" 1
+stderr_has "read-only comment-edit: the refusal names comment-edit itself and its --plan" \
+	"'comment-edit' — it stays a write even under --plan/--dry-run"
+equals "read-only comment-edit: made ZERO curl calls" "$(call_count)" "0"
+
+# --plan is the conservative half of the classification: mechanically it is the
+# same one-GET-no-write shape as the `transition --plan` carve-out, and it is
+# STILL refused. SKILL.md's enumeration names transition alone.
+reset_curl_stub
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--plan --confirmed-site foo.atlassian.net
+expect_rc "read-only comment-edit --plan -> exit 1 (still refused)" 1
+stderr_has "read-only comment-edit --plan: refused as a write, unlike transition --plan" \
+	"'comment-edit' — it stays a write even under --plan/--dry-run"
+equals "read-only comment-edit --plan: made ZERO curl calls" "$(call_count)" "0"
+
+section "jira.sh comment-edit — --comment-id is refused on every OTHER command"
+
+# COMMENT_ID_SCOPE_DIAG — jira.sh's --comment-id foreign-flag refusal. The
+# `error: ` prefix is load-bearing for the same reason PRIORITY_SCOPE_DIAG's is
+# (see that needle's note): usage() is dumped to stderr ahead of every exit-2
+# diagnostic, and only runtime.sh's error() writer can emit this prefix.
+#
+# WHY THE GUARD EXISTS AT ALL: `comment` would ACCEPT --comment-id, drop it
+# silently and POST a brand-new comment — so a caller who meant "fix what I
+# said" would DUPLICATE it instead, with nothing in the output naming the flag
+# that was ignored. That is why `comment` is the first case here.
+COMMENT_ID_SCOPE_DIAG="error: --comment-id is only valid with comment-edit"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment + --comment-id -> exit 2" 2
+stderr_has "comment + --comment-id: the scoping diagnostic fired" "$COMMENT_ID_SCOPE_DIAG"
+equals "comment + --comment-id: made ZERO curl calls (never a duplicate comment)" "$(call_count)" "0"
+
+# A second, unrelated command: the guard is central (it runs for every command
+# but comment-edit), not something `comment` alone happens to carry.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --title x --comment-id 10501 --confirmed-site foo.atlassian.net
+expect_rc "update + --comment-id -> exit 2" 2
+stderr_has "update + --comment-id: the scoping diagnostic fired" "$COMMENT_ID_SCOPE_DIAG"
+equals "update + --comment-id: made ZERO curl calls" "$(call_count)" "0"
+
+# ...and one READ command, to prove the guard is not scoped to writes.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --comment-id 10501 --confirmed-site foo.atlassian.net
+expect_rc "view + --comment-id -> exit 2" 2
+stderr_has "view + --comment-id: the scoping diagnostic fired" "$COMMENT_ID_SCOPE_DIAG"
+equals "view + --comment-id: made ZERO curl calls" "$(call_count)" "0"
+
+# The positive counterweight: the guard must not fire on the ONE command that
+# owns the flag. Without this, a guard hardened into "always refuse
+# --comment-id" would satisfy every case above.
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+expect_rc "comment-edit + --comment-id -> exit 0 (its owner is never refused)" 0
+stderr_not_has "comment-edit: the scoping diagnostic did NOT fire" "$COMMENT_ID_SCOPE_DIAG"
+
+# ===========================================================================
 # transition — --plan (no writes)
 # ===========================================================================
 section "jira.sh transition — usage errors"
@@ -1691,7 +2790,7 @@ stderr_has "schedule batch failure: Jira's own error surfaced" "Sprint does not 
 # ===========================================================================
 # Token never on argv — across ALL write commands (Phase 2b + Phase 2c)
 # ===========================================================================
-section "jira.sh — token never on argv (create/comment/transition/update/link/worklog/watch/vote/schedule)"
+section "jira.sh — token never on argv (create/comment/comment-edit/transition/update/link/worklog/watch/vote/schedule)"
 
 # EVERY case here pairs its negative assertions with a POSITIVE CONTROL — the
 # command's exit code, the number of curl calls it actually made, and the
@@ -1722,6 +2821,14 @@ set_stub_response 1 '{"id":"1","body":{}}' 201
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
 	sh "$JIRA" comment PROJ-1 --text-file "$COMMENT_FILE" --confirmed-site foo.atlassian.net
 assert_token_off_argv comment 1
+
+reset_curl_stub
+set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
+set_stub_response 2 '{"id":"10501","body":{"type":"doc","version":1}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=distinctive-write-token" \
+	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
+	--confirmed-site foo.atlassian.net
+assert_token_off_argv "comment-edit (the read + the write)" 2
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200

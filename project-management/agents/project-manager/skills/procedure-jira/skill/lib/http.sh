@@ -9,8 +9,10 @@
 #             * the URL's host is re-checked against $CONFIRMED_HOST (fail closed);
 #             * under $JIRA_READ_ONLY, a non-GET method is refused (fail closed)
 #               — the sink-side counterpart of jira.sh's one-shot
-#               require_write_allowed; resolve_media_uuid needs no check of its
-#               own because its method is a literal GET, not a parameter;
+#               require_write_allowed — with ONE named, exactly-matched
+#               exception, POST /rest/api/3/search/jql (see
+#               is_read_only_search_post); resolve_media_uuid needs no check of
+#               its own because its method is a literal GET, not a parameter;
 #             * `--proto '=https'`, never -L, never -k/--insecure.
 #
 # FLAG ORDER IS PART OF THE HARDENING, not cosmetic. curl applies its options
@@ -29,6 +31,42 @@
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
+
+# is_read_only_search_post METHOD URL -> 0 iff METHOD/URL are the ONE non-GET
+# request this engine may send under $JIRA_READ_ONLY: a POST to EXACTLY
+# https://<CONFIRMED_HOST>/rest/api/3/search/jql, Jira's own JQL search
+# endpoint. Stated here, ahead of both curl senders, because it is the
+# transport's read-only method policy rather than either sender's own logic.
+#
+# WHY AN EXCEPTION EXISTS AT ALL. `search` — and `children`, which drives its
+# read through cmd_search rather than reimplementing it — is classified a READ
+# by readonlygate.sh's is_write_invocation, correctly: it mutates nothing. But
+# Jira's REST v3 search endpoint IS a POST. The JQL, the field list and the page
+# token travel in a JSON BODY because a real query is too large/structured for a
+# GET query string, so this is the API's own shape, not a write dressed as a
+# read. The sink's "any non-GET IS the write the gate refuses" heuristic — right
+# for every other endpoint this engine touches — was therefore wrong for exactly
+# this one, and refused two of the five commands SKILL.md's read-only credential
+# scope names (view/search/workflow/children/transition --plan).
+#
+# READ THIS BEFORE WIDENING IT. This is ONE NAMED ENDPOINT, not a policy that
+# POST is sometimes trustworthy. The URL test is whole-string EQUALITY against a
+# literal rebuilt from $CONFIRMED_HOST — never a prefix, substring or glob — so
+# it admits that one URL and nothing that merely starts with, contains or
+# resembles it (a `?`/`;` suffix, a `/rest/api/3/search/jql/...` extension, a
+# path-traversal tail, a look-alike host). Adding a second "read that POSTs"
+# means adding a second equally exact arm and justifying it here; relaxing this
+# into a pattern match, or dropping the method half, silently re-opens the write
+# channel the gate exists to close. Every other method/URL pair stays refused,
+# fail-closed, exactly as before this exception existed.
+is_read_only_search_post() {
+	irosp_method=$1
+	irosp_url=$2
+	case "$irosp_method" in
+		POST) [ "$irosp_url" = "https://${CONFIRMED_HOST}/rest/api/3/search/jql" ] ;;
+		*) return 1 ;;
+	esac
+}
 
 # jira_curl METHOD URL [DATA_FILE] [CONTENT_TYPE]
 # Sets $JIRA_HTTP_BODY_FILE (the response body, always a FRESH file — never
@@ -59,10 +97,15 @@ jira_curl() {
 	# read by omission, or a "read" command that grows a write path (an
 	# attachment upload is already reachable from create/update/comment) — at
 	# the one place such a bug is still catchable: the network egress itself.
-	# GET is the only method this engine reads with, so any other method IS the
-	# write the gate refuses. Fails closed (exit 1), like every check above it.
-	if is_read_only_requested && [ "$method" != GET ]; then
-		error "internal: \$JIRA_READ_ONLY is set: refusing to send $method $url — read-only mode permits GET only (fail closed)"
+	# GET is the only method this engine reads with, save the ONE exactly-matched
+	# endpoint is_read_only_search_post names, so any other method/URL pair IS
+	# the write the gate refuses. Fails closed (exit 1), like every check above
+	# it — and note the exception cannot smuggle a request to another host: its
+	# comparison is against a URL rebuilt from the same $CONFIRMED_HOST the
+	# re-check above pins.
+	if is_read_only_requested && [ "$method" != GET ] \
+		&& ! is_read_only_search_post "$method" "$url"; then
+		error "internal: \$JIRA_READ_ONLY is set: refusing to send $method $url — read-only mode permits GET, plus POST to /rest/api/3/search/jql alone (fail closed)"
 		exit 1
 	fi
 
@@ -120,6 +163,15 @@ jira_curl_multipart() {
 	# upload, reachable from create/update/comment's inline-image path as well
 	# as from `attach`, so a future misclassification of any of those would land
 	# here first.
+	#
+	# GET-ONLY HERE, DELIBERATELY: jira_curl's POST /rest/api/3/search/jql
+	# exception is NOT repeated, because no read can reach this helper. Every
+	# caller sends multipart/form-data to /rest/api/3/issue/<KEY>/attachments
+	# (cmd-attach.sh's upload and inline-images.sh's pre-pass — checked, those
+	# are the only two), which is an unambiguous WRITE; the search endpoint takes
+	# a JSON body and is never requested through here. Copying the exception over
+	# "for symmetry" would widen the permitted surface for zero capability, which
+	# is the direction this gate must never move.
 	if is_read_only_requested && [ "$mp_method" != GET ]; then
 		error "internal: \$JIRA_READ_ONLY is set: refusing to send $mp_method $mp_url — read-only mode permits GET only (fail closed)"
 		exit 1

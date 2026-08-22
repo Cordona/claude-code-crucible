@@ -13,7 +13,7 @@ Before writing or auditing any Jira artifact, apply `standard-backlog-artifacts`
 
 ## Authoring surface: markdown to ADF
 
-Jira stores rich text as Atlassian Document Format (ADF) JSON, not markdown. Every write command that accepts body text — `create --description-file`, `update --description-file` / `--append-file` / `--acceptance-file` / `--review-file`, `comment --text-file` — takes a **markdown file**, converted to ADF by `md-to-adf.sh` before it reaches the API. **Always author in markdown. Never write Jira wiki notation** (`h2.`, `*bold*`, `{code}`) — it is not converted and renders as raw text.
+Jira stores rich text as Atlassian Document Format (ADF) JSON, not markdown. Every write command that accepts body text — `create --description-file`, `update --description-file` / `--append-file` / `--acceptance-file` / `--review-file`, `comment --text-file`, `comment-edit --text-file` — takes a **markdown file**, converted to ADF by `md-to-adf.sh` before it reaches the API. **Always author in markdown. Never write Jira wiki notation** (`h2.`, `*bold*`, `{code}`) — it is not converted and renders as raw text.
 
 The converter supports a defined subset of markdown:
 
@@ -27,6 +27,7 @@ The converter supports a defined subset of markdown:
 | A GFM pipe table (header row + `\|---\|---\|` separator + body rows) | An ADF table |
 | A triple-backtick fenced block (optionally with a language tag) | An ADF code block |
 | `**bold**`, `` `code` ``, `[text](url)` | Inline marks (a link whose scheme isn't http(s)/mailto drops its href, keeps the text) |
+| `[~accountId:<ID>]` | A real Jira **@mention** (the user is notified). **Write it BARE** — wrapping it in `**`/`*`/`_` suppresses the mention (it renders as literal text), and `~~` leaves stray tildes around it; marks do not nest here, exactly as for a wrapped `[text](url)` link. `<ID>` must be an **accountId**, never a name or email: the converter performs no lookup, so an **out-of-shape** id (wrong characters, over 128 chars) degrades to literal text, while a well-shaped but **wrong** id is sent through as a real mention unchanged — the converter cannot know it is wrong, only Jira can reject it. Get one from a `view --json`/`search --json` payload, or from the account the auth gate already confirmed. |
 | A line that is exactly `---` | A horizontal rule |
 | Anything the converter doesn't recognize (footnotes, raw HTML, definition lists, …) | Degrades to a plain paragraph |
 
@@ -57,4 +58,5 @@ Neither GitHub nor GitLab issues have an equivalent: there is no per-status "wha
 The human-confirmed Jira site — the same `--confirmed-site` every `jira.sh` command requires — selects which `standard-jira-<client>` overlay applies, through a `site → client-skill` registry the private client layer supplies; see `site-registry.example.json` in this directory for the mapping shape. This generic skill, and the flow that orchestrates it, never hardcode a client name. A confirmed site with no registry entry falls back to this generic skill alone, still fully gated.
 
 ---
+*Standard Version: 1.1 — `md-to-adf.sh` gained `[~accountId:<ID>]` → a real ADF `mention` node (previously the syntax passed through as literal text, so every attempted @mention silently failed to notify anyone), and `procedure-jira` gained a `comment-edit` command. Added the mention row to the supported-markdown table — with the accountId-not-a-name constraint, since the converter performs no lookup and never makes a network call — and named `comment-edit --text-file` alongside `comment --text-file` in the body-text command list.*
 *Standard Version: 1.0 — the Jira delta on the shared backlog-artifact rubric. Built to by the project-manager whenever it operates `procedure-jira`. Builds on `standard-backlog-artifacts` (taxonomy, INVEST, acceptance criteria, DoR/DoD, audience — unchanged for Jira, never restated here). Per-client templates/labels/status-gate content live in a `standard-jira-<client>` overlay; the CLI mechanics live in `procedure-jira` / `procedure-jira-auth`. It does not define the project-manager's conduct, gates, or report envelope (the agent body).*

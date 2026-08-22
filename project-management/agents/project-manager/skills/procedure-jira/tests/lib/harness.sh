@@ -117,6 +117,34 @@ stderr_has() {
        stderr was: $CUR_ERR"; fi
 }
 
+# stdout_no_line_starting_with — the COLUMN-0 forgery assertion: no line of
+# stdout may BEGIN with PREFIX. It is deliberately not expressible as
+# stdout_not_has, which is substring-anchored and therefore also fires on the
+# engine's own legitimate quoted-as-data copy of the same text
+# ("  | JIRA_COMMENT_EDITED=…"). Only the line anchor separates "the untrusted
+# value was rendered as data" from "the untrusted value forged one of the
+# engine's own machine lines", which is the whole claim these tests make.
+#
+# The match is a literal prefix via `case`, not a `grep '^…'` BRE, for the same
+# reason argv_log_has_token is an exact-line grep rather than a substring one: a
+# needle carrying a BRE metacharacter (a `.`, a `[`) would silently match
+# something else, or nothing, and prove neither.
+stdout_no_line_starting_with() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	snlsw_offender=""
+	while IFS= read -r snlsw_line; do
+		case $snlsw_line in
+			"$2"*) snlsw_offender=$snlsw_line; break ;;
+		esac
+	done <<EOF
+$CUR_OUT
+EOF
+	if [ -n "$snlsw_offender" ]; then
+		fail "$1" "a stdout line starts with the forbidden prefix: $2
+       offending line: $snlsw_offender"
+	else pass "$1"; fi
+}
+
 # stderr_not_has — the stdout_not_has twin, for the case where TWO guards could
 # each produce the same exit code and the test must prove WHICH one fired: an
 # `expect_rc 2` alone passes for either, so the losing guard's diagnostic has to

@@ -568,6 +568,88 @@ else
 fi
 
 # ===========================================================================
+# Mentions: `[~accountId:ID]` -> the inline `mention` node. Every expected.json
+# below is hand-authored from md-to-adf.sh's documented contract (the oracle has
+# no mention support at all), same as the italic set above — never generated
+# from the converter, which would make the corpus circular.
+#
+# THE DEGRADE HALF IS THE POINT, not padding. The id allow-list lives in the
+# tokenizer's own capture class, so an out-of-shape id never matches the mention
+# alternative and has to fall through to the SAME literal text the converter
+# emitted before mentions existed. A half-built mention node — one with an
+# unresolvable attrs.id — is a Jira 400, so "degrades to plain text" is the
+# whole safety property, and one fixture per rejection reason is what keeps a
+# red suite pointing at WHICH reason stopped working.
+#
+# The two ordering fixtures also double as the capture-group canary. The mention
+# alternative was inserted MID-alternation (group 4, ahead of the link branch,
+# because both can begin at a `[`), which renumbered link/italic/strike from
+# 4-8 to 5-9 — an off-by-one in that renumbering corrupts an UNRELATED mark's
+# output rather than failing loudly, and a fixture carrying a mention and a link
+# in one line is where the two indexes have to disagree to be seen.
+# ===========================================================================
+section "md-to-adf.sh — golden-file: mentions ([~accountId:ID] -> a mention node)"
+
+golden_match "golden: mention (a valid id alongside plain text)" \
+	"$FIXTURES_DIR/mention.md" "$FIXTURES_DIR/mention.expected.json"
+
+# Both ends of the {1,128} length class, so a narrowing at either bound fails
+# loudly. The lower bound needs its own fixture: at 0 chars the branch cannot
+# match at all (that is mention-degrade-empty), so a regression to {2,128} would
+# otherwise only ever show up as a mention that silently stopped resolving.
+golden_match "golden: mention-id-min (a 1-char id — the documented minimum — matches)" \
+	"$FIXTURES_DIR/mention-id-min.md" "$FIXTURES_DIR/mention-id-min.expected.json"
+
+golden_match "golden: mention-id-max (a 128-char id — the documented maximum — still matches)" \
+	"$FIXTURES_DIR/mention-id-max.md" "$FIXTURES_DIR/mention-id-max.expected.json"
+
+golden_match "golden: mention-link-precedence ([~accountId:x](url) is a mention THEN literal (url), never a link)" \
+	"$FIXTURES_DIR/mention-link-precedence.md" "$FIXTURES_DIR/mention-link-precedence.expected.json"
+
+golden_match "golden: mention-degrade-to-link (an out-of-shape id before (url) still reaches the LINK branch)" \
+	"$FIXTURES_DIR/mention-degrade-to-link.md" "$FIXTURES_DIR/mention-degrade-to-link.expected.json"
+
+golden_match "golden: mention-degrade-space (a space in the id -> literal text)" \
+	"$FIXTURES_DIR/mention-degrade-space.md" "$FIXTURES_DIR/mention-degrade-space.expected.json"
+
+golden_match "golden: mention-degrade-empty ([~accountId:] with no id -> literal text)" \
+	"$FIXTURES_DIR/mention-degrade-empty.md" "$FIXTURES_DIR/mention-degrade-empty.expected.json"
+
+golden_match "golden: mention-degrade-badchar (a character outside the allow-list -> literal text)" \
+	"$FIXTURES_DIR/mention-degrade-badchar.md" "$FIXTURES_DIR/mention-degrade-badchar.expected.json"
+
+golden_match "golden: mention-id-overlong (129 chars — one over the maximum -> literal text)" \
+	"$FIXTURES_DIR/mention-id-overlong.md" "$FIXTURES_DIR/mention-id-overlong.expected.json"
+
+# A mention inside a code span must NEVER resolve — the code alternative sits
+# ahead of mention in the alternation and its span is matched leftmost-first, so
+# a backtick opening before the `[` consumes the whole bracketed text as code.
+# This is user-visible safety, not a parser curiosity: procedure-jira's own
+# SKILL.md documents the mention syntax by writing it inside backticks, and a
+# code example that pinged a real person on every render would be a defect.
+golden_match "golden: mention-in-code-span (mention syntax inside \`code\` stays literal, never a mention)" \
+	"$FIXTURES_DIR/mention-in-code-span.md" "$FIXTURES_DIR/mention-in-code-span.expected.json"
+
+# Each degrade fixture's golden already pins its exact text; this asserts the
+# ONE thing a golden per fixture cannot say as a single claim — that NO
+# rejection reason anywhere in the set leaks a mention node into the document.
+# A regression that emitted {mention, attrs:{}} for a malformed id would break
+# one golden loudly and this sweep as a named summary of the whole class.
+for mention_degrade_case in mention-degrade-space mention-degrade-empty \
+	mention-degrade-badchar mention-id-overlong mention-in-code-span; do
+	TESTS_RUN=$((TESTS_RUN + 1))
+	mention_degrade_nodes=$(env -i HOME="$WORK/home" PATH="$TOOLBOX" TMPDIR="$WORK" \
+		sh "$CONVERTER" --file "$FIXTURES_DIR/$mention_degrade_case.md" \
+		| jq -c '[.. | objects | select(.type == "mention")]')
+	if [ "$mention_degrade_nodes" = '[]' ]; then
+		pass "golden: $mention_degrade_case — ZERO mention nodes in the document (no partial mention)"
+	else
+		fail "golden: $mention_degrade_case — ZERO mention nodes in the document" \
+			"got mention nodes: $mention_degrade_nodes"
+	fi
+done
+
+# ===========================================================================
 # Full Jira ADF set: strike, headings 1-6, fenced code, blockquote/panel,
 # nested lists, tables, hardBreak, bold+italic stacked. NONE of these have
 # an oracle equivalent (the oracle supports headings 2-3, flat lists, and
@@ -870,6 +952,20 @@ assert_jq "tasklist: inline marks inside a checkbox item survive as marked text 
 assert_jq "tasklist: those marked nodes sit DIRECTLY in the taskItem, not inside a paragraph" \
 	"$TASK_INLINE_MARKS" '[.content[0].content[0].content[].type] | unique' '["text"]'
 assert_valid_adf_json "valid-adf: task item carrying inline marks" "$TASK_INLINE_MARKS"
+
+# A mention inside a checkbox item is the one place ADF_STRUCTURAL_VALIDATOR's
+# is_inline_node list actually bites: a taskItem's children are inline nodes
+# DIRECTLY (no paragraph wrapper), so the validator checks each one against that
+# list by name. A mention in a PARAGRAPH — every golden fixture above — passes
+# the validator whether or not "mention" is listed, because no paragraph rule
+# consults it. Only this shape can fail if the node type is ever dropped from
+# the list, which is why the case lives here and not with the goldens.
+TASK_INLINE_MENTION=$(convert_md '- [ ] ping [~accountId:5b10ac8d82e05b22cc7d4ef5]')
+assert_jq "tasklist: a mention inside a checkbox item is an inline mention node, sibling to its text" \
+	"$TASK_INLINE_MENTION" '.content[0].content[0].content' \
+	'[{"type":"text","text":"ping "},{"type":"mention","attrs":{"id":"5b10ac8d82e05b22cc7d4ef5"}}]'
+assert_valid_adf_json "valid-adf: task item carrying a mention (mention IS an accepted inline node)" \
+	"$TASK_INLINE_MENTION"
 
 section "md-to-adf.sh — golden-file: tables"
 
