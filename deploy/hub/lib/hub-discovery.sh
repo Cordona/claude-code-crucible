@@ -22,11 +22,12 @@
 # it is atomic, how many units it holds). Both are built by ONE scan, and every
 # screen streams them — no consumer ever re-walks the filesystem.
 #
-# PERFORMANCE: exactly three subprocess-heavy stages, each run ONCE per hub
+# PERFORMANCE: exactly four subprocess-heavy stages, each run ONCE per hub
 # invocation: the find(1) walks, one awk that reads every candidate's
-# frontmatter (a single process for the whole tree, not one per file), and one
-# awk that computes display names and the group table. This is what keeps the
-# scan inside the spec's sub-100ms expectation on a few hundred files.
+# frontmatter (a single process for the whole tree, not one per file), one more
+# that re-reads the AGENT subset of those files for the cosmetic `color:` check,
+# and one awk that computes display names and the group table. This is what keeps
+# the scan inside the spec's sub-100ms expectation on a few hundred files.
 #
 # Portability: POSIX sh only. -maxdepth is used (a universal BSD+GNU find
 # extension, already relied on elsewhere in this repo).
@@ -546,6 +547,115 @@ hub_disc_resolve_names() {
 }
 
 # ---------------------------------------------------------------------------
+# Badge-color resolution — cosmetic, warn-only.
+# ---------------------------------------------------------------------------
+
+# HUB_COLOR_KNOWN_LIST / HUB_COLOR_BROKEN_LIST — the two lists the `color:` check
+# below reads, space-separated like every other multi-value hub constant
+# (HUB_SD_VCS_KEYS, HUB_SD_TECH_AGENT_SUFFIXES).
+#
+# An agent's `color:` tints its badge in Claude Code's concurrent-agent display
+# and nothing else. It never becomes a path, a filename or a flag, so unlike
+# HUB_NAME_CHARSET_RE (lib/hub-common.sh) this is NOT a trust boundary and a bad
+# value never keeps a unit out of the pipeline. Same relationship
+# HUB_DISPLAY_ACRONYMS below has to display naming — presentation polish,
+# declared beside its one consumer rather than in the shared trust-boundary
+# section.
+#
+# KNOWN is the palette documented by the {{COLOR}} token in
+# software-development/templates/tech-pair/template-tech-developer.md: the values
+# in live use with no reported rendering issue. It is a LIVING list, not a closed
+# set — a color absent from it is reported as unverified, never rejected. BROKEN
+# is a list despite holding one entry because `white` is the one CONFIRMED-broken
+# value (an invisible badge against a dark theme) and that template comment's own
+# instruction, should another ever be found, is to extend the list: a one-word
+# edit here.
+HUB_COLOR_KNOWN_LIST='red green blue yellow purple orange cyan pink teal magenta'
+HUB_COLOR_BROKEN_LIST='white'
+
+# hub_disc_resolve_colors LISTFILE OUTFILE -> "path<TAB>status<TAB>color" for
+# every path listed one-per-line in LISTFILE, where the color is read from that
+# file's YAML frontmatter 'color:' key and status is:
+#
+#   ok            a color was found AND it is on HUB_COLOR_KNOWN_LIST.
+#   missing       no parsable frontmatter 'color:' at all.
+#   broken        a color was found and it is on HUB_COLOR_BROKEN_LIST.
+#   unrecognized  a color was found, non-empty, and is on neither list.
+#
+# WARN-ONLY, NEVER A REJECTION — the whole difference from
+# hub_disc_resolve_names above, which shares this function's shape but guards a
+# real path-traversal boundary. No status here may drop a unit; hub_discovery_build
+# warns on `broken` and `unrecognized` and installs the unit either way, and
+# `missing` is silent because a `color:` is optional.
+#
+# A SECOND PASS OVER A NARROWER LIST, not a third column on the name map: the name
+# map covers every candidate namefile including a skill's SKILL.md, which has no
+# `color:` to read, and a second sometimes-empty column would have to sit in the
+# MIDDLE of that table, where it collapses under `read` with IFS=TAB (see "THE TAB
+# TRAP" in lib/hub-common.sh — the same reason `name` is last there and `color` is
+# last here).
+#
+# Frontmatter scanning, quote stripping and the sanitized diagnostic form are
+# hub_disc_resolve_names' reasoning applied unchanged; see its header. Only
+# `unrecognized` carries bytes from the file, so only it needs the sanitizing —
+# an `ok` or `broken` value is by construction one of the words in the two lists.
+hub_disc_resolve_colors() {
+	awk -v list="$1" -v known="$HUB_COLOR_KNOWN_LIST" -v broken="$HUB_COLOR_BROKEN_LIST" '
+		BEGIN {
+			dq = "\042"; sq = "\047"
+			nk = split(known, kw, " ")
+			for (i = 1; i <= nk; i++) KNOWN[kw[i]] = 1
+			nb = split(broken, bw, " ")
+			for (i = 1; i <= nb; i++) BROKEN[bw[i]] = 1
+			while ((getline path < list) > 0) {
+				if (path == "") continue
+				color = ""; found = 0; lineno = 0
+				while ((getline line < path) > 0) {
+					sub(/\r$/, "", line)
+					lineno++
+					if (lineno == 1) {
+						if (line == "---") continue
+						break
+					}
+					if (line == "---") break
+					if (substr(line, 1, 6) == "color:") {
+						val = substr(line, 7)
+						sub(/^[ \t]+/, "", val)
+						sub(/[ \t]+$/, "", val)
+						n = length(val)
+						if (n >= 2) {
+							c1 = substr(val, 1, 1); c2 = substr(val, n, 1)
+							if ((c1 == dq && c2 == dq) || (c1 == sq && c2 == sq))
+								val = substr(val, 2, n - 2)
+						}
+						color = val
+						found = 1
+						break
+					}
+				}
+				close(path)
+				if (!found || color == "") {
+					print path "\tmissing\t"
+				} else if (color in BROKEN) {
+					print path "\tbroken\t" color
+				} else if (color in KNOWN) {
+					print path "\tok\t" color
+				} else {
+					# Reported, never used, and sanitized for the reason
+					# hub_disc_resolve_names states: an unrecognized value is
+					# arbitrary bytes from the file, and a newline or an escape
+					# sequence in it would forge a line in the very warning that
+					# reports it.
+					shown = color
+					gsub(/[^ -~]/, "?", shown)
+					print path "\tunrecognized\t" shown
+				}
+			}
+		}
+	' </dev/null >"$2"
+}
+
+# ---------------------------------------------------------------------------
 # Display naming + the group table.
 # ---------------------------------------------------------------------------
 
@@ -625,6 +735,39 @@ hub_discovery_build() {
 		*) warn "skipping: no 'name:' frontmatter in $hdb_bad_path" ;;
 		esac
 	done <"$hdb_tmp/rejected.tsv"
+
+	# The cosmetic `color:` check, NARROWED to agent units whose name already
+	# resolved `ok`, and narrowed off tables that already exist rather than by a
+	# second walk: candidates.tsv's own kind column ($4) says which candidates are
+	# agent definitions at all — a skill's SKILL.md carries no `color:`, so scanning
+	# one could only manufacture a `missing` row about a file that was never going to
+	# have the field — and the name map says which of those survive name resolution,
+	# because a unit already being skipped for an unusable name must not also collect
+	# a note about its badge tint. The phase test is FNR == NR && FILENAME == ARGV[1]
+	# for the reason the join above states in full.
+	#
+	# It runs AFTER the rejection warnings so a run with both kinds reads in
+	# severity order: what was dropped first, then what merely looks wrong.
+	awk -F '\t' '
+		FNR == NR && FILENAME == ARGV[1] { st[$1] = $2; next }
+		$4 == "agent" && st[$6] == "ok" { print $6 }
+	' "$hdb_tmp/namemap.tsv" "$hdb_tmp/candidates.tsv" | LC_ALL=C sort -u >"$hdb_tmp/agentfiles.txt"
+	hub_disc_resolve_colors "$hdb_tmp/agentfiles.txt" "$hdb_tmp/colormap.tsv"
+
+	# NEITHER ARM SKIPS ANYTHING — a badge tint is not an identity, so the unit is
+	# already in ordered.tsv and installs normally whatever is warned here. `ok` and
+	# `missing` are both silent: a `color:` is an optional field.
+	while IFS="$HUB_TAB" read -r hdb_color_path hdb_color_status hdb_color; do
+		[ -n "$hdb_color_path" ] || continue
+		case $hdb_color_status in
+		broken)
+			warn "$hdb_color_path: 'color: $hdb_color' is a known-broken badge color — it renders with no highlight at all against a dark terminal theme; the unit still installs, but pick one of: $HUB_COLOR_KNOWN_LIST"
+			;;
+		unrecognized)
+			warn "$hdb_color_path: 'color: $hdb_color' is unrecognized — not on the documented living palette ($HUB_COLOR_KNOWN_LIST); the unit still installs, but verify it actually renders before relying on it"
+			;;
+		esac
+	done <"$hdb_tmp/colormap.tsv"
 
 	HUB_UNITS="$hdb_tmp/units.tsv"
 	HUB_GROUPS="$hdb_tmp/groups.tsv"

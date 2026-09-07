@@ -4,7 +4,9 @@
 #                boundary a non-TTY test process can reach: hub-install.sh's
 #                NON-INTERACTIVE empty-selection guard, its --baseline-only flag,
 #                the hub_domain_selectable_groups_of_kind accessor the guard is
-#                built on, and lib/hub-checklist.sh's own entry guards.
+#                built on, and lib/hub-checklist.sh's own entry guards — plus
+#                lib/hub-discovery.sh's warn-only `color:` check, whose whole
+#                contract is that it never removes a unit from the pipeline.
 #
 # The shared machinery lives in lib/: the runner primitives and the isolated
 # PATH toolbox in lib/harness.sh (which also states why this is hand-rolled
@@ -101,6 +103,32 @@ hub_discovery_build "$1"
 hub_domain_selectable_groups_of_kind "$2" "$3"
 PROBE_EOF
 probe_groups() { harness_run "HUB_LIB=$HUB_LIB" sh "$PROBE" "$SRC" "$1" "$2"; }
+
+# probe_discovery SRC -> hub_discovery_build against SRC, with the unit table's
+# NAME column on stdout (one per line, in table order) and every warning the scan
+# emitted on stderr.
+#
+# WHY THE LIBRARY AND NOT hub-install.sh for the badge-color cases below: a color
+# status is not a selection and never reaches the machine payload, so the two
+# things to observe are which warning was printed and whether the unit still
+# entered the pipeline — and only the unit table answers the second for a unit
+# nobody selected. The section's own install case asserts the same feature through
+# the real entry point, where "entered the pipeline" becomes a symlink on disk.
+#
+# The NAME column alone, rather than the whole row: a unit's identity is what says
+# it survived name resolution, and pinning its group/src/display here would
+# duplicate what the accessor and display cases already own.
+DISCOVERY_PROBE="$WORK/probe-discovery.sh"
+cat >"$DISCOVERY_PROBE" <<'PROBE_EOF'
+set -eu
+. "$HUB_LIB/hub-common.sh"
+. "$HUB_LIB/hub-domains.sh"
+. "$HUB_LIB/hub-discovery.sh"
+hub_workspace_init
+hub_discovery_build "$1"
+cut -f 2 "$HUB_UNITS"
+PROBE_EOF
+probe_discovery() { harness_run "HUB_LIB=$HUB_LIB" sh "$DISCOVERY_PROBE" "$1"; }
 
 # probe_checklist [ARG ...] -> lib/hub-checklist.sh's hub_checklist at its OWN
 # boundary, with ARG... forwarded VERBATIM as its trailing optional arguments
@@ -906,5 +934,102 @@ probe_checklist r 'label'
 expect_rc "checklist(grouped/slid-extrakey): -> exit 1" 1
 stderr_has "checklist(grouped/slid-extrakey): the diagnostic quotes the value that landed there" \
 	"$GUARD_GROUPED, got 'r'"
+
+# ===========================================================================
+# lib/hub-discovery.sh — the cosmetic `color:` check.
+#
+# THE ONE THING EVERY CASE HERE IS ABOUT: this check WARNS and never rejects,
+# which is the whole difference from the sibling `name:` check it borrows its
+# shape from. A name becomes a filename under --target, so a bad one keeps its
+# unit out of the pipeline entirely; a badge tint is presentation, so a bad one
+# must leave the unit exactly as installable as a good one.
+#
+# It is also NARROWED twice — to agent units, and to units whose name already
+# resolved `ok` — and both halves are asserted as an ABSENCE, because a file the
+# scan never opened has no positive channel to read.
+#
+# One fixture tree, one discovery run, six units: see fx_build_color_source's own
+# block for why that co-observation is what makes the silent cases falsifiable.
+# ===========================================================================
+section "the color: check warns on a broken or unrecognized value, and is silent otherwise"
+COLOR_SRC="$WORK/color-source"
+fx_build_color_source "$COLOR_SRC"
+probe_discovery "$COLOR_SRC"
+expect_rc "discovery(color): the scan itself succeeded -> exit 0" 0
+
+# THE MESSAGES, not just their presence: the two warned statuses run through the
+# same `warn` in the same loop over the same table, so their text is the only thing
+# that distinguishes them — swap the two arms and every other observable is
+# identical.
+stderr_has "discovery(color/broken): the confirmed-broken value is named, and the file that carries it" \
+	"$COLOR_SRC/$FX_COLOR_SRC_BROKEN: 'color: white' is a known-broken badge color"
+# The palette is interpolated from HUB_COLOR_KNOWN_LIST, so this is also the only
+# check that the constant reaches the human at all.
+stderr_has "discovery(color/broken): the advice names the whole known palette to pick from" \
+	'the unit still installs, but pick one of: red green blue yellow purple orange cyan pink teal magenta'
+stderr_has "discovery(color/unrecognized): a typo is reported as unverified, NOT as broken" \
+	"$COLOR_SRC/$FX_COLOR_SRC_UNRECOGNIZED: 'color: whyte' is unrecognized"
+stderr_has "discovery(color/unrecognized): and asks for it to be verified rather than replaced" \
+	'verify it actually renders before relying on it'
+
+# The two SILENT statuses. Each names its own file, so a warning about any OTHER
+# unit cannot satisfy it, and each is matched up to the `'color:` the warning would
+# open with — the one prefix both warned arms share, whichever of them a widened
+# check would route this file into.
+stderr_lacks "discovery(color/ok): a value on the known palette says nothing at all" \
+	"$COLOR_SRC/$FX_COLOR_SRC_OK: 'color:"
+stderr_lacks "discovery(color/missing): an omitted color: is legitimate, so it says nothing either" \
+	"$COLOR_SRC/$FX_COLOR_SRC_ABSENT: 'color:"
+
+# THE NAME NARROWING. The rejection is asserted first, because the claim is not
+# "this file is silent" — it is "this file was already reported once, and is not
+# reported twice". Without the positive half, deleting the name check would leave
+# the absence assertion green.
+stderr_has "discovery(color/rejected-name): the unusable name really was reported" \
+	"skipping $COLOR_SRC/$FX_COLOR_SRC_BADNAME: 'name: $FX_COLOR_BADNAME' is not a usable unit name"
+stderr_lacks "discovery(color/rejected-name): and the same file collects no SECOND note about its badge tint" \
+	"$COLOR_SRC/$FX_COLOR_SRC_BADNAME: 'color:"
+
+# THE KIND NARROWING. This skill's frontmatter really does carry `color: white`,
+# so the scan would have something to report if it looked — which is what keeps
+# this from being an assertion about a field that was never there.
+stderr_lacks "discovery(color/skill): a skill is never scanned, so its own color: goes unread" \
+	"$COLOR_SRC/$FX_COLOR_SRC_SKILL: 'color:"
+
+# NO STATUS REMOVES A UNIT. An exact compare rather than five presence checks: the
+# claim is about the WHOLE pipeline — both warned units in it, and the only
+# absentee being the one the NAME check rejected — and a presence check on each
+# survivor would pass just as well on a table that had also kept the rejected one.
+stdout_is "discovery(color): every unit with a usable name entered the pipeline, warned colors included" \
+	'brokencolor-developer
+goodcolor-developer
+standard-goodcolor
+nocolor-developer
+typocolor-developer'
+
+section "a warned badge color still installs, through the real entry point"
+# hub-install.sh rather than the probe, for the half no table can show: the warning
+# reaches a real caller's stderr, and the symlink lands anyway. Both warned statuses
+# are selected because they are the two the loop can reach — the silent three have
+# nothing here to distinguish them from each other.
+#
+# harness_run DIRECTLY, not invoke_install: that helper binds the shared fixture
+# source, and this case is about a different tree.
+TARGET_COLOR="$WORK/target-color"
+fx_target_reset "$TARGET_COLOR"
+harness_run sh "$INSTALL" --source "$COLOR_SRC" --target "$TARGET_COLOR" \
+	--non-interactive --no-color --apply --format=env \
+	--domains=software-development --technologies=brokencolor,typocolor
+expect_rc "install(color): -> exit 0" 0
+stdout_has "install(color): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_has "install(color): the run really applied" "HUB_APPLIED='true'"
+stderr_has "install(color): the caller was warned about the broken value" \
+	"'color: white' is a known-broken badge color"
+stderr_has "install(color): and about the unrecognized one" \
+	"'color: whyte' is unrecognized"
+path_exists "install(color): the broken-color unit was installed anyway" \
+	"$TARGET_COLOR/$FX_COLOR_DEPLOYED_BROKEN"
+path_exists "install(color): so was the unrecognized-color one" \
+	"$TARGET_COLOR/$FX_COLOR_DEPLOYED_UNRECOGNIZED"
 
 harness_summary

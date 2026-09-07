@@ -40,6 +40,9 @@
 # A partial --source (no accounts/, no CLAUDE.md) is a supported state, not a
 # degraded one — see lib/hub-domains.sh's hub_domain_exists.
 #
+# A SECOND, much smaller tree lives at the bottom of this file (fx_build_color_source)
+# for the cosmetic `color:` check alone; its own block states why it is separate.
+#
 # Sourced by the test runners — never executed directly.
 
 # --- Source-tree paths ------------------------------------------------------
@@ -91,16 +94,25 @@ FX_DEPLOYED_GTD_AGENT='agents/gtd-fixture-writer.md'
 FX_DEPLOYED_GTD_CAPTURE='skills/procedure-gtd-fixture-capture'
 FX_DEPLOYED_GTD_FLOW='skills/flow-gtd-fixture'
 
-# fx_write_md PATH NAME -> one agent-shaped markdown file. The YAML frontmatter
-# `name:` is the only thing discovery reads out of it (lib/hub-discovery.sh's
+# fx_write_md PATH NAME [COLOR] -> one agent-shaped markdown file. The YAML
+# frontmatter `name:` is what discovery reads for identity (lib/hub-discovery.sh's
 # hub_disc_resolve_names); the PATH is what decides which group it lands in.
+#
+# COLOR is the optional badge tint hub_disc_resolve_colors reads. An omitted or
+# empty COLOR writes NO `color:` line at all, which is that check's `missing`
+# status — the shape almost every framework unit really has, and the reason this
+# is one writer with an optional field rather than two copies of the template.
 fx_write_md() {
 	mkdir -p "${1%/*}"
-	printf -- '---\nname: %s\ndescription: a fixture unit.\n---\n\nFixture body.\n' "$2" >"$1"
+	{
+		printf -- '---\nname: %s\n' "$2"
+		[ -z "${3:-}" ] || printf -- 'color: %s\n' "$3"
+		printf -- 'description: a fixture unit.\n---\n\nFixture body.\n'
+	} >"$1"
 }
 
-# fx_write_skill DIR NAME -> one skill, i.e. a directory holding SKILL.md.
-fx_write_skill() { fx_write_md "$1/SKILL.md" "$2"; }
+# fx_write_skill DIR NAME [COLOR] -> one skill, i.e. a directory holding SKILL.md.
+fx_write_skill() { fx_write_md "$1/SKILL.md" "$2" "${3:-}"; }
 
 # fx_build_source DIR -> write the whole fixture tree under DIR and remember it
 # as the source every later fx_link resolves against. DIR must be CANONICAL
@@ -193,4 +205,57 @@ fx_link_sd_baseline() {
 fx_link_pm_baseline() {
 	fx_link "$1" "$FX_DEPLOYED_PM_AGENT" "$FX_SRC_PM_AGENT"
 	fx_link "$1" "$FX_DEPLOYED_PM_FLOW" "$FX_SRC_PM_FLOW"
+}
+
+# --- The badge-color tree ---------------------------------------------------
+#
+# A SECOND source tree, self-contained here rather than folded into
+# fx_build_source above, and that is the point of it: the primary tree is shared
+# with run-tests-interactive.sh, whose expect(1) screens are compared as bytes, so
+# a `color:` warning printed on every run there would be a captured-screen change
+# in a suite that has nothing to do with badge colors.
+#
+# It also puts every status hub_disc_resolve_colors can report into ONE discovery
+# run, which is what lets a `silent` assertion mean anything: the silent statuses
+# are observed on the same run as the warned ones, so a mutation that deletes the
+# check fails the positive half of the section instead of quietly satisfying its
+# negative half.
+
+# The name `badname-developer.md` declares. Shared with the assertion that reads
+# the rejection diagnostic back, because the offending name is quoted in it.
+FX_COLOR_BADNAME='../../pwned'
+
+# Source-relative paths, one per case, named after the status each one provokes:
+#
+#   BROKEN        color: white -> the one confirmed-broken value: warns, installs
+#   UNRECOGNIZED  color: whyte -> on neither list: warns, installs
+#   OK            color: teal  -> on the known palette: silent
+#   ABSENT        no color: at all -> the optional field omitted: silent
+#   BADNAME       color: white AND an illegal `name:` -> rejected by the name
+#                 check, and must NOT also collect a note about its badge tint
+#   SKILL         a SKILL carrying color: white in its own frontmatter -> a skill
+#                 is never scanned at all. Real frontmatter rather than a body
+#                 line deliberately: the scan only ever reads the frontmatter
+#                 block, so a body line would read `missing` even with the
+#                 kind narrowing removed, and the assertion could not fail.
+FX_COLOR_SRC_BROKEN="$FX_SD_DEVELOPERS/brokencolor-developer.md"
+FX_COLOR_SRC_UNRECOGNIZED="$FX_SD_DEVELOPERS/typocolor-developer.md"
+FX_COLOR_SRC_OK="$FX_SD_DEVELOPERS/goodcolor-developer.md"
+FX_COLOR_SRC_ABSENT="$FX_SD_DEVELOPERS/nocolor-developer.md"
+FX_COLOR_SRC_BADNAME="$FX_SD_DEVELOPERS/badname-developer.md"
+FX_COLOR_SRC_SKILL='software-development/shared/standards/tech/standard-goodcolor/SKILL.md'
+
+FX_COLOR_DEPLOYED_BROKEN='agents/brokencolor-developer.md'
+FX_COLOR_DEPLOYED_UNRECOGNIZED='agents/typocolor-developer.md'
+
+# fx_build_color_source DIR -> that tree. Every unit is a lone
+# `{key}-developer.md` because one file is all a technology group needs to exist,
+# and this tree is only ever discovered and installed by its own section.
+fx_build_color_source() {
+	fx_write_md "$1/$FX_COLOR_SRC_BROKEN" brokencolor-developer white
+	fx_write_md "$1/$FX_COLOR_SRC_UNRECOGNIZED" typocolor-developer whyte
+	fx_write_md "$1/$FX_COLOR_SRC_OK" goodcolor-developer teal
+	fx_write_md "$1/$FX_COLOR_SRC_ABSENT" nocolor-developer
+	fx_write_md "$1/$FX_COLOR_SRC_BADNAME" "$FX_COLOR_BADNAME" white
+	fx_write_skill "${1}/${FX_COLOR_SRC_SKILL%/SKILL.md}" standard-goodcolor white
 }
