@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "name": "Rust",
+      "inspections": [
+        {
+          "shortName": "RustUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.rust.lang",
+          "pluginVersion": "1.0",
+          "language": "rUsT",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>The language label is deliberately spelled in mixed case: IntelliJ is internally inconsistent about casing (JAVA, kotlin, yaml), so the coverage match must be case-insensitive.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Mixed Case Language"
+}

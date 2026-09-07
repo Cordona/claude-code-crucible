@@ -1,0 +1,16 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/main.rs",
+      "line": 12,
+      "language": "Rust",
+      "problem_class": {
+        "id": "MyRule",
+        "severity": "WARNING",
+        "attribute_key": "WARNING_ATTRIBUTES"
+      },
+      "description": "this construct is discouraged",
+      "highlighted_element": "unwrap()"
+    }
+  ]
+}

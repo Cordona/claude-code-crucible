@@ -1,0 +1,3 @@
+{ "problems": [ { "file": "file://$PROJECT_DIR$/src/main.rs", "line": 3,
+  TRUNCATED BY THE CLI MID-WRITE — deliberately not valid JSON, so
+  collect_intellij_issues' jq call fails on THIS file and on no other.

@@ -1,0 +1,15 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/README.md",
+      "line": 3,
+      "language": "Markdown",
+      "problem_class": {
+        "id": "Typo",
+        "severity": "TYPO"
+      },
+      "description": "Typo: In word 'teh'",
+      "highlighted_element": "teh"
+    }
+  ]
+}

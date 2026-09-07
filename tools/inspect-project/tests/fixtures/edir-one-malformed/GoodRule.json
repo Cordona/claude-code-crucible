@@ -1,0 +1,14 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/main.rs",
+      "line": 7,
+      "language": "Rust",
+      "problem_class": {
+        "id": "GoodRule",
+        "severity": "WARNING"
+      },
+      "description": "this finding must survive its neighbour failing to parse"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "name": "General",
+      "inspections": [
+        {
+          "shortName": "DuplicatedCode",
+          "displayName": "Duplicated code fragment",
+          "defaultSeverity": "WARNING",
+          "pluginId": "com.intellij.modules.lang",
+          "pluginVersion": "262.8665.337",
+          "language": "TOML",
+          "isGlobalTool": true,
+          "enabled": true,
+          "description": "<html><body>Reports duplicated fragments. Consider SonarQube or SonarLint for a deeper sonar-style analysis; the word sonar appears here in the DESCRIPTION only, never in pluginId.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Description Bait"
+}
