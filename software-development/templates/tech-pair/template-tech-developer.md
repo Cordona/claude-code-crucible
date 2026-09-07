@@ -16,9 +16,19 @@ Tokens:
   {{Tech}}        the natural display name, e.g. "Go", "Python"
   {{TECH_DOMAIN}} one short phrase, e.g. "backend services and CLI tools"
   {{COLOR}}       a color NOT already used by an existing {{tech}}-developer in
-                  software-development/agents/developers/*.md (check at generation time — the
-                  existing set as of this template's authoring: yellow, blue, red,
-                  pink, purple, orange, cyan, green)
+                  software-development/agents/developers/*.md — ALWAYS re-glob and check fresh at
+                  generation time; any list here goes stale the moment another pair is generated
+                  (confirmed stale once already: this note originally listed 8 colors when the live
+                  set had grown to 10 — teal and magenta had already been taken by the time anyone
+                  next read it). NEVER use `white` — confirmed broken: it renders as an invisible
+                  badge against this tool's dark terminal theme (no highlight at all), discovered via
+                  lens-self-documenting-code-reviewer.md shipping with it undetected, because nothing
+                  validates `color:` values (only `name:` is checked at deploy time, in
+                  deploy/hub/lib/hub-discovery.sh). Every other named color in live use has rendered
+                  without a reported issue, but none has been exhaustively screenshot-verified one by
+                  one — if a future agent's badge ever again shows no highlight, add that color to
+                  this known-broken note the same way `white` was added here, rather than assuming
+                  the report is a fluke.
 -->
 ---
 name: {{tech}}-developer

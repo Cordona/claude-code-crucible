@@ -39,6 +39,12 @@ skills:
   # The ownership map — who scores what when two lenses overlap. Bind, never paraphrase.
   - review-boundaries
 model: opus
+# Shares pink with every {tech}-reviewer (their deliberate, uniform role-marker color — see
+# template-tech-reviewer.md) — a known, accepted overlap: the two can co-occur in the same
+# swarm (flow-review §3, flow-external-review's fix-review seat on a data-layer finding), but
+# every color in this project's documented-safe set is already spoken for elsewhere in the lens
+# roster, so there is no free value to move to without trading this overlap for a worse one.
+# The agent NAME still disambiguates. Revisit once a larger verified palette exists.
 color: pink
 permissionMode: default
 ---

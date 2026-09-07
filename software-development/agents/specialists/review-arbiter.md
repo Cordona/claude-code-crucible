@@ -31,7 +31,7 @@ skills:
   - review-report-standards
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7
 model: opus
-color: orange
+color: purple
 permissionMode: default
 ---
 

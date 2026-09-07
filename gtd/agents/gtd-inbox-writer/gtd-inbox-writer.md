@@ -31,6 +31,13 @@ skills:
   - procedure-inbox-capture
 tools: Bash
 model: opus
+# This agent is backgroundable (fire-and-forget, per its own description below) and can therefore
+# be in flight ALONGSIDE ANY other dispatch — the only agent in this framework with unrestricted
+# co-occurrence. It shares blue with several other agents (lens-performance-reviewer,
+# software-architect, php-developer, project-manager) whose own co-occurrence is bounded by their
+# flow's phase structure, so this is the single highest-value candidate for a reserved, unique
+# color once a larger verified-rendering palette exists (see template-tech-developer.md's color
+# note) — not fixed now because every documented-safe color is already taken elsewhere.
 color: blue
 permissionMode: default
 ---

@@ -8,7 +8,11 @@ Boundary table's RIGHT column (the handoffs to generic lenses) is the SAME EIGHT
 compatibility), in the same order, across every existing reviewer — but the exact wording of each
 row varies per file (don't copy any one of them verbatim; match the shape, write natural wording).
 tools/model/color/permissionMode ARE identical across all three, genuinely — those four fields are
-safe to copy exactly.
+safe to copy exactly. `color: pink` specifically is not an incidental match across three sampled
+files — it is a DELIBERATE, project-wide role marker: every `{tech}-reviewer`, in every language, is
+pink, on purpose, so the color alone identifies "this is a correctness reviewer" regardless of which
+language it's reviewing. Never vary it per language, and never "fix" the fact that a new pair's
+reviewer shares a color with every other reviewer — that repetition is the point.
 
 Tokens:
   {{tech}}        lowercase slug, e.g. "go"

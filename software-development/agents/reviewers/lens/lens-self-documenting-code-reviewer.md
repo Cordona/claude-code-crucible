@@ -42,7 +42,7 @@ skills:
   # The ownership map — who scores what when two lenses overlap. Bind, never paraphrase.
   - review-boundaries
 model: opus
-color: white
+color: magenta
 permissionMode: default
 ---
 
