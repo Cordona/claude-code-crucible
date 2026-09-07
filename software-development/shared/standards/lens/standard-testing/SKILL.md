@@ -1,11 +1,11 @@
 ---
 name: standard-testing
-description: The single definition of a good test suite — the rubric developers BUILD to and lens-test-quality-reviewer REVIEWS against, in any language. Does not define builder workflow (build-core) or lens-test-quality-reviewer's own scoring machinery.
+description: The single definition of a good test suite — the rubric tests-developer BUILDS to and lens-test-quality-reviewer REVIEWS against, in any language. Does not define builder workflow (build-core) or lens-test-quality-reviewer's own scoring machinery.
 ---
 
 # Standard: Testing
 
-The **one** definition of a good test suite. Developers build to it; the `lens-test-quality-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we build tests and how we review them — a rule changed here moves both sides at once.
+The **one** definition of a good test suite. `tests-developer` builds to it; the `lens-test-quality-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we build tests and how we review them — a rule changed here moves both sides at once. (No `{tech}-developer` binds this skill — every one of them is banned from ever writing or editing a test file, per `build-core`'s Constraints, so a pure authoring rubric has nothing for them to act on. The testability guidance they DO need — clear boundaries, no hidden state, dependency injection — lives in `build-core` itself, not here.)
 
 This skill defines **WHAT good looks like**. It deliberately does NOT contain: the builder's workflow (that is `build-core`), or the reviewer's scoring machinery — severity, `category` vocabulary, scope-boundary/handoff, and false-positive guards live in the lens.
 
@@ -122,4 +122,5 @@ Test code is real code — hold it to the same structural bar, with test-aware t
 Match the project's **established test conventions** (framework, assertion style, location/naming, base-class/helper hierarchy, fixture layout, how external dependencies are handled). Where the project consistently and deliberately tests otherwise, its convention is the local norm — but a convention that is simply wrong (e.g. pervasive false-confidence tests) is still a defect, not a standard to preserve.
 
 ---
+*Standard Version: 1.1 — a consumer question found all 9 developer agents (the 8 `{tech}-developer`s plus `devops-engineer`) bound this skill despite being absolutely banned (`build-core`'s Constraints) from ever authoring a test file. Every section here (§1–10) is test-authoring guidance; none of it is "how to make code testable," and that guidance was never actually missing for them — it already lives in `build-core`'s Builder Role and Implementation Workflow. Removed the "developers build to it" framing (description, Overview, this footer) in favor of naming `tests-developer` specifically, and removed this skill from all 9 developer agents' bindings, the tech-pair generation template, and `flow-implementation`'s Direct-implementation step. Only `tests-developer` and `lens-test-quality-reviewer` bind this skill now.*
 *Standard Version: 1.0 — the shared testing rubric. Built to by developers (via build-core); reviewed against by lens-test-quality-reviewer.*

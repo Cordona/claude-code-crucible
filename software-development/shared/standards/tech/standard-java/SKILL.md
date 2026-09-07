@@ -11,7 +11,7 @@ This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** 
 
 - the **builder's workflow and validation gate** (compile/lint/test/build commands) — that is the `java-developer`;
 - the **reviewer's scoring machinery** — severity, `category` vocabulary, scope-boundary/handoff, and the generic correctness-and-logic detective framing — that lives in the `java-reviewer`;
-- the **universal concern rubrics** — `standard-clean-code`, `standard-security`, `standard-testing`, `standard-observability`, `standard-performance` (this skill covers only what is *language-level* Java).
+- the **universal concern rubrics** — `standard-clean-code`, `standard-security`, `standard-observability`, `standard-performance` (this skill covers only what is *language-level* Java).
 
 **Baseline:** assume **Java 21 LTS** unless told otherwise. Apply modern idioms, null-safety, immutability-first, and thread-safety **by default**.
 
