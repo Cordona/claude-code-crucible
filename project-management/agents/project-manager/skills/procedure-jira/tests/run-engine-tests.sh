@@ -141,6 +141,29 @@ run() {
 # ---------------------------------------------------------------------------
 PRIORITY_SCOPE_DIAG="error: --priority is only valid with create, update, and bulk --op update"
 
+# REVIEWER_SCOPE_DIAG — the same refusal for --reviewer, which shares --priority's
+# three readers exactly (the `error: ` prefix is load-bearing for the reason stated
+# above). A separate needle rather than a parameterised one because the FLAG NAME is
+# the half of the message a regression would get wrong: the guard is one shared
+# function taking both the flag and the owner list as arguments, so a copy-paste
+# slip yields the right owner list under the wrong flag name.
+REVIEWER_SCOPE_DIAG="error: --reviewer is only valid with create, update, and bulk --op update"
+
+# DEVELOPER_SCOPE_DIAG — the same refusal for --developer, over a NARROWER owner set
+# than --reviewer's: cmd_update is its only direct reader, so the owner list this
+# needle pins is TWO commands and `create` is NOT among them. Reusing
+# REVIEWER_SCOPE_DIAG for the bulk case below would assert a create-accepting owner
+# list and pass only while the guard was wrong. The `error: ` prefix is load-bearing
+# for the reason stated above.
+DEVELOPER_SCOPE_DIAG="error: --developer is only valid with update, and bulk --op update"
+
+# ASSIGNEE_SCOPE_DIAG — the same refusal for --assignee, over the WIDEST owner set of
+# the four: `search` reads it too (as an `assignee = ...` JQL clause), so the owner
+# list this needle pins is FOUR commands, not three. Reusing REVIEWER_SCOPE_DIAG for
+# the bulk case below would assert a search-less owner list and pass only while the
+# guard was wrong. The `error: ` prefix is load-bearing for the reason stated above.
+ASSIGNEE_SCOPE_DIAG="error: --assignee is only valid with create, update, search, and bulk --op update"
+
 # ===========================================================================
 # usage / argument errors
 # ===========================================================================
@@ -588,6 +611,265 @@ JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
 equals "search --assignee injection-shaped: JQL contains ONLY the resolved accountId" \
 	"$JQL_SENT" 'assignee = "acc-safe-000"'
 
+# ---------------------------------------------------------------------------
+# resolve_account_id: a MULTI-match /user/search must not be resolved by
+# position. The endpoint is a FUZZY, UNORDERED substring search, so taking
+# .[0] picked a principal by coin flip — and every caller of this one resolver
+# (search --assignee, watch --account, create/update --assignee/--developer/
+# --reviewer) inherited that. These cases are asserted on `search --assignee`
+# because it is the cheapest caller to drive: one resolve, then one POST that
+# must NOT happen when the resolve fails.
+# ---------------------------------------------------------------------------
+section "jira.sh — resolve_account_id: 2+ fuzzy matches with NO exact match fails loud, before any query"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-sam-1","emailAddress":"sam@example.com","displayName":"Sam Okafor"},{"accountId":"acc-sam-2","emailAddress":"samantha@example.com","displayName":"Samantha Ruiz"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee sam
+expect_rc "resolve ambiguous --assignee -> exit 1" 1
+stderr_has "resolve ambiguous: diagnostic names the match COUNT" "2 Jira users matched 'sam'"
+stderr_has "resolve ambiguous: diagnostic says what to do instead" "full email address"
+# PII: EVERY matched user is a third party who never sees this stream, so both
+# candidates are asserted absent, not just one. Naming a single candidate leaves
+# a leak of the other invisible — and the diagnostic is built from ONE fixture,
+# so a regression that starts rendering the match set would emit both at once.
+# Neither value is derivable from the caller's own input here ('sam'), which is
+# what makes both assertions non-vacuous.
+stderr_not_has "resolve ambiguous: does NOT leak candidate #2's email" "samantha@example.com"
+stderr_not_has "resolve ambiguous: does NOT leak candidate #2's display name" "Samantha Ruiz"
+stderr_not_has "resolve ambiguous: does NOT leak candidate #1's email" "sam@example.com"
+stderr_not_has "resolve ambiguous: does NOT leak candidate #1's display name" "Sam Okafor"
+equals "resolve ambiguous: only the resolve fired, the search POST never ran" "$(call_count)" "1"
+
+section "jira.sh — resolve_account_id: 2+ matches resolve when exactly ONE matches the value EXACTLY (case-insensitively)"
+
+# The exact match is deliberately the SECOND result, so a pass cannot be the old
+# .[0] behaviour agreeing by luck.
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-sam-2","emailAddress":"samantha@example.com","displayName":"Samantha Ruiz"},{"accountId":"acc-sam-1","emailAddress":"sam@example.com","displayName":"Sam Okafor"}]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee SAM@EXAMPLE.COM
+expect_rc "resolve exact-email-among-many -> exit 0" 0
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "resolve exact-email-among-many: picks the EXACT match, not the first result" \
+	"$JQL_SENT" 'assignee = "acc-sam-1"'
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-sam-2","emailAddress":"samantha@example.com","displayName":"Samantha Ruiz"},{"accountId":"acc-sam-1","emailAddress":"sam@example.com","displayName":"Sam Okafor"}]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee 'sam okafor'
+expect_rc "resolve exact-displayName-among-many -> exit 0" 0
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "resolve exact-displayName-among-many: displayName counts as an exact match too" \
+	"$JQL_SENT" 'assignee = "acc-sam-1"'
+
+section "jira.sh — resolve_account_id: TWO exact matches is still ambiguous (exactly one, not at least one)"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-dup-1","emailAddress":"dup@example.com","displayName":"First Dup"},{"accountId":"acc-dup-2","emailAddress":"other@example.com","displayName":"dup@example.com"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee dup@example.com
+expect_rc "resolve two-exact-matches -> exit 1" 1
+stderr_has "resolve two-exact-matches: refuses rather than picking one" "2 Jira users matched 'dup@example.com'"
+# The PII floor holds on THIS refusal arm too, and it is a different code path
+# from the no-exact-match one above (the exactly-one filter emitted nothing, not
+# the zero-match branch). Asserted on the two values NOT derivable from the
+# caller's own input: acc-dup-2's email and acc-dup-1's display name. acc-dup-2's
+# displayName is deliberately the caller's own typed value, so it cannot be
+# asserted absent without the assertion being about the input rather than a leak.
+stderr_not_has "resolve two-exact-matches: does NOT leak the second match's email" "other@example.com"
+stderr_not_has "resolve two-exact-matches: does NOT leak the first match's display name" "First Dup"
+equals "resolve two-exact-matches: the search POST never ran" "$(call_count)" "1"
+
+section "jira.sh — resolve_account_id: a SINGLE fuzzy match still resolves (the common case is unchanged)"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-only-1","emailAddress":"only@example.com","displayName":"Only Match"}]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee onl
+expect_rc "resolve single fuzzy match -> exit 0" 0
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "resolve single fuzzy match: a lone result needs no exact match" "$JQL_SENT" 'assignee = "acc-only-1"'
+
+# ---------------------------------------------------------------------------
+# resolve_account_id: the SATURATION boundary, both directions. The resolver
+# REQUESTS maxResults=USER_SEARCH_MAX_RESULTS+1 (51) and refuses only when MORE
+# than the cap comes back — the +1 is what separates "the whole set arrived and
+# happens to be exactly 50" from "the set is truncated at 50 and a rival match
+# may sit one row past it". Requesting exactly 50 would make those two byte-
+# identical and refuse a genuinely unique email whenever the site held exactly 50
+# fuzzy matches for it, which is the off-by-one these two cases pin.
+#
+# The fixtures are generated with `jq range` rather than hand-written, the same
+# idiom the bulk paging fixtures below use: 51 literal user objects would bury the
+# ONE element that carries the claim.
+# ---------------------------------------------------------------------------
+section "jira.sh — resolve_account_id: a COMPLETE page of exactly USER_SEARCH_MAX_RESULTS (50) still resolves"
+
+RESOLVE_CAP_EMAIL="target@example.com"
+# 49 fuzzy fillers + the exact match LAST, so a pass cannot be a `.[0]` regression
+# agreeing by luck — the same arrangement the exact-match-among-many cases above use.
+RESOLVE_CAP_PAGE=$(jq -nc --arg exact "$RESOLVE_CAP_EMAIL" \
+	'[range(0;49) | {accountId:"acc-filler-\(.)", emailAddress:"filler\(.)@example.com", displayName:"Filler \(.)"}]
+	 + [{accountId:"acc-exact-at-cap", emailAddress:$exact, displayName:"Exact Target"}]')
+# The fixture's own size IS the boundary under test, so it is asserted rather than
+# assumed: an off-by-one in the `range` above would silently move this case to 49
+# and it would pass for a reason that proves nothing about the cap.
+equals "resolve at-cap fixture: the stubbed page really holds exactly 50 users" \
+	"$(printf '%s' "$RESOLVE_CAP_PAGE" | jq 'length')" "50"
+
+reset_curl_stub
+set_stub_response 1 "$RESOLVE_CAP_PAGE" 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee "$RESOLVE_CAP_EMAIL"
+expect_rc "resolve at-cap (50 results, one exact) -> exit 0" 0
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "resolve at-cap: a full-but-COMPLETE page is not a refusal — the exact match resolves" \
+	"$JQL_SENT" 'assignee = "acc-exact-at-cap"'
+
+section "jira.sh — resolve_account_id: one result PAST the cap (51) refuses — the set is not exhaustive"
+
+# The same page plus one more filler: 51 back proves the true set is at least 51,
+# so no unique match can be established from what arrived.
+RESOLVE_OVER_CAP_PAGE=$(printf '%s' "$RESOLVE_CAP_PAGE" \
+	| jq -c '. + [{accountId:"acc-filler-49", emailAddress:"filler49@example.com", displayName:"Filler 49"}]')
+equals "resolve over-cap fixture: the stubbed page really holds exactly 51 users" \
+	"$(printf '%s' "$RESOLVE_OVER_CAP_PAGE" | jq 'length')" "51"
+
+reset_curl_stub
+# A COUNTERFACTUAL search response, the same technique the bulk pre-resolve case
+# below uses: with it queued, a regression that resolved the saturated set anyway
+# would exit 0 here rather than dying on the stub's own missing-response error — so
+# exit 1 can only mean the saturation guard refused it.
+set_stub_response 1 "$RESOLVE_OVER_CAP_PAGE" 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee "$RESOLVE_CAP_EMAIL"
+expect_rc "resolve over-cap (51 results) -> exit 1" 1
+stderr_has "resolve over-cap: diagnostic names the cap that was exceeded and the caller's value" \
+	"/user/search returned more than 50 results for 'target@example.com'"
+stderr_has "resolve over-cap: diagnostic names the INCOMPLETENESS as the reason, not ambiguity" \
+	"the match set is not exhaustive"
+# The PII floor the two ambiguity refusal arms above assert holds on this third
+# arm too, and it is its own code path: a regression that started rendering the
+# match set would leak 51 third parties at once. filler0@example.com is not
+# derivable from the caller's own input, which is what makes this non-vacuous.
+stderr_not_has "resolve over-cap: does NOT leak a matched third party's email" "filler0@example.com"
+equals "resolve over-cap: only the resolve fired, the search POST never ran" "$(call_count)" "1"
+# The REQUEST side of the same off-by-one: the guard refuses at >50, so the URL
+# must ask for 51 — asking for 50 would make this refusal fire on complete sets.
+file_has "resolve over-cap: the request asked for CAP+1 rows, not CAP" \
+	"$CURL_STUB_ARGV_LOG" "/rest/api/3/user/search?query=target%40example.com&maxResults=51"
+
+# ---------------------------------------------------------------------------
+# resolve_account_id: the two MALFORMED-SHAPE arms. /user/search is documented to
+# answer with a bare array of user objects, and both guards below exist for the
+# case where it does not. What they buy is the SCRIPT'S OWN exit contract: this
+# engine documents 0/1/2, and an unguarded jq type error escapes with jq's own
+# status 5, which no caller of jira.sh is written to interpret. So the claim each
+# case makes is not merely "it fails" — it is "it fails with the documented code
+# and the documented diagnostic".
+# ---------------------------------------------------------------------------
+section "jira.sh — resolve_account_id: a NON-ARRAY response body counts as ZERO matches, not a jq type error"
+
+# A PAGINATED-WRAPPER body: the plausible wrong shape (Jira's own newer endpoints
+# answer {values:[…],total:N}), and one that carries a real accountId, so a
+# regression that unwrapped it would resolve a principal the caller never named.
+#
+# WHY NOT A BARE `{}`, the obvious non-array. `{} | length` is 0, so a guard-less
+# `jq 'length'` would read zero for it and land in the SAME no-user-found branch —
+# the fixture would pass whether the guard existed or not. A 2-key object reads 2
+# without the guard and 0 with it, which is what makes this case discriminating.
+RESOLVE_NONARRAY_BODY='{"values":[{"accountId":"acc-wrapped-000","emailAddress":"ghost@example.com","displayName":"Ghost User"}],"total":1}'
+equals "resolve non-array fixture: really is a JSON object, not an array" \
+	"$(printf '%s' "$RESOLVE_NONARRAY_BODY" | jq -r 'type')" "object"
+equals "resolve non-array fixture: carries 2 keys, so a guard-less length would NOT coincidentally read zero" \
+	"$(printf '%s' "$RESOLVE_NONARRAY_BODY" | jq 'length')" "2"
+
+reset_curl_stub
+# A COUNTERFACTUAL search response, the same technique the over-cap case above
+# uses: with it queued, a regression that resolved this body anyway would exit 0
+# here rather than dying on the stub's own missing-response error — so exit 1 can
+# only mean the shape guard refused it.
+set_stub_response 1 "$RESOLVE_NONARRAY_BODY" 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee ghost@example.com
+expect_rc "resolve non-array body -> exit 1 (this engine's documented code, not jq's own 5)" 1
+stderr_has "resolve non-array body: the STANDARD no-user-found diagnostic, naming the caller's value" \
+	"no Jira user found for 'ghost@example.com'"
+# The ambiguity arm's diagnostic asserted ABSENT: dropping the type test sends this
+# body to the 2-match branch instead, which also exits 1 — so the rc alone cannot
+# tell the two apart, and only this line proves WHICH guard fired.
+stderr_not_has "resolve non-array body: did NOT fall through to the ambiguity arm" \
+	"Jira users matched"
+equals "resolve non-array body: only the resolve fired, the search POST never ran" "$(call_count)" "1"
+file_not_has "resolve non-array body: the wrapped accountId was never unwrapped onto the wire" \
+	"$CURL_STUB_ARGV_LOG" "acc-wrapped-000"
+
+section "jira.sh — resolve_account_id: a NON-OBJECT element inside the match array is filtered out, not indexed into"
+
+reset_curl_stub
+# A bare string and a number mixed in beside ONE real user object. `| objects`
+# drops both before .emailAddress/.displayName are read; without it, jq indexes a
+# string and dies with its own status, outside this engine's 0/1/2 contract.
+#
+# The real match sits LAST, the same arrangement the exact-match-among-many cases
+# above use, so a pass cannot be a `.[0]` regression agreeing by luck.
+set_stub_response 1 '["not-an-object",42,{"accountId":"acc-real-mixed","emailAddress":"real@example.com","displayName":"Real Person"}]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee real@example.com
+expect_rc "resolve mixed-element array -> exit 0" 0
+equals "resolve mixed-element array: BOTH calls ran (the resolve completed, then the search)" "$(call_count)" "2"
+JQL_SENT=$(jq -r '.jql' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+# The 3-element set puts this on the AMBIGUITY branch (count > 1), so resolving at
+# all means the two non-objects were filtered out rather than counted as rivals —
+# a miscount there would have refused this exact-match value instead.
+equals "resolve mixed-element array: the one real object's accountId reaches the wire" \
+	"$JQL_SENT" 'assignee = "acc-real-mixed"'
+
+section "jira.sh — resolve_account_id: a LONE non-object element degrades to no-user-found, not a jq type error"
+
+# The SINGLE-match arm's own `| objects` guard, which the mixed-element case above
+# cannot reach: three elements put that one on the ambiguity branch, so the guard
+# it exercises is the `[ .[] | objects | select(...) ]` filter. A ONE-element array
+# routes to `(.[0] | objects | .accountId) // empty` instead — a separate filter in
+# a separate arm, and the only arm a lone malformed element can reach.
+#
+# What the guard buys is the SAME exit-contract claim the two malformed-shape cases
+# above make: without it, `.[0].accountId` indexes a bare string and jq dies with
+# its own status (5) through jira.sh's `set -e`, OUTSIDE this engine's documented
+# 0/1/2. With it, the element is filtered out, `// empty` yields nothing, and the
+# arm falls into the STANDARD no-user-found refusal.
+RESOLVE_LONE_NONOBJECT_BODY='["not-an-object"]'
+equals "resolve lone non-object fixture: really is a ONE-element array (the single-match arm, not the ambiguity one)" \
+	"$(printf '%s' "$RESOLVE_LONE_NONOBJECT_BODY" | jq 'length')" "1"
+equals "resolve lone non-object fixture: that one element really is a non-object" \
+	"$(printf '%s' "$RESOLVE_LONE_NONOBJECT_BODY" | jq -r '.[0] | type')" "string"
+
+reset_curl_stub
+# A COUNTERFACTUAL search response, the same technique the over-cap and non-array
+# cases above use: with it queued, a regression that resolved this body anyway would
+# exit 0 rather than dying on the stub's own missing-response error.
+set_stub_response 1 "$RESOLVE_LONE_NONOBJECT_BODY" 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee lone@example.com
+expect_rc "resolve lone non-object -> exit 1 (this engine's documented code, not jq's own 5)" 1
+stderr_has "resolve lone non-object: the STANDARD no-user-found diagnostic, naming the caller's value" \
+	"no Jira user found for 'lone@example.com'"
+# jq's OWN type error asserted ABSENT — the half that makes this non-vacuous. The rc
+# alone cannot see the guard: dropping `| objects` leaves jq indexing a string, which
+# also fails, just with status 5 and this text on stderr instead.
+stderr_not_has "resolve lone non-object: jq never indexed the string (no type error escaped)" \
+	"Cannot index string"
+equals "resolve lone non-object: only the resolve fired, the search POST never ran" "$(call_count)" "1"
+
 section "jira.sh — search: --labels builds an OR'd clause, each value escaped"
 
 reset_curl_stub
@@ -826,6 +1108,18 @@ INJ_NAME='inj$(touch pwned)`whoami`"end'
 # customfield_ id but NO schema.custom (exercises the OR-arm of the
 # custom-detection predicate). The `assignee` field (schema.type user,
 # non-custom) also proves non-custom exclusion.
+# discover_field_catalog_json NAME_FOR_10016 -> the global /field catalog body
+# (call 7), with customfield_10016's authoritative display NAME supplied by the
+# caller. It is a parameter for exactly one case: the semantic-key collision
+# section renames that field to the literal "reviewer" so discovery and curation
+# collide on the SAME custom_fields key, which is the only way to tell the
+# narrowed curated-wins rule from the blanket one. Every other caller passes the
+# project's real "Story Points".
+# shellcheck disable=SC2016  # $sp/$inj are read by jq via --arg; they must not shell-expand
+discover_field_catalog_json() {
+	jq -n -c --arg sp "$1" --arg inj "$INJ_NAME" '[{id:"customfield_10016",key:"customfield_10016",name:$sp,custom:true,schema:{type:"number"}},{id:"customfield_16102",key:"customfield_16102",name:"Acceptance Criteria",custom:true},{id:"customfield_20001",key:"customfield_20001",name:"Sprint",custom:true},{id:"customfield_99999",key:"customfield_99999",name:$inj,custom:true},{id:"summary",key:"summary",name:"Summary",custom:false},{id:"assignee",key:"assignee",name:"Assignee",custom:false}]'
+}
+
 # shellcheck disable=SC2016  # $inj holds the injection FIXTURE; jq reads it via --arg, it must not shell-expand
 queue_discover_responses() {
 	set_stub_response 1 '{"issueTypes":[{"id":"10001","name":"Task","subtask":false,"hierarchyLevel":0},{"id":"10002","name":"Story","subtask":false,"hierarchyLevel":0}],"startAt":0,"maxResults":50,"total":3}' 200
@@ -834,7 +1128,7 @@ queue_discover_responses() {
 	set_stub_response 4 '{"fields":[{"fieldId":"customfield_16102","name":"Acceptance Criteria","required":false,"schema":{"type":"string","custom":"com.y","customId":16102}}],"startAt":2,"maxResults":50,"total":3}' 200
 	set_stub_response 5 "$(jq -n -c --arg inj "$INJ_NAME" '{fields:[{fieldId:"summary",name:"Summary",required:true,schema:{type:"string"}},{fieldId:"customfield_20001",name:"Sprint (createmeta)",required:false,schema:{type:"array"}},{fieldId:"customfield_99999",name:$inj,required:false,schema:{type:"string",custom:"com.z",customId:99999}}],startAt:0,maxResults:50,total:3}')" 200
 	set_stub_response 6 '{"fields":[{"fieldId":"summary","name":"Summary","required":true,"schema":{"type":"string"}}],"startAt":0,"maxResults":50,"total":1}' 200
-	set_stub_response 7 "$(jq -n -c --arg inj "$INJ_NAME" '[{id:"customfield_10016",key:"customfield_10016",name:"Story Points",custom:true,schema:{type:"number"}},{id:"customfield_16102",key:"customfield_16102",name:"Acceptance Criteria",custom:true},{id:"customfield_20001",key:"customfield_20001",name:"Sprint",custom:true},{id:"customfield_99999",key:"customfield_99999",name:$inj,custom:true},{id:"summary",key:"summary",name:"Summary",custom:false},{id:"assignee",key:"assignee",name:"Assignee",custom:false}]')" 200
+	set_stub_response 7 "$(discover_field_catalog_json 'Story Points')" 200
 }
 
 section "jira.sh — discover: emits the consumed config shape; pagination pulls ALL types/fields"
@@ -1000,6 +1294,136 @@ TESTS_RUN=$((TESTS_RUN + 1))
 if find "$MERGE_DIR" -name 'PROJ.json.tmp.*' 2>/dev/null | grep -q .; then
 	fail "merge: atomic write leaves no .tmp staging file (correct merged content landed via mv)" "a .tmp file remained"
 else pass "merge: atomic write leaves no .tmp staging file (correct merged content landed via mv)"; fi
+
+section "jira.sh — discover --write: a custom_fields key collision keeps the CURATED id ONLY on the four semantic keys"
+
+# See cmd-discover.sh's DISCOVER_MERGE_PROGRAM header for why curation wins a
+# collision on ONLY the four semantic keys — this section proves the OTHER
+# direction: a PLAIN display-name key REFRESHES from live discovery like every
+# other discovered fact (the semantic half is proven in its own section below,
+# where the stub discovers a field literally NAMED "reviewer"). "Story Points" is
+# that plain key here (this project's stub really does discover it as
+# customfield_10016), curated STALE at customfield_99001.
+COLLIDE_DIR="$WORK/discover-collide"
+mkdir -p "$COLLIDE_DIR"
+cat >"$COLLIDE_DIR/PROJ.json" <<'EOF'
+{
+  "key": "PROJ",
+  "custom_fields": { "reviewer": "customfield_26758", "Story Points": "customfield_99001" },
+  "type_aliases": {},
+  "subtask_parent_types": [],
+  "workflows": {},
+  "issue_types": [],
+  "subtask_types": []
+}
+EOF
+reset_curl_stub
+queue_discover_responses
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$COLLIDE_DIR" \
+	sh "$JIRA" discover PROJ --confirmed-site foo.atlassian.net --write
+expect_rc "discover --write (colliding custom_fields key) -> exit 0" 0
+equals "display-name collision: the DISCOVERED id refreshes the stale curated one" \
+	"$(jq -r '.custom_fields["Story Points"]' "$COLLIDE_DIR/PROJ.json")" "customfield_10016"
+# This project's stub discovers NO field named "reviewer", so this fixture's
+# `reviewer` key is not a collision at all — it is a curated key discovery is
+# SILENT on, and its survival is the merge's `$curated`-as-base property, not the
+# semantic-key override. Titled for what it really proves; the genuine semantic
+# collision is the section below.
+equals "collision: a curated semantic key discovery is SILENT on is untouched" \
+	"$(jq -r '.custom_fields.reviewer' "$COLLIDE_DIR/PROJ.json")" "customfield_26758"
+equals "collision: a NON-colliding discovered key is still ADDED" \
+	"$(jq -r '.custom_fields["Acceptance Criteria"]' "$COLLIDE_DIR/PROJ.json")" "customfield_16102"
+equals "collision: the live FACTS still win outside custom_fields (issue_types refreshed)" \
+	"$(jq -c '.issue_types' "$COLLIDE_DIR/PROJ.json")" '["Story","Subtask","Task"]'
+
+section "jira.sh — discover --write: a SEMANTIC-key collision keeps the CURATED id (discovery loses here, and only here)"
+
+# The one collision the narrowed rule actually refuses, and the ONLY case that
+# tells it apart from the blanket one: a live Jira field whose display NAME is
+# literally one of the four semantic keys. With the discovered side winning here,
+# the next `discover --write` silently retargets every --reviewer write onto that
+# unrelated field and Jira answers 204.
+#
+# Its OWN projects dir, because the collision needs its own /field catalog: the
+# stub's customfield_10016 is renamed to "reviewer" (see
+# discover_field_catalog_json), so discovery emits reviewer -> customfield_10016
+# against a config curating reviewer -> customfield_26758 — the same key from
+# both namespaces, which is what the sibling section's display-name fixture
+# cannot produce.
+SEMANTIC_COLLIDE_DIR="$WORK/discover-semantic-collide"
+mkdir -p "$SEMANTIC_COLLIDE_DIR"
+cat >"$SEMANTIC_COLLIDE_DIR/PROJ.json" <<'EOF'
+{
+  "key": "PROJ",
+  "custom_fields": { "reviewer": "customfield_26758" },
+  "type_aliases": {},
+  "subtask_parent_types": [],
+  "workflows": {},
+  "issue_types": [],
+  "subtask_types": []
+}
+EOF
+
+# First, prove the collision is REAL rather than vacuous: a bare `discover`
+# (no --write, no merge, no existing config in play) must itself emit
+# reviewer -> customfield_10016. Without this the --write assertion below would
+# pass just as happily against a stub that never discovers the key at all.
+reset_curl_stub
+queue_discover_responses
+set_stub_response 7 "$(discover_field_catalog_json reviewer)" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" discover PROJ --confirmed-site foo.atlassian.net
+expect_rc "discover (reviewer-named field) -> exit 0" 0
+equals "semantic collision setup is REAL: bare discover emits reviewer -> the DISCOVERED id" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.custom_fields.reviewer')" "customfield_10016"
+
+reset_curl_stub
+queue_discover_responses
+set_stub_response 7 "$(discover_field_catalog_json reviewer)" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$SEMANTIC_COLLIDE_DIR" \
+	sh "$JIRA" discover PROJ --confirmed-site foo.atlassian.net --write
+expect_rc "discover --write (semantic-key collision) -> exit 0" 0
+equals "semantic collision: the CURATED reviewer id survives the id discovery just offered" \
+	"$(jq -r '.custom_fields.reviewer' "$SEMANTIC_COLLIDE_DIR/PROJ.json")" "customfield_26758"
+# The narrowing is per-KEY, not per-run: the same merge that refused the reviewer
+# collision must still take every OTHER discovered fact from the live side.
+equals "semantic collision: a non-semantic discovered key in the SAME merge is still added" \
+	"$(jq -r '.custom_fields["Acceptance Criteria"]' "$SEMANTIC_COLLIDE_DIR/PROJ.json")" "customfield_16102"
+
+section "jira.sh — discover --write: a curated key discovery is SILENT on survives the merge untouched"
+
+# The narrowed rule moved `$live` ahead of `$curated` for every non-semantic key,
+# so the direction that has to be re-proven is the OTHER one: a curated
+# display-name key discovery does not return AT ALL must not be dropped.
+# Discovery sees only fields present on some issue type's CREATE screen, so a
+# mapped field sitting on none of them is invisible to it — and silently losing
+# that mapping breaks the next --developer/--fields write with no diagnostic.
+#
+# "Legacy Field" is neither semantic nor discovered by this project's stub, so it
+# travels only the `$curated`-as-merge-base path — distinct from both collision
+# arms above.
+SILENT_DIR="$WORK/discover-silent-curated"
+mkdir -p "$SILENT_DIR"
+cat >"$SILENT_DIR/PROJ.json" <<'EOF'
+{
+  "key": "PROJ",
+  "custom_fields": { "Legacy Field": "customfield_31337" },
+  "type_aliases": {},
+  "subtask_parent_types": [],
+  "workflows": {},
+  "issue_types": [],
+  "subtask_types": []
+}
+EOF
+reset_curl_stub
+queue_discover_responses
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$SILENT_DIR" \
+	sh "$JIRA" discover PROJ --confirmed-site foo.atlassian.net --write
+expect_rc "discover --write (curated key discovery never returns) -> exit 0" 0
+equals "silent-curated: the undiscovered curated mapping survives at its curated id" \
+	"$(jq -r '.custom_fields["Legacy Field"]' "$SILENT_DIR/PROJ.json")" "customfield_31337"
+equals "silent-curated: the merge still ADDED the discovered keys alongside it" \
+	"$(jq -r '.custom_fields["Story Points"]' "$SILENT_DIR/PROJ.json")" "customfield_10016"
 
 section "jira.sh — discover --write --force: clean replace of an existing config (still backs up)"
 
@@ -2907,6 +3331,103 @@ stderr_has "bulk comment stray --priority: diagnostic names the three commands t
 	"$PRIORITY_SCOPE_DIAG"
 equals "bulk comment stray --priority: ZERO curl calls (no comment was posted)" "$(call_count)" "0"
 
+# --- --reviewer is scoped to `--op update` the same way --------------------
+# --reviewer has --priority's three readers exactly, but jira.sh's scoping block
+# spends a SEPARATE `bulk)` case arm on it — `[ "$OPT_OP" != "update" ] || ... =1`
+# — so the negation in that arm is its own failure surface: inverted, --reviewer
+# would be ACCEPTED on every non-update op and then silently dropped, which is
+# precisely the undisclosed write the guard exists to prevent. The transition arm's
+# fall-through is covered by the sibling run-write-tests.sh; only the `bulk)` arm
+# can exercise the negation.
+section "jira.sh — bulk --reviewer on a NON-update op: refused (exit 2) before any network call"
+
+# A REAL readable file, as above, so the exit 2 cannot be coming from cmd_bulk's
+# readability guard instead of the scoping block.
+BULK_REVIEWER_MD="$WORK/bulk-reviewer-comment.md"
+printf 'note\n' >"$BULK_REVIEWER_MD"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op comment --keys "PSWS-1" --text-file "$BULK_REVIEWER_MD" --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "bulk --op comment + --reviewer -> exit 2" 2
+stderr_has "bulk comment stray --reviewer: diagnostic names the three commands that DO support it" \
+	"$REVIEWER_SCOPE_DIAG"
+equals "bulk comment stray --reviewer: ZERO curl calls (no comment was posted, no accountId resolved)" "$(call_count)" "0"
+
+# --- --developer is scoped to `--op update` the same way -------------------
+# --developer spends its OWN `bulk)` case arm too — `[ "$OPT_OP" != "update" ] ||
+# developer_is_supported=1` — so that arm's negation is its own failure surface, for
+# the reason the --reviewer block one up states: inverted, --developer would be
+# ACCEPTED on every non-update op and then silently dropped. Its four siblings'
+# bulk arms are all covered here; this one was the gap, and it matters MORE than the
+# rest rather than less, because --developer's owner list is the only one of the five
+# that differs from --reviewer's (no `create`) — so a "make --developer match
+# --reviewer" edit is the likely regression, and no bulk case could see it.
+#
+# The transition-arm fall-through for this flag lives in the sibling
+# run-write-tests.sh (which defines its own copy of the needle, the two suites being
+# separate processes); only the `bulk)` arm can exercise the negation.
+section "jira.sh — bulk --developer on a NON-update op: refused (exit 2) before any network call"
+
+# A REAL readable file, as on the two cases above, so the exit 2 cannot be coming
+# from cmd_bulk's readability guard instead of the scoping block.
+BULK_DEVELOPER_MD="$WORK/bulk-developer-comment.md"
+printf 'note\n' >"$BULK_DEVELOPER_MD"
+
+reset_curl_stub
+# A COUNTERFACTUAL 201, not a response this run consumes (the zero-call assertion
+# proves it never does). Queued for the same reason as --assignee's case below:
+# without it, a guard regression still fails all three assertions (it exits 1 on
+# the stub's own no-canned-response error, not 0), but WITH it, the failure output
+# shows the actual dangerous behavior — the comment posted, --developer silently
+# dropped, exit 0 — rather than a network-error artifact.
+set_stub_response 1 '{"id":"10099"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op comment --keys "PSWS-1" --text-file "$BULK_DEVELOPER_MD" --developer someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "bulk --op comment + --developer -> exit 2" 2
+stderr_has "bulk comment stray --developer: the SAME update-only owner list, NOT a create-accepting one" \
+	"$DEVELOPER_SCOPE_DIAG"
+equals "bulk comment stray --developer: ZERO curl calls (no comment was posted, no accountId resolved)" "$(call_count)" "0"
+
+# --- --assignee is scoped to `--op update` the same way --------------------
+# --assignee spends its OWN `bulk)` case arm too — `[ "$OPT_OP" != "update" ] ||
+# assignee_is_supported=1` — so that arm's negation is its own failure surface, for
+# the reason the two blocks above state: inverted, --assignee would be ACCEPTED on
+# every non-update op and then silently dropped. Its unguarded drop is also the most
+# plausible real mistake of the five (the sibling run-write-tests.sh states why):
+# "reassign it while you comment on it" is one natural sentence, and the caller would
+# get the comment with the ticket still held by whoever had it, undisclosed.
+#
+# The single-command half of this contract (a stray --assignee on `transition`) lives
+# in that sibling suite, which defines its own copy of the needle, the two suites being
+# separate processes; only the `bulk)` arm can exercise the negation.
+#
+# No sibling who/priority flag is passed here on purpose: --assignee's guard runs LAST
+# of the four in jira.sh, so passing one would let this case stay green with the
+# --assignee arm missing entirely.
+section "jira.sh — bulk --assignee on a NON-update op: refused (exit 2) before any network call"
+
+# A REAL readable file, as on the three cases above, so the exit 2 cannot be coming
+# from cmd_bulk's readability guard instead of the scoping block.
+BULK_ASSIGNEE_MD="$WORK/bulk-assignee-comment.md"
+printf 'note\n' >"$BULK_ASSIGNEE_MD"
+
+reset_curl_stub
+# A COUNTERFACTUAL 201, not a response this run consumes (the zero-call assertion
+# proves it never does). It is queued so a guard regression lands on the exact
+# behavior this case exists to forbid — the comment POSTED, the --assignee silently
+# dropped, exit 0 — instead of on the stub's own no-canned-response error. Both ways
+# were run against an inverted `bulk)` arm: without the queued response the regression
+# exits 1 on that stub error, so all three assertions below fail either way, but only
+# with it does the observed failure describe the undisclosed write itself.
+set_stub_response 1 '{"id":"10099"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op comment --keys "PSWS-1" --text-file "$BULK_ASSIGNEE_MD" --assignee someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "bulk --op comment + --assignee -> exit 2" 2
+stderr_has "bulk comment stray --assignee: diagnostic names all FOUR commands that DO support it, search included" \
+	"$ASSIGNEE_SCOPE_DIAG"
+equals "bulk comment stray --assignee: ZERO curl calls (no comment was posted)" "$(call_count)" "0"
+
 # --- ORDERING: per-command validation still runs FIRST ---------------------
 # The scoping block sits AFTER the per-command validate_*_args dispatch on
 # purpose: a caller whose REAL mistake is `--op frobnicate` must read THAT
@@ -3271,6 +3792,304 @@ BULK_PRIORITY_SENT=$(jq -c '.fields.priority' "$CURL_STUB_BODY_LOG_DIR/call-1.bo
 equals "bulk real update --priority: PSWS-1's PUT body carries {name: High}" "$BULK_PRIORITY_SENT" '{"name":"High"}'
 BULK_PRIORITY_SENT_2=$(jq -c '.fields.priority' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
 equals "bulk real update --priority: PSWS-2's PUT body carries it too" "$BULK_PRIORITY_SENT_2" '{"name":"High"}'
+
+# --- --reviewer flows through the update verb the same way -------------------
+# Same shared-list claim as --priority above, for the one update field that costs a
+# round trip of its own: --reviewer is a custom user-picker, so each issue's write
+# is an accountId lookup THEN a PUT, against a project config that maps
+# custom_fields.reviewer. The --plan half is the surface whose omission fails
+# SILENTLY — a consent gate would name a set of changes that did not include the
+# reviewer write, and the caller would approve a write they were never shown — and
+# the real half is what proves the disclosed field actually reaches the wire.
+section "jira.sh — bulk --op update --reviewer: accepted ALONE by the guard, disclosed by --plan, and actually sent"
+
+# Its OWN projects dir, not the shared $WORK/projects: every other bulk test points
+# at $WORK/noconfig deliberately, and mapping a custom field for PSWS in the shared
+# dir would hand one to unrelated cases that assert the unconfigured behaviour.
+BULK_REVIEWER_PROJECTS_DIR="$WORK/bulk-reviewer-projects"
+mkdir -p "$BULK_REVIEWER_PROJECTS_DIR"
+cat >"$BULK_REVIEWER_PROJECTS_DIR/PSWS.json" <<'EOF'
+{
+  "key": "PSWS",
+  "custom_fields": { "reviewer": "customfield_26758" }
+}
+EOF
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_REVIEWER_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update --reviewer rev@example.com --keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan update --reviewer alone -> exit 0 (not the 'at least one field' usage error)" 0
+equals "bulk --plan update --reviewer: ZERO curl calls (not even the accountId lookup)" "$(call_count)" "0"
+# The disclosure names the PRINCIPAL, not just the field: "update field(s):
+# reviewer" tells a consent gate that a reviewer changes but never to whom, so
+# approving it would authorize putting an unnamed person on every issue in the set.
+stdout_has "bulk --plan update --reviewer: the field-summary names the reviewer AND the value" \
+	"update field(s): reviewer=rev@example.com"
+stdout_has "bulk --plan update --reviewer: states nothing was written" "NOTHING WAS WRITTEN"
+
+# The SAME invocation minus --plan, so the only variable between the disclosure and
+# the write is the flag itself.
+reset_curl_stub
+# ONE accountId lookup for the whole batch (call 1), then one PUT per issue
+# (calls 2-3) — cmd_bulk pre-resolves each "who" flag before the loop, so the
+# looped cmd_update reuses that id instead of repeating the lookup per issue.
+# The call COUNT is the assertion that guards it: a regression that moved the
+# lookup back inside the loop would need a 4th response here.
+set_stub_response 1 '[{"accountId":"acc-rev-bulk-707"}]' 200
+set_stub_response 2 '' 204
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_REVIEWER_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update --reviewer rev@example.com --keys "PSWS-1,PSWS-2" --confirmed-site foo.atlassian.net
+expect_rc "bulk real update --reviewer -> exit 0" 0
+equals "bulk real update --reviewer: 3 calls (ONE shared accountId lookup + a PUT per issue)" "$(call_count)" "3"
+# stdout before the body reads, for the reason stated on the --priority case above.
+stdout_has "bulk real update --reviewer: both issues reported succeeded" "JIRA_BULK_SUMMARY=2/2 succeeded"
+# The REAL run's own disclosure asymmetry, which only a bulk case can assert:
+# cmd_update emits JIRA_USER_FIELDS_SET= when called directly (see
+# run-write-tests.sh's update --reviewer case), but apply_bulk_verb_to_key
+# discards each looped verb's stdout, so the line never reaches the caller here —
+# exactly what SKILL.md's contract promises ("never surfaced by a REAL bulk --op
+# update run"). It is non-vacuous because the SAME invocation's --plan half above
+# IS the disclosing surface, and because the line is provably emitted by the verb
+# this run loops; dropping the >/dev/null would surface it twice, once per issue.
+stdout_not_has "bulk real update --reviewer: the per-issue who-field disclosure never reaches the caller's stdout" \
+	"JIRA_USER_FIELDS_SET"
+file_has "bulk real update --reviewer: the ONE lookup hit /user/search" \
+	"$CURL_STUB_ARGV_LOG" "/rest/api/3/user/search?query=rev%40example.com"
+BULK_REVIEWER_SENT=$(jq -c '.fields.customfield_26758' "$CURL_STUB_BODY_LOG_DIR/call-2.body")
+equals "bulk real update --reviewer: PSWS-1's PUT body carries {accountId: ...} under the MAPPED field id" \
+	"$BULK_REVIEWER_SENT" '{"accountId":"acc-rev-bulk-707"}'
+BULK_REVIEWER_SENT_2=$(jq -c '.fields.customfield_26758' "$CURL_STUB_BODY_LOG_DIR/call-3.body")
+equals "bulk real update --reviewer: PSWS-2's PUT body carries the SAME pre-resolved id (not a second lookup's)" \
+	"$BULK_REVIEWER_SENT_2" '{"accountId":"acc-rev-bulk-707"}'
+
+# --- the disclosed who-value is FOLDED onto one line (C1 controls included) ---
+# The three who-values are the only ones update_field_summary quotes VERBATIM, and
+# this --plan output is a consent gate a human reads line by line, so a crafted
+# --reviewer must not be able to add a line to it. fold_disclosed_value therefore
+# deletes TAB/LF *and* the C1 range (\200-\237), which holds the raw NEL byte
+# (\205) an 8-bit-control terminal honors as a line break — a fold
+# strip_control_ansi deliberately does NOT do engine-wide, because those bytes are
+# also UTF-8 continuation bytes.
+#
+# WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT — the same reasoning
+# run-write-tests.sh's multibyte-terminator section states in full. A column-0
+# assertion would be false confidence here: no tool in this harness splits a line
+# on a raw \205, so `stdout_no_line_starting_with FAKE-LINE-HERE` could not fail
+# even with the whole `\200-\237` class deleted from the fold. Nor can the byte's
+# ABSENCE be grepped — a lone \205 is an illegal UTF-8 sequence, so the assertion
+# helpers' own `grep -F` exits 2 ("illegal byte sequence") on that needle and
+# stdout_not_has would pass vacuously. The two channels that DO discriminate are
+# the byte-level count below, and the joined line: the fold DELETES rather than
+# substitutes, so the forged text arrives welded to the engine's own disclosure
+# with no separator, as inert data.
+section "jira.sh — bulk --plan update --reviewer: a raw C1 (NEL) byte in the who-value cannot forge a line in the consent disclosure"
+
+# A RAW \205, not U+0085's two-byte UTF-8 form (\302\205): the fold is a byte-wise
+# `tr -d`, so the single-byte form is the one it claims to catch.
+BULK_RAW_C1=$(printf '\205')
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_REVIEWER_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update --reviewer "sam${BULK_RAW_C1}FAKE-LINE-HERE" \
+	--keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan update --reviewer with a raw C1 byte -> exit 0" 0
+stdout_has "bulk --plan C1 reviewer: the C1 byte was DELETED — the forged text welds onto the engine's own disclosure as inert data" \
+	"update field(s): reviewer=samFAKE-LINE-HERE"
+# The byte-level half, counted rather than grepped for the reason above. LC_ALL=C
+# is load-bearing: the developer's own locale is UTF-8, where `tr` refuses the
+# illegal sequence and would report zero surviving bytes for either outcome.
+TESTS_RUN=$((TESTS_RUN + 1))
+BULK_C1_SURVIVORS=$(printf '%s' "$CUR_OUT" | LC_ALL=C tr -dc '\200-\237' | wc -c | tr -d ' ')
+if [ "$BULK_C1_SURVIVORS" -eq 0 ]; then
+	pass "bulk --plan C1 reviewer: ZERO C1 bytes survive anywhere in the disclosure"
+else
+	fail "bulk --plan C1 reviewer: ZERO C1 bytes survive anywhere in the disclosure" \
+		"$BULK_C1_SURVIVORS C1 byte(s) reached the consent gate"
+fi
+
+# --- the OTHER TWO intent arms fold their own disclosed values ---------------
+# The update arm's values arrive already folded, by update_field_summary (the C1
+# case above). bulk_intent_phrase's transition and comment arms interpolate their
+# OPT_* carriers THEMSELVES, so they carry their own fold_disclosed_value calls —
+# and a fold that exists on one arm proves nothing about the other two, because
+# there is no shared call site to regress.
+#
+# A RAW NEWLINE is the byte used here, not the C1 the update case needs: unlike
+# \205, an LF genuinely does split a line for every tool in this harness, so
+# BOTH channels below discriminate — the weld (the fold DELETES, so the forged
+# text arrives joined to the engine's own words) and the column-0 assertion the
+# C1 case had to forgo as vacuous. The forged line is aimed at the plan's own
+# closing "NOTHING WAS WRITTEN" row: a second one, above real keys, is exactly
+# the consent-gate forgery the fold exists to stop.
+section "jira.sh — bulk --plan transition: a raw newline in --status cannot forge a line in the consent disclosure"
+
+# Command substitution strips only TRAILING newlines, so an INTERIOR one survives
+# — the reason the byte is embedded via printf rather than a bash-only $'...'
+# construct (this suite must also run green under dash).
+BULK_FORGED_STATUS=$(printf 'Done\nFAKE-LINE-HERE')
+# The fixture's own byte IS the thing under test, so it is asserted rather than
+# assumed: a printf that lost the newline would leave every assertion below passing
+# for a reason that proves nothing about the fold.
+equals "bulk --plan forged --status fixture: really holds exactly ONE raw newline" \
+	"$(printf '%s' "$BULK_FORGED_STATUS" | wc -l | tr -d ' ')" "1"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op transition --status "$BULK_FORGED_STATUS" \
+	--keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan transition with a forged --status -> exit 0" 0
+equals "bulk --plan forged --status: ZERO curl calls (no read, no write)" "$(call_count)" "0"
+stdout_has "bulk --plan forged --status: the newline was DELETED — the forged text welds onto the engine's own intent phrase as inert data" \
+	'would transition to "DoneFAKE-LINE-HERE" for 2 issue(s):'
+stdout_no_line_starting_with "bulk --plan forged --status: the forged text never reaches column 0 of its own line" \
+	"FAKE-LINE-HERE"
+
+# The `(resolution: %s)` half of the same arm is a SECOND interpolation with its own
+# fold call, so it regresses independently of the --status one asserted above.
+section "jira.sh — bulk --plan transition: --resolution is folded too (a second interpolation, a second fold)"
+
+BULK_FORGED_RESOLUTION=$(printf 'Fixed\nFAKE-RESOLUTION-LINE')
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op transition --status Closed --resolution "$BULK_FORGED_RESOLUTION" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan transition with a forged --resolution -> exit 0" 0
+stdout_has "bulk --plan forged --resolution: the newline was DELETED — the forged text welds into the parenthesised clause" \
+	'would transition to "Closed" (resolution: FixedFAKE-RESOLUTION-LINE)'
+stdout_no_line_starting_with "bulk --plan forged --resolution: the forged text never reaches column 0 of its own line" \
+	"FAKE-RESOLUTION-LINE"
+
+# The comment arm discloses --text-file's PATH, and a path may legitimately hold
+# any byte but NUL and "/" — a newline included. The file must be REALLY readable
+# under that name, because cmd_bulk's require_readable_file runs BEFORE the --plan
+# branch, so a merely-crafted string would exit 2 there and never reach the fold.
+section "jira.sh — bulk --plan comment: a raw newline in --text-file's PATH cannot forge a line either"
+
+# The newline must sit INTERIOR to the printf format, exactly as on the two cases
+# above — `"$WORK/note$(printf '\n')FAKE-PATH-LINE.md"` reads like it embeds one and
+# embeds NOTHING, because command substitution strips the newline as trailing and
+# yields the empty string. That version of this fixture passed every assertion below
+# with the fold removed, which is what the size check guards against.
+BULK_FORGED_TEXT_FILE=$(printf '%s/note\nFAKE-PATH-LINE.md' "$WORK")
+printf 'note\n' >"$BULK_FORGED_TEXT_FILE"
+equals "bulk --plan forged --text-file fixture: the PATH really holds exactly ONE raw newline" \
+	"$(printf '%s' "$BULK_FORGED_TEXT_FILE" | wc -l | tr -d ' ')" "1"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ -r "$BULK_FORGED_TEXT_FILE" ]; then
+	pass "bulk --plan forged --text-file fixture: that newline-bearing path is a really readable file"
+else
+	fail "bulk --plan forged --text-file fixture: that newline-bearing path is a really readable file" \
+		"not readable: $BULK_FORGED_TEXT_FILE"
+fi
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op comment --text-file "$BULK_FORGED_TEXT_FILE" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan comment with a forged --text-file path -> exit 0" 0
+equals "bulk --plan forged --text-file: ZERO curl calls (no comment was posted)" "$(call_count)" "0"
+stdout_has "bulk --plan forged --text-file: the newline was DELETED — the path's forged tail welds into the intent phrase" \
+	"noteFAKE-PATH-LINE.md for 1 issue(s):"
+stdout_no_line_starting_with "bulk --plan forged --text-file: the forged text never reaches column 0 of its own line" \
+	"FAKE-PATH-LINE.md"
+
+# --- all THREE "who" flags at once: the crossed-wire surface -----------------
+# The hoist is three INDEPENDENT pre-resolves (BULK_RESOLVED_ASSIGNEE_ID /
+# _DEVELOPER_ID / _REVIEWER_ID), each wired to its own cmd_update call site. A
+# bug that crosses two of them — the reviewer's id read at the assignee site —
+# changes NO call count and NO exit code, so the --reviewer-only case above
+# passes green through it. Only three DISTINCT stub ids, asserted per field, can
+# see it.
+#
+# It also pins the three SHAPES apart in one body: assignee is Jira's built-in
+# {id: ...}, while developer and reviewer are custom user-pickers under
+# {accountId: ...} at their OWN mapped field ids. Swapping a shape 400s live.
+section "jira.sh — bulk --op update with all THREE who-flags: each pre-resolved id lands under its OWN field"
+
+# Its own projects dir, for the reason the --reviewer case above states: mapping
+# custom fields for PSWS in the shared dir would hand them to the sibling cases
+# that assert the UNCONFIGURED behaviour. Two distinct custom field ids, so a
+# developer/reviewer swap shows up as the wrong KEY as well as the wrong id.
+BULK_WHO_PROJECTS_DIR="$WORK/bulk-who-projects"
+mkdir -p "$BULK_WHO_PROJECTS_DIR"
+cat >"$BULK_WHO_PROJECTS_DIR/PSWS.json" <<'EOF'
+{
+  "key": "PSWS",
+  "custom_fields": { "developer": "customfield_25500", "reviewer": "customfield_26758" }
+}
+EOF
+
+reset_curl_stub
+# cmd_bulk pre-resolves in flag-declaration order — assignee, developer, reviewer
+# (calls 1-3) — then one PUT per issue (calls 4-5). Each lookup answers with a
+# DISTINCT id, so every per-field assertion below fails on a crossed wire instead
+# of agreeing by coincidence.
+set_stub_response 1 '[{"accountId":"acc-who-assignee-111"}]' 200
+set_stub_response 2 '[{"accountId":"acc-who-developer-222"}]' 200
+set_stub_response 3 '[{"accountId":"acc-who-reviewer-333"}]' 200
+set_stub_response 4 '' 204
+set_stub_response 5 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_WHO_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update --assignee asg@example.com --developer dev@example.com \
+	--reviewer rev@example.com --keys "PSWS-1,PSWS-2" --confirmed-site foo.atlassian.net
+expect_rc "bulk real update all-three-who -> exit 0" 0
+equals "bulk all-three-who: 5 calls (ONE lookup per distinct flag + a PUT per issue)" "$(call_count)" "5"
+# stdout before the body reads, for the reason stated on the --priority case above.
+stdout_has "bulk all-three-who: both issues reported succeeded" "JIRA_BULK_SUMMARY=2/2 succeeded"
+file_has "bulk all-three-who: the assignee value was the one looked up" \
+	"$CURL_STUB_ARGV_LOG" "/rest/api/3/user/search?query=asg%40example.com"
+file_has "bulk all-three-who: the developer value was the one looked up" \
+	"$CURL_STUB_ARGV_LOG" "/rest/api/3/user/search?query=dev%40example.com"
+file_has "bulk all-three-who: the reviewer value was the one looked up" \
+	"$CURL_STUB_ARGV_LOG" "/rest/api/3/user/search?query=rev%40example.com"
+equals "bulk all-three-who: PSWS-1's assignee carries the ASSIGNEE id in the built-in {id} shape" \
+	"$(jq -c '.fields.assignee' "$CURL_STUB_BODY_LOG_DIR/call-4.body")" '{"id":"acc-who-assignee-111"}'
+equals "bulk all-three-who: PSWS-1's developer field carries the DEVELOPER id under {accountId}" \
+	"$(jq -c '.fields.customfield_25500' "$CURL_STUB_BODY_LOG_DIR/call-4.body")" '{"accountId":"acc-who-developer-222"}'
+equals "bulk all-three-who: PSWS-1's reviewer field carries the REVIEWER id under {accountId}" \
+	"$(jq -c '.fields.customfield_26758' "$CURL_STUB_BODY_LOG_DIR/call-4.body")" '{"accountId":"acc-who-reviewer-333"}'
+equals "bulk all-three-who: PSWS-2's assignee carries the same pre-resolved ASSIGNEE id" \
+	"$(jq -c '.fields.assignee' "$CURL_STUB_BODY_LOG_DIR/call-5.body")" '{"id":"acc-who-assignee-111"}'
+equals "bulk all-three-who: PSWS-2's developer field carries the same pre-resolved DEVELOPER id" \
+	"$(jq -c '.fields.customfield_25500' "$CURL_STUB_BODY_LOG_DIR/call-5.body")" '{"accountId":"acc-who-developer-222"}'
+equals "bulk all-three-who: PSWS-2's reviewer field carries the same pre-resolved REVIEWER id" \
+	"$(jq -c '.fields.customfield_26758' "$CURL_STUB_BODY_LOG_DIR/call-5.body")" '{"accountId":"acc-who-reviewer-333"}'
+
+# --- the hoist's actual SAFETY property: abort before ANY write --------------
+# cmd_bulk places the pre-resolve AFTER the --plan return and BEFORE the loop
+# precisely so an unresolvable value aborts the batch with NOTHING written,
+# rather than failing once per issue after earlier ones already landed. Every
+# existing assertion of that ordering is a code comment; this is the executable
+# one, and it is a REAL run (not --plan), because --plan's own zero-request
+# guarantee returns before the pre-resolve is ever reached.
+section "jira.sh — bulk --op update: a FAILED pre-resolve aborts the whole batch before any issue is written"
+
+reset_curl_stub
+# Call 1 is the pre-resolve, answered with an EMPTY match set -> resolve_account_id
+# fails loud. Calls 2-3 are COUNTERFACTUAL 204s: if the abort did not happen, both
+# PUTs would SUCCEED and the count below would read 3 rather than the stub's own
+# missing-response error — so exactly-1 can only mean neither issue was touched.
+set_stub_response 1 '[]' 200
+set_stub_response 2 '' 204
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_WHO_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update --reviewer nobody@example.com --keys "PSWS-1,PSWS-2" \
+	--confirmed-site foo.atlassian.net
+expect_rc "bulk pre-resolve failure -> exit 1" 1
+stderr_has "bulk pre-resolve failure: the resolver's own diagnostic surfaces" \
+	"no Jira user found for 'nobody@example.com'"
+equals "bulk pre-resolve failure: exactly ONE call (the failed lookup, ZERO PUTs)" "$(call_count)" "1"
+file_not_has "bulk pre-resolve failure: PSWS-1 was never written" \
+	"$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/issue/PSWS-1"
+file_not_has "bulk pre-resolve failure: PSWS-2 was never written" \
+	"$CURL_STUB_ARGV_LOG" "https://foo.atlassian.net/rest/api/3/issue/PSWS-2"
+# A partial batch would still have emitted its per-issue result lines and a
+# summary; their ABSENCE is what separates "aborted before the loop" from
+# "looped and every issue failed".
+stdout_not_has "bulk pre-resolve failure: no per-issue result line was emitted" "JIRA_BULK_RESULT="
+stdout_not_has "bulk pre-resolve failure: no batch summary was emitted" "JIRA_BULK_SUMMARY="
 
 # --- empty-set boundaries: whitespace-only --keys and a zero-resolve --jql ---
 section "jira.sh — bulk empty-set boundaries: whitespace-only --keys (exit 2) and zero-resolve --jql (exit 1)"

@@ -82,7 +82,21 @@
 #                            email -> resolved accountId. (create, update)
 #                            ALWAYS resolved to accountId ("@me" or an
 #                            email/username) — {"id": accountId} on the
-#                            wire. (search only, additionally) --status STR
+#                            wire. A user-picker VALUE (here, --developer,
+#                            --reviewer and --account) must identify exactly
+#                            ONE Jira user: /user/search is a fuzzy substring
+#                            match, so when it returns several, resolution
+#                            succeeds only if EXACTLY one of them matches
+#                            VALUE exactly (email or display name,
+#                            case-insensitively) — otherwise it fails (exit 1)
+#                            rather than assigning whichever user came back
+#                            first. Accepted by create, update, search and
+#                            `bulk --op update` (which loops update) and by
+#                            NOTHING else: every other command REJECTS it
+#                            (usage error, exit 2) rather than silently
+#                            dropping it, for the same disclosure reason
+#                            --priority's scoping states. (search only,
+#                            additionally) --status STR
 #                            (search) JQL `status = "STR"`.
 #   --type STR                (search) JQL `type = "STR"`. (create) The
 #                            issue type; resolved through the project
@@ -124,6 +138,31 @@
 #                            {"id": accountId}: this is Jira's own REST
 #                            distinction between the built-in assignee
 #                            reference and a custom user-picker field.
+#                            Accepted by update and `bulk --op update` (which
+#                            loops update) and by NOTHING else — create
+#                            included: every other command REJECTS it (usage
+#                            error, exit 2) rather than silently dropping it,
+#                            for the same disclosure reason --priority's
+#                            scoping states.
+#   --reviewer VALUE             (create, update) Resolved to accountId,
+#                            merged under the project config's custom_fields.
+#                            reviewer field id as {"accountId": accountId} —
+#                            the same distinct-inner-key rationale as
+#                            --developer above. Accepted on CREATE too, which
+#                            --developer is not: a project may make its
+#                            Reviewer field REQUIRED on the create screen, and
+#                            that create 400s before a follow-up update could
+#                            ever supply it. STRICTLY OPT-IN and never
+#                            defaulted; whether the field is required is NOT
+#                            checked locally, because requiredness is
+#                            per-project on the Jira side and the site's own
+#                            400 names the missing field clearly — the same
+#                            contract as --priority above. Accepted by create,
+#                            update and `bulk --op update` (which loops update)
+#                            and by NOTHING else: every other command REJECTS
+#                            it (usage error, exit 2) rather than silently
+#                            dropping it, for the same disclosure reason
+#                            --priority's identical scoping states.
 #   --resolution STR              (transition only) STRICTLY OPT-IN — the
 #                            resolution field is set ONLY when this flag is
 #                            explicitly given, on ANY target status
@@ -173,11 +212,17 @@
 #                            it writes the config as-is; on an EXISTING target it
 #                            BACKS UP the file first (to <path>.bak-<UTC>) then
 #                            MERGES — refreshing the discovered facts
-#                            (issue_types/subtask_types) and add/updating
-#                            discovered custom_fields entries, while PRESERVING
-#                            the human-curated type_aliases/subtask_parent_types/
-#                            workflows and any human-added semantic custom_fields
-#                            keys. Prints a machine line naming the outcome +
+#                            (issue_types/subtask_types) and adding/refreshing
+#                            the discovered custom_fields DISPLAY-NAME entries,
+#                            while PRESERVING the human-curated type_aliases/
+#                            subtask_parent_types/workflows and the CURATED id on
+#                            the four SEMANTIC custom_fields keys
+#                            (acceptance_criteria/review_notes/developer/
+#                            reviewer), where a curated mapping always wins a key
+#                            collision — so a live field literally named
+#                            "reviewer" can never silently overwrite
+#                            custom_fields.reviewer.
+#                            Prints a machine line naming the outcome +
 #                            backup: JIRA_DISCOVERED=<PROJECT> -> <path>
 #                            (created|merged|replaced[; backup <path>]).
 #   --force                    (discover only, with --write) Skip the merge and
@@ -204,6 +249,12 @@
 #                            omitted) -> self; an email/username -> resolved
 #                            to an accountId via the SAME resolver
 #                            create/update already use for --assignee.
+#                            Accepted by watch and NOTHING else: every other
+#                            command REJECTS it (usage error, exit 2) rather
+#                            than silently dropping it, for the same disclosure
+#                            reason --priority's scoping states. `watch --list`
+#                            rejects it too, as a mode conflict rather than a
+#                            foreign flag (listing watchers takes no account).
 #   --remove                      (watch, vote) Remove instead of add;
 #                            mutually exclusive with --list.
 #   --list                          (watch, vote) List instead of add;
@@ -279,9 +330,9 @@ Usage (WRITE):
   $PROG create --project KEY --title STR --confirmed-site SITE
          [--description-file PATH] [--acceptance-file PATH]
          [--review-file PATH] [--type STR] [--assignee VALUE]
-         [--labels LIST] [--due-date YYYY-MM-DD] [--parent KEY]
-         [--priority NAME] [--fix-version NAME]... [--affects-version NAME]...
-         [--component NAME]... [--json]
+         [--reviewer VALUE] [--labels LIST] [--due-date YYYY-MM-DD]
+         [--parent KEY] [--priority NAME] [--fix-version NAME]...
+         [--affects-version NAME]... [--component NAME]... [--json]
   $PROG comment <KEY> --text-file PATH --confirmed-site SITE [--json]
   $PROG comment-edit <KEY> --comment-id N --text-file PATH
          --confirmed-site SITE [--plan|--dry-run] [--json]
@@ -294,9 +345,9 @@ Usage (WRITE):
   $PROG update <KEY> --confirmed-site SITE
          [--title STR] [--description-file PATH | --append-file PATH]
          [--acceptance-file PATH] [--review-file PATH]
-         [--assignee VALUE] [--developer VALUE] [--labels LIST]
-         [--due-date YYYY-MM-DD] [--parent KEY] [--priority NAME]
-         [--fix-version NAME]... [--affects-version NAME]...
+         [--assignee VALUE] [--developer VALUE] [--reviewer VALUE]
+         [--labels LIST] [--due-date YYYY-MM-DD] [--parent KEY]
+         [--priority NAME] [--fix-version NAME]... [--affects-version NAME]...
          [--component NAME]... [--json]
   $PROG link <FROM> --to TO --link-type NAME --confirmed-site SITE
          [--comment-file PATH] [--json]
@@ -375,9 +426,11 @@ Exit codes:
   1  curl/jq absent / credentials unavailable / JIRA_READ_ONLY set on a write
      command / JIRA_CURL_CONFIG not named for the confirmed site /
      site gate failed / an API
-     call failed / no user found for --assignee/--developer/--account /
-     invalid project config / an unconfigured custom field required by
-     --acceptance-file/--review-file/--developer / no valid transition path /
+     call failed / no user found — or no UNIQUE exact match — for
+     --assignee/--developer/--reviewer/--account / invalid project config /
+     an unconfigured (or mis-shaped) custom field id required by
+     --acceptance-file/--review-file/--developer/--reviewer /
+     no valid transition path /
      a transition step that silently failed to apply
   2  usage error
 EOF

@@ -5,8 +5,10 @@
 #            itself does five things: source the engine's units, parse argv
 #            into OPT_* globals, run the command's validate_*_args() wrapper,
 #            enforce the cross-command scope of a flag carrier only some
-#            commands read (see the --priority/--comment-id scoping blocks
-#            below), and call its cmd_*() entry point. Every option it parses
+#            commands read (see the six --priority/--reviewer/--developer/
+#            --assignee/--comment-id/--account scoping blocks below, in that
+#            file order),
+#            and call its cmd_*() entry point. Every option it parses
 #            is consumed by a sourced unit — except where the dispatcher itself
 #            must scope a shared carrier across commands — which is what makes
 #            it a dispatcher rather than an implementation.
@@ -52,7 +54,9 @@
 #   commands: human mode prints machine-parseable `JIRA_*=value` lines
 #   (create: JIRA_ISSUE_KEY/JIRA_ISSUE_URL; comment: JIRA_COMMENT_ID;
 #   comment-edit: JIRA_COMMENT_EDITED;
-#   transition: JIRA_TRANSITIONED_TO; update: JIRA_UPDATED; link:
+#   transition: JIRA_TRANSITIONED_TO; update: JIRA_UPDATED; create and update
+#   additionally emit JIRA_USER_FIELDS_SET naming which of the
+#   assignee/developer/reviewer fields the write SET, when any; link:
 #   JIRA_LINKED; worklog: JIRA_WORKLOGGED; watch: JIRA_WATCHED/
 #   JIRA_UNWATCHED; vote: JIRA_VOTED/JIRA_UNVOTED; and the version/component/
 #   attach/bulk/sprint-write/schedule lines each unit documents) — the
@@ -76,10 +80,12 @@
 #      write command · $JIRA_CURL_CONFIG's basename not matching the confirmed
 #      site · confirmed-site host not in
 #      the allow-list · intended-site/confirmed-site mismatch · a Jira API
-#      call failed (non-2xx) · no Jira user found for an --assignee/
-#      --developer value · a project config file exists but is not valid
-#      JSON · an --acceptance-file/--review-file/--developer given without
-#      the matching custom_fields mapping configured · a subtask create
+#      call failed (non-2xx) · no Jira user found — or no UNIQUE exact match —
+#      for an --assignee/--developer/--reviewer value · a project config file
+#      exists but is not valid JSON · an --acceptance-file/--review-file/
+#      --developer/--reviewer given without the matching custom_fields mapping
+#      configured · a custom_fields mapping that is not customfield_<digits>
+#      · a subtask create
 #      without a valid parent · no workflow path to a transition target ·
 #      a transition step whose post-write status check doesn't match
 #      · markdown-to-ADF conversion failed
@@ -207,7 +213,7 @@
 #     (via `--arg` + jq's `{($k): $v}` computed-key syntax) — never program
 #     text, so a malicious/malformed custom_fields mapping in a project
 #     config cannot inject jq syntax.
-#   - assignee/developer values are NEVER sent as raw email/username
+#   - assignee/developer/reviewer values are NEVER sent as raw email/username
 #     strings — always resolved to an opaque accountId first (the same
 #     resolve_account_id() the READ path's search --assignee already uses).
 #   - transition's BFS walk (compute_transition_path/walk_transition_path)
@@ -376,6 +382,9 @@ OPT_DUE_DATE=""
 OPT_PARENT=""
 OPT_PRIORITY=""
 OPT_DEVELOPER=""
+# Read by create AND update, unlike its sibling OPT_DEVELOPER (update only) —
+# see cmd_create's --reviewer block for why create cannot defer it.
+OPT_REVIEWER=""
 OPT_RESOLUTION=""
 OPT_PLAN=0
 OPT_TO=""
@@ -383,6 +392,9 @@ OPT_LINK_TYPE=""
 OPT_TIME_SPENT=""
 OPT_COMMENT_FILE=""
 OPT_STARTED=""
+# watch: the user whose watch is added/removed (defaults to @me). Read by that
+# ONE command only — hence the foreign-flag guard below, in the same shape as
+# --comment-id's.
 OPT_ACCOUNT=""
 OPT_REMOVE=0
 OPT_LIST=0
@@ -474,6 +486,7 @@ while [ $# -gt 0 ]; do
 		--parent)                  need_arg "$1" "${2:-}"; OPT_PARENT=$2; shift ;;
 		--priority)                need_arg "$1" "${2:-}"; OPT_PRIORITY=$2; shift ;;
 		--developer)               need_arg "$1" "${2:-}"; OPT_DEVELOPER=$2; shift ;;
+		--reviewer)                need_arg "$1" "${2:-}"; OPT_REVIEWER=$2; shift ;;
 		--resolution)              need_arg "$1" "${2:-}"; OPT_RESOLUTION=$2; shift ;;
 		--plan|--dry-run)          OPT_PLAN=1 ;;
 		--to)                      need_arg "$1" "${2:-}"; OPT_TO=$2; shift ;;
@@ -602,6 +615,50 @@ if [ "$priority_is_supported" -eq 0 ]; then
 	require_foreign_flag_unset --priority "$OPT_PRIORITY" "create, update, and bulk --op update"
 fi
 
+# --reviewer has the SAME three readers as --priority above (create, update, and
+# `bulk --op update` through the update verb it loops), so it carries the same
+# guard for the same undisclosed-silent-drop reason stated there.
+reviewer_is_supported=0
+case "$COMMAND" in
+	create|update) reviewer_is_supported=1 ;;
+	bulk)          [ "$OPT_OP" != "update" ] || reviewer_is_supported=1 ;;
+esac
+if [ "$reviewer_is_supported" -eq 0 ]; then
+	require_foreign_flag_unset --reviewer "$OPT_REVIEWER" "create, update, and bulk --op update"
+fi
+
+# --developer carries the same guard for the same reason, over a NARROWER owner
+# set: cmd_update is its only reader, so `create --developer X` would accept the
+# flag and silently drop it — a caller who believes they named the developer on
+# the new ticket gets one with the field unset, and no disclosure names the flag
+# the engine ignored. `bulk --op update` reads it only through the update verb it
+# loops, exactly as with --reviewer above.
+developer_is_supported=0
+case "$COMMAND" in
+	update) developer_is_supported=1 ;;
+	bulk)   [ "$OPT_OP" != "update" ] || developer_is_supported=1 ;;
+esac
+if [ "$developer_is_supported" -eq 0 ]; then
+	require_foreign_flag_unset --developer "$OPT_DEVELOPER" "update, and bulk --op update"
+fi
+
+# --assignee carries the same guard over the WIDEST owner set of the five: four
+# readers, not one or three — create and update merge it as fields.assignee,
+# `search` resolves it into an `assignee = ...` JQL clause (lib/jql.sh), and
+# `bulk --op update` reads it through the update verb it loops (plus the one
+# hoisted accountId lookup in cmd-bulk.sh). Everything else — transition, comment,
+# worklog, watch, schedule — accepted it and dropped it silently, so a caller who
+# meant to reassign a ticket while transitioning it got the transition alone with
+# nothing in the --plan/consent disclosure naming the flag the engine ignored.
+assignee_is_supported=0
+case "$COMMAND" in
+	create|update|search) assignee_is_supported=1 ;;
+	bulk)                 [ "$OPT_OP" != "update" ] || assignee_is_supported=1 ;;
+esac
+if [ "$assignee_is_supported" -eq 0 ]; then
+	require_foreign_flag_unset --assignee "$OPT_ASSIGNEE" "create, update, search, and bulk --op update"
+fi
+
 # --comment-id is scoped the SAME way and for a sharper version of the same
 # reason: `comment-edit` is its only reader, and the command it is most likely to
 # be typed at by mistake is `comment`, which would ACCEPT it, drop it silently,
@@ -611,6 +668,19 @@ fi
 # fail-closed direction --priority's guard above takes.
 if [ "$COMMAND" != "comment-edit" ]; then
 	require_foreign_flag_unset --comment-id "$OPT_COMMENT_ID" "comment-edit"
+fi
+
+# --account is scoped like --comment-id above — ONE reader (cmd-watch.sh, for
+# `watch --account VALUE`), and the same undisclosed-silent-drop failure
+# everywhere else: `update K --account someone@example.com` accepted the flag and
+# dropped it, so a caller who meant to name a watcher got an update that touched
+# nobody, with no disclosure naming the flag the engine ignored. It is the flag
+# most likely to be confused with --assignee, whose own guard already refuses it
+# on watch — so without this one the confusion is refused in only one direction.
+# `watch --list --account X` stays validate_watch_args's refusal, not this
+# block's: the flag IS watch's there, just not in list mode.
+if [ "$COMMAND" != "watch" ]; then
+	require_foreign_flag_unset --account "$OPT_ACCOUNT" "watch"
 fi
 
 # ---------------------------------------------------------------------------

@@ -148,7 +148,8 @@ is_write_invocation() {
 		# `--write` makes it a real, consequential LOCAL write: it overwrites
 		# $JIRA_PROJECTS_DIR/<KEY>.json, the file carrying the human-curated
 		# workflows/type_aliases/subtask_parent_types/custom_fields that a later
-		# transition/create/--acceptance-file/--developer call depends on
+		# transition/create/--acceptance-file/--review-file/--developer/
+		# --reviewer call depends on
 		# (--force drops them outright; even the merge path rewrites the file).
 		# Under this gate's OWN threat model — an injected or confused read-only
 		# analysis pass — degrading that config degrades every subsequent WRITE

@@ -123,8 +123,10 @@ merge_int_field() {
 }
 
 # require_custom_field CONFIG_FILE SEMANTIC_NAME FLAG_NAME -> prints the
-# config's custom_fields[SEMANTIC_NAME] field id, or fails closed (exit 1)
-# if there is no config or no such mapping. DELIBERATE DIVERGENCE from the
+# config's custom_fields[SEMANTIC_NAME] field id, or fails closed (exit 1) in
+# any of THREE cases: there is no config, there is no such mapping, or the
+# mapping resolves to something that is not a `customfield_<digits>` field id
+# (the shape check at the end of this function). DELIBERATE DIVERGENCE from the
 # jira.py oracle: the oracle SILENTLY DROPS an --acceptance/--review update
 # when the field isn't configured (no field id -> the whole block is
 # skipped, no error, no write, no warning) — a user-requested update that
@@ -142,6 +144,24 @@ require_custom_field() {
 	rcf_resolved_field_id=$(jq -r --arg n "$rcf_semantic_field_name" '.custom_fields[$n] // empty' "$rcf_config_file")
 	if [ -z "$rcf_resolved_field_id" ]; then
 		error "$rcf_flag_name requires custom_fields.$rcf_semantic_field_name to be mapped in the project config, but it is not"
+		exit 1
+	fi
+	# A MAPPED id is not yet a VALID one. Whatever this resolves to becomes the
+	# JSON field key of the write below, so a mis-typed id — or a built-in field
+	# name pasted in by mistake — must fail here, BEFORE merge_ref_field/
+	# merge_json_field aims the write at it and Jira answers 204. The value is
+	# config-authored (in practice API-derived, since `discover --write` fills
+	# the map), so it goes through runtime.sh's fold_disclosed_value — the shared
+	# one-line fold this diagnostic shares with cmd-update.sh's --plan summary and
+	# accounts.sh's resolver diagnostics, for the reason stated there: this
+	# diagnostic shares a stream with the engine's own single-line output, so an
+	# embedded newline (or tab, or a C1 byte a terminal honors as one) could
+	# otherwise put attacker-influenced text at column 0 and forge a line. Mangling
+	# costs nothing here: a VALID id is `customfield_<digits>`, pure ASCII, and this
+	# branch only ever renders a value already known invalid.
+	if ! validate_custom_field_id "$rcf_resolved_field_id"; then
+		rcf_safe_field_id=$(fold_disclosed_value "$rcf_resolved_field_id")
+		error "$rcf_flag_name resolved custom_fields.$rcf_semantic_field_name to '$rcf_safe_field_id', which is not a customfield_<digits> field id — fix the mapping in the project config"
 		exit 1
 	fi
 	printf '%s' "$rcf_resolved_field_id"

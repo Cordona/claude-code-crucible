@@ -22,8 +22,8 @@
 #   from a --fields token), as are issue_types and subtask_types, all from live
 #   data. The human-fill step for custom_fields is DISTINCT from the empty
 #   slots: it means ADDING the SEMANTIC keys require_custom_field expects
-#   (acceptance_criteria/review_notes/developer) as further ENTRIES into that
-#   already-populated map — whereas type_aliases/subtask_parent_types/workflows
+#   (acceptance_criteria/review_notes/developer/reviewer) as further ENTRIES
+#   into that already-populated map — whereas type_aliases/subtask_parent_types/workflows
 #   are emitted genuinely EMPTY because the API cannot infer a client's aliases
 #   or workflow graph at all. Every discovered value (field names, ids, type
 #   names) enters jq ONLY as data via --slurpfile — never concatenated into a
@@ -150,19 +150,59 @@ DISCOVER_CONFIG_PROGRAM='
 # DISCOVER_MERGE_PROGRAM — fold a freshly-DISCOVERED config into a
 # human-CURATED existing one without clobbering curation. $existing/$discovered
 # are each [<the config object>]. Rules: REPLACE issue_types/subtask_types with
-# the discovered facts; MERGE custom_fields (existing first, then discovered
-# display-name entries add/refresh — preserving human-added semantic keys like
-# acceptance_criteria/review_notes/developer); PRESERVE the existing
-# type_aliases/subtask_parent_types/workflows (discovery emits these empty, so
-# `//` keeps a present existing value — even an empty one — over the discovered
-# empty). Starting from `$old + {...}` also preserves any EXTRA keys a human
-# added (e.g. a "key" field) that discovery does not model.
+# the discovered facts; MERGE custom_fields so a discovered entry ADDS a new
+# display-name key and REFRESHES an existing one's id, EXCEPT on the four
+# SEMANTIC keys, where the CURATED mapping wins (see below); PRESERVE the
+# existing type_aliases/subtask_parent_types/workflows (discovery emits these
+# empty, so `//` keeps a present existing value — even an empty one — over the
+# discovered empty). Starting from `$old + {...}` also preserves any EXTRA keys a
+# human added (e.g. a "key" field) that discovery does not model.
+#
+# WHY THE FOUR SEMANTIC KEYS — AND ONLY THEY — LET `old` WIN. This map is keyed
+# by two DIFFERENT namespaces that can collide: discovery writes a field's raw
+# DISPLAY NAME, while a human adds the SEMANTIC keys require_custom_field reads
+# (acceptance_criteria/review_notes/developer/reviewer). A real Jira field
+# literally named "reviewer" therefore shares a key with the curated
+# `custom_fields.reviewer` mapping — and with the discovered side winning, the
+# next `discover --write` silently retargeted every `--reviewer` write onto
+# whatever that unrelated field happens to be. Curation is the authority on
+# exactly those four keys because they are the only ones discovery cannot tell
+# apart from a display name.
+#
+# WHY IT IS NOT THE WHOLE SUB-MAP. Letting `old` win every collision also blocks
+# the legitimate case: a plain display-name key whose Jira field id CHANGED (an
+# admin recreated the field). `discover --write` is the documented remedy for
+# that, so a blanket rule left the stale entry unrefreshable and the next write
+# silently aimed at a dead field id. Outside the four keys the LIVE facts still
+# win, exactly as they do for issue_types/subtask_types.
+#
+# A curated key discovery did NOT return survives either way, because $curated
+# is the BASE of the merge rather than only its override: discovery sees only
+# fields present on some issue type's CREATE screen, so a mapped field that sits
+# on none of them must not be dropped.
+#
+# WHY THE FOUR SEMANTIC KEYS ARE ALSO STRIPPED FROM $live BEFORE THE MERGE, NOT
+# JUST OVERRIDDEN AFTER IT. Filtering $curated's semantic keys back on top (the
+# earlier shape of this fix) only protects a key that is ALREADY curated. Before
+# any human has curated `reviewer` at all, a live Jira field whose DISPLAY NAME
+# happens to be literally "reviewer" would still populate that semantic key from
+# $live — with nothing to override, `discover --write` would silently start
+# routing every future `--reviewer` write at that unrelated field, on a
+# genuinely valid `customfield_<digits>` id the shape check cannot catch.
+# Discovery is never the source of a semantic key (see the human-fill-step note
+# above); stripping the four keys from $live's contribution entirely means the
+# merge can no longer manufacture one from a same-named display field, curated
+# or not.
 # shellcheck disable=SC2016  # single-quoted on purpose: $existing/$discovered below are jq syntax, not shell expansions
 DISCOVER_MERGE_PROGRAM='
 $existing[0] as $old
 | $discovered[0] as $new
+| ($old.custom_fields // {}) as $curated
+| ($new.custom_fields // {}) as $live
+| ["acceptance_criteria", "review_notes", "developer", "reviewer"] as $semantic_keys
 | $old + {
-    custom_fields: (($old.custom_fields // {}) + ($new.custom_fields // {})),
+    custom_fields: ($curated
+                    + ($live | with_entries(select(.key as $k | $semantic_keys | index($k) | not)))),
     type_aliases: ($old.type_aliases // $new.type_aliases),
     issue_types: $new.issue_types,
     subtask_types: $new.subtask_types,

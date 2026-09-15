@@ -71,6 +71,17 @@ MEDIA_COUNTER=0
 # `jq --argjson`.
 BATCH_TRUNCATED=false
 BATCH_RESOLVED_LIMIT=null
+# The accountId `bulk --op update` pre-resolves ONCE per batch (see cmd-bulk.sh)
+# and the looped cmd_update reads back via `${…:-}` in place of its own lookup.
+# Declared HERE, at process level, so they can never be INHERITED FROM THE
+# ENVIRONMENT — the same hazard cmd-comment-edit.sh's COMMENT_EDIT_VERIFIED_KEY
+# is pre-seeded against. Declared only inside cmd_bulk, nothing defined them on
+# the DIRECT `update` path (where cmd_bulk never runs), so an exported
+# BULK_RESOLVED_REVIEWER_ID would have been written to the ticket verbatim in
+# place of the accountId freshly resolved from the caller's own --reviewer value.
+BULK_RESOLVED_ASSIGNEE_ID=""
+BULK_RESOLVED_DEVELOPER_ID=""
+BULK_RESOLVED_REVIEWER_ID=""
 
 # shellcheck disable=SC2329  # invoked indirectly via trap
 cleanup() {
@@ -107,8 +118,42 @@ ensure_workdir() {
 # level for grep. Nothing in this engine parses CRLF through this helper (http.sh's
 # redirect-Location parsing greps the raw header dump and never routes it here),
 # so deleting it is safe for all 44 other units.
+#
+# The C1 range (\200-\237) is deliberately NOT stripped here, even though it holds
+# NEL (\205) and other bytes an 8-bit-control terminal honors as a line break: those
+# same bytes are valid UTF-8 CONTINUATION bytes ("Á" is \303\201, an em dash is
+# \342\200\224, curly quotes \342\200\230-\235), and this helper's input is arbitrary
+# user-authored UTF-8 — display names, summaries, comment bodies — so a byte-level
+# C1 deletion here would corrupt legitimate text at every one of its 40-odd call
+# sites. The call sites that genuinely need the C1 fold go through
+# fold_disclosed_value below, where the corruption is bounded and disclosed.
 strip_control_ansi() {
 	sed "s/${ESC}\\[[0-9;]*[a-zA-Z]//g" | tr -d '\000-\010\013-\037\177'
+}
+
+# fold_disclosed_value RAW -> RAW with ANSI/C0 controls, TAB/LF and the C1 range
+# removed, so the value can never contribute more than its own fragment of ONE
+# line of output.
+#
+# Its callers render a short, CALLER- or CONFIG-SUPPLIED value into a line whose
+# integrity is load-bearing: cmd-update.sh's --plan field summary and
+# cmd-bulk.sh's --plan intent phrase (a consent gate a human reads line by line),
+# accounts.sh's resolver diagnostics and fields.sh's invalid-field-id diagnostic
+# (stderr an agent reads as this engine's output). A raw newline inside such a
+# value FORGES a line there — the closing "NOTHING WAS WRITTEN (dry-run /
+# --plan)" row, an extra issue key, a second "jira.sh: error:" — exactly the
+# forgery cmd-comment-edit.sh's own `| tr -d '\012'` sites exist to prevent. TAB
+# goes too (whitespace a terminal expands), and the C1 range (\200-\237) because
+# it holds NEL (\205), which an 8-bit-control terminal honors as a line break;
+# that byte class is why this fold is NOT inside strip_control_ansi — see its own
+# note above.
+#
+# Deletion rather than substitution, matching those sites: the forged text then
+# welds onto the engine's own words with no separator, as visibly inert data. A
+# MANGLED value is visible to whoever reads the line where a forged line is not,
+# and the write itself always sends the untouched carrier, never this rendering.
+fold_disclosed_value() {
+	printf '%s' "$1" | strip_control_ansi | tr -d '\011\012\200-\237'
 }
 
 # ---------------------------------------------------------------------------

@@ -98,6 +98,24 @@ validate_numeric_id() {
 	esac
 }
 
+# validate_custom_field_id VALUE -> 0 if VALUE has the shape Jira gives EVERY
+# custom field, `customfield_<one-or-more-digits>`; 1 otherwise. Applied by
+# require_custom_field to what a project config's custom_fields map resolves to,
+# because that value becomes the JSON field KEY of a write: a typo, or a
+# built-in field name pasted in by mistake (`"reviewer": "assignee"`), would
+# otherwise silently retarget the write onto a DIFFERENT, real field — and the
+# 204 would report success. A shape this narrow cannot name a built-in field at
+# all. Uses `case` rather than a line-anchored regex for the same
+# embedded-newline reason validate_numeric_id states above.
+validate_custom_field_id() {
+	case "$1" in
+		customfield_) return 1 ;;
+		customfield_*[!0-9]*) return 1 ;;
+		customfield_*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 # validate_iso_datetime VALUE -> 0 if VALUE is an ISO-8601 UTC/offset datetime
 # of the shape Jira's Agile sprint API returns and accepts:
 #   YYYY-MM-DDTHH:MM:SS[.sss]<Z | +HH:MM | -HH:MM>

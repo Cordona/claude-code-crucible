@@ -139,6 +139,24 @@ build_appended_description() {
 	printf '%s' "$merged_description_file"
 }
 
+# resolve_update_account_id VALUE PRERESOLVED_ID -> prints the accountId to
+# write for ONE "who" flag (--assignee/--developer/--reviewer): PRERESOLVED_ID
+# when the caller already has one, otherwise a fresh resolve_account_id lookup.
+#
+# PRERESOLVED_ID is non-empty on exactly one path — `bulk --op update`, which
+# resolves each flag ONCE for the whole batch (see cmd_bulk) instead of letting
+# the looped cmd_update repeat an identical lookup per issue. On the direct
+# `update` path it is empty, and this is a plain lookup.
+resolve_update_account_id() {
+	ruai_value=$1
+	ruai_preresolved_id=$2
+	if [ -n "$ruai_preresolved_id" ]; then
+		printf '%s' "$ruai_preresolved_id"
+	else
+		resolve_account_id "$ruai_value"
+	fi
+}
+
 cmd_update() {
 	# TICKET_KEY presence, the --description-file/--append-file mutual
 	# exclusivity, and "at least one field" are validated up front — see the
@@ -182,15 +200,37 @@ cmd_update() {
 		merge_json_field "$update_fields_acc" "$review_field_id" "$review_adf_file"
 	fi
 
+	# The three "who" flags. Each accountId comes through
+	# resolve_update_account_id, so a batch's single pre-resolved lookup is
+	# reused where there is one. The require_custom_field lookups deliberately
+	# stay HERE, per issue: a bulk set can span projects whose configs map the
+	# same semantic key to different field ids, so only the project-independent
+	# accountId step is hoistable.
+	#
+	# update_user_fields is built AT the write sites, so the disclosure at the
+	# end of this function can never name a field this verb did not send.
+	update_user_fields=""
+
 	if [ -n "$OPT_ASSIGNEE" ]; then
-		assignee_account_id=$(resolve_account_id "$OPT_ASSIGNEE")
+		assignee_account_id=$(resolve_update_account_id "$OPT_ASSIGNEE" "${BULK_RESOLVED_ASSIGNEE_ID:-}")
 		merge_ref_field "$update_fields_acc" assignee id "$assignee_account_id"
+		update_user_fields="$update_user_fields,assignee"
 	fi
 
 	if [ -n "$OPT_DEVELOPER" ]; then
 		developer_field_id=$(require_custom_field "$PROJECT_CONFIG_FILE" developer "--developer")
-		developer_account_id=$(resolve_account_id "$OPT_DEVELOPER")
+		developer_account_id=$(resolve_update_account_id "$OPT_DEVELOPER" "${BULK_RESOLVED_DEVELOPER_ID:-}")
 		merge_ref_field "$update_fields_acc" "$developer_field_id" accountId "$developer_account_id"
+		update_user_fields="$update_user_fields,developer"
+	fi
+
+	# Same custom user-picker shape as --developer above; unlike it, this flag
+	# is also accepted by create (see cmd_create's identical call for why).
+	if [ -n "$OPT_REVIEWER" ]; then
+		reviewer_field_id=$(require_custom_field "$PROJECT_CONFIG_FILE" reviewer "--reviewer")
+		reviewer_account_id=$(resolve_update_account_id "$OPT_REVIEWER" "${BULK_RESOLVED_REVIEWER_ID:-}")
+		merge_ref_field "$update_fields_acc" "$reviewer_field_id" accountId "$reviewer_account_id"
+		update_user_fields="$update_user_fields,reviewer"
 	fi
 
 	if [ -n "$OPT_LABELS" ]; then
@@ -246,12 +286,50 @@ cmd_update() {
 			'{key: $key, updatedFields: ($fields[0] | keys)}'
 	else
 		printf 'JIRA_UPDATED=%s\n' "$TICKET_KEY"
+		# Which of the three "who" fields this write actually SET. The PUT
+		# answers 204 with no body, so without this line a real run's output
+		# names only the key — nothing distinguishes an update that reassigned
+		# the ticket or named a reviewer from one that moved its due date.
+		[ -z "$update_user_fields" ] || printf 'JIRA_USER_FIELDS_SET=%s\n' "${update_user_fields#,}"
 	fi
 }
 
-# update_field_summary -> a space-joined list of the update aspects the caller
-# asked to change ("assignee labels priority"), or the empty string when they
-# named none. It is the SINGLE SOURCE OF TRUTH for which fields the update verb
+# fold_summary_value RAW -> the disclosed form of ONE "who" value as it appears
+# inside update_field_summary's list: runtime.sh's fold_disclosed_value (which
+# keeps the value on one line — see it for why that matters here) plus the list's
+# own "," delimiter, which no entry may contain.
+#
+# WHY THE DELIMITER GOES TOO, and why it is a comma. The summary is a DELIMITED
+# LIST read at a consent gate, so a value that can hold the delimiter reads as
+# extra entries: joined on a SPACE, `--reviewer "Sam Okafor"` disclosed
+# `reviewer=Sam Okafor labels`, in which "Okafor" is indistinguishable from a
+# second field this write also changes. A spaced value is not an exotic input
+# either — resolve_account_id matches a displayName EXACTLY, so the full "Sam
+# Okafor" is often the only value that resolves at all. The list therefore joins
+# on ", " and this fold deletes the comma, making entry boundaries unforgeable by
+# construction; quoting each value instead would only move the problem to the
+# quote character. A comma inside a display name ("Okafor, Sam") is mangled in the
+# DISCLOSURE alone — the write sends the untouched $OPT_* carrier.
+fold_summary_value() {
+	fold_disclosed_value "$1" | tr -d ','
+}
+
+# update_field_summary -> a ", "-joined list of the update aspects the caller
+# asked to change ("assignee=sam@example.com, labels, priority"), or the empty
+# string when they named none.
+#
+# WHY THREE ASPECTS CARRY THEIR VALUE AND TWELVE DO NOT. The three "who" fields
+# name a PRINCIPAL, and a consent gate reading "update field(s): reviewer" is
+# told that a reviewer changes but never to WHOM — so approving it authorizes
+# putting an unnamed person on the ticket. The value shown is the caller's own
+# input (not the resolved accountId, which is opaque and not yet looked up
+# at --plan time), so this discloses nothing the approver did not already type —
+# folded onto one line, and stripped of this list's delimiter, first: see
+# fold_summary_value.
+# The other aspects are disclosed by name only, exactly as before: their values
+# are content (a whole markdown file, a label list) the gate reads elsewhere.
+#
+# It is the SINGLE SOURCE OF TRUTH for which fields the update verb
 # can change, and has two consumers, both of which derive from it rather than
 # re-enumerating the set: cmd-bulk.sh's bulk_intent_phrase (the --plan
 # disclosure a consent gate reads) and has_update_field_request below (the
@@ -268,22 +346,23 @@ cmd_update() {
 # descriptive: it reads only the OPT_* carriers and never touches the network.
 update_field_summary() {
 	ufs_fields=""
-	[ -z "$OPT_TITLE" ]            || ufs_fields="$ufs_fields title"
-	[ -z "$OPT_DESCRIPTION_FILE" ] || ufs_fields="$ufs_fields description"
-	[ -z "$OPT_APPEND_FILE" ]      || ufs_fields="$ufs_fields description(append)"
-	[ -z "$OPT_ACCEPTANCE_FILE" ]  || ufs_fields="$ufs_fields acceptance"
-	[ -z "$OPT_REVIEW_FILE" ]      || ufs_fields="$ufs_fields review"
-	[ -z "$OPT_ASSIGNEE" ]         || ufs_fields="$ufs_fields assignee"
-	[ -z "$OPT_DEVELOPER" ]        || ufs_fields="$ufs_fields developer"
-	[ -z "$OPT_LABELS" ]           || ufs_fields="$ufs_fields labels"
-	[ -z "$OPT_DUE_DATE" ]         || ufs_fields="$ufs_fields due-date"
-	[ -z "$OPT_PARENT" ]           || ufs_fields="$ufs_fields parent"
-	[ -z "$OPT_PRIORITY" ]         || ufs_fields="$ufs_fields priority"
-	[ -z "$OPT_FIX_VERSIONS" ]     || ufs_fields="$ufs_fields fix-version"
-	[ -z "$OPT_AFFECTS_VERSIONS" ] || ufs_fields="$ufs_fields affects-version"
-	[ -z "$OPT_COMPONENTS" ]       || ufs_fields="$ufs_fields component"
-	# strip the single leading space
-	printf '%s' "${ufs_fields# }"
+	[ -z "$OPT_TITLE" ]            || ufs_fields="$ufs_fields, title"
+	[ -z "$OPT_DESCRIPTION_FILE" ] || ufs_fields="$ufs_fields, description"
+	[ -z "$OPT_APPEND_FILE" ]      || ufs_fields="$ufs_fields, description(append)"
+	[ -z "$OPT_ACCEPTANCE_FILE" ]  || ufs_fields="$ufs_fields, acceptance"
+	[ -z "$OPT_REVIEW_FILE" ]      || ufs_fields="$ufs_fields, review"
+	[ -z "$OPT_ASSIGNEE" ]         || ufs_fields="$ufs_fields, assignee=$(fold_summary_value "$OPT_ASSIGNEE")"
+	[ -z "$OPT_DEVELOPER" ]        || ufs_fields="$ufs_fields, developer=$(fold_summary_value "$OPT_DEVELOPER")"
+	[ -z "$OPT_REVIEWER" ]         || ufs_fields="$ufs_fields, reviewer=$(fold_summary_value "$OPT_REVIEWER")"
+	[ -z "$OPT_LABELS" ]           || ufs_fields="$ufs_fields, labels"
+	[ -z "$OPT_DUE_DATE" ]         || ufs_fields="$ufs_fields, due-date"
+	[ -z "$OPT_PARENT" ]           || ufs_fields="$ufs_fields, parent"
+	[ -z "$OPT_PRIORITY" ]         || ufs_fields="$ufs_fields, priority"
+	[ -z "$OPT_FIX_VERSIONS" ]     || ufs_fields="$ufs_fields, fix-version"
+	[ -z "$OPT_AFFECTS_VERSIONS" ] || ufs_fields="$ufs_fields, affects-version"
+	[ -z "$OPT_COMPONENTS" ]       || ufs_fields="$ufs_fields, component"
+	# strip the single leading delimiter
+	printf '%s' "${ufs_fields#, }"
 }
 
 # has_update_field_request -> 0 if the caller named at least one updatable

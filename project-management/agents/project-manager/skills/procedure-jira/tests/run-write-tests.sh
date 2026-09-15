@@ -103,6 +103,31 @@ assert_no_leaked_workdir() {
 # rather than shared because the two suites are separate processes.
 PRIORITY_SCOPE_DIAG="error: --priority is only valid with create, update, and bulk --op update"
 
+# REVIEWER_SCOPE_DIAG — the same refusal for --reviewer, which shares --priority's
+# three readers exactly: see run-engine-tests.sh's definition of the same needle for
+# why the flag name makes it a separate needle rather than a parameterised one.
+REVIEWER_SCOPE_DIAG="error: --reviewer is only valid with create, update, and bulk --op update"
+
+# DEVELOPER_SCOPE_DIAG — the same refusal for --developer, over the NARROWEST owner
+# set of the four guarded who/priority flags: cmd_update is its only reader, so the
+# owner list this needle pins is TWO commands and — the asymmetry that matters —
+# `create` is NOT among them, unlike --reviewer's list one line up. Reusing
+# REVIEWER_SCOPE_DIAG here would assert a create-accepting owner list and pass only
+# while the guard was wrong.
+DEVELOPER_SCOPE_DIAG="error: --developer is only valid with update, and bulk --op update"
+
+# ASSIGNEE_SCOPE_DIAG — the same refusal for --assignee, over the WIDEST owner set
+# of the four guarded who/priority flags: `search` reads it too (as a JQL clause),
+# so the owner list this needle pins is FOUR commands, not three. That difference is
+# the whole reason it cannot reuse REVIEWER_SCOPE_DIAG.
+ASSIGNEE_SCOPE_DIAG="error: --assignee is only valid with create, update, search, and bulk --op update"
+
+# ACCOUNT_SCOPE_DIAG — the same refusal for --account, over the NARROWEST owner set
+# any of these needles pins: ONE command. It is `--comment-id`'s guard shape, not
+# the four above — a flat `[ "$COMMAND" != "watch" ]` test with no per-op arm —
+# which is why the owner clause is a bare command name rather than a list.
+ACCOUNT_SCOPE_DIAG="error: --account is only valid with watch"
+
 # ---------------------------------------------------------------------------
 # Shared fixtures: a project config with custom fields + a workflow graph.
 # ---------------------------------------------------------------------------
@@ -116,7 +141,8 @@ cat >"$WORK/projects/PROJ.json" <<'EOF'
   "custom_fields": {
     "acceptance_criteria": "customfield_16102",
     "review_notes": "customfield_12402",
-    "developer": "customfield_25500"
+    "developer": "customfield_25500",
+    "reviewer": "customfield_26758"
   },
   "workflows": {
     "Task": {
@@ -228,6 +254,104 @@ expect_rc "create --assignee -> exit 0" 0
 SENT_BODY=$(call_body 2)
 equals "create: assignee is {id: accountId} (not {accountId:...})" \
 	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.assignee')" '{"id":"acc-777"}'
+# The 201 body names only the new key, so without this line nothing in a real
+# run's output states that this create put someone on the ticket. create keeps
+# its OWN accumulator (cmd_create's create_user_fields, separate from
+# cmd_update's) — notably blind to --developer, which create does not read.
+stdout_has "create --assignee: names the who-field it SET" "JIRA_USER_FIELDS_SET=assignee"
+
+# --reviewer is the ONLY custom user-picker `create` carries — its sibling
+# --developer is update-only — see cmd_create's --reviewer block for why create
+# cannot defer it. The inner key is accountId, NOT the assignee
+# section above's `id`: two different Jira field shapes, and swapping them 400s,
+# so the two sections sit adjacent deliberately.
+section "jira.sh create — --reviewer resolves via accountId, {accountId: ...} shape (distinct from assignee's {id: ...})"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-rev-808"}]' 200
+set_stub_response 2 '{"id":"10011","key":"PROJ-111","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" create --project PROJ --title "Reviewed" --reviewer rev@example.com \
+	--confirmed-site foo.atlassian.net
+expect_rc "create --reviewer -> exit 0" 0
+equals "create --reviewer: TWO calls (the accountId lookup, then the create POST)" "$(call_count)" "2"
+SENT_BODY=$(call_body 2)
+equals "create --reviewer: customfield_26758 = {accountId: ...}" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.customfield_26758')" '{"accountId":"acc-rev-808"}'
+stdout_has "create --reviewer: names the who-field it SET alongside the key line" "JIRA_USER_FIELDS_SET=reviewer"
+
+section "jira.sh create — --reviewer with no configured field fails loud"
+
+# The queued 201 is a COUNTERFACTUAL, not a response this run consumes (the
+# zero-call assertion below proves it never does): WITHOUT it, a regression to
+# the oracle's SILENT DROP would still exit 1 — on the stub's own
+# no-canned-response error — so the exit-1 assertion would pass for the wrong
+# reason. WITH a create the engine could have completed, exit 1 can only mean
+# the mapping check refused it.
+reset_curl_stub
+set_stub_response 1 '{"id":"10013","key":"NOCFG-1","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" create --project NOCFG --title "x" --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "create --reviewer, unconfigured project -> exit 1" 1
+stderr_has "create --reviewer unconfigured: diagnostic" "custom_fields.reviewer"
+# The mapping is required BEFORE the accountId lookup, so an unconfigured project
+# costs zero round trips — the same fail-before-the-network property the
+# --acceptance-file unconfigured case above asserts.
+equals "create --reviewer unconfigured: no network call was made" "$(call_count)" "0"
+
+# The single-flag cases above each prove their own value reaches the wire; this
+# one exists for the ACCUMULATOR, which neither can exercise: a one-flag run
+# renders identically whether the join is a comma, a space, or a silent last-wins
+# overwrite. Two flags is the smallest set where the separator is observable.
+section "jira.sh create — two who-flags: the disclosure is COMMA-joined in write order, with no leading comma"
+
+reset_curl_stub
+# cmd_create resolves assignee (call 1) then reviewer (call 2) — the accumulator
+# is appended at each write site, so this is also the order it discloses — then
+# POSTs (call 3).
+set_stub_response 1 '[{"accountId":"acc-both-asg-1"}]' 200
+set_stub_response 2 '[{"accountId":"acc-both-rev-2"}]' 200
+set_stub_response 3 '{"id":"10014","key":"PROJ-114","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" create --project PROJ --title "Both" --assignee asg@example.com \
+	--reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "create --assignee --reviewer -> exit 0" 0
+equals "create two who-flags: THREE calls (a lookup per flag, then the create POST)" "$(call_count)" "3"
+stdout_has "create two who-flags: both fields disclosed, comma-joined" "JIRA_USER_FIELDS_SET=assignee,reviewer"
+# The accumulator is built by appending ",<field>", so the leading separator is
+# stripped at print time. A regression that drops the strip yields a line that
+# still CONTAINS the needle above.
+stdout_no_line_starting_with "create two who-flags: no leading comma survived the join" "JIRA_USER_FIELDS_SET=,"
+SENT_BODY=$(call_body 3)
+equals "create two who-flags: the assignee id is the ASSIGNEE lookup's, in the {id} shape" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.assignee')" '{"id":"acc-both-asg-1"}'
+equals "create two who-flags: the reviewer id is the REVIEWER lookup's, in the {accountId} shape" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.customfield_26758')" '{"accountId":"acc-both-rev-2"}'
+
+# --json is a deliberate PASSTHROUGH of Jira's own 201 body, so the disclosure
+# line is omitted there — anything this engine prints alongside it would corrupt
+# a consumer's `jq` parse of that body. Undocumented by any test until now, which
+# left the carve-out one stray printf away from silently breaking every --json
+# caller of create.
+section "jira.sh create — --json omits the JIRA_USER_FIELDS_SET disclosure (pure 201 passthrough)"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-json-rev-3"}]' 200
+set_stub_response 2 '{"id":"10015","key":"PROJ-115","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" create --project PROJ --title "JSON reviewer" --reviewer rev@example.com \
+	--json --confirmed-site foo.atlassian.net
+expect_rc "create --json --reviewer -> exit 0" 0
+# The who-field really WAS set on this run — otherwise the absence below would be
+# absence of a line nothing asked for, and would prove nothing.
+equals "create --json --reviewer: the reviewer field did reach the wire" \
+	"$(printf '%s' "$(call_body 2)" | jq -c '.fields.customfield_26758')" '{"accountId":"acc-json-rev-3"}'
+equals "create --json --reviewer: stdout is EXACTLY Jira's 201 body (key round-trips)" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.key')" "PROJ-115"
+stdout_not_has "create --json: the disclosure line is omitted" "JIRA_USER_FIELDS_SET"
+# The other two human-mode lines are omitted by the same passthrough return, so
+# their absence pins that it is the BRANCH being taken, not one stray printf.
+stdout_not_has "create --json: the human-mode key line is omitted too" "JIRA_ISSUE_KEY="
 
 section "jira.sh create — --type alias resolution + issue_types validation"
 
@@ -1578,6 +1702,80 @@ stderr_has "transition stray --priority: diagnostic names the three commands tha
 	"$PRIORITY_SCOPE_DIAG"
 equals "transition stray --priority: ZERO curl calls (the issue is never read, never transitioned)" "$(call_count)" "0"
 
+# --reviewer shares --priority's three readers, so it carries the same scoping
+# guard for the same reason (see the block above). --priority is deliberately NOT
+# passed here: both guards exit 2, the --priority one runs first, and passing both
+# would let this section pass while the --reviewer guard was missing entirely.
+section "jira.sh transition — a stray --reviewer is refused before any network call (it belongs to create/update/bulk --op update)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "transition + --reviewer -> exit 2" 2
+stderr_has "transition stray --reviewer: diagnostic names the three commands that DO support it" \
+	"$REVIEWER_SCOPE_DIAG"
+equals "transition stray --reviewer: ZERO curl calls (the issue is never read, never transitioned)" "$(call_count)" "0"
+
+# --developer carries the same guard over a NARROWER owner set — update and
+# `bulk --op update`, two readers rather than three — for the same
+# undisclosed-silent-drop reason stated in the --priority block above. Its siblings
+# are deliberately NOT passed here for the same ordering reason theirs give: all
+# four guards exit 2, and --developer's runs third of them.
+section "jira.sh transition — a stray --developer is refused before any network call (it belongs to update/bulk --op update)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --developer someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "transition + --developer -> exit 2" 2
+stderr_has "transition stray --developer: diagnostic names the two commands that DO support it" \
+	"$DEVELOPER_SCOPE_DIAG"
+equals "transition stray --developer: ZERO curl calls (the issue is never read, never transitioned)" "$(call_count)" "0"
+
+# The case above is the one --developer shares with its three siblings; THIS one is
+# the case that makes its guard different from all of them. `create` reads
+# --reviewer (see the create --reviewer section) but has never read --developer, so
+# create is the one command where the two flags diverge — and it is exactly where a
+# later "make --developer match --reviewer" edit would widen the owner set by
+# reflex, restoring the silent drop with every sibling case still green. Without
+# this section that regression is invisible.
+#
+# The queued 201 is a COUNTERFACTUAL, not a response this run consumes (the
+# zero-call assertion proves it never does): WITHOUT it, a guard regression would
+# exit non-2 on the stub's own no-canned-response error and expect_rc would pass
+# for the wrong reason. WITH a create the engine could have completed, exit 2 can
+# only mean the scoping block refused it.
+section "jira.sh create — a stray --developer is refused too: create accepts --reviewer but NOT --developer"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10015","key":"PROJ-115","self":"x"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" create --project PROJ --title "Developer on create" --developer someone@example.com \
+	--confirmed-site foo.atlassian.net
+expect_rc "create + --developer -> exit 2" 2
+stderr_has "create stray --developer: the SAME update-only owner list, NOT a create-accepting one" \
+	"$DEVELOPER_SCOPE_DIAG"
+equals "create stray --developer: ZERO curl calls (nothing is created)" "$(call_count)" "0"
+
+# --assignee carries the same guard over a WIDER owner set — create, update, search
+# and `bulk --op update`, four readers rather than three — and it is the flag whose
+# unguarded drop is the most plausible real mistake: "reassign it while you move it"
+# is one natural sentence, and `transition K --status Done --assignee sam@x.com`
+# used to ACCEPT the flag, transition the issue and leave it assigned to whoever
+# held it before, with nothing in the output naming the flag that was ignored.
+#
+# --priority/--reviewer/--developer are deliberately NOT passed here: all four
+# guards exit 2 and --assignee's runs LAST of them, so passing any sibling would
+# let this section stay green with the --assignee guard missing entirely.
+section "jira.sh transition — a stray --assignee is refused before any network call (it belongs to create/update/search/bulk --op update)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --assignee someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "transition + --assignee -> exit 2" 2
+stderr_has "transition stray --assignee: diagnostic names the four commands that DO support it" \
+	"$ASSIGNEE_SCOPE_DIAG"
+equals "transition stray --assignee: ZERO curl calls (no accountId lookup, no transition)" "$(call_count)" "0"
+
 section "jira.sh transition — --plan emits the multi-step path WITHOUT any POST firing"
 
 reset_curl_stub
@@ -1828,6 +2026,9 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	--confirmed-site foo.atlassian.net
 expect_rc "update simple fields -> exit 0" 0
 stdout_has "update: prints JIRA_UPDATED" "JIRA_UPDATED=PROJ-1"
+# No "who" field was touched here, so the who-field disclosure must be ABSENT
+# rather than present-and-empty.
+stdout_not_has "update: no who-field line when no who-field was set" "JIRA_USER_FIELDS_SET"
 argv_log_has_token "update: uses PUT" "PUT"
 SENT_BODY=$(call_body 1)
 equals "update: summary" "$(printf '%s' "$SENT_BODY" | jq -r '.fields.summary')" "New title"
@@ -1862,6 +2063,22 @@ expect_rc "update --assignee -> exit 0" 0
 SENT_BODY=$(call_body 2)
 equals "update --assignee: {id: accountId} shape" \
 	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.assignee')" '{"id":"acc-update-assignee"}'
+stdout_has "update --assignee: names the who-field it SET" "JIRA_USER_FIELDS_SET=assignee"
+
+# Two who-fields at once: the disclosure JOINS them, in the order the verb writes
+# them, with no leading separator left over from the accumulator.
+section "jira.sh update — two who-fields: the disclosure is COMMA-joined in write order, with no leading comma"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-both-assignee"}]' 200
+set_stub_response 2 '[{"accountId":"acc-both-reviewer"}]' 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" update PROJ-1 --assignee dev@example.com --reviewer rev@example.com \
+	--confirmed-site foo.atlassian.net
+expect_rc "update --assignee + --reviewer -> exit 0" 0
+stdout_has "update two who-fields: the disclosure lists BOTH, comma-joined" \
+	"JIRA_USER_FIELDS_SET=assignee,reviewer"
 
 section "jira.sh update — --priority ALONE satisfies the at-least-one-field guard and sends priority.name"
 
@@ -2119,6 +2336,160 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" update PROJ-1 --developer dev@example.com --confirmed-site foo.atlassian.net
 expect_rc "update --developer unconfigured -> exit 1" 1
 stderr_has "update --developer unconfigured: diagnostic" "custom_fields.developer"
+
+# --reviewer is --developer's shape-sibling (same accountId inner key) but is the
+# one custom user-picker BOTH verbs accept — see create's own --reviewer section
+# for why create cannot defer it to a follow-up update.
+#
+# The two claims are asserted from ONE invocation rather than two, following the
+# `--priority ALONE` section above: passing --reviewer as the only field flag is
+# simultaneously the shape case and the at-least-one-field guard case, so a second
+# identical `run` would duplicate the arrange/act to no end. The exit 0 covers the
+# ufs_fields/update_field_summary wiring (without it this is a usage error, exit
+# 2), and the keys assertion proves no other field tagged along.
+section "jira.sh update — --reviewer ALONE satisfies the at-least-one-field guard and sends {accountId: ...}"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-rev-909"}]' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" update PROJ-1 --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "update --reviewer alone -> exit 0 (not the 'at least one field' usage error)" 0
+argv_log_has_token "update --reviewer alone: uses PUT" "PUT"
+equals "update --reviewer alone: TWO calls (the accountId lookup, then the PUT)" "$(call_count)" "2"
+SENT_BODY=$(call_body 2)
+equals "update --reviewer: customfield_26758 = {accountId: ...}" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields.customfield_26758')" '{"accountId":"acc-rev-909"}'
+equals "update --reviewer alone: the reviewer field is the ONLY field sent (nothing tagged along)" \
+	"$(printf '%s' "$SENT_BODY" | jq -c '.fields | keys')" '["customfield_26758"]'
+# The PUT answers 204 with no body, so JIRA_UPDATED=<key> alone cannot tell an
+# operator that this write put someone on the ticket rather than moving a date.
+stdout_has "update --reviewer alone: names the who-field it SET" "JIRA_USER_FIELDS_SET=reviewer"
+
+section "jira.sh update — --reviewer with no configured field fails loud"
+
+# Same counterfactual 204 as create's unconfigured case above, for the same
+# reason: a silently-dropped --reviewer must show up as a SUCCEEDING no-op PUT,
+# not as the stub's own missing-response error.
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "update --reviewer unconfigured -> exit 1" 1
+stderr_has "update --reviewer unconfigured: diagnostic" "custom_fields.reviewer"
+equals "update --reviewer unconfigured: no network call was made" "$(call_count)" "0"
+
+section "jira.sh update — a MAPPED but mis-shaped custom field id fails loud before the write"
+
+# A curated mapping is not automatically a VALID field id. Whatever it resolves to
+# becomes the JSON field KEY of the write, so a typo — or a built-in field name
+# pasted in by mistake ("reviewer": "assignee") — would aim the write at a
+# DIFFERENT, real field and Jira would answer 204. The queued 204 is the same
+# counterfactual the unconfigured cases above use: with a PUT the engine could
+# have completed, exit 1 can only mean the shape check refused it.
+BADFIELD_PROJECTS_DIR="$WORK/projects-badfield"
+mkdir -p "$BADFIELD_PROJECTS_DIR"
+cat >"$BADFIELD_PROJECTS_DIR/BADFLD.json" <<'EOF'
+{
+  "key": "BADFLD",
+  "custom_fields": { "reviewer": "assignee", "developer": "customfield_" }
+}
+EOF
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BADFIELD_PROJECTS_DIR" \
+	sh "$JIRA" update BADFLD-1 --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "update --reviewer mapped to a built-in field name -> exit 1" 1
+stderr_has "mis-shaped field id: diagnostic names the bad value" "'assignee'"
+stderr_has "mis-shaped field id: diagnostic names the expected shape" "customfield_<digits>"
+stderr_has "mis-shaped field id: diagnostic names the semantic key it came from" "custom_fields.reviewer"
+equals "mis-shaped field id: no network call was made" "$(call_count)" "0"
+
+# `customfield_` with no digits is the other half of the shape: the prefix alone
+# is not a field id either.
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BADFIELD_PROJECTS_DIR" \
+	sh "$JIRA" update BADFLD-1 --developer dev@example.com --confirmed-site foo.atlassian.net
+expect_rc "update --developer mapped to a digitless customfield_ -> exit 1" 1
+stderr_has "digitless field id: diagnostic names the bad value" "'customfield_'"
+equals "digitless field id: no network call was made" "$(call_count)" "0"
+
+# The THIRD rejecting shape, and the one a real config actually grows: a
+# WELL-FORMED `customfield_<digits>` that carries extra bytes after the digits.
+# The two arms above are the obvious refusals — no prefix, no digits — and both
+# look wrong at a glance; this one reads correct, which is precisely why it needs
+# its own coverage. It is also the shape whose rejection is load-bearing: the
+# resolved value becomes the write's JSON field KEY, and Jira answers 204 for a
+# key it does not recognise, so a config that slipped past here would report
+# success while writing nothing.
+#
+# Two byte classes, because they fail a human reviewer differently: a visible
+# stray character (a fat-fingered 'x'), and a TRAILING SPACE, which is legal JSON
+# and completely invisible in an editor. Both are driven through
+# require_custom_field via a file flag, and each from its OWN semantic key so the
+# diagnostic names the mapping the operator has to go fix.
+GARBAGE_FIELD_PROJECTS_DIR="$WORK/projects-garbage-suffix"
+mkdir -p "$GARBAGE_FIELD_PROJECTS_DIR"
+cat >"$GARBAGE_FIELD_PROJECTS_DIR/GRBG.json" <<'EOF'
+{
+  "key": "GRBG",
+  "custom_fields": { "acceptance_criteria": "customfield_10016x", "review_notes": "customfield_12402 " }
+}
+EOF
+
+reset_curl_stub
+# The same counterfactual 204 the arms above use: with a PUT available the engine
+# could have completed, so exit 1 can only be the shape check refusing.
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$GARBAGE_FIELD_PROJECTS_DIR" \
+	sh "$JIRA" update GRBG-1 --acceptance-file "$AC_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update: customfield_<digits> with a TRAILING CHARACTER -> exit 1" 1
+stderr_has "trailing-character field id: diagnostic names the bad value verbatim" "'customfield_10016x'"
+stderr_has "trailing-character field id: diagnostic names the expected shape" "customfield_<digits>"
+stderr_has "trailing-character field id: diagnostic names the semantic key it came from" \
+	"custom_fields.acceptance_criteria"
+equals "trailing-character field id: no network call was made" "$(call_count)" "0"
+
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$GARBAGE_FIELD_PROJECTS_DIR" \
+	sh "$JIRA" update GRBG-1 --review-file "$RN_FILE" --confirmed-site foo.atlassian.net
+expect_rc "update: customfield_<digits> with a TRAILING SPACE -> exit 1" 1
+stderr_has "trailing-space field id: diagnostic names the bad value, space included" "'customfield_12402 '"
+stderr_has "trailing-space field id: diagnostic names the semantic key it came from" \
+	"custom_fields.review_notes"
+equals "trailing-space field id: no network call was made" "$(call_count)" "0"
+
+# update's --json is SYNTHESIZED (the PUT answers 204 with no body), not a
+# passthrough like create's — but it carries the same carve-out for the same
+# reason: a consumer pipes this object into `jq`, and the disclosure line would
+# corrupt that parse. Asserted here because the omission is one printf's
+# placement away from regressing, and a green suite would not have noticed.
+section "jira.sh update — --json omits the JIRA_USER_FIELDS_SET disclosure (synthesized object only)"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-json-asg-4"}]' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" update PROJ-1 --assignee asg@example.com --json --confirmed-site foo.atlassian.net
+expect_rc "update --json --assignee -> exit 0" 0
+# The who-field really WAS set, so the absence below is a carve-out and not just
+# a field nobody asked for.
+equals "update --json --assignee: the assignee field did reach the wire" \
+	"$(printf '%s' "$(call_body 2)" | jq -c '.fields.assignee')" '{"id":"acc-json-asg-4"}'
+equals "update --json --assignee: the synthesized object names the key it updated" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.key')" "PROJ-1"
+equals "update --json --assignee: updatedFields lists the field this PUT sent" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.updatedFields')" '["assignee"]'
+stdout_not_has "update --json: the disclosure line is omitted" "JIRA_USER_FIELDS_SET"
+# The human-mode receipt is omitted by the same branch, so its absence pins that
+# the --json arm was taken rather than one line having gone missing.
+stdout_not_has "update --json: the human-mode receipt line is omitted too" "JIRA_UPDATED="
+
+# `bulk --op update --reviewer` (--plan disclosure AND real send) lives with the
+# engine suite's other bulk field-flag coverage, beside the --priority twin.
 
 section "jira.sh update — non-2xx surfaces Jira's own error"
 
@@ -2418,6 +2789,52 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" watch PROJ-999 --list --confirmed-site foo.atlassian.net
 expect_rc "watch --list 404 -> exit 1" 1
 stderr_has "watch --list 404: Jira's own error message surfaced" "Issue does not exist"
+
+section "jira.sh watch — --account is refused on every OTHER command (it belongs to watch alone)"
+
+# --account is parsed by jira.sh's GLOBAL arg loop into one shared OPT_ACCOUNT
+# carrier, but cmd-watch.sh is its ONLY reader. Everywhere else it was ACCEPTED and
+# silently dropped: `update K --account someone@example.com` updated the issue and
+# named no watcher, with nothing in the output pointing at the flag the engine
+# ignored — the same undisclosed silent drop --comment-id's guard prevents, whose
+# single-owner shape this one shares.
+#
+# It is also the flag most likely to be confused with --assignee, whose own guard
+# already refuses IT on watch; without this one the confusion is refused in only one
+# direction.
+#
+# --title IS given here on purpose, for the reason the transition cases above state
+# for --status: without it this invocation exits 2 on update's "at least one field"
+# guard and the test would pass for the wrong reason. The queued 204 is a
+# COUNTERFACTUAL, not a response this run consumes (the zero-call assertion proves
+# it never does): WITHOUT it, a guard regression would exit non-2 on the stub's own
+# no-canned-response error and expect_rc would pass for the wrong reason.
+reset_curl_stub
+set_stub_response 1 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --title X --account someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "update + --account -> exit 2" 2
+stderr_has "update stray --account: the diagnostic names the ONE command that DOES support it" \
+	"$ACCOUNT_SCOPE_DIAG"
+equals "update stray --account: ZERO curl calls (nothing updated, no accountId resolved)" "$(call_count)" "0"
+
+# The positive counterweight, and the case most likely to regress if the guard's
+# condition is ever widened by mistake: without it, a guard hardened into "always
+# refuse --account" would satisfy the case above. `watch --list --account X` stays
+# validate_watch_args' own refusal ("does not take --account", asserted at the top of
+# this block) rather than this guard's — the flag IS watch's there, just not in list
+# mode — so the ADD mode asserted here is the one path the scoping block must let
+# through.
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-watch-guard-808"}]' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" watch PROJ-1 --account someone@example.com --confirmed-site foo.atlassian.net
+expect_rc "watch + --account -> exit 0 (its owner is never refused)" 0
+stderr_not_has "watch + --account: the scoping diagnostic did NOT fire" "$ACCOUNT_SCOPE_DIAG"
+# It reached the normal credential/network path rather than being refused before it:
+# the accountId lookup AND the watcher POST both ran.
+equals "watch + --account: both calls ran (the /user/search resolve, then the watcher POST)" "$(call_count)" "2"
 
 # ===========================================================================
 # vote — POST/DELETE/GET /rest/api/3/issue/<KEY>/votes
