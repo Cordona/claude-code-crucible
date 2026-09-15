@@ -13,7 +13,7 @@ It is the constructive twin of `review-report-standards` — but deliberately **
 
 ## Absolute Mandates
 
-- **INLINE ONLY.** Emit the report in your response text. NEVER write a report file to disk (no `.md`/`.json` artifact) — documentation is the docs-writer's job, not this contract.
+- **INLINE ONLY.** Emit the report in your response text. NEVER write a report file to disk (no `.md`/`.json` artifact) — documentation is the tech-writer's job, not this contract.
 - **TOKEN-DISCIPLINED.** Be concise: one line per file, a few sentences of summary, no restating large code blocks. The primary agent skims this to brief reviewers.
 
 ## The Implementation Report (canonical shape)

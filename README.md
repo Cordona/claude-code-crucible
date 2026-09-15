@@ -317,7 +317,7 @@ defined in [`CLAUDE.md`](./CLAUDE.md).
 | **Tech-pair** | "I need a new tech pair" (bare, or "...for Go") | Poll → collision check → gate → research swarm → generate the pair in order → lens review before deploy → human deploys |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers with different lenses + a neutral `decision-arbiter` |
 | **External review** | an external/automated PR (GitHub) or MR (GitLab) review to address | Advocates + the `review-arbiter` judge → fix → one response |
-| **Documentation** | "document this", "write a README" | `docs-writer` drafts → fact-checked against the code → fix loop |
+| **Documentation** | "document this", "write a README" | Audience asked → `tech-writer` drafts → fact-checked against the code → fix loop |
 | **Backlog** | "file an issue/ticket", "carve an epic" | `project-manager` recommends + drafts → consent-gated tracker write |
 | **Capture** | a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:` | `gtd-inbox-writer` appends the thought verbatim, never executes it |
 
