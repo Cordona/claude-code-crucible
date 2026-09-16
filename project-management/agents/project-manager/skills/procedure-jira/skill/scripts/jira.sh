@@ -231,7 +231,7 @@
 #     merge_string_field() (`--arg`), the same channel --title/--due-date
 #     already use; --comment-file follows the identical ADF-via-file path.
 #   - watch's bare-accountId-string body is built via a single static
-#     `jq -n --arg id ... '$id'` (per the brief) — the account VALUE is
+#     `jq -n --arg id ... '$id'` — the account VALUE is
 #     still only ever a jq value, never program text; DELETE's `?accountId=`
 #     query parameter is urlencode()'d, the same helper the READ path's
 #     view/search already use for `?fields=`/`?query=`.
