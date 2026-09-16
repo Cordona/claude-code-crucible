@@ -111,6 +111,28 @@ resolve_credential_config() {
 	esc_email=$(curl_config_escape "$JIRA_EMAIL")
 	esc_token=$(curl_config_escape "$JIRA_TOKEN")
 
+	# THE SECOND $TMPDIR CREATION SITE, and the reason runtime.sh's
+	# assert_safe_tmpdir is called here as well as in ensure_workdir rather than
+	# once inside it: this file is created DIRECTLY in ${TMPDIR:-/tmp}, not inside
+	# $WORKDIR.
+	#
+	# IT RUNS FIRST ONLY ON THE FALLBACK CREDENTIAL PATH — when $JIRA_CURL_CONFIG
+	# is UNSET. On the documented, preferred path this function returns above,
+	# having never reached this line, so ensure_workdir's own call is the one every
+	# invocation actually depends on and this one guards only the branch that
+	# creates a file here. (An earlier version of this note claimed it "runs BEFORE
+	# ensure_workdir on every invocation", which was true of the fallback and false
+	# of the path the calling procedure actually uses. The control itself is
+	# complete either way: those two are the engine's ONLY creation sites under
+	# $TMPDIR, and nothing is created at either before its own guard.) Its 0600
+	# protects its CONTENTS; what it cannot protect is its own directory ENTRY, so
+	# in a group/other-writable $TMPDIR with no sticky bit another local user could
+	# rename it away and leave their own `-K` config at the same path — an
+	# `insecure`, a `proxy`, a substituted `user`, or a retargeted `url` on every
+	# request this process then makes. Guarding at the creation site, not once at
+	# startup, is what keeps a future third site from being missed.
+	assert_safe_tmpdir "${TMPDIR:-/tmp}"
+
 	old_umask=$(umask)
 	umask 077
 	CURL_CONFIG_FILE=$(mktemp "${TMPDIR:-/tmp}/jira.curlconfig.XXXXXX")

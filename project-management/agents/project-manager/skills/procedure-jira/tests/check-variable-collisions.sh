@@ -7,8 +7,8 @@
 # a PROCESS-GLOBAL, so a scratch name reused by two functions that can appear in
 # the same call chain silently clobbers the caller's copy. skill/lib/runtime.sh's
 # CONVENTION note is this engine's answer: every function's scratch/parameter
-# variables carry a name unique to that function (jira_curl's `method`/`url`,
-# resolve_account_id's `value`/`account_id`, the mnr_*/fpa_*/sched_*/bulk_*
+# variables carry a name unique to that function, as a short per-function prefix
+# (jira_curl's jc_*, resolve_account_id's rai_*, the mnr_*/fpa_*/sched_*/bulk_*
 # prefixes, ...). NOTHING about that namespace changed when the engine was
 # split — but the violations became much harder to SPOT, because two colliding
 # functions now sit in two different files instead of one screen apart. This
@@ -57,14 +57,28 @@
 # revision of this comment.
 #
 # UNDER-REPORTS — an invisible write, the direction that can HIDE a defect:
-#   * an assignment after `!`, `while`, `until` or `time`. This engine writes
-#     one: `if ! rmu_code=$(curl …)` at skill/lib/http.sh:210. $rmu_code has a
-#     single, prefix-unique writer today, so nothing is hidden — but the write
-#     itself is invisible, and a second writer of that name would be too.
+#   * an assignment introduced by a COMPOUND-COMMAND WORD that statement_start()
+#     does not list: `if`, `!`, `while`, `until` or `time`. `if` is the one worth
+#     naming separately, because it is the only one of the five that needs no
+#     other token to be there — statement_start()'s keyword arm lists
+#     `then|else|elif|do|in` and deliberately NOT `if`, so a plain
+#     `if name=$(…)` with no leading `!` is just as invisible as `if ! name=$(…)`.
+#     This engine writes THREE such assignments today:
+#       - skill/lib/http.sh `facr_code` (in fetch_attachment_content_redirect,
+#         the redirect fetch's status) and `dac_code` (in
+#         download_attachment_content, the media fetch's status), both
+#         `if ! name=`.
+#       - skill/scripts/md-to-adf.sh `panel_type` (the `detect_panel_type` probe
+#         in the blockquote branch of the main line loop), the bare `if name=`
+#         form.
+#     Each has a single writer today, so nothing is hidden — but every one of
+#     those writes is invisible, and a second writer of any of those names would
+#     be too. `panel_type` is also the only one of the three carrying no
+#     per-function prefix, which is what would make a second writer plausible.
 #   * an assignment inside a ONE-LINE function body (`f() { x=…; }`) — the
 #     function-header branch consumes such a line whole and never scans it.
-#     This engine writes three: $entry and $rest in list_top_indent(),
-#     list_top_type() and list_top_buffer(), skill/scripts/md-to-adf.sh:667-669.
+#     This engine writes three: $entry and $rest in skill/scripts/md-to-adf.sh's
+#     list_top_indent(), list_top_type() and list_top_buffer().
 #     Each writes and consumes its value on that one line, so again nothing is
 #     hidden today — but a fourth writer of $entry or $rest would be.
 #   * a case branch spelled with POSIX's optional LEADING paren

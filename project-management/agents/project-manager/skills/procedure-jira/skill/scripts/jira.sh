@@ -5,13 +5,12 @@
 #            itself does five things: source the engine's units, parse argv
 #            into OPT_* globals, run the command's validate_*_args() wrapper,
 #            enforce the cross-command scope of a flag carrier only some
-#            commands read (see the six --priority/--reviewer/--developer/
-#            --assignee/--comment-id/--account scoping blocks below, in that
-#            file order),
-#            and call its cmd_*() entry point. Every option it parses
-#            is consumed by a sourced unit — except where the dispatcher itself
-#            must scope a shared carrier across commands — which is what makes
-#            it a dispatcher rather than an implementation.
+#            commands read (see the seven --priority/--reviewer/--developer/
+#            --assignee/--comment-id/--account/--download scoping blocks below,
+#            in that file order), and call its cmd_*() entry point. Every
+#            option it parses is consumed by a sourced unit — except where the
+#            dispatcher itself must scope a shared carrier across commands —
+#            which is what makes it a dispatcher rather than an implementation.
 #
 # SHAPE. The engine is one process assembled from 45 sourced-only units in
 # ../lib, in two families:
@@ -88,12 +87,61 @@
 #      · a subtask create
 #      without a valid parent · no workflow path to a transition target ·
 #      a transition step whose post-write status check doesn't match
-#      · markdown-to-ADF conversion failed
+#      · markdown-to-ADF conversion failed · `attach --download`: the
+#      attachment-content redirect was absent, not https, or did not point at
+#      Atlassian's media host — or the media fetch itself answered non-2xx ·
+#      `attach --download`'s three LOCAL filesystem failures, reachable only
+#      AFTER its exit-2 pre-flight has passed: the destination directory is on a
+#      different filesystem than the engine's ${TMPDIR:-/tmp} workdir, which the
+#      install's hard link cannot cross, and `df` established it before the
+#      first request (point $TMPDIR at a PRIVATE directory you own on the
+#      destination's own filesystem and re-run); or the install itself failed (a
+#      full or read-only filesystem, the directory losing write permission
+#      mid-run, an entry appearing at the destination, or a cross-filesystem
+#      destination `df` could not establish up front); or the install SUCCEEDED
+#      but its post-install verification found the destination was not the
+#      regular file it had just created — a real directory, or a symlink to one,
+#      raced in at the path, neither of which `ln -n` can refuse on every
+#      platform — nothing is left at the destination in any of these cases ·
+#      $TMPDIR itself being unsafe to stage in (writable by other local users
+#      with no sticky bit, or permissions that could not be read), refused before
+#      anything is created there · the same refusal applied to `attach
+#      --download`'s DESTINATION directory, in its pre-flight before any network
+#      call: a destination another local user can write is one where they can
+#      replace the installed file afterwards, with no race to win · `discover
+#      --write`'s five LOCAL filesystem failures, which carry the SAME CLASS of
+#      safety gate as that destination, on $JIRA_PROJECTS_DIR — the directory the
+#      config is installed into, read back later as the field mappings a write
+#      pass trusts. It is refused on a STRICTER rule than the other two
+#      directories, and deliberately so: `<KEY>.json` is a name an attacker can
+#      predict, and the sticky bit restrains only removing or renaming an entry,
+#      never creating one, so group/other-writable is refused here even WITH that
+#      bit set (`chmod go-w` the directory, or point $JIRA_PROJECTS_DIR at a
+#      private one, and re-run). Reachable only after discover's own read GETs
+#      have completed, and none of them leaves a config, a backup or a staging
+#      entry behind: the project-config directory refused as unsafe (or its
+#      permissions unreadable); the staging name beside the destination failing to
+#      mint (an implementation whose `mktemp` has no `-u`); the O_EXCL
+#      create-and-write of the staging copy or of the timestamped backup failing
+#      (an entry already at the minted name — refused rather than written through
+#      — an unreadable source, or no room), or landing something other than the
+#      regular file it created; the install into place failing (a full or
+#      read-only filesystem, the directory losing write permission mid-run, or —
+#      on the CREATE path, which installs with a hard link rather than a rename —
+#      a config having appeared at the destination since it was found absent,
+#      which is REFUSED rather than clobbered); or the install having succeeded
+#      while its post-install verification found the destination was not the
+#      regular file it had just created
 #   2  usage error (missing/unknown command or option, missing/invalid
 #      ticket key, missing --confirmed-site, invalid --limit/--page-size,
 #      a write command missing its required fields, --description-file +
 #      --append-file given together, watch/vote's --list + --remove given
-#      together, watch's --list + --account given together)
+#      together, watch's --list + --account given together, `--project` on any
+#      `attach` mode (attach addresses its target by KEY/--id), `attach
+#      --download`'s destination already existing, its parent directory being
+#      absent or not writable, that destination beginning with "-", or
+#      `--force`/`--plan`/`--dry-run` passed to `attach --download`, which
+#      implements neither)
 #
 # =============================================================================
 # Security (read before touching the curl/credential code)
@@ -135,17 +183,38 @@
 #      to proceed (exit 1) — this is the "a reflexive yes can't send
 #      one client's content to another client's Jira" guard.
 #   4. Every request URL is built ONLY from the confirmed host
-#      ("https://$CONFIRMED_HOST$path") — jira_curl() additionally
+#      ("https://$CONFIRMED_HOST$path"), with ONE named exception below —
+#      jira_curl() additionally
 #      RE-CHECKS the host of the URL it is about to hit against
 #      $CONFIRMED_HOST as a defense-in-depth invariant (fail closed on any
 #      mismatch), even though no caller in this script can currently
 #      construct a URL that would trip it. This is an assertion against a
 #      FUTURE bug in a security-critical sink, the same "fail secure"
 #      posture standard-security asks for on an authorization check — not
-#      dead code kept "just in case" for its own sake.
+#      dead code kept "just in case" for its own sake. That comparison is
+#      CASE-FOLDED on both sides (assert_confirmed_host, via downcase),
+#      because hostnames are case-insensitive and normalize_site preserves
+#      the caller's own casing; the pin itself stays unconditional, never an
+#      environment-overridable default.
+#      THE ONE EXCEPTION is `attach --download`'s second request, the only
+#      one this engine aims elsewhere: Jira answers /attachment/content/<id>
+#      with a 303 to Atlassian's site-independent media CDN, so that URL
+#      comes from the RESPONSE and cannot be built from the confirmed host.
+#      It is pinned instead to the hardcoded "api.media.atlassian.com" —
+#      checked when the Location is read AND re-checked at the sink, both
+#      fail-closed and both case-folded the same way — the redirect is never
+#      followed with -L, and the Jira credential is never sent to that host.
+#      Named here the same way is_read_only_search_post's POST exception is:
+#      an exception nobody can find is an exception nobody reviews. See
+#      lib/http.sh.
 #   5. `--proto '=https'` on every curl call, never `-L` (no redirect
 #      following — a redirect could silently retarget the request to an
-#      unpinned host), never `-k`/`--insecure`.
+#      unpinned host), never `-k`/`--insecure` — and `-q` as the LITERAL
+#      FIRST argument of every call, so curl does not read $HOME/.curlrc
+#      (which it processes BEFORE argv, and where a local `insecure`,
+#      `cacert`, `proxy` or `location` directive would otherwise silently
+#      negate all three of those invariants). See lib/http.sh's flag-order
+#      note; `-q` does not suppress this engine's own `-K` config.
 #   6. The credential file itself is bound to the confirmed site: an
 #      externally supplied $JIRA_CURL_CONFIG must be named
 #      "<confirmed-host>.cfg" — compared case-insensitively, because
@@ -160,15 +229,45 @@
 # UNTRUSTED text while holding a real credential, so "it was told not to
 # write" is exactly the assurance an injected instruction attacks. The
 # authoritative classification lives in SKILL.md; that unit is its executable
-# form. It covers the one LOCAL write too: `discover --write` overwrites the
-# per-project config the write commands later read, so it is classified a
-# write even though it changes nothing at the Jira site. And like the host
+# form. It covers the two LOCAL-only writes too, neither of which changes
+# anything at the Jira site: `discover --write` overwrites the per-project
+# config the write commands later read, and `attach --download` CREATES a
+# caller-named local file — which can be that very config path, since a
+# missing one reads as "no config" rather than an error. And like the host
 # pin, the gate is re-asserted at the sink: lib/http.sh's curl helpers refuse
 # any non-GET request under $JIRA_READ_ONLY (item 4's "assertion against a
 # FUTURE bug", applied to this gate) — with ONE exactly-matched exception,
 # POST /rest/api/3/search/jql, because Jira's own search endpoint carries its
 # JQL in a JSON body; see is_read_only_search_post for why that is one named
-# endpoint rather than a general "POST is sometimes a read" rule.
+# endpoint rather than a general "POST is sometimes a read" rule. The
+# local-write half is re-asserted the same way and NOT by method:
+# download_attachment_content refuses outright under the gate, because its
+# dangerous effect is the file it creates, and a GET method says nothing
+# about that.
+#
+# $TMPDIR validation, the FOURTH IN-SCRIPT gate, and the only one that guards
+# the LOCAL filesystem rather than the network. ${TMPDIR:-/tmp} is checked before
+# anything is created there (runtime.sh's assert_safe_tmpdir, on EVERY command)
+# and refused with exit 1 unless it is either not group/other-writable or sticky
+# AND owned by root or the invoking user. The reason it is not left to the 0700
+# mode of what this engine creates: a 0700 directory protects what is created
+# INSIDE it, never its own directory ENTRY — whether that entry can be renamed
+# away is $TMPDIR's permissions to decide, and this engine both WRITES and READS
+# BACK every API response body, every staged download, and (on the fallback
+# credential path) the `curl -K` credential config under there. It is called at
+# each of the two creation sites — ensure_workdir and credentials.sh's own
+# `mktemp` — rather than once at startup, so a future third site cannot be
+# silently missed. Its mode-bit reading is blind to ACLs, which it WARNS about
+# rather than refusing (see assert_safe_dir for why). `attach --download` reuses
+# the same gate on its DESTINATION's parent directory, in its pre-flight, for a
+# different reason: the file it installs there stays replaceable by anyone who can
+# write that directory, no race required, and one destination it can be aimed at
+# is $JIRA_PROJECTS_DIR/<KEY>.json. `discover --write` reuses it on that directory
+# itself — and on a STRICTER rule, the only caller of the three to take it: its
+# destination name (`<KEY>.json`) is one an attacker can PREDICT, and the sticky
+# bit restrains only removing or renaming an existing entry, never creating a new
+# one, so a group/other-writable projects directory is refused there even with
+# that bit set. See assert_safe_install_dir.
 #
 # The JQL builder is NOT "parameterized" (Jira's REST API has no
 # bind-variable API for JQL). Safety instead comes from: field names and
@@ -245,8 +344,38 @@
 # Portability
 # =============================================================================
 # POSIX sh only (no bashisms). Runs identically on macOS (BSD userland /
-# Bash 3.2) and Linux (GNU coreutils). `curl` and `jq` are the only
-# non-ubiquitous dependencies and are guarded with `command -v`. jq is used
+# Bash 3.2) and Linux (GNU coreutils). `curl` and `jq` are the only dependencies
+# GUARDED with `command -v` (both above, in "Preconditions + dispatch").
+#
+# FOUR MORE ARE HARD DEPENDENCIES AND NONE IS GUARDED — `ls`, `id`, `ln` and
+# `df`, all POSIX utilities, all added by `attach --download` and the $TMPDIR
+# gate. They are listed here because an absent one fails in four DIFFERENT
+# directions, and only the first two fail safe:
+#   * `ls` — runtime.sh's assert_safe_dir reads its mode string. Absent, no mode
+#     string parses as a directory's, so the gate refuses: FAIL CLOSED for every
+#     invocation that creates a temp file (which is every invocation that makes a
+#     request), with a named diagnostic rather than a shell "not found".
+#   * `id` — reached only from assert_sticky_dir_owner, for a sticky directory
+#     owned by a non-root uid. Absent, that comparison cannot be made and the
+#     gate refuses: FAIL CLOSED, but scoped to that one case (the default
+#     root-owned 1777 /tmp returns before it).
+#   * `ln` — http.sh's download install, and runtime.sh's install_new_file (the
+#     one `discover --write`'s CREATE path uses). Absent, the install fails with
+#     exit 1 after the payload or the config was fetched; nothing lands at the
+#     destination, and no staging entry survives.
+#   * `df` — runtime.sh's is_known_cross_device, its only consumer. Absent, it
+#     returns "no confident verdict", which is PERMISSIVE by design: the
+#     courtesy pre-check is skipped and `ln` makes the real cross-device
+#     refusal. This is the one whose absence weakens nothing.
+# `mktemp` is an unguarded hard dependency too (like `sed`/`grep`/`cp`), and two
+# sites now need its `-u` flag: runtime.sh's stage_install_copy (shared by both
+# install primitives) and cmd-discover.sh's
+# config backup, which MINT a name and create nothing, so the create-and-write
+# that follows can be a single O_EXCL operation instead of the re-openable
+# `mktemp` + `cp` pair that was a real vulnerability there. GNU, BSD/macOS,
+# busybox and toybox all support `-u`; an implementation that does not fails those
+# two installs loudly, with a named diagnostic and exit 1, never silently.
+# jq is used
 # ONLY for its `@uri`/`@csv`-style builtins and static, hardcoded programs
 # fed via `--arg`/`--argjson`/`--rawfile` — never a dynamically built
 # program string, and no Oniguruma regex dependency (unlike this skill's
@@ -431,6 +560,12 @@ OPT_COMPONENTS=""
 # may contain spaces, so line-per-value, never space-split) — same idiom as
 # the repeatable --fix-version/--component flags above.
 OPT_FILES=""
+# attach --download: the LOCAL destination path the attachment named by --id is
+# written to. A value-taking flag rather than a bare mode switch, so its
+# presence IS the mode (the same "non-empty means this mode" shape OPT_FILES
+# gives upload) and the path travels with it. Read by that ONE command only —
+# hence the foreign-flag guard below, in the same shape as --account's.
+OPT_DOWNLOAD=""
 # Agile reads: --state is the sprint-state CSV filter; --issues is the flag that
 # switches sprint/epic from their detail read to their issues read.
 OPT_STATE=""
@@ -508,6 +643,7 @@ while [ $# -gt 0 ]; do
 		--affects-version)         need_arg "$1" "${2:-}"; OPT_AFFECTS_VERSIONS="${OPT_AFFECTS_VERSIONS}${2}${NL}"; shift ;;
 		--component)               need_arg "$1" "${2:-}"; OPT_COMPONENTS="${OPT_COMPONENTS}${2}${NL}"; shift ;;
 		--file)                    need_arg "$1" "${2:-}"; OPT_FILES="${OPT_FILES}${2}${NL}"; shift ;;
+		--download)                need_arg "$1" "${2:-}"; OPT_DOWNLOAD=$2; shift ;;
 		--state)                   need_arg "$1" "${2:-}"; OPT_STATE=$2; shift ;;
 		--board)                   need_arg "$1" "${2:-}"; OPT_BOARD=$2; shift ;;
 		--goal)                    need_arg "$1" "${2:-}"; OPT_GOAL=$2; shift ;;
@@ -642,7 +778,7 @@ if [ "$developer_is_supported" -eq 0 ]; then
 	require_foreign_flag_unset --developer "$OPT_DEVELOPER" "update, and bulk --op update"
 fi
 
-# --assignee carries the same guard over the WIDEST owner set of the five: four
+# --assignee carries the same guard over the WIDEST owner set of the seven: four
 # readers, not one or three — create and update merge it as fields.assignee,
 # `search` resolves it into an `assignee = ...` JQL clause (lib/jql.sh), and
 # `bulk --op update` reads it through the update verb it loops (plus the one
@@ -681,6 +817,16 @@ fi
 # block's: the flag IS watch's there, just not in list mode.
 if [ "$COMMAND" != "watch" ]; then
 	require_foreign_flag_unset --account "$OPT_ACCOUNT" "watch"
+fi
+
+# --download is scoped like --account above — ONE reader (cmd-attach.sh, for
+# `attach --download PATH --id N`) — and its silent drop would be the worst of
+# the set: the flag names a LOCAL DESTINATION, so `view K-1 --download out.json`
+# would exit 0, print the issue to stdout, and leave the caller believing a file
+# was written that nothing ever created. Refused loudly (exit 2) before any
+# network call, the same fail-closed direction every guard above takes.
+if [ "$COMMAND" != "attach" ]; then
+	require_foreign_flag_unset --download "$OPT_DOWNLOAD" "attach"
 fi
 
 # ---------------------------------------------------------------------------

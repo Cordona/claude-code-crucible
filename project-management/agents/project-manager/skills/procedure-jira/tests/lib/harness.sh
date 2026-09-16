@@ -62,6 +62,14 @@ CUR_RC=0
 # isolated environment with PATH_VALUE as its PATH, capturing stdout/stderr/rc
 # into $CUR_OUT/$CUR_ERR/$CUR_RC. `set +e` around the call is deliberate: a
 # non-zero exit is the THING UNDER TEST here, not a harness failure.
+#
+# STDIN IS /dev/null, and that is a TIMEOUT SUBSTITUTE, not tidiness. Nothing
+# under test reads stdin (every payload arrives as a file path), but the curl
+# stub reads it on a `-K -` call — so a regression that emitted `-K -` WITHOUT
+# piping a config into it would inherit this harness's own stdin and block on the
+# terminal forever. There is no timeout anywhere in this suite, so that hang is
+# strictly worse than a red assertion: it never reports at all. An immediate EOF
+# turns it back into a loud failure.
 harness_run() {
 	hr_path=$1; shift
 	set +e
@@ -73,7 +81,8 @@ harness_run() {
 		CURL_STUB_COUNTER_FILE="$CURL_STUB_COUNTER_FILE" \
 		CURL_STUB_ARGV_LOG="$CURL_STUB_ARGV_LOG" \
 		CURL_STUB_BODY_LOG_DIR="$CURL_STUB_BODY_LOG_DIR" \
-		"$@" >"$HARNESS_WORK/out" 2>"$HARNESS_WORK/err"
+		CURL_STUB_STDIN_LOG_DIR="$CURL_STUB_STDIN_LOG_DIR" \
+		"$@" <"/dev/null" >"$HARNESS_WORK/out" 2>"$HARNESS_WORK/err"
 	CUR_RC=$?
 	set -e
 	CUR_OUT=$(cat "$HARNESS_WORK/out"); CUR_ERR=$(cat "$HARNESS_WORK/err")

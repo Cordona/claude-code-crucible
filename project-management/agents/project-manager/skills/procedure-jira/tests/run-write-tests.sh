@@ -54,9 +54,18 @@ trap cleanup EXIT INT TERM
 # (see its Portability header), and a future regression to
 # `SCRIPT_DIR=$(dirname "$0")` must break this suite loudly instead of passing
 # green. Adding any of the four back here silently voids that claim.
+#
+# `ls` IS PRESENT FOR ONE READER, and it gates the whole suite rather than one
+# case: runtime.sh's assert_safe_tmpdir reads ${TMPDIR:-/tmp}'s mode string from
+# `ls -ld DIR/.` and fails CLOSED on any string it cannot read as a directory's,
+# an ABSENT `ls` included. It is called at both $TMPDIR creation sites —
+# credentials.sh's curl `-K` config and runtime.sh's ensure_workdir — so every
+# invocation in this file reaches it before doing anything else. Without this
+# entry the suite refuses at startup, for a reason that has nothing to do with
+# any case in it.
 # ---------------------------------------------------------------------------
 harness_init "$WORK"
-for t in sh mktemp sed grep tr cat rm chmod cp tail; do
+for t in sh mktemp sed grep tr cat rm chmod cp tail ls; do
 	link_tool "$TOOLBOX" "$t"
 done
 link_tool "$TOOLBOX" jq

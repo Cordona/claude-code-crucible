@@ -20,13 +20,17 @@
 # WHAT IT DOES NOT ENFORCE, stated so nobody reads more into it: this gate
 # permits every READ, which is a SUPERSET of that P2 command list — the Agile
 # reads (boards/board/sprints/backlog/epics/epic, bare `sprint <ID>`),
-# link-types, a bare `discover`, and the `--list` read modes of
+# link-types, a bare `discover` and the `--list` read modes of
 # watch/vote/version/component/attach are all permitted here while remaining
 # outside the scope SKILL.md grants that credential. Narrowing the permitted
 # reads to exactly those five is still the calling flow's prose; what the
 # engine guarantees is that NO invocation under $JIRA_READ_ONLY writes —
-# neither to the Jira site nor (see `discover` below) to the local
-# project-config the write commands later read.
+# neither to the Jira site nor to either of the two LOCAL paths a write command
+# can reach: the per-project config `discover --write` overwrites and the write
+# commands later read (see the `discover` arm below), and the caller-named
+# destination `attach --download` creates (see the
+# `version|component|attach|watch|vote` arm), which can BE that same config
+# path, since a missing config reads as "no config" rather than an error.
 #
 # WHERE THE SINK-SIDE HALF LIVES, and the one exception it carries. lib/http.sh
 # re-asserts this gate at the network egress (see jira_curl's read-only
@@ -40,6 +44,16 @@
 # how `search`/`children` came to be classified reads here yet refused at the
 # sink.
 #
+# THERE IS A SECOND SINK-SIDE RE-CHECK, and it is NOT method-based:
+# download_attachment_content refuses outright under this gate, immediately
+# before the LOCAL FILE WRITE it performs. The method-based test above would
+# permit it — the request is a plain GET — but the dangerous effect of
+# `attach --download` is the file it creates, which is exactly why this file
+# classifies it a write (see the `version|component|attach|watch|vote` arm). So
+# the one local-write egress gets a backstop of its own, on the same
+# assertion-against-a-future-bug reasoning as the network one, and would survive
+# a reversal of that classification.
+#
 # WHY A SEPARATE UNIT, not another half of sitegate.sh: the site gate answers
 # "is THIS SITE the one the human confirmed"; this gate answers "may this
 # invocation write AT ALL" — a different question, on different inputs, with
@@ -49,9 +63,8 @@
 #
 # COUPLING (the same accepted trade-off sitegate.sh documents): every function
 # here reads $COMMAND and the $OPT_* globals directly rather than taking
-# parameters.
-# That is the engine's established plain-globals convention — see runtime.sh's
-# CONVENTION note.
+# parameters. That is the engine's established plain-globals convention — see
+# runtime.sh's CONVENTION note.
 #
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
@@ -92,8 +105,8 @@ is_read_only_requested() {
 # version/component/attach/sprint, `--list` + `--remove` has already been
 # rejected for watch/vote, and each validator's own foreign-flag refusals have
 # already fired (those refusals are per-command, not exhaustive — see
-# write_mode_flag's note on the two cases — watch/vote, and attach's upload
-# mode — where a foreign carrier survives).
+# write_mode_flag's note on the two cases, watch/vote and attach's two
+# value-carried modes, where a foreign carrier survives).
 # Every branch therefore reads the SAME carrier that command's own validator and
 # cmd_<name>() read — never a second, independently-drifting detection of the
 # same mode.
@@ -126,7 +139,19 @@ is_write_invocation() {
 		# --list is the single READ mode of each of these five, so everything
 		# else is a write: version's --create/--update/--release/--archive/
 		# --delete, component's --create/--update/--delete, attach's upload
-		# (--file) and --delete, and watch/vote's default-add and --remove.
+		# (--file)/--delete/--download, and watch/vote's default-add and
+		# --remove.
+		#
+		# `attach --download` is in that write set even though it only GETs from
+		# Jira, on the SAME reasoning `discover --write` below carries: it
+		# CREATES a caller-named local file, and $JIRA_PROJECTS_DIR/<KEY>.json is
+		# a path it can be aimed at — try_load_project_config treats a missing
+		# file as "no config" rather than an error, so an attachment landing
+		# there becomes the field mappings a later WRITE pass trusts. Under this
+		# gate's own threat model that is attacker-authorable bytes steering a
+		# write, exactly the consequence it exists to prevent. Refused outright
+		# rather than pinned by a destination-path check, because this engine's
+		# toolbox has no realpath to canonicalize a path with.
 		version|component|attach|watch|vote)
 			if [ "$OPT_LIST" -eq 1 ]; then
 				return 1
@@ -159,8 +184,10 @@ is_write_invocation() {
 		#
 		# Bare `discover` stays a read: it prints the discovered config to
 		# stdout and persists nothing. So does `discover --force` without
-		# `--write` — save_discovered_config() is the only reader of OPT_FORCE
-		# and cmd_discover() never reaches it without OPT_WRITE.
+		# `--write` — save_discovered_config() is the only reader that ACTS on
+		# OPT_FORCE, and cmd_discover() never reaches it without OPT_WRITE. (The
+		# other reader, cmd-attach.sh's validate_attach_args, only REFUSES a
+		# --force passed to `attach --download`; it changes no behavior here.)
 		discover)
 			if [ "$OPT_WRITE" -eq 1 ]; then
 				return 0
@@ -208,7 +235,7 @@ is_write_invocation() {
 # write mode is its DEFAULT (watch/vote's add). Reads the same OPT_* carriers
 # is_write_invocation() reads.
 #
-# The lookup is COMMAND-AGNOSTIC and first-match-wins across all ten carriers,
+# The lookup is COMMAND-AGNOSTIC and first-match-wins across all eleven carriers,
 # so it names the flag the caller actually passed only where that command's
 # validate_<cmd>_args() has already ruled out every carrier tested AHEAD of the
 # real one. That holds for version/component/sprint: each counts exactly one of
@@ -220,8 +247,8 @@ is_write_invocation() {
 #     (plus watch's --list-vs---account) and no one-of-N mode set at all, so any
 #     other carrier reaches this lookup: `watch --create` is refused as
 #     "'watch --create'", naming a mode cmd_watch() never defines.
-#   - attach's upload mode, tested LAST (--file), so an unrejected
-#     --start/--close/--remove/--write is printed ahead of it.
+#   - attach's two value-carried modes, tested LAST (--download then --file), so
+#     an unrejected --start/--close/--remove/--write is printed ahead of either.
 # Both stay fail-closed: is_write_invocation() classifies from the same carriers
 # and makes watch/vote/attach a write whenever --list is absent, so the
 # invocation is refused either way — only the mode it is refused BY is misnamed.
@@ -237,6 +264,7 @@ write_mode_flag() {
 	if [ "$OPT_CLOSE"   -eq 1 ]; then printf '%s' '--close';   return 0; fi
 	if [ "$OPT_REMOVE"  -eq 1 ]; then printf '%s' '--remove';  return 0; fi
 	if [ "$OPT_WRITE"   -eq 1 ]; then printf '%s' '--write';   return 0; fi
+	if [ -n "$OPT_DOWNLOAD" ];   then printf '%s' '--download'; return 0; fi
 	if [ -n "$OPT_FILES" ];      then printf '%s' '--file';    return 0; fi
 	return 0
 }
@@ -300,6 +328,6 @@ write_refusal_phrase() {
 require_write_allowed() {
 	is_read_only_requested || return 0
 	is_write_invocation || return 0
-	error "\$JIRA_READ_ONLY is set: refusing $(write_refusal_phrase). A read-only analysis credential may not write — neither to Jira nor to the local project config."
+	error "\$JIRA_READ_ONLY is set: refusing $(write_refusal_phrase). A read-only analysis credential may not write — neither to Jira, nor to the local project config, nor to a caller-named local destination."
 	exit 1
 }

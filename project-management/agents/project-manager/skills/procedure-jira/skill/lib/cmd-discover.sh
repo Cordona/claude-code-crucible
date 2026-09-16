@@ -211,53 +211,87 @@ $existing[0] as $old
   }
 '
 
-# atomic_install SRC DEST — install SRC at DEST atomically: copy SRC to an
-# mktemp sibling in DEST's OWN directory (same filesystem, so `mv` is an atomic
-# rename) then rename it into place. An interrupted write can never leave a
-# truncated/partial DEST — a reader sees either the old file or the whole new
-# one, never a half-written config. DEST's directory must already exist (the
-# caller mkdir -p's the projects dir first).
-atomic_install() {
-	ai_src=$1
-	ai_dest=$2
-	ai_tmp=$(mktemp "${ai_dest}.tmp.XXXXXX")
-	cp "$ai_src" "$ai_tmp"
-	mv "$ai_tmp" "$ai_dest"
-}
-
 # save_discovered_config CONFIG_FILE — persist the discovered
 # CONFIG_FILE to $JIRA_PROJECTS_DIR/<discover_project>.json without CLOBBERING
 # human curation. A fresh target is written as-is (created). An existing target
 # is BACKED UP to a timestamped sibling FIRST, then: --force writes the pure
 # discovered config (replaced); a valid existing file is MERGED (merged, via
 # DISCOVER_MERGE_PROGRAM); an invalid/unreadable existing file is replaced with
-# a fresh config plus a stderr WARNING. Every write into place goes through
-# atomic_install (no truncated config on interrupt). Prints the machine line
-# naming the outcome + any backup path. Uses
+# a fresh config plus a stderr WARNING. Prints the
+# machine line naming the outcome + any backup path. Uses
 # $discover_project/$JIRA_PROJECTS_DIR/$OPT_FORCE globals (the script's
 # plain-globals convention).
+#
+# TWO INSTALL PRIMITIVES, ONE PER PATH, and which one a path gets follows from
+# whether it REPLACES anything (runtime.sh owns both, and both gate the
+# destination directory before writing anything there):
+#   * the three REPLACE paths use atomic_install — a rename, so a concurrent
+#     reader sees the old config or the whole new one, never a truncated one. Its
+#     documented residual (a symlink-to-a-directory raced in at the destination
+#     takes the deposit) is the price of that atomicity, and worth paying only
+#     where there is something to replace.
+#   * the CREATE path uses install_new_file — a hard link, which REFUSES an
+#     existing destination name rather than following or replacing it. It pays
+#     none of that residual, and it also cannot CLOBBER: the `[ ! -f ]` below and
+#     the install are seven HTTP round-trips apart, so a config appearing in
+#     between is human curation this function's own contract promises never to
+#     destroy — and `mv -f` would have overwritten it silently, with no backup
+#     taken (this path backs nothing up, having nothing to back up). See
+#     install_new_file's header for why the atomicity given up here was never
+#     worth anything on this path.
 save_discovered_config() {
 	sdc_config_file=$1
-	[ -d "$JIRA_PROJECTS_DIR" ] || mkdir -p "$JIRA_PROJECTS_DIR"
+	# CREATED 0700, and by this engine rather than by the caller's umask: every
+	# file this function puts there is 0600, and a directory created 0775 under a
+	# umask of 002 (the default on several Linux distributions) is one
+	# assert_safe_install_dir would then refuse — a refusal the engine would have
+	# manufactured for itself. `mkdir -p` on an existing directory changes no mode.
+	if [ ! -d "$JIRA_PROJECTS_DIR" ] && ! (umask 077; mkdir -p "$JIRA_PROJECTS_DIR"); then
+		error "could not create the project-config directory $JIRA_PROJECTS_DIR"
+		exit 1
+	fi
+	# THE SAME GATE BOTH INSTALL PRIMITIVES APPLY, TAKEN ONCE MORE HERE, because
+	# the BACKUP below writes into this directory BEFORE any install runs on the
+	# existing-file path — and it is the identical trust question (see
+	# runtime.sh's assert_safe_install_dir). Two `ls` readings on a --write run is
+	# the whole cost of not having to reason about which write lands first; the
+	# duplicate READING is the cost, not a duplicate WARNING — assert_safe_dir
+	# memoizes an ACL warning per directory so this second call cannot print one
+	# the reader has already seen.
+	assert_safe_install_dir "$JIRA_PROJECTS_DIR"
 	# discover_project is [A-Z0-9]+ (validated in cmd_discover), so
 	# this join cannot contain a '/' or '..' — the path stays pinned under
 	# $JIRA_PROJECTS_DIR, the SAME guarantee try_load_project_config relies on.
 	sdc_out_path="$JIRA_PROJECTS_DIR/${discover_project}.json"
 
+	# THE CREATE PATH, AND THE ONE THAT MUST NOT BE A RENAME: `install_new_file`
+	# refuses an existing destination rather than replacing it, so a config that
+	# appears between this test and the install is REFUSED with a diagnostic
+	# instead of silently clobbered (see this function's header).
 	if [ ! -f "$sdc_out_path" ]; then
-		atomic_install "$sdc_config_file" "$sdc_out_path"
+		install_new_file "$sdc_config_file" "$sdc_out_path"
 		printf 'JIRA_DISCOVERED=%s -> %s (created)\n' "$discover_project" "$sdc_out_path"
 		return 0
 	fi
 
-	# Existing file: back it up before touching it, whichever branch follows.
-	# the backup name is uniquified via mktemp (not a bare
-	# .bak-<UTC>) so two --write runs in the SAME UTC second get DISTINCT
-	# backups — mktemp both guarantees a fresh name (never overwriting an
-	# existing backup) and creates it atomically. cp then fills it with the
-	# pristine original.
-	sdc_backup_path=$(mktemp "${sdc_out_path}.bak-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
-	cp "$sdc_out_path" "$sdc_backup_path"
+	# Existing file: back it up before touching it, whichever branch follows. The
+	# backup name is uniquified via mktemp (not a bare .bak-<UTC>) so two --write
+	# runs in the SAME UTC second get DISTINCT backups, never overwriting one that
+	# already exists.
+	#
+	# `-u` MINTS THE NAME AND CREATES NOTHING; the fill is runtime.sh's
+	# copy_to_new_file — ONE O_EXCL create-and-write. The earlier shape was the
+	# opposite pair (mktemp CREATED the backup, `cp` then RE-OPENED it by name),
+	# which in a directory another local user can write is an arbitrary local file
+	# write as the invoking user: the same vulnerability, and the same fix, as the
+	# installers' own staging (runtime.sh's stage_install_copy). The gate above and
+	# that O_EXCL write are two layers deliberately — the gate cannot see an ACL
+	# (assert_safe_dir).
+	sdc_backup_path=$(mktemp -u "${sdc_out_path}.bak-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX") || {
+		error "could not derive a backup name for $sdc_out_path (is \`mktemp\` on \$PATH, and does it support \`-u\`?)"
+		exit 1
+	}
+	copy_to_new_file "$sdc_out_path" "$sdc_backup_path" "back up the existing project config"
 
 	if [ "$OPT_FORCE" -eq 1 ]; then
 		atomic_install "$sdc_config_file" "$sdc_out_path"

@@ -22,7 +22,16 @@
 #     assertions are made (an exact-LINE grep, never a substring one);
 #   * the CONTENTS of any `--data @file` as $CURL_STUB_BODY_LOG_DIR/call-<n>.body
 #     — how a test proves the exact JSON body, and therefore the exact JQL
-#     string, that was sent.
+#     string, that was sent;
+#   * the STDIN of any `-K -` call as $CURL_STUB_STDIN_LOG_DIR/call-<n>.stdin —
+#     the counterpart record for a URL or credential that reaches curl through a
+#     stdin CONFIG instead of argv. http.sh's download_attachment_content sends
+#     the media CDN's token-bearing URL that way precisely so it never appears in
+#     argv, which makes the argv log structurally blind to it: without this
+#     record, every "the JWT is not on the wire" assertion over the argv log
+#     passes whether the request was made or not. The per-call FILE (rather than
+#     one appended log) is what lets a test assert the stronger claim by its
+#     ABSENCE — no call-2.stdin means no second request was even handed a URL.
 #
 # WHY IT IS ONE FILE INSTEAD OF THREE COPIES: this stub used to be pasted
 # verbatim into run-engine-tests.sh, run-write-tests.sh and run-rig-tests.sh,
@@ -45,6 +54,7 @@ init_curl_stub() {
 	CURL_STUB_COUNTER_FILE="$ics_work_dir/curl-counter"
 	CURL_STUB_ARGV_LOG="$ics_work_dir/curl-argv.log"
 	CURL_STUB_BODY_LOG_DIR="$ics_work_dir/curl-bodies"
+	CURL_STUB_STDIN_LOG_DIR="$ics_work_dir/curl-stdin"
 
 	cat >"$ics_stub_dir/curl" <<'CURL_STUB'
 #!/usr/bin/env sh
@@ -66,11 +76,16 @@ fi
 out_file=""
 header_out=""
 data_at=""
+stdin_config=""
 url=""
 prev=""
 for a in "$@"; do
 	[ "$prev" = "-o" ] && out_file=$a
 	[ "$prev" = "-D" ] && header_out=$a
+	# `-K -` is the ONLY shape that makes this call read stdin, so the capture
+	# below is gated on the adjacent PAIR. An unconditional read would block
+	# forever on every other call in the suite, whose stdin is the harness's own.
+	[ "$prev" = "-K" ] && [ "$a" = "-" ] && stdin_config=1
 	case "$a" in
 		@*) data_at=${a#@} ;;
 	esac
@@ -80,6 +95,13 @@ done
 
 if [ -n "$data_at" ] && [ -n "${CURL_STUB_BODY_LOG_DIR:-}" ]; then
 	cat "$data_at" >"$CURL_STUB_BODY_LOG_DIR/call-$n.body"
+fi
+
+# Recorded BEFORE the canned-response lookup below, on the same reasoning the
+# argv and body records are: real curl consumes its config before it can fail,
+# so a call that dies on an unqueued response must still show what it was handed.
+if [ -n "$stdin_config" ] && [ -n "${CURL_STUB_STDIN_LOG_DIR:-}" ]; then
+	cat >"$CURL_STUB_STDIN_LOG_DIR/call-$n.stdin"
 fi
 
 resp_body="$CURL_STUB_RESP_DIR/resp-$n.body"
@@ -93,7 +115,9 @@ fi
 
 # Header dump (-D): if this call requested one AND a header response is
 # configured for it, write the canned header block to the -D file. Mirrors
-# the -o body path — used by resolve_media_uuid's 303/Location capture.
+# the -o body path — used by http.sh's fetch_attachment_content_redirect, the
+# one request behind BOTH resolve_media_uuid and resolve_media_download_url, to
+# capture the 303's Location.
 resp_headers="$CURL_STUB_RESP_DIR/resp-$n.headers"
 if [ -n "$header_out" ] && [ -f "$resp_headers" ]; then
 	cat "$resp_headers" >"$header_out"
@@ -104,12 +128,12 @@ CURL_STUB
 	chmod +x "$ics_stub_dir/curl"
 }
 
-# reset_curl_stub — empty the queue, the counter and both logs. Call before
+# reset_curl_stub — empty the queue, the counter and all three logs. Call before
 # EVERY test that uses curl, so each test's call numbering starts at 1 and no
 # assertion can accidentally read a previous test's argv log.
 reset_curl_stub() {
-	rm -rf "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
-	mkdir -p "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR"
+	rm -rf "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR" "$CURL_STUB_STDIN_LOG_DIR"
+	mkdir -p "$CURL_STUB_RESP_DIR" "$CURL_STUB_BODY_LOG_DIR" "$CURL_STUB_STDIN_LOG_DIR"
 	printf '0' >"$CURL_STUB_COUNTER_FILE"
 	: >"$CURL_STUB_ARGV_LOG"
 }
@@ -122,7 +146,8 @@ set_stub_response() {
 }
 
 # set_stub_headers N HEADERS — the Nth curl call's -D header dump gets these
-# raw header lines (used to can a 303 + Location for resolve_media_uuid).
+# raw header lines (used to can the 303 + Location that
+# fetch_attachment_content_redirect holds for both resolve_media_* callers).
 set_stub_headers() {
 	printf '%s' "$2" >"$CURL_STUB_RESP_DIR/resp-$1.headers"
 }

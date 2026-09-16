@@ -202,6 +202,9 @@
 #                            REJECT this flag (usage error, exit 2) rather than
 #                            ignore it: a caller who believes they asked for a
 #                            dry run must never get a real, irreversible delete.
+#                            attach --download REJECTS it for the same reason:
+#                            it has no preview either, and it writes a real
+#                            local file.
 #   --limit N / --page-size N  (search, children) Pagination bounds.
 #   --projects-dir DIR         Overrides the project-config directory.
 #   --write                    (discover only) Save the discovered project
@@ -228,7 +231,10 @@
 #   --force                    (discover only, with --write) Skip the merge and
 #                            write the PURE discovered config (curated slots
 #                            empty) — a deliberate full reset — but STILL back
-#                            up an existing file first.
+#                            up an existing file first. attach --download
+#                            REJECTS it (usage error, exit 2): that mode has no
+#                            overwrite policy to override, and accepting the
+#                            flag would imply one it does not implement.
 #   --to TARGET_KEY              (link only) The link's target ticket key.
 #                            See "link direction" below for how the
 #                            positional FROM and --to map onto Jira's
@@ -259,6 +265,81 @@
 #                            mutually exclusive with --list.
 #   --list                          (watch, vote) List instead of add;
 #                            mutually exclusive with --remove.
+#   --download PATH               (attach only) Download the attachment named
+#                            by --id to the LOCAL path PATH — `attach
+#                            --download out.png --id 10042`. Addressed by --id
+#                            exactly like --delete, so it takes no ticket key,
+#                            and it is one of attach's four mutually exclusive
+#                            modes. FIVE local preconditions, all checked
+#                            before any network call. Four are usage errors
+#                            (exit 2): PATH
+#                            must not already exist (a dangling symlink counts),
+#                            its parent directory must exist and be writable,
+#                            and PATH itself must not begin with "-", which the
+#                            ln that installs the bytes — and the df behind the
+#                            cross-device check below — would read as an
+#                            option (a dash INSIDE the path, as in
+#                            dir/-out.bin, is fine). The FIFTH is a safety
+#                            refusal rather than a usage error (exit 1, the same
+#                            classification as the $TMPDIR one it shares an
+#                            implementation with): that parent directory must
+#                            not be one other local users can write with no
+#                            sticky bit. A successful install does not end the
+#                            file's life — in such a directory any local user
+#                            may unlink the installed file and leave their own
+#                            content at that name afterwards, with no race to
+#                            win — and one path this mode can be aimed at is
+#                            $JIRA_PROJECTS_DIR/<KEY>.json, whose contents a
+#                            later write pass trusts. There is deliberately no
+#                            --force — the destination is arbitrary
+#                            caller-chosen local filesystem, so a mistyped path
+#                            must not be able to replace a file silently;
+#                            re-run with a free path instead. --force and
+#                            --plan/--dry-run are both REJECTED (exit 2) rather
+#                            than accepted and dropped. The bytes are fetched in
+#                            two requests (Jira's /attachment/content/<id>
+#                            answers a 303 whose Location carries a short-lived
+#                            token, then Atlassian's media CDN serves the file;
+#                            the redirect is never blindly followed, that
+#                            token-bearing URL is passed to curl through a -K
+#                            config rather than on argv, and the Jira credential
+#                            is never sent to that host — see lib/http.sh's
+#                            download_attachment_content). The bytes stage
+#                            inside the engine's own 0700 temp workdir under
+#                            ${TMPDIR:-/tmp} — never beside PATH, where another
+#                            local user with write access to that directory
+#                            could swap the staging name for a symlink — and
+#                            land at PATH via a HARD LINK, which refuses an
+#                            existing destination name instead of writing
+#                            through it, so a failed download leaves no partial
+#                            file and a symlink raced in at PATH is rejected
+#                            rather than followed. A hard link also cannot cross
+#                            a filesystem, so a PATH whose directory is on a
+#                            different filesystem than the workdir fails the
+#                            install — and is refused (exit 1) before the first
+#                            request when df can establish it up front. Point
+#                            $TMPDIR at a PRIVATE directory you own (not group-
+#                            or world-writable, or one carrying the sticky bit)
+#                            on the destination's own filesystem to proceed;
+#                            the engine refuses any other kind of $TMPDIR
+#                            outright, since another local user who can write
+#                            there could replace the 0700 workdir — or, on the
+#                            fallback credential path, the curl -K credential
+#                            config, which lands directly in $TMPDIR. It mutates
+#                            nothing at the Jira
+#                            site, but it is still classified a WRITE by the
+#                            $JIRA_READ_ONLY gate and refused under it (exit 1),
+#                            because it CREATES a caller-named local file —
+#                            including, potentially, the per-project config a
+#                            later write pass reads; lib/http.sh re-asserts that
+#                            refusal at the sink, immediately before the local
+#                            write. See lib/readonlygate.sh; --list remains
+#                            attach's one read mode. Accepted by attach and
+#                            NOTHING else: every other command REJECTS it (usage
+#                            error, exit 2) rather than silently dropping it,
+#                            which would leave the caller believing a file was
+#                            written that nothing created. Prints
+#                            JIRA_ATTACHMENT_DOWNLOADED=<id> -> <path>.
 #   --json                     Print raw/structured JSON instead of the
 #                            human-readable render (every command supports
 #                            this EXCEPT discover, whose default output is
@@ -267,7 +348,7 @@
 #                            --json shape).
 #   -h, --help                  Show this help.
 #
-# The ENVIRONMENT is not a flag surface, but two variables change what the
+# The ENVIRONMENT is not a flag surface, but three variables change what the
 # engine will do at all, so they belong in the same reference:
 #
 #   $JIRA_READ_ONLY            Set it (any value but empty or "0") and EVERY
@@ -280,9 +361,10 @@
 #                            that caller reads untrusted, attacker-authorable
 #                            ticket text while holding the credential. The
 #                            write/read classification (the one read-mode
-#                            carve-out, `transition --plan`, and the one
-#                            LOCAL write it refuses, `discover --write`)
-#                            lives in lib/readonlygate.sh.
+#                            carve-out, `transition --plan`, and the two
+#                            LOCAL-only writes it refuses, `discover --write`
+#                            and `attach --download`) lives in
+#                            lib/readonlygate.sh.
 #   $JIRA_CURL_CONFIG          The credential handoff from procedure-jira-auth
 #                            — a `curl -K` config file, consumed as-is and
 #                            never deleted by this engine. Its BASENAME must
@@ -292,6 +374,26 @@
 #                            the engine refuses it (exit 1) rather than spend
 #                            a credential that may belong to a different Jira
 #                            site.
+#   $TMPDIR                    Where the engine creates its own temp artifacts
+#                            (default /tmp): the 0700 work directory every
+#                            command stages API response bodies and downloads
+#                            in, and — on the FALLBACK credential path only,
+#                            when $JIRA_CURL_CONFIG is unset — the 600 curl -K
+#                            credential config, which lands directly in
+#                            $TMPDIR rather than inside that work directory.
+#                            It must be a PRIVATE
+#                            directory you own — not group- or world-writable —
+#                            or else carry the sticky bit AND be owned by you or
+#                            root, as /tmp is;
+#                            anything else is REFUSED (exit 1) before either is
+#                            created there, because their 0700/600 modes protect
+#                            only their CONTENTS, while whether their own
+#                            directory entry can be renamed away is
+#                            $TMPDIR's permissions to decide — and a substituted
+#                            curl -K config is an `insecure`, a `proxy` or a
+#                            retargeted `url` on every request that follows. It
+#                            also decides which filesystem `attach --download`
+#                            can install to (see --download above).
 #
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
@@ -376,7 +478,21 @@ Usage (WRITE):
          | --delete --id N [--move-issues-to N2]) [--json]
   $PROG attach --confirmed-site SITE (<KEY> --file PATH [--file PATH]...
          | <KEY> --list
-         | --delete --id N) [--json]
+         | --delete --id N
+         | --download PATH --id N) [--json]
+  (attach --download writes the attachment's bytes to PATH. It REFUSES an
+  existing PATH, a missing parent directory, a non-writable one, and a PATH
+  beginning with "-" — exit 2 — and rejects --force and
+  --plan/--dry-run, which it does not implement. PATH's directory must not be
+  writable by other local users without the sticky bit either, or they could
+  replace the installed file afterwards — exit 1, before any request, the same
+  refusal \$TMPDIR itself gets. PATH's directory must also be
+  on the same filesystem as \$TMPDIR, since the install is a hard link, which
+  cannot cross one; it is refused (exit 1) before any request when that is
+  known up front. It creates a local file, so
+  \$JIRA_READ_ONLY refuses it as a WRITE; --list is attach's only read mode.
+  EVERY attach mode rejects --project — attach addresses an issue by KEY and an
+  attachment by --id, never a project)
   $PROG bulk --op transition|comment|update --confirmed-site SITE
          (--keys "K-1,K-2,..." | --jql QUERY)
          [transition: --status TARGET [--resolution STR]]
@@ -410,12 +526,23 @@ script header for the full flag reference and transition --plan's contract.
 Environment:
   JIRA_READ_ONLY     Set (any value but empty or "0") -> every WRITE command
                      is refused with exit 1 before any network call; reads
-                     and transition --plan still work. discover --write counts
-                     as a write (it overwrites the local project config).
+                     and transition --plan still work. discover --write and
+                     attach --download count as writes even though they touch
+                     no Jira object (each writes a LOCAL file).
   JIRA_CURL_CONFIG   The -K credential-config path from
                      procedure-jira-auth. Its basename must be
                      "<confirmed-host>.cfg" (case-insensitive) or it is
                      refused (exit 1).
+  TMPDIR             Where the engine's own 0700 work directory goes, and —
+                     on the fallback credential path only — its 600
+                     credential config (curl's -K file) (default /tmp). Must
+                     be a PRIVATE
+                     directory you own, or
+                     carry the sticky bit as /tmp does and be owned by you or
+                     root, or the engine refuses
+                     it (exit 1) — another local user who can write there
+                     could otherwise rename either of those away and take its
+                     place.
 
 link direction: \`link FROM --to TO --link-type NAME\` reads "FROM <type>
 TO" in active voice (FROM -> inwardIssue, TO -> outwardIssue; verified
@@ -431,8 +558,33 @@ Exit codes:
      an unconfigured (or mis-shaped) custom field id required by
      --acceptance-file/--review-file/--developer/--reviewer /
      no valid transition path /
-     a transition step that silently failed to apply
-  2  usage error
+     a transition step that silently failed to apply /
+     attach --download: the attachment-content redirect was missing, not https,
+     or did not point at Atlassian's media host — or the media fetch itself
+     returned a non-2xx (nothing is written at the destination in either case)
+     / attach --download's three LOCAL filesystem failures, which can only happen
+     AFTER its exit-2 pre-flight has already passed: the destination directory
+     is on a different filesystem than \$TMPDIR, which the install's hard link
+     cannot cross, and df establishes it before the first request (point
+     \$TMPDIR at a PRIVATE directory you own on the destination's own
+     filesystem), or the install itself failed (a full or read-only filesystem,
+     the directory losing write permission mid-run, an entry appearing at the
+     destination, or a cross-filesystem destination df could not establish), or
+     the install succeeded but its post-install check found the destination was
+     not the regular file it just created (a real directory, or a symlink to
+     one, raced in at the path — neither of which ln -n refuses on every
+     platform) — nothing is left at the destination in any of the three
+     / \$TMPDIR itself being unsafe to stage in: a directory other local users
+     can write with no sticky bit, or one whose permissions could not be read
+     (refused before anything is created there)
+     / the same refusal applied to attach --download's DESTINATION directory,
+     in its pre-flight before any request: a directory other local users can
+     write is one where they can replace the installed file afterwards
+  2  usage error (attach --download additionally: the destination path already
+     exists, its parent directory does not exist, its parent directory is not
+     writable, the destination begins with "-", or
+     --force/--plan/--dry-run was passed to a mode that implements neither.
+     Any attach mode: --project, which no attach mode reads)
 EOF
 }
 
