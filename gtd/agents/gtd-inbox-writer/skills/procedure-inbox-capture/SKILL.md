@@ -1,6 +1,6 @@
 ---
 name: procedure-inbox-capture
-description: The procedure the `gtd-inbox-writer` agent runs to append ONE entry to the GTD inbox log, via a deterministic `capture.sh` wrapper that takes the captured text only as a file path (never a string/heredoc) to keep untrusted prose out of the shell. It does NOT own triage, listing, processing, or purging the inbox (the main thread's `flow-inbox` skill), the entry wire-shape (the inbox-entry schema), or the agent's own safety conduct.
+description: The procedure the `gtd-inbox-writer` agent runs to append ONE entry to the GTD inbox log, via a deterministic `capture.sh` wrapper that takes the captured text only as a file path (never a string/heredoc) to keep untrusted prose out of the shell. It does NOT own triage, listing, processing, or purging the inbox (the main thread's `flow-inbox` skill), the entry wire-shape (the inbox-entry schema, `gtd/contracts/inbox-entry.schema.json`), or the agent's own safety conduct.
 ---
 
 # Procedure: Inbox Capture (`capture.sh` wrapper)
@@ -77,6 +77,3 @@ Keep it stubbed; never add a case that writes to the real inbox.
   only when none was given, and never invent or derive one in the agent.
 - **Report only what the script returned** — the real `INBOX_ID`, never an invented one; on a
   non-zero exit, report the failure rather than pretending success.
-
----
-*Procedure Version: 1.0 — the GTD inbox APPEND wrapper, colocated with its owner the `gtd-inbox-writer` agent. Wraps `$HOME/.claude/skills/procedure-inbox-capture/scripts/capture.sh` (portable POSIX sh, shellcheck-clean, self-contained). The entry wire-shape is `gtd/contracts/inbox-entry.schema.json`; triage/list/process/purge belong to the main thread's `flow-inbox` skill; the agent's safety conduct lives in the `gtd-inbox-writer` agent body.*

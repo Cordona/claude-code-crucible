@@ -1,6 +1,6 @@
 ---
 name: procedure-github-auth
-description: The gate that confirms the correct GitHub CLI account is active before any GitHub operation. Must run — and be confirmed — before the git-operator performs any PR/release operation, and before the project-manager performs any GitHub issue write. Resolves and presents the active `gh` login/host, requires explicit user confirmation, and routes to a user-driven interactive switch/login if wrong. Does NOT define commit/branch/PR/tag conventions, and is NOT the signing-identity gate (`procedure-git-identity`) or the GitLab counterpart (`procedure-gitlab-auth`, which uses `glab`).
+description: The gate that confirms the correct GitHub CLI account is active before any GitHub operation. Must run — and be confirmed — before the git-operator performs any PR/release operation, and before the project-manager performs any GitHub issue write; also invoked directly, by path, by `deploy/hub/hub-accounts.sh`. Resolves and presents the active `gh` login/host, requires explicit user confirmation, and routes to a user-driven interactive switch/login if wrong. Does NOT define commit/branch/PR/tag conventions, and is NOT the signing-identity gate (`procedure-git-identity`) or the GitLab counterpart (`procedure-gitlab-auth`, which uses `glab`).
 ---
 
 # Procedure: Git/GitHub Account Auth Gate
@@ -63,6 +63,3 @@ Render this block as live Markdown, filled from `gh-auth-status.sh`'s `GH_*` lin
 - Never automate the interactive login/switch — hand the terminal to the user (invoke the interactive script; do not fake TTY input).
 - Never assume the currently-logged-in account is the intended one — always confirm.
 - The status script is read-only; neither script modifies repo state.
-
----
-*Procedure Version: 1.1 — the GitHub-account auth gate. Bound by the git-operator and the project-manager (also invoked directly, by path, by deploy/hub/hub-accounts.sh); the signing-identity gate is the separate procedure-git-identity. **GitLab twin: `procedure-gitlab-auth`** (same gate shape, `glab` instead of `gh`, one credential per instance instead of `gh`'s multi-account-per-host model). Wraps `$HOME/.claude/skills/procedure-github-auth/scripts/`gh-auth-status.sh (agent-friendly) + manage_gh_accounts.sh (user-interactive), both portable POSIX built/polished by the shell tech-pair. **1.1 adds the reciprocal GitLab-twin pointer and corrects the caller list to match this file's own line 3.***

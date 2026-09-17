@@ -5,7 +5,7 @@ description: The account confirmation gate that resolves and confirms the correc
 
 # Procedure: Git/GitLab Account Auth Gate
 
-The **one** gate every GitLab operation (open/update a merge request, cut a release) passes first. Because a user commonly works across GitLab instances (gitlab.com plus one or more self-managed hosts), the operator must **confirm the active `glab` account is the correct one** before acting under it — never assume the currently-configured account is the intended one.
+The **one** gate every GitLab operation (open/update a merge request via `procedure-glab-mr`, or write a GitLab issue via `procedure-glab-issues`) passes first. Because a user commonly works across GitLab instances (gitlab.com plus one or more self-managed hosts), the operator must **confirm the active `glab` account is the correct one** before acting under it — never assume the currently-configured account is the intended one.
 
 This is a **procedure, not a rubric**: run the scripts in order, present, confirm. It is the account analogue of the signing gate in `procedure-git-identity` (that gate is about *who signs*; this one is about *which GitLab login acts*), and the GitLab twin of `procedure-github-auth`.
 
@@ -76,6 +76,3 @@ manage_glab_accounts.sh [-h|--help]
 - Never present one of several candidate accounts as "the" active one — resolve with `--hostname` first.
 - The status script is read-only; neither script modifies repo state.
 - Never create a real GitLab login while developing/testing these scripts — the test suite is fully stubbed (`tests/run-tests.sh`) and must stay that way; no real `glab`, no network.
-
----
-*Procedure Version: 1.0 — the GitLab-account auth gate. Bound by the git-operator AND the project-manager (two domain-agent consumers, the same placement test procedure-github-auth sets — see that skill's description); the signing-identity gate is the separate procedure-git-identity; the MR mechanics are procedure-glab-mr, the issue mechanics procedure-glab-issues. Sibling of procedure-github-auth (same gate shape, different CLI — and glab has no `auth switch`, so no switch action here). Wraps `$HOME/.claude/skills/procedure-gitlab-auth/scripts/`glab-auth-status.sh (agent-friendly) + manage_glab_accounts.sh (user-interactive), both portable POSIX built by the shell tech-pair.*

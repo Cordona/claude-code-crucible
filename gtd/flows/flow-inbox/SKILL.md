@@ -1,6 +1,6 @@
 ---
 name: flow-inbox
-description: The orchestrator's on-demand procedure for GTD capture routing and inbox triage/purge — bind when a capture directive (a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:`), a triage request (`triage inbox`, `what's in my inbox`), or a processed-items cleanup fires. Does NOT define the capture mechanic (owned by `gtd-inbox-writer` / `procedure-inbox-capture`) or ticket-authoring craft for a triaged item becoming an issue (hands off to `flow-project-management`).
+description: The orchestrator's on-demand procedure for GTD capture routing and inbox triage/purge — bind when a capture directive (a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:`), a triage request (`triage inbox`, `what's in my inbox`), or a processed-items cleanup fires. Does NOT define the capture mechanic (owned by `gtd-inbox-writer` / `procedure-inbox-capture`), the entry wire-shape (`gtd/contracts/inbox-entry.schema.json`), or ticket-authoring craft for a triaged item becoming an issue (hands off to `flow-project-management`).
 ---
 
 # Flow: Inbox — GTD capture & triage (on-demand)
@@ -304,6 +304,3 @@ The scripts make the rewrite same-filesystem-atomic (temp → `mv` in the log's 
 shared lock so a capture never races a rewrite. Pure `sh` cannot `fsync`, so on a hard OS crash a
 just-written line could be lost — acceptable for a single-user desktop store, stated so it isn't
 mistaken for a stronger guarantee.
-
----
-*Procedure Version: 1.5 — the on-demand GTD triage/purge workflow + CAPTURE routing (capture is dispatched to the `gtd-inbox-writer` subagent, backgroundable, now carrying the session id through to `--session-id`; triage/purge run in the main thread). `list.sh` now applies ONE canonical order (project asc, case-insensitive by display name, no-project last; then id asc) to BOTH `--format json` and `--format md`, and `render-md.sh`'s list template groups by project with global bold `**N.**` ordinals — so ordinal N maps to `json[N-1].id` directly. With read-from-disk human receipts (📥 capture · ✅ processed · 📋 list · 🗑️ purge) rendered by the sole MD authority `render-md.sh`, each read back from disk per path (`list.sh --id` for capture/processed; the script's own stdout for purge). Bound by CLAUDE.md §7. The entry wire-shape is `gtd/contracts/inbox-entry.schema.json`; the capture mechanic (`capture.sh`) lives in the `procedure-inbox-capture` skill bound by the `gtd-inbox-writer` agent; ticket authoring for a triaged item hands off to §6 / `flow-project-management`. Houses `$HOME/.claude/skills/flow-inbox/scripts/`list.sh, process.sh, purge-processed.sh, render-md.sh (capture.sh lives in `procedure-inbox-capture`) — all portable POSIX sh, shellcheck-clean, self-contained, the scripts the sole writers/renderers of the log.*
