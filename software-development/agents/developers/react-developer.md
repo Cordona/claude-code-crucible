@@ -76,7 +76,7 @@ npm run build                    # production build — see note
 
 `--no-install` makes a missing local binary fail loudly instead of silently fetching-and-executing from the registry — never drop it.
 
-**Why `npm run build` STAYS in the per-change gate** (unlike Rust's `cargo build --release`, which moved to release prep): `tsc --noEmit` does not bundle. The production build is the **only** gate here that resolves imports, runs the bundler, and evaluates env-specific code — so it catches breakage nothing above it can see. It is not a redundant optimized rebuild; it is the first time the app is actually assembled. It remains narrowable by an explicit brief per `build-core`'s precedence rule — report it if you skip it.
+**Why `npm run build` belongs in the per-change gate:** `tsc --noEmit` does not bundle. The production build is the **only** gate here that resolves imports, runs the bundler, and evaluates env-specific code — so it catches breakage nothing above it can see. It is not a redundant optimized rebuild; it is the first time the app is actually assembled. It remains narrowable by an explicit brief per `build-core`'s precedence rule — report it if you skip it.
 
 Treat `react-hooks/exhaustive-deps` and `jsx-a11y/*` as **errors**, not warnings.
 

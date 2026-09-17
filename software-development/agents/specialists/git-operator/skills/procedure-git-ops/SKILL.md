@@ -1,11 +1,11 @@
 ---
 name: procedure-git-ops
-description: The procedure the `git-operator` runs to execute git mechanics — preflight, branch, commit, push, and tag — via deterministic scripts, never hand-authored git commands. Requires the commit-plan/tag-consent gate (`standard-git-commit`/`standard-git-tag`) and the signing-identity gate (`procedure-git-identity`) cleared before commit or tag. Does NOT define commit/branch/tag conventions (those `standard-git-*` skills) or resolve signing identity — it only executes and verifies the git operation's result.
+description: The procedure the `git-operator` plans and the orchestrator executes for git mechanics — preflight, branch, commit, push, and tag — via deterministic scripts, never hand-authored git commands. The git-operator itself runs only the read-only `preflight.sh`. Requires the commit-plan/tag-consent gate (`standard-git-commit`/`standard-git-tag`) and the signing-identity gate (`procedure-git-identity`) cleared before commit or tag. Does NOT define commit/branch/tag conventions (those `standard-git-*` skills) or resolve signing identity — it only executes and verifies the git operation's result.
 ---
 
 # Procedure: Git Operations (`git` wrapper scripts)
 
-The **one** way the `git-operator` touches git history. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `git commit`/`git push`/`git tag` invocation, and never build a commit or tag message in shell. These are the framework's **most dangerous scripts** — they mutate history and push it — so every one of them **fails closed**: on doubt, on an unverifiable signature, on a protected branch, on a would-be duplicate, the answer is refuse and report, never guess or retry unsafely.
+The **one** way the framework mutates `git` history — the `git-operator` plans and runs the read-only `preflight.sh`; the orchestrator invokes the mutating scripts (`create-branch.sh`/`commit.sh`/`push.sh`/`create-tag.sh`). This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `git commit`/`git push`/`git tag` invocation, and never build a commit or tag message in shell. These are the framework's **most dangerous scripts** — they mutate history and push it — so every one of them **fails closed**: on doubt, on an unverifiable signature, on a protected branch, on a would-be duplicate, the answer is refuse and report, never guess or retry unsafely.
 
 ## Why these scripts exist (read this before calling anything)
 
@@ -102,7 +102,7 @@ This skill only executes the git operation and verifies its result; it never dec
 - **`tests/run-tests.sh`** (stub-driven, `sh`/`dash`-clean, no real git) — exercises the deterministic BRANCHING logic exhaustively and fast: protected-branch refusal, non-fast-forward detection, re-tag refusal, fail-closed signing checks (every `%G?` code), nothing-staged failure, idempotency, argument validation, exit codes.
 - **`tests/smoke.sh`** (real `git` + a real, ephemeral, throwaway GPG key, generated fresh and deleted on exit — never the invoking user's real `~/.gnupg`, never a real repo, never the network) — proves the actual git/gpg CONTRACT the stub cannot: a real signed commit, a real push to a local bare remote, a real `--force-with-lease` against a rewritten local history, a real protected-branch refusal, a real non-fast-forward rejection, a real live-rebase op-in-progress block, a real re-tag refusal, a real signed tag + verify. If `gpg` is unavailable or ephemeral key generation fails, this script SKIPS the signing-dependent checks with a clear reason rather than failing the run — that is an environment constraint, not a defect.
 
-**Run both before trusting a change to this skill.** The stub proves the logic; the smoke test proves the logic is checking the right thing in the first place — the class of gap that let the `close-issue --reason` enum bug ship once already.
+**Run both before trusting a change to this skill.** The stub proves the logic; the smoke test proves the logic is checking the right thing in the first place — a stub-only pass can be green while checking against the wrong contract entirely.
 
 **CI must gate on the signing-dependent checks actually having run, not merely on exit 0** — `tests/smoke.sh` prints a machine-readable `SMOKE_SIGNING=exercised` (gpg worked, the full signed-commit/signed-tag contract was proven) or `SMOKE_SIGNING=skipped` (no usable gpg in this environment) on stdout, in addition to its own `exit 0`/`exit 1`. An `exit 0` with `SMOKE_SIGNING=skipped` means the run is GREEN but PROVED NOTHING about signing — CI should assert `SMOKE_SIGNING=exercised`, not just a zero exit code, or a gpg-less runner could silently stop catching signing regressions.
 
@@ -116,6 +116,3 @@ This skill only executes the git operation and verifies its result; it never dec
 - Never resolve or confirm signing identity here — that is `procedure-git-identity`'s job, run by the caller first.
 - Never commit into a detached HEAD or an in-progress rebase/merge/cherry-pick.
 - Never run `tests/smoke.sh` against a real repository or without the isolated `GNUPGHOME` it sets up itself — it must always generate and use its own ephemeral key.
-
----
-*Procedure Version: 1.0 — the git preflight/branch/commit/push/tag wrapper. Bound by the git-operator. Commit/branch/PR/tag CONVENTIONS live in standard-git-commit/branch/pr/tag; signing identity in procedure-git-identity — this skill only executes and verifies. Wraps `$HOME/.claude/skills/procedure-git-ops/scripts/`preflight.sh, create-branch.sh, commit.sh, push.sh, create-tag.sh — all portable POSIX, shellcheck-clean, self-contained.*

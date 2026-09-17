@@ -129,7 +129,7 @@ which came from the research swarm vs. general grounding>
 
 ## 8. Deploy — the human's choice, not automatic
 
-Ask: deploy now (you run `deploy/hub/crucible-hub install ...` from the repo root), or would they rather deploy manually? If manual, give the exact command (e.g. `deploy/hub/crucible-hub install --domains=software-development --technologies=<tech> --apply`, previewing without `--apply` first if the hub supports a dry-run/preview mode). Either way, note that a freshly-deployed agent may take a moment to appear in the live Task-tool registry — this has happened before in this framework and is not a failure.
+Ask: deploy now (you run `deploy/hub/crucible-hub install ...` from the repo root), or would they rather deploy manually? If manual, give the exact command (e.g. `deploy/hub/crucible-hub install --domains=software-development --technologies=<tech> --apply`, previewing without `--apply` first if the hub supports a dry-run/preview mode). Either way, note that a freshly-deployed agent may take a moment to appear in the live Task-tool registry — this is not a failure.
 
 ---
 
@@ -145,6 +145,3 @@ Ask: deploy now (you run `deploy/hub/crucible-hub install ...` from the repo roo
 - **Lens review runs BEFORE deploy, and iterates to a fully clean verdict, not just non-gating, capped at 3 rounds per seat** (§6) — a deliberate exception to `flow-implementation`'s normal stopping policy on WHAT counts as done, but not on the cap itself; hitting round 3 unsatisfied is an escalation to the human, never a silent loop or a silent stop.
 - **No functional/dogfood validation of the generated pair** — explicitly out of scope for this whole procedure.
 - **Deploy is the human's explicit choice, every time** (§8) — never automatic on a clean review.
-
----
-*Procedure Version: 1.0 — generates a permanent tech pair, gated at three points (the plan, the lens review's cleanliness, and the deploy decision). The generator agents' own conduct lives in `tech-developer-generator`/`tech-reviewer-generator`; the templates they build against live in `software-development/templates/tech-pair/`.*

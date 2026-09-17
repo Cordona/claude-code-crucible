@@ -37,9 +37,7 @@ skills:
 # configured (unlike gh/glab, which every environment either has or doesn't and
 # procedure-*-auth can check for). Same disclosed-gap PATTERN as other known,
 # tracked limitations in this framework (e.g. GitLab's CLI exposing no
-# issue-close-reason flag) — procedure-git-identity's own GitHub/GitLab split
-# is no longer an example of this pattern, since both platforms are covered
-# there today.
+# issue-close-reason flag).
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__github-server__get_file_contents, mcp__github-server__search_repositories, mcp__github-server__search_code, mcp__github-server__list_commits, mcp__github-server__list_issues, mcp__github-server__get_issue, mcp__github-server__get_pull_request, mcp__github-server__list_pull_requests, mcp__github-server__get_pull_request_files, mcp__github-server__get_pull_request_status, mcp__github-server__get_pull_request_comments, mcp__github-server__get_pull_request_reviews
 model: opus
 color: blue

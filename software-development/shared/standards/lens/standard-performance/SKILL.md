@@ -1,6 +1,6 @@
 ---
 name: standard-performance
-description: The single rubric for performant, well-scaling code (algorithmic complexity, N+1/work-in-loop, over-fetch, data-structure fit, chatty I/O, caching) — built to by developers and reviewed against by the performance lens. Applies whenever code runs on a hot path, loops, or handles large/unbounded data. Does not define builder workflow (build-core), the reviewer's sensitivity-gate procedure/severity/vocabulary (the lens itself), or language-level micro-performance (the {tech} pair).
+description: The single rubric for performant, well-scaling code (algorithmic complexity, N+1/work-in-loop, over-fetch, data-structure fit, chatty I/O, caching) — built to by developers and reviewed against by the performance lens. Applies whenever code runs on a hot path, loops, or handles large/unbounded data, store access included. Does not define builder workflow (build-core), the reviewer's sensitivity-gate procedure/severity/vocabulary (the lens itself), language-level micro-performance (the {tech} pair), or which lens scores a store-side finding in a review swarm (review-boundaries / standard-persistence).
 ---
 
 # Standard: Performance
@@ -37,5 +37,6 @@ Even off a hot path, do the non-dumb thing the first time: the **right data stru
 
 This standard owns **algorithmic and access-pattern** scaling — how the *logic* scales with input. Language-level micro-performance (allocation, boxing, `clone`, GC tuning) is the `{tech}` developer/reviewer's call, not this standard's. When clarity and a genuine hot-path optimization conflict, prefer clarity and leave a WHY comment — unless the path is measurably hot.
 
----
-*Standard Version: 1.0 — the shared performance rubric. Built to by developers (via build-core); reviewed against by lens-performance-reviewer. Language micro-perf lives in the {tech} pair.*
+## Reviewer routing for a store-side finding
+
+The rules above apply in full whether or not a durable store is involved — developers build to all of them either way. In a review swarm, `review-boundaries` routes a finding **against a durable store** (SQL N+1, an unindexed or unbounded query, unsafe pagination) to `lens-persistence`, which judges it through the store's actual guarantees — the same query is a defect on one engine and correct on another. A non-store access pattern (an N+1 over an HTTP client, in-memory work-in-loop, chatty I/O to a non-store peer) stays `lens-performance`'s. See `review-boundaries` for the adjudication when a finding could plausibly claim either.

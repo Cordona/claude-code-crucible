@@ -89,6 +89,4 @@ MEDIUM/LOW are follow-ups that must not block the fix loop — the `review-repor
 - Follow `review-report-standards` for the report format.
 
 ---
-*Skill Version: 1.2 — a consistency review of a `build-core` change caught this file's own tripwire premise going stale by proxy: `build-core`'s test-authoring ban is now restated in all 8 `{tech}-developer` bodies (previously stated once), so "a rule stated once, to one agent" here was no longer true. Reworded to describe the restatement without naming a count that will drift again as more tech pairs are added.*
-*Skill Version: 1.1 — repointed the diff-artifact citation from `flow-implementation` §4c to §4d (that flow's renumbering moved the reviewer-dispatch step; a compatibility + consistency review both caught this file was still citing the old section) and added the Validate-First exception to the "absent tests" default, since that path's `{tech}-reviewer` pass now runs AFTER `flow-testing`, not before.*
 *Pair with: review-report-standards (report format). Constructive twin of: build-core.*

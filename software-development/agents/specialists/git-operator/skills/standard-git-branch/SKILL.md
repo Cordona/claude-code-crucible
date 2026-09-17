@@ -56,6 +56,3 @@ Client-side branch discipline is advisory; the platform's protection setting is 
 - Never commit directly to a protected branch (`main`/`develop`) — always via a branch + PR/MR.
 - Never force-push a shared/published branch.
 - Never put `#`, spaces, or uppercase in a branch name; never mix multiple concerns on one branch (bar the refactor exception).
-
----
-*Standard Version: 1.0 — the shared branch rubric. Followed by the git-operator. Workflow: Git Flow (by project choice). Commit format lives in standard-git-commit; tags in standard-git-tag.*

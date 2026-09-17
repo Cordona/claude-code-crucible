@@ -108,7 +108,7 @@ produced it. One base ⇒ the lens is the only variable ⇒ the disagreement mea
 State the chosen base and WHY in the plan you put to the user. If no single base fits the fork, that
 is a signal the decision is really two decisions — split it rather than mixing bases.
 
-All seats run on the **strongest model (Opus)** — do not downgrade any seat, and do not vary the model across seats (the substrate-diversity exception is WITHDRAWN; see §1a).
+All seats run on the **strongest model (Opus)** — do not downgrade any seat, and do not vary the model across seats (see the Invariants below for why), the same problem that rules out swapping a single seat's base agent below.
 
 The reviewers are the **same** disposition-neutral base agent; independence comes **entirely
 from the differing briefings**, not the model. Because they share a base, two things are
@@ -117,9 +117,8 @@ deliberately adversarial — that engineered opposition is a key decorrelator), 
 **arbiter must read the raw artifact** — its only safety net for a blind spot the reviewers
 share.
 
-**Do NOT swap a single seat to a different agent.** (An earlier version of this skill offered that
-as a hatch for code-entangled decisions — it is withdrawn: it silently mixes bases and destroys the
-control above.) If the call hinges on code-level facts a call-graph trace would settle, that is not a
+**Do NOT swap a single seat to a different agent** — that silently mixes bases and destroys the
+control above. If the call hinges on code-level facts a call-graph trace would settle, that is not a
 reason to swap ONE seat — it is a signal that the `{tech}`-reviewer is the right base for **all** of
 them. Derive it in §1a and seat it everywhere.
 
@@ -139,13 +138,9 @@ them. Derive it in §1a and seat it everywhere.
    • Neither/none is told the others exist.
 3. COLLECT all reports.
    • Any disagreement → TRIPWIRE: do NOT pick a winner yourself. Spawn the `decision-arbiter`.
-   • Full agreement → STILL spawn the arbiter. (An earlier version allowed "LOW-stakes:
-     you may confirm & proceed" — withdrawn: §0's entry criteria admit no low-stakes
-     run, so that branch only ever let the biased orchestrator this pattern exists to
-     neutralize bless a unanimous verdict without an independent read.) HIGH-stakes (the costly/
-     irreversible calls that justified this): still spawn the arbiter for an independent
-     artifact spot-check — correlated reviewers agreeing is weak evidence, and the biased
-     orchestrator should not bless it.
+   • Full agreement → STILL spawn the arbiter. §0's entry criteria admit no low-stakes run, so
+     a unanimous verdict still needs an independent read — correlated reviewers agreeing is
+     weak evidence, and the biased orchestrator should not bless it alone.
 4. ARBITER returns item-by-item resolutions with reasoning (or ESCALATE).
    • ACCEPTANCE — REJECT the report and re-dispatch if it omits ANY of: the two
      standing-duty lines (option-set completeness · shared-substrate blind spot)
@@ -250,10 +245,10 @@ software-development/contracts/decision-lawyer-finding.schema.json), which fixes
 | Reviewers redundant | Same base, but **genuinely different questions** per seat (§3). Seat B stays adversarial. Never give two seats the same lens. |
 | **Too many lawyers** | **3 is the hard ceiling.** Panels degrade past ~4; more count ≠ more signal. Never add a 4th lawyer. |
 | Clone lens (no decorrelation) | If the 3rd lens rarely produces a *distinct* finding across runs, it isn't earning its seat — drop back to the trio. |
-| Over-trusting unanimity | Agreement from same-base reviewers is weak evidence. On high-stakes calls the **arbiter still spot-checks** the artifact. |
+| Over-trusting unanimity | Agreement from same-base reviewers is weak evidence. The **arbiter still spot-checks** the artifact even on full agreement. |
 | **Framing artifact carries the proposer's errors** (the one un-decorrelated input) | Every lawyer briefing is prepended with the **verify-the-framing-doc preamble** (§3): each seat independently checks the framing's load-bearing claims against the code before evaluating. The orchestrator should also self-verify it before dispatch. |
-| **Framing OMITS justifying evidence, or EDITORIALIZES** a component as unchanged / fine / out-of-scope | The verify-preamble catches *wrong* claims but not *missing* evidence or *steering* dismissals (both hid findings in run 2). Orchestrator: front-load all justifying evidence incl. runtime/external facts, and name components neutrally (§2). Seat backstop: the §3 preamble treats any "unchanged / fine / out-of-scope" as a red-flag-to-audit-directly, and the Skeptic returns "justify-or-drop" rather than dropping on possibly-omitted runtime evidence (§3b). |
-| **Shared-substrate blind spot** (all seats + arbiter share one base model) | A model-level blind spot is invisible to everyone at once. Mitigation: the arbiter's **standing duty** to re-derive from the artifact and name what all seats jointly miss (§3d + arbiter agent). Highest-stakes / irreversible calls only: optionally run ONE seat on a **peer-strength model from a different family** (lateral decorrelation, never a downgrade). Within one provider substrate diversity is limited, so the standing duty carries most of the load. |
+| **Framing OMITS justifying evidence, or EDITORIALIZES** a component as unchanged / fine / out-of-scope | The verify-preamble catches *wrong* claims but not *missing* evidence or *steering* dismissals. Orchestrator: front-load all justifying evidence incl. runtime/external facts, and name components neutrally (§2). Seat backstop: the §3 preamble treats any "unchanged / fine / out-of-scope" as a red-flag-to-audit-directly, and the Skeptic returns "justify-or-drop" rather than dropping on possibly-omitted runtime evidence (§3b). |
+| **Shared-substrate blind spot** (all seats + arbiter share one base model) | A model-level blind spot is invisible to everyone at once. Mitigation: the arbiter's **standing duty** to re-derive from the artifact and name what all seats jointly miss (§3d + arbiter agent). Within one provider substrate diversity is limited (§1a withdraws the cross-family-model exception — never vary the model across seats), so the standing duty carries all of the load. |
 | Arbiter context dilution at N=3 | Feed **structured findings** (§3e), not prose; **rotate review order** each cycle. |
 | **Self-arbitration (cardinal sin)** | The instant you weigh one lens against another *in your own voice*, STOP — spawn the `decision-arbiter`. |
 | Briefing drift | Briefings copied verbatim from §3. |
@@ -268,21 +263,14 @@ software-development/contracts/decision-lawyer-finding.schema.json), which fixes
 - **Blind reviewers** — seats never see each other's briefing or output; never told a counterpart exists.
 - **Different lenses** — every seat gets a different briefing; never the same lens twice.
 - **Max 3 lawyers** — never a 4th. Decorrelate, don't multiply.
-- **All seats on Opus** — never *downgrade* a seat. (WITHDRAWN — see §1a: a different model family reintroduces substrate as a second variable on exactly ONE seat, which is the identical argument that withdrew the agent-swap hatch. The Task tool's model enum is Anthropic-only, so it is likely undispatchable anyway. Former text: Exception — highest-stakes, least-reversible calls only: ONE seat MAY run on a **peer-strength model from a different family** for substrate decorrelation; a lateral swap, never a weaker model.)
-- **No self-arbitration on disagreement** — spawn the `decision-arbiter`. On high-stakes agreement, still let the arbiter make the final call.
+- **All seats on Opus** — never downgrade a seat, and never vary the model across seats: a different model family would reintroduce substrate as a second variable on exactly one seat, the same problem that rules out swapping a single seat's base agent (§1a). The Task tool's model enum is Anthropic-only regardless.
+- **No self-arbitration on disagreement** — spawn the `decision-arbiter`. On unanimous agreement, still let the arbiter make the final call.
 - **The arbiter is never the orchestrator.**
-- **The arbiter's independent artifact read is non-negotiable** — never weaken it to "read the reviews + spot-check." It is the pattern's last line of defense against a framing that misdirects the lawyers (run 2: the arbiter was the only seat to catch a gating, ship-blocking bug).
+- **The arbiter's independent artifact read is non-negotiable** — never weaken it to "read the reviews + spot-check." It is the pattern's last line of defense against a framing that misdirects the lawyers.
 
 ---
 
 ## Reference
-
-Empirically validated across n=8 trials (plans, docs, audits, implementations) in the
-`claude-code-agent` project: `claude-code-agent/docs/dual-reviewer-arbiter-pattern.md`.
-
-**Validation log — this implementation:**
-- **2026-07-15 · n=1 · architectural decision (all-in-memory React 19 rendering performance) · trio (Soundness + Skeptic + arbiter):** SUCCESS — orchestrator bias neutralized (reflex answer demoted to #5 of 6; real dominant cost surfaced), verdict sound. Two structural weaknesses observed → **hardened in this version:** the framing artifact shipped 2 factual errors caught only by luck of briefing (→ §3 shared verify-the-framing preamble), and the highest-value finding (a shared-model `useMemo`-isn't-a-cache footgun) fired only because the orchestrator ad-hoc-instructed the arbiter (→ arbiter standing duties + §4 substrate row). See `feedback/2026/07/16/flow-decision-first-run.md`.
-- **2026-07-16 · n=2 · implementation review (async sub-agent token capture + per-turn aggregation, 3 repos) · quartet (Soundness + Skeptic + Operability&Evolution + arbiter):** SUCCESS — the run-1 hardening fired NATIVELY: the arbiter's standing duty re-derived from the raw artifact a GATING, ship-blocking defect no other seat found (backend hydration seed used `.first(delta)` instead of summing per-Stop deltas — the *exact* bug the change existed to fix), which a full dev↔reviewer loop + all 3 lawyers + the framing all missed; all framing errors were independently caught by the lawyers. Residual weakness moved UPSTREAM to the orchestrator's framing — a framing OMISSION (runtime fact absent → one false "drop it") and an attention-steering "unchanged" editorial (hid the gating file; lawyers distrusted the word but none audited the file) that the verify-preamble structurally cannot catch → hardened here: §3 dismissal-as-red-flag + omission caution, §3b justify-or-drop, §2 front-load-evidence + neutral-framing step, §4 editorializing/omission row, and the arbiter-independent-read invariant. See `feedback/2026/07/16/flow-decision-second-run.md`.
 
 Design refinements are drawn from the LLM-as-judge / panel-of-judges / multi-agent-debate
 literature: 3 reviewers is the empirical sweet spot (PoLL, ChatEval, multiagent debate) and

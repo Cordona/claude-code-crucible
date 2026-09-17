@@ -69,6 +69,3 @@ Assume **Bash 4+** (`#!/usr/bin/env bash`) unless POSIX `sh` is required. But **
 
 - **`shellcheck` clean is the bar.** Reference the **SC code** for every lint issue. High-signal codes: **SC2086** (quote expansions), **SC2046** (quote `$(…)`), **SC2155** (declare then assign), **SC2164** (`cd … || exit`), **SC2162** (`read -r`).
 - **Justify every suppression** — an inline `# shellcheck disable=SCxxxx` must carry a reason; an unjustified disable is a defect.
-
----
-*Standard Version: 1.0 — the shared shell rubric. Built to by the shell-script-developer (via build-core); reviewed against by the shell-script-reviewer.*

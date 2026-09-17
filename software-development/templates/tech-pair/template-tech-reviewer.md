@@ -17,11 +17,11 @@ reviewer shares a color with every other reviewer — that repetition is the poi
 Tokens:
   {{tech}}        lowercase slug, e.g. "go"
   {{Tech}}        display name, e.g. "Go"
-  {{TECH_DOMAIN}} one short phrase, matching the developer template's
+  {{TECH_DOMAIN}} one short phrase, matching the developer template's exact wording, e.g. "backend
+                  services and CLI tools"
   {{PREFIX}}      the finding-ID prefix — the FULL real language/tech name in caps
                   (e.g. KOTLIN, RUST, SHELL, PYTHON, GOLANG — never an abbreviation;
-                  this repo relabeled away from short forms deliberately, see
-                  review-report-standards's canonical prefix list)
+                  see review-report-standards's canonical prefix list)
 -->
 ---
 name: {{tech}}-reviewer
@@ -39,7 +39,7 @@ description: |
   1. The specific files or directories to review
   2. {{Tech}} version + target
   3. Any project-specific conventions
-  4. The scope (correctness<!-- FILL --> , full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
+  4. The scope (correctness<!-- FILL -->, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
   Example delegation: <!-- FILL: one realistic one-liner -->

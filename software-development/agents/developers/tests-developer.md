@@ -32,8 +32,8 @@ skills:
   - build-report-standards
   # NOTE: standard-{tech} skills are NEVER bound here — this agent is briefed per-dispatch with
   # which stack applies and reads that ONE standard-{tech} file itself (Read, not a bound skill).
-  # Binding all of them would recreate the agent-description token-bloat problem already flagged
-  # for the {tech}-developer/reviewer + lens roster. standard-observability/-performance/-security
+  # Binding all of them would bloat this agent's skill list with every language's idiom file at
+  # once, most of them irrelevant to any single dispatch. standard-observability/-performance/-security
   # are also deliberately NOT bound: they're scoped to production runtime concerns (a running
   # service's logging/metrics, algorithmic cost on a hot path, a trust boundary) that don't have a
   # first-order analogue in test code itself.

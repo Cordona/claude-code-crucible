@@ -60,7 +60,7 @@ These all run without raising an exception and produce a plausible-looking wrong
 
 ## Idiomatic Constructs
 
-**`pathlib` over `os.path`** — object-oriented, cross-platform, consolidates what used to require `os`/`os.path`/`glob`/`open` into one API; genuinely reduces cross-platform path bugs (string-based path building is a real portability trap), not just a style preference. (f-strings and comprehensions are tutorial-level defaults, not non-obvious priorities — deliberately not listed here. Naming conventions are Ruff's job — see Lint, Type-Checking & Formatting Discipline below; not re-derived here.)
+**`pathlib` over `os.path`** — object-oriented, cross-platform, consolidates what used to require `os`/`os.path`/`glob`/`open` into one API; genuinely reduces cross-platform path bugs (string-based path building is a real portability trap), not just a style preference. Naming conventions are Ruff's job — see Lint, Type-Checking & Formatting Discipline below.
 
 ## Project Structure & Packaging
 
@@ -82,6 +82,3 @@ Language-level hygiene only — algorithmic complexity is lens-performance's job
 - **Style/PEP-8 conformance is Ruff's job, not a manual review job** — the reviewer should flag missing or broken tooling conformance (a `ruff check`/`ruff format --check` failure), not manually re-derive PEP 8 rule-by-rule.
 - **Ruff's own `S` (security) rules are a partial reimplementation of Bandit's checks, not a full port.** Keep a real `bandit` run in CI as defense-in-depth when full security-rule coverage matters — do not treat Ruff's `S` rules as a complete substitute.
 - The "clean" bar: `ruff format --check` and `ruff check` both exit 0, and a static type checker (`mypy` or Pyright) passes in CI. An unjustified `# noqa` / `# type: ignore` suppression is a defect the same way an unjustified lint-suppression is in any other language this repo builds.
-
----
-*Standard Version: 1.0 — the shared Python rubric. Built to by the python-developer (via build-core); reviewed against by the python-reviewer.*

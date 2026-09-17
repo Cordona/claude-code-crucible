@@ -36,6 +36,3 @@ A diff-shaped body (a per-file changelog instead of an outcome) · no test/verif
 - Never omit How-to-test or the risk callout — a reviewer without either is reviewing blind.
 - Never restate the title in the body with no added information.
 - Never claim scope the PR itself doesn't actually contain.
-
----
-*Standard Version: 1.1 — split out of `standard-backlog-artifacts`' former "Pull request bodies" section when the PR lifecycle moved from the project-manager to the git-operator (PR work requires reading the diff, which is development work). Sibling to `standard-git-commit` / `standard-git-branch` / `standard-git-tag`. Mechanics live in `procedure-gh-pr` (GitHub) / `procedure-glab-mr` (GitLab). **1.1 makes the backend-agnostic scope explicit** — this rubric already applied unchanged to the GitLab MR work built alongside it; the frontmatter and body now say so rather than reading as GitHub-only by omission.*

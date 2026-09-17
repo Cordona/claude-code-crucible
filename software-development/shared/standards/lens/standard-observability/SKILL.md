@@ -86,6 +86,3 @@ Log via a **facade / the project's logging abstraction**, not a concrete framewo
 ## Consistency
 
 Use the **project's existing logging/metrics facade and conventions** — the same field names, level policy, correlation mechanism, and metric/trace setup as its neighbors. Don't introduce a second logging style.
-
----
-*Standard Version: 1.0 — the shared observability rubric, grounded in OTel / W3C Trace Context / Google SRE / OWASP / GDPR / 12-factor. Built to by developers (via build-core); reviewed against by lens-observability-reviewer.*

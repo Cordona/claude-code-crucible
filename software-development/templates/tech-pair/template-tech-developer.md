@@ -2,9 +2,7 @@
 TEMPLATE — never deployed (the Crucible Management Hub's discovery module — deploy/hub/lib/hub-discovery.sh — excludes anything template-prefixed or under templates/,
 by two independent checks — never rely on directory location alone).
 
-Extracted from kotlin-developer.md, rust-developer.md, and shell-script-developer.md, cross-checked
-for what is genuinely INVARIANT across all three vs. what is per-language. Sections/lines marked
-FIXED — copy verbatim. Sections marked {{PLACEHOLDER}} are the generator's job, informed by the
+Sections/lines marked FIXED — copy verbatim. Sections marked {{PLACEHOLDER}} are the generator's job, informed by the
 research swarm's synthesis. Bracketed <!-- FILL: ... --> comments give the generator instructions;
 strip them from the final output.
 
@@ -17,18 +15,14 @@ Tokens:
   {{TECH_DOMAIN}} one short phrase, e.g. "backend services and CLI tools"
   {{COLOR}}       a color NOT already used by an existing {{tech}}-developer in
                   software-development/agents/developers/*.md — ALWAYS re-glob and check fresh at
-                  generation time; any list here goes stale the moment another pair is generated
-                  (confirmed stale once already: this note originally listed 8 colors when the live
-                  set had grown to 10 — teal and magenta had already been taken by the time anyone
-                  next read it). NEVER use `white` — confirmed broken: it renders as an invisible
-                  badge against this tool's dark terminal theme (no highlight at all), discovered via
-                  lens-self-documenting-code-reviewer.md shipping with it undetected, because nothing
-                  validates `color:` values (only `name:` is checked at deploy time, in
-                  deploy/hub/lib/hub-discovery.sh). Every other named color in live use has rendered
-                  without a reported issue, but none has been exhaustively screenshot-verified one by
-                  one — if a future agent's badge ever again shows no highlight, add that color to
-                  this known-broken note the same way `white` was added here, rather than assuming
-                  the report is a fluke.
+                  generation time; any static list here can go stale the moment another pair is
+                  generated, so never trust a cached count. NEVER use `white` — it renders as an
+                  invisible badge against this tool's dark terminal theme (no highlight at all);
+                  deploy/hub/lib/hub-discovery.sh checks `color:` against a known-good/known-broken
+                  list at deploy time, but only warns on a match to the broken list — it does not
+                  refuse the deploy. Other named colors in live use are not exhaustively
+                  screenshot-verified one by one — if a future agent's badge ever shows no highlight,
+                  add that color to the broken list too, rather than assuming the report is a fluke.
 -->
 ---
 name: {{tech}}-developer

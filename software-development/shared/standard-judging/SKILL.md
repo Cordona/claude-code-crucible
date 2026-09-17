@@ -60,6 +60,3 @@ If the reviews plus the artifact **genuinely underdetermine** the answer and you
 - The judge's **task framing** (what it is deciding) and **output schema** — these live in each judge agent (`decision-arbiter` decides a costly fork of any kind; `review-arbiter` rules a finding's validity + disposition).
 - The **per-pattern procedure** (roster, dispatch, gates, termination) — these live in the pattern skills (`flow-decision`, `flow-external-review`).
 - **The judge is never the orchestrator** that produced the proposal, and never an advocate/lawyer seat.
-
----
-*Standard Version: 1.0 — the shared judge's constitution. Bound by `decision-arbiter` (via the decision pattern) and `review-arbiter` (via flow-external-review). Task framing + output schema live in each judge; the per-pattern procedure lives in the pattern skills. Hardened by the flow-decision run-1/run-2 live feedback (independent read, standing duties, verify-the-claim).*

@@ -64,6 +64,3 @@ Assume **Kotlin 2.0 / JVM 21** unless the project states otherwise.
 ## Static Analysis
 
 - Compile with `-Werror`; no unjustified `@Suppress`. Honor `detekt` / `ktlint`.
-
----
-*Standard Version: 1.0 — the shared Kotlin rubric. Built to by the kotlin-developer (via build-core); reviewed against by the kotlin-reviewer.*

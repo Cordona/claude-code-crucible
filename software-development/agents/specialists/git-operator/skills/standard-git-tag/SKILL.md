@@ -45,6 +45,3 @@ The tag is the right owner because it is the moment the artifact becomes public 
 - Never publish a release from a lightweight or unsigned tag.
 - Never move or re-cut a published version tag.
 - Never bump the version by hand in a way that contradicts the commit history's SemVer signal.
-
----
-*Standard Version: 1.0 — the shared tag/versioning rubric. Followed by the git-operator. Grounded in SemVer 2.0.0, Keep a Changelog, and Conventional Commits. Signing identity lives in procedure-git-identity.*

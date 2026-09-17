@@ -30,7 +30,7 @@ A document tuned for an agent, a technical human, a non-technical human, or a bu
 
 The audience/register values — `agent` / `human` / `both` and `technical` / `non-technical` / `business` — are the same canonical set `flow-project-management` uses, defined once, externally, in a schema contract: `audience-register.schema.json` (`$HOME/.claude/crucible/contracts/audience-register.schema.json` · framework source: `project-management/contracts/audience-register.schema.json`) — this is deliberately the identical contract, not a re-derived enum, since "who reads this artifact" is the same question whether the artifact is a ticket or a doc; it deploys with every install regardless of which domain(s) are selected (the framework's shared first-run bundle), so citing it from Software Development carries no extra install dependency. Do not invent a separate value set for documentation.
 
-**Why this isn't cosmetic here specifically:** an Agent-or-Both answer is a direct, load-bearing input to `standard-documentation`'s LLM-readability section (self-contained sections, per-section acronym expansion, tables over prose) — a real prior case found that for some target audiences, agent-consumability is a **primary** requirement, not a "nice if convenient" afterthought layered on top of human readability. Pass the resolved audience/register to `tech-writer` verbatim in Step D2; do not let it re-derive or guess one.
+**Why this isn't cosmetic here specifically:** an Agent-or-Both answer is a direct, load-bearing input to `standard-documentation`'s LLM-readability section (self-contained sections, per-section acronym expansion, tables over prose) — for some target audiences, agent-consumability is a **primary** requirement, not a "nice if convenient" afterthought layered on top of human readability. Pass the resolved audience/register to `tech-writer` verbatim in Step D2; do not let it re-derive or guess one.
 
 ## Step D2 — Delegate to `tech-writer`
 
@@ -42,9 +42,9 @@ Invoke the `tech-writer` subagent with:
 - **Target documentation file(s) path**
 - **Project context** (tech stack, conventions)
 
-**Check for the target repo's own documentation style guide before assuming the briefed conventions are complete.** Before or alongside the dispatch above, look for a discoverable style/convention file in the target repo (its own `CLAUDE.md`, a `docs/STYLE.md`, a `CONTRIBUTING.md` section on docs, or similar) — do not assume the conventions named in the request are the whole story. A real prior case found the repo's own `CLAUDE.md` held the actual, current documentation pattern (Diátaxis-based, LLM-consumability as a stated requirement), while the conventions the request surfaced on its own were stale and referenced an already-superseded reference repo. If such a file exists, hand its path to `tech-writer` alongside the other inputs above; if none exists, say so rather than silently proceeding as if the briefed conventions were verified complete.
+**Check for the target repo's own documentation style guide before assuming the briefed conventions are complete.** Before or alongside the dispatch above, look for a discoverable style/convention file in the target repo (its own `CLAUDE.md`, a `docs/STYLE.md`, a `CONTRIBUTING.md` section on docs, or similar) — do not assume the conventions named in the request are the whole story. The repo's own style file can hold the actual, current documentation pattern while the conventions surfaced by the request alone are stale or reference an already-superseded source. If such a file exists, hand its path to `tech-writer` alongside the other inputs above; if none exists, say so rather than silently proceeding as if the briefed conventions were verified complete.
 
-**Redaction mitigation (now closed for the pattern-matchable half).** `tech-writer`'s own redaction self-scan (its agent body, step 6) runs an actual `Grep` pattern scan for ticket-ID-shaped identifiers and absolute local filesystem paths, in addition to an LLM judgment pass for person names. **On top of that self-scan, this flow now runs a genuinely independent, orchestrator-run mechanical gate — `procedure-doc-lint`'s `doc-lint.sh` — at Step D5, below, before any fact-check or PR step.** That closes the "open TODO" this section used to name: `tech-writer` can no longer skip or misjudge the pattern-matchable checks, because a party outside the authoring agent verifies them. It does not extend to person-name detection — no regular shape distinguishes a name from an ordinary technical term, so that half still relies entirely on `tech-writer`'s own LLM judgment pass, exactly as before.
+**Redaction mitigation.** `tech-writer`'s own redaction self-scan (its agent body, step 6) runs an actual `Grep` pattern scan for ticket-ID-shaped identifiers and absolute local filesystem paths, in addition to an LLM judgment pass for person names. **On top of that self-scan, this flow runs a genuinely independent, orchestrator-run mechanical gate — `procedure-doc-lint`'s `doc-lint.sh` — at Step D5, below, before any fact-check or PR step.** `tech-writer` cannot skip or misjudge the pattern-matchable checks, because a party outside the authoring agent verifies them. It does not extend to person-name detection — no regular shape distinguishes a name from an ordinary technical term, so that half relies entirely on `tech-writer`'s own LLM judgment pass.
 
 **Cross-repo documentation (the docs and the documented code live in different repos).** Nothing about `tech-writer`'s toolset (`Read`/`Grep`/`Glob`/`Edit`/`Write`/`WebFetch`/`WebSearch`/`mcp__context7`) can clone, fetch, or otherwise reach a repo that isn't already present on the local filesystem — it reads real files at real paths, nothing more. Before dispatching:
 1. **Determine, explicitly, whether the source code and the target docs are in the same repo.** Do not assume same-repo by default — ask if the request doesn't make it obvious (e.g. "document the MCP tools" said from inside a docs repo almost always means the tools live elsewhere).
@@ -71,10 +71,9 @@ Expose the `tech-writer`'s **Documentation Report** as received — it defines t
 ## Step D5 — Run the deterministic doc-lint gate (mandatory, before any fact-check)
 
 **Bind `procedure-doc-lint` and run its `doc-lint.sh` script against every document `tech-writer` just
-created or updated** — this is the mechanical gate `standard-documentation`'s Redaction discipline
-section and this flow's own Step D2 used to name as an open TODO. Run it **yourself, from the
-orchestrator** — never ask `tech-writer` to run it, and never accept a `tech-writer` report that claims
-this check already happened. The whole point is that it runs from OUTSIDE the agent that authored the
+created or updated** — this is the mechanical gate for `standard-documentation`'s Redaction discipline
+section. Run it **yourself, from the orchestrator** — never ask `tech-writer` to run it, and never
+accept a `tech-writer` report that claims this check already happened. The whole point is that it runs from OUTSIDE the agent that authored the
 draft, so a skipped or misjudged self-check can't masquerade as a clean pass.
 
 ```
@@ -186,64 +185,3 @@ Both **tech-writer** and the **{tech}-reviewer** MUST use these to ensure accura
 - [ ] No hallucinated features or parameters
 - [ ] Code examples are syntactically correct
 - [ ] For cross-repo docs: the reviewer fact-checked against a real source-repo checkout, not against the docs author's own prose
-
----
-*Procedure Version: 1.6 — a final comprehensive review found Step D5 sent every `TICKET_ID` violation
-straight back to `tech-writer` for a fix, with no acknowledgment that the pattern can false-positive on
-ordinary technical vocabulary (the same false-positive class `doc-lint.sh` v1.1 already fixed
-mechanically via an allowlist) — an orchestrator blindly looping a real false positive back to
-`tech-writer` would just make the agent reword correct content until it stopped matching. Added a note
-at Step D5 to check for this before looping the fix back: re-run with `doc-lint.sh`'s
-`--allow-ticket-prefixes` flag for a genuine domain-specific false positive, only loop `tech-writer` in
-for an actual violation.*
-*Procedure Version: 1.5 — a final end-to-end trace of v1.4's Step D8 restructuring found its lint-gate
-re-run (point 3) and the LOOP POLICY paragraph beneath it used two different, unreconciled cap conditions:
-point 3's own first-pass wording caps at "a violation still open" (lint-keyed), while LOOP POLICY capped
-at "a gating accuracy defect" (reviewer-keyed) with no stated ceiling for a lint-only stall in between —
-so a document that kept reintroducing the same lint violation on every fix pass had no textually-guaranteed
-escalation path to the human, since the one existing escalation clause didn't literally describe that case.
-Reworded LOOP POLICY so "gating defect" explicitly covers both an open reviewer-found accuracy defect
-AND a persistent Step D5 lint violation, sharing the SAME 3-round counter and the SAME escalation —
-never a separate, uncapped sub-loop for lint alone.*
-*Procedure Version: 1.4 — four fixes from a third, deeper independent review round. (1) **Step D8's fix
-loop never re-ran the Step D5 lint gate on a revision** — it went straight from `tech-writer`'s fix to the
-reviewer's re-review, so a fix made mid-loop could reintroduce a bare fence, a ticket-ID string, a local
-path, or a single-item list with nothing to catch it, directly contradicting `standard-documentation`'s
-own claim that the gate runs against "every tech-writer draft... before any fact-check." Added a new point
-3 to Step D8's loop that re-runs Step D5 against the revised draft before the reviewer re-reviews it, and
-added a cross-reference at the end of Step D5 itself stating this is not a one-time, first-pass-only
-check. (2) **Step D3 (lock the reference templates) was sequenced before D4 (expose) and D5 (lint)**, so
-the human was asked to approve a batch as the binding template before ever seeing it exposed or
-lint-checked. Folded D4's expose and D5's lint gate into Step D3's own procedure for the first batch
-specifically (new point 2), so the human only approves an already-exposed, already-lint-clean batch — the
-normal per-document D4→D5 sequence is unaffected for every later, non-template document. (3) **Step D3's
-point 5 (now point 6) reopen-trigger list named only the fact-check/fix loop (Steps D6–D8)**, omitting
-Step D5 even though a lint violation in an already-locked template document is just as capable of
-changing its shape (e.g. restructuring a flagged single-item list) as a reviewer-found defect is. Widened
-the trigger to cover both. (4) **Step D4 said to omit the internal `Verification` "line"**, but
-`tech-writer`'s actual report envelope has a `### Verification` section, not a line — corrected the
-wording to match the agent body's real envelope shape. No other content changed; step numbers D1–D8 are
-unchanged from v1.3, since the D3/D4/D5 fix folds D4+D5 into D3's own procedure for the first-batch case
-rather than renumbering anything.*
-*Procedure Version: 1.3 — closes two findings against this flow. (1) **Added a new Step D5**, "Run the
-deterministic doc-lint gate," between the old D4 (expose docs summary) and the fact-check step (old D5,
-now **D6** — every subsequent step shifted by one: D6 Expose the docs-review report is now **D7**, D7 Loop
-until approved is now **D8**, and every in-file cross-reference, including this changelog's own prior
-entries below, updated to match). The new step binds `procedure-doc-lint` and runs its `doc-lint.sh`
-against every `tech-writer` draft, from the ORCHESTRATOR, before any fact-check or PR step — this is the
-"genuinely independent, orchestrator-run mechanical gate... an explicit, open TODO" that Step D2's
-redaction-mitigation note and `standard-documentation`'s Redaction discipline section both used to name.
-It is no longer open: the script is real, checkable, and closes both the missing structure/format
-enforcement (bare fences, single-item lists) and the pattern-matchable half of redaction (ticket IDs,
-local paths) in one pass, independent of `tech-writer` itself. Updated Step D2's redaction-mitigation
-paragraph to say so plainly rather than continuing to describe a gap that no longer exists. (2) **Amended
-Step D3** ("Lock the reference templates") with a new point 5: a reviewer-found defect in an
-ALREADY-LOCKED template document, surfaced later during the normal Steps D6–D8 fact-check/fix loop, now
-explicitly reopens Step D3 for re-approval before the fix is treated as part of the binding template — a
-silent fix to a "locked" document without re-approval would defeat the point of locking it. A defect in a
-non-template document (one generated FROM the locked template, not the template itself) still follows the
-normal D6–D8 loop with no re-lock step; the amendment states this distinction explicitly rather than
-leaving D3/D8's interaction ambiguous.*
-*Procedure Version: 1.2 — five fixes from an independent review fleet's pass over this flow. (1) **Renumbered every step** — the audience gate was "Step D0" (0-based) while this flow's own sibling gates start 1-based (`flow-project-management`'s "Step P1", `flow-git-operations`'s "Step G1"); it's now **Step D1**, with the former D1–D5 shifted to D2–D6 and every cross-reference in this file (including this changelog's own prior entries, below) updated to match — no behavior change, naming only. (2) Added a note at the (now) Step D2 dispatch instructing an explicit check for the target repo's own discoverable documentation style guide (its `CLAUDE.md` or equivalent) before assuming the briefed conventions are complete — root cause: a real prior case found the repo's own style file held the actual, current pattern while the conventions surfaced by the request alone were stale. (3) Added a note at Step D2 stating plainly, rather than leaving implicit, that `tech-writer`'s `Grep`-based redaction pattern scan (ticket-IDs, local paths) is the CURRENT mitigation, and that a fully independent, orchestrator-run mechanical redaction gate remains a genuine OPEN TODO for this flow — not something the `Grep` pass already closes. (4) Added a new **Step D3**, "Lock the reference templates," for multi-document generation efforts — the first small batch gets explicit human approval before it becomes the binding structural template the rest of the batch is generated against; skipped entirely for a single one-off doc. (5) Added a dedicated audience-contract section to `tech-writer`'s own agent body (mirroring `project-manager`'s), so the AUDIENCE/register input this flow's Step D1 resolves is a formally named, refuse-to-guess input on the receiving end too, not just a loose word in a prompt-shape list.*
-*Procedure Version: 1.1 — three fixes from a wider rename/refactor pass on this agent's domain. (1) `docs-writer` renamed to `tech-writer` throughout (the agent's own directory/file also moved) — every reference here updated to match, no behavior change. (2) Added Step D0 (renumbered to Step D1 in version 1.2 above), a mandatory AUDIENCE + register ask before any dispatch, mirroring `flow-project-management`'s own P1 gate and reusing its exact schema contract (`audience-register.schema.json`) rather than inventing a parallel enum — root cause: this flow had no analog of that gate at all, so `tech-writer` was never told WHO it was writing for beyond whatever the request happened to mention, despite the agent's own bound skill (`standard-documentation`) having just gained an LLM-readability section whose applicability turns exactly on this answer. (3) Added explicit cross-repo handling to Steps D1/D3/D4 (renumbered to D2/D5/D6 in version 1.2 above) — root cause: this flow's fact-check step silently assumed the docs and the code they describe live in the same repo, so `{tech}-reviewer`'s normal dispatch (diff-or-audit within one repo) had no path for "the source code is somewhere else on disk," and a cross-repo request would have either gotten no real fact-check or a silently fabricated one. Both agents' toolsets are local-filesystem-only (no clone/fetch capability), so the fix is explicit: identify same-repo vs. cross-repo up front, thread the SAME source-repo checkout path to both `tech-writer` (originally D1, now D2) and the reviewer (originally D3, now D5), and surface — never silently paper over — the case where no such checkout exists.*
-*Procedure Version: 1.0 — the on-demand documentation-request workflow, extracted from the always-resident CLAUDE.md so it loads only when a documentation request fires. How docs are written well lives in docs-writer + standard-documentation; this skill is the orchestration procedure.*

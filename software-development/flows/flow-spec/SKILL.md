@@ -141,6 +141,3 @@ Omit the "Approved by" line entirely while `status` is `draft`. Render "Decision
 - **The spec is a durable, committed artifact, not conversational context** — every pair is briefed with a path, never a paraphrase (§4, §5).
 - **Never paste the spec verbatim into a dispatch prompt** — path + hint only (§5).
 - **Never price the review** — the gate asks about the contract's correctness, never tokens or time (§3).
-
----
-*Procedure Version: 1.0 — the cross-repo/multi-tech-pair gate that precedes `flow-implementation`. The panel itself lives in `flow-decision`; the drafting specialist is `software-architect`. The durable-artifact persistence mechanism is script-backed (§4): `spec-create.sh`, `spec-approve.sh`, and `render-md.sh`.*

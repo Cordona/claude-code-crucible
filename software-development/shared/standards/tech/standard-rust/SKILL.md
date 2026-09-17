@@ -102,6 +102,3 @@ When async is in play:
 - Good Rust compiles clean under `#![deny(clippy::all, clippy::pedantic)]` with **zero warnings** in production code.
 - `#[allow(clippy::...)]` is used only with a written justification.
 - Code is `rustfmt`-clean. A defect is clippy warnings, `cargo fmt --check` drift, or an unjustified `#[allow]`.
-
----
-*Standard Version: 1.0 — the shared Rust rubric. Built to by rust-developer (via build-core); reviewed against by rust-reviewer (which owns correctness detection, the unsafe soundness method, and scoring).*

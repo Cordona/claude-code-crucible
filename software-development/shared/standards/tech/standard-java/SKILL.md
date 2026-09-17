@@ -86,6 +86,3 @@ These are language-level framework rules, not app design:
 ## 13. Static-analysis cleanliness
 
 - Code compiles clean under `-Xlint:all`; every `@SuppressWarnings` carries a written justification; SpotBugs / Checkstyle / Error Prone / NullAway findings are defects, not noise.
-
----
-*Standard Version: 1.0 — the shared Java language rubric. Built to by the java-developer (via build-core); reviewed against by the java-reviewer.*

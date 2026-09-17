@@ -77,6 +77,3 @@ Untrusted data (a request, a file, an upstream response, an env value) flows fro
 ## Security consistency
 
 Conform to the project's established security controls (auth pattern, validation/encoding approach, secret handling); new code should not bypass an existing safe pattern. But a genuinely exploitable vulnerability is a vulnerability — project "convention" never launders it.
-
----
-*Standard Version: 1.0 — the shared security rubric, grounded in OWASP Top 10:2025 / ASVS 5.0 / CWE Top 25. Built to by developers (via build-core); reviewed against by lens-security-reviewer. Memory-safety mechanics live in the {tech} pair; security logging in observability.*

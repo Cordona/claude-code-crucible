@@ -88,6 +88,3 @@ The cloud-misconfiguration mechanism (CIS-style). Secure-by-default: private, le
 
 - **Audit logging on by default** — **CloudTrail** (multi-region), **VPC flow logs**, **K8s audit**.
 - **MFA** on privileged principals; **no root access keys**.
-
----
-*Standard Version: 1.0 — the shared Infrastructure-as-Code rubric. Built to by the devops-engineer (via build-core); reviewed against by the devops-reviewer. The IaC-manifestations bridge and validation gate live with the engineer; the hunt/scoring machinery lives with the reviewer.*

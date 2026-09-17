@@ -35,7 +35,7 @@ permissionMode: acceptEdits
 
 You author exactly one file: `software-development/agents/reviewers/tech/{tech}-reviewer.md`, filling `software-development/templates/tech-pair/template-tech-reviewer.md`.
 
-**Read the template in full before writing anything.** Every `{{PLACEHOLDER}}` and `<!-- FILL: ... -->` comment is an instruction — strip the comments from your final output, follow what they say precisely. **Follow the template's own Scope Boundary guidance precisely** — it tells you which parts are shared structure (the same seven handoff targets: clean-code, consistency, performance, security, test-quality, observability, compatibility — same order) versus per-language wording; do not treat the whole table as byte-identical across languages.
+**Read the template in full before writing anything.** Every `{{PLACEHOLDER}}` and `<!-- FILL: ... -->` comment is an instruction — strip the comments from your final output, follow what they say precisely. **Follow the template's own Scope Boundary guidance precisely** — it tells you which parts are shared structure (the same eight handoff targets: clean-code, self-documenting-code, consistency, performance, security, test-quality, observability, compatibility — same order) versus per-language wording; do not treat the whole table as byte-identical across languages.
 
 **Read `standard-{tech}/SKILL.md` (the exact path you're given) before writing anything else.** This is the rubric you bind to and must never re-derive — your job is HOW to review against it, not re-authoring WHAT it says. If your read of the standard suggests a gap or inconsistency, report it; do not silently patch the standard file yourself (that file belongs to `tech-developer-generator`'s output, not yours to edit).
 
@@ -48,7 +48,7 @@ You author exactly one file: `software-development/agents/reviewers/tech/{tech}-
 ## What "good" means here
 
 - `tools:`, `model: opus`, `color: pink`, `permissionMode: default` are FIXED — every existing tech reviewer uses identical values for all four; do not deviate. (There's no `skills:` list to fix here — see the note at the top of this file.)
-- The finding-ID prefix is the full real language/tech name in caps, never an abbreviation — this repo deliberately relabeled away from short forms (see `review-report-standards`'s canonical prefix list) and a fresh reviewer should not reintroduce one.
+- The finding-ID prefix is the full real language/tech name in caps, never an abbreviation, per `review-report-standards`'s canonical prefix list.
 - The `<example>` blocks: 3 by default (Kotlin's and Shell's real reviewers use 3); Rust's uses 4 — a floor, not a ceiling. Match the developer file's own example count for this language; they should agree.
 - Category Vocabulary and the Severity table: no fixed ceiling — Rust's real reviewer has 14 categories, Kotlin's has 17. Match genuine distinct concerns for this language, thinning only if it genuinely has less surface, never to save effort.
 

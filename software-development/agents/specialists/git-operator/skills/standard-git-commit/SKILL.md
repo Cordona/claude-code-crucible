@@ -25,7 +25,7 @@ The **one** definition of a good commit. The `git-operator` authors every commit
 ## Subject line (the header)
 
 - **Imperative mood** — "add", "fix", "refactor", never "added"/"adds"/"fixed". Test: *"If applied, this commit will ___."*
-- **≤ 50 characters target, 72 hard limit** (including the `type(scope):` prefix). Detail belongs in the body, never a longer subject. *(This replaces a "minimum length" rule — a minimum forces padding of good short subjects like `fix(auth): reject expired token`.)*
+- **≤ 50 characters target, 72 hard limit** (including the `type(scope):` prefix). Detail belongs in the body, never a longer subject. *(No minimum length — a minimum would force padding of good short subjects like `fix(auth): reject expired token`.)*
 - **No low-content subjects.** The description MUST name the change specifically — never `fix`, `update`, `wip`, `stuff`, `changes`. This is the quality bar; length is not.
 - **No trailing period.**
 
@@ -86,6 +86,3 @@ Then ask for approval. The user may approve, edit a message, or change the split
 - Never commit into a **detached HEAD** or an in-progress rebase/merge/cherry-pick — confirm HEAD is on a branch and no operation is pending first.
 - Never pad a subject to hit a length, or write a low-content subject.
 - Never rewrite already-published history.
-
----
-*Standard Version: 1.0 — the shared commit rubric. Built to by the git-operator; conventions grounded in Conventional Commits 1.0.0, the DCO, and the Beams/Angular commit canon. Identity resolution lives in procedure-git-identity; branches/PRs/tags in their sibling standards.*

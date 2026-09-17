@@ -14,25 +14,24 @@ its own draft (see "Why this runs outside the agent" below).
 
 ## Why this exists
 
-`standard-documentation`'s Redaction discipline section and `flow-documentation` both used to say a
-"genuinely independent, orchestrator-run mechanical gate — one `tech-writer` itself cannot skip or
-misjudge — remains an open TODO." Two things drove that TODO, and this skill closes both at once,
-because they are the same kind of problem — deterministic pattern/structure checks against a markdown
-file:
+A genuinely independent, orchestrator-run mechanical gate matters because two problems otherwise go
+unaddressed, and both are the same kind of problem — deterministic pattern/structure checks against a
+markdown file that must not be self-administered by the file's own author:
 
-1. **No script enforced documentation structure or format at all.** Only an LLM self-check checklist
-   existed (`standard-documentation`'s Excellence checklist, run by `tech-writer` on itself) — freeform,
-   not checkable, and not run by anything outside the authoring agent.
-2. **Redaction enforcement had a real, named gap.** `tech-writer`'s own `Grep` pattern scan (ticket IDs,
-   local paths) is real, but it is self-administered — the same agent that might paraphrase a leaking
-   source document is the one deciding whether its own draft still leaks. An agent can skip a step under
-   pressure or misjudge a borderline case; a script run by a different party cannot.
+1. **Documentation structure and format need a script, not just self-checking.** An LLM self-check
+   checklist alone (`standard-documentation`'s Excellence checklist, run by `tech-writer` on itself) is
+   freeform, not checkable, and not run by anything outside the authoring agent.
+2. **Redaction enforcement needs a check outside the authoring agent.** `tech-writer`'s own `Grep`
+   pattern scan (ticket IDs, local paths) is real, but it is self-administered — the same agent that
+   might paraphrase a leaking source document is the one deciding whether its own draft still leaks. An
+   agent can skip a step under pressure or misjudge a borderline case; a script run by a different party
+   cannot.
 
 ## Why this runs outside the agent (not as another `tech-writer` self-check step)
 
 The whole point of a mechanical gate is that it does not trust the agent it is checking. If `tech-writer`
 ran `doc-lint.sh` on its own draft, a skipped or misjudged run would look identical to a clean one — the
-exact failure mode the TODO existed to close. The **orchestrator** invokes this script, on the file path
+exact failure mode this design exists to prevent. The **orchestrator** invokes this script, on the file path
 `tech-writer` reports back, as a step the agent cannot see, skip, or influence.
 
 ## The script (`$HOME/.claude/skills/procedure-doc-lint/scripts/doc-lint.sh`)
@@ -56,20 +55,19 @@ $HOME/.claude/skills/procedure-doc-lint/scripts/doc-lint.sh --file PATH \
 | `BARE_FENCE` | A code fence (` ``` `) opened with no language tag | Fence-state tracking: an opening ` ``` ` line with nothing (or only whitespace) after it |
 | `TICKET_ID` | A ticket/issue-ID-shaped identifier | Pattern `[A-Z]{2,}-[0-9]+`, **excluding an allowlisted prefix** (below) |
 | `LOCAL_PATH` | An absolute local filesystem path | Patterns `/Users/`, `/home/`, `C:\Users\` |
-| `SINGLE_ITEM_LIST` | A bulleted or numbered list with exactly one item | Block-boundary tracking: a run of list-marker lines, closed only by a hard break (plain column-0 text), not by a blank line or an indented continuation |
+| `SINGLE_ITEM_LIST` | A bulleted or numbered list with exactly one item | Block-boundary tracking: a run of list-marker lines, closed by a hard break (plain column-0 text), a marker-kind change, or EOF — never by a blank line or an indented continuation |
 
 Fenced code-block content is excluded from list-structure detection (a `- like this` line inside an
 example code block is not a real list). The `TICKET_ID` and `LOCAL_PATH` checks deliberately **never
 echo the matched text back into the report** — only the location — so the report itself never re-leaks
 what it flags.
 
-**The `TICKET_ID` allowlist (root cause + fix for a real false-positive defect).** The bare pattern
+**The `TICKET_ID` allowlist.** The bare pattern
 `[A-Z]{2,}-[0-9]+` matches a real ticket ID (`COTE-1543`) but also matches ordinary, correct technical
 vocabulary that shares its shape — `UTF-8`, `SHA-256`, `RFC-2119`, `ISO-8601`, `AES-256`, an `ES256`-style
-algorithm name, and more. Confirmed by direct execution: a one-line file reading "The API uses UTF-8
-encoding and SHA-256 hashes, per RFC-2119 and ISO-8601 timestamps." used to get flagged as a ticket-ID
-violation — on a MANDATORY gating check, that made the gate actively harmful, since a doc that correctly
-mentions a standard could never pass without lying about content. The script now extracts each match's
+algorithm name, and more. Flagging every such match unconditionally would make a MANDATORY gating check
+actively harmful, since a doc that correctly mentions a standard could never pass without lying about
+content. The script instead extracts each match's
 **prefix** (the letters before the hyphen) and flags a line only when at least one match's prefix is
 **not** on an allowlist. A line that mixes a real ticket ID with a standard mention (e.g. `"COTE-1543, per
 RFC-2119"`) is still flagged — only the standard mention is excused, never the whole line.
@@ -136,7 +134,8 @@ helpers). Unlike `procedure-git-ops`, there is no stub-vs-real split here — `d
 processing (no git, no network, no mutation), so every test runs the **real** script against a real
 fixture file in `tests/fixtures/` (one clean fixture, one per violation type, two more for the
 `TICKET_ID` allowlist specifically — one proving known standard prefixes never false-positive, one
-proving a real ticket ID still triggers even alongside a standard mention — plus ad-hoc cases for
+proving a real ticket ID still triggers even alongside a standard mention — one for the
+adjacent-marker-change edge of `SINGLE_ITEM_LIST`'s block-boundary tracking, plus ad-hoc cases for
 fence/list edge conditions and the `--allow-ticket-prefixes` flag) and is a full proof of behavior, not a
 stand-in for one.
 
@@ -157,58 +156,3 @@ dash tests/run-tests.sh            # also runs green under dash
   location only, per the script's own design.
 - **Never treat this as covering person-name redaction** — it does not, and does not claim to.
 - **Never modify the linted file** — this script (and this procedure) is report-only.
-
----
-*Procedure Version: 1.3 — fixed a confirmed logic bug in the `SINGLE_ITEM_LIST` check's block-boundary
-detection in `doc-lint.sh`. **Root cause:** the awk pass tracked only whether a trimmed line was
-list-item-shaped, never whether consecutive list-item lines actually belonged to the SAME CommonMark
-list — so two adjacent, genuinely distinct single-item lists with no blank line between them (a bullet
-marker change, e.g. `- item A` immediately followed by `* item B`; or a bullet-to-ordered transition,
-e.g. `- item A` immediately followed by `1. item B`) merged into one two-item block and neither was ever
-flagged, even though each is independently a single-item list under CommonMark (a marker-character
-change or an ordered/unordered transition starts a new list). **Fix:** the pass now also tracks the
-marker KIND per list-item line (the bullet character `-`/`*`/`+`, or a fixed `ORDERED` tag for `N.`
-items) and treats a kind change between two consecutive list-item lines as the prior block closing and a
-new one opening, not a continuation — closing (and flagging, if it was single-item) the outgoing block
-before starting the new one. A first implementation attempt read the marker via awk's `RSTART`/`RLENGTH`
-after the `is_indented` line's own `match()` call had already silently overwritten them for a non-indented
-line — the marker extraction now happens immediately after the `is_item` match, before any other `match()`
-call can clobber those built-ins. Added a new fixture (`adjacent-single-item-lists.md`, covering both the
-marker-change and bullet-to-ordered cases with no blank line between pairs) plus new `run-tests.sh` cases
-proving both example inputs from the bug report are now correctly flagged (exactly right violation
-count/lines), and a should-NOT-regress case confirming a genuine multi-item list with a consistent marker
-(`- a` / `- b` / `- c`) still reports zero violations. All 66 pre-existing checks plus 16 new ones (82
-total) pass under both `sh` and `dash`; `shellcheck -s sh` stays clean on both `doc-lint.sh` and
-`run-tests.sh`.*
-*Procedure Version: 1.2 — a final comprehensive review found this file's own body described the gate as
-running "before any fact-check or PR step," reading as if `flow-documentation` has a PR step of its own
-— it doesn't (D1–D8 has no PR step; that lifecycle belongs to `flow-git-operations`, a separate flow).
-Reworded to cite `flow-documentation`'s actual Step D6 by name, and to state plainly that a downstream
-PR/MR (if the effort ever reaches one) is a different flow's mechanics, not this procedure's.*
-*Procedure Version: 1.1 — two fixes from a third, deeper independent review round. (1) **Root cause: the
-`TICKET_ID` check's bare pattern `[A-Z]{2,}-[0-9]+` false-positived on ordinary, correct technical
-vocabulary** — `UTF-8`, `SHA-256`, `RFC-2119`, `ISO-8601`, `AES-256`, and similar standard/algorithm
-names all share the ticket-ID shape, so a MANDATORY gating check was actively harmful: a document that
-correctly mentioned a standard could never lint clean without lying about content. Confirmed by direct
-execution against a one-line fixture. Fixed in `doc-lint.sh` by extracting each match's prefix and
-flagging a line only when a match's prefix is not on a new allowlist — a living list (mirroring this
-repo's own `deploy/hub/lib/hub-discovery.sh` `HUB_COLOR_KNOWN_LIST` shape), documented above, plus a new
-`--allow-ticket-prefixes` flag for a per-invocation domain-specific extension. Added two new fixtures
-(`ticket-id-allowlist-clean.md`, `ticket-id-not-allowlisted.md`) and new `run-tests.sh` cases proving both
-the false-positive fix and that a real ticket-ID-shaped string with an unlisted prefix (`COTE-1543`,
-`PROJ-99`) — including one mixed on the same line as an allowlisted mention — still correctly triggers,
-plus a case for the new flag. (2) **Corrected two stale step-number citations** — "Step D5's fact-check"
-(How the orchestrator uses this section) and "proceed to Step D5's fact-check" (Constraints) both
-pre-dated `flow-documentation`'s v1.2 renumbering: Step D5 IS this gate itself, and the fact-check/
-reviewer dispatch is Step D6. Both now correctly cite Step D6, with the surrounding prose clarified that
-D5 and D6 are two distinct, sequential steps — and this section now states explicitly that `flow-
-documentation`'s Step D8 fix loop re-runs this gate (Step D5) against every revised draft, not only the
-first pass.*
-*Procedure Version: 1.0 — closes two related findings against the tech-writer pipeline at once, since
-they are the same kind of problem (deterministic pattern/structure checks against a markdown file):
-(1) no script enforced documentation structure/format — only an LLM self-check checklist existed; (2)
-the still-open half of an older redaction finding — `standard-documentation`'s Redaction discipline
-section and `flow-documentation` both named a genuinely independent, orchestrator-run mechanical gate as
-an open TODO. `doc-lint.sh` is that gate: bare-fence, ticket-ID, local-path, and single-item-list checks,
-run by the orchestrator against `tech-writer`'s draft, before the fact-check/reviewer step, never by
-`tech-writer` on itself.*

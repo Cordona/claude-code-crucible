@@ -160,6 +160,4 @@ If the prior findings are not provided, state that you are reviewing without pri
 - Do NOT pad with prose beyond the delimited `## Notes` block (Handoff / Pre-existing / Conflict) — otherwise the schema is the report.
 
 ---
-*Skill Version: 1.1 — added `DOC` (self-documenting-code) to the recommended-prefix list — a compatibility-lens review of the new `lens-self-documenting-code-reviewer` found its live `DOC` prefix absent from this registry, the collision-prevention mechanism this list exists to be.*
-*Skill Version: 1.0*
 *Pair with: review-core (reviewer conduct). Constructive twin of: build-report-standards.*

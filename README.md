@@ -178,7 +178,7 @@ its full option reference.
 
 | Menu screen | Command |
 |---|---|
-| *(no Main-menu row any more †)* | `crucible status` |
+| *(no Main-menu row †)* | `crucible status` |
 | List | `crucible list` |
 | Doctor | `crucible doctor` |
 | Accounts | `crucible accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
@@ -187,8 +187,8 @@ its full option reference.
 | Uninstall | `crucible uninstall --components=CSV --apply` |
 | Uninstall all | `crucible uninstall --all --apply --confirm=UNINSTALL` |
 
-† `Status` was folded into Doctor and dropped from the interactive Main menu, but it survives as
-this standalone, agent-friendly subcommand.
+† `Status` has no interactive Main-menu screen of its own — its reporting lives inside Doctor — but
+it is still available as this standalone, agent-friendly subcommand.
 
 Shared options: `--target DIR` (deployed config dir, default `$HOME/.claude`), `--source DIR`
 (framework root to scan, default this tree), `--format=text|env|json` (`accounts` accepts only
@@ -291,13 +291,12 @@ their costs differ wildly and shouldn't all be paid on every build:
    the tests — never the developer that wrote the code under test — and `lens-test-quality-reviewer`
    verifies them.
 
-**Nothing here fires from repository state.** An earlier design keyed the full review swarm off
-`git status`, which is exactly how a misjudged cross-repo build could burn hours and millions of
-tokens polishing the wrong implementation before a human got a cheap look at it. The one surviving
-state-based check is the **commit gate**: before any commit, it asks whether step 2's correctness
-floor has actually closed for the diff — not merely that step 2 ran, since a live-validated and
-tested build can still have its reviewer pending — and won't assume either answer if unsure. A
-question, not a swarm.
+**Nothing here fires from repository state.** Keying the full review swarm off `git status` would
+let a misjudged cross-repo build get fully polished — and tested — before a human ever got a cheap
+look at it. The one state-based check is the **commit gate**: before any commit, it asks whether
+step 2's correctness floor has actually closed for the diff — not merely that step 2 ran, since a
+live-validated and tested build can still have its reviewer pending — and won't assume either
+answer if unsure. A question, not a swarm.
 
 ---
 

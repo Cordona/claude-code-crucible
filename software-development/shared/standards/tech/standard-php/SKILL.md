@@ -56,6 +56,3 @@ This skill defines **WHAT good looks like**. It does NOT contain: the builder's 
 - **Relationship loading** — eager-load relations that are used (the *correctness* twin of the N+1 *performance* problem); never access a lazy relation after the entity manager / connection is closed (`LazyInitialization`-style bugs).
 - **Transaction boundaries** — wrap multi-write operations in a single transaction; do not rely on incorrect nesting assumptions.
 - **Persistence & identity map** — flush/persist dirty state before it is expected to be durable; account for identity-map behavior (the same row returns the same instance) rather than being surprised by it.
-
----
-*Standard Version: 1.0 — the shared PHP rubric. Built to by the php-developer (via build-core); reviewed against by the php-reviewer. Generic security lives in standard-security; clean-code, performance, testing, and observability in their own standards.*

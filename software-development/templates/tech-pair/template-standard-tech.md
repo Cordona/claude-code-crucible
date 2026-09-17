@@ -55,6 +55,3 @@ between 8 and 14 titled sections (## headings), roughly this shape:
 ## <!-- FILL: section 1 title -->
 
 <!-- FILL -->
-
----
-*Standard Version: 1.0 — the shared {{Tech}} rubric. Built to by the {{tech}}-developer (via build-core); reviewed against by the {{tech}}-reviewer.*

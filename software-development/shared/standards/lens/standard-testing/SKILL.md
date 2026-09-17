@@ -120,7 +120,3 @@ Test code is real code — hold it to the same structural bar, with test-aware t
 ## Consistency with the project
 
 Match the project's **established test conventions** (framework, assertion style, location/naming, base-class/helper hierarchy, fixture layout, how external dependencies are handled). Where the project consistently and deliberately tests otherwise, its convention is the local norm — but a convention that is simply wrong (e.g. pervasive false-confidence tests) is still a defect, not a standard to preserve.
-
----
-*Standard Version: 1.1 — a consumer question found all 9 developer agents (the 8 `{tech}-developer`s plus `devops-engineer`) bound this skill despite being absolutely banned (`build-core`'s Constraints) from ever authoring a test file. Every section here (§1–10) is test-authoring guidance; none of it is "how to make code testable," and that guidance was never actually missing for them — it already lives in `build-core`'s Builder Role and Implementation Workflow. Removed the "developers build to it" framing (description, Overview, this footer) in favor of naming `tests-developer` specifically, and removed this skill from all 9 developer agents' bindings, the tech-pair generation template, and `flow-implementation`'s Direct-implementation step. Only `tests-developer` and `lens-test-quality-reviewer` bind this skill now.*
-*Standard Version: 1.0 — the shared testing rubric. Built to by developers (via build-core); reviewed against by lens-test-quality-reviewer.*
