@@ -351,8 +351,11 @@ judge against) and `templates/` (never deployed).
 **Software Development** carries the correctness floor and the quality lenses, and the difference
 matters. A `{tech}`-reviewer owns correctness for its stack and runs on **every** build. The nine
 `lens-*` reviewers — clean-code, self-documenting-code, security, performance, observability,
-test-quality, consistency, persistence, compatibility — are language-agnostic and run **only** when a human asks for a review
-pass. Test authoring is separate again: `tests-developer` is tech-agnostic, and
+test-quality, consistency, persistence, compatibility — are language-agnostic. Eight of the nine
+run **only** when a human asks for a discretionary review pass; `lens-test-quality-reviewer` is the
+one exception — it's `flow-testing`'s own fixed, mandatory seat, not a discretionary lens, and runs
+whenever tests are authored, with no review-pass request needed. Test authoring is separate again:
+`tests-developer` is tech-agnostic, and
 [`build-core`](./software-development/shared/build-core) structurally forbids a `{tech}`-developer
 from touching a test file at all.
 

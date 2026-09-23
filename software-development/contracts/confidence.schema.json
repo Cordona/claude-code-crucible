@@ -2,6 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/confidence.schema.json",
   "title": "Confidence",
-  "description": "The ONE stated-confidence scale shared by every advocate, step-verifier, and arbiter payload in the external-review pattern, so a stated confidence means the same thing everywhere. This file defines the value domain ONLY; the SEMANTICS (when a payload must state it, what governs the call) live in flow-external-review + the standard-judging constitution. Referenced by co-located schemas via {\"$ref\": \"confidence.schema.json\"}.",
+  "description": "The ONE stated-confidence scale shared by every advocate, step-verifier, and arbiter payload in the external-review pattern, so a stated confidence means the same thing everywhere. This file defines the value domain ONLY. For the arbiter's use, the SEMANTICS (what governs the call) live in the standard-judging constitution. The advocate's and step-verifier's own use of this field is currently just a structural requirement, with no further governing rule stated elsewhere. Referenced by co-located schemas via {\"$ref\": \"confidence.schema.json\"}.",
   "enum": ["high", "medium", "low"]
 }

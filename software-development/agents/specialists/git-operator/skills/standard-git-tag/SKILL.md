@@ -9,13 +9,13 @@ The **one** definition of a good release tag. Releases are cut from **tags**, so
 
 ## The tag
 
-- **Annotated + signed.** `git tag -s vX.Y.Z -m "…"` — an annotated tag object carries tagger/date/message and is signed (same backend as commit signing via `gpg.format` — GPG or SSH). Verify with `git tag -v vX.Y.Z` before publishing. Set `tag.gpgsign true` so signing is automatic.
+- **Annotated + signed.** `git tag -s vX.Y.Z -m "…"` — an annotated tag object carries tagger/date/message and is signed (same backend as commit signing via `gpg.format` — GPG, GNU Privacy Guard, or SSH, Secure Shell). `procedure-git-identity` resolves and confirms the signing identity before this happens — this skill does not do that itself. Verify with `git tag -v vX.Y.Z` before publishing. Set `tag.gpgsign true` so signing is automatic.
 - **Never a lightweight tag for a release** — lightweight tags carry no metadata or signature.
 - **SemVer name** — `vMAJOR.MINOR.PATCH` (e.g. `v2.4.1`).
 
 ## Versioning — Conventional Commits → SemVer
 
-Public versions follow **Semantic Versioning 2.0.0**, derived from the commit history:
+Public versions follow **Semantic Versioning 2.0.0**, derived from the commit history. The commit-type vocabulary below (`fix:`, `feat:`, `BREAKING CHANGE:`) is `standard-git-commit`'s own — this skill only maps it onto a version bump, it does not redefine it:
 - `fix:` → **PATCH**
 - `feat:` → **MINOR**
 - any **`BREAKING CHANGE:` / `!`** (regardless of type) → **MAJOR**
@@ -31,12 +31,14 @@ Maintain human-facing release notes (never a raw `git log` dump):
 ## Release automation (optional)
 
 The payoff of the commit conventions. Choose per appetite:
-- **release-please** (PR-gated) — accrues changes in a Release PR; on merge it bumps SemVer, updates the changelog, and cuts the tag + GitHub Release. A human still merges the PR — the **culturally-consistent default** for this human-gated, ticket-driven standard. (`release-please` itself is GitHub-Actions-specific; on GitLab the same shape — a Release MR, merged by a human, cutting the tag + a GitLab Release — is typically wired through GitLab CI rather than this exact tool.)
+- **release-please** (PR-gated) — accrues changes in a Release PR; on merge it bumps SemVer, updates the changelog, and cuts the tag + GitHub Release. A human still merges the PR — the **culturally-consistent default** for this human-gated, ticket-driven standard. (`release-please` itself is GitHub-Actions-specific; on GitLab the same shape — a Release MR (merge request), merged by a human, cutting the tag + a GitLab Release — is typically wired through GitLab CI (Continuous Integration) rather than this exact tool.)
 - **semantic-release** (zero-gate) — fully automatic on merge to the release branch, including publish. Reach for it only if you want hands-off continuous publishing.
+
+**This entire section describes CI tooling the human adopts as a project-level policy choice, made once, up front — never a bypass of this skill's own Constraints below.** Recommending or wiring up `semantic-release` moves the *actor* that cuts/publishes future tags from this agent to the project's own CI pipeline; it does not authorize THIS agent to cut or publish a tag without the explicit, per-tag, in-conversation authorization the Constraints section requires. Every tag this agent itself cuts or publishes is still gated exactly as stated there, with no exception for having previously recommended zero-gate automation.
 
 ## Release prep — the optimized build runs HERE, once
 
-**Before cutting the tag, run the project's optimized/production build** — `cargo build --release`, `npm run build`, or the language's equivalent — and STOP if it fails. This is deliberately *not* a per-change developer gate (`build-core`): the optimized profile catches a narrow, real class of defect that the debug/dev build cannot — integer overflow **wraps** instead of panicking, optimization can expose UB in unsafe code, and bundlers only fail at production build time. That is worth one run at the release boundary and not ~50 s on every implementation round.
+**Before cutting the tag, run the project's optimized/production build** — `cargo build --release`, `npm run build`, or the language's equivalent — and STOP if it fails. This is deliberately *not* a per-change developer gate (`build-core`): the optimized profile catches a narrow, real class of defect that the debug/dev build cannot — integer overflow **wraps** instead of panicking, optimization can expose UB (undefined behavior) in unsafe code, and bundlers only fail at production build time. That is worth one run at the release boundary and not ~50 s on every implementation round.
 
 The tag is the right owner because it is the moment the artifact becomes public and immutable. A release-prep gate attached to nothing is a gate nobody runs — and a check that never executes is worse than no check, because it reads as coverage.
 

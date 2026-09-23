@@ -9,7 +9,7 @@
   "properties": {
     "schema_version": {
       "description": "Contract version. Pinned so a consumer can detect a shape change.",
-      "const": "1.0"
+      "const": "1.1"
     },
     "reviewer": {
       "description": "The reviewer/lens name (e.g. \"lens-clean-code-reviewer\", \"kotlin-reviewer\").",
@@ -37,6 +37,11 @@
     "findings": {
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
+    },
+    "conventions_profile": {
+      "description": "OPTIONAL. A reusable summary of this codebase's own conventions. Which reviewers use this field, and its reuse behavior, are owned by review-report-standards.",
+      "type": "string",
+      "minLength": 1
     }
   },
   "$defs": {
@@ -46,7 +51,7 @@
       "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
-          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. PREFIX = the reviewer tag (CLEAN, DOC, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS, or the reviewer's full language/tech name e.g. RUST, JAVA, KOTLIN, PHP, REACT, SHELL, DEVOPS).",
+          "description": "Stable, reviewer-prefixed identifier; ID stability (assignment/reuse/renumbering) is owned by review-report-standards. PREFIX = the reviewer's own declared tag (non-exhaustive examples: CLEAN, DOC, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS; tech reviewers use their distinguishing word, e.g. RUST, JAVA, KOTLIN, PHP, REACT, PYTHON, SHELL, DEVOPS, CLOUDFLARE) — see review-report-standards for the derivation rule; each reviewer's own body is authoritative.",
           "type": "string",
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },
@@ -83,7 +88,7 @@
   },
   "examples": [
     {
-      "schema_version": "1.0",
+      "schema_version": "1.1",
       "reviewer": "lens-clean-code-reviewer",
       "target": ["src/order/"],
       "round": 2,

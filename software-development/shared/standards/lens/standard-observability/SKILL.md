@@ -1,15 +1,15 @@
 ---
 name: standard-observability
-description: The single rubric for observable code that developers BUILD to and the observability lens REVIEWS against, covering logs, metrics, traces, and PII/secrets handling in logs. Applies whenever code runs in production (services, jobs, handlers, CLIs), in any language. Does NOT define builder workflow (`build-core`), the reviewer's gate procedure/severity/vocabulary (the lens itself), or broad data protection beyond logs (`standard-security`).
+description: The single rubric for observable code that developers BUILD to and the observability lens REVIEWS against, covering logs, metrics, traces, auditability, and PII/secrets handling in logs. Applies whenever code runs in production (services, jobs, handlers, CLIs), in any language. Does NOT define builder workflow (`build-core`), the lens's own pillar-applicability gate procedure/convention-profiling method/category vocabulary (genuinely lens-observability-reviewer's own), the base severity scale/false-positive discipline (review-core / review-report-standards), the concrete logging/metrics library and its API (the `{tech}` pair), or broad data protection beyond logs (`standard-security`).
 ---
 
 # Standard: Observability
 
 The **one** definition of observable code — instrumented so operators can see what it's doing, built in as you write, not bolted on after an incident. Developers build to it; the `lens-observability-reviewer` judges against it. Both bind this single skill, so there is no daylight between how we build and how we review.
 
-Grounded in **OpenTelemetry**, **W3C Trace Context**, **Google SRE** (RED/USE, Four Golden Signals), **OWASP**, **GDPR**, and **12-factor**. Framework-agnostic — names (SLF4J, structlog, slog/zap, pino, OTel) are illustrative; map them to the target's stack.
+Grounded in **OpenTelemetry**, **W3C Trace Context**, **Google SRE** (**RED** — Rate/Errors/Duration; **USE** — Utilization/Saturation/Errors; Four Golden Signals), **OWASP**, **GDPR**, and **12-factor**. Framework-agnostic — names (SLF4J, structlog, slog/zap, pino, OTel) are illustrative; map them to the target's stack.
 
-This skill defines **WHAT good looks like**. It does NOT contain: the builder's workflow (`build-core`); the reviewer's machinery (the pillar-applicability *gate procedure*, convention-profiling *method*, severity, `category` vocabulary, false-positive guards — those live in the lens); or broad data protection beyond logs (security).
+This skill defines **WHAT good looks like**. It does NOT contain: the builder's workflow (`build-core`); the lens's own pillar-applicability *gate procedure*, convention-profiling *method*, and `category` vocabulary (genuinely `lens-observability-reviewer`'s own); the base severity scale, and universal finding-quality/false-positive discipline (`review-core` / `review-report-standards` — the lens only maps its own categories onto that scale); the concrete logging/metrics library and its API (the `{tech}` pair — SLF4J vs. structlog vs. slog is a language choice, not a rule this skill states); or broad data protection beyond logs (`standard-security`).
 
 ## Instrument by shape (scope it right)
 
@@ -31,7 +31,7 @@ Instrument **where it matters** — request paths, background jobs, integration 
 - **Allow-list fields — never dump a whole object/payload/body/entity/response.** A blanket dump smuggles in secrets + PII and bloats volume.
 - **PII:** minimize (prefer an opaque id/pseudonym); mask/hash/pseudonymize special-category data; keep the salt out of the log stream. PII inherits **GDPR** retention (Art. 5(1)(e)) + right-to-erasure (Art. 17) — do not write PII to indefinite/immutable stores.
 - **Neutralize log injection:** never write untrusted input to a log line without stripping/escaping newlines (CR/LF) and control characters — otherwise an attacker can forge or split log entries.
-- Logging **must not crash the app**, and must not leak secrets via raw exception/stack traces.
+- Logging **must not crash the app** (scrubbing secrets from exceptions/stack traces is Logs — Error & Exception's rule below).
 
 ## Logs — Signal & Levels
 
@@ -48,13 +48,13 @@ Instrument **where it matters** — request paths, background jobs, integration 
 ## Logs — Error & Exception
 
 - **Log-or-throw, never both** — `log(e); throw e;` double-reports up the layers. Either handle-and-log, or throw with context for a handler above to log. No silent swallow (catch with neither log nor rethrow).
-- Log an exception **once**, at the right level, with **context + the identifiers needed to act + the cause/stack**, then propagate or handle.
+- Log an exception **once** — at the layer that terminates handling, never at a layer that also rethrows it (per the log-or-throw rule above) — at the right level, with **context + the identifiers needed to act + the cause/stack**.
 - **Scrub** secrets/PII from exception messages and stack traces before they reach logs.
 
 ## Logs — Performance & Cost
 
 - **Guard/lazy-evaluate expensive log arguments** — parameterized logging still evaluates its arguments; wrap costly serialization in a level check or lazy closure so it costs nothing when the level is disabled.
-- No huge payloads / whole collections — truncate/summarize/log counts + ids.
+- **Bound what you log** — truncate/summarize a large field or collection (log a count + ids, not the contents), even when it's already been through the allow-list above and carries no privacy concern; size alone is a cost problem.
 - Async/non-blocking appenders on hot paths.
 - **12-factor:** write the event stream to **stdout/stderr**; the app must not own log-file paths, rotation, or shipping — let the platform route it.
 - **Sampling** controls cost — but **never sample away errors or audit events**; sample verbose INFO/DEBUG.
@@ -64,7 +64,7 @@ Instrument **where it matters** — request paths, background jobs, integration 
 
 Log via a **facade / the project's logging abstraction**, not a concrete framework wired through business code (SLF4J↔Logback; slog `Logger`/`Handler`). No competing frameworks; obtain a **named per-module logger**.
 
-## Metrics *(where the shape requires them)*
+## Metrics (where the shape requires them)
 
 - **RED** for request-driven work (Rate, Errors, Duration) + Four Golden Signals; **USE** for resources (Utilization, Saturation, Errors of pools/queues/caches).
 - **Correct instrument:** Counter (monotonic), UpDownCounter (rises/falls), Gauge (point-in-time), **Histogram/distribution** for latency/size (not an average or gauge, so p95/p99 survive aggregation); separate success vs error latency.
@@ -72,17 +72,17 @@ Log via a **facade / the project's logging abstraction**, not a concrete framewo
 - **Naming & units:** a consistent namespaced, semantic-convention name (`orders.placed.count`) and an explicit **base unit** (seconds not milliseconds, bytes) — wrong units silently break dashboards and cross-service aggregation.
 - Remove **dead metrics** (not on any dashboard/alert).
 
-## Traces / Spans *(where the shape requires them)*
+## Traces / Spans (where the shape requires them)
 
 - **Propagate W3C trace context** (`traceparent`/`tracestate`) across every service hop AND async/message boundary; use standard propagators, not homegrown ids.
 - **Span quality:** low-cardinality span names (`GET /users/{id}`, never raw ids); set **span status = Error** + record the exception on failure; correct **span kind** (Client/Server/Producer/Consumer); one span per meaningful unit of work (no span-per-loop-iteration, no childless mega-span); reuse **semantic-convention** attribute names. Span the meaningful boundaries (external calls, DB queries, significant work) — not every trivial call.
 - **Resource / service identity:** all telemetry carries `service.name`, `service.version`, `deployment.environment` — without them signals can't be attributed or correlated across services.
 
-## Auditability
+## Auditability (security & compliance events)
 
 - **Security-relevant events must be present:** authentication (success/failure/lockout), authorization/access-control failures, privilege changes, input-validation failures, session lifecycle. Absence on a security path is a defect. Record **who, what, when, outcome** — enough to reconstruct the event, without leaking the sensitive payload (log a rule/identifier, not the raw malicious payload).
 - **Audit records:** separated from debug logs, tamper-evident, with synchronized/authoritative timestamps and bounded retention.
 
-## Consistency
+## Observability consistency
 
-Use the **project's existing logging/metrics facade and conventions** — the same field names, level policy, correlation mechanism, and metric/trace setup as its neighbors. Don't introduce a second logging style.
+Use the **project's existing logging/metrics facade and conventions** — the same field names, level policy, correlation mechanism, and metric/trace setup as its neighbors. Don't introduce a second logging style. But a genuine gap against this standard — leaked PII/secrets, a missing security-relevant audit event, silent under-instrumentation — is a defect regardless of project convention; conformance never launders it.

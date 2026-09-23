@@ -7,6 +7,8 @@ description: The procedure the git-operator runs to find, open, and edit GitHub 
 
 The **one** way the `git-operator` talks to `gh` for PR discovery, creation, and editing. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `gh pr create`/`gh pr edit` invocation, and never build a PR body in shell. Sibling to `procedure-gh-issues` — a different domain, but same conventions, same injection-safety rule, same test-harness style. **`procedure-glab-mr` is this skill's true backend twin** — the same three operations (find/create/update) on GitLab merge requests instead of GitHub pull requests, same injection-safety RULE, a different MECHANISM where `glab` lacks a flag `gh` has (no `--description-file`; see that skill's own header for why).
 
+**PR body/title craft is `standard-git-pr`, unchanged** — the same rubric `procedure-glab-mr` uses for MR bodies, so there is no GH-specific variant to duplicate here.
+
 ## Why this exists (read this before calling anything)
 
 A PR body built via `--body "$(cat <<'EOF' … EOF)"` is the same **command-injection sink** `procedure-gh-issues` exists to eliminate: a PR body commonly pulls in real repo content (a diff summary, commit messages, linked issue text), and a lone line matching the heredoc's closing delimiter ends it early and executes what follows as shell. The fix is the same structural one: **the PR body is ALWAYS a file, passed via `--body-file <path>`.** The agent `Write`s the drafted body to a file first, then hands the path to `create-pr.sh`/`update-pr.sh` — neither script has a `--body` flag at all.
@@ -15,7 +17,7 @@ A PR body built via `--body "$(cat <<'EOF' … EOF)"` is the same **command-inje
 
 ## The three scripts (`$HOME/.claude/skills/procedure-gh-pr/scripts/` — all portable & deterministic)
 
-**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gh-pr/scripts/<name>`.** Never a bare `scripts/<name>` (that resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the calling agent runs, so it will not resolve there. All three are POSIX `sh`, run on any machine (macOS BSD / Bash 3.2 + Linux), `shellcheck`-clean, and deterministic.
+**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gh-pr/scripts/<name>`.** Never a bare `scripts/<name>` (that resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the calling agent runs, so it will not resolve there. All three are POSIX (Portable Operating System Interface) `sh`, run on any machine (macOS BSD, Berkeley Software Distribution, / Bash 3.2 + Linux), `shellcheck`-clean, and deterministic.
 
 ### The shared library (`lib/gh-pr-common.sh`)
 

@@ -1,11 +1,18 @@
 ---
 name: standard-git-pr
-description: The single rubric for an excellent pull-request (GitHub) or merge-request (GitLab) body/title. Bind whenever a PR/MR is opened or its body/title is edited, to write or judge that content. Does NOT define PR mechanics (procedure-gh-pr), MR mechanics (procedure-glab-mr), either account gate (procedure-github-auth / procedure-gitlab-auth), or backlog-artifact craft (that's the project-manager's standard-backlog-artifacts, not this).
+description: The single rubric for an excellent pull-request (PR, GitHub) or merge-request (MR, GitLab) body/title. Bind whenever a PR/MR is opened or its body/title is edited, to write or judge that content. Does NOT define PR mechanics (procedure-gh-pr), MR mechanics (procedure-glab-mr), either account gate (procedure-github-auth / procedure-gitlab-auth), or backlog-artifact craft (that's the project-manager's standard-backlog-artifacts, not this).
 ---
 
 # Standard: Git PR/MR Bodies
 
 The **one** definition of an excellent pull-request (GitHub) or merge-request (GitLab) body. The `git-operator` builds every PR and every MR to it — the same rubric, no backend-specific variant. A PR/MR body's job is to help a reviewer *review* — not to restate the diff, and not to perform the audience-tuning a backlog artifact needs (a PR/MR's audience is fixed).
+
+## What this does NOT cover
+
+- PR mechanics (opening, updating, the actual git/API calls) → `procedure-gh-pr`.
+- MR mechanics, same shape on GitLab → `procedure-glab-mr`.
+- Either platform's account gate → `procedure-github-auth` (GitHub) / `procedure-gitlab-auth` (GitLab).
+- Backlog-artifact craft (issues, tickets, epics — a different audience-tuning problem) → the project-manager's `standard-backlog-artifacts`.
 
 ## Shape (What / Why / How-to-test / risk / link)
 

@@ -1,6 +1,6 @@
 ---
 name: review-boundaries
-description: Decides which lens scores a finding two lenses could both claim. Bind alongside review-core and review-report-standards whenever a lens reviewer runs as part of a swarm. Does NOT define reviewer conduct (review-core), report format/severity (review-report-standards), or what good looks like in a domain (the standard-* rubrics).
+description: Decides which lens scores a finding two lenses could both claim. Bind alongside review-core and review-report-standards whenever a lens reviewer runs as part of a swarm. Does NOT define reviewer conduct (review-core), report format/severity (review-report-standards), what good looks like in a domain (the standard-* rubrics), or whether a lens gets a seat at all (the orchestrator, via flow-review §3).
 ---
 
 # Review Boundaries — the lens ownership map
@@ -19,50 +19,50 @@ When the table below gives a territory to another lens: **do not score it.** Put
 
 ## Contested territories
 
-| Territory | Owner | Everyone else |
-|-----------|-------|---------------|
-| **Access patterns against a durable store** — N+1, over-fetch, unbounded reads, unsafe pagination, projection | `lens-persistence` — it judges through the store's **actual guarantees**; the same query is a defect on one engine and correct on another | `lens-performance` defers |
-| **Access patterns touching NO store** — N+1 over an HTTP client, in-memory work-in-loop, quadratic algorithms, chatty I/O to a non-store peer | `lens-performance` | `lens-persistence` defers |
-| **A migration's DATA/store axis** — backfill correctness, lock/rewrite cost, the destructive-op guard, old+new coexistence for **the application's own code** (incl. its own rolling deploy) | `lens-persistence` | `lens-compatibility` defers |
-| **A migration's CONSUMER axis** — a dropped/renamed/retyped column that breaks a reader **outside this change**: a downstream service, another team, a published contract | `lens-compatibility` | `lens-persistence` defers |
-| **Code correctness** — wrong or inverted conditions, dropped/unhandled errors, arithmetic and overflow, exhaustiveness, boundary and error-path completeness, contract adherence | **the `{tech}`-reviewer** | **EVERY lens defers.** No lens is the correctness floor, including one whose own domain contains the word "correctness" (`lens-persistence` owns *data*-layer correctness — a different axis, never a substitute) |
-| **Comments, docstrings, and naming-as-documentation** — is a specific comment/docstring redundant, disproportionate, duplicated, or a required one missing; OR does a name (a variable, a magic literal with no named constant) fail to carry the meaning that would otherwise force a comment — in ANY file, production or test | `lens-self-documenting-code` — the one lens with jurisdiction over this territory regardless of file type | `lens-clean-code` defers (production files); `lens-test-quality` should defer (test files) — neither scores a comment/docstring/naming/magic-literal finding even on a file it otherwise reviews for structure. **Not yet wired:** `lens-test-quality-reviewer` does not currently bind this skill, so its own deferral here is prose, not yet enforced from its side. |
-| **Whether a test reads as behavioral documentation** — does the test's own structure/naming communicate the behavior under test, independent of any comment | `lens-test-quality` — this is "tests-as-documentation," a test-structure concern, not a comment-proportionality one | `lens-self-documenting-code` defers — it judges individual comments/docstrings, not whether a test's own structure documents behavior |
+| Territory | Owner | Everyone else | Why / tie-breaker |
+|-----------|-------|----------------|--------------------|
+| **Access patterns against a durable store** — N+1, over-fetch, unbounded reads, unsafe pagination, projection | `lens-persistence-reviewer` | `lens-performance-reviewer` defers | Persistence judges through the store's **actual guarantees** — the same query is a defect on one engine and correct on another. |
+| **Access patterns touching NO store** — N+1 over an HTTP client, in-memory work-in-loop, quadratic algorithms, chatty I/O to a non-store peer | `lens-performance-reviewer` | `lens-persistence-reviewer` defers | No store guarantees are in play; this is plain algorithmic/access-pattern cost. |
+| **A migration's DATA/store axis** — backfill correctness, lock/rewrite cost, the destructive-op guard, old+new coexistence for **the application's own code** (incl. its own rolling deploy) | `lens-persistence-reviewer` | `lens-compatibility-reviewer` defers | The data-safety-of-the-migration-itself question, independent of who else reads the result. |
+| **A migration's CONSUMER axis** — a dropped/renamed/retyped column that breaks a reader **outside this change**: a downstream service, another team, a published contract | `lens-compatibility-reviewer` | `lens-persistence-reviewer` defers | Whether an external reader breaks is a contract-stability question, not a data-safety one. |
+| **Code correctness** — wrong or inverted conditions, dropped/unhandled errors, arithmetic and overflow, exhaustiveness, boundary and error-path completeness, contract adherence | the `{tech}`-reviewer | **EVERY lens defers** | No lens is the correctness floor, including one whose own domain contains the word "correctness" (`lens-persistence-reviewer` owns *data*-layer correctness — a different axis, never a substitute). |
+| **Comments, docstrings, and naming-as-documentation** — is a specific comment/docstring redundant, disproportionate, duplicated, or a required one missing; OR does a name (a variable, a magic literal with no named constant) fail to carry the meaning that would otherwise force a comment — in ANY file, production or test | `lens-self-documenting-code-reviewer` | `lens-clean-code-reviewer` defers (production files); `lens-test-quality-reviewer` defers (test files) | The one lens with jurisdiction over this territory regardless of file type — neither peer scores a comment/docstring/naming/magic-literal finding even on a file it otherwise reviews for structure. |
+| **Tests-as-documentation** — whether a test's own structure/naming communicates the behavior under test, independent of any comment | `lens-test-quality-reviewer` | `lens-self-documenting-code-reviewer` defers | A test-structure concern, not a comment-proportionality one — the test's own identifier/structure, not any individual comment's content. |
 
-**The two migration rows are a partition, not an overlap:** "the app's own code" and "a reader outside this change" are disjoint and together total. If you cannot tell which side a reader falls on, it is outside — hand it to `lens-compatibility`.
+**The two migration rows above are a partition, not an overlap:** "the app's own code" and "a reader outside this change" are disjoint and together total. If you cannot tell which side a reader falls on, it is outside — hand it to `lens-compatibility-reviewer`.
 
-**The two comment/documentation rows are a partition too, with a stated tie-breaker:** an individual comment or docstring's own content (redundant, disproportionate, duplicated, missing) is the comments/docstrings row's; a test's own identifier or structure communicating behavior, independent of any comment, is the tests-as-documentation row's. A test method's NAME is the recurring ambiguous case — it is naming, which the comments/docstrings row claims, but it is also how a test documents its own behavior, which the tests-as-documentation row claims. **If you cannot tell which side it falls on, it is the tests-as-documentation row's** (test-structure, not comment-proportionality) — this mirrors the migration pair's own "if you cannot tell, hand it to the CONSUMER-axis owner" fallback above.
+**The comments/docstrings row and the tests-as-documentation row overlap by construction — resolved by a tie-breaker, not by disjointness.** A test method's **NAME** is the recurring ambiguous case: it is naming, which the comments/docstrings row claims, but it is also how a test documents its own behavior, which the tests-as-documentation row claims. **If you cannot tell which side it falls on, it is the tests-as-documentation row's** — this mirrors the migration pair's own cannot-tell fallback, here applied to an overlap instead of a partition.
 
 ## Rule: not on the roster → disclose, never silently cover
 
 The orchestrator may seat the owning lens or may not. **You never silently absorb a territory you deferred.**
 
 - Owner **is** seated → defer silently. It has it.
-- Owner is **NOT** seated → still do not score it. Say so in your `## Notes`: *"`lens-persistence` was not on this roster; the store access patterns in `repo.kt:88` are unreviewed."*
+- Owner is **NOT** seated → still do not score it. Say so in your `## Notes` as an **Unreviewed territory** line (per `review-report-standards`): *"`lens-persistence-reviewer` was not on this roster; the store access patterns in `repo.kt:88` are unreviewed."*
 
-**Why not just cover it yourself?** Because the depth is not equivalent, and a finding filed by the wrong lens carries false authority. `lens-performance` grading a store query without the store's guarantees produces a confident guess. A stated gap is honest and the human can seat the lens. A silently-covered gap looks identical to real coverage — and coverage that only looks real is the defect this framework exists to prevent.
+**Why not just cover it yourself?** Because the depth is not equivalent, and a finding filed by the wrong lens carries false authority. `lens-performance-reviewer` grading a store query without the store's guarantees produces a confident guess. A stated gap is honest and the human can seat the lens. A silently-covered gap looks identical to real coverage — and coverage that only looks real is the defect this framework exists to prevent.
 
 ## Rule: your bound `standard-*` is NOT narrowed by this table
 
-Your domain rubric may name territory this table gives to someone else. `standard-performance`, for instance, names SQL N+1 as a scaling rule — and `lens-persistence` owns SQL N+1 in a swarm. **That is not a contradiction, and you must not read it as one.**
+Your domain rubric may name territory this table gives to someone else. `standard-performance`, for instance, names SQL N+1 as a scaling rule — and `lens-persistence-reviewer` owns SQL N+1 in a swarm.
 
 - The **`standard-*`** says *what good code looks like*. **Developers bind it too**, and they must build all of it. It is not scoped to the swarm and must never be narrowed to match this table.
 - **This table** says *who scores a deviation when a swarm reviews*. It is a routing rule among reviewers, nothing more.
 
 So: judge against your full standard, then **file only what you own**, and hand off the rest.
 
-## What this skill does NOT cover
+## What This Skill Does NOT Cover
 
 - Reviewer conduct, diff scope, finding quality, the handoff mechanism → `review-core`.
 - Report format, finding schema, stable IDs, the severity scale → `review-report-standards`.
 - What good looks like in a domain → the matching `standard-*`.
-- Whether a lens gets a **seat** at all → the orchestrator, from each lens's declared Applicability (`flow-review` §3) — it reads **descriptions only** and cannot follow a pointer into this skill. So: **a territory's owner MUST advertise that territory in its own description.** Moving a row in this table is therefore never just a scoring change — if the new owner's description doesn't already cover it, the territory becomes unseatable and nobody reviews it.
+- Whether a lens gets a **seat** at all → the orchestrator, from each lens's declared Applicability (`flow-review` §3) — it reads **descriptions only** and cannot follow a pointer into this skill. So: **a territory's owner MUST advertise that territory in its own description.** Moving a row in this table is therefore never just a scoring change — if the new owner's description doesn't already cover it, the territory becomes unseatable and nobody reviews it. (The correctness-floor row is the one exception to how this rule is *applied*, not to the rule itself: its owner, the `{tech}`-reviewer, is seated by `flow-implementation`, not by `flow-review`'s Applicability pass — but it still must advertise the territory, since nothing else confirms the seat is real.)
 
-## Constraints (NEVER violate)
+## Constraints (NEVER Violate)
 
 - Do NOT score a territory this table assigns elsewhere — hand it off.
 - Do NOT silently cover a deferred territory when its owner is absent — disclose it in `## Notes`.
-- Do NOT paraphrase this table into your own body. Bind it. A copy drifts.
+- Do NOT paraphrase this table into your own **body**. Bind it. A copy drifts. (The description's advertisement this skill's own "does NOT cover" section requires is not a paraphrase of this table — it names the territory, not the routing logic; body text still cites this skill rather than restating the table's criteria.)
 - Do NOT treat a conflict between this table and your `standard-*` as a contradiction — the standard defines the bar, this table routes the finding.
 
 ---

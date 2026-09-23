@@ -1,17 +1,17 @@
 ---
 name: standard-kotlin
-description: The single rubric for idiomatic, correct Kotlin — what the kotlin-developer BUILDS to and the kotlin-reviewer REVIEWS against. Applies whenever Kotlin code is written, changed, or reviewed. Does NOT define builder workflow (build-core), the reviewer's method/severity/category vocabulary (kotlin-reviewer), or the build/report envelopes (build-report-standards / review-report-standards).
+description: The single definition of idiomatic, correct Kotlin — the shared language rubric that the kotlin-developer BUILDS to and the kotlin-reviewer REVIEWS against. Applies whenever Kotlin code is written, changed, or reviewed (Spring Boot, Ktor, Android, JVM coroutine-based services). Defines null safety, data modeling & immutability, coroutines & structured concurrency, Flow, idioms, Java interop, JVM micro-performance, Spring/JPA framework notes, and static-analysis discipline. This is WHAT good Kotlin looks like; it does not define builder workflow (build-core), the reviewer's own correctness-detective method, category vocabulary, and scope-boundary table (genuinely kotlin-reviewer's own), the base severity scale/handoff mechanism, and universal finding-quality/false-positive discipline (review-core / review-report-standards), or the build/report envelopes (build-report-standards / review-report-standards).
 ---
 
 # Standard: Kotlin
 
 The **one** definition of what good, correct Kotlin looks like. The `kotlin-developer` builds to it; the `kotlin-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we write Kotlin and how we review it — a rule changed here moves both sides at once.
 
-This skill defines **WHAT good looks like** — the idioms to reach for and the traps to avoid. It is **NOT a Kotlin tutorial**: assume fluent Kotlin, and encode only the non-default priorities and easy-to-miss pitfalls. It deliberately does NOT contain: the builder's workflow (`build-core`) or the reviewer's machinery — the correctness-detective method, scope-boundary/handoff, severity, and `category` vocabulary live with the `kotlin-reviewer`; report envelopes live in `build-report-standards` / `review-report-standards`.
+This skill defines **WHAT good looks like** — the idioms to reach for and the traps to avoid. It is **NOT a Kotlin tutorial**: assume fluent Kotlin, and encode only the non-default priorities and easy-to-miss pitfalls. It deliberately does NOT contain: the builder's workflow (`build-core`); the reviewer's correctness-detective method, `category` vocabulary, and its own scope-boundary table (genuinely `kotlin-reviewer`'s own); or the base severity scale, the handoff mechanism, and universal finding-quality/false-positive discipline (`review-core` / `review-report-standards` — `kotlin-reviewer` only maps its own categories onto that scale). Report envelopes live in `build-report-standards` / `review-report-standards`.
 
 Assume **Kotlin 2.0 / JVM 21** unless the project states otherwise.
 
-## Null Safety
+## 1. Null Safety
 
 - Non-nullable by default; `T?` **only** when null is semantically meaningful.
 - **NEVER `!!`** — use `requireNotNull(x) { "…" }`, `?.let`, `?: return` / `?: throw`; prefer `firstOrNull` / `getOrNull` over `first` / `[ ]`.
@@ -19,7 +19,7 @@ Assume **Kotlin 2.0 / JVM 21** unless the project states otherwise.
 - **Treat platform types from Java interop as nullable** — validate at the boundary; they are dangerous because the compiler will not force a null check.
 - Prefer `as?` (safe cast) over `as`; a `lateinit` read before initialization throws.
 
-## Data Modeling & Immutability
+## 2. Data Modeling & Immutability
 
 - `data class` for value objects; `sealed class` / `sealed interface` for state machines / results → drive an **exhaustive `when`** (prefer `when` as an *expression* so the compiler enforces exhaustiveness; an `else` can silently swallow a newly-added variant).
 - **`val` over `var`, always**; immutable `List` / `Map` by default, mutable only when genuinely required; do not expose `MutableList` / mutable state.
@@ -28,7 +28,7 @@ Assume **Kotlin 2.0 / JVM 21** unless the project states otherwise.
 - `equals` / `hashCode` with an `Array` field or a mutable field is a contract trap — `Array` uses reference equality (use `contentEquals` / a `List`), and a mutable field breaks the hashCode-stability contract once the object is in a hash structure.
 - `kotlinx.serialization`: register sealed / polymorphic subtypes; `encodeDefaults` is **off** by default (default values are not emitted) — enable it when the consumer needs them.
 
-## Coroutines & Structured Concurrency
+## 3. Coroutines & Structured Concurrency
 
 - **Structured concurrency only — never `GlobalScope`** (it leaks work past the enclosing lifecycle). `coroutineScope` for parallel decomposition; `supervisorScope` when a child failure must NOT cancel its siblings. `async` / `await` for parallel results, `launch` for supervised fire-and-forget.
 - **Exception propagation:** exceptions in `launch` propagate to the parent immediately. A **root** `async` defers its exception to `await`, but a **child** `async` inside a plain `coroutineScope` still **cancels the parent immediately on failure** — do not wave a child-`async` failure through as "handled at `await`."
@@ -37,30 +37,32 @@ Assume **Kotlin 2.0 / JVM 21** unless the project states otherwise.
 - **No `runBlocking` in production request / suspend paths or inside an existing coroutine** — it blocks a thread and can deadlock or starve the pool; bridge with a proper scope instead.
 - Wrap network / IO in `withTimeout` where a hang is possible.
 
-## Flow
+## 4. Flow
 
 - `Flow` for cold streams — `flowOn` to shift the upstream dispatcher, `catch` for upstream errors, backpressure via `buffer` / `conflate`; collect on the correct dispatcher.
 - `StateFlow` / `SharedFlow` for hot streams — set **`replay` / `onBufferOverflow` deliberately**. A misconfigured buffer means a suspending emitter or silently-dropped events, both of which are bugs.
 
-## Idioms
+## 5. Idioms
 
 - Scope functions (`let` / `run` / `apply` / `also` / `with`) — pick the right one for the intent, and **nest ≤1 deep**.
 - **Extension functions** for domain behavior — not to reach private state.
 - **Kotlin properties**, not Java-style getters / setters; avoid needless `companion` statics.
+- **`@DslMarker`** on a builder's receiver type to prevent an outer receiver's members leaking into a nested lambda scope — a DSL builder without it is an implicit-receiver-collision defect, not a style nit.
+- **Kotlin Multiplatform `expect`/`actual`** — a platform-specific implementation must honor the `expect` declaration's contract exactly (signature, nullability, documented behavior); no platform-only leak into `commonMain`.
 
-## Java Interop (when exposed to Java)
+## 6. Java Interop (when exposed to Java)
 
 - `@JvmStatic` / `@JvmOverloads` / `@Throws` for Java-friendly APIs.
-- Treat incoming platform types as nullable — stricter null checks at the interop boundary.
+- Platform-type nullability at the interop boundary is Null Safety's rule above, not restated here.
 
-## Kotlin/JVM Micro-Performance (language-level)
+## 7. Kotlin/JVM Micro-Performance (language-level)
 
 - Avoid primitive boxing in hot paths (`Int?` and boxed generics box); avoid needless `toList()` / `toMutableList()` copies; use `asSequence()` for large / multi-stage chains; add `inline` on hot lambda-taking functions.
 
-## Framework Notes (Spring / JPA with Kotlin)
+## 8. Framework Notes (Spring / JPA with Kotlin)
 
 - Enable the **`kotlin-spring` (all-open)** and **`kotlin-jpa` (no-arg)** compiler plugins — Kotlin classes are `final` with no no-arg constructor, which otherwise breaks CGLIB proxies and JPA entities.
 
-## Static Analysis
+## 9. Static Analysis
 
 - Compile with `-Werror`; no unjustified `@Suppress`. Honor `detekt` / `ktlint`.

@@ -1,13 +1,13 @@
 ---
 name: standard-clean-code
-description: The single rubric for structurally clean code, bound by developers and the clean-code lens reviewer alike. Applies whenever non-trivial code — production or test — is written, changed, or reviewed in any language. Defines WHAT good structure looks like — SRP, small flat functions, DRY, low coupling, design for extension, no dead code, file layout. Does NOT define naming/comments/docstrings (standard-self-documenting-code), builder workflow (build-core), review scoring/severity (the lens), performance (standard-performance), or language-specific idioms (the tech pair).
+description: The single rubric for structurally clean code, bound by developers and the clean-code lens reviewer alike. Applies whenever non-trivial PRODUCTION code is written, changed, or reviewed in any language — test code follows the equivalent, test-aware bar in `standard-testing` §9, not this skill directly. Defines WHAT good structure looks like — SRP (Single Responsibility Principle), small flat functions, DRY, low coupling, design for extension, no dead code, file layout. Grounded in SOLID, DRY/YAGNI, and the Law of Demeter. Does NOT define naming/comments/docstrings (standard-self-documenting-code), builder workflow (build-core), the lens's own category vocabulary (genuinely lens-clean-code-reviewer's own), the base severity scale/false-positive discipline (review-core / review-report-standards), performance (standard-performance), or language-specific idioms (the `{tech}` pair).
 ---
 
 # Standard: Clean Code
 
-The **one** definition of structurally clean code. Developers build to it for both production and test code; `lens-clean-code-reviewer` judges against it too, but only on production files — it hands off every test file to `lens-test-quality-reviewer` (comment/docstring discipline is a separate concern either way, entirely owned by `standard-self-documenting-code`). Both bind this single skill, so there is no daylight between how we build and how we review — a rule changed here moves both sides at once. **The RUBRIC applies uniformly to production and test code** — there is no separate, looser structural bar for tests; it is only the reviewing agent's own scope that is production-only, not this standard's content.
+The **one** definition of structurally clean code for **production** code. Developers build to it; `lens-clean-code-reviewer` judges against it — the test-file/comment-and-docstring routing is `review-boundaries`'s own table; bind it, don't re-derive it here. Both build-side and production review-side bind this single skill, so there is no daylight between how we build and how we review production code — a rule changed here moves both sides at once. **Test code is held to the same structural bar in spirit** — no looser tolerance for SRP/DRY/dead-code violations — but that bar is `standard-testing` §9's own, test-aware restatement of these principles, not literally this skill: `lens-test-quality-reviewer` binds `standard-testing`, not `standard-clean-code`. Changing a rule here does not automatically move the test-side bar; keep the two in sync by hand if a structural principle changes.
 
-This skill defines **WHAT good structure looks like**. It does NOT contain: naming, comments, or docstrings (`standard-self-documenting-code` — the felt need for a comment is itself the signal this standard's own SRP/extraction rules exist to resolve); the builder's workflow (`build-core`); the reviewer's scoring machinery (severity, `category` vocabulary, false-positive guards — those live in the lens); **performance** (its own `standard-performance`); or **language-specific idioms** (memory safety, async, framework conventions, per-language layout — the `{tech}` developer/reviewer).
+This skill defines **WHAT good structure looks like**. It does NOT contain: naming, comments, or docstrings (`standard-self-documenting-code` — the felt need for a comment is itself the signal this standard's own SRP/extraction rules exist to resolve); the builder's workflow (`build-core`); the lens's own `category` vocabulary (genuinely `lens-clean-code-reviewer`'s own); the base severity scale, and universal finding-quality/false-positive discipline (`review-core` / `review-report-standards` — the lens only maps its own categories onto that scale); **performance** (its own `standard-performance`); or **language-specific idioms** (memory safety, async, framework conventions, per-language layout — the `{tech}` developer/reviewer).
 
 ## Small & Flat
 
@@ -56,7 +56,11 @@ This is a readability **default, not an absolute**: where a language's semantics
 
 These principles pull against each other; a good judgment names the trade-off:
 - **DRY vs YAGNI** — no abstraction below 2+ real present use cases (above).
-- **KISS vs Open/Closed** — no extension seam for a variation that doesn't exist yet.
+- **KISS vs Open/Closed** — no seam for a variation that doesn't exist yet (above).
 - **Decomposition vs flow** — extract to *name a concept* or *remove duplication*, not merely to hit a line count.
 
-Judge by concrete harm: if you cannot name the harm a structure causes (a change made harder, a bug hidden, a test blocked), it is clean enough — clarity is the goal, not principle-compliance for its own sake.
+Judge by concrete harm — this repo's general false-positive discipline (`review-core` / `review-report-standards`), applied to structure specifically and not restated in full here. Clarity is the goal, not principle-compliance for its own sake.
+
+## Clean Code consistency
+
+Use the **project's existing structural conventions** — its own module boundaries, its own tolerance for function length and file size, its own abstraction layer names. Don't impose a foreign architecture. But a genuine SOLID/DRY/coupling violation with a nameable harm is a defect regardless of project convention; conformance never launders it.

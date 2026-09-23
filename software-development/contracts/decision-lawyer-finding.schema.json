@@ -31,7 +31,7 @@
         },
         "severity": { "$ref": "severity.schema.json" },
         "evidence": {
-          "description": "A `file:line` (or `file:start-end`) site grounding the claim in the actual artifact, per the verify-against-the-code mandate.",
+          "description": "A `file:line` (or `file:start-end`) site grounding the claim in the actual artifact.",
           "type": "string",
           "minLength": 1
         },

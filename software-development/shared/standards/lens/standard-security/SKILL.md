@@ -1,6 +1,6 @@
 ---
 name: standard-security
-description: The single rubric for secure code — what developers BUILD to and the security lens REVIEWS against. Applies whenever code handles untrusted input, auth, secrets, queries, crypto, external calls, deserialization, or privileged operations, in any language. Does NOT define builder workflow (build-core), reviewer conduct (the lens), language memory-safety mechanics (the {tech} pair), or security logging (observability).
+description: The single rubric for secure code — defines WHAT good code looks like: what developers BUILD to and the security lens REVIEWS against. Applies whenever code handles untrusted input, auth, secrets, queries, crypto, external calls, deserialization, or privileged operations, in any language. Does NOT define builder workflow (build-core), the lens's own threat-surface gate procedure/taint-trace method/category vocabulary (genuinely lens-security-reviewer's own), the base severity scale/false-positive discipline (review-core / review-report-standards), language memory-safety mechanics (the `{tech}` pair), or security logging (observability).
 ---
 
 # Standard: Security
@@ -9,7 +9,7 @@ The **one** definition of secure code. Developers build to it (security in from 
 
 Grounded in **OWASP Top 10:2025**, **ASVS 5.0**, and the **CWE Top 25**. Reason in **categories** — the weakness class is portable; the manifestation adapts to the target's stack. Assurance scales with exposure (ASVS **L1** = every app · **L2** = auth/PII/payments · **L3** = high-assurance: finance/health/infra).
 
-This skill defines **WHAT good looks like**. It does NOT contain: the builder's workflow (`build-core`); the reviewer's machinery (the threat-surface *gate procedure*, the taint-*trace* steps, severity, `category` vocabulary, false-positive guards — those live in the lens); **language memory-safety mechanics** (buffer overflow, use-after-free — the `{tech}` pair); or **security logging / audit** (observability).
+This skill defines **WHAT good looks like**. It does NOT contain: the builder's workflow (`build-core`); the lens's own threat-surface *gate procedure*, taint-*trace* steps, and `category` vocabulary (genuinely `lens-security-reviewer`'s own); the base severity scale, and universal finding-quality/false-positive discipline (`review-core` / `review-report-standards` — the lens only maps its own categories onto that scale); **language memory-safety mechanics** (buffer overflow, use-after-free — the `{tech}` pair); or **security logging / audit** (observability).
 
 ## Think in taint (the model)
 
@@ -22,7 +22,7 @@ Untrusted data (a request, a file, an upstream response, an env value) flows fro
 - **Validate untrusted input at every boundary** — API endpoints, form input, file uploads, message consumers, external-service responses, config loading. Prefer **allow-lists** (known-good shapes) over deny-lists; enforce type, range, length, format; reject early with a guard clause; validate **server-side** (never trust client checks alone) (CWE-20).
 - **Least privilege** — request and grant the minimum scope/permission needed, everywhere (identities, tokens, file modes, IAM, DB grants).
 - **Never roll your own crypto** — use vetted standard-library primitives.
-- **Fail secure** — deny by default; an exception in a security check must never fall through to "allowed."
+- **Fail secure** — deny by default (the exception-path variant, "a security check that defaults to ALLOW on error," is A10's rule below, not restated here).
 
 ## The control set (by OWASP Top 10:2025 category, with CWE anchors)
 
@@ -33,31 +33,9 @@ Untrusted data (a request, a file, an upstream response, an env value) flows fro
 - **SSRF** — for any server-side fetch of a user-controlled URL: **host allow-list**, block internal/link-local/metadata ranges (`169.254.169.254`, `127/8`, `10/8`, `172.16/12`, `192.168/16`, `::1`), restrict scheme, no redirect-follow (CWE-918).
 - **Open redirect** — never redirect/forward to a user-supplied target without an allow-list (CWE-601): phishing, OAuth token theft.
 
-### A05 — Injection
-- **Parameterized queries / prepared statements ALWAYS** — never build SQL/NoSQL/LDAP/XPath by concatenation/interpolation with untrusted input (CWE-89).
-- **No untrusted input to a shell/eval** — avoid dynamic command execution; if unavoidable, pass command and args **separately as an array**, never a concatenated shell string (CWE-78).
-- **Contextual output encoding** — encode/escape data for its *output* context (HTML body/attribute, JS, URL) to neutralize XSS at the sink (CWE-79); watch `innerHTML`, `dangerouslySetInnerHTML`, disabled auto-escape, `| raw`/`| safe`.
-- **No `eval` / dynamic code / template injection** on request data (CWE-94 / SSTI).
-- **XXE** — disable external-entity and DTD processing in XML parsers (CWE-611): file read, SSRF, RCE.
-
-### A08 — Software & Data Integrity / Deserialization
-- **Never deserialize untrusted data into arbitrary types** → RCE (CWE-502): Java `ObjectInputStream`/`readObject`, Python `pickle`/`yaml.load`, PHP `unserialize`, .NET `BinaryFormatter`, Ruby `Marshal.load`, JS prototype pollution.
-- **Verify integrity** — artifacts/plugins/auto-updates loaded only with signature/checksum verification.
-
-### A04 — Cryptographic Failures
-- **Vetted primitives only** — no MD5/SHA-1 for security, no DES/RC4/ECB, no home-grown crypto.
-- **Password hashing:** strong adaptive algorithm — prefer **Argon2id** (scrypt/bcrypt/PBKDF2 as alternatives; bcrypt only for legacy or ≤72-byte constraints). Never fast/unsalted hashes.
-- **Randomness & keys:** a **CSPRNG** for tokens/IDs/secrets (never `Math.random`/`rand`); no hardcoded/static keys or IVs, no reused nonces; authenticated encryption for data.
-- **Transport:** require TLS; **never disable certificate verification** (`verify=false`, `InsecureSkipVerify`, trust-all managers) outside a controlled test. No sensitive data in plaintext.
-
-### A07 — Authentication & Session
-- **Sessions:** issue a fresh session/token on login and on privilege change; set an expiry; invalidate on logout. **Never place a session token in a URL.**
-- **Token validation:** for JWTs/signed tokens verify the signature, reject `alg:none` and algorithm-confusion, and check `exp`/`iss`/`aud`. Never trust an unverified token's claims.
-- **Anti-automation:** lockout/backoff on repeated failed logins; MFA where risk warrants (expected at L2+).
-
 ### A02 — Security Misconfiguration + Secrets
 - **Secrets:** never hardcode secrets/keys/credentials/connection strings in source or committed config (CWE-798) — load from env or a secret manager (Vault, cloud secret store). Never pass a secret on a command line (visible in `ps`); never commit one. *(If found in git history: revoke + rotate. Secrets in **logs** → observability.)*
-- **No verbose exposure in production** — no debug errors, stack traces, or directory listing reachable in prod.
+- **No verbose exposure in production** — no debug mode or directory listing reachable in prod (leaking stack traces in an error *response* is A10's rule below).
 - **Web surface:** no permissive CORS (`*` with credentials, or reflected origin); set the standard security headers; session cookies carry `Secure`, `HttpOnly`, and an appropriate `SameSite`.
 - **Least-privilege config:** no `chmod 777` / wildcard IAM / public buckets / run-as-root; no default accounts/ports left enabled.
 
@@ -66,9 +44,33 @@ Untrusted data (a request, a file, an upstream response, an env value) flows fro
 - **Scan** — recommend SCA in CI (`npm/pip/cargo audit`, `govulncheck`, OWASP Dependency-Check) + an SBOM; the transitive CVE tree is a scanner's job, not eyeballing.
 - **CI hygiene** — no unpinned external scripts/actions (`curl | bash`, unpinned action SHAs).
 
+### A04 — Cryptographic Failures
+- **Vetted primitives only** — no MD5/SHA-1 for security, no DES/RC4/ECB, no home-grown crypto.
+- **Password hashing:** strong adaptive algorithm — prefer **Argon2id** (scrypt/bcrypt/PBKDF2 as alternatives; bcrypt only for legacy or ≤72-byte constraints). Never fast/unsalted hashes.
+- **Randomness & keys:** a **CSPRNG** for tokens/IDs/secrets (never `Math.random`/`rand`); no reused or predictable IVs/nonces — generate a fresh CSPRNG IV per message; authenticated encryption for data. (Hardcoding a static *key* is A02 Secrets' rule above — a key is a secret; an IV is not, but a reused/predictable one is its own distinct defect, CWE-329/323.)
+- **Transport:** require TLS; **never disable certificate verification** (`verify=false`, `InsecureSkipVerify`, trust-all managers) outside a controlled test. No sensitive data in plaintext.
+
+### A05 — Injection
+- **Parameterized queries / prepared statements ALWAYS** — never build SQL/NoSQL/LDAP/XPath by concatenation/interpolation with untrusted input (CWE-89).
+- **No untrusted input to a shell/eval** — avoid dynamic command execution; if unavoidable, pass command and args **separately as an array**, never a concatenated shell string (CWE-78).
+- **Contextual output encoding** — encode/escape data for its *output* context (HTML body/attribute, JS, URL) to neutralize XSS at the sink (CWE-79); watch `innerHTML`, `dangerouslySetInnerHTML`, disabled auto-escape, `| raw`/`| safe`.
+- **No `eval` / dynamic code / template injection** on request data (CWE-94 / SSTI).
+- **XXE** — disable external-entity and DTD processing in XML parsers (CWE-611): file read, SSRF, RCE.
+
 ### A06 — Insecure Design
-- **Rate-limit / anti-automation** on security-sensitive flows (login, OTP, password-reset, payment, token issuance) and expensive/abusable endpoints.
-- **Fail closed, server-side** — business rules (limits, ownership, workflow state) enforced on the server, never only client-side; the design must fail closed, not open.
+- **Rate-limit / anti-automation** on security-sensitive flows (login, OTP, password-reset, payment, token issuance) and expensive/abusable endpoints — including **per-account lockout or exponential backoff on repeated failed logins**, not IP rate-limiting alone (an IP limit alone doesn't stop distributed credential stuffing).
+- **Fail closed, server-side, at design time** — business rules (limits, ownership, workflow state) enforced on the server, never only client-side; the design must fail closed, not open. (A runtime exception defaulting to ALLOW is A10's rule below — a distinct failure mode from a design that never enforced the rule server-side at all.)
+
+### A07 — Authentication & Session
+- **Sessions:** issue a fresh session/token on login and on privilege change; set an expiry; invalidate on logout. **Never place a session token in a URL.**
+- **Token validation:** for JWTs/signed tokens verify the signature, reject `alg:none` and algorithm-confusion, and check `exp`/`iss`/`aud`. Never trust an unverified token's claims.
+- **MFA** where risk warrants (expected at L2+) — the login lockout/backoff itself is A06's anti-automation rule above, not restated here.
+
+### A08 — Software & Data Integrity / Deserialization
+- **Never deserialize untrusted data into arbitrary types** → RCE (CWE-502): Java `ObjectInputStream`/`readObject`, Python `pickle`/`yaml.load`, PHP `unserialize`, .NET `BinaryFormatter`, Ruby `Marshal.load`, JS prototype pollution.
+- **Verify integrity** — artifacts/plugins/auto-updates loaded only with signature/checksum verification.
+
+### A09 — Logging & Alerting Failures — intentionally NOT covered here; owned by the observability lens (see the frontmatter's exclusion).
 
 ### A10 — Mishandling of Exceptional Conditions (security aspect)
 - **Fail closed on error** — a security check that defaults to ALLOW on exception/timeout (authz lookup throws → access granted) is a vulnerability; require fail-closed.

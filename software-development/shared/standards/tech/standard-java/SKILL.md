@@ -1,26 +1,22 @@
 ---
 name: standard-java
-description: The single definition of idiomatic, modern Java — the shared language rubric java-developer and java-reviewer bind. Applies whenever Java code is written, changed, or reviewed. It does NOT define builder workflow/validation (java-developer), reviewer scoring/correctness-detective framing (java-reviewer), or the universal concern rubrics (standard-clean-code/-security/-testing/-observability/-performance).
+description: The single definition of idiomatic, modern Java — the shared language rubric java-developer BUILDS to and java-reviewer REVIEWS against. Applies whenever Java code is written, changed, or reviewed (Spring Boot, Micronaut, Quarkus, Jakarta EE, virtual threads). Defines modern language constructs, null safety, immutability, equals/hashCode/ordering contracts, concurrency, streams/collections, generics, exception/resource handling, type safety, framework idioms, JVM micro-performance, and static-analysis cleanliness. This is WHAT good Java looks like; it does NOT define the builder's workflow (build-core) or its own validation-gate specifics (java-developer), the reviewer's own category vocabulary and correctness-detective framing and scope-boundary table (genuinely java-reviewer's own), the base severity scale/handoff mechanism (review-core / review-report-standards), the universal concern rubrics (standard-clean-code/-self-documenting-code/-observability/-performance/-security/-persistence), or the build/report envelopes (build-report-standards / review-report-standards).
 ---
 
 # Standard: Java
 
 The **one** definition of idiomatic, modern Java. The `java-developer` builds to it; the `java-reviewer` judges against it. Because both bind this single skill, there is no daylight between how we write Java and how we review it — a rule changed here moves both sides at once.
 
-This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** — assume fluent Java; it encodes only the non-default priorities and easy-to-miss traps. It deliberately does NOT contain:
-
-- the **builder's workflow and validation gate** (compile/lint/test/build commands) — that is the `java-developer`;
-- the **reviewer's scoring machinery** — severity, `category` vocabulary, scope-boundary/handoff, and the generic correctness-and-logic detective framing — that lives in the `java-reviewer`;
-- the **universal concern rubrics** — `standard-clean-code`, `standard-security`, `standard-observability`, `standard-performance` (this skill covers only what is *language-level* Java).
+This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** — assume fluent Java; it encodes only the non-default priorities and easy-to-miss traps. It deliberately does NOT contain: the builder's own workflow (`build-core`) or its validation-gate specifics — the compile/lint/test/build commands (`java-developer`); the reviewer's `category` vocabulary, correctness-detective framing, and its own scope-boundary table (genuinely `java-reviewer`'s own) or the base severity scale and handoff mechanism (`review-core` / `review-report-standards` — `java-reviewer` only maps its own categories onto that scale); the universal concern rubrics — `standard-clean-code`, `standard-self-documenting-code`, `standard-observability`, `standard-performance`, `standard-security`, `standard-persistence` (this skill covers only what is *language-level* Java); or the build/report envelopes (`build-report-standards` / `review-report-standards`).
 
 **Baseline:** assume **Java 21 LTS** unless told otherwise. Apply modern idioms, null-safety, immutability-first, and thread-safety **by default**.
 
 ## 1. Modern language constructs
 
-- **Records** for immutable data carriers (DTOs, value objects); compact constructors for validation. Prefer over mutable POJOs / Lombok `@Data`.
+- **Records** for immutable data carriers (DTOs, value objects); compact constructors for validation. Prefer over mutable POJOs (Plain Old Java Objects) / Lombok `@Data`.
 - **Sealed types** for closed hierarchies, driving **exhaustive `switch`** (compiler-checked — no `default` that silently swallows a newly added variant). Prefer pattern matching / record patterns over `instanceof` chains.
 - Use **`java.time`** — never `Date`/`Calendar`, and never a shared `SimpleDateFormat` (not thread-safe; use `DateTimeFormatter`).
-- A `switch` on a reference needs a `case null` or it NPEs.
+- A `switch` on a reference needs a `case null` or it throws a `NullPointerException` (NPE).
 
 ## 2. Null safety
 
@@ -35,7 +31,7 @@ This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** 
 
 - `equals` and `hashCode` must be **consistent** — a broken pair corrupts `HashMap`/`HashSet`.
 - `Comparable`/`Comparator` must define a **total order**.
-- **JPA/entity `equals`/`hashCode` derive from a stable business/natural key, NOT the generated id** — identity built on the generated id breaks across the transient→persistent transition.
+- **JPA (Java Persistence API)/entity `equals`/`hashCode` derive from a stable business/natural key, NOT the generated id** — identity built on the generated id breaks across the transient→persistent transition.
 
 ## 5. Concurrency & thread-safety
 
@@ -47,7 +43,7 @@ This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** 
 - Give every `CompletableFuture` an **explicit executor** and handle failure; never abandon it. Shut down every `ExecutorService` (leak otherwise).
 - Guard against **deadlock** via consistent lock-acquisition order.
 - `ThreadLocal` in virtual-thread code needs care (child inheritance).
-- Shared `SimpleDateFormat`/`Calendar` across threads is a **data race** (see §1).
+- `SimpleDateFormat`/`Calendar` thread-safety is §1's rule, not restated here.
 
 ## 6. Streams & collections
 
@@ -59,7 +55,7 @@ This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** 
 
 ## 8. Exception handling
 
-- No swallowed or empty `catch`; no over-broad `catch (Exception)` / `catch (Throwable)`; do not ignore checked exceptions; do not use exceptions for control flow.
+- No over-broad `catch (Exception)` / `catch (Throwable)`; do not ignore checked exceptions; do not use exceptions for control flow. (Swallowed/empty catch → `standard-observability`'s log-or-throw rule.)
 
 ## 9. Resource handling
 
@@ -67,7 +63,7 @@ This skill defines **WHAT good Java looks like**. It is **NOT a Java tutorial** 
 
 ## 10. Type safety
 
-- No raw types (see §7); no **unchecked casts** (`(List<String>) obj` without a check). Replace `instanceof` chains with a **sealed hierarchy + pattern match** (see §1); prefer **records** over mutable POJOs.
+- No **unchecked casts** (`(List<String>) obj` without a check). Raw-type avoidance is §7's rule and the sealed-hierarchy/pattern-match idiom is §1's, neither restated here.
 
 ## 11. Framework idioms (Spring illustrative — map to the actual stack)
 
@@ -77,7 +73,7 @@ These are language-level framework rules, not app design:
 - `@Transactional` on **services** (not controllers/repositories), `readOnly = true` for queries; beware **self-invocation** bypassing the proxy.
 - JPA associations **LAZY** by default; loading a lazy association outside the transaction throws `LazyInitializationException`; eager fetch on collections is a fetch-strategy defect.
 - `@Valid` at controller boundaries (Jakarta Bean Validation).
-- `@RestControllerAdvice` + `ProblemDetail` for error responses — **never leak stack traces / internals**.
+- `@RestControllerAdvice` + `ProblemDetail` for error responses (leakage of internals → `standard-security`).
 
 ## 12. JVM micro-performance (language-level)
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/finding-summary.schema.json",
   "title": "Finding Summary Counts",
-  "description": "The shared count-of-findings shape, referenced by any report or persisted artifact that groups findings by severity plus resolved/new/ack. `open` is by severity over UNRESOLVED findings (NEW/OPEN/REGRESSED, per finding-status.schema.json); resolved/new/ack are orthogonal status counts over the same set. Extracted so review-finding-report.schema.json and review-artifact.schema.json share one definition instead of two copies. Value shape only; which findings count where is owned by review-report-standards.",
+  "description": "The shared count-of-findings shape, referenced by any report or persisted artifact that groups findings by severity plus resolved/new/ack. `open` breaks down by severity; `resolved`/`new`/`ack` are counts over separate status buckets. Extracted so review-finding-report.schema.json and review-artifact.schema.json share one definition instead of two copies. Value shape only; the exact status-set membership rule (which findings count where) is owned by review-report-standards for the reviewer-emitted path, and by flow-review/scripts/lib/review-aggregates.jq for the persisted-artifact path.",
   "type": "object",
   "additionalProperties": false,
   "required": ["open", "resolved", "new", "ack"],

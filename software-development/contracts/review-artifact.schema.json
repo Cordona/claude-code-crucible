@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/review-artifact.schema.json",
   "title": "Review Artifact",
-  "description": "The durable, persisted record of a flow-review effort for ONE repo — one JSON+MD pair per repo, never merged across repos (cross-repo work produces N sibling files). Unlike review-finding-report.schema.json (one reviewer's single-round emission to the orchestrator), this file AGGREGATES every reviewer's findings across every round into one evolving document, created once at first review and updated in place thereafter. This file defines the SHAPE only; the SEMANTICS (the swarm dispatch, the merge/verdict arithmetic, the fix-loop handoff to flow-implementation) live in flow-review and review-report-standards. The orchestrator is the sole writer — a reviewer never writes this file directly; it returns findings as review-finding-report.schema.json today, and the orchestrator merges them in here. One JSON object per file, at `.crucible/docs/reviews/{year}/{month}/{day}/{repo-or-effort-slug}.json`.",
+  "description": "The durable, persisted record of a flow-review effort for ONE repo — one JSON+MD pair per repo, never merged across repos (cross-repo work produces N sibling files). Unlike review-finding-report.schema.json (one reviewer's single-round emission to the orchestrator), this file AGGREGATES every reviewer's findings across every round into one evolving document, created once at first review and updated in place thereafter. This file defines the SHAPE only; the SEMANTICS (the swarm dispatch, the fix-loop handoff to flow-implementation) live in flow-review and review-report-standards; the merge/verdict arithmetic for this persisted artifact is owned by flow-review/scripts/lib/review-aggregates.jq. The orchestrator is the sole writer — a reviewer never writes this file directly; it returns findings as review-finding-report.schema.json today, and the orchestrator merges them in here. One JSON object per file, at `.crucible/docs/reviews/{year}/{month}/{day}/{repo-or-effort-slug}.json`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "repo", "created", "last_updated", "rounds", "overall_verdict", "summary", "findings"],
@@ -12,7 +12,7 @@
       "const": "1.0"
     },
     "id": {
-      "description": "The repo-or-effort slug — matches the filename (without extension) and the directory it lives under.",
+      "description": "The repo-or-effort slug — matches the filename (without extension).",
       "$ref": "artifact-slug.schema.json"
     },
     "repo": {
@@ -65,13 +65,13 @@
       }
     },
     "finding": {
-      "$comment": "Duplicates review-finding-report.schema.json's finding shape (id/category/locations/first_seen/problem/fix) rather than composing via allOf, plus adds reviewer/addressed_in_round: that base finding has additionalProperties:false, and allOf does not extend a closed schema cleanly (the base's additionalProperties:false evaluates against the whole instance, so a sibling allOf branch adding new properties fails validation). Same pattern — document-and-inline rather than compose — as external-review-advocate-verdict.schema.json vs finding-verdict.schema.json (there the reason is a narrower enum subset, not an additionalProperties/allOf conflict, but both cases choose to duplicate-and-explain over forcing a $ref).",
+      "$comment": "Duplicates review-finding-report.schema.json's finding shape (id/status/severity/category/locations/first_seen/problem/fix) rather than composing via allOf, plus adds reviewer/tracked_status/addressed_in_round: that base finding has additionalProperties:false, and allOf does not extend a closed schema cleanly (the base's additionalProperties:false evaluates against the whole instance, so a sibling allOf branch adding new properties fails validation). Same pattern — document-and-inline rather than compose — as external-review-advocate-verdict.schema.json vs finding-verdict.schema.json (there the reason is a narrower enum subset, not an additionalProperties/allOf conflict, but both cases choose to duplicate-and-explain over forcing a $ref).",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "reviewer", "status", "tracked_status", "severity", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
-          "description": "Stable, reviewer-prefixed identifier. Assigned once, reused across rounds, never renumbered. Same convention as review-finding-report.schema.json.",
+          "description": "Stable, reviewer-prefixed identifier; ID stability (assignment/reuse/renumbering) is owned by review-report-standards. Same convention as review-finding-report.schema.json.",
           "type": "string",
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },

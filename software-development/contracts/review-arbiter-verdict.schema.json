@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/review-arbiter-verdict.schema.json",
   "title": "Review Arbiter Verdict",
-  "description": "The output payload the review-arbiter returns when ruling on ONE code-review finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the ruling SEMANTICS (recommended-default rule, ALREADY_RESOLVED-vs-false-positive, the ESCALATE hatch, the three standing duties) live in the review-arbiter agent + the standard-judging constitution. `verdict` is the FULL arbiter set (see finding-verdict.schema.json); `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
+  "description": "The output payload the review-arbiter returns when ruling on ONE code-review finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the ruling SEMANTICS (recommended-default rule, ALREADY_RESOLVED-vs-false-positive, the ESCALATE hatch, the three standing duties) live in the review-arbiter agent + the standard-judging constitution. How the orchestrator ROUTES and VALIDATES this payload (the verdict->disposition map, the standing-duty completeness gate, the already_resolved_by->resolved_by_commit field mapping) lives in flow-external-review. `verdict` is the FULL arbiter set (see finding-verdict.schema.json); `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,15 +15,21 @@
     "confidence"
   ],
   "properties": {
-    "verdict": { "$ref": "finding-verdict.schema.json" },
-    "severity": { "$ref": "severity.schema.json" },
+    "verdict": {
+      "description": "The arbiter's ruling on this finding.",
+      "$ref": "finding-verdict.schema.json"
+    },
+    "severity": {
+      "description": "The arbiter's evidence-based severity grade for this finding.",
+      "$ref": "severity.schema.json"
+    },
     "evidence": {
       "description": "The deciding file:line proof — what was verified in the code.",
       "type": "string",
       "minLength": 1
     },
     "recommended_action": {
-      "description": "The default to apply. REQUIRED for a technical call — the arbiter never punts a technical decision to the human.",
+      "description": "The default to apply. Always required — the rule for what it must be lives in the review-arbiter agent + standard-judging.",
       "type": "string",
       "minLength": 1
     },
@@ -37,12 +43,12 @@
       "minLength": 1
     },
     "option_completeness": {
-      "description": "Standing duty 1: the disposition set is complete, or the missing/compound outcome is named. REQUIRED every time ('none found after looking' is valid; silence is not).",
+      "description": "Standing duty 1: whether the disposition set is complete, or the missing/compound outcome. Full duty definition lives in the review-arbiter agent + standard-judging.",
       "type": "string",
       "minLength": 1
     },
     "shared_blind_spot": {
-      "description": "Standing duty 2: an agreed position the code contradicts, or 'none found after an independent read'. REQUIRED every time.",
+      "description": "Standing duty 2: any agreed position the code actually contradicts. Full duty definition lives in the review-arbiter agent + standard-judging.",
       "type": "string",
       "minLength": 1
     },

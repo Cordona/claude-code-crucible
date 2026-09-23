@@ -1,6 +1,6 @@
 ---
 name: standard-judging
-description: The shared judge's constitution — how a neutral judge resolves disagreement (or blesses a high-stakes agreement) among expert reviews by reasoning and evidence. Bound by `decision-arbiter` and `review-arbiter`. Does NOT define a judge's task framing or output schema (owned by each judge agent) or the per-pattern procedure — roster, dispatch, gates (owned by `flow-decision` / `flow-external-review`).
+description: The shared judge's constitution — how a neutral judge resolves disagreement (or blesses a high-stakes agreement) among expert reviews by reasoning and evidence. Bound by `decision-arbiter` and `review-arbiter`. Does NOT define a judge's task framing or output schema (owned by each judge agent) or the per-pattern procedure — roster, dispatch, gates, termination (owned by `flow-decision` / `flow-external-review`). The judge is never the orchestrator that produced the proposal, and never an advocate/lawyer seat.
 ---
 
 # Standard: Judging (the arbiter's constitution)

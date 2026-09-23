@@ -1,13 +1,13 @@
 ---
 name: procedure-doc-lint
-description: The deterministic pre-publish gate the ORCHESTRATOR runs against a tech-writer draft — never tech-writer itself, so the check is independent of the agent that authored the draft. Wraps `doc-lint.sh`, which scans one markdown file for four pattern-matchable violations — bare code fences, ticket/issue-ID-shaped identifiers, absolute local filesystem paths, and single-item lists — and exits non-zero with an itemized file:line report if any are found. Does NOT judge documentation quality/structure choices (standard-documentation) or tech-writer's own conduct (the agent body); this is a mechanical script, not a rubric.
+description: The deterministic pre-publish gate the ORCHESTRATOR runs against a tech-writer draft — never tech-writer itself, so the check is independent of the agent that authored the draft. Wraps `doc-lint.sh`, which scans one markdown file for four pattern-matchable violations — bare code fences, ticket/issue-ID-shaped identifiers, absolute local filesystem paths, and single-item lists — and exits non-zero with an itemized file:line report if any are found. Does NOT judge documentation quality/structure choices (standard-documentation) or catch person-name redaction (tech-writer's own judgment pass); this is a mechanical script, not a rubric.
 ---
 
 # Procedure: Documentation Lint (`doc-lint.sh` wrapper)
 
 The **one** deterministic, orchestrator-run gate a `tech-writer` draft passes through before any
 fact-check step (`flow-documentation`'s Step D6) — and, if the effort later goes up as a pull/merge
-request, before that too, though PR/MR mechanics themselves are `flow-git-operations`'s domain, not
+request, before that too, though PR/MR (pull request / merge request) mechanics themselves are `flow-git-operations`'s domain, not
 this procedure's; `flow-documentation` has no PR step of its own. This is a **procedure, not a rubric**: run the script, read its report, act on
 the exit code — never re-derive these four checks by eye, and never let `tech-writer` run this gate on
 its own draft (see "Why this runs outside the agent" below).
@@ -18,7 +18,7 @@ A genuinely independent, orchestrator-run mechanical gate matters because two pr
 unaddressed, and both are the same kind of problem — deterministic pattern/structure checks against a
 markdown file that must not be self-administered by the file's own author:
 
-1. **Documentation structure and format need a script, not just self-checking.** An LLM self-check
+1. **Documentation structure and format need a script, not just self-checking.** An LLM (Large Language Model) self-check
    checklist alone (`standard-documentation`'s Excellence checklist, run by `tech-writer` on itself) is
    freeform, not checkable, and not run by anything outside the authoring agent.
 2. **Redaction enforcement needs a check outside the authoring agent.** `tech-writer`'s own `Grep`
@@ -39,7 +39,7 @@ exact failure mode this design exists to prevent. The **orchestrator** invokes t
 **Invoke it by its deployed absolute path — `$HOME/.claude/skills/procedure-doc-lint/scripts/doc-lint.sh`.**
 Never a bare `scripts/doc-lint.sh` (resolves against the caller's cwd, where the script does not exist),
 and never `${CLAUDE_SKILL_DIR}/…` from the orchestrator's own Bash (that placeholder only resolves inside
-a skill's own `SKILL.md` content). POSIX `sh`, runs on macOS (BSD awk/grep/sort) and Linux (GNU), all
+a skill's own `SKILL.md` content). POSIX (Portable Operating System Interface) `sh`, runs on macOS (BSD, Berkeley Software Distribution, awk/grep/sort) and Linux (GNU, GNU's Not Unix), all
 `shellcheck`-clean, self-contained (no external library sourcing), deterministic. Its only external
 dependencies are `awk`, `grep`, `sort`, and `mktemp` — every one guarded with `command -v` before use.
 
@@ -48,14 +48,14 @@ $HOME/.claude/skills/procedure-doc-lint/scripts/doc-lint.sh --file PATH \
     [--allow-ticket-prefixes "FOO BAR"] [-h|--help]
 ```
 
-**Checks (all four, one pass over the file, report-only — never modifies the file):**
+**Checks (report-only, never modifies the file; checks 1 and 4 share one pass, checks 2 and 3 each run their own):**
 
 | Code | What it catches | How |
 |------|------------------|-----|
 | `BARE_FENCE` | A code fence (` ``` `) opened with no language tag | Fence-state tracking: an opening ` ``` ` line with nothing (or only whitespace) after it |
 | `TICKET_ID` | A ticket/issue-ID-shaped identifier | Pattern `[A-Z]{2,}-[0-9]+`, **excluding an allowlisted prefix** (below) |
 | `LOCAL_PATH` | An absolute local filesystem path | Patterns `/Users/`, `/home/`, `C:\Users\` |
-| `SINGLE_ITEM_LIST` | A bulleted or numbered list with exactly one item | Block-boundary tracking: a run of list-marker lines, closed by a hard break (plain column-0 text), a marker-kind change, or EOF — never by a blank line or an indented continuation |
+| `SINGLE_ITEM_LIST` | A bulleted or numbered list with exactly one item | Block-boundary tracking: a run of list-marker lines, closed by a hard break (plain column-0 text), a marker-kind change, or EOF (end of file) — never by a blank line or an indented continuation |
 
 Fenced code-block content is excluded from list-structure detection (a `- like this` line inside an
 example code block is not a real list). The `TICKET_ID` and `LOCAL_PATH` checks deliberately **never
@@ -99,8 +99,9 @@ DOCLINT_LOCAL_PATHS=<n>
 DOCLINT_SINGLE_ITEM_LISTS=<n>
 ```
 
-**Exit codes:** `0` clean pass (zero violations) · `1` one or more violations found (see the itemized
-report) · `2` usage error (missing/bad `--file`, unreadable/nonexistent file).
+**Exit codes:** `0` clean pass (zero violations) · `1` either one or more violations found (see the
+itemized report), or a required binary — `awk`/`grep`/`sort`/`mktemp` — is missing (see stderr; no
+itemized report in this case) · `2` usage error (missing/bad `--file`, unreadable/nonexistent file).
 
 ## How the orchestrator uses this (see `flow-documentation`)
 
@@ -111,8 +112,7 @@ fix-loop shape as the rest of the flow (fix → re-lint → repeat) — and do n
 fact-check until the run exits `0` clean. This gate is orthogonal to the fact-check: `doc-lint.sh` never
 judges whether the content is *true*, only whether it is *structurally clean* — both gates must pass, in
 sequence. **`flow-documentation`'s own Step D8 fix loop re-runs this gate (Step D5) against every revised
-draft, before the reviewer's re-review** — a fix made mid-loop can reintroduce any of these four
-violations just as easily as the first draft could, so the gate is never a one-time-only check.
+draft, before the reviewer's re-review** — see that step for why; not restated here.
 
 ## What this does NOT do
 

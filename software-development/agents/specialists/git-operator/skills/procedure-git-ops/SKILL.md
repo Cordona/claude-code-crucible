@@ -15,7 +15,7 @@ The second load-bearing rule is **fail-closed on everything irreversible**: `com
 
 ## The five scripts (`$HOME/.claude/skills/procedure-git-ops/scripts/` — all portable & deterministic)
 
-**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-git-ops/scripts/<name>`.** Never a bare `scripts/<name>` (resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash (that placeholder only resolves inside a skill's own `SKILL.md` content, not the calling agent's shell). All five are POSIX `sh`, run on any machine (macOS BSD / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — small helpers are duplicated across scripts, not shared), and deterministic.
+**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-git-ops/scripts/<name>`.** Never a bare `scripts/<name>` (resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash (that placeholder only resolves inside a skill's own `SKILL.md` content, not the calling agent's shell). All five are POSIX (Portable Operating System Interface) `sh`, run on any machine (macOS BSD — Berkeley Software Distribution — / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — small helpers are duplicated across scripts, not shared), and deterministic.
 
 ### `preflight.sh` — READ-ONLY
 
@@ -65,7 +65,7 @@ $HOME/.claude/skills/procedure-git-ops/scripts/push.sh --repo PATH \
   --remote NAME --branch NAME [--force-with-lease] [-h|--help]
 ```
 
-- **Protected-branch refusal is unconditional and checked FIRST, before touching git at all:** `main`, `master`, `develop`, and any `release/*` branch NEVER get a direct push from this script — force or not. Those branches move only via a reviewed PR merge (`standard-git-branch`); `--force-with-lease` never overrides this.
+- **Protected-branch refusal is unconditional and checked FIRST, before touching git at all:** `main`, `master`, `develop`, and any `release/*` branch NEVER get a direct push from this script — force or not. For `main`/`develop` this mirrors the platform-side ruleset `standard-git-branch` documents (a reviewed PR/MR — pull request / merge request — merge required, no direct push). For `release/*`, `standard-git-branch` is explicit that it is typically NOT platform-protected the same way — this refusal is this script's OWN client-side discipline, the only thing actually stopping a direct push to it. `--force-with-lease` never overrides either case.
 - **First push vs. subsequent:** adds `-u` automatically when the branch has no upstream yet; otherwise a plain push.
 - **Idempotent:** before pushing, compares the local branch's SHA against the remote's via `git ls-remote` — if they already match, this is a genuine no-op (the push is never even attempted) and still a success.
 - **Non-fast-forward: DETECTED, never auto-resolved.** On a rejected push, this script recognizes git's non-ff rejection text and reports "non-fast-forward — rebase onto base then retry" — it never rebases or force-pushes on the caller's behalf; that judgment belongs to the calling agent.
@@ -100,19 +100,19 @@ This skill only executes the git operation and verifies its result; it never dec
 ## Testing — two layers, proving different things
 
 - **`tests/run-tests.sh`** (stub-driven, `sh`/`dash`-clean, no real git) — exercises the deterministic BRANCHING logic exhaustively and fast: protected-branch refusal, non-fast-forward detection, re-tag refusal, fail-closed signing checks (every `%G?` code), nothing-staged failure, idempotency, argument validation, exit codes.
-- **`tests/smoke.sh`** (real `git` + a real, ephemeral, throwaway GPG key, generated fresh and deleted on exit — never the invoking user's real `~/.gnupg`, never a real repo, never the network) — proves the actual git/gpg CONTRACT the stub cannot: a real signed commit, a real push to a local bare remote, a real `--force-with-lease` against a rewritten local history, a real protected-branch refusal, a real non-fast-forward rejection, a real live-rebase op-in-progress block, a real re-tag refusal, a real signed tag + verify. If `gpg` is unavailable or ephemeral key generation fails, this script SKIPS the signing-dependent checks with a clear reason rather than failing the run — that is an environment constraint, not a defect.
+- **`tests/smoke.sh`** (real `git` + a real, ephemeral, throwaway GPG (GNU Privacy Guard) key, generated fresh and deleted on exit — never the invoking user's real `~/.gnupg`, never a real repo, never the network) — proves the actual git/gpg CONTRACT the stub cannot: a real signed commit, a real push to a local bare remote, a real `--force-with-lease` against a rewritten local history, a real protected-branch refusal, a real non-fast-forward rejection, a real live-rebase op-in-progress block, a real re-tag refusal, a real signed tag + verify. If `gpg` is unavailable or ephemeral key generation fails, this script SKIPS the signing-dependent checks with a clear reason rather than failing the run — that is an environment constraint, not a defect.
 
 **Run both before trusting a change to this skill.** The stub proves the logic; the smoke test proves the logic is checking the right thing in the first place — a stub-only pass can be green while checking against the wrong contract entirely.
 
-**CI must gate on the signing-dependent checks actually having run, not merely on exit 0** — `tests/smoke.sh` prints a machine-readable `SMOKE_SIGNING=exercised` (gpg worked, the full signed-commit/signed-tag contract was proven) or `SMOKE_SIGNING=skipped` (no usable gpg in this environment) on stdout, in addition to its own `exit 0`/`exit 1`. An `exit 0` with `SMOKE_SIGNING=skipped` means the run is GREEN but PROVED NOTHING about signing — CI should assert `SMOKE_SIGNING=exercised`, not just a zero exit code, or a gpg-less runner could silently stop catching signing regressions.
+**CI (Continuous Integration) must gate on the signing-dependent checks actually having run, not merely on exit 0** — `tests/smoke.sh` prints a machine-readable `SMOKE_SIGNING=exercised` (gpg worked, the full signed-commit/signed-tag contract was proven) or `SMOKE_SIGNING=skipped` (no usable gpg in this environment) on stdout, in addition to its own `exit 0`/`exit 1`. An `exit 0` with `SMOKE_SIGNING=skipped` means the run is GREEN but PROVED NOTHING about signing — CI should assert `SMOKE_SIGNING=exercised`, not just a zero exit code, or a gpg-less runner could silently stop catching signing regressions.
 
 ## Constraints (NEVER violate)
 
 - Never pass a commit or tag message as `-m`/a heredoc/a `$(...)` — it is ALWAYS a file via `-F`, full stop.
-- Never retry a failed commit with `--no-gpg-sign`, and never bypass a failing hook with `--no-verify`.
+- Never retry a failed commit with `--no-gpg-sign`, and never bypass a failing hook with `--no-verify` — per `standard-git-commit`'s own Constraint.
 - Never push directly to `main`/`master`/`develop`/`release/*` — force or not.
 - Never auto-rebase or auto-force-push to resolve a non-fast-forward — detect and report only; the calling agent decides.
-- Never re-tag, move, or re-sign an already-published version tag.
+- Never re-tag, move, or re-sign an already-published version tag — per `standard-git-tag`'s own Constraint.
 - Never resolve or confirm signing identity here — that is `procedure-git-identity`'s job, run by the caller first.
-- Never commit into a detached HEAD or an in-progress rebase/merge/cherry-pick.
+- Never commit into a detached HEAD or an in-progress rebase/merge/cherry-pick — per `standard-git-commit`'s own Constraint.
 - Never run `tests/smoke.sh` against a real repository or without the isolated `GNUPGHOME` it sets up itself — it must always generate and use its own ephemeral key.

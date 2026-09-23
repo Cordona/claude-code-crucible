@@ -1,11 +1,17 @@
 ---
 name: standard-git-commit
-description: The single rubric for a good git COMMIT — message format, atomicity, signing, and the commit-plan approval gate. Bind whenever a commit is being authored, by the git-operator or by anything committing directly. Requires procedure-git-identity (bound alongside it) for the signing identity, which this skill assumes rather than resolves. Does not cover branch naming (standard-git-branch), release tags (standard-git-tag), or PR/MR body craft (standard-git-pr).
+description: The single rubric for a good git COMMIT — message format, atomicity, signing, and the commit-plan approval gate. Bind whenever a commit is being authored, by the git-operator or by anything committing directly. Requires procedure-git-identity (bound alongside it) for the signing identity, which this skill assumes rather than resolves. Does not cover branch naming (standard-git-branch), release tags (standard-git-tag), or PR/MR (pull request / merge request) body craft (standard-git-pr).
 ---
 
 # Standard: Git Commit
 
 The **one** definition of a good commit. The `git-operator` authors every commit to it; anything that commits directly (an orchestrator, the external-review flow) follows it too. A commit is a **permanent, signed, attributable** record — treat it as an artifact, not a checkpoint.
+
+## What this does NOT cover
+
+- Branch naming → `standard-git-branch`.
+- Release tags → `standard-git-tag`.
+- PR/MR (pull request / merge request) body craft → `standard-git-pr`.
 
 ## The format — Conventional Commits
 
@@ -45,14 +51,14 @@ The **one** definition of a good commit. The `git-operator` authors every commit
 ## Footer — the trailer block
 
 One block at the end, each `Token: Value`, hyphenated tokens, no blank lines between trailers:
-- **`Signed-off-by: Name <email>`** — **REQUIRED on every commit** (DCO provenance), but **appended automatically by `commit.sh`'s `git commit --signoff` — do NOT hand-write it into the message.** It is the one trailer the SCRIPT owns, not the author: it is derived from the committer identity that `procedure-git-identity` resolves and reconciles, so a message author (the `git-operator`, or any flow committing directly) **leaves it out** and lets the script write that byte. Hand-authoring it duplicates the trailer whenever it isn't a byte-identical last line (e.g. a `Co-authored-by` follows it). The resulting email MUST match the committer identity (see `procedure-git-identity`).
+- **`Signed-off-by: Name <email>`** — **REQUIRED on every commit** (DCO, Developer Certificate of Origin, provenance), but **appended automatically by `commit.sh`'s `git commit --signoff` — do NOT hand-write it into the message.** It is the one trailer the SCRIPT owns, not the author: it is derived from the committer identity that `procedure-git-identity` resolves and reconciles, so a message author (the `git-operator`, or any flow committing directly) **leaves it out** and lets the script write that byte. Hand-authoring it duplicates the trailer whenever it isn't a byte-identical last line (e.g. a `Co-authored-by` follows it). The resulting email → reconciled and verified by `procedure-git-identity`.
 - **Issue link** (recommended) — `Closes #123` / `Fixes #123` to auto-close the issue on merge, or `Refs #123` to link without closing. Cross-repo: `Fixes owner/repo#123`.
 - **`Co-authored-by: Name <email>`** for pairing/multi-author; **`Reviewed-by:` / `Acked-by:`** where used.
 
 ## Signing & identity (non-negotiable)
 
-- **Every commit is cryptographically signed** — GPG **or** SSH (both earn GitHub's or GitLab's "Verified" badge; do not mandate GPG-only). Configure `commit.gpgsign true`.
-- **Before committing, resolve and confirm the identity** per **`procedure-git-identity`**: the committer email, the signing key, and the `Signed-off-by` email must be one consistent identity, and the operator presents it for the user's confirmation before the commit is made. Never commit on `IDENTITY_STATUS=mismatch`, on any state `procedure-git-identity` declares fatal — that skill owns the state list — or on any non-zero exit of `resolve-identity.sh`; **branch on the exit status first, the values second** (its hard failures `die` before any `IDENTITY_*` line is printed, so there is no token to read).
+- **Every commit is cryptographically signed** — GPG (GNU Privacy Guard) **or** SSH (Secure Shell) (both earn GitHub's or GitLab's "Verified" badge; do not mandate GPG-only). Configure `commit.gpgsign true`.
+- **Before committing, resolve and confirm the identity via `procedure-git-identity`** — that skill owns the reconciliation criteria, the fatal-state list, and the confirmation gate; not restated here.
 
 ## Atomicity — one self-compilable concern per commit
 
@@ -76,12 +82,12 @@ Then ask for approval. The user may approve, edit a message, or change the split
 ## Enforcement (make the rules real, not aspirational)
 - **Client-side:** a `commit-msg` hook running **commitlint** (`@commitlint/config-conventional`) rejects malformed messages; a `pre-commit` hook running **format + lint + a fast build/test** actually checks the "self-compilable" rule; a **gitleaks** pre-commit hook blocks secrets. *(A signed secret is still a leaked secret — never commit credentials.)*
 - **Server-side backstop:** the same checks run as required status checks on protected branches (see `standard-git-branch`); enable GitHub **secret scanning + push protection**, or GitLab's equivalent **secret detection** (blocks a secret *before* it lands — even past a bypassed hook) — client hooks are bypassable with `--no-verify`, so the server is the real guarantee.
-- **Repo hygiene:** keep a disciplined `.gitignore` (secrets + build artifacts never staged), a `.gitattributes` (normalize EOL, mark binary/generated files, wire any LFS filters), and route large binaries to **Git LFS** (keeps history diffable and clonable).
+- **Repo hygiene:** keep a disciplined `.gitignore` (secrets + build artifacts never staged), a `.gitattributes` (normalize EOL, end-of-line, mark binary/generated files, wire any LFS (Large File Storage) filters), and route large binaries to **Git LFS** (keeps history diffable and clonable).
 
 ## Constraints (NEVER violate)
 - Never commit a secret/credential, or a non-self-compilable unit, or a mixed-concern blob that should be split.
 - **Never commit unless the user explicitly requested and authorized THIS commit.** The identity gate below answers *who signs*; it never answers *whether to commit*. Absent an explicit request, there is no commit — regardless of how finished the work looks.
-- Never commit under an unconfirmed/mismatched identity, or without a signature + `Signed-off-by`.
+- Never commit under an unconfirmed/mismatched identity (per `procedure-git-identity`'s own Constraints), or without a signature + `Signed-off-by`.
 - Never **bypass a hook** (`--no-verify`/`-n`, stash-around) — a failing hook is the guarantee; STOP and report. Never fall back to `--no-gpg-sign` when signing fails.
 - Never commit into a **detached HEAD** or an in-progress rebase/merge/cherry-pick — confirm HEAD is on a branch and no operation is pending first.
 - Never pad a subject to hit a length, or write a low-content subject.

@@ -1,6 +1,6 @@
 ---
 name: standard-testing
-description: The single definition of a good test suite — the rubric tests-developer BUILDS to and lens-test-quality-reviewer REVIEWS against, in any language. Does not define builder workflow (build-core) or lens-test-quality-reviewer's own scoring machinery.
+description: The single definition of a good test suite — the rubric tests-developer BUILDS to and lens-test-quality-reviewer REVIEWS against, in any language. Applies whenever tests are authored or a test-authoring approach is reviewed — never bound by a `{tech}-developer`, which build-core structurally forbids from touching test files. Does not define builder workflow (build-core) or lens-test-quality-reviewer's own scoring machinery.
 ---
 
 # Standard: Testing
@@ -109,7 +109,7 @@ Test code is real code — hold it to the same structural bar, with test-aware t
 - **SRP:** one test verifies one behavior/scenario; no god-test asserting many unrelated things. (A flow test asserting several outcomes of ONE flow is fine.)
 - **No conditional logic in test bodies** — `if`/`for`/`while`/`try-catch` that drives which assertions run means you cannot know what was verified. *(A uniform `forEach { assert … }` over a collection is fine — that is not branching.)*
 - **Diagnosable failures** — a red test names what broke, not just "expected true." When assertions are homogeneous or stacked, use descriptive messages (e.g. `.as("…")`), or replace a long run of bare assertions with a single golden STRICT compare.
-- Meaningful names, no magic literals (use constants or asset files), no dead code.
+- No dead code (naming and magic-literal discipline belong to `standard-self-documenting-code`, not restated here — this file's own naming rule, §3, is scoped to test identifiers/scenario names only).
 
 ## 10. Efficiency & altitude
 

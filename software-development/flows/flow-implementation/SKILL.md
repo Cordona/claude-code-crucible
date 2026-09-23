@@ -1,6 +1,6 @@
 ---
 name: flow-implementation
-description: "The orchestrator's procedure for BUILDING code. Bind on an explicit build/implement/refactor/fix request, or a bare \"review this\" for correctness only; also the re-entry point for addressing `flow-review` findings or `flow-spec` conformance fixes. Never seats a lens reviewer, authors a cross-repo spec, or writes tests — those are `flow-review`, `flow-spec`, and `flow-testing` respectively."
+description: "The orchestrator's procedure for BUILDING code. Bind on an explicit build/implement/refactor/fix request, or a bare \"review this\" for correctness only; also the re-entry point for addressing `flow-review` findings or `flow-spec` conformance fixes. Under Validate-First the `{tech}-reviewer` is deferred and `flow-testing` is bound mid-flow, under its own gate. Never seats a lens reviewer, authors a cross-repo spec, or writes tests itself — those are `flow-review`, `flow-spec`, and `flow-testing` respectively."
 ---
 
 # Flow: Implementation
@@ -15,11 +15,11 @@ The lens swarm is a separate procedure, `flow-review`, and it is **never** part 
 
 **Bind this skill when:**
 
-1. The request will change files (build, implement, refactor, fix, migrate, "clean up", "make it X").
+1. The request will change files (build, implement, refactor, fix, migrate, "clean up", "make it X"). **This also covers a fresh case-1 re-entry from `flow-testing`** — that flow exiting early with a blocker or masked-defect finding it cannot fix itself (`flow-testing` §4b/§5), briefed per that flow's two-precondition requirement (§4c below). Unlike case 3 below, the `{tech}-reviewer` has NOT already joined on this path, so §1's live-testability assessment and §2's path choice DO re-run, same as any other fresh case-1 request.
 2. The request is an explicit review of existing code **for correctness** ("review this" with no lens named) — the review-only variant, §6.
-3. You are **re-entering** to address `flow-review` findings, or to fix a `flow-spec` conformance gap — brief the developer with the specific findings/gap instead of a fresh request; everything else in this procedure runs unchanged, **except that §1's live-testability assessment and §2's path choice do NOT re-run** — a re-entry only happens after the `{tech}-reviewer` has already joined, so it continues in the same round like any other §5 re-review.
+3. You are **re-entering** to address `flow-review` findings, or to fix a `flow-spec` conformance gap — brief the developer with the specific findings/gap instead of a fresh request; everything else in this procedure runs unchanged, **except that §1's live-testability assessment and §2's path choice do NOT re-run** — a case-3 re-entry only happens after the `{tech}-reviewer` has already joined, so it does not re-run §1/§2 — a fresh round 1 when the prior loop had already stopped (always true for a `flow-review` re-entry, since that skill requires §4d to have closed before it runs, per `flow-review` §0), or a continuation of the open round's counter when it had not (a `flow-spec` conformance gap caught mid-loop).
 
-**This skill does NOT auto-fire from repository state.** The safety property that matters — nothing ships uncommitted-and-unreviewed — lives in `flow-git-operations`'s commit gate (a cheap check, not a full re-run of this procedure) and in build-core's own validation discipline. If you made file changes outside this procedure (a direct-mode framework-prose edit, most commonly) and haven't run the review-only variant, `flow-git-operations` will ask before it lets you commit — it does not silently let unreviewed work ship, it just doesn't cost anything until a commit is actually attempted.
+**This skill does NOT auto-fire from repository state.** The safety property that matters — nothing ships uncommitted-and-unreviewed — lives in `flow-git-operations`'s commit gate (a cheap check, not a full re-run of this procedure) and in `build-core`'s own validation discipline. If you made file changes outside this procedure (a direct-mode framework-prose edit, most commonly) and haven't run the review-only variant, `flow-git-operations` will ask before it lets you commit — it does not silently let unreviewed work ship, it just doesn't cost anything until a commit is actually attempted.
 
 **The trivial hatch still applies.** A genuinely trivial change (typo, comment, formatting — no behavior change) needs no tech-pair dispatch: take the one-line gate (§3) and stop. **Trivial edits accumulate** — the hatch closes once THE PREDICATE (files you changed this session, not yet through this procedure) reaches 5 files, touches a contract (an invariant, a gate, a schema, a public interface, a security/authorization rule), or alters behavior rather than wording. Judge the accumulation, not the keystroke.
 
@@ -32,8 +32,8 @@ Read the request AND the code it touches. Establish:
 1. **Is it trivial?** (the hatch above). Ask this first.
 2. The **primary stack** → the matching `{tech}-developer` and `{tech}-reviewer`. If none exists → §6 (direct implementation). **Naming exception:** DevOps uses `devops-engineer`.
 3. **What** is built/reviewed · the **scope** · the **consequence** (what it costs the user if this is wrong).
-4. **Does a `flow-spec` artifact govern this work?** If the task is cross-repo, multi-tech-pair, or you were handed a spec path — bind it as the acceptance criterion for both the developer and the reviewer (path + a short navigational hint pointing at the relevant section, never the full text pasted into the dispatch — see `flow-spec`'s token-efficiency note). If no spec exists and the task doesn't call for one, proceed without it. **Exception (mandatory ask):** before dispatching 2+ parallel pairs on an unspecced effort, ask the human first — see `flow-spec` §0 for the full rule and rationale.
-5. **Assess live-testability — reason about it, don't run down a checklist.** The real question: would checking this against actual, running reality tell you something the diff alone can't, and can you find that out cheaply and safely? This is open-ended judgment about THIS specific task, not a fixed test with a pass/fail line. This decides which path (§2) you recommend at the gate.
+4. **Does a `flow-spec` artifact govern this work?** If the task is cross-repo, multi-tech-pair, or you were handed a spec path — bind it as the acceptance criterion for both the developer and the reviewer (path + a short navigational hint pointing at the relevant section, never the full text pasted into the dispatch — see `flow-spec` §5, which frames this as a correctness safeguard against drift, not a token-saving shortcut). If no spec exists and the task doesn't call for one, proceed without it. **Exception (mandatory ask):** before dispatching 2+ parallel pairs on an unspecced effort, ask the human first — see `flow-spec` §0 for the full rule and rationale.
+5. **Assess live-testability — reason about it, don't run down a checklist.** Skip this step entirely for the review-only and Direct-implementation variants (§6 — no path split applies there) and for a case-3 re-entry (§0 — the path choice does not re-run). The cross-repo variant (§6) does NOT skip this — each pair re-runs this assessment independently. The real question: would checking this against actual, running reality tell you something the diff alone can't, and can you find that out cheaply and safely? This is open-ended judgment about THIS specific task, not a fixed test with a pass/fail line. This decides which path (§2) you recommend at the gate.
 
    Signals that often point toward a genuine live source — illustrative, not required, not sufficient alone; weigh what's actually true of this task:
    - The real risk is behavioral or integration correctness against something you don't fully control — an external API's actual response shape, an undocumented edge case, a version-specific quirk, how a real consumer parses your output — not just internal logic you can trace by reading.
@@ -60,7 +60,7 @@ No lens is ever seated as part of this procedure, regardless of how substantive 
 
 The orchestrator recommends one path at the gate (§3) with its reasoning stated; the human can override in either direction — a trivial or unfamiliar task might warrant Pair-First even with a live source available, and vice versa.
 
-**Correctness floor (hard).** Code correctness — wrong or inverted conditions, dropped errors, arithmetic, exhaustiveness, boundary and error paths, contract adherence — is owned ONLY by the `{tech}-reviewer`. **No real (non-trivial) build is ever DONE without it running.** Validate-First defers WHEN it runs; neither path skips WHETHER it runs.
+**Correctness floor (hard).** Code correctness — the itemized boundary lives in `review-boundaries`'s own Code-correctness row, not restated here — is owned ONLY by the `{tech}-reviewer`. **No real (non-trivial) build is ever DONE without it running.** Validate-First defers WHEN it runs; neither path skips WHETHER it runs.
 
 **The correctness floor for framework PROSE.** When the change is to markdown that governs behavior — `CLAUDE.md`, a `SKILL.md`, an agent definition — there is no `{tech}-reviewer`. The floor is satisfied instead by an **execution test**: dispatch a `general-purpose` agent, give it the changed file and 3–4 realistic scenarios, and tell it to *execute* the file against them and report where it could not comply. Reading checks whether the words are right; running checks whether they do anything.
 
@@ -81,12 +81,12 @@ The orchestrator recommends one path at the gate (§3) with its reasoning stated
 > - **Scope:** [what changes · what it touches · what depends on it]
 > - **Consequence:** [what it costs you if this is wrong] ← correct me
 > - **Spec:** [path, if one governs this work — otherwise omit]
-> - **Recommended path:** [Validate-First — name the live source and the behavior it will exercise / Pair-First — state why: no live source, or none usable here] — *omit for the review-only and Direct-implementation variants (§6), where no path split applies*
+> - **Recommended path:** [Validate-First — name the live source and the behavior it will exercise / Pair-First — state why: no live source, or none usable here] — *omit for the review-only and Direct-implementation variants (§6), where no path split applies, and for a case-3 re-entry (§0), where the prior path choice carries over unchanged*
 > - *Validate-First only:* **Test scope:** [repair / new authoring / both; what's covered — the same field `flow-testing` §2 would otherwise ask for]
 >
 > ### Seats
-> - `{tech}-developer` — implements
-> - `{tech}-reviewer` — correctness floor: [the specific logic at risk here] · [Validate-First: **deferred** until after live validation + `flow-testing` / Pair-First: same round]
+> - `{tech}-developer` — implements — *omit this line entirely for the review-only variant (§6): no developer round runs there*
+> - `{tech}-reviewer` — correctness floor: [the specific logic at risk here] · [Validate-First: **deferred** until after live validation + `flow-testing` / Pair-First: same round / review-only: this round, alone]
 > - *Validate-First only:* `tests-developer` + `lens-test-quality-reviewer` — bound mid-flow, after live validation, against the Test scope stated above, before the deferred reviewer; **`flow-testing` runs its OWN separate approval gate at that point — approving THIS plan does not authorize that dispatch**
 >
 > ### Loop
@@ -95,7 +95,7 @@ The orchestrator recommends one path at the gate (§3) with its reasoning stated
 > - *Validate-First only:* `flow-testing` runs its own identical bounded loop first, before the `{tech}-reviewer` loop above starts
 >
 > ### Next step available on request
-> - a full lens review (`flow-review`) is NOT part of this plan and will not run unless you separately ask for it
+> - a full lens review (`flow-review`) is NOT part of this plan and will not run unless you separately ask for it — *under Validate-First, `flow-review` will not accept this diff on the lens roster alone until §4d closes; before that, it would have to seat the `{tech}-reviewer` itself (`flow-review` §0/§3)*
 
 **Then gate via `AskUserQuestion`** — Header "Implementation" · Question *"Is the consequence right? Approve this plan and its recommended path?"* · Options: **"Approve & run"** (the loop policy is now binding) · **"Consequence is wrong"** → re-derive, re-present · **"Switch to Validate-First/Pair-First"** → apply, re-present · **"Adjust"** or free text → apply, re-present, ask again. The Seats-block caveat above binds: this approval does not reach the mid-flow `flow-testing` dispatch (see §4c).
 
@@ -121,7 +121,9 @@ immediately, as received, per `build-report-standards`.
 
 **Then `flow-testing`.** Once the human has live-validated, bind `flow-testing` — `tests-developer` + the mandatory `lens-test-quality-reviewer` pass — to lock in the validated behavior as a regression net. This is `flow-testing`'s third valid trigger (see its §0): confirmation via live validation of a not-yet-reviewed implementation, not only after a completed tech-pair loop or a `flow-review` pass. **Binding it does NOT dispatch it.** `flow-testing` runs its own gate (`flow-testing` §3) — present its plan and get explicit approval before `tests-developer` or the reviewer touch anything. This skill's own §3 disclosure, back at the top of this flow, only told the human this step exists; it is not that step's approval.
 
-When `flow-testing` completes, resume here at 4d — the deferred `{tech}-reviewer` joins now, with the test suite in place to validate anything its findings change. **The obligation to resume does not end when this step does** — carry the "reviewer still outstanding" statement forward into every subsequent report until §4d actually runs (see Invariants).
+"Completes normally" means one of two things: `flow-testing` reaches `APPROVED`/`APPROVED_WITH_FOLLOWUPS`, OR it hits its own round cap and ESCALATES with the test-quality reviewer still unsatisfied on an ordinary (non-masked-defect) finding (`flow-testing` §5's generic cap escalation — distinct from the masked-defect exception below). **Either way, resume here at 4d** — the deferred `{tech}-reviewer` joins now, with whatever test suite resulted — but on the ESCALATE branch, carry `flow-testing`'s own escalation forward into every subsequent report alongside the `{tech}-reviewer` finding: two open items, not one, and the human decides whether to proceed to §4d's correctness pass now (accepting the test-quality gap as a disclosed follow-up) or resolve `flow-testing`'s escalation first. **The obligation to resume does not end when this step does** — carry the "reviewer still outstanding" statement forward into every subsequent report until §4d actually runs (see Invariants).
+
+**Exception — `flow-testing` exits early instead of completing** (its §4b or §5: an implementation-wrong/untestable blocker, or a masked-defect finding `tests-developer` cannot fix — NOT the generic cap-escalation case above, which resumes normally). That exit re-enters THIS flow at §0 case 1, briefed per `flow-testing` §5's two-precondition requirement (Pair-First recommended explicitly; the re-entry's diff artifact scoped to the whole originally-unreviewed implementation, not just the fix delta). When both preconditions were actually briefed, that case-1 re-entry's own §4d **supersedes** this suspended invocation's deferred pass — it discharges the obligation instead of resuming it a second time. Absent either precondition, the obligation is NOT discharged and remains outstanding exactly as if `flow-testing` had never run.
 
 ### 4d. Dispatch the `{tech}-reviewer` — one Task call.
 
@@ -129,7 +131,7 @@ Binds `review-core` + `review-report-standards`, is read-only, returns a structu
 
 **The reviewer has NO shell — it cannot run `git diff`.** In DIFF/PR mode you must materialize the diff to a file and pass its absolute path. `git diff` **omits untracked files** — enumerate new files explicitly.
 
-Give it: **exact file paths** · diff/PR or full audit, **with the diff artifact path** · **tech version + language** · the developer's **Handoff-to-Reviewer note** · the spec (path + hint), if one governs this work — conformance to it is an acceptance criterion, not just generic code quality · under Validate-First, that this implementation was already live-validated and is now covered by a `flow-testing`-authored suite (name the test files) · **prior-round findings on a re-review**, so IDs stay stable.
+Give it: **exact file paths** · diff/PR or full audit, **with the diff artifact path** · **tech version + language** · the developer's **Handoff to reviewer** block · the spec (path + hint), if one governs this work — conformance to it is an acceptance criterion, not just generic code quality · under Validate-First, that this implementation was already live-validated and is now covered by a `flow-testing`-authored suite (name the test files) · **prior-round findings on a re-review**, so IDs stay stable.
 
 ### 4e. Expose the report.
 
@@ -139,7 +141,7 @@ Render per `review-report-standards` **Rendering 1**. That skill owns the format
 
 ## 5. The fix loop — guaranteed, bounded
 
-This loop starts whenever the `{tech}-reviewer` is dispatched — immediately after §4b under Pair-First, or after §4c's live-validation + `flow-testing` detour under Validate-First. The mechanics are identical either way.
+This loop starts whenever the `{tech}-reviewer` is dispatched — immediately after §4b under Pair-First, or after §4c's live-validation + `flow-testing` detour under Validate-First. The mechanics are identical either way. **Exception — the review-only variant (§6):** no developer is seated in that invocation, so a `CHANGES_REQUIRED` verdict there does not enter round 1 · FIX directly; §6 states its own re-entry route instead.
 
 **The verdict arithmetic — all three branches**, owned by `review-report-standards`:
 
@@ -148,7 +150,8 @@ This loop starts whenever the `{tech}-reviewer` is dispatched — immediately af
 - nothing open → **`APPROVED`** → stop
 
 ```
-Round 1 is GUARANTEED whenever changes exist. The cap is 3. Both bind.
+The reviewer pass is guaranteed whenever changes exist; a FIX round is
+guaranteed whenever a gating finding exists. The cap is 3. Both bind.
 
 IF merged verdict == CHANGES_REQUIRED:
 
@@ -164,7 +167,13 @@ IF merged verdict == CHANGES_REQUIRED:
 
   ═══════════════════ STOP ═══════════════════
 
-  round 3           ONLY if a CRITICAL/HIGH is still open. Then stop regardless.
+  round 3 · FIX     ONLY if a CRITICAL/HIGH is still open. One more fix
+                    attempt, same batching rule as round 1 — then STOP
+                    REGARDLESS, whether or not the reviewer re-verified it.
+                    Stopping here is NOT approval: report the finding as
+                    still open/unverified and ESCALATE to the human (see
+                    below) — never present round 3's own unverified fix
+                    claim as resolved.
 
 MEDIUM/LOW you do NOT fix are follow-ups — list them, never their own round.
 ```
@@ -179,7 +188,7 @@ MEDIUM/LOW you do NOT fix are follow-ups — list them, never their own round.
 
 ## 6. Variants
 
-**Review only, correctness scope (no developer).** Triggered by *"review this"* with no lens named, or when re-entering to check a diff that was made outside this procedure (a direct-mode edit, most commonly). §1 + §3 (gate) → skip 4a/4b/4c (no developer round, so no path split applies) → 4d → 4e. This is a `{tech}-reviewer` pass, not a lens pass — if the human wants lens scrutiny, that's `flow-review`, a separate ask.
+**Review only, correctness scope (no developer).** Triggered by *"review this"* with no lens named, or when re-entering to check a diff that was made outside this procedure (a direct-mode edit, most commonly). §1 + §3 (gate, with the Seats block's developer line omitted per its own note) → skip 4a/4b/4c (no developer round, so no path split applies) → 4d → 4e. This is a `{tech}-reviewer` pass, not a lens pass — if the human wants lens scrutiny, that's `flow-review`, a separate ask. **If the reviewer returns `CHANGES_REQUIRED`,** there is no developer seated in THIS invocation to fix it — route the findings by re-entering §0 case 1 (a fresh build/fix request briefed with the specific findings), which seats the developer normally; §5's loop does not run standalone against an empty developer seat.
 
 **Direct implementation (no matching subagent).** Not to be confused with Validate-First in §2 — Validate-First still has a `{tech}-reviewer`, just deferred; Direct implementation has none, ever, and self-checks instead. §1 + §3 first — the gate is NOT optional; it is MORE load-bearing, because this mode has no developer and no `{tech}-reviewer`. Present the plan with the Seats block replaced by *"no subagent exists for [stack] — I implement, and I self-check correctness myself."* Then:
 
@@ -194,7 +203,7 @@ MEDIUM/LOW you do NOT fix are follow-ups — list them, never their own round.
 
 ## 7. Executive summary
 
-Present: the stack · the developer · the `{tech}-reviewer` · the cycle count · what was achieved · the files delivered · the final verdict with issues found vs resolved · any seat still unsatisfied at the cap · notable decisions and rationale · **whether a lens review is available and not yet run — and, only if `flow-testing` has genuinely not run at all for this effort, that test-authoring is also available.** Never report a pass that already ran mid-flow (Validate-First's `flow-testing` detour) as "not yet run."
+Present: the stack · the developer · the `{tech}-reviewer` · the cycle count · what was achieved · the files delivered · the final verdict with issues found vs resolved · any seat still unsatisfied at the cap · notable decisions and rationale · **whether a lens review is available and not yet run — and, only if `flow-testing` has genuinely not run at all for this effort, that test-authoring is also available.** Never report a pass that already ran mid-flow (Validate-First's `flow-testing` detour) as "not yet run." **If §4d has not yet closed (a Validate-First effort still mid-flow), state that a lens-only review is not yet available — not merely "not yet run" — until it does; `flow-review` would otherwise have to seat the `{tech}-reviewer` itself (`flow-review` §0).**
 
 **For a Validate-First effort, report both phases distinctly** — the live-validation outcome (what was checked, against what live source, what iteration happened before confirmation) and the subsequent reviewed-hardening cycle count — never one blended narrative that hides which phase caught what.
 
@@ -204,23 +213,25 @@ Present: the stack · the developer · the `{tech}-reviewer` · the cycle count 
 
 ## Invariants (NEVER break)
 
+- **Never auto-fires from repository state** — an explicit trigger only; the safety net for unreviewed changes lives in `flow-git-operations`'s commit gate instead (§0).
+- **The trivial hatch closes on accumulation, not the keystroke** — 5 files changed this session and not yet through this procedure, any contract touched (an invariant, a gate, a schema, a public interface, a security/authorization rule), or any behavior change (§0).
 - **Never dispatch anything without approval of the plan** (§3).
 - **The roster always converges on the tech pair — never a lens.** Dev-alone-first (Validate-First) is a resequencing when a live source exists, never a way to skip the `{tech}-reviewer`; a lens seat, however warranted-looking, is `flow-review`'s call, made separately (§2).
-- **Correctness floor** — the `{tech}-reviewer` is the sole owner of code correctness; this flow is not DONE until it has run, for a real change, under either path. Validate-First legitimately defers WHEN it runs (§4c); neither path skips WHETHER it runs (§2).
+- **Correctness floor** — the `{tech}-reviewer` is the sole owner of code correctness; this flow is not DONE until it has run, for a real change, under either path — or, where no `{tech}-reviewer` exists (framework prose §2, direct implementation §6), until the execution test has run instead. Validate-First legitimately defers WHEN it runs (§4c); neither path skips WHETHER it runs (§2).
 - **An open test-compilation blocker is never resolved by silence.** If a developer's own change broke an existing test's compilation (`build-core` Implementation Workflow step 5), the executive summary MUST surface it, unresolved, with the repair-scope route named — a `{tech}-reviewer` APPROVED verdict does not close it, and this flow is not DONE while it stands (§7).
 - **On any doubt about live-testability, recommend Pair-First** — a weak check does not qualify a task for the deferral, and a security-sensitive path (auth, crypto/secrets, untrusted input) recommends Pair-First regardless of what else is true (§1).
 - **Binding `flow-testing` mid-flow is not dispatching it** — that dispatch earns `flow-testing`'s own §3 gate in full; approving THIS plan never authorizes it (§4c).
-- **A deferred reviewer is a carried obligation, not a memory.** Once Validate-First is approved, every subsequent report — the live-validation checkpoint, `flow-testing`'s own summary, anything in between — restates that the `{tech}-reviewer` pass is still outstanding, until §4d actually closes it (§4c).
+- **A deferred reviewer is a carried obligation, not a memory.** Once Validate-First is approved, every subsequent report — the live-validation checkpoint, `flow-testing`'s own summary, anything in between — restates that the `{tech}-reviewer` pass is still outstanding, until §4d actually closes it, OR a `flow-testing`-originated case-1 re-entry's own §4d supersedes it under both stated preconditions (§4c).
 - **Ground truth before building on it** — verify a code-unverifiable contract against reality early (§1).
 - **One batched fix round; every fix is reviewed** (§5).
-- **Round 1 is guaranteed; the cap is 3.** Hitting the cap unsatisfied is an escalation, never an approval (§5).
+- **The reviewer pass is guaranteed whenever changes exist; a FIX round only on a gating finding. The cap is 3.** Hitting it unsatisfied is an escalation, never an approval (§5).
 - **The reviewer keeps its seat until ITS gating findings close** — you never declare them resolved (§5).
 - **Never price the review** — the gate asks about consequence, never tokens or time (§3).
 - **Reviewers are read-only** and have no shell; materialize the diff for them (§4d).
 - **Expose every subagent report** as it completes.
 - **Direct-mode review is independent, never self-performed** (§6).
 - **A spec, when one governs the work, is handed by path + hint — never pasted verbatim** into a dispatch prompt (§1).
-- **2+ parallel pairs without a governing spec requires an explicit human ask, never a unilateral decision** (`flow-spec` §0 / §1).
+- **2+ parallel pairs without a governing spec requires an explicit human ask, never a unilateral decision** (`flow-spec` §0).
 
 ---
 *The lens swarm lives in `flow-review`; the cross-repo contract in `flow-spec`; test-authoring in `flow-testing`; review conduct in review-core / review-report-standards; builder conduct in build-core.*

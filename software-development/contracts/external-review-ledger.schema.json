@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/external-review-ledger.schema.json",
   "title": "External-Review Ledger Row",
-  "description": "One row of ledger.json — the canonical, frozen work-set + live status for a single finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the field SEMANTICS (provisional_severity feeds only the panel rule and never reaches a human, the verdict->disposition map, the tier/agreement/seat rules, the status lifecycle) live in flow-external-review (§3, §5). The row is written INCREMENTALLY across phases, so only schema_version/id/title/status are required; every other field is filled in as its phase resolves. `verdict` is the FULL arbiter set (finding-verdict.schema.json); `provisional_severity` and `severity` are the ONE anchored scale (severity.schema.json).",
+  "description": "One row of ledger.json — the canonical, frozen work-set + live status for a single finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the field SEMANTICS (provisional_severity vs. severity, the verdict->disposition map, the tier/agreement/seat rules, the status lifecycle) live in flow-external-review (§3, §5). The row is written INCREMENTALLY across phases, so only schema_version/id/title/status are required; every other field is filled in as its phase resolves. `verdict` is the FULL arbiter set (finding-verdict.schema.json); `provisional_severity` and `severity` are the ONE anchored scale (severity.schema.json).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "title", "status"],
@@ -31,7 +31,7 @@
       "enum": ["inline", "issue"]
     },
     "comment_id": {
-      "description": "The originating inline/issue comment id, when applicable.",
+      "description": "The originating inline/issue comment id, when applicable — a union because inline.jsonl (flow-external-review §0/PHASE 0) stores GitHub's comment id and GitLab's full discussion id in the same field despite their differing native types.",
       "type": ["string", "integer"]
     },
     "locations": {
@@ -48,7 +48,7 @@
       "enum": ["AGREE", "CONFLICT", "SINGLE"]
     },
     "tier": {
-      "description": "Triage tier — A (style/lint, single advocate) or B (behavioural, panel rule).",
+      "description": "Triage tier. Criteria and the panel rule live in flow-external-review §5.1.",
       "enum": ["A", "B"]
     },
     "panel_required": {
@@ -56,17 +56,20 @@
       "type": "boolean"
     },
     "seat": {
-      "description": "The single routed adjudication seat (§2b). Scalar — a finding needing two seats was split into sub-rows.",
+      "description": "The single routed adjudication seat. Scalar; the routing and splitting rules live in flow-external-review §2b.",
       "type": "string",
       "minLength": 1
     },
     "provisional_severity": {
-      "description": "Phase-1 triage hint mapped from the external label. Feeds ONLY the panel rule; NEVER reaches a human report.",
+      "description": "Phase-1 triage hint mapped from the external label. Semantics — what it feeds, and its distinction from `severity` — live in flow-external-review §5.3.",
       "$ref": "severity.schema.json"
     },
-    "verdict": { "$ref": "finding-verdict.schema.json" },
+    "verdict": {
+      "description": "This row's final ruling, driving the disposition (flow-external-review §5.2).",
+      "$ref": "finding-verdict.schema.json"
+    },
     "severity": {
-      "description": "Phase-2 evidence-based grade on the anchor scale — the only severity that reaches a human.",
+      "description": "Phase-2 evidence-based grade on the anchor scale. Its distinction from `provisional_severity` lives in flow-external-review §5.3.",
       "$ref": "severity.schema.json"
     },
     "disposition": {
@@ -74,11 +77,16 @@
       "enum": ["FIX", "NOT_AN_ISSUE", "ESCALATED", "TRACK_FOLLOWUP", "ALREADY_RESOLVED"]
     },
     "secondary_actions": {
-      "description": "Additional outcomes beyond the primary disposition, for a compound ruling (R13).",
+      "description": "Additional outcomes beyond the primary disposition, for a compound ruling (flow-external-review §5.2).",
       "$ref": "secondary-actions.schema.json"
     },
     "resolved_by_commit": {
-      "description": "SHA that already fixed an ALREADY_RESOLVED row (R12).",
+      "description": "OPTIONAL — present ONLY when disposition is ALREADY_RESOLVED: the SHA that already fixed the row (flow-external-review §5.2/PHASE 2, not enforced by this schema).",
+      "type": "string",
+      "minLength": 1
+    },
+    "escalation_blocker": {
+      "description": "OPTIONAL — present ONLY when disposition is ESCALATED: the review-arbiter's stated reason it could not decide on the evidence. The one datum the ESCALATE path exists to surface to the human (enforced by flow-external-review §5.2/PHASE 3, not by this schema).",
       "type": "string",
       "minLength": 1
     },
@@ -93,7 +101,7 @@
       "minLength": 1
     },
     "status": {
-      "description": "Position in the run lifecycle. Typical values: PENDING (Phase 1), JUDGED (Phase 2), RESOLVED, BLOCKED. Kept as a string because the source does not fix a single closed set.",
+      "description": "Position in the run lifecycle — the full value set (PENDING, JUDGED, then a terminal RESOLVED/TRACK_FOLLOWUP/BLOCKED/ESCALATED) is owned by flow-external-review §11. Kept as a string because the source does not fix a single closed set.",
       "type": "string",
       "minLength": 1
     }
