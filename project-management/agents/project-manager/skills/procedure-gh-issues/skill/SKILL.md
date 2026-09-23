@@ -7,7 +7,7 @@ description: "Procedure the project-manager binds to create, query, comment on, 
 
 The **one** way the `project-manager` talks to `gh` for issue creation, duplicate-checking, epic/child linking, label management, commenting, editing, and closing. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `gh issue create`/`edit`/`comment`/`close` invocation, and never build an issue/comment body in shell.
 
-**`procedure-glab-issues` is this skill's true backend twin** — the same seven scripts, same flag names, same exit-code contract, on GitLab issues instead of GitHub issues. One of this skill's mechanics has **no GitLab counterpart, by design**: `close-issue.sh --reason completed|not_planned` — GitLab's CLI exposes no close reason at all, so the twin's `close-issue.sh` has no `--reason` flag.
+**`procedure-glab-issues` is this skill's true backend twin** — the same seven scripts, same flag names, same exit-code contract, on GitLab issues instead of GitHub issues. One of this skill's mechanics has **no GitLab counterpart, by design**: `close-issue.sh --reason completed|not_planned` — GitLab's CLI (Command-Line Interface) exposes no close reason at all, so the twin's `close-issue.sh` has no `--reason` flag.
 
 ## Why these scripts exist (read this before calling anything)
 
@@ -22,7 +22,7 @@ The fix is structural: **any issue/comment body is ALWAYS a file, passed via `--
 
 ## The seven scripts (`$HOME/.claude/skills/procedure-gh-issues/scripts/` — all portable & deterministic)
 
-**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gh-issues/scripts/<name>`.** Never a bare `scripts/<name>` (that resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the calling agent runs, so it will not resolve there. All seven are POSIX `sh`, run on any machine (macOS BSD / Bash 3.2 + Linux), `shellcheck`-clean, deterministic, and depend on nothing outside this skill directory (they source only this skill's own `lib/` — see below).
+**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gh-issues/scripts/<name>`.** Never a bare `scripts/<name>` (that resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the calling agent runs, so it will not resolve there. All seven are POSIX (Portable Operating System Interface) `sh`, run on any machine (macOS BSD — Berkeley Software Distribution — / Bash 3.2 + Linux), `shellcheck`-clean, deterministic, and depend on nothing outside this skill directory (they source only this skill's own `lib/` — see below).
 
 ### The shared library (`lib/`)
 
@@ -71,7 +71,7 @@ $HOME/.claude/skills/procedure-gh-issues/scripts/find-duplicate.sh --repo OWNER/
 $HOME/.claude/skills/procedure-gh-issues/scripts/link-children.sh --repo OWNER/REPO --epic N --child N [--child N ...] [-h|--help]
 ```
 
-- **Mechanism (a deliberate choice):** appends `- [ ] #<child>` lines under a `## Linked children` heading to the epic's body, rather than the GitHub sub-issues REST API, which needs each child's *internal database id* (an extra `gh api` round-trip per child to resolve number → id). The task-list form reuses the same well-understood `gh issue edit --body-file` path this skill already depends on. A future version can swap in the sub-issues API behind the same `PM_LINKED` contract without the caller changing.
+- **Mechanism (a deliberate choice):** appends `- [ ] #<child>` lines under a `## Linked children` heading to the epic's body, rather than the GitHub sub-issues REST (Representational State Transfer) API, which needs each child's *internal database id* (an extra `gh api` round-trip per child to resolve number → id). The task-list form reuses the same well-understood `gh issue edit --body-file` path this skill already depends on. A future version can swap in the sub-issues API behind the same `PM_LINKED` contract without the caller changing.
 - **Injection safety, same rule as above:** the epic's *existing* body is untrusted repo content, so it is read straight to a temp file (`gh issue view --json body --jq '.body // ""'` → file) and never assigned to a shell variable. The new checklist lines appended are built *only* from `--child` values already validated as plain positive integers — never from the body just read.
 - **Idempotent, regardless of checkbox state, and safe against duplicate arguments:** a child already present — as `- [ ] #N` OR a checked `- [x]`/`- [X] #N` — is detected and skipped, never re-appended or recounted; a child requested more than once in a single run (e.g. `--child 11 --child 11`) is linked at most once. New lines are inserted right after the heading's own last checklist item (not blindly at end-of-file), so a `## Linked children` heading that isn't the last section in the body never gets orphaned new lines below whatever follows it.
 - Prints `PM_LINKED=<n>` — the count of **new** links actually appended this run (0 is a valid, successful no-op when every requested child is already linked).
@@ -135,12 +135,12 @@ $HOME/.claude/skills/procedure-gh-issues/scripts/close-issue.sh \
 - No `PM_*` output key on success beyond the exit code — `gh issue close` doesn't reliably return a URL the way create/edit do, and inventing one wasn't part of this script's contract.
 - Exit `0` closed (and the closing comment, if any, was posted first) · `1` gh absent/unauthenticated/the comment post failed/`gh issue close` itself failed · `2` usage error.
 
-## The gates the CALLER (project-manager) must clear before invoking a WRITE
+## The gates that must clear before a WRITE is invoked
 
-Six of these seven scripts write to a live, notifying, hard-to-retract tracker — everything except `find-duplicate.sh`. **`find-duplicate.sh` is the only read-only, ungated one.** Before calling `create-issue.sh`, `link-children.sh`, `ensure-labels.sh`, `comment.sh`, `update-issue.sh`, or `close-issue.sh`:
+Six of these seven scripts write to a live, notifying, hard-to-retract tracker — everything except `find-duplicate.sh`. **`find-duplicate.sh` is the only read-only, ungated one.** Before `create-issue.sh`, `link-children.sh`, `ensure-labels.sh`, `comment.sh`, `update-issue.sh`, or `close-issue.sh` runs:
 
-1. **Explicit user creation-consent for THIS write** — per the project-manager's own creation gate (see its agent body): drafting is free, writing is not; a relayed "do it" is never sufficient on its own. This applies just as much to a comment, an edit, a close, or a label creation as it does to creating the issue itself.
-2. **The `procedure-github-auth` account gate** — run `gh-auth-status.sh`, present the active account, and get the user's confirmation it's the correct login, **before** calling any write script. This skill does **not** perform that check itself (see each script's header comment) — it is a separate, upstream precondition the calling agent owns.
+1. **Explicit user creation-consent for THIS write** — the project-manager's own creation gate, not restated here (see its agent body).
+2. **The `procedure-github-auth` account gate** — normally cleared by the **orchestrator**, which is also who actually invokes each script above, on behalf of a `project-manager`-proposed write; `project-manager` itself clears it, and runs a write script directly, only in the rare direct-consent case its own agent body describes. The gate's own mechanics live in `procedure-github-auth`'s "Who runs this" section, not restated here.
 
 **`ensure-labels.sh` warrants particular care** — a label is repo-wide and persistent (unlike a single issue's field), so its consent should be as explicit as any other outward write, never inferred from "the user wanted the issue created."
 

@@ -1,25 +1,25 @@
 ---
 name: standard-backlog-artifacts
-description: The shared rubric for an EXCELLENT backlog artifact (epic/story/task/bug/spike + the audience matrix), tracker-agnostic, built to by the project-manager. Applies whenever such an artifact is authored, structured, or refactored. Does NOT define the project-manager's conduct, gates, or report envelope (agent body), and does NOT cover pull/merge-request bodies (`standard-git-pr`, git-operator's domain).
+description: The shared rubric for an EXCELLENT backlog artifact (epic/story/task/bug/spike + the audience matrix), tracker-agnostic, built to by the project-manager. Applies whenever such an artifact is authored, structured, or refactored. Does NOT define the project-manager's conduct, gates, or report envelope (agent body). It also does NOT cover pull/merge-request bodies — that craft is `standard-git-pr`'s, owned entirely by `git-operator` (a different agent, a different domain), never the project-manager's.
 ---
 
 # Standard: Backlog Artifacts
 
 The **one** definition of an excellent backlog artifact. The `project-manager` builds to it. Excellence is **not exhaustiveness** — it is the *smallest* artifact that carries the *right work* to the *right audience*, at the *right altitude* (epic vs story vs task). Vagueness and mis-sized work are the default failures; every rule here exists to prevent them.
 
-This skill defines **WHAT good looks like**. It does NOT define the agent's conduct, the creation/account gates, or the report envelope — those live in the agent body.
+This skill defines **WHAT good looks like**. It does NOT define the agent's conduct, the creation/account gates, or the report envelope — those live in the agent body. It also defines no severity scale — no reviewer grades a backlog artifact against this rubric; conformance is binary (the checklist below), not graded. And it does not cover a pull/merge-request body — that craft belongs wholly to `standard-git-pr`, owned by `git-operator`, a different agent in a different domain. **It does not apply to a content-less lifecycle op** (a bare close, adding an existing label/a project, reassigning, or a Jira transition, per `flow-project-management` P1) — there is no artifact to grade against this rubric when nothing is being authored.
 
 ## Philosophy
 
-- **Problem-first, never solution-first.** A request that arrives as a solution ("build a CSV exporter") is reframed to the problem and outcome ("analysts can't get their data out → they re-key it by hand → export it"). Ask *why* until the real need is visible, then let the solution follow.
+- **Problem-first, never solution-first.** A request that arrives as a solution ("build a CSV (Comma-Separated Values) exporter") is reframed to the problem and outcome ("analysts can't get their data out → they re-key it by hand → export it"). Ask *why* until the real need is visible, then let the solution follow.
 - **Right altitude.** Every piece of work has a natural size — initiative → epic → story → task. Capturing it one level too high is unactionable; one level too low is noise. Naming the altitude correctly is the highest-value judgment. An *initiative* (above epic) has no artifact type of its own — capture it as a top-level parent epic.
 - **Ceremony matched to stakes.** A one-line typo bug is a one-line bug. Do not wrap trivial work in epic ceremony; do not under-specify a load-bearing feature.
 
-## The pre-authoring reflexes (a senior PM's defaults)
+## The pre-authoring reflexes (a senior project manager's defaults)
 
 1. **Reframe to problem + outcome** before choosing a type.
 2. **Right-size and decompose** — decide the altitude and, if it's an epic, the child breakdown. This is the signature move.
-3. **Slice vertically** — each story is a thin end-to-end slice that ships observable value, never a horizontal layer ("the DB part", "the UI part").
+3. **Slice vertically** — each story is a thin end-to-end slice that ships observable value, never a horizontal layer ("the database part", "the UI part").
 4. **Write testable acceptance criteria** — Given/When/Then; this *is* the definition of done, not a vibe.
 5. **State non-goals explicitly** — the "Out of scope" section is where scope creep dies.
 6. **Name dependencies & sequencing** — what blocks what, what must land first, what a prerequisite spike must answer.
@@ -31,7 +31,7 @@ This skill defines **WHAT good looks like**. It does NOT define the agent's cond
 | Type | Purpose | MUST contain | MUST NOT be |
 |------|---------|--------------|-------------|
 | **Epic** | A large outcome delivered by several stories | Outcome/goal, the value, a child-story breakdown (task list), non-goals, success measure | A single deliverable dressed up; a bucket with no end state |
-| **User story** | One thin, valuable, end-to-end slice | "As a … I want … so that …", acceptance criteria (Given/When/Then), non-goals, INVEST-clean | A horizontal layer; too big to finish in one iteration |
+| **User story** | One thin, valuable, end-to-end slice | "As a … I want … so that …", acceptance criteria (Given/When/Then), non-goals, INVEST (Independent, Negotiable, Valuable, Estimable, Small, Testable)-clean | A horizontal layer; too big to finish in one iteration |
 | **Task** | A concrete unit of work with no user-facing value on its own | Clear done-state, the context needed to do it | A story missing its "so that" (if it has user value, it's a story) |
 | **Bug** | A defect in existing behavior | **Repro steps · expected · actual · environment/version**, severity | A feature request in disguise (reframe to a story) |
 | **Spike** | A time-boxed investigation to remove uncertainty | The **question** to answer, a **time-box**, the **deliverable** (decision/doc/prototype) | Open-ended research with no exit condition |
@@ -56,7 +56,7 @@ State each criterion as **Given** [context] **When** [action] **Then** [observab
 
 ## The AUDIENCE MATRIX (the core differentiator)
 
-The same work becomes a **materially different artifact** depending on who reads it. For an artifact-AUTHORING dispatch, the audience is a **required input** the orchestrator supplies — the agent never guesses it. (A content-less lifecycle op — a bare close, adding an existing label/a project, reassigning, or a Jira transition — legitimately arrives with none; see the project-manager's own audience contract, in its agent body, and `flow-project-management` P1.) The canonical value set — `agent` / `human` / `both`, the human register `technical` / `non-technical` / `business`, and the composite tokens in this matrix's first column — is defined once in `audience-register.schema.json` (deployed at `$HOME/.claude/crucible/contracts/audience-register.schema.json`; framework source: project-management/contracts/audience-register.schema.json), the single source of truth for the values; this matrix defines what each value *means* for the artifact. The naive model (a single technical→non-technical spectrum) is wrong: there are two orthogonal dimensions —
+The same work becomes a **materially different artifact** depending on who reads it. How the audience value is supplied, required, or legitimately absent is the project-manager's own audience contract (its agent body) and `flow-project-management` P1 — not restated here. The canonical value set — `agent` / `human` / `both`, the human register `technical` / `non-technical` / `business`, and the composite tokens in this matrix's first column — is defined once in `audience-register.schema.json` (deployed at `$HOME/.claude/crucible/contracts/audience-register.schema.json`; framework source: project-management/contracts/audience-register.schema.json), the single source of truth for the values; this matrix defines what each value *means* for the artifact. The naive model (a single technical→non-technical spectrum) is wrong: there are two orthogonal dimensions —
 
 1. **Literacy** — can they parse code/architecture/jargon?
 2. **Job** — do they **execute** the ticket, or **decide/approve/track** it?
@@ -68,7 +68,7 @@ The same work becomes a **materially different artifact** depending on who reads
 | **`agent`** (not human) | The task + full self-contained context | **Machine-checkable assertions** — exact expected states, file paths, commands | **None** — no tribal knowledge; every path, link, and precondition is explicit | Precise/technical | Nothing — over-specify; ambiguity is the enemy | Verbose, exhaustive |
 | **`human:technical`** (executor) | Scope + intent | Given/When/Then, testable | Codebase familiarity; points to areas, not every line | Yes | Business framing; hand-holding | Tight |
 | **`human:non-technical`** (executor) | The goal in plain words | Plain checklist — "done when …" | Domain, but **not** code | **None** | Architecture; implementation detail | Moderate, guided |
-| **`human:business`** (**decider**) | **Outcome + value + impact** | Success = a **measurable outcome / KPI** | Strategy context, not implementation | Business terms | **All implementation**; steps | Short, punchy |
+| **`human:business`** (**decider**) | **Outcome + value + impact** | Success = a **measurable outcome / KPI (Key Performance Indicator)** | Strategy context, not implementation | Business terms | **All implementation**; steps | Short, punchy |
 | **`both`** | Layered | A human section (in the chosen register) **+** an agent section (assertions) | Per each layer | Per each layer | Per each layer | Two clearly-separated blocks |
 
 **The load-bearing distinctions:**

@@ -1,6 +1,6 @@
 ---
 name: standard-jira-artifacts
-description: "The Jira-specific delta on top of `standard-backlog-artifacts` — bind whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers only what Jira adds: markdown-to-ADF authoring, the workflow-status state machine and its readiness-audit mechanism, and how a confirmed site selects a client overlay. Does not restate artifact craft/taxonomy (that's `standard-backlog-artifacts`), define per-client template/label/status content (a `standard-jira-<client>` overlay), or cover the `procedure-jira`/`procedure-jira-auth` CLI mechanics."
+description: "The Jira-specific delta on top of `standard-backlog-artifacts` — bind whenever a Jira issue is authored, updated, transitioned, or audited via `procedure-jira`. Covers only what Jira adds: markdown-to-ADF (Atlassian Document Format) authoring, the workflow-status state machine and its readiness-audit mechanism, and how a confirmed site selects a client overlay. Does not restate artifact craft/taxonomy (that's `standard-backlog-artifacts`), define per-client template/label/status content (a `standard-jira-<client>` overlay), or cover `procedure-jira`'s own command mechanics/flag surface (bind that skill directly, not restated here) or `procedure-jira-auth`'s gate."
 ---
 
 # Standard: Jira Artifacts
@@ -13,7 +13,7 @@ Before writing or auditing any Jira artifact, apply `standard-backlog-artifacts`
 
 ## Authoring surface: markdown to ADF
 
-Jira stores rich text as Atlassian Document Format (ADF) JSON, not markdown. Every write command that accepts body text — `create --description-file`, `update --description-file` / `--append-file` / `--acceptance-file` / `--review-file`, `comment --text-file`, `comment-edit --text-file` — takes a **markdown file**, converted to ADF by `md-to-adf.sh` before it reaches the API. **Always author in markdown. Never write Jira wiki notation** (`h2.`, `*bold*`, `{code}`) — it is not converted and renders as raw text.
+Jira stores rich text as ADF JSON, not markdown. `procedure-jira`'s own "All body text is a FILE" invariant (not restated here) is what routes every write command's body through `md-to-adf.sh` before it reaches the API — bind that skill for which commands and flags take a file. What THIS skill owns is the markdown subset that conversion actually understands:
 
 The converter supports a defined subset of markdown:
 
@@ -24,12 +24,12 @@ The converter supports a defined subset of markdown:
 | `1. item` (a consecutive run) | One ordered list |
 | An indented `- item` under a list item | A **real nested list** — the deeper list becomes a child of its parent list item, not a flattened or degraded block |
 | `- [ ] item` / `- [x] item` (a consecutive run) | One **native Jira task list** — real checkboxes a reader can tick, not a decorated bullet (`[x]`/`[X]` = done) |
-| A GFM pipe table (header row + `\|---\|---\|` separator + body rows) | An ADF table |
+| A GFM (GitHub Flavored Markdown) pipe table (header row + `\|---\|---\|` separator + body rows) | An ADF table |
 | A triple-backtick fenced block (optionally with a language tag) | An ADF code block |
 | `**bold**`, `` `code` ``, `[text](url)` | Inline marks (a link whose scheme isn't http(s)/mailto drops its href, keeps the text) |
 | `[~accountId:<ID>]` | A real Jira **@mention** (the user is notified). **Write it BARE** — wrapping it in `**`/`*`/`_` suppresses the mention (it renders as literal text), and `~~` leaves stray tildes around it; marks do not nest here, exactly as for a wrapped `[text](url)` link. `<ID>` must be an **accountId**, never a name or email: the converter performs no lookup, so an **out-of-shape** id (wrong characters, over 128 chars) degrades to literal text, while a well-shaped but **wrong** id is sent through as a real mention unchanged — the converter cannot know it is wrong, only Jira can reject it. Get one from a `view --json`/`search --json` payload, or from the account the auth gate already confirmed. |
 | A line that is exactly `---` | A horizontal rule |
-| Anything the converter doesn't recognize (footnotes, raw HTML, definition lists, …) | Degrades to a plain paragraph |
+| Anything the converter doesn't recognize (footnotes, raw HTML (HyperText Markup Language), definition lists, …) | Degrades to a plain paragraph |
 
 The subset is wider than the table above (blockquotes, `> [!NOTE]`-style panels, `_italic_`, `~~strike~~`, hard breaks, headings 1 and 4–6 all convert too); `md-to-adf.sh`'s own header comment is the authoritative list. **As a matter of style, prefer flat markdown** — a blank line between blocks, shallow nesting — because a Jira ticket read in a narrow side panel is easier to scan that way, not because deeper structure fails to convert. A `standard-jira-<client>` overlay's ticket template must stay inside this subset.
 
@@ -39,9 +39,7 @@ The subset is wider than the table above (blockquotes, `> [!NOTE]`-style panels,
 
 A Jira issue carries a **status** from a project- and issue-type-specific workflow graph, configured per project — never a fixed global list. Illustrative default (the shape an unconfigured project effectively behaves like): `Open → In Progress → Reviewing → Done → Closed`. Treat this as an example, not a contract — the real statuses and legal transitions for a given project come from its config, discoverable with `jira.sh workflow <KEY> --confirmed-site SITE`.
 
-Two commands make the status axis usable without guessing:
-- **`jira.sh workflow <KEY> --confirmed-site SITE`** — the ticket's current status and the transitions actually available from it right now.
-- **`jira.sh transition <KEY> --status TARGET --confirmed-site SITE --plan`** — computes and prints the full path the walk will take (Jira auto-walks through intermediate statuses when there is no direct transition to the target) plus any injected resolution/comment, **without writing anything**. Always run `--plan` before a real transition so a human consent gate discloses the actual path, not just the target.
+Two `procedure-jira` commands make the status axis usable without guessing — `workflow` and `transition --status TARGET --plan` — bind that skill for their mechanics and its own gating discipline around `--plan`, not restated here.
 
 ### The readiness-audit-against-status mechanism
 
@@ -55,4 +53,4 @@ Neither GitHub nor GitLab issues have an equivalent: there is no per-status "wha
 
 ## Site selects the client overlay (data-driven, never a name switch)
 
-The human-confirmed Jira site — the same `--confirmed-site` every `jira.sh` command requires — selects which `standard-jira-<client>` overlay applies, through a `site → client-skill` registry the private client layer supplies; see `site-registry.example.json` in this directory for the mapping shape. This generic skill, and the flow that orchestrates it, never hardcode a client name. A confirmed site with no registry entry falls back to this generic skill alone, still fully gated.
+The human-confirmed Jira site — `procedure-jira-auth`'s own gate output, passed as the same `--confirmed-site` every `jira.sh` command requires — selects which `standard-jira-<client>` overlay applies, through a `site → client-skill` registry the private client layer supplies; see `site-registry.example.json` in this directory for the mapping shape. This generic skill, and the flow that orchestrates it, never hardcode a client name. A confirmed site with no registry entry falls back to this generic skill alone, still fully gated.

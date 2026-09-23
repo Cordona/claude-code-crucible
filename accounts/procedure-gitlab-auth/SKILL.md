@@ -1,20 +1,22 @@
 ---
 name: procedure-gitlab-auth
-description: The account confirmation gate that resolves and confirms the correct GitLab CLI login before any GitLab operation. Must run — and be confirmed — before the git-operator performs any GitLab MR write, and before the project-manager performs any GitLab issue write. It does NOT define commit/branch/MR/tag conventions (standard-git-* skills) or resolve the signing identity (procedure-git-identity — a separate gate). It is the GitLab counterpart of procedure-github-auth.
+description: The account confirmation gate that resolves and confirms the correct GitLab CLI (command-line interface) login before any GitLab operation. Must run — and be confirmed — before the orchestrator performs any GitLab MR (merge request) write (git-operator only plans it) or any GitLab issue write (project-manager only proposes it); also invoked directly, by path, by `deploy/hub/hub-accounts.sh`. It does NOT define commit/branch/MR/tag conventions (standard-git-* skills) or resolve the signing identity (procedure-git-identity — a separate gate). It is the GitLab counterpart of procedure-github-auth.
 ---
 
 # Procedure: Git/GitLab Account Auth Gate
 
-The **one** gate every GitLab operation (open/update a merge request via `procedure-glab-mr`, or write a GitLab issue via `procedure-glab-issues`) passes first. Because a user commonly works across GitLab instances (gitlab.com plus one or more self-managed hosts), the operator must **confirm the active `glab` account is the correct one** before acting under it — never assume the currently-configured account is the intended one.
+The **one** gate every GitLab operation (open/update a merge request via `procedure-glab-mr`, or write a GitLab issue via `procedure-glab-issues`) passes first. Because a user commonly works across GitLab instances (gitlab.com plus one or more self-managed hosts), the caller must **confirm the active `glab` account is the correct one** before acting under it — never assume the currently-configured account is the intended one.
 
 This is a **procedure, not a rubric**: run the scripts in order, present, confirm. It is the account analogue of the signing gate in `procedure-git-identity` (that gate is about *who signs*; this one is about *which GitLab login acts*), and the GitLab twin of `procedure-github-auth`.
 
-## The gate (the operator follows this)
+**Who runs this.** Never `git-operator` itself — it is structurally barred, with no exception, from performing the write this gate protects (see its own agent body). The **orchestrator** normally runs this gate too: on behalf of a `git-operator`-planned MR write (`flow-git-operations`), or a `project-manager`-proposed GitLab issue write (`flow-project-management`). **`project-manager` itself clears this gate, and runs a write script directly, only in the rare case where it directly holds the user's unmistakable in-turn consent** — a documented exception in its own agent body, not the normal path. Separately, **a human runs it directly** via `deploy/hub/hub-accounts.sh`, outside any agent flow. The steps below use "the caller" for whichever of these is running the gate.
+
+## The gate (the caller follows this)
 
 1. **Run** `$HOME/.claude/skills/procedure-gitlab-auth/scripts/glab-auth-status.sh` (agent-friendly, non-interactive) to resolve: is `glab` authenticated, as which **account (login)**, on which **host**, and — if several instances are configured — the list.
 2. **If not authenticated** (exit 1): do NOT proceed. Ask the user to authenticate (step 4).
 3. **If authenticated**: present the active account using **the account report template below** — filled verbatim from the script's machine-parseable `GLAB_*` output — and **ask the user: "is this the correct GitLab login for this operation?"** Proceed only on an explicit "yes".
-4. **If the user says no, or is not authenticated: the USER authenticates — the operator does not automate it.** `glab auth login` is inherently interactive (token entry / browser / device code, TTY), so the operator **invokes `$HOME/.claude/skills/procedure-gitlab-auth/scripts/manage_glab_accounts.sh`** (or asks the user to run it via `! …`) and hands the terminal to the user. The user completes the login; the operator does **not** parse or drive that interaction.
+4. **If the user says no, or is not authenticated: the USER authenticates — the caller does not automate it.** `glab auth login` is inherently interactive (token entry / browser / device code, TTY — an interactive terminal session), so the caller **invokes `$HOME/.claude/skills/procedure-gitlab-auth/scripts/manage_glab_accounts.sh`** (or asks the user to run it via `! …`) and hands the terminal to the user. The user completes the login; the caller does **not** parse or drive that interaction.
 5. **Re-verify**: after the interactive script returns, run `$HOME/.claude/skills/procedure-gitlab-auth/scripts/glab-auth-status.sh` again, present the now-active account, and re-confirm. Repeat until the user confirms the correct account, or abort on request.
 6. **Only then** perform the GitLab operation.
 
@@ -44,7 +46,7 @@ Render this block as live Markdown, filled from `glab-auth-status.sh`'s `GLAB_*`
 
 ## The two scripts (`$HOME/.claude/skills/procedure-gitlab-auth/scripts/` — both highly portable & deterministic)
 
-**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gitlab-auth/scripts/<name>`.** Never a bare `scripts/<name>` (it resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from the operator's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the operator runs, so it will not resolve there. Both are POSIX `sh`, run on any machine (macOS BSD / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — not even of the `procedure-github-auth` siblings, whose parsing and render legend are duplicated on purpose), and deterministic. They differ **only** in interaction mode:
+**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-gitlab-auth/scripts/<name>`.** Never a bare `scripts/<name>` (it resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from the caller's Bash — that placeholder is substituted only inside a skill's own `SKILL.md` content at invocation, NOT in the shell the caller runs, so it will not resolve there. Both are POSIX (Portable Operating System Interface) `sh`, run on any machine (macOS BSD, Berkeley Software Distribution, / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — not even of the `procedure-github-auth` siblings, whose parsing and render legend are duplicated on purpose), and deterministic. They differ **only** in interaction mode:
 
 **`glab-auth-status.sh`** — **agent-friendly** (non-interactive, machine-parseable), read-only:
 
@@ -58,7 +60,7 @@ glab-auth-status.sh [--hostname HOST] [-h|--help]
 - **Never guesses.** The account is per instance; with more than one candidate and no `--hostname`, it reports `GLAB_ACTIVE_AMBIGUOUS=true`, lists the candidates, leaves `GLAB_ACTIVE_ACCOUNT`/`GLAB_HOST` **empty**, and exits 1. An output-order-dependent guess could present a plausible-but-wrong account to confirm.
 - Exit codes: `0` = authenticated with a single resolved account (ready) · `1` = glab absent / not authenticated / no account / ambiguous · `2` = usage error. Deterministic: same `glab` state → same result. Guards `command -v glab`; if `glab` is absent, a clear failure with the install hint.
 
-**`manage_glab_accounts.sh`** — **USER-interactive** (a human drives it; the operator only invokes it and hands over the TTY):
+**`manage_glab_accounts.sh`** — **USER-interactive** (a human drives it; the caller only invokes it and hands over the TTY):
 
 ```
 manage_glab_accounts.sh [-h|--help]
@@ -67,7 +69,7 @@ manage_glab_accounts.sh [-h|--help]
 - Shows the current auth state, then offers: **authenticate a specific instance** (pick one of the configured hosts, or type a new hostname → `glab auth login --hostname <h>`) · **log in with glab's own interactive host detection** (`glab auth login`, which suggests instances from the repo's git remotes) · **keep the current account**.
 - **There is deliberately no "switch account" row.** `glab auth` has no `switch` subcommand (verified against glab 1.112.0: it offers only `configure-docker`, `docker-helper`, `dpop-gen`, `login`, `logout`, `status`) and glab keeps **one credential per instance**, so there is no glab state that "switching" could set. Authenticating the instance *is* the switch, and choosing among several configured accounts is `glab-auth-status.sh --hostname HOST` — not a mutation here. This is the one structural divergence from `manage_gh_accounts.sh`, whose menu leads with `gh auth switch --user`.
 - Deterministic control flow (well-defined menu/branches; no undefined behavior); portable POSIX; **self-contained**; `shellcheck`-clean; supports gitlab.com and self-managed instances. A user-typed hostname is validated against an allow-list before it becomes an argv token.
-- Exit `0` = a login completed (or the user chose to keep the current account) · `1` = error / user cancelled. The operator never parses its output — it re-runs `glab-auth-status.sh` afterward to learn the result.
+- Exit `0` = a login completed (or the user chose to keep the current account) · `1` = error / user cancelled. The caller never parses its output — it re-runs `glab-auth-status.sh` afterward to learn the result.
 
 ## Constraints (NEVER violate)
 - Never run a GitLab operation without a green `glab-auth-status.sh` **and** the user's confirmation that the active account is correct.
