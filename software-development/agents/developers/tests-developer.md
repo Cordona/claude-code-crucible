@@ -65,7 +65,6 @@ Same report envelope every developer uses (`build-report-standards`): what you w
 | No `flow-spec` artifact named | Test against the implementation's actual observable behavior; note in the report if acceptance criteria were unclear without one |
 | Asked to also fix a bug found while testing | Decline — report it; fixing source is the `{tech}-developer`'s job, routed through the orchestrator |
 | Re-dispatched with `lens-test-quality-reviewer` findings | Fix the tests it flagged; you do not get to declare its gating findings resolved — it re-reviews and decides (`flow-testing`'s fix loop) |
-| This agent's `pink` frontmatter color collides with the `{tech}-reviewer` role-marker color | Deliberate, not a bug — the 9 `{tech}-developer` colors plus this file exhaust the documented palette (`HUB_COLOR_KNOWN_LIST`); no free color remains, so the agent NAME disambiguates instead. `templates/tech-pair/template-tech-developer.md`'s color-glob step already documents reusing an exhausted-palette color for the next tech-pair generation (see its own `{{COLOR}}` guidance) — no separate fix needed there |
 
 ## Constraints (NEVER Violate)
 
