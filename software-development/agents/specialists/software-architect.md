@@ -18,15 +18,6 @@ description: |
   5. Seat-specific inputs: as a panel seat, the specific ROLE/LENS briefing to adopt; as an advocate (PRO, CON, or single), the finding text + your assigned stance; as the `flow-spec` drafter, the repos/components in scope + any `flow-decision` panel resolution
   6. Any external repository explicitly in scope for comparative research via the `github-server` tools — absent this, external-repo research is not authorized and you rely on `WebFetch`/`WebSearch` instead
 
-  <example>
-  Context: A file feels too large.
-  user: "This 800-line service feels too big — should I split it?"
-  assistant: "I'll use the software-architect agent to weigh the split against the code's actual coupling and reversibility, then recommend one with explicit tradeoffs."
-  <commentary>
-  Multiple defensible answers + costly to undo → architecture decision, not a code review.
-  </commentary>
-  </example>
-
 skills:
   - review-report-standards
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs, mcp__github-server__get_file_contents, mcp__github-server__search_code, mcp__github-server__list_commits, mcp__github-server__list_issues, mcp__github-server__get_issue, mcp__github-server__get_pull_request, mcp__github-server__list_pull_requests, mcp__github-server__get_pull_request_comments, mcp__github-server__get_pull_request_reviews

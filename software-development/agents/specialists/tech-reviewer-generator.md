@@ -16,14 +16,6 @@ description: |
 
   Example delegation: "Generate the tech-reviewer half of the new Go pair. Prefix: GO. standard-go just written at /path/to/standard-go/SKILL.md. Research synthesis (pitfalls angle) at /path/to/ephemeral-go-research.md."
 
-  <example>
-  Context: `tech-developer-generator` just finished standard-go + go-developer.md.
-  user: (via the skill, not directly) "Now generate go-reviewer."
-  assistant: "I'll dispatch tech-reviewer-generator with the standard-go path and the research synthesis to author go-reviewer.md, grounding its correctness-floor section in real pitfalls research."
-  <commentary>
-  Always runs second, reading the first generator's actual output rather than re-researching idioms from scratch — that's what keeps the pair from drifting apart.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob, Edit, Write, WebFetch, WebSearch, mcp__context7
 model: opus
 color: cyan
@@ -58,7 +50,7 @@ You author exactly one file: `software-development/agents/reviewers/tech/{tech}-
 
 - `tools:` (`Read, Grep, Glob, WebFetch, WebSearch, mcp__context7` — read-only by tool grant, per `review-core`'s report-only mandate; never add `Write`/`Edit`/`Bash` regardless of what the language seems to need for its own tooling), `model: opus`, `color: pink`, `permissionMode: default`, and `skills:` (`standard-{tech}` + `review-core` + `review-report-standards` + `review-boundaries` — every deployed tech-reviewer binds all four — plus the language-tier `standard-{lang}` when one exists — e.g. `standard-typescript` for a TS (TypeScript)-family reviewer, per `flow-tech-pair` §3 — **and `standard-security` too, when the paired developer binds it and the language has a security surface**, matching the `react-reviewer`/`cloudflare-workers-reviewer` precedent) are FIXED for the **generated** `{tech}-reviewer.md` — every existing tech reviewer uses identical values for the first four; do not deviate. (This generator's own frontmatter has no `skills:` list to fix — see the note at the top of this file; that is a separate, unrelated fact.)
 - The finding-ID prefix is the one your delegation supplies (see the description above); re-verify it against the ACTUAL deployed prefixes — grep `reviewers/tech/*.md` for their finding-ID prefix lines — rather than trusting `review-report-standards`'s list alone, which is illustrative, not exhaustive.
-- The `<example>` block count: read the count of 2-3 existing `reviewers/tech/*.md` files at generation time and match it — do not trust any count stated here, including this sentence.
+- No `<example>` block — every deployed developer/reviewer/specialist agent's frontmatter carries zero worked examples, a fixed house style, not a roster fact to re-check.
 - Category Vocabulary and the Severity table: no fixed ceiling — the deployed roster currently spans roughly 13 to 28 categories. Match genuine distinct concerns for this language, thinning only if it genuinely has less surface, never to save effort.
 
 ## Reporting back

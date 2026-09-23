@@ -17,14 +17,6 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
 
-  <example>
-  Context: User needs a new CLI tool
-  user: "Create a CLI tool that processes log files and reports error summaries"
-  assistant: "I'll use the python-developer agent to implement the CLI with argument parsing and a testable core module separate from the entry point."
-  <commentary>
-  Triggers on CLI creation. Include the CLI framework choice, Python version, and existing conventions.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

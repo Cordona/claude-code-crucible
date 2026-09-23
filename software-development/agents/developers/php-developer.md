@@ -17,14 +17,6 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, queues)
 
-  <example>
-  Context: User needs a new REST API
-  user: "Create a REST API for managing products with CRUD (Create/Read/Update/Delete) operations"
-  assistant: "I'll use the php-developer agent to implement a REST controller with Form-Request validation, a service layer, and error handling."
-  <commentary>
-  Triggers on API creation. Include PHP version, framework, namespace structure.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

@@ -24,14 +24,6 @@ description: |
   5. **Whether tests were expected at this review at all** (the Phase 0 gate) — required on a `flow-testing` dispatch (that flow runs BECAUSE testing just happened, round 1 included); absent, assume the pre-testing default — plus `tests-developer`'s repair-vs-authoring answer, if this follows a `flow-testing` dispatch
   6. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer just implemented a feature; the swarm reviews it.
-  user: "Review the new payment flow."
-  assistant: "I'll run lens-test-quality-reviewer on the payment tests to check they verify real behavior, aren't false-confidence noise, and actually cover the new flow."
-  <commentary>
-  It reviews the tests and whether the change's behavior is tested; it does NOT review the payment code's own correctness (that's the language/clean-code lenses).
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-testing

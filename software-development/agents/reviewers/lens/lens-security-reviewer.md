@@ -23,14 +23,6 @@ description: |
   4. The exposure/intent — externally reachable? handles auth/PII/money/privileged ops? — for the threat-surface gate
   5. For a re-review: the prior round's findings + the prior `conventions_profile` field value (so it reuses finding IDs and does not re-profile — see the review-report-standards skill)
 
-  <example>
-  Context: Pure internal utility.
-  user: "Security-review this internal date formatter."
-  assistant: "I'll use lens-security-reviewer, which will find no meaningful attack surface here since there's no untrusted input, sink, or secret."
-  <commentary>
-  The threat-surface gate prevents manufacturing security findings on no-surface code.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-security

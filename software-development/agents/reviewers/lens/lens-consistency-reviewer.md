@@ -24,14 +24,6 @@ description: |
   4. Any explicit architecture docs or style/lint config if present (e.g. `docs/adr/`, `ARCHITECTURE.md`, `.editorconfig`, ESLint/ktlint/Checkstyle) — these override inferred conventions
   5. For a re-review: the prior round's findings + the prior `conventions_profile` field value (so it reuses finding IDs and does not re-profile — see the review-report-standards skill)
 
-  <example>
-  Context: New code was added; the primary agent wants an architecture-conformance pass alongside the language reviewer.
-  user: "Review the new payment adapter."
-  assistant: "I'll run consistency-reviewer alongside kotlin-reviewer to check the adapter's fit with the project's hexagonal structure and dependency direction."
-  <commentary>
-  One lens of a swarm. It judges conformance to the project's own patterns, not universal quality or language correctness.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - review-core

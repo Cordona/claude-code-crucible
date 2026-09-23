@@ -21,14 +21,6 @@ description: |
   4. The consumer reach — who consumes this (external clients, other services, downstream teams) vs. all in-repo — for the surface gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A migration drops a column that a downstream reporting service still reads.
-  user: "Is this migration safe to deploy?"
-  assistant: "I'll use lens-compatibility-reviewer for the consumer axis — the dropped column breaks the downstream reporting service — and hand the backfill correctness and table-locking risk to lens-persistence."
-  <commentary>
-  Split by axis: compatibility owns "who breaks", lens-persistence owns "is the data safe". Both are real; neither should flag the other's.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - review-core

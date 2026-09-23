@@ -16,14 +16,6 @@ description: |
   4. Whether to **draft only** (author + report back) or **draft then create** (author, then create in the tracker on the user's explicit approval)
   5. On a re-run: the prior artifacts / IDs so it updates rather than duplicates
 
-  <example>
-  Context: Work destined for another agent to implement.
-  user: "Turn this into a ticket an agent can pick up and run with."
-  assistant: "I'll use the project-manager agent with audience=agent, so it writes a self-contained artifact with explicit paths and machine-checkable acceptance criteria."
-  <commentary>
-  The audience is a REQUIRED input for an authoring dispatch like this one; the orchestrator supplies it. Agent-tuned artifacts are a different shape from human ones.
-  </commentary>
-  </example>
 skills:
   - standard-backlog-artifacts
   - procedure-gh-issues

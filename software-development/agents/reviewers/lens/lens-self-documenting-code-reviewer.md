@@ -24,14 +24,6 @@ description: |
   5. The commit message or PR/MR (Merge Request) description, if available — enables the aggregate pass's cross-artifact duplication signal; its absence does not block the review, the other signals still run without it
   6. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A test suite was just written; the primary agent wants comment discipline checked on it directly, not deferred.
-  user: "Review the new payment tests for comment discipline too, not just structure."
-  assistant: "I'll run self-documenting-code-reviewer on the test files directly — it doesn't hand off tests the way clean-code-reviewer does — alongside test-quality-reviewer for structure/coverage."
-  <commentary>
-  This is the one lens with jurisdiction over comments/docstrings regardless of file type. It never substitutes for lens-test-quality-reviewer's structural/correctness review of the same test file.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-self-documenting-code

@@ -15,14 +15,6 @@ description: |
 
   Example delegation: "Generate the tech-developer half of a new Go pair. Ecosystem: stdlib, no framework named. Collision check: clean, no existing pair covers Go. Research synthesis at /path/to/ephemeral-go-research.md."
 
-  <example>
-  Context: `flow-tech-pair` just got human approval to generate a Go pair.
-  user: (via the skill, not directly) "Generate go-developer + standard-go."
-  assistant: "I'll dispatch tech-developer-generator with the ecosystem context and research-synthesis path to author standard-go and go-developer.md against the fixed templates."
-  <commentary>
-  This agent is never invoked by a human typing a request directly — always through `flow-tech-pair`'s own dispatch step.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob, Edit, Write, WebFetch, WebSearch, mcp__context7
 model: opus
 color: yellow
@@ -60,7 +52,7 @@ Read every `color:` value currently in `software-development/agents/developers/*
 
 The templates encode this repo's own established pattern, extracted from real pairs — not a style you're free to deviate from. Where a template's own FILL comment states a specific count or inventory (e.g. an `<example>` count, a handoff-target list) and it disagrees with what you freshly read from the deployed roster below, **the deployed roster wins** — report the template as stale rather than following it. In particular:
 - `tools:`, `model:`, and `permissionMode:` in the developer template are FIXED. The `skills:` list is fixed EXCEPT the template's own conditional rows (e.g. `standard-persistence` — bind it only if the template's own condition for this language is met); if input 3 confirms an existing `shared/standards/language/standard-{lang}` for this language's family (e.g. TypeScript), bind that too and do NOT restate its rules inside `standard-{tech}` (`flow-tech-pair` §3).
-- The `<example>` block count: read the `<example>` count of 2-3 existing `developers/*.md` files at generation time and match it — do not trust any count stated here, including this sentence; it goes stale the moment the roster is trimmed.
+- No `<example>` block — every deployed developer/reviewer/specialist agent's frontmatter carries zero worked examples, a fixed house style, not a roster fact to re-check.
 - The "Validation" section's toolchain commands must be REAL — the actual, current, standard compile/lint/test/build commands for this language and ecosystem, corroborated per the untrusted-content rules above.
 - The developer template's own untrusted-web-content paragraph (its `<!-- FILL -->` block near the tool grant) is MANDATORY and copied essentially verbatim, apart from its `{{FILL}}` tokens — never trimmed, summarized, or reworded. Confirm in your report that it is present in the emitted file.
 

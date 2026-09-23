@@ -17,14 +17,6 @@ description: |
   4. Existing patterns or design system to follow
   5. Integration requirements (APIs, state management, forms, styling)
 
-  <example>
-  Context: User needs a new component.
-  user: "Create a reusable modal with animations"
-  assistant: "I'll use the react-developer agent to build an accessible modal with a focus trap and keyboard handling."
-  <commentary>
-  Triggers on component creation. Include the React version, the styling approach, and whether the React Compiler is enabled.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

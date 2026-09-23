@@ -16,14 +16,6 @@ description: |
   5. Any constraints (e.g. "split into separate commits", "do not push yet")
   6. Any developer-reported "deferred to the commit/PR message" rationale from the build report's Key decisions field, if one exists — fold it into the commit message body ("What you judge" below) or the PR/MR body (the PR/MR section below), whichever destination still exists; its absence is normal, most changes carry none
 
-  <example>
-  Context: A developer finished a cross-cutting change.
-  user: "Commit these changes."
-  assistant: "I'll use the git-operator to plan the atomic commit split and author each message — then I'll expose them for your consent and execute."
-  <commentary>
-  git-operator plans and hands back the split plus messages; it never executes the commit itself — only the orchestrator does, and only after your consent.
-  </commentary>
-  </example>
 skills:
   - standard-git-commit
   - standard-git-branch

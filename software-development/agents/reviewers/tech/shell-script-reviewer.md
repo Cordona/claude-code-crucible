@@ -16,14 +16,6 @@ description: |
   4. The scope (safety, correctness, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer wrote a deployment script.
-  user: "Review my deployment script."
-  assistant: "I'll run shell-script-reviewer — it checks quoting/word-splitting, `eval`/injection, strict-mode gaps, cleanup traps, and exit-code correctness (with SC — ShellCheck — codes)."
-  <commentary>
-  Triggers after a shell script is written. Include shell type and target environment.
-  </commentary>
-  </example>
 skills:
   - standard-shell-script
   - standard-security

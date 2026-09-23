@@ -49,13 +49,10 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
 
-  <!-- FILL: 1 <example> block, same shape as every existing deployed developer — every one of the
-  10 deployed pairs uses exactly 1, with Context/user/assistant/commentary. Do not add a second or
-  third "for completeness" — that was this template's own past guidance and every deployed pair has
-  since converged on 1. Re-check `agents/developers/*.md` at generation time rather than trusting
-  this number; it is a fact about deployed reality, not a rule this template owns. -->
+  <!-- FILL: no <example> block. Every deployed developer/reviewer/specialist agent's frontmatter
+  house style carries zero worked examples (a token-economy decision, not a per-pair fact to
+  re-check) — do not add one "for completeness" or to match an older count you find elsewhere. -->
 skills:
-  # Standards — shared rubrics (also bound by the matching reviewer)
   - standard-clean-code
   - standard-self-documenting-code
   - standard-observability
@@ -72,7 +69,6 @@ skills:
   standard's own rules inside standard-{{tech}} — cite it instead. Most languages have no such tier
   and this line is simply omitted. -->
   - standard-{{tech}}
-  # Builder framework — conduct + reporting
   - build-core
   - build-report-standards
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch, mcp__context7

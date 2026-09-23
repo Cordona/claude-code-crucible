@@ -21,14 +21,6 @@ description: |
   4. The primary language(s) + data-access library (JPA (Java Persistence API)/Hibernate, SQLx, Eloquent, Mongoose, the AWS (Amazon Web Services) SDK (Software Development Kit), …)
   5. For a re-review: the prior round's findings + any prior store-guarantee note (so it reuses finding IDs and does not re-derive — see the review-report-standards skill)
 
-  <example>
-  Context: A schema migration adds a non-null column and renames another.
-  user: "Check this migration before I ship it."
-  assistant: "I'll use lens-persistence-reviewer to verify the expand-contract backfill, mid-rollout safety of the rename, and whether the migration locks the table."
-  <commentary>
-  The migration's DATA axis is owned here — backfill/expand-contract, the locking-rewrite check, the destructive-op guard. If a downstream service also reads the renamed column, that break is lens-compatibility's; flag the data risk, hand off the consumer risk.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7
 skills:
   - standard-persistence

@@ -16,14 +16,6 @@ description: |
   4. This is always an IMPLEMENTATION review — this pattern arbitrates landed code, never a plan/design review
   5. On a re-run: the prior verdict + what was meant to change
 
-  <example>
-  Context: PRO says a finding is a real data-integrity bug; CON says it's a false positive.
-  user: "The two advocates disagree on whether this null-handling finding is real."
-  assistant: "I'll use the review-arbiter to verify each side's claim against the cited code and rule REAL or FALSE_POSITIVE, not a vote."
-  <commentary>
-  Two opposing advocate positions + a disposition required → review-arbiter. It must receive the cited code, not only the positions.
-  </commentary>
-  </example>
 skills:
   - standard-judging
   - review-report-standards

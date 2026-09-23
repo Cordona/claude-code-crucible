@@ -16,14 +16,6 @@ description: |
   4. Existing scripts or patterns to follow
   5. Security requirements / sensitive-data handling
 
-  <example>
-  Context: User needs deployment automation
-  user: "Create a deployment script that supports blue-green deployments"
-  assistant: "I'll use the shell-script-developer agent to implement a script with strict mode, cleanup traps, and rollback support."
-  <commentary>
-  Triggers on script creation. Include target environment, strategy, existing patterns.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

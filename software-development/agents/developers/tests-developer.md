@@ -14,14 +14,6 @@ description: |
   4. Any explicit test-scope guidance ("just the new code path", "the whole module")
   5. Whether this dispatch is **repairing existing tests** — broken by the implementation, or being rewritten in a `flow-testing` fix round to address a reviewer finding — **authoring new ones**, or **both**: repair carries a specific hazard (an existing assertion can silently weaken while being made to compile/pass again) that fresh authoring doesn't, and it changes what this agent must report (see Reporting back); a mixed dispatch reports on each half separately, not one answer covering both
 
-  <example>
-  Context: A Kotlin feature was just built, reviewed, and the human confirmed it's right.
-  user: "This is exactly what I wanted. Write tests now."
-  assistant: "I'll use the tests-developer agent — Kotlin/JUnit5 — to write tests against the approved implementation."
-  <commentary>
-  Triggers only on explicit confirmation, and always a different agent than the one that wrote the code — never the implementer grading its own tests.
-  </commentary>
-  </example>
 skills:
   - standard-testing
   - standard-self-documenting-code

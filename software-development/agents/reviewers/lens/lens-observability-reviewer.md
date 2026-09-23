@@ -23,14 +23,6 @@ description: |
   4. The codebase's shape & intent (library / CLI / single service / distributed / async) — for the pillar-applicability gate
   5. For a re-review: the prior round's findings + the prior `conventions_profile` field value (so it reuses finding IDs and does not re-profile — see the review-report-standards skill)
 
-  <example>
-  Context: A shared library.
-  user: "Review the logging in our SDK (Software Development Kit)."
-  assistant: "I'll use lens-observability-reviewer, which will require only API-level instrumentation here rather than a full exporter/tracing setup."
-  <commentary>
-  The pillar gate prevents forcing service-grade observability onto a library.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-observability

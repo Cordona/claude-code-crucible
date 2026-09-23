@@ -18,14 +18,6 @@ description: |
   5. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   6. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer wrote an Axum REST (Representational State Transfer) handler.
-  user: "Review the products REST API."
-  assistant: "I'll run rust-reviewer — it checks unsafe soundness, ownership/lifetime correctness, and panic surface."
-  <commentary>
-  Triggers after Rust code is written. Include file paths, Rust edition, and framework context.
-  </commentary>
-  </example>
 skills:
   - standard-rust
   - standard-security

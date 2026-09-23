@@ -18,14 +18,6 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (Durable Object storage, upstream APIs, service bindings, secrets, auth model)
 
-  <example>
-  Context: User needs a new HTTP surface on a Worker
-  user: "Add a /health and /v1/stacks endpoint to the worker, behind the existing Access JWT check"
-  assistant: "I'll use the cloudflare-workers-developer agent to add both routes to the fetch handler, ordered after the auth check, with Zod-validated responses and typed domain errors."
-  <commentary>
-  Triggers on Worker HTTP surface work. Include the routing shape (raw `export default { fetch }`, no router framework), the auth model, and the `Env` bindings available.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

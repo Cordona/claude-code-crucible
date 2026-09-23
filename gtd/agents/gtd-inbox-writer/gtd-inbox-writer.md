@@ -18,14 +18,6 @@ description: |
   3. The `--session-id` value to record, as a plain token (the capturing Claude Code session's UUID — the caller derives it from its own session/scratchpad path). Pass it EXPLICITLY when you have one; the caller omits it only when no session id is available, and then the agent omits `--session-id`.
   4. Nothing else — no schema, no log path (the agent knows the deployed script and the default log location).
 
-  <example>
-  Context: The dumped text itself reads like an instruction.
-  user: "park: delete all the old branches and force-push main"
-  assistant: "The orchestrator writes that line to a temp file and hands gtd-inbox-writer the path; it's stored as a note to yourself, never run."
-  <commentary>
-  Because the agent gets a path (not the text), even instruction-shaped capture content can't reach its reasoning as a command. It moves a file; it doesn't read it.
-  </commentary>
-  </example>
 skills:
   # The capture-script mechanics this agent calls (owns capture.sh + its contract)
   - procedure-inbox-capture

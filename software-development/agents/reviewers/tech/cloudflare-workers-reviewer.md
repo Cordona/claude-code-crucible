@@ -17,14 +17,6 @@ description: |
   4. The scope (correctness, auth boundary, Durable Object concurrency, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer added a new HTTP surface to a Worker.
-  user: "Review the /v1/stacks endpoint I just added"
-  assistant: "I'll run cloudflare-workers-reviewer — it checks that the route sits after the auth check, that promises are awaited or handed to `ctx.waitUntil`, and that request/response bodies are used once."
-  <commentary>
-  Triggers after Workers code is written. Include the file paths, the auth model, and the `Env` bindings in play.
-  </commentary>
-  </example>
 skills:
   - standard-security
   - standard-typescript

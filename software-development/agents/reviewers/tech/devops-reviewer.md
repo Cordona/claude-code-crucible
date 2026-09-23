@@ -16,14 +16,6 @@ description: |
   4. The scope (security posture, deployment safety, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill). Include the human-produced `terraform show -json tfplan` output when a destroy/replace or drift judgement is in scope (this reviewer never runs `plan` itself — see `devops-engineer`'s plan constraint; the plan file carries plaintext secrets, handle it accordingly).
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer wrote a Terraform S3 module.
-  user: "Review my S3 module."
-  assistant: "I'll run devops-reviewer — it checks public exposure, encryption, IAM scope, and whether the change would destroy/recreate the bucket."
-  <commentary>
-  Triggers after IaC is written. Include cloud provider and state context.
-  </commentary>
-  </example>
 skills:
   - standard-devops
   - standard-security

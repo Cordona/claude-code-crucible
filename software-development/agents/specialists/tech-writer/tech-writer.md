@@ -17,15 +17,6 @@ description: |
   5. Target documentation file(s) path
   6. Any existing documentation style/standards to follow
 
-  <example>
-  Context: Implementer just created a new module.
-  user: "Document the new EKS (Elastic Kubernetes Service) module"
-  assistant: "I'll use the tech-writer agent to write the smallest how-to that gets the reader to the goal, linking depth rather than inlining it."
-  <commentary>
-  Triggers after implementation. It scopes to one mode + one reader + one task before writing.
-  </commentary>
-  </example>
-
 skills:
   - standard-documentation
 tools: Read, Grep, Glob, Edit, Write, WebFetch, WebSearch, mcp__context7

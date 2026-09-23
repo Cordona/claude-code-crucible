@@ -53,21 +53,17 @@ description: |
   4. The scope (correctness<!-- FILL -->, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <!-- FILL: 1 <example> block — every one of the 9 deployed tech reviewers uses exactly 1. Do not
-  add a second or third; match the paired {{tech}}-developer's own example count too, they should
-  agree, and it is also 1. Re-check `agents/reviewers/tech/*.md` at generation time rather than
-  trusting this number. -->
+  <!-- FILL: no <example> block. Every deployed developer/reviewer/specialist agent's frontmatter
+  house style carries zero worked examples (a token-economy decision, not a per-pair fact to
+  re-check) — do not add one "for completeness" or to match an older count you find elsewhere. -->
 skills:
-  # Standard — shared rubric (also bound by the {{tech}}-developer)
   - standard-{{tech}}
   <!-- FILL: if the {{tech}}-developer bound a language-tier standard-{{lang}} (see that template's
   own skills FILL comment — the react-developer/cloudflare-workers-developer precedent), bind the
   SAME one here, in this position, right after standard-{{tech}}. react-reviewer.md and
   cloudflare-workers-reviewer.md are the two live precedents. Omitted for most languages. -->
-  # Reviewer framework — conduct + reporting
   - review-core
   - review-report-standards
-  # The ownership map — who scores what when two lenses overlap. Bind, never paraphrase.
   - review-boundaries
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7
 <!-- FILL: the body must explain this grant somewhere — do not leave these three tools unexplained.

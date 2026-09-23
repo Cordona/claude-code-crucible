@@ -15,14 +15,6 @@ description: |
   4. Whether this is a plan/design review or an IMPLEMENTATION review (changes how risk is weighed)
   5. On a re-review: the prior arbiter verdict + which findings were meant to be addressed
 
-  <example>
-  Context: The two panel reviewers disagree.
-  user: "One reviewer says split with changes, the other says don't split at all."
-  assistant: "I'll use the decision-arbiter agent to weigh both reviews against the actual code and rule on each disagreement with reasoning, not a vote."
-  <commentary>
-  Two opposing reviews + a decision required → decision-arbiter. It must receive the raw artifact, not only the reviews.
-  </commentary>
-  </example>
 skills:
   - standard-judging
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7

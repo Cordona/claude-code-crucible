@@ -15,14 +15,6 @@ description: |
   4. Existing infrastructure patterns to follow (module layout, state backend)
   5. Any project-specific standards
 
-  <example>
-  Context: User needs a new Terraform module
-  user: "Create a Terraform module for an S3 bucket for static website hosting"
-  assistant: "I'll use the devops-engineer agent to implement a secure, production-ready S3 static-website module (private-by-default, encrypted, versioned)."
-  <commentary>
-  Triggers on IaC creation. Include cloud provider, target directory, existing module patterns.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

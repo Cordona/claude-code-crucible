@@ -17,14 +17,6 @@ description: |
   4. Existing patterns or interfaces to follow
   5. Integration requirements (databases, APIs, messaging)
 
-  <example>
-  Context: User needs a new REST API
-  user: "Create a REST API for managing products with CRUD (Create/Read/Update/Delete) operations"
-  assistant: "I'll use the kotlin-developer agent to implement a Ktor REST API with validation, error handling, and a service layer."
-  <commentary>
-  Triggers on API creation. Include Kotlin version, framework, database layer.
-  </commentary>
-  </example>
 skills:
   - standard-clean-code
   - standard-self-documenting-code

@@ -23,14 +23,6 @@ description: |
   4. Whether the target is production application code, generated code, or a prototype/spike — for the structural-surface gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A language reviewer already ran; the primary agent wants a structural pass too.
-  user: "Review the new order module."
-  assistant: "I'll run clean-code-reviewer alongside kotlin-reviewer so we get both the structural view and the Kotlin-specific safety view."
-  <commentary>
-  This agent is one lens of a swarm. It does NOT replace the language reviewer; the primary agent runs both and merges findings by the shared report schema.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-clean-code

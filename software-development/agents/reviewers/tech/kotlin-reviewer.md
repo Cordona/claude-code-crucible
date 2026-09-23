@@ -16,14 +16,6 @@ description: |
   4. The scope (correctness, coroutines, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer wrote a Ktor handler.
-  user: "Review the products REST API."
-  assistant: "I'll run kotlin-reviewer — it checks null-safety (`!!`, platform types), coroutine structure, and `when` exhaustiveness."
-  <commentary>
-  Triggers after Kotlin code is written. Include Kotlin version and framework.
-  </commentary>
-  </example>
 skills:
   - standard-kotlin
   - standard-security

@@ -16,14 +16,6 @@ description: |
   4. The scope (correctness, concurrency, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A developer just wrote a new CLI tool.
-  user: "Review the CSV (Comma-Separated Values) validator CLI I just built."
-  assistant: "I'll use python-reviewer — it checks for mutable default arguments, bare excepts, and missing context managers alongside general correctness."
-  <commentary>
-  Triggers after Python code is written. Include the file paths and Python version.
-  </commentary>
-  </example>
 skills:
   - standard-python
   - standard-security

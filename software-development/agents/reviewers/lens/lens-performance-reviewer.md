@@ -21,14 +21,6 @@ description: |
   4. The path's exposure — hot path? per-request? batch? expected data volume / frequency — for the sensitivity gate
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
-  <example>
-  Context: A rarely-run internal utility.
-  user: "Performance-review this one-time migration script."
-  assistant: "I'll use lens-performance-reviewer, which will flag no hot-path concern here since this script runs once over bounded data."
-  <commentary>
-  The gate prevents premature micro-optimization on cold paths.
-  </commentary>
-  </example>
 tools: Read, Grep, Glob
 skills:
   - standard-performance
