@@ -63,6 +63,10 @@
 #                                        what value it supplies).
 #                                        An addressed_in_round on any entry
 #                                        must not exceed this round's number.
+#                                        An entry may carry only the finding
+#                                        fields named here (any other key is
+#                                        rejected), and each id may appear in
+#                                        at most one entry.
 #     -h, --help          Show this help.
 #
 # Output:
@@ -130,11 +134,45 @@ summary/verdict fresh, atomic same-directory rewrite.
 
 Options:
   --json-file PATH    Existing review-artifact JSON file (required).
-  --fields-file PATH  JSON object: round (int, required, newer than every
-                        recorded round), reviewers (non-empty array),
-                        findings (array, may be []; new-or-update entries,
-                        see -h for the shape).
+  --fields-file PATH  One JSON object (exactly one document), all required:
+                        round      integer >= 1, newer than every
+                                   recorded round
+                        reviewers  non-empty array of non-empty strings
+                        findings   array of entries (shape below), may
+                                   be []
   -h, --help          Show this help.
+
+Findings entries:
+  Each entry is classified by its id. An id NOT yet in the artifact's
+  findings makes the entry NEW; an id already there makes it an UPDATE.
+  An update-shaped entry whose id is not yet in the artifact is therefore
+  NEW and must carry the full NEW shape. Each id may appear in at most
+  one entry per fields file.
+
+  NEW     required: id (uppercase letters, a hyphen, 3+ digits, e.g.
+          SEC-001), reviewer, tracked_status, severity, category,
+          locations (non-empty array of non-empty strings), problem, fix.
+          optional: status (default NEW), first_seen (YYYY-MM-DD,
+          default today in UTC), addressed_in_round.
+  UPDATE  required: id. Any subset of the other fields, each well-formed
+          if given. first_seen is ignored.
+
+  An entry may carry only the fields named here; any other key (e.g. a
+  misspelled field name) is rejected.
+
+  reviewer, category, problem and fix are non-empty strings. A field set
+  to an explicit null counts as given and is rejected, except an UPDATE's
+  first_seen, which is ignored whatever its value.
+    severity            CRITICAL | HIGH | MEDIUM | LOW
+    tracked_status      PENDING | IN_PROGRESS | APPROVED |
+                        APPROVED_WITH_FOLLOWUPS
+    status              NEW | OPEN | RESOLVED | REGRESSED | ACK
+    addressed_in_round  integer from 1 to this round's number; omit it
+                        when the same entry sets tracked_status to
+                        PENDING or IN_PROGRESS
+
+  Merge semantics (NEW-to-OPEN carry-over, summary and verdict recompute)
+  are described in the header comment at the top of $PROG.
 
 On success, prints:
   REVIEW_JSON=<path>
@@ -150,6 +188,22 @@ EOF
 
 need_arg() {
 	[ -n "${2:-}" ] || { usage >&2; error "option $1 requires an argument"; exit 2; }
+}
+
+# report_fields_file_rejection HEADLINE JQ_ARG... — explain a --fields-file a
+# validation predicate has ALREADY rejected, by running the given diagnostic
+# jq program over it. The detail is best-effort: if that pass fails or prints
+# nothing, HEADLINE alone is printed, so a rejection is never silent.
+report_fields_file_rejection() {
+	rejection_headline=$1
+	shift
+	if rejection_details=$(jq -r "$@" "$OPT_FIELDS_FILE" 2>/dev/null) \
+		&& [ -n "$rejection_details" ]; then
+		error "$rejection_headline:"
+		printf '%s\n' "$rejection_details" >&2
+	else
+		error "$rejection_headline"
+	fi
 }
 
 # ---------------------------------------------------------------------------
@@ -256,17 +310,63 @@ fi
 # The id/date patterns are anchored with \A…\z, not ^…$: jq's Oniguruma
 # treats `$` as end-of-line, so `^…$` would accept a finding id with a
 # trailing newline — which then reaches the merged document.
+#
+# The enum checks require a STRING before testing membership: jq's
+# `index($v)` treats an ARRAY $v as a subsequence to search for, so without
+# the type guard ["HIGH"] would pass as a severity and persist as an array.
 # ---------------------------------------------------------------------------
+# field_keys is the ONE list of keys a findings entry may carry. The per-entry
+# validator rejects any other key and the merge's pick_known_* allow-lists are
+# derived from it, so both read this single definition and cannot drift.
+JQ_FIELD_KEYS_DEF='
+def field_keys:
+  ["id","reviewer","status","tracked_status","severity","category","locations","first_seen","problem","fix","addressed_in_round"];
+'
+
 # shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
-JQ_VALUE_DEFS='
-def is_severity: . as $v | ["CRITICAL","HIGH","MEDIUM","LOW"] | index($v) != null;
-def is_tracked_status: . as $v | ["PENDING","IN_PROGRESS","APPROVED","APPROVED_WITH_FOLLOWUPS"] | index($v) != null;
-def is_finding_status: . as $v | ["NEW","OPEN","RESOLVED","REGRESSED","ACK"] | index($v) != null;
+JQ_VALUE_DEFS="$JQ_FIELD_KEYS_DEF"'
+def severity_values: ["CRITICAL","HIGH","MEDIUM","LOW"];
+def tracked_status_values: ["PENDING","IN_PROGRESS","APPROVED","APPROVED_WITH_FOLLOWUPS"];
+def finding_status_values: ["NEW","OPEN","RESOLVED","REGRESSED","ACK"];
+def is_severity: type == "string" and (. as $v | severity_values | index($v) != null);
+def is_tracked_status: type == "string" and (. as $v | tracked_status_values | index($v) != null);
+def is_finding_status: type == "string" and (. as $v | finding_status_values | index($v) != null);
 def is_nonempty_string: type == "string" and length > 0;
 def is_finding_id: is_nonempty_string and test("\\A[A-Z]+-[0-9]{3,}\\z");
 def is_nonempty_string_array: type == "array" and length > 0 and all(.[]; type == "string" and length > 0);
 def is_addressed_in_round: type == "number" and (floor == .) and . >= 1;
 def is_iso_date: type == "string" and test("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}\\z");
+'
+
+# ---------------------------------------------------------------------------
+# Rejection explainers, used ONLY after a validation predicate below has
+# already said no. They describe a rejection; they never make one.
+#
+# `shown` is the one way a caller-supplied value reaches a message: tojson
+# quotes it and escapes C0 controls and DEL, and the C1 range (U+0080-U+009F,
+# which includes the 8-bit CSI terminal escape) is escaped on top because
+# tojson leaves it raw. Long strings are cut so one value cannot flood stderr.
+# ---------------------------------------------------------------------------
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_EXPLAIN_DEFS='
+def hex2: "0123456789abcdef" as $h | (. / 16 | floor) as $hi | (. % 16) as $lo
+  | $h[$hi:$hi + 1] + $h[$lo:$lo + 1];
+def escape_c1: [explode[] | if . >= 128 and . < 160 then ("\\u00" + hex2 | explode[]) else . end] | implode;
+def shown:
+  if type == "string" then
+    (if length > 80 then (.[:80] | tojson | escape_c1) + " (truncated)" else tojson | escape_c1 end)
+  elif type == "array" then (if length == 0 then "an empty array" else "a JSON array" end)
+  elif type == "object" then "a JSON object"
+  else tojson end;
+def got: " (got \(shown))";
+def presence_problem($object; $key):
+  if ($object | has($key)) | not then "missing required field \"\($key)\""
+  else "\($key) is null (an explicit null is rejected)" end;
+def string_array_problems($key):
+  if type != "array" or length == 0 then "\($key) must be a non-empty array of non-empty strings\(got)"
+  else to_entries[] | select(.value | is_nonempty_string | not)
+    | "\($key)[\(.key)] must be a non-empty string (got \(.value | shown))"
+  end;
 '
 
 # ---------------------------------------------------------------------------
@@ -280,9 +380,29 @@ and (.reviewers != null and (.reviewers | is_nonempty_string_array))
 and (.findings != null and (.findings | type == "array"))
 '
 
+# One line per failing conjunct of JQ_VALIDATE_SHAPE, each mirroring it.
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_DIAGNOSE_SHAPE="$JQ_VALUE_DEFS$JQ_EXPLAIN_DEFS"'
+if type != "object" then "the top level must be a JSON object\(got)"
+else
+  . as $fields
+  | (if .round == null then presence_problem($fields; "round")
+     elif (.round | type == "number" and floor == . and . >= 1) | not
+       then "round must be an integer >= 1 (got \(.round | shown))"
+     else empty end),
+    (if .reviewers == null then presence_problem($fields; "reviewers")
+     else .reviewers | select(is_nonempty_string_array | not) | string_array_problems("reviewers") end),
+    (if .findings == null then presence_problem($fields; "findings")
+     elif (.findings | type) != "array" then "findings must be an array, may be [] (got \(.findings | shown))"
+     else empty end)
+end
+| "  " + .
+'
+
 if ! jq -e "$JQ_VALIDATE_SHAPE" "$OPT_FIELDS_FILE" >/dev/null 2>&1; then
-	usage >&2
-	error "--fields-file failed validation (round/reviewers/findings shape) — see $PROG --help"
+	report_fields_file_rejection \
+		"--fields-file failed validation (round/reviewers/findings shape) — see $PROG --help" \
+		"$JQ_DIAGNOSE_SHAPE"
 	exit 2
 fi
 
@@ -342,6 +462,49 @@ if [ "$ROUND_IS_NEWER" != "true" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# One entry per finding per round: a string id may appear in at most one
+# findings entry, NEW or UPDATE alike — the same rule review-create.sh
+# enforces. Classification below looks an id up only in the artifact's
+# CURRENT findings, so two entries sharing a not-yet-recorded id would BOTH
+# pass as NEW and the merge would then apply the second onto the first (a HIGH
+# finding silently replaced by a LOW one); two UPDATEs to one id would apply
+# in order, the last silently winning.
+#
+# A cross-entry rule, so it cannot live in the per-entry predicate below,
+# which judges each entry alone. It runs FIRST because a repeated id makes the
+# per-entry classification of the later entries wrong, so their diagnostics
+# would mislead. Non-string ids are left to the per-entry check.
+# ---------------------------------------------------------------------------
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_STRING_ID_DEFS='
+def string_id_entries:
+  [.findings | to_entries[]
+   | select((.value | type) == "object" and (.value.id | type) == "string")
+   | {index: .key, id: .value.id}];
+'
+
+JQ_VALIDATE_UNIQUE_IDS="$JQ_STRING_ID_DEFS"'
+string_id_entries | map(.id) | (unique | length) == length
+'
+
+# One line per repeated id, naming every entry that carries it.
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_DIAGNOSE_DUPLICATE_IDS="$JQ_VALUE_DEFS$JQ_EXPLAIN_DEFS$JQ_STRING_ID_DEFS"'
+string_id_entries
+| group_by(.id)[]
+| select(length > 1)
+| (map(.index) | sort | map("findings[\(.)]")) as $refs
+| "  \($refs[:-1] | join(", ")) and \($refs[-1]) share id \(.[0].id | shown) — each id may appear at most once per fields file"
+'
+
+if ! jq -e "$JQ_VALIDATE_UNIQUE_IDS" "$OPT_FIELDS_FILE" >/dev/null 2>&1; then
+	report_fields_file_rejection \
+		"--fields-file repeats a finding id — one entry per finding per round (see $PROG --help)" \
+		"$JQ_DIAGNOSE_DUPLICATE_IDS"
+	exit 2
+fi
+
+# ---------------------------------------------------------------------------
 # Per-entry validation: an entry is a NEW finding (full shape, only
 # status/first_seen defaultable) or an UPDATE to an existing finding (id
 # must match; any subset of the other fields, but each given value must be
@@ -351,7 +514,7 @@ fi
 EXISTING_IDS=$(jq -c '[.findings[].id]' "$OPT_JSON_FILE")
 
 # shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
-JQ_VALIDATE_ENTRIES="$JQ_VALUE_DEFS"'
+JQ_ENTRY_DEFS='
 # optional_ok: an update-branch field is well-formed if the KEY IS ABSENT
 # ("not given" — left untouched by the merge) OR its value passes `ok`.
 # Deliberately keyed on has($key), never on ($e[$key] == null): an entry
@@ -361,6 +524,19 @@ JQ_VALIDATE_ENTRIES="$JQ_VALUE_DEFS"'
 # finding.
 def optional_ok($e; $key; ok):
   ($e | has($key) | not) or ($e[$key] | ok);
+
+# An entry is an UPDATE only when its id is a STRING already in the artifact.
+# The type guard matters because `index` treats an ARRAY id as a subsequence
+# to search for, so ["SEC-001"] would otherwise be "found".
+def is_update_entry($e):
+  ($e.id | type == "string") and ($existing_ids | index($e.id)) != null;
+
+# Keys outside field_keys, in the order the entry lists them. The merge would strip
+# them, so a misspelled key ("Status", "tracked-status") would turn the
+# intended change into a silent no-op reported as success. A non-object entry
+# has none; the NEW/UPDATE branches already reject it.
+def unknown_keys($e):
+  if ($e | type) == "object" then ($e | keys_unsorted) - field_keys else [] end;
 
 # An addressed_in_round may cite THIS round (the fix was verified by the
 # round being appended right now) but never a round that has not run — the
@@ -376,11 +552,13 @@ def is_round_that_has_run: is_addressed_in_round and . <= $round;
 def contradicts_addressed_in_round($e):
   ($e.tracked_status // null) as $ts
   | ($ts == "PENDING" or $ts == "IN_PROGRESS") and ($e | has("addressed_in_round"));
+'
 
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_VALIDATE_ENTRIES="$JQ_VALUE_DEFS$JQ_ENTRY_DEFS"'
 .findings | all(.[];
   . as $e
-  | ($existing_ids | index($e.id)) as $match
-  | if $match != null then
+  | if is_update_entry($e) then
       # first_seen is deliberately NOT validated here: an update entry can
       # never change the first_seen already on an existing finding
       # (pick_known_update below excludes the key from the merge entirely),
@@ -411,13 +589,92 @@ def contradicts_addressed_in_round($e):
       and optional_ok($e; "addressed_in_round"; is_round_that_has_run)
       and (contradicts_addressed_in_round($e) | not)
     end
+  and (unknown_keys($e) == [])
 )
+'
+
+# Which entries to report is decided by re-running JQ_VALIDATE_ENTRIES itself
+# on each entry alone (exact: the predicate is an all() over entries), so
+# every rejected entry is named and no accepted one is. The field checks
+# below only supply the reasons; an entry they cannot explain still gets a
+# line.
+# shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
+JQ_DIAGNOSE_ENTRIES="$JQ_VALUE_DEFS$JQ_ENTRY_DEFS$JQ_EXPLAIN_DEFS"'
+def entry_passes: {findings: [.]} | (
+'"$JQ_VALIDATE_ENTRIES"'
+);
+
+def field_ok($key; $is_update):
+  if $key == "id" then (if $is_update then is_nonempty_string else is_finding_id end)
+  elif $key == "severity" then is_severity
+  elif $key == "tracked_status" then is_tracked_status
+  elif $key == "status" then is_finding_status
+  elif $key == "locations" then is_nonempty_string_array
+  elif $key == "first_seen" then is_iso_date
+  elif $key == "addressed_in_round" then is_round_that_has_run
+  else is_nonempty_string end;
+
+def not_one_of($key; $allowed): "\($key) \(shown) is not one of \($allowed | join(" | "))";
+
+def addressed_in_round_problem:
+  if (type == "number" and floor == .) | not then "addressed_in_round must be an integer\(got)"
+  elif . < 1 then "addressed_in_round \(.) is below the minimum of 1"
+  else "addressed_in_round \(.) is above the maximum of \($round) (the round being appended)" end;
+
+def field_problem($key; $is_update):
+  if $key == "id" and $is_update then "id must be a non-empty string\(got)"
+  elif $key == "id" then "id \(shown) does not match the id format (uppercase letters, a hyphen, 3+ digits, e.g. SEC-001)"
+  elif $key == "severity" then not_one_of($key; severity_values)
+  elif $key == "tracked_status" then not_one_of($key; tracked_status_values)
+  elif $key == "status" then not_one_of($key; finding_status_values)
+  elif $key == "locations" then string_array_problems($key)
+  elif $key == "first_seen" then "first_seen must be a YYYY-MM-DD date string\(got)"
+  elif $key == "addressed_in_round" then addressed_in_round_problem
+  else "\($key) must be a non-empty string\(got)" end;
+
+# Mirrors the NEW / UPDATE branches of JQ_VALIDATE_ENTRIES: NEW requires the
+# first eight keys; UPDATE requires only id and ignores first_seen.
+def entry_problems($e; $is_update):
+  (unknown_keys($e)[] | "unknown field \(shown) (known fields: \(field_keys | join(", ")))"),
+  (["id","reviewer","tracked_status","severity","category","locations","problem","fix",
+    "status","first_seen","addressed_in_round"][] as $key
+   | select(($is_update and $key == "first_seen") | not)
+   | (if $is_update then $key == "id"
+      else (["status","first_seen","addressed_in_round"] | index($key)) == null end) as $required
+   | if $e[$key] == null then
+       (if $required or ($e | has($key)) then presence_problem($e; $key) else empty end)
+     else $e[$key] | select(field_ok($key; $is_update) | not) | field_problem($key; $is_update)
+     end),
+  (select(contradicts_addressed_in_round($e))
+   | "addressed_in_round must be omitted while tracked_status is \($e.tracked_status | shown)");
+
+def classification($e; $is_update):
+  if ($e | has("id")) | not then "NEW (no id given)"
+  elif ($e.id | type) != "string" then "NEW (id is not a string)"
+  elif $is_update then "UPDATE (id already in artifact)"
+  else "NEW (id not in artifact)" end;
+
+.findings
+| to_entries[]
+| .key as $index
+| .value as $e
+| select((try ($e | entry_passes) catch false) | not)
+| if ($e | type) != "object" then "findings[\($index)] is not a JSON object (got \($e | shown))"
+  else
+    is_update_entry($e) as $is_update
+    | (if $e | has("id") then "id \($e.id | shown)" else "(no id)" end) as $label
+    | [entry_problems($e; $is_update)] as $problems
+    | (if $problems == [] then ["failed validation (no specific reason identified)"] else $problems end)[]
+    | "findings[\($index)] \($label) — \(classification($e; $is_update)): \(.)"
+  end
+| "  " + .
 '
 
 if ! jq -e --argjson existing_ids "$EXISTING_IDS" --argjson round "$ROUND" \
 	"$JQ_VALIDATE_ENTRIES" "$OPT_FIELDS_FILE" >/dev/null 2>&1; then
-	usage >&2
-	error "--fields-file has an invalid finding entry (see $PROG --help for the new-vs-update shape)"
+	report_fields_file_rejection \
+		"--fields-file has an invalid finding entry (see $PROG --help for the new-vs-update shape)" \
+		--argjson existing_ids "$EXISTING_IDS" --argjson round "$ROUND" "$JQ_DIAGNOSE_ENTRIES"
 	exit 2
 fi
 
@@ -438,10 +695,11 @@ trap 'cleanup; exit 143' TERM
 
 # ---------------------------------------------------------------------------
 # Merge + recompute, all in one static jq program. `pick_known_by_keys`
-# restricts an entry to an explicit key allow-list so a caller's stray extra
-# key can never leak into the artifact. Two allow-lists, both DERIVED from the
-# one `field_keys` list so a future schema field can never be added to one and
-# silently stripped by the other:
+# restricts an entry to an explicit key allow-list — defense in depth behind
+# the validator's unknown-key rejection, so a stray key can never leak into
+# the artifact. Two allow-lists, both DERIVED from the shared `field_keys`
+# (JQ_FIELD_KEYS_DEF, also read by the validator) so a future schema field can
+# never be added to one and silently stripped by the other:
 #
 #   pick_known_new()    — a brand-new finding: first_seen IS a legal key
 #                          (caller-settable, defaulted below if absent).
@@ -457,9 +715,7 @@ trap 'cleanup; exit 143' TERM
 JQ_AGGREGATES=$(cat "$REVIEW_AGGREGATES_JQ")
 
 # shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
-JQ_MERGE="$JQ_AGGREGATES"'
-def field_keys:
-  ["id","reviewer","status","tracked_status","severity","category","locations","first_seen","problem","fix","addressed_in_round"];
+JQ_MERGE="$JQ_AGGREGATES$JQ_FIELD_KEYS_DEF"'
 def pick_known_by_keys($e; $keys):
   $e
   | to_entries

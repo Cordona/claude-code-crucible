@@ -1043,10 +1043,308 @@ expect_rc "add-round(NEW finding entry invalid status): -> exit 2" 2
 stderr_has "add-round(NEW finding entry invalid status): diagnostic" "invalid finding entry"
 
 # ===========================================================================
-# review-add-round.sh — pick_known strips a stray key on BOTH the new-finding
-# and the update-entry path (TEST-004)
+# review-add-round.sh — --fields-file rejection diagnostics: WHICH entry,
+# WHICH field, and WHY, beneath the headline the cases above already match.
+#
+# WHY these assert whole diagnostic lines, not just the headline: the detail
+# pass falls back SILENTLY to the bare headline when its own jq program fails
+# or prints nothing, so a broken diagnostic would leave every headline-only
+# assertion above green.
+#
+# A dedicated fixture (round 1, findings DIA-001 + DIA-002). Every case here
+# is a rejection, which writes nothing, so round 2 stays newer than the newest
+# recorded round throughout and each case reaches entry validation.
 # ===========================================================================
-section "review-add-round.sh — pick_known stray-key stripping"
+section "review-add-round.sh — --fields-file rejection diagnostics"
+
+REPO_DIAGNOSTICS="$WORK/repo-diagnostics"; mkdir -p "$REPO_DIAGNOSTICS"
+FIELDS_DIAGNOSTICS_R1="$WORK/fields-diagnostics-r1.json"
+cat >"$FIELDS_DIAGNOSTICS_R1" <<'EOF'
+{
+  "repo": "diagnostics-fixture",
+  "reviewers": ["r1"],
+  "findings": [
+    { "id": "DIA-001", "reviewer": "r1", "severity": "HIGH", "category": "c",
+      "locations": ["f.kt:1"], "problem": "p", "fix": "f" },
+    { "id": "DIA-002", "reviewer": "r1", "severity": "LOW", "category": "c",
+      "locations": ["f.kt:2"], "problem": "p", "fix": "f" }
+  ]
+}
+EOF
+run 1 sh "$CREATE" --repo-root "$REPO_DIAGNOSTICS" --slug diagnostics-fixture --fields-file "$FIELDS_DIAGNOSTICS_R1"
+expect_rc "add-round(diag fixture): create -> exit 0" 0
+DIAGNOSTICS_JSON=$(review_json_path "$CUR_OUT")
+
+# The section's data-driven case runners, for rows whose whole subject is one
+# diagnostic line. expect_fields_file_diagnostic LABEL FIELDS_JSON
+# EXPECTED_LINE: FIELDS_JSON is rejected with exit 2 and EXPECTED_LINE appears
+# on stderr. A row that must show a second line asserts it right after.
+expect_fields_file_diagnostic() {
+	effd_fields="$WORK/fields-diag-case.json"
+	printf '%s\n' "$2" >"$effd_fields"
+	run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$effd_fields"
+	expect_rc "add-round(diag: $1): -> exit 2" 2
+	stderr_has "add-round(diag: $1): detail line" "$3"
+}
+
+# expect_entry_diagnostic LABEL ENTRY_JSON EXPECTED_LINE — the same, with
+# ENTRY_JSON as the only findings entry of an otherwise valid round 2.
+expect_entry_diagnostic() {
+	expect_fields_file_diagnostic "$1" "{\"round\": 2, \"reviewers\": [\"r1\"], \"findings\": [ $2 ]}" "$3"
+}
+
+DIA_001_UPDATE_LINE='  findings[0] id "DIA-001" — UPDATE (id already in artifact): '
+
+FIELDS_DIAG_NEW_MISSING_FIX="$WORK/fields-diag-new-missing-fix.json"
+cat >"$FIELDS_DIAG_NEW_MISSING_FIX" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [
+  { "id": "NEW-101", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW",
+    "category": "c", "locations": ["f.kt:1"], "problem": "p" } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_NEW_MISSING_FIX"
+expect_rc "add-round(diag: NEW entry missing fix): -> exit 2" 2
+stderr_has "add-round(diag: NEW entry missing fix): names the entry index, id, classification and missing field" \
+	'  findings[0] id "NEW-101" — NEW (id not in artifact): missing required field "fix"'
+stderr_lacks "add-round(diag: NEW entry missing fix): no usage dump on a data error" "Usage:"
+
+# The real-world trap: an update-shaped entry whose id is not in the artifact
+# is NEW, so it is judged against the full NEW shape.
+FIELDS_DIAG_UPDATE_SHAPED_UNKNOWN_ID="$WORK/fields-diag-update-shaped-unknown-id.json"
+cat >"$FIELDS_DIAG_UPDATE_SHAPED_UNKNOWN_ID" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "XXX-999", "status": "RESOLVED", "fix": "done" } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_UPDATE_SHAPED_UNKNOWN_ID"
+expect_rc "add-round(diag: update-shaped entry, unknown id): -> exit 2" 2
+stderr_has "add-round(diag: update-shaped entry, unknown id): classified NEW because the id is not in the artifact" \
+	'  findings[0] id "XXX-999" — NEW (id not in artifact): missing required field "reviewer"'
+stderr_has "add-round(diag: update-shaped entry, unknown id): every missing NEW field is listed, not just the first" \
+	'  findings[0] id "XXX-999" — NEW (id not in artifact): missing required field "problem"'
+stderr_lacks "add-round(diag: update-shaped entry, unknown id): never labeled UPDATE" "UPDATE (id already in artifact)"
+
+FIELDS_DIAG_UPDATE_BAD_SEVERITY="$WORK/fields-diag-update-bad-severity.json"
+cat >"$FIELDS_DIAG_UPDATE_BAD_SEVERITY" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "DIA-001", "severity": "URGENT" } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_UPDATE_BAD_SEVERITY"
+expect_rc "add-round(diag: UPDATE entry bad severity): -> exit 2" 2
+stderr_has "add-round(diag: UPDATE entry bad severity): classified UPDATE and lists the allowed severities" \
+	'  findings[0] id "DIA-001" — UPDATE (id already in artifact): severity "URGENT" is not one of CRITICAL | HIGH | MEDIUM | LOW'
+
+FIELDS_DIAG_TWO_OF_THREE_BAD="$WORK/fields-diag-two-of-three-bad.json"
+cat >"$FIELDS_DIAG_TWO_OF_THREE_BAD" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [
+  { "id": "DIA-001", "tracked_status": "DONE" },
+  { "id": "DIA-002", "status": "RESOLVED" },
+  { "id": "NEW-102", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW",
+    "category": "c", "locations": [""], "problem": "p", "fix": "f" } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_TWO_OF_THREE_BAD"
+expect_rc "add-round(diag: entries 0 and 2 bad, 1 valid): -> exit 2" 2
+stderr_has "add-round(diag: entries 0 and 2 bad, 1 valid): entry 0 reported with the allowed tracked_status values" \
+	'  findings[0] id "DIA-001" — UPDATE (id already in artifact): tracked_status "DONE" is not one of PENDING | IN_PROGRESS | APPROVED | APPROVED_WITH_FOLLOWUPS'
+stderr_has "add-round(diag: entries 0 and 2 bad, 1 valid): entry 2 reported in the same run, naming the bad locations element" \
+	'  findings[2] id "NEW-102" — NEW (id not in artifact): locations[0] must be a non-empty string (got "")'
+stderr_lacks "add-round(diag: entries 0 and 2 bad, 1 valid): the valid entry 1 is not reported" "findings[1]"
+
+FIELDS_DIAG_EMPTY_REVIEWERS="$WORK/fields-diag-empty-reviewers.json"
+cat >"$FIELDS_DIAG_EMPTY_REVIEWERS" <<'EOF'
+{"round": 2, "reviewers": [], "findings": []}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_EMPTY_REVIEWERS"
+expect_rc "add-round(diag: shape, empty reviewers): -> exit 2" 2
+stderr_has "add-round(diag: shape, empty reviewers): names the failing top-level field" \
+	'  reviewers must be a non-empty array of non-empty strings (got an empty array)'
+stderr_lacks "add-round(diag: shape, empty reviewers): no usage dump on a data error" "Usage:"
+
+expect_fields_file_diagnostic "shape, top level is an array" '[1]' \
+	'  the top level must be a JSON object (got a JSON array)'
+expect_fields_file_diagnostic "shape, round absent" '{"reviewers": ["r1"], "findings": []}' \
+	'  missing required field "round"'
+expect_fields_file_diagnostic "shape, round explicit null" '{"round": null, "reviewers": ["r1"], "findings": []}' \
+	'  round is null (an explicit null is rejected)'
+expect_fields_file_diagnostic "shape, round 1.5" '{"round": 1.5, "reviewers": ["r1"], "findings": []}' \
+	'  round must be an integer >= 1 (got 1.5)'
+expect_fields_file_diagnostic "shape, reviewers with an empty element" '{"round": 2, "reviewers": ["r1", ""], "findings": []}' \
+	'  reviewers[1] must be a non-empty string (got "")'
+expect_fields_file_diagnostic "shape, findings absent" '{"round": 2, "reviewers": ["r1"]}' \
+	'  missing required field "findings"'
+expect_fields_file_diagnostic "shape, findings is an object" '{"round": 2, "reviewers": ["r1"], "findings": {}}' \
+	'  findings must be an array, may be [] (got a JSON object)'
+expect_fields_file_diagnostic "shape, round 0 AND findings a string" '{"round": 0, "reviewers": ["r1"], "findings": "x"}' \
+	'  round must be an integer >= 1 (got 0)'
+stderr_has "add-round(diag: shape, round 0 AND findings a string): the second failing field is reported in the same run" \
+	'  findings must be an array, may be [] (got "x")'
+
+FIELDS_DIAG_NON_OBJECT_ENTRY="$WORK/fields-diag-non-object-entry.json"
+cat >"$FIELDS_DIAG_NON_OBJECT_ENTRY" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ 42 ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_NON_OBJECT_ENTRY"
+expect_rc "add-round(diag: non-object entry 42): -> exit 2" 2
+stderr_has "add-round(diag: non-object entry 42): reported as not a JSON object" \
+	'  findings[0] is not a JSON object (got 42)'
+
+FIELDS_DIAG_AIR_ABOVE_ROUND="$WORK/fields-diag-air-above-round.json"
+cat >"$FIELDS_DIAG_AIR_ABOVE_ROUND" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "DIA-001", "addressed_in_round": 3 } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_AIR_ABOVE_ROUND"
+expect_rc "add-round(diag: addressed_in_round 3 while appending round 2): -> exit 2" 2
+stderr_has "add-round(diag: addressed_in_round 3 while appending round 2): states the bound it exceeded" \
+	'  findings[0] id "DIA-001" — UPDATE (id already in artifact): addressed_in_round 3 is above the maximum of 2 (the round being appended)'
+
+FIELDS_DIAG_AIR_WITH_PENDING="$WORK/fields-diag-air-with-pending.json"
+cat >"$FIELDS_DIAG_AIR_WITH_PENDING" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "DIA-001", "tracked_status": "PENDING", "addressed_in_round": 2 } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_AIR_WITH_PENDING"
+expect_rc "add-round(diag: addressed_in_round alongside PENDING): -> exit 2" 2
+stderr_has "add-round(diag: addressed_in_round alongside PENDING): names the contradiction" \
+	'  findings[0] id "DIA-001" — UPDATE (id already in artifact): addressed_in_round must be omitted while tracked_status is "PENDING"'
+
+FIELDS_DIAG_EXPLICIT_NULL="$WORK/fields-diag-explicit-null.json"
+cat >"$FIELDS_DIAG_EXPLICIT_NULL" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "DIA-001", "fix": null } ]}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_EXPLICIT_NULL"
+expect_rc "add-round(diag: UPDATE entry explicit null fix): -> exit 2" 2
+stderr_has "add-round(diag: UPDATE entry explicit null fix): says the null itself is rejected, not that fix is missing" \
+	'  findings[0] id "DIA-001" — UPDATE (id already in artifact): fix is null (an explicit null is rejected)'
+
+expect_entry_diagnostic "UPDATE reviewer empty string" '{"id": "DIA-001", "reviewer": ""}' \
+	"$DIA_001_UPDATE_LINE"'reviewer must be a non-empty string (got "")'
+expect_entry_diagnostic "UPDATE category a number" '{"id": "DIA-001", "category": 5}' \
+	"$DIA_001_UPDATE_LINE"'category must be a non-empty string (got 5)'
+expect_entry_diagnostic "UPDATE status BOGUS" '{"id": "DIA-001", "status": "BOGUS"}' \
+	"$DIA_001_UPDATE_LINE"'status "BOGUS" is not one of NEW | OPEN | RESOLVED | REGRESSED | ACK'
+expect_entry_diagnostic "UPDATE locations empty array" '{"id": "DIA-001", "locations": []}' \
+	"$DIA_001_UPDATE_LINE"'locations must be a non-empty array of non-empty strings (got an empty array)'
+expect_entry_diagnostic "UPDATE locations a bare string" '{"id": "DIA-001", "locations": "f.kt:1"}' \
+	"$DIA_001_UPDATE_LINE"'locations must be a non-empty array of non-empty strings (got "f.kt:1")'
+expect_entry_diagnostic "UPDATE addressed_in_round 1.5" '{"id": "DIA-001", "addressed_in_round": 1.5}' \
+	"$DIA_001_UPDATE_LINE"'addressed_in_round must be an integer (got 1.5)'
+expect_entry_diagnostic "UPDATE addressed_in_round 0" '{"id": "DIA-001", "addressed_in_round": 0}' \
+	"$DIA_001_UPDATE_LINE"'addressed_in_round 0 is below the minimum of 1'
+# first_seen on an UPDATE is ignored rather than validated, so only a NEW
+# entry can reach this reason.
+expect_entry_diagnostic "NEW first_seen not zero-padded" \
+	'{"id": "NEW-103", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f", "first_seen": "2020-6-15"}' \
+	'  findings[0] id "NEW-103" — NEW (id not in artifact): first_seen must be a YYYY-MM-DD date string (got "2020-6-15")'
+
+# Truncation boundary: 80 chars is the limit (shown whole), 81 is over it.
+DIAG_EIGHTY_X=$(jqr -rn '"X" * 80')
+FIELDS_DIAG_SEVERITY_80="$WORK/fields-diag-severity-80.json"
+jqr -n '{round: 2, reviewers: ["r1"], findings: [ { id: "DIA-001", severity: ("X" * 80) } ]}' >"$FIELDS_DIAG_SEVERITY_80"
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_SEVERITY_80"
+expect_rc "add-round(diag: 80-char severity): -> exit 2" 2
+stderr_has "add-round(diag: 80-char severity): value shown whole" \
+	"severity \"$DIAG_EIGHTY_X\" is not one of"
+stderr_lacks "add-round(diag: 80-char severity): not marked truncated" "(truncated)"
+
+FIELDS_DIAG_LONG_SEVERITY="$WORK/fields-diag-long-severity.json"
+jqr -n '{round: 2, reviewers: ["r1"], findings: [ { id: "DIA-001", severity: ("X" * 81) } ]}' >"$FIELDS_DIAG_LONG_SEVERITY"
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_LONG_SEVERITY"
+expect_rc "add-round(diag: 81-char severity): -> exit 2" 2
+stderr_has "add-round(diag: 81-char severity): value cut to 80 chars and marked truncated" \
+	"severity \"$DIAG_EIGHTY_X\" (truncated) is not one of"
+stderr_lacks "add-round(diag: 81-char severity): no 81st char of the value echoed" "${DIAG_EIGHTY_X}X"
+
+# Far past the limit, where "cut to 80" and "drop the last char" differ — the
+# 81-char row cannot tell them apart.
+FIELDS_DIAG_VERY_LONG_SEVERITY="$WORK/fields-diag-very-long-severity.json"
+jqr -n '{round: 2, reviewers: ["r1"], findings: [ { id: "DIA-001", severity: ("X" * 200) } ]}' >"$FIELDS_DIAG_VERY_LONG_SEVERITY"
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_VERY_LONG_SEVERITY"
+expect_rc "add-round(diag: 200-char severity): -> exit 2" 2
+stderr_has "add-round(diag: 200-char severity): value cut to exactly 80 chars and marked truncated" \
+	"severity \"$DIAG_EIGHTY_X\" (truncated) is not one of"
+stderr_lacks "add-round(diag: 200-char severity): no 81st char of the value echoed" "${DIAG_EIGHTY_X}X"
+
+# ESC is supplied as the JSON escape \u001b because jq rejects a raw control
+# byte inside a JSON string; the PARSED value still carries a raw ESC. U+009B
+# (the 8-bit CSI) is legal raw in JSON, so it is written as its UTF-8 bytes.
+DIAG_RAW_ESC=$(printf '\033')
+DIAG_RAW_C1_CSI=$(printf '\302\233')
+FIELDS_DIAG_CONTROL_BYTES="$WORK/fields-diag-control-bytes.json"
+printf '{"round": 2, "reviewers": ["r1"], "findings": [ { "id": "EVIL\\u001b[31m-001%sx", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW%s", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f" } ]}\n' \
+	"$DIAG_RAW_C1_CSI" "$DIAG_RAW_C1_CSI" >"$FIELDS_DIAG_CONTROL_BYTES"
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_CONTROL_BYTES"
+expect_rc "add-round(diag: ESC and C1 in caller values): -> exit 2" 2
+stderr_has "add-round(diag: ESC and C1 in caller values): id shown with both control chars escaped" \
+	'id "EVIL\u001b[31m-001\u009bx" does not match the id format'
+stderr_has "add-round(diag: ESC and C1 in caller values): enum value shown with C1 escaped" \
+	'severity "LOW\u009b" is not one of'
+stderr_lacks "add-round(diag: ESC and C1 in caller values): no raw ESC byte reaches stderr" "$DIAG_RAW_ESC"
+stderr_lacks "add-round(diag: ESC and C1 in caller values): no raw C1 CSI reaches stderr" "$DIAG_RAW_C1_CSI"
+
+# The other half of the no-usage-on-data-errors change: a FLAG error still
+# prints the usage block (the section at the top of the add-round tests only
+# asserts its diagnostic line).
+run 1 sh "$ADD_ROUND" --bogus-flag
+expect_rc "add-round(diag: unknown option): -> exit 2" 2
+stderr_has "add-round(diag: unknown option): usage block still printed for a flag error" "Usage:"
+
+# copy_add_round_with_sabotage DIR SED_SCRIPT — DIR/review-add-round.sh is the
+# script under test rewritten by SED_SCRIPT, with lib/ beside it because the
+# script resolves its library relative to itself. The real script is never
+# touched.
+copy_add_round_with_sabotage() {
+	mkdir -p "$1/lib"
+	cp "$SCRIPTS_DIR/lib/review-aggregates.jq" "$1/lib/"
+	sed "$2" "$ADD_ROUND" >"$1/review-add-round.sh"
+}
+
+# The fallback: a copy of the script whose diagnostic jq no longer compiles
+# (a renamed `shown` def) must still reject with the bare headline.
+copy_add_round_with_sabotage "$WORK/diag-sabotaged" 's/^def shown:$/def shown_renamed:/'
+DIAG_SABOTAGED_ADD_ROUND="$WORK/diag-sabotaged/review-add-round.sh"
+check "add-round(diag fallback): sabotage actually applied to the copy" "no 'def shown_renamed:' line in $DIAG_SABOTAGED_ADD_ROUND" \
+	"$( grep -qx 'def shown_renamed:' "$DIAG_SABOTAGED_ADD_ROUND" && echo 0 || echo 1 )"
+
+run 1 sh "$DIAG_SABOTAGED_ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_NEW_MISSING_FIX"
+expect_rc "add-round(diag fallback, entry): still rejects -> exit 2" 2
+stderr_has "add-round(diag fallback, entry): bare headline printed" \
+	"review-add-round.sh: error: --fields-file has an invalid finding entry (see review-add-round.sh --help for the new-vs-update shape)"
+stderr_lacks "add-round(diag fallback, entry): headline not left dangling with a colon" "new-vs-update shape):"
+stderr_lacks "add-round(diag fallback, entry): no per-entry detail" "findings[0]"
+stderr_lacks "add-round(diag fallback, entry): the failed diagnostic's jq error is not leaked" "jq: "
+
+run 1 sh "$DIAG_SABOTAGED_ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_EMPTY_REVIEWERS"
+expect_rc "add-round(diag fallback, shape): still rejects -> exit 2" 2
+stderr_has "add-round(diag fallback, shape): bare headline printed" \
+	"review-add-round.sh: error: --fields-file failed validation (round/reviewers/findings shape) — see review-add-round.sh --help"
+stderr_lacks "add-round(diag fallback, shape): headline not left dangling with a colon" "--help:"
+stderr_lacks "add-round(diag fallback, shape): no per-field detail" "reviewers must be"
+
+# The fallback's other trigger: a diagnostic that runs cleanly but prints
+# nothing must not leave a headline promising detail that never follows.
+# The rewritten line ends BOTH diagnostic programs (shape and entries); the
+# guard requires both, since a copy with only one silenced would run the
+# other unsabotaged and fail below for a harness reason, not a product one.
+copy_add_round_with_sabotage "$WORK/diag-silent" 's/^| "  " + \.$/| empty/'
+DIAG_SILENT_ADD_ROUND="$WORK/diag-silent/review-add-round.sh"
+check "add-round(diag fallback, silent): sabotage silenced both diagnostic programs in the copy" "expected 2 '| empty' lines in $DIAG_SILENT_ADD_ROUND" \
+	"$( [ "$(grep -cx '| empty' "$DIAG_SILENT_ADD_ROUND")" -eq 2 ] && echo 0 || echo 1 )"
+
+run 1 sh "$DIAG_SILENT_ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_NEW_MISSING_FIX"
+expect_rc "add-round(diag fallback, silent): still rejects -> exit 2" 2
+stderr_has "add-round(diag fallback, silent): bare headline printed" \
+	"review-add-round.sh: error: --fields-file has an invalid finding entry (see review-add-round.sh --help for the new-vs-update shape)"
+stderr_lacks "add-round(diag fallback, silent): headline not left dangling with a colon" "new-vs-update shape):"
+
+# ===========================================================================
+# review-add-round.sh — a stray key never reaches the artifact, on BOTH the
+# new-finding and the update-entry path (TEST-004)
+#
+# The entry validator rejects any key outside the known finding fields, so a
+# stray key stops the whole round before the merge runs. The merge's
+# pick_known_* allow-lists still strip unknown keys as defense in depth, but
+# no fields file can reach them with one any more, so that stripping is no
+# longer observable through the CLI and is not tested here.
+# ===========================================================================
+section "review-add-round.sh — stray key rejected on a NEW and an UPDATE entry"
+
+SNAPSHOT_PICK_KNOWN="$WORK/validation-before-pick-known.json"
+cp "$VALIDATION_JSON" "$SNAPSHOT_PICK_KNOWN"
 
 FIELDS_PICK_KNOWN="$WORK/fields-pick-known.json"
 cat >"$FIELDS_PICK_KNOWN" <<'EOF'
@@ -1061,12 +1359,12 @@ cat >"$FIELDS_PICK_KNOWN" <<'EOF'
 }
 EOF
 run 1 sh "$ADD_ROUND" --json-file "$VALIDATION_JSON" --fields-file "$FIELDS_PICK_KNOWN"
-expect_rc "add-round(pick_known): -> exit 0" 0
-
-check "add-round(pick_known): brand-new STR-777 has no bogusKey" "bogusKey leaked through" \
-	"$( jqr -e '.findings[] | select(.id=="STR-777") | has("bogusKey") | not' "$VALIDATION_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
-check "add-round(pick_known): updated VAL-001 has no bogusKey" "bogusKey leaked through" \
-	"$( jqr -e '.findings[] | select(.id=="VAL-001") | has("bogusKey") | not' "$VALIDATION_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
+expect_rc "add-round(stray key): -> exit 2" 2
+stderr_has "add-round(stray key): brand-new STR-777 rejected, naming bogusKey" \
+	'  findings[0] id "STR-777" — NEW (id not in artifact): unknown field "bogusKey"'
+stderr_has "add-round(stray key): update to VAL-001 rejected, naming bogusKey" \
+	'  findings[1] id "VAL-001" — UPDATE (id already in artifact): unknown field "bogusKey"'
+assert_file_unchanged "add-round(stray key): artifact untouched — neither entry, nor bogusKey, was written" "$SNAPSHOT_PICK_KNOWN" "$VALIDATION_JSON"
 
 # ===========================================================================
 # review-add-round.sh — first_seen immutability (UPDATE) and format
@@ -2455,6 +2753,346 @@ cat >"$WORK/render-null-severity.golden" <<'EOF'
 Verdict: CHANGES_REQUIRED — open: 1 critical, 0 high, 0 medium, 0 low
 EOF
 assert_golden "render(--summary, non-string severity on an OPEN finding): tallied as 1 critical and CHANGES_REQUIRED, not an erroring recompute" "$WORK/render-null-severity.golden"
+
+# ===========================================================================
+# review-add-round.sh / review-create.sh — an ARRAY-valued enum field is
+# rejected, and a non-string id is never classified as an UPDATE.
+#
+# jq's `index($v)` does a SUBSEQUENCE match when $v is an array, so an
+# enum-membership test built on it alone accepts ["HIGH"] as a severity (and
+# ["HIGH","MEDIUM"], a two-element run of the allowed list), and an id-lookup
+# built on it alone "finds" ["DIA-001"]. A persisted non-string status then
+# fell out of every open count, recomputing an open HIGH as APPROVED.
+#
+# Reuses the diagnostics section's DIA-001 (HIGH, open) / DIA-002 (LOW, open)
+# fixture and its runners. Every case here is a rejection, so round 2 stays
+# newer than the newest recorded round and each case reaches entry
+# validation; the snapshot proves that no rejection wrote anything.
+# ===========================================================================
+section "review-add-round.sh / review-create.sh — array-valued enum fields and non-string ids rejected"
+
+SNAPSHOT_ARRAY_ENUM="$WORK/diagnostics-before-array-enum.json"
+cp "$DIAGNOSTICS_JSON" "$SNAPSHOT_ARRAY_ENUM"
+
+# expect_array_enum_rejected LABEL ENTRY_JSON EXPECTED_LINE — the entry is
+# rejected with EXPECTED_LINE (expect_entry_diagnostic) AND the artifact is
+# byte-identical to the section's snapshot, i.e. the value never persisted.
+#
+# The fixture is reset from the snapshot BEFORE each case: an entry wrongly
+# accepted would append round 2, and every later case would then stop at the
+# round-monotonicity check (exit 1) instead of reaching the check it names.
+# That leaked write is still reported, by the leaking case's own
+# "artifact untouched" assertion.
+expect_array_enum_rejected() {
+	cp "$SNAPSHOT_ARRAY_ENUM" "$DIAGNOSTICS_JSON"
+	expect_entry_diagnostic "$1" "$2" "$3"
+	assert_file_unchanged "add-round(diag: $1): artifact untouched" "$SNAPSHOT_ARRAY_ENUM" "$DIAGNOSTICS_JSON"
+}
+
+ARRAY_ENUM_NEW_LINE='  findings[0] id "ARR-101" — NEW (id not in artifact): '
+
+expect_array_enum_rejected "UPDATE severity [\"HIGH\"]" '{"id": "DIA-001", "severity": ["HIGH"]}' \
+	"$DIA_001_UPDATE_LINE"'severity a JSON array is not one of CRITICAL | HIGH | MEDIUM | LOW'
+expect_array_enum_rejected "UPDATE severity [\"HIGH\",\"MEDIUM\"], a run of the allowed list" '{"id": "DIA-001", "severity": ["HIGH", "MEDIUM"]}' \
+	"$DIA_001_UPDATE_LINE"'severity a JSON array is not one of CRITICAL | HIGH | MEDIUM | LOW'
+expect_array_enum_rejected "UPDATE tracked_status [\"APPROVED\"]" '{"id": "DIA-001", "tracked_status": ["APPROVED"]}' \
+	"$DIA_001_UPDATE_LINE"'tracked_status a JSON array is not one of PENDING | IN_PROGRESS | APPROVED | APPROVED_WITH_FOLLOWUPS'
+expect_array_enum_rejected "NEW severity [\"HIGH\"]" \
+	'{"id": "ARR-101", "reviewer": "r1", "tracked_status": "PENDING", "severity": ["HIGH"], "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f"}' \
+	"$ARRAY_ENUM_NEW_LINE"'severity a JSON array is not one of CRITICAL | HIGH | MEDIUM | LOW'
+expect_array_enum_rejected "NEW tracked_status [\"PENDING\"]" \
+	'{"id": "ARR-101", "reviewer": "r1", "tracked_status": ["PENDING"], "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f"}' \
+	"$ARRAY_ENUM_NEW_LINE"'tracked_status a JSON array is not one of PENDING | IN_PROGRESS | APPROVED | APPROVED_WITH_FOLLOWUPS'
+expect_array_enum_rejected "NEW status [\"OPEN\"]" \
+	'{"id": "ARR-101", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f", "status": ["OPEN"]}' \
+	"$ARRAY_ENUM_NEW_LINE"'status a JSON array is not one of NEW | OPEN | RESOLVED | REGRESSED | ACK'
+
+# The original incident: an UPDATE setting status ["OPEN"] on the open HIGH
+# DIA-001 was persisted, and the recompute then counted nothing open and
+# reported APPROVED while DIA-001 was still in the artifact.
+expect_array_enum_rejected "UPDATE status [\"OPEN\"] on the open HIGH DIA-001" '{"id": "DIA-001", "status": ["OPEN"]}' \
+	"$DIA_001_UPDATE_LINE"'status a JSON array is not one of NEW | OPEN | RESOLVED | REGRESSED | ACK'
+check "add-round(diag: UPDATE status [\"OPEN\"] on the open HIGH DIA-001): artifact still CHANGES_REQUIRED with DIA-001 counted as the one open HIGH" \
+	"expected overall_verdict CHANGES_REQUIRED, summary.open.high 1, DIA-001 status \"NEW\"; got $(jqr -c '[.overall_verdict, .summary.open, (.findings[] | select(.id == "DIA-001") | .status)]' "$DIAGNOSTICS_JSON")" \
+	"$( jqr -e '.overall_verdict == "CHANGES_REQUIRED" and .summary.open.high == 1
+		and (.findings[] | select(.id == "DIA-001") | .status) == "NEW"' "$DIAGNOSTICS_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
+
+# NEW-vs-UPDATE is decided only by a STRING id already in the artifact. The
+# array id ["DIA-001"] is "found" by a bare subsequence lookup, which would
+# judge this update-shaped entry against the UPDATE shape (and so report only
+# a malformed id); as a NEW entry it is judged against the full NEW shape.
+expect_array_enum_rejected "array id [\"DIA-001\"] on an update-shaped entry" '{"id": ["DIA-001"], "status": "RESOLVED"}' \
+	'  findings[0] id a JSON array — NEW (id is not a string): id a JSON array does not match the id format (uppercase letters, a hyphen, 3+ digits, e.g. SEC-001)'
+stderr_has "add-round(diag: array id [\"DIA-001\"] on an update-shaped entry): judged against the NEW shape, so the NEW-only required fields are reported" \
+	'  findings[0] id a JSON array — NEW (id is not a string): missing required field "reviewer"'
+stderr_lacks "add-round(diag: array id [\"DIA-001\"] on an update-shaped entry): never labeled UPDATE" "UPDATE (id already in artifact)"
+
+expect_array_enum_rejected "explicit null id" '{"id": null, "status": "RESOLVED"}' \
+	'  findings[0] id null — NEW (id is not a string): id is null (an explicit null is rejected)'
+expect_array_enum_rejected "id key absent" '{"status": "RESOLVED"}' \
+	'  findings[0] (no id) — NEW (no id given): missing required field "id"'
+
+# review-create.sh carries its own copy of is_severity. It has no per-field
+# diagnostic, so the rejection is pinned by its headline plus the absence of
+# any artifact — the value is otherwise a well-formed round-1 finding.
+REPO_ARRAY_SEVERITY_CREATE="$WORK/repo-array-severity-create"; mkdir -p "$REPO_ARRAY_SEVERITY_CREATE"
+FIELDS_ARRAY_SEVERITY_CREATE="$WORK/fields-array-severity-create.json"
+cat >"$FIELDS_ARRAY_SEVERITY_CREATE" <<'EOF'
+{
+  "repo": "array-severity", "reviewers": ["r1"],
+  "findings": [
+    {"id": "ARR-001", "reviewer": "r1", "severity": ["HIGH"], "category": "c",
+     "locations": ["f.kt:1"], "problem": "p", "fix": "f"}
+  ]
+}
+EOF
+run 1 sh "$CREATE" --repo-root "$REPO_ARRAY_SEVERITY_CREATE" --slug array-severity --fields-file "$FIELDS_ARRAY_SEVERITY_CREATE"
+expect_rc "create(severity [\"HIGH\"]): -> exit 2" 2
+stderr_has "create(severity [\"HIGH\"]): validation headline" \
+	"review-create.sh: error: --fields-file failed validation (repo/reviewers/findings shape)"
+assert_no_artifact "create(severity [\"HIGH\"]): no artifact written" "$REPO_ARRAY_SEVERITY_CREATE"
+
+# ===========================================================================
+# lib/review-aggregates.jq — a finding leaves the open tally ONLY on an
+# explicit RESOLVED or ACK; any other status value counts it as OPEN.
+#
+# The status-side twin of the out-of-domain-severity section above: selecting
+# open findings by NEW/OPEN/REGRESSED would let a tampered or corrupt status
+# (an array, a misspelling, null, a missing key) drop a genuinely open finding
+# out of every bucket. Each tampered artifact holds ONE HIGH finding, with a
+# stored APPROVED/all-zero aggregate so inheriting it would be visible.
+# ===========================================================================
+section "lib/review-aggregates.jq — unrecognized finding status fails closed (counted open)"
+
+cat >"$WORK/render-status-open.golden" <<'EOF'
+Verdict: CHANGES_REQUIRED — open: 0 critical, 1 high, 0 medium, 0 low
+EOF
+cat >"$WORK/render-status-closed.golden" <<'EOF'
+Verdict: APPROVED — open: 0 critical, 0 high, 0 medium, 0 low
+EOF
+
+# expect_status_tally LABEL STATUS_EDIT GOLDEN — render --summary over an
+# artifact whose only finding is a HIGH with STATUS_EDIT (a jq update applied
+# to that finding) must print exactly GOLDEN.
+expect_status_tally() {
+	jqr '.findings = [ .findings[0] | .severity = "HIGH" | '"$2"' ]
+		| .overall_verdict = "APPROVED"
+		| .summary = { open: { critical: 0, high: 0, medium: 0, low: 0 }, resolved: 0, new: 0, ack: 0 }' \
+		"$RENDER_FULL" >"$WORK/render-status-tampered.json"
+	render_run 1 "$WORK/render-status-tampered.json" --summary
+	expect_rc "render(--summary, HIGH finding with $1): -> exit 0" 0
+	assert_golden "render(--summary, HIGH finding with $1): $4" "$3"
+}
+
+STATUS_COUNTED_OPEN='tallied as 1 open high and CHANGES_REQUIRED, not dropped into the stored APPROVED/all-zero lie'
+expect_status_tally 'status ["OPEN"]'  '.status = ["OPEN"]' "$WORK/render-status-open.golden" "$STATUS_COUNTED_OPEN"
+expect_status_tally 'status "BOGUS"'   '.status = "BOGUS"'  "$WORK/render-status-open.golden" "$STATUS_COUNTED_OPEN"
+expect_status_tally 'status null'      '.status = null'     "$WORK/render-status-open.golden" "$STATUS_COUNTED_OPEN"
+expect_status_tally 'no status key'    'del(.status)'       "$WORK/render-status-open.golden" "$STATUS_COUNTED_OPEN"
+
+# The controls that keep fail-closed from being "everything is open": the two
+# explicitly closed statuses still take the finding out of the tally.
+STATUS_COUNTED_CLOSED='contributes 0 to the open counts, verdict APPROVED'
+expect_status_tally 'status "RESOLVED"' '.status = "RESOLVED"' "$WORK/render-status-closed.golden" "$STATUS_COUNTED_CLOSED"
+expect_status_tally 'status "ACK"'      '.status = "ACK"'      "$WORK/render-status-closed.golden" "$STATUS_COUNTED_CLOSED"
+
+# An artifact ALREADY corrupted on disk (written before the add-round
+# validator rejected array statuses, or edited by hand): appending any valid
+# round recomputes the aggregate, and that recompute must count the tampered
+# finding as open rather than persist the stored APPROVED/all-zero lie.
+REPO_CORRUPT_STATUS="$WORK/repo-corrupt-status"; mkdir -p "$REPO_CORRUPT_STATUS"
+FIELDS_CORRUPT_STATUS_R1="$WORK/fields-corrupt-status-r1.json"
+cat >"$FIELDS_CORRUPT_STATUS_R1" <<'EOF'
+{
+  "repo": "corrupt-status", "reviewers": ["r1"],
+  "findings": [
+    {"id": "COR-001", "reviewer": "r1", "severity": "HIGH", "category": "c",
+     "locations": ["f.kt:1"], "problem": "p", "fix": "f"}
+  ]
+}
+EOF
+run 1 sh "$CREATE" --repo-root "$REPO_CORRUPT_STATUS" --slug corrupt-status --fields-file "$FIELDS_CORRUPT_STATUS_R1"
+expect_rc "corrupt-status fixture: create -> exit 0" 0
+CORRUPT_STATUS_JSON=$(review_json_path "$CUR_OUT")
+
+jqr '(.findings[] | select(.id == "COR-001") | .status) = ["OPEN"]
+	| .overall_verdict = "APPROVED"
+	| .summary = { open: { critical: 0, high: 0, medium: 0, low: 0 }, resolved: 0, new: 0, ack: 0 }' \
+	"$CORRUPT_STATUS_JSON" >"$WORK/corrupt-status-rewritten.json"
+cp "$WORK/corrupt-status-rewritten.json" "$CORRUPT_STATUS_JSON"
+
+FIELDS_CORRUPT_STATUS_R2="$WORK/fields-corrupt-status-r2.json"
+cat >"$FIELDS_CORRUPT_STATUS_R2" <<'EOF'
+{"round": 2, "reviewers": ["r1"], "findings": []}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$CORRUPT_STATUS_JSON" --fields-file "$FIELDS_CORRUPT_STATUS_R2"
+expect_rc "add-round(valid round over an on-disk status [\"OPEN\"]): -> exit 0" 0
+check "add-round(valid round over an on-disk status [\"OPEN\"]): recomputed verdict is CHANGES_REQUIRED with COR-001 counted as the one open HIGH, not the stored APPROVED" \
+	"got $(jqr -c '[.overall_verdict, .summary.open]' "$CORRUPT_STATUS_JSON")" \
+	"$( jqr -e '.overall_verdict == "CHANGES_REQUIRED" and .summary.open == { critical: 0, high: 1, medium: 0, low: 0 }' "$CORRUPT_STATUS_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
+
+# ===========================================================================
+# review-add-round.sh — a fields file may name each finding id at most once,
+# and a findings entry may carry only the known finding fields.
+#
+# Both were silent before: two entries sharing a not-yet-recorded id both
+# passed as NEW and the merge applied the second onto the first (a HIGH
+# replaced by a LOW), and a misspelled key ("tracked-status", "Status") was
+# stripped by the merge, turning the intended change into a no-op that still
+# exited 0.
+#
+# Every rejection runs through the array-enum section's
+# expect_array_enum_rejected, which resets the DIA-001 (HIGH, open) /
+# DIA-002 (LOW, open) fixture from SNAPSHOT_ARRAY_ENUM before each case and
+# asserts it byte-unchanged after. It splices its ENTRY_JSON argument into the
+# round-2 findings array verbatim, so a multi-entry case passes a
+# comma-separated list of entries.
+# ===========================================================================
+section "review-add-round.sh — duplicate finding ids and unknown entry keys rejected"
+
+DUPLICATE_ID_HEADLINE='review-add-round.sh: error: --fields-file repeats a finding id — one entry per finding per round (see review-add-round.sh --help):'
+DUPLICATE_ID_REASON='each id may appear at most once per fields file'
+KNOWN_FIELDS_LIST='(known fields: id, reviewer, status, tracked_status, severity, category, locations, first_seen, problem, fix, addressed_in_round)'
+
+# share_id_line_count — how many duplicate-group lines the last run printed.
+share_id_line_count() { printf '%s\n' "$CUR_ERR" | grep -c 'share id' || true; }
+
+# --- duplicate ids ----------------------------------------------------------
+
+# The incident: with both open DIA findings resolved in the same round, the
+# LOW copy of SEC-002 silently replaced the HIGH one, and the round recomputed
+# to APPROVED_WITH_FOLLOWUPS instead of CHANGES_REQUIRED.
+expect_array_enum_rejected "duplicate id, SEC-002 HIGH then SEC-002 LOW" \
+	'{"id": "DIA-001", "status": "RESOLVED"},
+	 {"id": "SEC-002", "reviewer": "r1", "tracked_status": "PENDING", "severity": "HIGH", "category": "c", "locations": ["f.kt:1"], "problem": "real", "fix": "f"},
+	 {"id": "SEC-002", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "dup", "fix": "f"},
+	 {"id": "DIA-002", "status": "RESOLVED"}' \
+	"  findings[1] and findings[2] share id \"SEC-002\" — $DUPLICATE_ID_REASON"
+stderr_has "add-round(diag: duplicate id, SEC-002 HIGH then SEC-002 LOW): duplicate-id headline" "$DUPLICATE_ID_HEADLINE"
+check "add-round(diag: duplicate id, SEC-002 HIGH then SEC-002 LOW): artifact still CHANGES_REQUIRED with DIA-001 the one open HIGH" \
+	"got $(jqr -c '[.overall_verdict, .summary.open]' "$DIAGNOSTICS_JSON")" \
+	"$( jqr -e '.overall_verdict == "CHANGES_REQUIRED" and .summary.open.high == 1' "$DIAGNOSTICS_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
+
+# Two UPDATEs to one id would otherwise apply in order, the last silently winning.
+expect_array_enum_rejected "duplicate id, two UPDATEs to DIA-001" \
+	'{"id": "DIA-001", "tracked_status": "APPROVED"},
+	 {"id": "DIA-001", "tracked_status": "PENDING"}' \
+	"  findings[0] and findings[1] share id \"DIA-001\" — $DUPLICATE_ID_REASON"
+
+expect_array_enum_rejected "duplicate id, three entries share SEC-009" \
+	'{"id": "SEC-009", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f"},
+	 {"id": "DIA-001", "status": "RESOLVED"},
+	 {"id": "SEC-009", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:2"], "problem": "p", "fix": "f"},
+	 {"id": "DIA-002", "status": "RESOLVED"},
+	 {"id": "SEC-009", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:3"], "problem": "p", "fix": "f"}' \
+	"  findings[0], findings[2] and findings[4] share id \"SEC-009\" — $DUPLICATE_ID_REASON"
+check "add-round(diag: duplicate id, three entries share SEC-009): reported as ONE group line, not one line per pair" \
+	"expected exactly 1 'share id' line; stderr: $CUR_ERR" \
+	"$( [ "$(share_id_line_count)" -eq 1 ] && echo 0 || echo 1 )"
+
+# Two DIFFERENT repeated ids: one line per group, both in the same run.
+expect_array_enum_rejected "duplicate ids, SEC-002 and SEC-003 each repeated" \
+	'{"id": "SEC-002"}, {"id": "SEC-003"}, {"id": "SEC-002"}, {"id": "SEC-003"}' \
+	"  findings[0] and findings[2] share id \"SEC-002\" — $DUPLICATE_ID_REASON"
+stderr_has "add-round(diag: duplicate ids, SEC-002 and SEC-003 each repeated): the second group is reported in the same run" \
+	"  findings[1] and findings[3] share id \"SEC-003\" — $DUPLICATE_ID_REASON"
+check "add-round(diag: duplicate ids, SEC-002 and SEC-003 each repeated): exactly one line per group" \
+	"expected exactly 2 'share id' lines; stderr: $CUR_ERR" \
+	"$( [ "$(share_id_line_count)" -eq 2 ] && echo 0 || echo 1 )"
+
+# The shared id is echoed BEFORE the id-format check, so any string reaches
+# the group line; it gets the same escaping and truncation as every other
+# echoed value (DIAG_RAW_ESC / DIAG_RAW_C1_CSI are the diagnostics section's).
+DUPLICATE_HOSTILE_ENTRIES=$(printf '{"id": "DUP\\u001b[31m-001%s"}, {"id": "DUP\\u001b[31m-001%s"}' "$DIAG_RAW_C1_CSI" "$DIAG_RAW_C1_CSI")
+expect_array_enum_rejected "duplicate id carrying ESC and C1" "$DUPLICATE_HOSTILE_ENTRIES" \
+	"  findings[0] and findings[1] share id \"DUP\\u001b[31m-001\\u009b\" — $DUPLICATE_ID_REASON"
+stderr_lacks "add-round(diag: duplicate id carrying ESC and C1): no raw ESC byte reaches stderr" "$DIAG_RAW_ESC"
+stderr_lacks "add-round(diag: duplicate id carrying ESC and C1): no raw C1 CSI reaches stderr" "$DIAG_RAW_C1_CSI"
+
+DUPLICATE_EIGHTY_D=$(jqr -rn '"D" * 80')
+expect_array_enum_rejected "duplicate 200-char id" "$(jqr -rn '("D" * 200) as $id | [{id: $id}, {id: $id}] | map(tojson) | join(", ")')" \
+	"  findings[0] and findings[1] share id \"$DUPLICATE_EIGHTY_D\" (truncated) — $DUPLICATE_ID_REASON"
+stderr_lacks "add-round(diag: duplicate 200-char id): no 81st char of the id echoed" "${DUPLICATE_EIGHTY_D}D"
+
+# Only STRING ids are grouped: two id-less entries, or two null ids, are not
+# duplicates of each other — each is left to the per-entry check, which names
+# the real problem.
+expect_array_enum_rejected "two id-less entries and two null ids" \
+	'{"status": "RESOLVED"}, {"status": "RESOLVED"}, {"id": null, "status": "RESOLVED"}, {"id": null, "status": "RESOLVED"}' \
+	'  findings[1] (no id) — NEW (no id given): missing required field "id"'
+stderr_has "add-round(diag: two id-less entries and two null ids): a null id is reported by the per-entry check" \
+	'  findings[3] id null — NEW (id is not a string): id is null (an explicit null is rejected)'
+stderr_lacks "add-round(diag: two id-less entries and two null ids): not reported as a duplicate" "share id"
+
+# The duplicate check runs BEFORE per-entry validation: a repeated id makes
+# the later entries' NEW/UPDATE classification wrong, so a per-entry
+# diagnostic for the same file would mislead. findings[1] is independently
+# invalid, and must not be reported.
+expect_array_enum_rejected "duplicate id alongside an invalid entry" \
+	'{"id": "SEC-003", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f"},
+	 {"id": "DIA-001", "severity": "URGENT"},
+	 {"id": "SEC-003", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:2"], "problem": "p", "fix": "f"}' \
+	"  findings[0] and findings[2] share id \"SEC-003\" — $DUPLICATE_ID_REASON"
+stderr_has "add-round(diag: duplicate id alongside an invalid entry): duplicate-id headline" "$DUPLICATE_ID_HEADLINE"
+stderr_lacks "add-round(diag: duplicate id alongside an invalid entry): no per-entry headline" "invalid finding entry"
+stderr_lacks "add-round(diag: duplicate id alongside an invalid entry): the invalid entry is not reported" 'findings[1] id "DIA-001"'
+
+# --- unknown keys inside a findings entry ------------------------------------
+
+expect_array_enum_rejected "UPDATE misspelled key tracked-status" '{"id": "DIA-001", "tracked-status": "APPROVED"}' \
+	"$DIA_001_UPDATE_LINE"'unknown field "tracked-status" '"$KNOWN_FIELDS_LIST"
+expect_array_enum_rejected "UPDATE wrong-case key Status" '{"id": "DIA-001", "Status": "RESOLVED"}' \
+	"$DIA_001_UPDATE_LINE"'unknown field "Status" '"$KNOWN_FIELDS_LIST"
+expect_array_enum_rejected "NEW misspelled optional key fist_seen" \
+	'{"id": "UNK-101", "reviewer": "r1", "tracked_status": "PENDING", "severity": "LOW", "category": "c", "locations": ["f.kt:1"], "problem": "p", "fix": "f", "fist_seen": "2020-06-15"}' \
+	'  findings[0] id "UNK-101" — NEW (id not in artifact): unknown field "fist_seen" '"$KNOWN_FIELDS_LIST"
+
+expect_array_enum_rejected "UPDATE with two unknown keys" '{"id": "DIA-001", "Status": "RESOLVED", "fixx": "done"}' \
+	"$DIA_001_UPDATE_LINE"'unknown field "Status" '"$KNOWN_FIELDS_LIST"
+stderr_has "add-round(diag: UPDATE with two unknown keys): the second unknown key is reported in the same run" \
+	"$DIA_001_UPDATE_LINE"'unknown field "fixx" '"$KNOWN_FIELDS_LIST"
+
+# A key name is caller data too, so it goes through the same escaping as any
+# value.
+UNKNOWN_KEY_HOSTILE_ENTRY=$(printf '{"id": "DIA-001", "bad\\u001b[31mkey%s": "x"}' "$DIAG_RAW_C1_CSI")
+expect_array_enum_rejected "UPDATE key name carrying ESC and C1" "$UNKNOWN_KEY_HOSTILE_ENTRY" \
+	"$DIA_001_UPDATE_LINE"'unknown field "bad\u001b[31mkey\u009b" '"$KNOWN_FIELDS_LIST"
+stderr_lacks "add-round(diag: UPDATE key name carrying ESC and C1): no raw ESC byte reaches stderr" "$DIAG_RAW_ESC"
+stderr_lacks "add-round(diag: UPDATE key name carrying ESC and C1): no raw C1 CSI reaches stderr" "$DIAG_RAW_C1_CSI"
+
+UNKNOWN_KEY_EIGHTY_K=$(jqr -rn '"K" * 80')
+expect_array_enum_rejected "UPDATE 200-char key name" "$(jqr -cn '{id: "DIA-001", ("K" * 200): "x"}')" \
+	"$DIA_001_UPDATE_LINE"'unknown field "'"$UNKNOWN_KEY_EIGHTY_K"'" (truncated) '"$KNOWN_FIELDS_LIST"
+stderr_lacks "add-round(diag: UPDATE 200-char key name): no 81st char of the key echoed" "${UNKNOWN_KEY_EIGHTY_K}K"
+
+# --- deliberately still accepted -------------------------------------------
+# Unknown TOP-LEVEL keys are ignored: all three top-level keys are required,
+# so a top-level typo already fails, and a reviewer report reused as a fields
+# file carries extras like these. (An UPDATE's first_seen is the other
+# deliberate acceptance; the first_seen immutability section pins it.)
+# Last in the section because it is the one case that writes round 2.
+cp "$SNAPSHOT_ARRAY_ENUM" "$DIAGNOSTICS_JSON"
+FIELDS_TOP_LEVEL_EXTRAS="$WORK/fields-top-level-extras.json"
+cat >"$FIELDS_TOP_LEVEL_EXTRAS" <<'EOF'
+{
+  "schema_version": "9.9", "target": "some/path", "generated": "2000-01-01",
+  "verdict": "APPROVED", "summary": { "open": { "critical": 0, "high": 0, "medium": 0, "low": 0 } },
+  "conventions_profile": "profile", "reviewer": "r9",
+  "round": 2, "reviewers": ["r1"],
+  "findings": [ { "id": "DIA-002", "status": "RESOLVED" } ]
+}
+EOF
+run 1 sh "$ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_TOP_LEVEL_EXTRAS"
+expect_rc "add-round(top-level extras): -> exit 0" 0
+check "add-round(top-level extras): round 2 appended and its entry applied" \
+	"got $(jqr -c '[.rounds[-1], (.findings[] | select(.id == "DIA-002") | .status)]' "$DIAGNOSTICS_JSON")" \
+	"$( jqr -e '.rounds[-1].round == 2 and .rounds[-1].reviewers == ["r1"]
+		and (.findings[] | select(.id == "DIA-002") | .status) == "RESOLVED"' "$DIAGNOSTICS_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
+check "add-round(top-level extras): extras ignored — same top-level keys and schema_version, verdict recomputed rather than taken from the file" \
+	"got $(jqr -c '[keys, .schema_version, .overall_verdict, .summary.open]' "$DIAGNOSTICS_JSON")" \
+	"$( jqr -e --slurpfile before "$SNAPSHOT_ARRAY_ENUM" '
+		keys == ($before[0] | keys) and .schema_version == $before[0].schema_version
+		and .overall_verdict == "CHANGES_REQUIRED" and .summary.open.high == 1' "$DIAGNOSTICS_JSON" >/dev/null 2>&1 && echo 0 || echo 1 )"
 
 # ===========================================================================
 # Summary

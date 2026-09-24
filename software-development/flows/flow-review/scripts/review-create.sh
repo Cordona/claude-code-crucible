@@ -220,10 +220,14 @@ fi
 # has no status/tracked_status/date fields to check, since this script decides
 # all three itself). Only the verdict arithmetic is shared between the
 # siblings, via lib/review-aggregates.jq.
+#
+# is_severity requires a STRING before testing membership: jq's `index($v)`
+# treats an ARRAY $v as a subsequence to search for, so without the type
+# guard ["HIGH"] would pass and persist as an array.
 # ---------------------------------------------------------------------------
 # shellcheck disable=SC2016  # single-quoted on purpose: jq syntax, not shell expansions
 JQ_VALUE_DEFS='
-def is_severity: . as $v | ["CRITICAL","HIGH","MEDIUM","LOW"] | index($v) != null;
+def is_severity: type == "string" and (. as $v | ["CRITICAL","HIGH","MEDIUM","LOW"] | index($v) != null);
 def is_nonempty_string: type == "string" and length > 0;
 def is_finding_id: is_nonempty_string and test("\\A[A-Z]+-[0-9]{3,}\\z");
 def is_nonempty_string_array: type == "array" and length > 0 and all(.[]; type == "string" and length > 0);

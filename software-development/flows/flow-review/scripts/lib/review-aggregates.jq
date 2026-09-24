@@ -25,9 +25,18 @@ def severity_bucket:
   else "critical"
   end;
 
+# WHY a finding leaves the open tally ONLY on an explicitly CLOSED status
+# (RESOLVED or ACK), rather than entering it only on NEW/OPEN/REGRESSED: the
+# same fail-CLOSED principle as severity_bucket above. Selecting by the open
+# statuses would let a tampered or corrupt status on an OPEN finding (an array,
+# null, a misspelling, a missing key) drop it out of every bucket, so a
+# recompute could report APPROVED while that finding is genuinely open.
+# Selecting by the closed statuses means an unrecognized status can only ever
+# raise the verdict, never lower it. The resolved/new/ack counts in summary
+# stay exact-match: none of them gates the verdict.
 def open_counts(findings):
   reduce (findings[]
-          | select(.status == "NEW" or .status == "OPEN" or .status == "REGRESSED")
+          | select(.status | IN("RESOLVED", "ACK") | not)
          ) as $f
     ({critical: 0, high: 0, medium: 0, low: 0}; .[$f.severity | severity_bucket] += 1);
 
