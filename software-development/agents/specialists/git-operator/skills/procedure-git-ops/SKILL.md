@@ -36,11 +36,11 @@ $HOME/.claude/skills/procedure-git-ops/scripts/create-branch.sh --repo PATH \
   --type TYPE --ticket ID --desc SLUG --base BRANCH [-h|--help]
 ```
 
-- Builds `TYPE/TICKET-DESC` and validates it against `standard-git-branch`'s naming convention (lowercase, hyphen-separated, no `#`, no spaces) before touching git at all.
-- **Idempotent:** if the branch already exists, this is a no-op success — it does NOT re-create or error.
+- Builds `TYPE/TICKET-DESC` and checks its characters before touching git at all: lowercase letters, digits, `-` and `/` only — so no `#` and no spaces — except that the ticket may be an uppercase tracker key such as `PSWS-1313`, kept uppercase so Jira links the branch. That is a backstop, not the full `standard-git-branch` convention: it does not enforce the standard's type list — it accepts a wider one (also `test`, `build` and `ci`, which the standard folds into its main types), nor collapse or trim hyphens — build the name to the standard, not to what the script accepts.
+- **Idempotent:** if a branch with exactly that name already exists, this is a no-op success — it does NOT re-create or error, and it does NOT check `--base`: an existing branch is reported even if it was cut from a different base (or `--base` would not resolve). A branch whose name differs only in letter case is refused (exit `1`), never treated as the same branch. It renames nothing, and the framework has no rename or delete script: resolving the twin (renaming or deleting one of the two, outside the framework) is the calling agent's decision.
 - **Creates ONLY — never checks the branch out.** The caller's current branch/working tree is untouched; switching to the new branch (if wanted) is a separate, explicit step outside this script's scope.
-- Prints `GITOP_BRANCH=<name>`.
-- Exit `0` branch exists (created or already did) · `1` `--base` doesn't resolve / `git branch` itself failed · `2` usage error (including a name that fails the naming convention).
+- Prints `GITOP_BRANCH=<name>` and `GITOP_CREATED=true|false` (false only on the idempotent no-op — both are success).
+- Exit `0` branch exists (created or already did) · `1` git not installed / the `--repo` directory does not exist or is not accessible / not a git work tree / local branches can't be listed / a branch differing only in case exists / `--base` doesn't resolve / `git branch` itself failed · `2` usage error (including a name that fails the naming convention).
 
 ### `commit.sh` — OUTWARD, IRREVERSIBLE, fail-closed on signing
 

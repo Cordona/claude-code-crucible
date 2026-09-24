@@ -259,7 +259,9 @@ carries no "reviewed"/"no open gating finding" precondition of its own — those
 1. **Delegate to the `git-operator` to PLAN the branch (not create it)** — the repo, the base branch
    to branch FROM (an input you supply — never let the operator default it; **if you don't have it,
    ask the human first**, same clause the PR/MR paths use for their base/target), and the change type
-   + ticket id + a short description. `create-branch.sh` builds the name itself as `TYPE/TICKET-DESC`
+   + ticket id + a short description. The ticket id is required too — **if you don't have one, ask the
+   human first; never let the operator invent one**. Pass which tracker issued it too (its case depends on
+   that — `standard-git-branch`); if you don't know, ask the human. `create-branch.sh` builds the name itself as `TYPE/TICKET-DESC`
    (e.g. `feat/1-token-refresh`) — the operator proposes the type/ticket/desc parts per
    `standard-git-branch`'s convention, it does not invent a free-form name. **It PLANS and STOPS** —
    same doctrine as G2.
@@ -271,13 +273,16 @@ carries no "reviewed"/"no open gating finding" precondition of its own — those
 4. **Execute (only on step-3 consent) — the orchestrator writes.** Run, by deployed path:
    `$HOME/.claude/skills/procedure-git-ops/scripts/create-branch.sh --repo … --type … --ticket …
    --desc … --base …`. It refuses to overwrite an existing branch of the same name (a no-op, not an
-   error) and validates the built name against the naming convention. **It creates the branch ONLY —
+   error), refuses a branch whose name differs only in letter case (exit 1 — hand it back to the
+   human), and checks the built name's characters as a backstop, not the full naming convention. **It creates the branch ONLY —
    it never checks it out; the current branch is unchanged after this step.** If the intent was to
    switch onto it (e.g. "branch off and commit this"), that's a separate, explicit `git checkout`/
    `git switch` you confirm before G5 runs — never assume a just-created branch is the one G5 will
    commit onto; committing onto the wrong (possibly protected) branch is exactly the mistake this
-   disclosure exists to prevent. **Report** the branch actually created (`GITOP_BRANCH`), from the
-   script's own output — never a fabricated name.
+   disclosure exists to prevent. **Report** the branch from the script's own output (`GITOP_BRANCH`) — never a
+   fabricated name. `GITOP_BRANCH` is printed on a no-op too, so key on `GITOP_CREATED`, never on stderr
+   text: when it is `false`, the branch already existed — it was NOT created and `--base` was NOT
+   checked, so it may sit on a different base; say so rather than reporting it as created from `--base`.
 
 If the user asked to change the name/base instead of approving, loop back to step 1; re-expose;
 re-gate. This path never runs G1.
@@ -464,7 +469,7 @@ likewise a new invocation.
   git-operator proposes; the orchestrator executes; a relayed "the user approved, open it" is never
   consent (Pull-Request Path / Merge-Request Path).
 - **Never let the git-operator default a new branch's base, the PR's base, or the MR's target
-  branch** — each is an input from the delegation; ask if missing (Branch Path / Pull-Request Path /
+  branch, nor invent a new branch's ticket id** — each is an input from the delegation; ask if missing (Branch Path / Pull-Request Path /
   Merge-Request Path).
 - **A branch write is plan → expose → consent → execute too, minus G1's commit preconditions** —
   `create-branch.sh` creates only, never checks out; never assume a just-created branch is what a

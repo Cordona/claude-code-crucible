@@ -178,9 +178,28 @@ case "${1:-}" in
 	remote)
 		printf '%s\n' "${GITOP_STUB_REMOTES:-}"
 		exit 0 ;;
-	show-ref)
-		if [ "${GITOP_STUB_BRANCH_EXISTS:-0}" = "1" ]; then exit 0; fi
-		exit 1 ;;
+	for-each-ref)
+		# Models ONLY `git for-each-ref --format=%(refname) refs/heads/`: one
+		# full refname per local branch in GITOP_STUB_LOCAL_BRANCHES (newline-
+		# separated short names; unset = no branches, so nothing is printed).
+		# Any other argv fails loudly, because this output is only what real git
+		# prints for that exact request. GITOP_STUB_FOR_EACH_REF_RC != 0 makes
+		# the listing itself fail.
+		shift
+		if [ "$#" -ne 2 ] || [ "$1" != '--format=%(refname)' ] || [ "$2" != 'refs/heads/' ]; then
+			printf 'stub: for-each-ref called with unmodelled arguments:' >&2
+			printf ' [%s]' "$@" >&2
+			printf '\n' >&2
+			exit 129
+		fi
+		if [ "${GITOP_STUB_FOR_EACH_REF_RC:-0}" != "0" ]; then
+			printf 'stub: forced for-each-ref failure\n' >&2
+			exit "${GITOP_STUB_FOR_EACH_REF_RC}"
+		fi
+		if [ -n "${GITOP_STUB_LOCAL_BRANCHES:-}" ]; then
+			printf '%s\n' "$GITOP_STUB_LOCAL_BRANCHES" | sed 's,^,refs/heads/,'
+		fi
+		exit 0 ;;
 	branch)
 		shift
 		log_argv "${GITOP_STUB_BRANCH_LOG:-}" "$@"
@@ -395,6 +414,18 @@ stderr_has "preflight(expect-remote-missing): diagnostic" "expected remote 'orig
 # ===========================================================================
 # create-branch.sh
 # ===========================================================================
+# expect_naming_rejection LABEL TICKET DESC — asserts create-branch.sh
+# refuses TICKET/DESC with exit 2 through the naming-convention error, which
+# names the branch as typed. The usage text printed on every exit 2 also says
+# "naming convention", so only the error's own wording can prove which check
+# refused the name.
+expect_naming_rejection() {
+	run 1 "GITOP_STUB_WORKTREE=1" sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket "$2" --desc "$3" --base main
+	expect_rc "createbranch(rejects $1): -> exit 2" 2
+	stderr_has "createbranch(rejects $1): naming-convention error" "error: the built branch name fails the naming convention"
+	stderr_has "createbranch(rejects $1): error names the branch as typed" "): feat/$2-$3"
+}
+
 section "create-branch.sh — usage / argument errors"
 run 1 sh "$CREATEBRANCH" -h
 expect_rc "createbranch(usage): -h -> exit 0" 0
@@ -410,16 +441,14 @@ run 1 sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket '#1' --desc x --bas
 expect_rc "createbranch(ticket has #): -> exit 2" 2
 stderr_has "createbranch(ticket has #): diagnostic" "must not contain '#'"
 
-run 1 sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc TokenRefresh --base main
-expect_rc "createbranch(uppercase desc): -> exit 2" 2
-stderr_has "createbranch(uppercase desc): diagnostic" "naming convention"
+expect_naming_rejection "uppercase desc" 1 TokenRefresh
 
 run 0 sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc x --base main
 expect_rc "createbranch(no-git): -> exit 1" 1
 
 section "create-branch.sh — creates a new branch"
 BRANCH_LOG1="$WORK/branch-log1"
-run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_BRANCH_EXISTS=0" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG1" \
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG1" \
 	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc token-refresh --base main
 expect_rc "createbranch(new): -> exit 0" 0
 stdout_has "createbranch(new): GITOP_BRANCH" "GITOP_BRANCH=feat/1-token-refresh"
@@ -428,23 +457,104 @@ check "createbranch(new): git branch NAME BASE reached argv" "branch name/base m
 
 section "create-branch.sh — idempotent: already exists, no create attempted"
 BRANCH_LOG2="$WORK/branch-log2"
-run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_BRANCH_EXISTS=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG2" \
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_LOCAL_BRANCHES=main
+feat/1-token-refresh" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG2" \
 	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc token-refresh --base main
 expect_rc "createbranch(idempotent): -> exit 0" 0
 stdout_has "createbranch(idempotent): GITOP_BRANCH" "GITOP_BRANCH=feat/1-token-refresh"
 file_missing "createbranch(idempotent): git branch never invoked" "$BRANCH_LOG2"
 
 section "create-branch.sh — --base does not resolve"
-run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_BRANCH_EXISTS=0" "GITOP_STUB_REF_RESOLVES=0" \
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=0" \
 	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc x --base nonexistent
 expect_rc "createbranch(bad-base): -> exit 1" 1
 stderr_has "createbranch(bad-base): diagnostic" "does not resolve to a valid ref"
 
 section "create-branch.sh — git branch itself fails"
-run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_BRANCH_EXISTS=0" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_CREATE_RC=1" \
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_CREATE_RC=1" \
 	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc x --base main
 expect_rc "createbranch(gh-fail): -> exit 1" 1
 stderr_has "createbranch(gh-fail): reports failure" "git branch failed"
+
+section "create-branch.sh — a tracker-key ticket is created under its uppercase name"
+# expect_tracker_key_branch_created LABEL TYPE TICKET DESC — asserts the
+# branch TYPE/TICKET-DESC is created with TICKET's uppercase kept, off main.
+expect_tracker_key_branch_created() {
+	ekb_name="$2/$3-$4"
+	ekb_log="$WORK/branch-log-key-$3"
+	run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$ekb_log" \
+		sh "$CREATEBRANCH" --repo "$WORK" --type "$2" --ticket "$3" --desc "$4" --base main
+	expect_rc "createbranch(tracker key $1): -> exit 0" 0
+	stdout_has "createbranch(tracker key $1): GITOP_BRANCH keeps the uppercase key" "GITOP_BRANCH=$ekb_name"
+	check "createbranch(tracker key $1): git branch got the uppercase name, then the base" "git branch argv lacks $ekb_name followed by main" \
+		"$( argv_has_pair "$ekb_log" "$ekb_name" 'main' 2>/dev/null && echo 0 || echo 1 )"
+}
+expect_tracker_key_branch_created "PSWS-1313" feat PSWS-1313 editors-restore
+expect_tracker_key_branch_created "AB2-7, digit inside the project key" fix AB2-7 x
+expect_tracker_key_branch_created "A1-7, digit as the second character" feat A1-7 x
+
+section "create-branch.sh — uppercase that is not a tracker key is still refused"
+UPPER_E_ACUTE=$(printf '\303\211')
+expect_naming_rejection "mixed-case ticket Psws-1313" 'Psws-1313' x
+expect_naming_rejection "lowercase first letter pSWS-1313" 'pSWS-1313' x
+expect_naming_rejection "lowercase inside the project key PSws-1313" 'PSws-1313' x
+expect_naming_rejection "letter in the issue number PSWS-13a" 'PSWS-13a' x
+expect_naming_rejection "underscore key PSWS_1" 'PSWS_1' x
+expect_naming_rejection "one-letter project key P-1" 'P-1' x
+expect_naming_rejection "digit first 1AB-2" '1AB-2' x
+expect_naming_rejection "empty issue number PSWS-" 'PSWS-' x
+expect_naming_rejection "non-ASCII key PSW${UPPER_E_ACUTE}-1" "PSW${UPPER_E_ACUTE}-1" x
+expect_naming_rejection "tracker key with an uppercase description" 'PSWS-1313' 'Editors-Restore'
+
+section "create-branch.sh — a branch differing only in case is refused, both directions"
+BRANCH_LOG_TWIN_LOWER="$WORK/branch-log-twin-lower"
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG_TWIN_LOWER" \
+	"GITOP_STUB_LOCAL_BRANCHES=main
+feat/psws-1313-x
+feat/1-other" \
+	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket PSWS-1313 --desc x --base main
+expect_rc "createbranch(twin: lowercase exists, uppercase key requested): -> exit 1" 1
+stderr_has "createbranch(twin: lowercase exists, uppercase key requested): names the existing twin" \
+	"a branch differing only in case exists: feat/psws-1313-x (refusing to create feat/PSWS-1313-x)"
+file_missing "createbranch(twin: lowercase exists, uppercase key requested): git branch never invoked" "$BRANCH_LOG_TWIN_LOWER"
+
+BRANCH_LOG_TWIN_UPPER="$WORK/branch-log-twin-upper"
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG_TWIN_UPPER" \
+	"GITOP_STUB_LOCAL_BRANCHES=main
+feat/PSWS-1313-x" \
+	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket psws-1313 --desc x --base main
+expect_rc "createbranch(twin: uppercase key exists, lowercase requested): -> exit 1" 1
+stderr_has "createbranch(twin: uppercase key exists, lowercase requested): names the existing twin" \
+	"a branch differing only in case exists: feat/PSWS-1313-x (refusing to create feat/psws-1313-x)"
+file_missing "createbranch(twin: uppercase key exists, lowercase requested): git branch never invoked" "$BRANCH_LOG_TWIN_UPPER"
+
+section "create-branch.sh — an exact-case match is still an idempotent no-op"
+BRANCH_LOG_EXACT_UPPER="$WORK/branch-log-exact-upper"
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG_EXACT_UPPER" \
+	"GITOP_STUB_LOCAL_BRANCHES=main
+feat/PSWS-1313-x" \
+	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket PSWS-1313 --desc x --base main
+expect_rc "createbranch(exact match, tracker key): -> exit 0" 0
+stdout_has "createbranch(exact match, tracker key): GITOP_BRANCH" "GITOP_BRANCH=feat/PSWS-1313-x"
+file_missing "createbranch(exact match, tracker key): git branch never invoked" "$BRANCH_LOG_EXACT_UPPER"
+
+BRANCH_LOG_EXACT_LOWER="$WORK/branch-log-exact-lower"
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG_EXACT_LOWER" \
+	"GITOP_STUB_LOCAL_BRANCHES=main
+feat/psws-1313-x" \
+	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket psws-1313 --desc x --base main
+expect_rc "createbranch(exact match, lowercase ticket): -> exit 0" 0
+stdout_has "createbranch(exact match, lowercase ticket): GITOP_BRANCH" "GITOP_BRANCH=feat/psws-1313-x"
+file_missing "createbranch(exact match, lowercase ticket): git branch never invoked" "$BRANCH_LOG_EXACT_LOWER"
+
+section "create-branch.sh — fails closed when local branches cannot be listed"
+BRANCH_LOG_LIST_FAIL="$WORK/branch-log-list-fail"
+run 1 "GITOP_STUB_WORKTREE=1" "GITOP_STUB_REF_RESOLVES=1" "GITOP_STUB_BRANCH_LOG=$BRANCH_LOG_LIST_FAIL" \
+	"GITOP_STUB_FOR_EACH_REF_RC=128" \
+	sh "$CREATEBRANCH" --repo "$WORK" --type feat --ticket 1 --desc x --base main
+expect_rc "createbranch(listing fails): -> exit 1" 1
+stderr_has "createbranch(listing fails): diagnostic" "could not list local branches"
+file_missing "createbranch(listing fails): git branch never invoked" "$BRANCH_LOG_LIST_FAIL"
 
 # ===========================================================================
 # commit.sh

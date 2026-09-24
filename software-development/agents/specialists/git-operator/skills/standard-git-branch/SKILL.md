@@ -9,25 +9,28 @@ The **one** definition of a good branch. A branch is a **short-lived, single-pur
 
 ## Workflow — Git Flow
 
-This project uses **Git Flow**. Two long-lived branches, three supporting types:
+This project uses **Git Flow**. Two long-lived branches and three supporting roles — feature work, releases, hotfixes:
 
 | Branch | Lifetime | Branches FROM | Merges INTO |
 |--------|----------|---------------|-------------|
 | `main` (`master`) | permanent — always production-ready | — | — |
 | `develop` | permanent — integration | — | — |
-| `feature/*` | short | `develop` | `develop` |
+| `feat/*` | short | `develop` | `develop` |
 | `release/*` | short | `develop` | `main` **and** `develop` |
 | `hotfix/*` | short | `main` | `main` **and** `develop` |
+
+`fix/*`, `refactor/*`, `perf/*`, `docs/*` and `chore/*` branch from and merge into `develop` exactly like `feat/*`.
 
 > **Deliberate-choice note:** Git Flow suits software that ships **versioned releases with multiple supported versions** (SDKs, i.e. Software Development Kits; installed/on-prem, mobile store cadence). For a continuously-delivered single-version app, a simpler trunk-based / GitHub-Flow model is often better — Git Flow's own author now advises CD (Continuous Delivery) teams toward it. This standard commits to Git Flow by project choice; if the delivery model is pure CD, revisit that choice rather than shoehorning it.
 
 ## Naming
 
-`<type>/<ticket>-<kebab-description>` — e.g. `feat/1-token-refresh`, `fix/PROJ-42-null-session`, `hotfix/urgent-cert-rotation`.
+`<type>/<ticket>-<kebab-description>` — e.g. `feat/1-token-refresh`, `fix/PROJ-42-null-session`, `hotfix/OPS-7-urgent-cert-rotation`.
 
-- **`type/` prefix** is a deliberate, coarser-grained subset of `standard-git-commit`'s own type vocabulary (`feat` · `fix` · `refactor` · `perf` · `docs` · `chore`) — a branch rarely exists solely for a `style`/`test`/`build`/`ci`/`revert` commit, so those fold under the closest type above — plus two Git-Flow-specific categories with no commit-type equivalent: `hotfix` · `release`.
-- **Ticket id recommended** — place it right after the prefix. **Do NOT use `#`** (`feat/#1-…` breaks: `#` truncates in shells and must be percent-encoded in URLs). Use the bare number or key: `feat/1-…`, `feat/PROJ-1-…`.
-- **lowercase, kebab-case, alphanumerics + hyphens only** — no spaces, underscores, or punctuation; replace any special char with a hyphen. Avoid `..` and a trailing `.lock` (git-reserved).
+- **`type/` prefix** is a deliberate, coarser-grained subset of `standard-git-commit`'s own type vocabulary (`feat` · `fix` · `refactor` · `perf` · `docs` · `chore`) — a branch rarely exists solely for a `style`/`test`/`build`/`ci`/`revert` commit, so those fold under the closest type above (when none is closer, `chore`) — plus two Git-Flow-specific categories with no commit-type equivalent: `hotfix` · `release`.
+- **Ticket id required** — every branch traces to the issue it serves, and a tracker such as Jira links a branch to its issue only through the key in the branch name. No ticket yet? Ask for one rather than inventing an id or leaving it out. Enforced by `procedure-git-ops`' `create-branch.sh`, which refuses a branch without `--ticket`. Place it right after the prefix. **Do NOT use `#`** (`feat/#1-…` breaks: `#` truncates in shells and must be percent-encoded in URLs). Use the bare number or key: `feat/1-…`, `feat/PROJ-1-…`.
+- **The ticket is lowercase, except a tracker key, which is uppercase.** A *tracker key* is an id issued by a key-based tracker (e.g. Jira) whose issued form, uppercased, matches `^[A-Z][A-Z0-9]+-[0-9]+$` — e.g. `PSWS-1313`, `AB2-7`. If you don't know which tracker issued an id, ask: its case cannot be decided without that. Write it uppercase even when it was supplied lowercase (`feat/PSWS-1313-…`, never `feat/psws-1313-…`): Jira links a branch to an issue only when the key in the branch name is uppercase, with no case-insensitive option. Every other id — a numeric id, a lowercase slug such as `ops-incident-7`, a mixed-case id such as `Ops-Incident-7` — is written in lowercase. Build the ticket segment in this order: (1) decide whether the id is a tracker key, on its form **as issued**; (2) drop a leading `#`; (3) replace every other character that is not a letter or digit with a hyphen, then collapse repeated hyphens and trim them from both ends; (4) apply the case rule. So a key whose issued form falls outside the pattern (e.g. a custom Jira key format that allows `_` in the project part, such as `MY_PROJ-42`) is not a tracker key: it becomes `my-proj-42`, and Jira will not link it.
+- **Type and description: lowercase, kebab-case, alphanumerics + hyphens only** — no spaces, underscores, or punctuation; replace any special char with a hyphen, then collapse repeated hyphens and trim them from both ends. Avoid `..` and a trailing `.lock` (git-reserved). The ticket's case follows its own rule (above).
 - Short and descriptive.
 
 ## One concern per branch
@@ -57,4 +60,4 @@ Client-side branch discipline is advisory; the platform's protection setting is 
 ## Constraints (NEVER violate)
 - Never commit directly to a protected branch (`main`/`develop`) — always via a branch + PR/MR (pull request / merge request).
 - Never force-push a shared/published branch.
-- Never put `#`, spaces, or uppercase in a branch name; never mix multiple concerns on one branch (bar the refactor exception).
+- Never put `#` or spaces in a branch name; write a tracker key in the ticket segment uppercase and everything else lowercase; use only the types listed under Naming; never create a branch without a ticket id, and never invent one; never mix multiple concerns on one branch (bar the refactor exception).
