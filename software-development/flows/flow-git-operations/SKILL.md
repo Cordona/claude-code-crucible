@@ -104,8 +104,9 @@ own fail-open contract (an unrunnable check is a notice, never a block). The Mer
 is specific to `find-mr.sh` hard-requiring `--confirmed-host` — that requirement doesn't exist here.
 **This confirmation is amortized across the whole turn, same as any other account gate** — if you already
 confirmed the GitLab host earlier in this turn (for an MR, or an earlier commit) and the active account
-hasn't changed, reuse it; do not re-ask. Thread the confirmed (or degraded-to-unknown) host into the
-operator's brief below so it can pass `--gitlab-host` to `resolve-identity.sh` from the start.
+hasn't changed, reuse it; do not re-ask. Thread the confirmed host into the
+operator's brief below so it can pass `--gitlab-host` to `resolve-identity.sh` from the start — or, if it
+could not be confirmed, say so and pass none (never an unconfirmed host), so the operator runs it unpinned.
 
 Dispatch the `git-operator` FIRST for the plan — it reads the diff and derives the split **un-framed
 by you**, which is the whole reason the seat exists. It has NO conversation history; give it the

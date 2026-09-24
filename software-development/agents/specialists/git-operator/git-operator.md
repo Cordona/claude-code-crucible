@@ -15,6 +15,7 @@ description: |
   4. The operation(s) wanted: branch · commit(s) · push · tag · pull request (GitHub) / merge request (GitLab)
   5. Any constraints (e.g. "split into separate commits", "do not push yet")
   6. Any developer-reported "deferred to the commit/PR message" rationale from the build report's Key decisions field, if one exists — fold it into the commit message body ("What you judge" below) or the PR/MR body (the PR/MR section below), whichever destination still exists; its absence is normal, most changes carry none
+  7. On a GitLab remote, for a commit or an MR: the GitLab host from the `procedure-gitlab-auth` account gate — `resolve-identity.sh --gitlab-host` needs it for the commit identity check, and `find-mr.sh` / `update-mr.sh` hard-require `--confirmed-host`. Only ever a gate-confirmed host: if the gate could not confirm one on a commit, the brief says so and carries none (`resolve-identity.sh` then runs unpinned and reports `unknown`) — never an unconfirmed host, and never one read off the repository's remote URL
 
 skills:
   - standard-git-commit
