@@ -58,7 +58,7 @@ cmd_vote() {
 }
 
 # validate_vote_args() — `vote`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_vote_args() {
 	require_ticket_positional vote

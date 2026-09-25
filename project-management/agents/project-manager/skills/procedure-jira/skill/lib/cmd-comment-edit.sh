@@ -478,7 +478,7 @@ cmd_comment_edit() {
 }
 
 # validate_comment_edit_args() — `comment-edit`'s per-command argument
-# validation, called by jira.sh BEFORE any tool/site/credential check so a
+# validation, called by jira.sh BEFORE any curl/site/credential check so a
 # caller's own typo surfaces as a usage error (exit 2) first.
 #
 # --comment-id is shape-checked here, not merely tested for presence, because it

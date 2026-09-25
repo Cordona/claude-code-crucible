@@ -219,7 +219,7 @@ cmd_create() {
 }
 
 # validate_create_args() — `create`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_create_args() {
 	[ -n "$OPT_PROJECT" ] || { usage >&2; error "create requires --project"; exit 2; }

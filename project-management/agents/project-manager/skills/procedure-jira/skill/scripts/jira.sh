@@ -354,7 +354,8 @@
 # =============================================================================
 # POSIX sh only (no bashisms). Runs identically on macOS (BSD userland /
 # Bash 3.2) and Linux (GNU coreutils). `curl` and `jq` are the only dependencies
-# GUARDED with `command -v` (both above, in "Preconditions + dispatch").
+# GUARDED with `command -v` (below: jq right after argv parsing, curl in
+# "Preconditions + dispatch").
 #
 # FOUR MORE ARE HARD DEPENDENCIES AND NONE IS GUARDED — `ls`, `id`, `ln` and
 # `df`, all POSIX utilities, all added by `attach --download` and the $TMPDIR
@@ -720,9 +721,25 @@ fi
 JIRA_PROJECTS_DIR=${OPT_PROJECTS_DIR:-${JIRA_PROJECTS_DIR:-$JIRA_PROJECTS_DIR_DEFAULT}}
 
 # ---------------------------------------------------------------------------
-# Per-command required-argument validation — BEFORE any tool/site/credential
-# check (same ordering as create-issue.sh: your own typo should surface as a
-# usage error before this script even asks whether curl/jq are installed).
+# jq precondition — right after argv parsing and BEFORE the per-command
+# validation below, because that validation itself runs jq: issue-set.sh's
+# split_keys_csv parses --keys (bulk, schedule), and runtime.sh's
+# one_line_display renders the who-flag summary (update, bulk --op update) and
+# the --download directory (attach). Checked after it, a missing jq surfaced as
+# a raw "jq: not found" line — and, for --keys, as a misleading exit 2 usage
+# error. Only -h/--help and the argv-level usage errors above run without jq.
+# ---------------------------------------------------------------------------
+if ! command -v jq >/dev/null 2>&1; then
+	error "jq is not installed"
+	warn  "install it (e.g. https://jqlang.org) then re-run"
+	exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Per-command required-argument validation — BEFORE the curl/site/credential
+# checks (same ordering as create-issue.sh: your own typo should surface as a
+# usage error before this script asks whether curl is installed). jq is the one
+# tool checked earlier — see the precondition above.
 # ---------------------------------------------------------------------------
 assert_confirmed_site_given
 
@@ -888,23 +905,19 @@ fi
 # ordering a caller expects — their own typo still surfaces as a usage error
 # (exit 2) first.
 #
-# BEFORE the tool/site/credential preconditions below, because nothing about
-# refusing to write depends on curl or jq being installed, on the site
-# resolving, or on a credential existing — and refusing here means a read-only
+# BEFORE the curl/site/credential preconditions below, because nothing about
+# refusing to write depends on curl being installed, on the site resolving, or
+# on a credential existing — and refusing here means a read-only
 # invocation of a write command never opens a credential file at all, let alone
 # reaches lib/http.sh. No network call is possible before this point.
 # ---------------------------------------------------------------------------
 require_write_allowed
 
 # ---------------------------------------------------------------------------
-# Preconditions + dispatch
+# Preconditions + dispatch — curl, the site and the credential. jq is checked
+# earlier, before validation (see the jq precondition above).
 # ---------------------------------------------------------------------------
 command -v curl >/dev/null 2>&1 || { error "curl is not installed"; exit 1; }
-if ! command -v jq >/dev/null 2>&1; then
-	error "jq is not installed"
-	warn  "install it (e.g. https://jqlang.org) then re-run"
-	exit 1
-fi
 
 require_confirmed_site
 resolve_credential_config

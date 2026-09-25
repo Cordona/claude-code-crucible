@@ -703,7 +703,7 @@ print_transition_read_back_lines() {
 }
 
 # validate_transition_args() — `transition`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_transition_args() {
 	require_ticket_positional transition

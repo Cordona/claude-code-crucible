@@ -6826,6 +6826,85 @@ run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "jq absent -> exit 1" 1
 stderr_has "jq absent: diagnostic" "jq is not installed"
 
+# THE jq PRECONDITION RUNS RIGHT AFTER argv PARSING — before the site-presence
+# check and before any per-command validator — because several validators run
+# jq themselves: issue-set.sh's --keys parse (bulk, schedule) and runtime.sh's
+# one_line_display (update's and bulk's who-flag summary, attach --download's
+# directory gate). Checked any later, a missing jq surfaced as a raw
+# "jq: not found" line from inside a validator, and for --keys as a misleading
+# exit-2 usage error. Every case below therefore asserts the SAME clean shape:
+# exit 1, the missing-jq diagnostic, no shell "not found" line, no usage dump,
+# and zero curl calls (the stub curl IS on this PATH, so zero is observed, not
+# implied).
+
+# assert_clean_missing_jq NAME — the shape above, for the run that just happened.
+assert_clean_missing_jq() {
+	expect_rc "jq absent, $1 -> exit 1 (the precondition)" 1
+	stderr_has "jq absent, $1: the missing-jq diagnostic" "jq is not installed"
+	stderr_not_has "jq absent, $1: no shell 'not found' line (no validator ran jq first)" "not found"
+	stderr_not_has "jq absent, $1: no usage dump (not a usage error)" "Usage"
+	equals "jq absent, $1: ZERO curl calls" "$(call_count)" "0"
+}
+
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" update PROJ-1 --reviewer x --confirmed-site foo.atlassian.net
+assert_clean_missing_jq "update --reviewer"
+stderr_not_has "jq absent, update --reviewer: NOT refused as a no-field update" "update requires at least one field to change"
+
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --download "$WORK/nojq-download.bin" --id 1 --confirmed-site foo.atlassian.net
+assert_clean_missing_jq "attach --download"
+stderr_not_has "jq absent, attach --download: no destination refusal fired" "--download destination"
+
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op update --reviewer x --keys PSWS-1 --confirmed-site foo.atlassian.net
+assert_clean_missing_jq "bulk --op update --reviewer --keys"
+
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" bulk --op transition --status Done --keys A-1,A-2 --confirmed-site foo.atlassian.net
+assert_clean_missing_jq "bulk --op transition --keys"
+
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" schedule --keys PSWS-1 --to-sprint 5 --confirmed-site foo.atlassian.net
+assert_clean_missing_jq "schedule --keys --to-sprint"
+
+# BEFORE the site-presence check too: a command that omits --confirmed-site is
+# told jq is missing (exit 1), not that the flag is (exit 2) — the one usage
+# error that now ranks below the precondition.
+reset_curl_stub
+run nojq "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PSWS-1
+expect_rc "jq absent, view WITHOUT --confirmed-site -> exit 1 (the precondition outranks the missing flag)" 1
+stderr_has "jq absent, view without --confirmed-site: the missing-jq diagnostic" "jq is not installed"
+stderr_not_has "jq absent, view without --confirmed-site: NOT the missing-site usage error" "--confirmed-site is required on every command"
+
+# AFTER argv parsing, and not before it: help and the argv-level usage errors
+# still need no jq at all.
+run nojq sh "$JIRA" -h
+expect_rc "jq absent, -h -> exit 0 (help needs no jq)" 0
+stdout_has "jq absent, -h: prints usage" "Usage"
+stderr_not_has "jq absent, -h: no missing-jq diagnostic" "jq is not installed"
+
+run nojq sh "$JIRA" view -h
+expect_rc "jq absent, view -h -> exit 0 (help needs no jq)" 0
+stdout_has "jq absent, view -h: prints usage" "Usage"
+stderr_not_has "jq absent, view -h: no missing-jq diagnostic" "jq is not installed"
+
+run nojq sh "$JIRA" bogus
+expect_rc "jq absent, unknown command -> exit 2 (a usage error, not the precondition)" 2
+stderr_has "jq absent, unknown command: the usage diagnostic" "unknown command: bogus"
+stderr_not_has "jq absent, unknown command: no missing-jq diagnostic" "jq is not installed"
+
+run nojq sh "$JIRA" view PSWS-1 --bogus
+expect_rc "jq absent, unknown option -> exit 2 (a usage error, not the precondition)" 2
+stderr_has "jq absent, unknown option: the usage diagnostic" "unknown option: --bogus"
+stderr_not_has "jq absent, unknown option: no missing-jq diagnostic" "jq is not installed"
+
 # ===========================================================================
 # The read-only gate ($JIRA_READ_ONLY) — its TWO halves, and the ONE exception.
 #

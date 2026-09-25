@@ -48,7 +48,7 @@ cmd_board() {
 }
 
 # validate_board_args() — `board`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_board_args() {
 	[ -n "$TICKET_KEY" ] || { usage >&2; error "board requires a numeric board id, e.g.: board 826"; exit 2; }

@@ -375,13 +375,15 @@ update_field_summary() {
 
 # has_update_field_request -> 0 if the caller named at least one updatable
 # field, 1 if none — which is exactly "the summary above is non-empty", so the
-# predicate carries no field list of its own to drift from it.
+# predicate carries no field list of its own to drift from it. A who-field's
+# entry is never empty whatever fold_summary_value renders: its literal
+# "assignee="/"developer="/"reviewer=" prefix is enough.
 has_update_field_request() {
 	[ -n "$(update_field_summary)" ]
 }
 
 # validate_update_args() — `update`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_update_args() {
 	require_ticket_positional update

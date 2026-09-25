@@ -214,7 +214,7 @@ render_link_removal_json() {
 }
 
 # validate_link_args() — `link`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_link_args() {
 	[ -n "$TICKET_KEY" ] || { usage >&2; error "link requires a FROM ticket key, e.g.: link PROJ-1 --to PROJ-2 --link-type Blocks"; exit 2; }

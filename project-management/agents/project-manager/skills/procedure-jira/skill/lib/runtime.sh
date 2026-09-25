@@ -590,6 +590,12 @@ JQ_ONE_LINE_DEF='def one_line: tostring | explode | map(if . == 9 or . == 10 or 
 # --download argument, and a real UTF-8 $TMPDIR renders unchanged either way
 # (non-UTF-8 bytes display as U+FFFD; assert_safe_dir's verdict reads the raw
 # path). Exempt means "not required", never "must not".
+#
+# ONE jq PROCESS PER CALL, so it is for single values in diagnostics and plan
+# lines; a per-row render folds inside its own jq program via JQ_ONE_LINE_DEF
+# (cmd-users.sh, cmd-workflow.sh). The per-command validators call it too
+# (update/bulk who-flags via has_update_field_request, attach --download via
+# assert_safe_dir), which is why jira.sh checks for jq before any validation.
 one_line_display() {
 	jq -rn --arg v "$1" "$JQ_ONE_LINE_DEF"'$v | one_line' | strip_control_ansi
 }

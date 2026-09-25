@@ -202,7 +202,7 @@ cmd_bulk() {
 }
 
 # validate_bulk_args() — `bulk`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_bulk_args() {
 	# bulk takes NO positional — the set is named by --keys/--jql, so a

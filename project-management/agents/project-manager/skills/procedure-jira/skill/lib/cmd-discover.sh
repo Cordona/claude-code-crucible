@@ -421,7 +421,7 @@ cmd_discover() {
 }
 
 # validate_discover_args() — `discover`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_discover_args() {
 	# discover's positional is a bare PROJECT key (not a ticket key) — it
