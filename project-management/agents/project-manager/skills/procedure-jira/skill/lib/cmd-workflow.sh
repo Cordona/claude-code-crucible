@@ -1,7 +1,9 @@
 # shellcheck shell=sh
 #
 # cmd-workflow.sh — `workflow <KEY>`: the issue's current status/type plus every
-#                   transition currently available on it.
+#                   transition currently available on it — id, name, target
+#                   status, whether it has a screen, and the resolutions it
+#                   accepts (--json: the raw ?expand=transitions.fields body).
 #
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
@@ -28,20 +30,30 @@ render_workflow_human() {
 		return 0
 	fi
 
+	# ONE jq pass renders every row (rather than a jq fork per field per
+	# transition); every line-break codepoint inside an API value folds to a
+	# space (JQ_ONE_LINE_DEF, runtime.sh) so a crafted name can never forge a
+	# row, then strip_control_ansi runs over the lot.
+	# The transition NAME and its TARGET are both shown because they differ in
+	# real workflows ("Done" can lead to "TBD TO PREPROD"), and two transitions
+	# can share a target — the id is what `transition --transition-id` takes.
 	printf 'Available transitions:\n'
-	jq -r '.transitions[] | "\(.id)\t\(.to.name)"' "$transitions_file" | while IFS="$(printf '\t')" read -r tid tname; do
-		clean_id=$(printf '%s' "$tid" | strip_control_ansi)
-		clean_name=$(printf '%s' "$tname" | strip_control_ansi)
-		printf '  -> %s (id %s)\n' "$clean_name" "$clean_id"
-	done
+	jq -r "$JQ_ONE_LINE_DEF"'.transitions[] | objects
+		| [(.id // "" | tostring), (.name // ""), (.to.name // ""),
+		   (if .hasScreen == true then "yes" elif .hasScreen == false then "no" else "unknown" end),
+		   ((.fields.resolution.allowedValues // []) | map(objects | .name // empty) | join(", ")),
+		   (if (.fields.resolution // null) == null then "no" else "yes" end)]
+		| map(one_line)
+		| "  -> \(.[2]) (id \(.[0]), transition \"\(.[1])\", screen: \(.[3]))"
+		  + (if .[5] == "no" then ""
+		     elif .[4] == "" then "\n       resolution: settable"
+		     else "\n       resolution: \(.[4])" end)' "$transitions_file" \
+		| strip_control_ansi
 }
 
 cmd_workflow() {
 	# TICKET_KEY presence/shape is validated up front — see cmd_view's note.
-	trans_url="https://${CONFIRMED_HOST}/rest/api/3/issue/${TICKET_KEY}/transitions"
-	jira_curl GET "$trans_url"
-	handle_http_status "$JIRA_HTTP_CODE" "fetch transitions for $TICKET_KEY"
-	require_json_body "fetch transitions for $TICKET_KEY"
+	fetch_issue_transitions "$TICKET_KEY"
 	transitions_body=$JIRA_HTTP_BODY_FILE
 
 	if [ "$OPT_JSON" -eq 1 ]; then
@@ -55,6 +67,19 @@ cmd_workflow() {
 	require_json_body "fetch status for $TICKET_KEY"
 
 	render_workflow_human "$TICKET_KEY" "$JIRA_HTTP_BODY_FILE" "$transitions_body"
+}
+
+# fetch_issue_transitions TICKET_KEY — GET the transitions available on the
+# issue RIGHT NOW, with ?expand=transitions.fields so each carries its screen
+# fields (fields.resolution + allowedValues when the screen can set one). Leaves
+# the body in $JIRA_HTTP_BODY_FILE. Shared with cmd-transition.sh, whose
+# --status finder, --transition-id finder and --resolution check all read this
+# same response — one request shape for the read and the write path.
+fetch_issue_transitions() {
+	fit_url="https://${CONFIRMED_HOST}/rest/api/3/issue/${1}/transitions?expand=transitions.fields"
+	jira_curl GET "$fit_url"
+	handle_http_status "$JIRA_HTTP_CODE" "fetch transitions for $1"
+	require_json_body "fetch transitions for $1"
 }
 
 # validate_workflow_args() — `workflow`'s per-command argument validation, called by

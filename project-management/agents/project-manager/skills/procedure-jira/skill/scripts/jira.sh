@@ -5,14 +5,15 @@
 #            itself does five things: source the engine's units, parse argv
 #            into OPT_* globals, run the command's validate_*_args() wrapper,
 #            enforce the cross-command scope of a flag carrier only some
-#            commands read (see the seven --priority/--reviewer/--developer/
-#            --assignee/--comment-id/--account/--download scoping blocks below,
-#            in that file order), and call its cmd_*() entry point. Every
+#            commands read (see the ten --priority/--reviewer/--developer/
+#            --assignee/--comment-id/--account/--download/--link-id/--query/
+#            --transition-id scoping blocks below, in that file order), and
+#            call its cmd_*() entry point. Every
 #            option it parses is consumed by a sourced unit — except where the
 #            dispatcher itself must scope a shared carrier across commands —
 #            which is what makes it a dispatcher rather than an implementation.
 #
-# SHAPE. The engine is one process assembled from 45 sourced-only units in
+# SHAPE. The engine is one process assembled from 46 sourced-only units in
 # ../lib, in two families:
 #   lib/<concern>.sh   the shared core, sourced first and in dependency order:
 #                      runtime, usage, sitegate, readonlygate, credentials,
@@ -21,19 +22,19 @@
 #                      issue-set, batch-report.
 #   lib/cmd-<name>.sh  one file per command, each owning that command's
 #                      validate_<name>_args() + cmd_<name>() and its private
-#                      helpers. There are 27, listed in the sourcing loop and
+#                      helpers. There are 28, listed in the sourcing loop and
 #                      in the two `case "$COMMAND"` tables below.
 # Both families are SOURCED, never executed: ../scripts holds only the two real
 # entry points, this file and md-to-adf.sh (which is invoked as a subprocess by
 # path, never sourced). See SKILL.md for the layout convention this follows.
 #
-# WHY ONE PROCESS, not 27 standalone scripts: every command shares the SAME
+# WHY ONE PROCESS, not 28 standalone scripts: every command shares the SAME
 # heavy plumbing — auth/credential handoff, host+site gates, the curl
 # transport, the JQL builder, the accountId resolver, the project-config
 # loader, and (for every WRITE command) the markdown->ADF converter handoff.
 # One process means the security-critical plumbing (credential handling, host
 # pinning, JQL escaping, ADF-via-file-never-string) is written and reviewed
-# ONCE, not 27 times with 27 chances to drift.
+# ONCE, not 28 times with 28 chances to drift.
 #
 # WHY EAGERLY SOURCED UNITS, not one 8000-line file: the units are a
 # READABILITY split of that single process, not a library shared across
@@ -47,16 +48,19 @@
 # lib/cmd-link.sh, lib/cmd-transition.sh and lib/cmd-discover.sh respectively.
 #
 # Output:
-#   READ commands (view, search, workflow, link-types, children, discover and
-#   the agile reads boards/board/sprints/sprint/backlog/epics/epic): human mode
+#   READ commands (view, search, workflow, link-types, users, children, discover
+#   and the agile reads boards/board/sprints/sprint/backlog/epics/epic): human mode
 #   prints a rendered summary; --json prints the raw response JSON. WRITE
 #   commands: human mode prints machine-parseable `JIRA_*=value` lines
 #   (create: JIRA_ISSUE_KEY/JIRA_ISSUE_URL; comment: JIRA_COMMENT_ID;
 #   comment-edit: JIRA_COMMENT_EDITED;
-#   transition: JIRA_TRANSITIONED_TO; update: JIRA_UPDATED; create and update
+#   transition: JIRA_TRANSITIONED_TO, plus JIRA_RESOLUTION_CHANGED/
+#   JIRA_ASSIGNEE_CHANGED when a workflow post-function changed either on its
+#   own; update: JIRA_UPDATED; create and update
 #   additionally emit JIRA_USER_FIELDS_SET naming which of the
 #   assignee/developer/reviewer fields the write SET, when any; link:
-#   JIRA_LINKED; worklog: JIRA_WORKLOGGED; watch: JIRA_WATCHED/
+#   JIRA_LINKED, link --remove: JIRA_UNLINKED (--plan: JIRA_UNLINK_PLANNED);
+#   worklog: JIRA_WORKLOGGED; watch: JIRA_WATCHED/
 #   JIRA_UNWATCHED; vote: JIRA_VOTED/JIRA_UNVOTED; and the version/component/
 #   attach/bulk/sprint-write/schedule lines each unit documents) — the
 #   --list modes of watch/vote/version/component/attach
@@ -86,8 +90,11 @@
 #      configured · a custom_fields mapping that is not customfield_<digits>
 #      · a subtask create
 #      without a valid parent · no workflow path to a transition target ·
-#      a transition step whose post-write status check doesn't match
-#      · markdown-to-ADF conversion failed · `attach --download`: the
+#      a transition step whose post-write status check doesn't match ·
+#      a --resolution the transition's screen cannot take (checked before
+#      the POST) · a --transition-id not available from the current status
+#      · a `link --remove` target that matches no link, more than one, or
+#      (--link-id) a link FROM is not an end of · markdown-to-ADF conversion failed · `attach --download`: the
 #      attachment-content redirect was absent, not https, or did not point at
 #      Atlassian's media host — or the media fetch itself answered non-2xx ·
 #      `attach --download`'s three LOCAL filesystem failures, reachable only
@@ -139,9 +146,11 @@
 #      together, watch's --list + --account given together, `--project` on any
 #      `attach` mode (attach addresses its target by KEY/--id), `attach
 #      --download`'s destination already existing, its parent directory being
-#      absent or not writable, that destination beginning with "-", or
+#      absent or not writable, that destination beginning with "-",
 #      `--force`/`--plan`/`--dry-run` passed to `attach --download`, which
-#      implements neither)
+#      implements neither, `transition` given both or neither of --status/
+#      --transition-id, or `link --remove` given both or neither of its two
+#      selectors, or --comment-file)
 #
 # =============================================================================
 # Security (read before touching the curl/credential code)
@@ -378,8 +387,13 @@
 # jq is used
 # ONLY for its `@uri`/`@csv`-style builtins and static, hardcoded programs
 # fed via `--arg`/`--argjson`/`--rawfile` — never a dynamically built
-# program string, and no Oniguruma regex dependency (unlike this skill's
-# sibling md-to-adf.sh). The 45 units this file sources are resolved with pure
+# program string. It DOES need an Oniguruma-enabled jq on some paths, stated
+# here because this note once claimed otherwise: three CSV trims call gsub()
+# (fields.sh's --labels, search-core.sh's --fields, issue-set.sh's --keys), and
+# every write that carries body text runs md-to-adf.sh, which asserts
+# Oniguruma up front. Everything else — including the display folds
+# (runtime.sh's JQ_ONE_LINE_DEF, strip_control_ansi) — is regex-free, and new
+# code should stay that way. The 46 units this file sources are resolved with pure
 # parameter expansion, never dirname/readlink/realpath/basename — the engine
 # and write-test suites run every command under a minimal PATH toolbox that
 # deliberately excludes all four, so any of them would break those suites.
@@ -402,7 +416,7 @@ PROG=${0##*/}
 # practice (SKILL.md and the harness always invoke this script by an absolute
 # path) but exists so `set -u` can never see an unset SCRIPT_DIR.
 #
-# LIB_DIR holds the 45 sourced-only units; MD_TO_ADF is the markdown->ADF
+# LIB_DIR holds the 46 sourced-only units; MD_TO_ADF is the markdown->ADF
 # converter, a SIBLING script in this same scripts/ dir consumed BY PATH as a
 # subprocess — never sourced, never inlined. Both must be resolved from $0
 # rather than a bare relative path, which would resolve against the CALLER's
@@ -442,6 +456,7 @@ for _jira_unit in \
 	"$LIB_DIR/cmd-create.sh" "$LIB_DIR/cmd-comment.sh" \
 	"$LIB_DIR/cmd-comment-edit.sh" "$LIB_DIR/cmd-transition.sh" \
 	"$LIB_DIR/cmd-update.sh" "$LIB_DIR/cmd-link.sh" "$LIB_DIR/cmd-link-types.sh" \
+	"$LIB_DIR/cmd-users.sh" \
 	"$LIB_DIR/cmd-children.sh" "$LIB_DIR/cmd-discover.sh" "$LIB_DIR/cmd-worklog.sh" \
 	"$LIB_DIR/cmd-watch.sh" "$LIB_DIR/cmd-vote.sh" "$LIB_DIR/cmd-version.sh" \
 	"$LIB_DIR/cmd-component.sh" "$LIB_DIR/cmd-attach.sh" "$LIB_DIR/cmd-boards.sh" \
@@ -463,7 +478,7 @@ unset _jira_unit
 COMMAND=${1:-}
 case "$COMMAND" in
 	-h|--help) usage; exit 0 ;;
-	view|search|workflow|create|comment|comment-edit|transition|update|link|link-types|children|discover|worklog|watch|vote|version|component|attach|bulk|boards|board|sprints|sprint|backlog|epics|epic|schedule) shift ;;
+	view|search|workflow|create|comment|comment-edit|transition|update|link|link-types|users|children|discover|worklog|watch|vote|version|component|attach|bulk|boards|board|sprints|sprint|backlog|epics|epic|schedule) shift ;;
 	'') usage >&2; error "missing command"; exit 2 ;;
 	*) usage >&2; error "unknown command: $COMMAND"; exit 2 ;;
 esac
@@ -515,9 +530,18 @@ OPT_DEVELOPER=""
 # see cmd_create's --reviewer block for why create cannot defer it.
 OPT_REVIEWER=""
 OPT_RESOLUTION=""
+# transition: the id of ONE exact transition to POST instead of walking to a
+# --status. Read by that ONE command only — hence the foreign-flag guard below.
+OPT_TRANSITION_ID=""
 OPT_PLAN=0
 OPT_TO=""
 OPT_LINK_TYPE=""
+# link --remove: selects the link to delete by its numeric id. Read by that ONE
+# command only — hence the foreign-flag guard below.
+OPT_LINK_ID=""
+# users: the name/email fragment /user/search matches. Read by that ONE command
+# only — hence the foreign-flag guard below.
+OPT_QUERY=""
 OPT_TIME_SPENT=""
 OPT_COMMENT_FILE=""
 OPT_STARTED=""
@@ -623,9 +647,12 @@ while [ $# -gt 0 ]; do
 		--developer)               need_arg "$1" "${2:-}"; OPT_DEVELOPER=$2; shift ;;
 		--reviewer)                need_arg "$1" "${2:-}"; OPT_REVIEWER=$2; shift ;;
 		--resolution)              need_arg "$1" "${2:-}"; OPT_RESOLUTION=$2; shift ;;
+		--transition-id)           need_arg "$1" "${2:-}"; OPT_TRANSITION_ID=$2; shift ;;
 		--plan|--dry-run)          OPT_PLAN=1 ;;
 		--to)                      need_arg "$1" "${2:-}"; OPT_TO=$2; shift ;;
 		--link-type)               need_arg "$1" "${2:-}"; OPT_LINK_TYPE=$2; shift ;;
+		--link-id)                 need_arg "$1" "${2:-}"; OPT_LINK_ID=$2; shift ;;
+		--query)                   need_arg "$1" "${2:-}"; OPT_QUERY=$2; shift ;;
 		--time-spent)              need_arg "$1" "${2:-}"; OPT_TIME_SPENT=$2; shift ;;
 		--comment-file)            need_arg "$1" "${2:-}"; OPT_COMMENT_FILE=$2; shift ;;
 		--started)                 need_arg "$1" "${2:-}"; OPT_STARTED=$2; shift ;;
@@ -710,6 +737,7 @@ case "$COMMAND" in
 	update)     validate_update_args ;;
 	link)       validate_link_args ;;
 	link-types) validate_link_types_args ;;
+	users)      validate_users_args ;;
 	children)   validate_children_args ;;
 	discover)   validate_discover_args ;;
 	worklog)    validate_worklog_args ;;
@@ -778,7 +806,7 @@ if [ "$developer_is_supported" -eq 0 ]; then
 	require_foreign_flag_unset --developer "$OPT_DEVELOPER" "update, and bulk --op update"
 fi
 
-# --assignee carries the same guard over the WIDEST owner set of the seven: four
+# --assignee carries the same guard over the WIDEST owner set of the ten: four
 # readers, not one or three — create and update merge it as fields.assignee,
 # `search` resolves it into an `assignee = ...` JQL clause (lib/jql.sh), and
 # `bulk --op update` reads it through the update verb it loops (plus the one
@@ -829,6 +857,23 @@ if [ "$COMMAND" != "attach" ]; then
 	require_foreign_flag_unset --download "$OPT_DOWNLOAD" "attach"
 fi
 
+# --link-id, --query and --transition-id are each scoped like --download above —
+# ONE reader apiece (link --remove, users, transition) — for the same
+# undisclosed-silent-drop reason: `search --query X` would run with the query
+# ignored, and `bulk --op transition --status S --transition-id N` would walk
+# every issue to S instead of taking the one transition named. (`link
+# --link-id N` WITHOUT --remove is validate_link_args's own refusal.) Refused
+# loudly (exit 2) before any network call, like every guard above.
+if [ "$COMMAND" != "link" ]; then
+	require_foreign_flag_unset --link-id "$OPT_LINK_ID" "link --remove"
+fi
+if [ "$COMMAND" != "users" ]; then
+	require_foreign_flag_unset --query "$OPT_QUERY" "users"
+fi
+if [ "$COMMAND" != "transition" ]; then
+	require_foreign_flag_unset --transition-id "$OPT_TRANSITION_ID" "transition"
+fi
+
 # ---------------------------------------------------------------------------
 # Read-only gate ($JIRA_READ_ONLY) — HERE, and deliberately not elsewhere.
 #
@@ -875,6 +920,7 @@ case "$COMMAND" in
 	update)     cmd_update ;;
 	link)       cmd_link ;;
 	link-types) cmd_link_types ;;
+	users)      cmd_users ;;
 	children)   cmd_children ;;
 	discover)   cmd_discover ;;
 	worklog)    cmd_worklog ;;

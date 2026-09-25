@@ -1807,14 +1807,24 @@ stdout_has "transition --plan human: shows step 2" "Reviewing"
 stdout_has "transition --plan human: shows final step" "Done"
 stdout_has "transition --plan human: explicit no-write notice" "NOTHING WAS WRITTEN"
 
+# CLOSED_TRANSITIONS_WITH_RESOLUTION — the transitions GET a SINGLE-step plan
+# makes (Open -> Closed is one edge in PROJ's graph), for a Closed transition
+# whose screen CAN take a resolution. The sections below that pass no
+# --resolution use it too, so "discloses nothing" is proven against a step that
+# could have taken one: an engine that auto-defaulted a resolution whenever the
+# screen allowed it would be caught, not excused by the fixture.
+CLOSED_TRANSITIONS_WITH_RESOLUTION='{"transitions":[{"id":"99","name":"Close Issue","to":{"name":"Closed"},"fields":{"resolution":{"required":false,"allowedValues":[{"name":"Resolved"},{"name":"Won'"'"'t Fix"}]}}}]}'
+
 section "jira.sh transition — --plan to Closed WITHOUT --resolution discloses NO resolution/comment (opt-in, not auto-defaulted)"
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
 	sh "$JIRA" transition PROJ-1 --status Closed --plan --confirmed-site foo.atlassian.net
 expect_rc "transition --plan to Closed, no --resolution (human) -> exit 0" 0
-equals "transition --plan to Closed: exactly ONE call (status GET, no writes)" "$(call_count)" "1"
+equals "transition --plan to Closed: exactly TWO calls, both READS (status GET + transitions GET, no writes)" \
+	"$(request_method_sequence)" "GET/GET"
 argv_log_not_has_token "transition --plan to Closed: no POST method token anywhere" "POST"
 TESTS_RUN=$((TESTS_RUN + 1))
 case "$CUR_OUT" in
@@ -1825,10 +1835,11 @@ esac
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
 	sh "$JIRA" transition PROJ-1 --status Closed --plan --confirmed-site foo.atlassian.net --json
 expect_rc "transition --plan to Closed, no --resolution (json) -> exit 0" 0
-equals "transition --plan to Closed (json): exactly ONE call" "$(call_count)" "1"
+equals "transition --plan to Closed (json): exactly TWO calls, both READS" "$(request_method_sequence)" "GET/GET"
 PLAN_CLOSED_JSON="$CUR_OUT"
 equals "transition --plan to Closed (json), no --resolution: .resolution == null" \
 	"$(printf '%s' "$PLAN_CLOSED_JSON" | jq -r '.resolution')" "null"
@@ -1839,10 +1850,12 @@ section "jira.sh transition — --plan WITH an explicit --resolution still discl
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
 	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --plan --confirmed-site foo.atlassian.net
 expect_rc "transition --plan to Closed --resolution Resolved (human) -> exit 0" 0
-equals "transition --plan to Closed --resolution: exactly ONE call (status GET, no writes)" "$(call_count)" "1"
+equals "transition --plan to Closed --resolution: exactly TWO calls, both READS (status GET + transitions GET, no writes)" \
+	"$(request_method_sequence)" "GET/GET"
 argv_log_not_has_token "transition --plan to Closed --resolution: no POST method token anywhere" "POST"
 stdout_has "transition --plan to Closed --resolution (human): discloses the resolution" "Will set resolution: Resolved"
 stdout_has "transition --plan to Closed --resolution (human): discloses the injected system comment" \
@@ -1850,10 +1863,11 @@ stdout_has "transition --plan to Closed --resolution (human): discloses the inje
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
 	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --plan --confirmed-site foo.atlassian.net --json
 expect_rc "transition --plan to Closed --resolution Resolved (json) -> exit 0" 0
-equals "transition --plan to Closed --resolution (json): exactly ONE call" "$(call_count)" "1"
+equals "transition --plan to Closed --resolution (json): exactly TWO calls, both READS" "$(request_method_sequence)" "GET/GET"
 PLAN_RES_JSON="$CUR_OUT"
 equals "transition --plan to Closed --resolution (json): .resolution == Resolved" \
 	"$(printf '%s' "$PLAN_RES_JSON" | jq -r '.resolution')" "Resolved"
@@ -1957,7 +1971,7 @@ section "jira.sh transition — explicit --resolution is opt-in and sets the fie
 
 reset_curl_stub
 set_stub_response 1 '{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"}}}' 200
-set_stub_response 2 '{"transitions":[{"id":"99","to":{"name":"Closed"}}]}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
 set_stub_response 3 '' 204
 set_stub_response 4 '{"fields":{"status":{"name":"Closed"}}}' 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
@@ -2004,6 +2018,1001 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" 
 	sh "$JIRA" transition PROJ-1 --status Open --confirmed-site foo.atlassian.net
 expect_rc "transition unreachable target -> exit 1" 1
 stderr_has "transition unreachable target: diagnostic" "no valid workflow path"
+
+# ===========================================================================
+# transition --transition-id N — ONE exact transition: no walk, no project
+# config, available-now or refused, status verified afterwards
+# ===========================================================================
+
+# TO_DO_STATE — the pre-transition GET for an issue in "To Do", a status the
+# PROJ workflow graph does not contain: every --transition-id case below would
+# fail with "no valid workflow path" if it ever fell back to the walk.
+TO_DO_STATE='{"fields":{"status":{"name":"To Do"},"issuetype":{"name":"Task"}}}'
+
+# TO_DO_TRANSITIONS — two transitions whose NAME and TARGET differ (seen live:
+# "Done" leading to "TBD TO PREPROD"), so a test can tell which one was taken
+# and that the reported target is the transition's to.name.
+TO_DO_TRANSITIONS='{"transitions":[{"id":"31","name":"Done","to":{"name":"TBD TO PREPROD"}},{"id":"32","name":"Close","to":{"name":"Closed"}}]}'
+
+# BROKEN_PROJECTS_DIR holds a PROJ.json that is not JSON. `--status` must load
+# it and fails on it (the control below); `--transition-id` never reads it.
+BROKEN_PROJECTS_DIR="$WORK/broken-projects"
+mkdir -p "$BROKEN_PROJECTS_DIR"
+printf '{ this is not json\n' >"$BROKEN_PROJECTS_DIR/PROJ.json"
+
+TRANSITION_ID_SCOPE_DIAG="error: --transition-id is only valid with transition"
+
+section "jira.sh transition --transition-id — POSTs exactly that transition and verifies the status it leads to"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BROKEN_PROJECTS_DIR" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id 32 (malformed project config present) -> exit 0" 0
+equals "transition --transition-id: status GET, transitions GET, ONE POST, verify GET" \
+	"$(request_method_sequence)" "GET/GET/POST/GET"
+equals "transition --transition-id: the POST names transition 32 — the one asked for, not the first listed" \
+	"$(call_body 3)" '{"transition":{"id":"32"}}'
+argv_log_has_token "transition --transition-id: the pre-state read carries resolution + assignee (the read-back's 'before')" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1?fields=status,issuetype,resolution,assignee"
+argv_log_has_token "transition --transition-id: transitions are listed WITH their screen fields" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/transitions?expand=transitions.fields"
+argv_log_has_token "transition --transition-id: the verify read carries resolution + assignee (the read-back's 'after')" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1?fields=status,resolution,assignee"
+equals "transition --transition-id: stdout is exactly the machine line, target = the transition's to.name" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed"
+
+# The control for "never reads the config": the SAME directory refuses a --status
+# run. The queued responses are what a loader that TOLERATED the broken file would
+# consume to complete a direct one-step transition — so the refusal, not a missing
+# response, is what makes this exit 1.
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BROKEN_PROJECTS_DIR" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "control: transition --status with the SAME malformed config -> exit 1" 1
+stderr_has "control: --status really does load (and refuse) that config" "project config is not valid JSON"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"TBD TO PREPROD"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 31 --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --json -> exit 0" 0
+equals "transition --transition-id --json: the summary names the id, the one-step path and the real target" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{transitionId, from, to, path, executed, resolution, resolutionChecked, ambiguousSteps}')" \
+	'{"transitionId":"31","from":"To Do","to":"TBD TO PREPROD","path":["TBD TO PREPROD"],"executed":true,"resolution":null,"resolutionChecked":null,"ambiguousSteps":[]}'
+
+# A transition whose target IS the current status (a self-loop such as
+# "Reopen") is still POSTed: the caller named it, so there is no
+# already-at-target short-circuit on this path.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"51","name":"Reopen","to":{"name":"Open"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Open"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 51 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id to the CURRENT status (self-loop) -> exit 0" 0
+equals "transition --transition-id self-loop: the POST still fires" "$(request_method_sequence)" "GET/GET/POST/GET"
+stdout_not_has "transition --transition-id self-loop: no already-at-target no-op message" "is already"
+
+section "jira.sh transition --transition-id — refused when not available now, or when the status does not follow"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 77 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id not offered from the current status -> exit 1" 1
+stderr_has "transition --transition-id unavailable: names the id, the current status and \`workflow\`" \
+	"transition id 77 is not available on PROJ-1 from its current status 'To Do' — run \`workflow PROJ-1\`"
+equals "transition --transition-id unavailable: two reads, NO POST" "$(request_method_sequence)" "GET/GET"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 "$TO_DO_STATE" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id whose POST silently did not apply -> exit 1" 1
+stderr_has "transition --transition-id silent no-op: the verify names the expected and actual status" \
+	"transition to 'Closed' for PROJ-1 did not apply (status is still 'To Do')"
+stdout_not_has "transition --transition-id silent no-op: no JIRA_TRANSITIONED_TO receipt" "JIRA_TRANSITIONED_TO"
+
+section "jira.sh transition --transition-id — usage errors and foreign-flag scope (exit 2, ZERO calls)"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "transition with BOTH --status and --transition-id -> exit 2" 2
+stderr_has "transition both selectors: diagnostic" "transition takes --status TARGET or --transition-id N, not both"
+equals "transition both selectors: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 3x --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id 3x -> exit 2" 2
+stderr_has "transition non-numeric --transition-id: diagnostic" "invalid --transition-id (must be a numeric transition id): 3x"
+equals "transition non-numeric --transition-id: ZERO calls" "$(call_count)" "0"
+
+# bulk --op transition would otherwise walk EVERY issue to --status, ignoring
+# the one transition the caller named.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" bulk --op transition --status Closed --keys PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "bulk --op transition + --transition-id -> exit 2" 2
+stderr_has "bulk + --transition-id: the scoping diagnostic fired" "$TRANSITION_ID_SCOPE_DIAG"
+equals "bulk + --transition-id: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "view + --transition-id -> exit 2" 2
+stderr_has "view + --transition-id: the scoping diagnostic fired" "$TRANSITION_ID_SCOPE_DIAG"
+equals "view + --transition-id: ZERO calls" "$(call_count)" "0"
+
+section "jira.sh transition --transition-id --plan — two reads, the step disclosed, nothing written (and permitted read-only)"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan -> exit 0" 0
+equals "transition --transition-id --plan: two READS, no write" "$(request_method_sequence)" "GET/GET"
+stdout_has "transition --transition-id --plan: from -> target header" "PLAN for PROJ-1: To Do -> Closed"
+stdout_has "transition --transition-id --plan: the one step" "  step 1: -> Closed"
+stdout_has "transition --transition-id --plan: names the exact transition" "Via transition id 32 (exactly that transition, no walk)."
+stdout_has "transition --transition-id --plan: no-write notice" "NOTHING WAS WRITTEN"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan --json -> exit 0" 0
+equals "transition --transition-id --plan --json: executed:false, the id, and NO read-back (nothing ran)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{executed, transitionId, to, readBack}')" \
+	'{"executed":false,"transitionId":"32","to":"Closed","readBack":null}'
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 77 --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan of an unavailable id -> exit 1 (the plan fails as the run would)" 1
+stderr_has "transition --transition-id --plan unavailable: diagnostic" "transition id 77 is not available on PROJ-1"
+stdout_not_has "transition --transition-id --plan unavailable: no plan is printed" "PLAN for"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --plan --confirmed-site foo.atlassian.net
+expect_rc "read-only transition --transition-id --plan -> exit 0 (the transition --plan carve-out)" 0
+equals "read-only transition --transition-id --plan: two READS" "$(request_method_sequence)" "GET/GET"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"}}}' 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "read-only transition --transition-id (real) -> exit 1 (refused)" 1
+stderr_has "read-only transition --transition-id: refusal names the --plan it does permit" \
+	"'transition' without --plan — only 'transition --plan' is permitted"
+equals "read-only transition --transition-id: ZERO calls" "$(call_count)" "0"
+
+# ===========================================================================
+# transition --resolution — checked against the step's own screen fields
+# (?expand=transitions.fields) BEFORE any POST, and sent in the allowed
+# value's canonical spelling
+# ===========================================================================
+
+# CLOSED_TRANSITION_NO_RESOLUTION_FIELD — a Closed transition with no screen
+# resolution field: Jira answers a --resolution on it with a 400 (seen live).
+CLOSED_TRANSITION_NO_RESOLUTION_FIELD='{"transitions":[{"id":"99","name":"Close Issue","to":{"name":"Closed"}}]}'
+# CLOSED_TRANSITION_RESOLUTION_ANY — a resolution field WITHOUT an
+# allowedValues list: settable, but nothing to check a value against.
+CLOSED_TRANSITION_RESOLUTION_ANY='{"transitions":[{"id":"99","name":"Close Issue","to":{"name":"Closed"},"fields":{"resolution":{"required":false}}}]}'
+
+section "jira.sh transition --plan --resolution (single step) — the plan checks the resolution before promising it"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITION_NO_RESOLUTION_FIELD" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --resolution on a step with NO resolution field -> exit 1" 1
+stderr_has "transition --plan no resolution field: names the transition, its id, its target and the reason" \
+	"transition 'Close Issue' (id 99, -> 'Closed') on PROJ-1 accepts no resolution — its screen has no resolution field, so Jira would reject --resolution 'Resolved' with a 400"
+stdout_not_has "transition --plan no resolution field: nothing is promised" "Will set resolution"
+equals "transition --plan no resolution field: two READS, no write" "$(request_method_sequence)" "GET/GET"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution Duplicate --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --resolution not in allowedValues -> exit 1" 1
+stderr_has "transition --plan disallowed resolution: lists what IS allowed" \
+	"does not accept resolution 'Duplicate' — allowed: Resolved, Won't Fix."
+stdout_not_has "transition --plan disallowed resolution: nothing is promised" "Will set resolution"
+
+# A case-insensitive match is accepted AND disclosed in Jira's own spelling —
+# the value the real run will send.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution "WON'T FIX" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --resolution in another case -> exit 0" 0
+stdout_has "transition --plan canonical resolution: discloses Jira's spelling" "Will set resolution: Won't Fix"
+stdout_has "transition --plan canonical resolution: the system comment carries it too" \
+	"Will add a system comment: \"Closed with resolution: Won't Fix\""
+stdout_not_has "transition --plan single step: the resolution is NOT marked unverified" "RESOLUTION NOT VERIFIED"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution "won't fix" --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json --resolution in another case -> exit 0" 0
+equals "transition --plan --json single step: canonical resolution, checked:true" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{resolution, resolutionChecked}')" '{"resolution":"Won'"'"'t Fix","resolutionChecked":true}'
+
+section "jira.sh transition --resolution (real run) — refused before the POST, or sent canonically"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITION_NO_RESOLUTION_FIELD" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --confirmed-site foo.atlassian.net
+expect_rc "transition --resolution on a step with NO resolution field -> exit 1" 1
+stderr_has "transition --resolution refused: the same named refusal as the plan's" \
+	"transition 'Close Issue' (id 99, -> 'Closed') on PROJ-1 accepts no resolution"
+equals "transition --resolution refused: two READS, the 400-bound POST never sent" "$(request_method_sequence)" "GET/GET"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Won'"'"'t Fix"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution "won't FIX" --json --confirmed-site foo.atlassian.net
+expect_rc "transition --resolution in another case (real) -> exit 0" 0
+CANONICAL_POST_BODY=$(call_body 3)
+equals "transition --resolution: the POST carries the ALLOWED value's spelling, not the caller's" \
+	"$(printf '%s' "$CANONICAL_POST_BODY" | jq -r '.fields.resolution.name')" "Won't Fix"
+equals "transition --resolution: the injected comment uses the canonical spelling too" \
+	"$(printf '%s' "$CANONICAL_POST_BODY" | jq -r '.update.comment[0].add.body.content[0].content[0].text')" \
+	"Closed with resolution: Won't Fix"
+equals "transition --resolution --json: canonical resolution, checked:true" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{resolution, resolutionChecked}')" '{"resolution":"Won'"'"'t Fix","resolutionChecked":true}'
+
+# A resolution field with no allowedValues list: settable, so the value is
+# sent exactly as given.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITION_RESOLUTION_ANY" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution "shipped it" --confirmed-site foo.atlassian.net
+expect_rc "transition --resolution on a field with no allowedValues -> exit 0" 0
+equals "transition --resolution, no allowedValues: the value is sent untouched" \
+	"$(call_body 3 | jq -r '.fields.resolution.name')" "shipped it"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 '{"transitions":[{"id":"40","name":"Resolve","to":{"name":"Resolved"},"fields":{"resolution":{"allowedValues":[{"name":"Fixed"},{"name":"Duplicate"}]}}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Resolved"},"resolution":{"name":"Fixed"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 40 --resolution fixed --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --resolution -> exit 0" 0
+equals "transition --transition-id --resolution: the POST is transition 40 with the canonical resolution" \
+	"$(call_body 3 | jq -c '{id: .transition.id, resolution: .fields.resolution.name}')" '{"id":"40","resolution":"Fixed"}'
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --resolution Fixed --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --resolution on a step with no resolution field -> exit 1" 1
+stderr_has "transition --transition-id refused resolution: diagnostic" "transition 'Close' (id 32, -> 'Closed') on PROJ-1 accepts no resolution"
+equals "transition --transition-id refused resolution: NO POST" "$(request_method_sequence)" "GET/GET"
+
+section "jira.sh transition --resolution on a MULTI-step path — unverifiable in the plan, checked before the final step"
+
+# Open -> Done is three steps in PROJ's graph. Jira lists only the transitions
+# available from the CURRENT status, so the plan cannot see the final step's
+# screen — and must say so rather than promise the resolution.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --resolution Fixed --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan multi-step --resolution -> exit 0" 0
+equals "transition --plan multi-step: ONE read (the later steps are not listable yet)" "$(request_method_sequence)" "GET"
+stdout_has "transition --plan multi-step --resolution: still discloses the resolution" "Will set resolution: Fixed"
+stdout_has "transition --plan multi-step --resolution: marks it UNVERIFIED and says what that costs" \
+	"RESOLUTION NOT VERIFIED: Jira lists only the transitions available from the CURRENT status"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --resolution Fixed --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json multi-step --resolution -> exit 0" 0
+equals "transition --plan --json multi-step: resolutionChecked:false, ambiguousSteps:null (neither could be looked at)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{resolution, resolutionChecked, ambiguousSteps}')" \
+	'{"resolution":"Fixed","resolutionChecked":false,"ambiguousSteps":null}'
+
+# The real walk: In Progress -> Reviewing -> Done. The final step's screen has
+# no resolution field, so the walk stops BEFORE its POST — and the refusal
+# says the first step has already landed.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"22","name":"Review","to":{"name":"Reviewing"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Reviewing"}}}' 200
+set_stub_response 5 '{"transitions":[{"id":"33","name":"Finish","to":{"name":"Done"}}]}' 200
+set_stub_response 6 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --resolution Fixed --confirmed-site foo.atlassian.net
+expect_rc "transition multi-step --resolution, final step takes none -> exit 1" 1
+equals "transition multi-step refused at the final step: the first step's POST ran, the final one did not" \
+	"$(request_method_sequence)" "GET/GET/POST/GET/GET"
+stderr_has "transition multi-step refused (no field): names the final transition" \
+	"transition 'Finish' (id 33, -> 'Done') on PROJ-1 accepts no resolution"
+stderr_has "transition multi-step refused (no field): says the earlier step WAS applied, and where the issue now is" \
+	"The walk's earlier steps HAVE been applied: PROJ-1 is now in 'Reviewing' and stays there."
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"22","name":"Review","to":{"name":"Reviewing"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Reviewing"}}}' 200
+set_stub_response 5 '{"transitions":[{"id":"33","name":"Finish","to":{"name":"Done"},"fields":{"resolution":{"allowedValues":[{"name":"Done"}]}}}]}' 200
+set_stub_response 6 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --resolution Fixed --confirmed-site foo.atlassian.net
+expect_rc "transition multi-step --resolution not allowed at the final step -> exit 1" 1
+stderr_has "transition multi-step refused (disallowed): lists the allowed value" "does not accept resolution 'Fixed' — allowed: Done."
+stderr_has "transition multi-step refused (disallowed): says the earlier step WAS applied" \
+	"The walk's earlier steps HAVE been applied: PROJ-1 is now in 'Reviewing' and stays there."
+equals "transition multi-step refused (disallowed): no final POST" "$(request_method_sequence)" "GET/GET/POST/GET/GET"
+
+# A SINGLE-step real refusal carries no such note: nothing was applied.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITION_NO_RESOLUTION_FIELD" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --confirmed-site foo.atlassian.net
+expect_rc "transition single-step --resolution refused -> exit 1" 1
+stderr_not_has "transition single-step refusal: no 'earlier steps applied' note (there were none)" "HAVE been applied"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"22","name":"Review","to":{"name":"Reviewing"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Reviewing"}}}' 200
+set_stub_response 5 '{"transitions":[{"id":"33","name":"Finish","to":{"name":"Done"},"fields":{"resolution":{"allowedValues":[{"name":"Fixed"}]}}}]}' 200
+set_stub_response 6 '' 204
+set_stub_response 7 '{"fields":{"status":{"name":"Done"},"resolution":{"name":"Fixed"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --resolution FIXED --json --confirmed-site foo.atlassian.net
+expect_rc "transition multi-step --resolution accepted at the final step -> exit 0" 0
+equals "transition multi-step: the EARLIER step's POST carries no resolution" \
+	"$(call_body 3)" '{"transition":{"id":"22"}}'
+equals "transition multi-step: the FINAL step's POST carries the canonical resolution" \
+	"$(call_body 6 | jq -c '{id: .transition.id, resolution: .fields.resolution.name}')" '{"id":"33","resolution":"Fixed"}'
+equals "transition multi-step --json: resolutionChecked:true once the final step was checked" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.resolutionChecked')" "true"
+
+# ===========================================================================
+# transition — the post-walk READ-BACK: what a workflow post-function changed
+# on its own is reported (stderr warning + machine line / --json readBack),
+# never failed on, and silent when nothing changed
+# ===========================================================================
+
+# ANN_ASSIGNED_REVIEWING — the pre-transition state: Reviewing, no
+# resolution, assigned to Ann.
+ANN_ASSIGNED_REVIEWING='{"fields":{"status":{"name":"Reviewing"},"issuetype":{"name":"Task"},"resolution":null,"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}'
+CLOSED_ID_99='{"transitions":[{"id":"99","name":"Close Issue","to":{"name":"Closed"}}]}'
+
+section "jira.sh transition — read-back: a resolution the WORKFLOW set is warned about and reported"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Done"},"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "transition whose workflow set a resolution -> exit 0 (a warning, never a failure)" 0
+equals "read-back resolution: stdout is the receipt plus exactly ONE read-back line" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed
+JIRA_RESOLUTION_CHANGED=none -> Done"
+stderr_has "read-back resolution: stderr warns and says why it was not this engine" \
+	"the workflow changed PROJ-1's resolution (none -> Done) — --resolution was not given, so a workflow post-function did it"
+stderr_not_has "read-back resolution: the unchanged assignee is not reported" "assignee"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Done"},"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --json --confirmed-site foo.atlassian.net
+expect_rc "transition --json whose workflow set a resolution -> exit 0" 0
+equals "read-back --json: the readBack object, before/after for both fields" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.readBack')" \
+	'{"status":"Closed","resolution":{"before":null,"after":"Done","changedByWorkflow":true},"assignee":{"before":"acc-ann","after":"acc-ann","beforeName":"Ann","afterName":"Ann","changed":false}}'
+stderr_has "read-back --json: the stderr warning still fires" "the workflow changed PROJ-1's resolution (none -> Done)"
+
+section "jira.sh transition — read-back: an assignee the WORKFLOW changed is warned about and reported"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":null,"assignee":null}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "transition whose workflow cleared the assignee -> exit 0" 0
+equals "read-back assignee: stdout is the receipt plus exactly the assignee line" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed
+JIRA_ASSIGNEE_CHANGED=Ann -> unassigned"
+stderr_has "read-back assignee: stderr warns, naming who it was and who it is now" \
+	"the workflow changed PROJ-1's assignee (Ann -> unassigned) — this engine did not ask for that"
+
+# --transition-id reports the read-back through the same two channels.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"To Do"},"issuetype":{"name":"Task"},"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Done"},"assignee":{"accountId":"acc-bo","displayName":"Bo"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id whose workflow changed both fields -> exit 0" 0
+equals "read-back via --transition-id: both read-back lines follow the receipt" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed
+JIRA_RESOLUTION_CHANGED=none -> Done
+JIRA_ASSIGNEE_CHANGED=Ann -> Bo"
+
+section "jira.sh transition — read-back: silent when nothing changed, and when the caller set the resolution"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":null,"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "transition with nothing changed by the workflow -> exit 0" 0
+equals "read-back silent: stdout is ONLY the receipt" "$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed"
+equals "read-back silent: stderr is empty" "$CUR_ERR" ""
+
+# The resolution changed — but because the caller asked for it.
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Resolved"},"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --resolution Resolved --json --confirmed-site foo.atlassian.net
+expect_rc "transition --resolution that the workflow applied as asked -> exit 0" 0
+equals "read-back requested resolution: changedByWorkflow is false" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.readBack.resolution')" '{"before":null,"after":"Resolved","changedByWorkflow":false}'
+stderr_not_has "read-back requested resolution: no workflow warning" "the workflow changed"
+
+section "jira.sh transition — read-back: an API display name cannot forge a machine line"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":null,"assignee":{"accountId":"acc-x","displayName":"Mallory\nJIRA_TRANSITIONED_TO=Hacked"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "transition with a newline-bearing new assignee name -> exit 0" 0
+stdout_no_line_starting_with "read-back forgery: no forged JIRA_TRANSITIONED_TO line" "JIRA_TRANSITIONED_TO=Hacked"
+equals "read-back forgery: stdout is exactly TWO lines — the LF became a SPACE inside the name's own JIRA_ASSIGNEE_CHANGED line" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed
+JIRA_ASSIGNEE_CHANGED=Ann -> Mallory JIRA_TRANSITIONED_TO=Hacked"
+
+# ===========================================================================
+# transition — AMBIGUITY: 2+ transitions reaching the same status
+# ===========================================================================
+
+# TWO_TO_IN_PROGRESS — two transitions reach "In Progress" (seen live); the
+# first listed (11) is the one picked. A third reaches Closed, unambiguously.
+TWO_TO_IN_PROGRESS='{"transitions":[{"id":"11","name":"Start","to":{"name":"In Progress"}},{"id":"12","name":"Dev in progress","to":{"name":"In Progress"}},{"id":"99","name":"Close Issue","to":{"name":"Closed"}}]}'
+AMBIGUOUS_IN_PROGRESS_JSON='[{"to":"In Progress","pickedId":"11","candidates":[{"id":"11","name":"Start"},{"id":"12","name":"Dev in progress"}]}]'
+
+section "jira.sh transition --plan — a single ambiguous step is DISCLOSED on stdout before consent, with no stderr noise"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TWO_TO_IN_PROGRESS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "in progress" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan to an ambiguous single step -> exit 0" 0
+stdout_has "transition --plan ambiguity: the step, the pick, every candidate and --transition-id" \
+	'AMBIGUOUS STEP: 2 transitions lead to "In Progress" — would take id 11 (Start); candidates: 11 (Start), 12 (Dev in progress). Pass --transition-id N instead of --status to choose one explicitly.'
+equals "transition --plan ambiguity: stderr is EMPTY (the disclosure is on stdout, where the gate reads it)" "$CUR_ERR" ""
+equals "transition --plan ambiguity: two READS, no write" "$(request_method_sequence)" "GET/GET"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TWO_TO_IN_PROGRESS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "In Progress" --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json to an ambiguous single step -> exit 0" 0
+equals "transition --plan --json ambiguity: ambiguousSteps names the pick and every candidate" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.ambiguousSteps')" "$AMBIGUOUS_IN_PROGRESS_JSON"
+equals "transition --plan --json ambiguity: stderr is EMPTY" "$CUR_ERR" ""
+
+section "jira.sh transition --plan — ambiguousSteps is [] when the one step is unambiguous, null when the plan could not look"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TWO_TO_IN_PROGRESS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json to an unambiguous single step -> exit 0" 0
+equals "transition --plan --json unambiguous: ambiguousSteps is [] (looked, found none)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.ambiguousSteps')" "[]"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TWO_TO_IN_PROGRESS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan (human) to an unambiguous single step -> exit 0" 0
+stdout_not_has "transition --plan unambiguous: no AMBIGUOUS STEP line" "AMBIGUOUS STEP"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json multi-step -> exit 0" 0
+equals "transition --plan --json multi-step: ambiguousSteps is null (could not look), resolutionChecked null (no --resolution)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{ambiguousSteps, resolutionChecked}')" '{"ambiguousSteps":null,"resolutionChecked":null}'
+
+section "jira.sh transition --plan — a single step NOT available right now fails the plan, as it would fail the run"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"11","name":"Start","to":{"name":"In Progress"}}]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan to a step Jira does not offer now -> exit 1" 1
+stderr_has "transition --plan unavailable step: diagnostic" "no transition to 'Closed' available for PROJ-1"
+stdout_not_has "transition --plan unavailable step: no plan printed" "PLAN for"
+
+section "jira.sh transition — a REAL ambiguous step still warns on stderr, naming every candidate and --transition-id"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TWO_TO_IN_PROGRESS" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"In Progress"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "In Progress" --json --confirmed-site foo.atlassian.net
+expect_rc "transition real ambiguous step --json -> exit 0" 0
+stderr_has "transition real ambiguity: the warning lists the candidates and the way to choose" \
+	"picking the first (id 11); candidates: 11 (Start), 12 (Dev in progress) — pass --transition-id N instead of --status to choose one explicitly"
+equals "transition real ambiguity --json: ambiguousSteps reports the same choice" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.ambiguousSteps')" "$AMBIGUOUS_IN_PROGRESS_JSON"
+
+section "jira.sh transition — a MULTI-step real walk: ambiguousSteps keeps EVERY ambiguous step, readBack compares the first read with the LAST verify"
+
+# Open -> In Progress -> Reviewing -> Done. Steps 1 and 2 are each ambiguous;
+# step 3 is not. The two intermediate verifies report a THIRD assignee (Cy), so
+# a read-back taken from any verify but the last would report Ann -> Cy, and
+# one taken before the walk would report no change at all.
+queue_ambiguous_three_step_walk() {
+	set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"},"resolution":null,"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+	set_stub_response 2 '{"transitions":[{"id":"11","name":"Start","to":{"name":"In Progress"}},{"id":"12","name":"Dev in progress","to":{"name":"In Progress"}}]}' 200
+	set_stub_response 3 '' 204
+	set_stub_response 4 '{"fields":{"status":{"name":"In Progress"},"resolution":null,"assignee":{"accountId":"acc-cy","displayName":"Cy"}}}' 200
+	set_stub_response 5 '{"transitions":[{"id":"21","name":"Review","to":{"name":"Reviewing"}},{"id":"22","name":"Peer review","to":{"name":"Reviewing"}}]}' 200
+	set_stub_response 6 '' 204
+	set_stub_response 7 '{"fields":{"status":{"name":"Reviewing"},"resolution":null,"assignee":{"accountId":"acc-cy","displayName":"Cy"}}}' 200
+	set_stub_response 8 '{"transitions":[{"id":"33","name":"Finish","to":{"name":"Done"}}]}' 200
+	set_stub_response 9 '' 204
+	set_stub_response 10 '{"fields":{"status":{"name":"Done"},"resolution":{"name":"Done"},"assignee":{"accountId":"acc-bo","displayName":"Bo"}}}' 200
+}
+
+reset_curl_stub
+queue_ambiguous_three_step_walk
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --json --confirmed-site foo.atlassian.net
+expect_rc "transition 3-step walk, two ambiguous steps --json -> exit 0" 0
+equals "transition 3-step walk: 10 calls (1 status + 3 x [transitions,POST,verify])" "$(call_count)" "10"
+equals "transition 3-step walk --json: ambiguousSteps holds BOTH ambiguous steps, in walk order" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.ambiguousSteps')" \
+	'[{"to":"In Progress","pickedId":"11","candidates":[{"id":"11","name":"Start"},{"id":"12","name":"Dev in progress"}]},{"to":"Reviewing","pickedId":"21","candidates":[{"id":"21","name":"Review"},{"id":"22","name":"Peer review"}]}]'
+equals "transition 3-step walk --json: readBack.assignee is call 1's 'before' against the FINAL verify's 'after'" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.readBack.assignee')" \
+	'{"before":"acc-ann","after":"acc-bo","beforeName":"Ann","afterName":"Bo","changed":true}'
+equals "transition 3-step walk --json: readBack.resolution and status come from the FINAL verify" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{status: .readBack.status, resolution: .readBack.resolution}')" \
+	'{"status":"Done","resolution":{"before":null,"after":"Done","changedByWorkflow":true}}'
+
+reset_curl_stub
+queue_ambiguous_three_step_walk
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --confirmed-site foo.atlassian.net
+expect_rc "transition 3-step walk, two ambiguous steps (human) -> exit 0" 0
+equals "transition 3-step walk (human): the receipt plus the read-back lines of the WHOLE walk" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Done
+JIRA_RESOLUTION_CHANGED=none -> Done
+JIRA_ASSIGNEE_CHANGED=Ann -> Bo"
+stderr_has "transition 3-step walk (human): step 1's ambiguity is warned about" "2 transitions on PROJ-1 are named 'In Progress'"
+stderr_has "transition 3-step walk (human): step 2's ambiguity is warned about" "2 transitions on PROJ-1 are named 'Reviewing'"
+
+
+section "jira.sh transition --plan — a transition NAME cannot forge a line in the ambiguity disclosure"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"11","name":"Start\nJIRA_TRANSITIONED_TO=In Progress","to":{"name":"In Progress"}},{"id":"12","name":"Dev\r\nNOTHING WAS WRITTEN","to":{"name":"In Progress"}}]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "In Progress" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan with newline-bearing transition names -> exit 0" 0
+stdout_no_line_starting_with "transition --plan ambiguity forgery: no forged receipt line" "JIRA_TRANSITIONED_TO="
+stdout_has "transition --plan ambiguity forgery: the names stay inside the AMBIGUOUS STEP line" \
+	"candidates: 11 (Start JIRA_TRANSITIONED_TO=In Progress), 12 (Dev  NOTHING WAS WRITTEN)"
+
+# ===========================================================================
+# transition — API status/transition/resolution names are folded onto ONE line
+# wherever this engine prints them (the multibyte line breaks included), while
+# the RAW value is still what the verify compares and --json carries
+# ===========================================================================
+
+# UNI_NEL / UNI_LS / UNI_PS / C1_CSI come from lib/harness.sh (see the
+# comment-edit MULTIBYTE section for why a column-0 assertion cannot fail for
+# them). Every name below also carries non-ASCII text whose UTF-8 includes
+# C1-range bytes (À = C3 80, Ü = C3 9C), which a byte-deleting fold would mangle.
+# C1_NAME_JSON — a display name whose UTF-8 has C1-range BYTES in legitimate
+# characters (ß = C3 9F, — = E2 80 94, Ü = C3 9C) followed by a real U+009B and
+# a NEL (JSON escapes, decoded by jq when the stub is parsed), and
+# C1_NAME_SHOWN, the one-line rendering the switched sites must print: the two
+# codepoints become SPACES, the characters stay intact. A byte-deleting fold
+# mangles the name; a fold that skips U+009B leaves it raw in the output.
+C1_NAME_JSON='Jürgen Straße—Ünal\u009b31m\u0085X'
+C1_NAME_SHOWN='Jürgen Straße—Ünal 31m X'
+FORGED_TARGET="Geschloßen${UNI_LS}JIRA_RESOLUTION_CHANGED=none -> Fixed"
+
+section "jira.sh transition --transition-id — a crafted to.name cannot forge a JIRA_* line, and still verifies against the RAW name"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$(jq -n -c --arg to "$FORGED_TARGET" '{transitions:[{id:"61",name:"Close",to:{name:$to}}]}')" 200
+set_stub_response 3 '' 204
+set_stub_response 4 "$(jq -n -c --arg to "$FORGED_TARGET" '{fields:{status:{name:$to}}}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 61 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id to a U+2028-bearing status (verify reports the same raw name) -> exit 0" 0
+stdout_not_has "transition --transition-id receipt: no raw U+2028 survives" "$UNI_LS"
+equals "transition --transition-id receipt: ONE line, the separator a SPACE, the non-ASCII name intact" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Geschloßen JIRA_RESOLUTION_CHANGED=none -> Fixed"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$(jq -n -c --arg to "$FORGED_TARGET" '{transitions:[{id:"61",name:"Close",to:{name:$to}}]}')" 200
+set_stub_response 3 '' 204
+set_stub_response 4 "$(jq -n -c --arg to "$FORGED_TARGET" '{fields:{status:{name:$to}}}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 61 --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --json to a U+2028-bearing status -> exit 0" 0
+equals "transition --transition-id --json: .to carries the RAW name (JSON is data, not a display line)" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.to')" "$FORGED_TARGET"
+
+section "jira.sh transition --transition-id — a to.name carrying a line break cannot forge a SECOND plan step (.path folded, .to raw)"
+
+# The path file is one step per line. A to.name with a raw LF would have become
+# a second, invented step row in the consent disclosure — and a second .path
+# entry in --json. U+2028 cannot split the file, but must not reach .path raw
+# either. The verify and --json .to still use the RAW name.
+LF_FORGED_TARGET="Done
+  step 2: -> Forged"
+LS_FORGED_TARGET="Done${UNI_LS}  step 2: -> Forged"
+FOLDED_FORGED_TARGET="Done   step 2: -> Forged"
+
+# queue_forged_target_plan RAW_TO_NAME — the two reads a --transition-id plan makes.
+queue_forged_target_plan() {
+	set_stub_response 1 "$TO_DO_STATE" 200
+	set_stub_response 2 "$(jq -n -c --arg to "$1" '{transitions:[{id:"81",name:"Finish",to:{name:$to}}]}')" 200
+}
+
+reset_curl_stub
+queue_forged_target_plan "$LF_FORGED_TARGET"
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 81 --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan, LF-bearing to.name -> exit 0" 0
+stdout_no_line_starting_with "LF target plan: no forged 'step 2' row" "  step 2:"
+equals "LF target plan: exactly ONE step row, the LF a SPACE inside it" \
+	"$CUR_OUT" "PLAN for PROJ-1: To Do -> $FOLDED_FORGED_TARGET
+  step 1: -> $FOLDED_FORGED_TARGET
+Via transition id 81 (exactly that transition, no walk).
+NOTHING WAS WRITTEN (dry-run / --plan)."
+
+reset_curl_stub
+queue_forged_target_plan "$LF_FORGED_TARGET"
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 81 --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan --json, LF-bearing to.name -> exit 0" 0
+equals "LF target plan --json: .path has exactly ONE entry, the folded name" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.path')" "$(jq -n -c --arg p "$FOLDED_FORGED_TARGET" '[$p]')"
+equals "LF target plan --json: .to is the RAW name (JSON is data)" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.to')" "$LF_FORGED_TARGET"
+
+reset_curl_stub
+queue_forged_target_plan "$LS_FORGED_TARGET"
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 81 --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan --json, U+2028-bearing to.name -> exit 0" 0
+equals "U+2028 target plan --json: .path's one entry is folded (no raw U+2028)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '.path')" "$(jq -n -c --arg p "$FOLDED_FORGED_TARGET" '[$p]')"
+equals "U+2028 target plan --json: .to is the RAW name" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.to')" "$LS_FORGED_TARGET"
+
+reset_curl_stub
+queue_forged_target_plan "$LS_FORGED_TARGET"
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 81 --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan, U+2028-bearing to.name -> exit 0" 0
+stdout_not_has "U+2028 target plan: no raw U+2028 in the disclosure" "$UNI_LS"
+stdout_has "U+2028 target plan: ONE step row, the separator a SPACE" "  step 1: -> $FOLDED_FORGED_TARGET"
+
+# The real run: Jira reports the RAW name back, and the verify must compare
+# against that — not the folded display copy — or the transition that DID apply
+# would be reported as failed.
+reset_curl_stub
+queue_forged_target_plan "$LF_FORGED_TARGET"
+set_stub_response 3 '' 204
+set_stub_response 4 "$(jq -n -c --arg s "$LF_FORGED_TARGET" '{fields:{status:{name:$s}}}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 81 --json --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id (real), LF-bearing to.name verified against the RAW name -> exit 0" 0
+equals "LF target real run: the POST fired and the status was verified" "$(request_method_sequence)" "GET/GET/POST/GET"
+equals "LF target real run --json: .path ONE folded entry, .to raw, executed" \
+	"$(printf '%s' "$CUR_OUT" | jq -c '{path, to, executed}')" \
+	"$(jq -n -c --arg p "$FOLDED_FORGED_TARGET" --arg t "$LF_FORGED_TARGET" '{path: [$p], to: $t, executed: true}')"
+
+
+section "jira.sh transition --plan — every plan line folds API text: PLAN header, step, and Will-set resolution lines"
+
+# From: the issue's CURRENT status (NEL). To/step: the transition's to.name
+# (U+2029). Resolution: the ALLOWED value's canonical spelling, which the plan
+# discloses (U+2028). Each carries a would-be line of its own.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg s "À faire${UNI_NEL}NOTHING WAS WRITTEN (dry-run / --plan)." '{fields:{status:{name:$s},issuetype:{name:"Task"}}}')" 200
+set_stub_response 2 "$(jq -n -c --arg to "Clôturé${UNI_PS}  step 2: -> Nowhere" --arg res "Réglé${UNI_LS}Will set resolution: Other" \
+	'{transitions:[{id:"61",name:"Close",to:{name:$to},fields:{resolution:{allowedValues:[{name:$res}]}}}]}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 61 --resolution "réglé${UNI_LS}will set resolution: other" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan with multibyte breaks in from/to/resolution -> exit 0" 0
+stdout_not_has "transition --plan fold: no raw U+0085 (NEL) survives" "$UNI_NEL"
+stdout_not_has "transition --plan fold: no raw U+2028 survives" "$UNI_LS"
+stdout_not_has "transition --plan fold: no raw U+2029 survives" "$UNI_PS"
+equals "transition --plan fold: every value stays on its own line as a SPACE-joined, non-ASCII-intact string" \
+	"$CUR_OUT" "PLAN for PROJ-1: À faire NOTHING WAS WRITTEN (dry-run / --plan). -> Clôturé   step 2: -> Nowhere
+  step 1: -> Clôturé   step 2: -> Nowhere
+Via transition id 61 (exactly that transition, no walk).
+Will set resolution: Réglé Will set resolution: Other
+Will add a system comment: \"Closed with resolution: Réglé Will set resolution: Other\"
+NOTHING WAS WRITTEN (dry-run / --plan)."
+
+section "jira.sh transition --plan — the AMBIGUOUS STEP line folds the multibyte breaks too"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$(jq -n -c \
+	--arg a "Übernehmen${UNI_NEL}JIRA_TRANSITIONED_TO=In Progress" \
+	--arg b "Dév${UNI_LS}x${UNI_PS}y" \
+	'{transitions:[{id:"11",name:$a,to:{name:"In Progress"}},{id:"12",name:$b,to:{name:"In Progress"}}]}')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "In Progress" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan with multibyte-break transition names -> exit 0" 0
+stdout_not_has "transition --plan ambiguity: no raw U+0085 (NEL) survives" "$UNI_NEL"
+stdout_not_has "transition --plan ambiguity: no raw U+2028 survives" "$UNI_LS"
+stdout_not_has "transition --plan ambiguity: no raw U+2029 survives" "$UNI_PS"
+stdout_has "transition --plan ambiguity: each name is SPACE-joined inside the one AMBIGUOUS STEP line, non-ASCII intact" \
+	'AMBIGUOUS STEP: 2 transitions lead to "In Progress" — would take id 11 (Übernehmen JIRA_TRANSITIONED_TO=In Progress); candidates: 11 (Übernehmen JIRA_TRANSITIONED_TO=In Progress), 12 (Dév x y). Pass --transition-id N instead of --status to choose one explicitly.'
+
+section "jira.sh transition — read-back lines and warnings fold U+009B/NEL to a space and keep non-ASCII names intact"
+
+reset_curl_stub
+set_stub_response 1 "$ANN_ASSIGNED_REVIEWING" 200
+set_stub_response 2 "$CLOSED_ID_99" 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Closed"},"resolution":{"name":"Erledigt—Ü\u2028y"},"assignee":{"accountId":"acc-j","displayName":"'"$C1_NAME_JSON"'"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --confirmed-site foo.atlassian.net
+expect_rc "transition whose workflow set a C1/multibyte-bearing resolution and assignee -> exit 0" 0
+equals "read-back C1: both JIRA_*_CHANGED lines, each value folded (codepoints -> SPACE) with its non-ASCII text intact" \
+	"$CUR_OUT" "JIRA_TRANSITIONED_TO=Closed
+JIRA_RESOLUTION_CHANGED=none -> Erledigt—Ü y
+JIRA_ASSIGNEE_CHANGED=Ann -> $C1_NAME_SHOWN"
+stderr_has "read-back C1: the resolution warning carries the same folded value" \
+	"the workflow changed PROJ-1's resolution (none -> Erledigt—Ü y)"
+stderr_has "read-back C1: the assignee warning carries the same folded name" \
+	"the workflow changed PROJ-1's assignee (Ann -> $C1_NAME_SHOWN)"
+stdout_not_has "read-back C1: no raw U+009B on stdout" "$C1_CSI"
+stderr_not_has "read-back C1: no raw U+009B on stderr" "$C1_CSI"
+stderr_not_has "read-back C1: no raw NEL on stderr" "$UNI_NEL"
+
+section "jira.sh transition — the real-run ambiguity warning folds candidate names the same way"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"11","name":"'"$C1_NAME_JSON"'","to":{"name":"In Progress"}},{"id":"12","name":"Dév\u2029y","to":{"name":"In Progress"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"In Progress"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status "In Progress" --confirmed-site foo.atlassian.net
+expect_rc "transition real run with C1/multibyte-bearing ambiguous names -> exit 0" 0
+stderr_has "ambiguity warning C1: every candidate folded, non-ASCII intact" \
+	"candidates: 11 ($C1_NAME_SHOWN), 12 (Dév y) — pass --transition-id N"
+stderr_not_has "ambiguity warning C1: no raw U+009B" "$C1_CSI"
+stderr_not_has "ambiguity warning C1: no raw U+2029" "$UNI_PS"
+
+section "jira.sh transition — the resolution-check refusals fold the transition's name, target and allowed values"
+
+# --transition-id, because its target is Jira's own to.name (a --status step's
+# target must match the caller's status, so it cannot carry these bytes).
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 '{"transitions":[{"id":"71","name":"'"$C1_NAME_JSON"'","to":{"name":"Geschloßen\u0085z"},"fields":{"resolution":{"allowedValues":[{"name":"Erledigt—Ü\u009by"}]}}}]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 71 --resolution Nope --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan with a disallowed resolution on a C1-named transition -> exit 1" 1
+stderr_has "resolution refusal C1 (disallowed): label and allowed list folded, non-ASCII intact" \
+	"transition '$C1_NAME_SHOWN' (id 71, -> 'Geschloßen z') on PROJ-1 does not accept resolution 'Nope' — allowed: Erledigt—Ü y."
+stderr_not_has "resolution refusal C1 (disallowed): no raw U+009B" "$C1_CSI"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 '{"transitions":[{"id":"71","name":"'"$C1_NAME_JSON"'","to":{"name":"Geschloßen\u0085z"}}]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 71 --resolution "Fixed${UNI_NEL}—ß" --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan with a resolution on a C1-named transition with no resolution field -> exit 1" 1
+stderr_has "resolution refusal C1 (no field): label AND the caller's --resolution echo folded" \
+	"transition '$C1_NAME_SHOWN' (id 71, -> 'Geschloßen z') on PROJ-1 accepts no resolution — its screen has no resolution field, so Jira would reject --resolution 'Fixed —ß' with a 400."
+stderr_not_has "resolution refusal C1 (no field): no raw NEL" "$UNI_NEL"
+
+section "jira.sh transition — the unavailable --transition-id refusal folds the current status"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Zu erledigen—Ü\u009b2J\u0085x"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 77 --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id unavailable from a C1-named status -> exit 1" 1
+stderr_has "unavailable-id refusal C1: the current status folded, non-ASCII intact" \
+	"transition id 77 is not available on PROJ-1 from its current status 'Zu erledigen—Ü 2J x'"
+stderr_not_has "unavailable-id refusal C1: no raw U+009B" "$C1_CSI"
+
+section "jira.sh transition — the 'earlier steps HAVE been applied' walk note folds the status the issue was left in"
+
+# The walk's intermediate status comes from the workflow GRAPH (and Jira must
+# report the same name back for the verify to pass), so this case gets its own
+# project config whose middle node carries the C1/NEL bytes.
+C1_WALK_PROJECTS="$WORK/c1-walk-projects"
+mkdir -p "$C1_WALK_PROJECTS"
+printf '%s\n' '{"key":"PROJ","workflows":{"Task":{"Offen":["Prüfung—ß\u009b1m\u0085x"],"Prüfung—ß\u009b1m\u0085x":["Fertig"],"Fertig":[]}}}' \
+	>"$C1_WALK_PROJECTS/PROJ.json"
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Offen"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"21","name":"Prüfen","to":{"name":"Prüfung—ß\u009b1m\u0085x"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Prüfung—ß\u009b1m\u0085x"}}}' 200
+set_stub_response 5 '{"transitions":[{"id":"33","name":"Abschließen","to":{"name":"Fertig"}}]}' 200
+set_stub_response 6 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$C1_WALK_PROJECTS" \
+	sh "$JIRA" transition PROJ-1 --status Fertig --resolution Fixed --confirmed-site foo.atlassian.net
+expect_rc "2-step walk refused at the final step, intermediate status C1-named -> exit 1" 1
+equals "walk note C1: the first step ran, the refused final POST did not" "$(request_method_sequence)" "GET/GET/POST/GET/GET"
+stderr_has "walk note C1: the status the issue was left in is folded, non-ASCII intact" \
+	"The walk's earlier steps HAVE been applied: PROJ-1 is now in 'Prüfung—ß 1m x' and stays there."
+stderr_not_has "walk note C1: no raw U+009B" "$C1_CSI"
+
+section "jira.sh transition --plan — a MULTI-step plan says it did not verify WHICH transitions the walk takes; a single-step plan does not"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan multi-step (no --resolution) -> exit 0" 0
+equals "transition --plan multi-step: still exactly ONE read" "$(request_method_sequence)" "GET"
+stdout_has "transition --plan multi-step: the TRANSITIONS NOT VERIFIED line, and how to take control" \
+	"TRANSITIONS NOT VERIFIED: Jira lists only the transitions available from the CURRENT status, so which transition each step of this walk takes is decided as it runs — where 2+ transitions reach a step's status the walk takes the first (and warns). Use --transition-id N, one step at a time, to control each choice."
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Closed --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --plan single step -> exit 0" 0
+stdout_not_has "transition --plan single step: NO 'TRANSITIONS NOT VERIFIED' line (it looked)" "TRANSITIONS NOT VERIFIED"
+
+reset_curl_stub
+set_stub_response 1 "$TO_DO_STATE" 200
+set_stub_response 2 "$TO_DO_TRANSITIONS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --transition-id 32 --plan --confirmed-site foo.atlassian.net
+expect_rc "transition --transition-id --plan -> exit 0 (TRANSITIONS NOT VERIFIED check)" 0
+stdout_not_has "transition --transition-id --plan: NO 'TRANSITIONS NOT VERIFIED' line (the one transition is named)" "TRANSITIONS NOT VERIFIED"
+
+
+# ===========================================================================
+# transition — per-run state: nothing carries over from one run into another
+# ===========================================================================
+section "jira.sh bulk --op transition — each issue's ambiguity and read-back are its OWN"
+
+# PROJ-1: two transitions reach Done AND the workflow reassigns it Ann -> Bo.
+# PROJ-2: one transition, assigned to Bo before and after. Each issue runs in
+# its own subshell today; the fixture is built so that if PROJ-2's run ever
+# saw PROJ-1's state instead of its own — PROJ-1's pre-transition assignee
+# (Ann) or PROJ-1's transitions list — it would name PROJ-2 in a warning it
+# never earned.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"},"assignee":{"accountId":"acc-ann","displayName":"Ann"}}}' 200
+set_stub_response 2 '{"transitions":[{"id":"31","name":"Finish","to":{"name":"Done"}},{"id":"32","name":"Skip to done","to":{"name":"Done"}}]}' 200
+set_stub_response 3 '' 204
+set_stub_response 4 '{"fields":{"status":{"name":"Done"},"assignee":{"accountId":"acc-bo","displayName":"Bo"}}}' 200
+set_stub_response 5 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"},"assignee":{"accountId":"acc-bo","displayName":"Bo"}}}' 200
+set_stub_response 6 '{"transitions":[{"id":"31","name":"Finish","to":{"name":"Done"}}]}' 200
+set_stub_response 7 '' 204
+set_stub_response 8 '{"fields":{"status":{"name":"Done"},"assignee":{"accountId":"acc-bo","displayName":"Bo"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op transition --status Done --keys "PROJ-1,PROJ-2" --confirmed-site foo.atlassian.net
+expect_rc "bulk transition over one ambiguous + reassigned issue and one clean issue -> exit 0" 0
+stdout_has "bulk no-leak: PROJ-1 ok" "JIRA_BULK_RESULT=PROJ-1:ok"
+stdout_has "bulk no-leak: PROJ-2 ok" "JIRA_BULK_RESULT=PROJ-2:ok"
+stderr_has "bulk no-leak: PROJ-1's ambiguity is warned about" "2 transitions on PROJ-1 are named 'Done'"
+stderr_has "bulk no-leak: PROJ-1's reassignment is warned about" "the workflow changed PROJ-1's assignee (Ann -> Bo)"
+stderr_not_has "bulk no-leak: no ambiguity warning for PROJ-2" "on PROJ-2 are named"
+stderr_not_has "bulk no-leak: no read-back warning for PROJ-2" "PROJ-2's"
+
+section "jira.sh transition — per-run state is reset at the start of every run, whatever the environment holds"
+
+# cmd_transition's four TRANSITION_* summary globals are plain shell
+# variables, so a value already in the environment is visible to the run
+# unless the run resets it. Each is seeded here with a value the summary
+# would show verbatim; a single-step plan, no --resolution and no ambiguity
+# must still report the clean per-run values.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+set_stub_response 2 "$CLOSED_TRANSITIONS_WITH_RESOLUTION" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	"TRANSITION_ID_USED=77" "TRANSITION_RESOLUTION_CHECKED=true" \
+	'TRANSITION_READBACK_JSON={"leaked":true}' \
+	'TRANSITION_AMBIGUITY_JSON=[{"to":"Elsewhere","pickedId":"1","candidates":[]}]' \
+	sh "$JIRA" transition PROJ-1 --status Closed --plan --json --confirmed-site foo.atlassian.net
+expect_rc "transition --plan --json with stale TRANSITION_* values in the environment -> exit 0" 0
+equals "per-run reset: transitionId is null (no --transition-id this run)" "$(printf '%s' "$CUR_OUT" | jq -c '.transitionId')" "null"
+equals "per-run reset: resolutionChecked is null (no --resolution this run)" "$(printf '%s' "$CUR_OUT" | jq -c '.resolutionChecked')" "null"
+equals "per-run reset: readBack is null (nothing was written this run)" "$(printf '%s' "$CUR_OUT" | jq -c '.readBack')" "null"
+equals "per-run reset: ambiguousSteps is [] (this run's one step was unambiguous)" "$(printf '%s' "$CUR_OUT" | jq -c '.ambiguousSteps')" "[]"
 
 # ===========================================================================
 # update
@@ -2613,6 +3622,345 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" link PROJ-1 --to PROJ-2 --link-type Bogus --confirmed-site foo.atlassian.net
 expect_rc "link 400 -> exit 1" 1
 stderr_has "link 400: Jira's own error message surfaced" "Issue link type is not valid"
+
+# ===========================================================================
+# link --remove — DELETE /rest/api/3/issueLink/<id>, the link selected by
+# --link-id (cross-checked against FROM) or by --to + --link-type (resolved
+# from FROM's own issuelinks, exactly one match or a refusal)
+# ===========================================================================
+
+# LINK_ID_SCOPE_DIAG — the refusal of --link-id anywhere but `link --remove`.
+# The `error: ` prefix is load-bearing for the reason PRIORITY_SCOPE_DIAG's
+# note gives.
+LINK_ID_SCOPE_DIAG="error: --link-id is only valid with link --remove"
+
+# LINK_10500_PROJ1_TO_PROJ2 — GET /issueLink/10500 for a Blocks link whose
+# INWARD end is PROJ-1 (the FROM every case below names).
+LINK_10500_PROJ1_TO_PROJ2='{"id":"10500","type":{"name":"Blocks"},"inwardIssue":{"key":"PROJ-1"},"outwardIssue":{"key":"PROJ-2"}}'
+
+# PROJ1_ISSUELINKS — GET /issue/PROJ-1?fields=issuelinks. PROJ-2 is joined to
+# PROJ-1 by TWO links of DIFFERENT types (so the type really narrows the
+# match), and the lone link to PROJ-3 has PROJ-3 as its INWARD end (so a match
+# that only looked at outwardIssue would miss it).
+PROJ1_ISSUELINKS='{"fields":{"issuelinks":[{"id":"10500","type":{"name":"Blocks"},"outwardIssue":{"key":"PROJ-2"}},{"id":"10501","type":{"name":"Relates"},"outwardIssue":{"key":"PROJ-2"}},{"id":"10502","type":{"name":"Blocks"},"inwardIssue":{"key":"PROJ-3"}}]}}'
+
+section "jira.sh link --remove — usage errors (exit 2, ZERO calls)"
+
+# Every case runs under the `full` selector, so the stub curl IS reachable and
+# the zero-call count observes "refused before the network" rather than
+# inheriting it from an absent curl.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --remove with BOTH selectors -> exit 2" 2
+stderr_has "link --remove both selectors: diagnostic" "takes --link-id N OR --to KEY --link-type NAME, not both"
+equals "link --remove both selectors: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --confirmed-site foo.atlassian.net
+expect_rc "link --remove with NEITHER selector -> exit 2" 2
+stderr_has "link --remove no selector: diagnostic" "link --remove requires --link-id N, or both --to KEY and --link-type NAME"
+equals "link --remove no selector: ZERO calls" "$(call_count)" "0"
+
+# Half a selector is no selector: --to alone names an issue, not a link.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --confirmed-site foo.atlassian.net
+expect_rc "link --remove --to WITHOUT --link-type -> exit 2" 2
+stderr_has "link --remove --to alone: diagnostic" "link --remove requires --link-id N, or both --to KEY and --link-type NAME"
+equals "link --remove --to alone: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --comment-file "$LINK_COMMENT_FILE" --confirmed-site foo.atlassian.net
+expect_rc "link --remove --comment-file -> exit 2" 2
+stderr_has "link --remove --comment-file: diagnostic" "link --remove does not take --comment-file"
+equals "link --remove --comment-file: ZERO calls" "$(call_count)" "0"
+
+# The id becomes a URL path segment, so its shape is checked before anything
+# is fetched.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id ../10500 --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id ../10500 -> exit 2" 2
+stderr_has "link --remove non-numeric --link-id: diagnostic" "invalid --link-id (must be a numeric issue-link id)"
+equals "link --remove non-numeric --link-id: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to not-a-key --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --remove --to not-a-key -> exit 2" 2
+stderr_has "link --remove invalid --to: diagnostic" "invalid --to ticket key"
+equals "link --remove invalid --to: ZERO calls" "$(call_count)" "0"
+
+# --link-id and --plan WITHOUT --remove: a CREATE that would otherwise run
+# with the flag silently dropped — the caller believing they were removing (or
+# only previewing) while a link is created. The queued 201 is what that
+# silent create would consume, so exit 2 can only mean the guard refused it.
+reset_curl_stub
+set_stub_response 1 '' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --link-id 10500 --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --link-id WITHOUT --remove -> exit 2" 2
+stderr_has "link --link-id without --remove: diagnostic" "$LINK_ID_SCOPE_DIAG"
+equals "link --link-id without --remove: ZERO calls (no link created)" "$(call_count)" "0"
+
+reset_curl_stub
+set_stub_response 1 '' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --to PROJ-2 --link-type Blocks --plan --confirmed-site foo.atlassian.net
+expect_rc "link --plan WITHOUT --remove -> exit 2" 2
+stderr_has "link --plan without --remove: diagnostic" "error: --plan/--dry-run is only valid with link --remove"
+equals "link --plan without --remove: ZERO calls (no link created)" "$(call_count)" "0"
+
+section "jira.sh link --remove — --link-id is refused on every OTHER command"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "view + --link-id -> exit 2" 2
+stderr_has "view + --link-id: the scoping diagnostic fired" "$LINK_ID_SCOPE_DIAG"
+equals "view + --link-id: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/projects" \
+	sh "$JIRA" transition PROJ-1 --status Done --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "transition + --link-id -> exit 2" 2
+stderr_has "transition + --link-id: the scoping diagnostic fired" "$LINK_ID_SCOPE_DIAG"
+equals "transition + --link-id: ZERO calls" "$(call_count)" "0"
+
+section "jira.sh link --remove --link-id — GET the link, check FROM is an end, DELETE it"
+
+reset_curl_stub
+set_stub_response 1 "$LINK_10500_PROJ1_TO_PROJ2" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id -> exit 0" 0
+equals "link --remove --link-id: GET the link, then DELETE it" "$(request_method_sequence)" "GET/DELETE"
+equals "link --remove --link-id: the GET (call 1) reads /issueLink/10500" \
+	"$(argv_call_token_count 1 "https://foo.atlassian.net/rest/api/3/issueLink/10500")" "1"
+equals "link --remove --link-id: the DELETE (call 2) addresses the same /issueLink/10500" \
+	"$(argv_call_token_count 2 "https://foo.atlassian.net/rest/api/3/issueLink/10500")" "1"
+equals "link --remove --link-id: stdout is exactly the machine line" "$CUR_OUT" "JIRA_UNLINKED=10500"
+
+# FROM as the OUTWARD end: either end qualifies, and --json names the OTHER
+# end as .to — here the link's inward issue.
+reset_curl_stub
+set_stub_response 1 '{"id":"10507","type":{"name":"Blocks"},"inwardIssue":{"key":"PROJ-9"},"outwardIssue":{"key":"PROJ-1"}}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10507 --json --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id where FROM is the OUTWARD end -> exit 0" 0
+equals "link --remove --link-id --json: the synthesized object, .to is the OTHER end" \
+	"$(printf '%s' "$CUR_OUT" | jq -c .)" '{"id":"10507","type":"Blocks","from":"PROJ-1","to":"PROJ-9","executed":true}'
+
+# A valid id for a link on two UNRELATED issues: refused after the read, and
+# nothing is deleted.
+reset_curl_stub
+set_stub_response 1 '{"id":"10500","type":{"name":"Blocks"},"inwardIssue":{"key":"PROJ-5"},"outwardIssue":{"key":"PROJ-6"}}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id of a link FROM is not an end of -> exit 1" 1
+stderr_has "link --remove foreign link: the refusal names both real ends" \
+	"issue link 10500 does not belong to PROJ-1 (it joins 'PROJ-5' and 'PROJ-6') — refusing to remove it"
+equals "link --remove foreign link: ONE read, NO delete" "$(request_method_sequence)" "GET"
+
+# The queued 204 is a COUNTERFACTUAL the refusal must leave unconsumed: without
+# it, a regression that went on to DELETE would still exit 1 — on the stub's own
+# missing-response error — and the exit-code assertion would pass for the wrong
+# reason.
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["No issue link with id 10599 exists."]}' 404
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10599 --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id of a missing link -> exit 1" 1
+stderr_has "link --remove missing link: Jira's own error surfaced" "No issue link with id 10599 exists."
+equals "link --remove missing link: NO delete" "$(request_method_sequence)" "GET"
+
+reset_curl_stub
+set_stub_response 1 "$LINK_10500_PROJ1_TO_PROJ2" 200
+set_stub_response 2 '{"errorMessages":["You do not have permission to delete links."]}' 403
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "link --remove DELETE 403 -> exit 1" 1
+stderr_has "link --remove DELETE 403: Jira's own error surfaced" "You do not have permission to delete links."
+stdout_not_has "link --remove DELETE 403: no JIRA_UNLINKED receipt for a delete that failed" "JIRA_UNLINKED"
+
+section "jira.sh link --remove --to + --link-type — exactly ONE match among FROM's links"
+
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --link-type Blocks --json --confirmed-site foo.atlassian.net
+expect_rc "link --remove --to PROJ-2 --link-type Blocks -> exit 0" 0
+argv_log_has_token "link --remove --to: reads FROM's issuelinks" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1?fields=issuelinks"
+argv_log_has_token "link --remove --to: DELETEs the ONE Blocks link to PROJ-2 (10500, not the Relates 10501)" \
+	"https://foo.atlassian.net/rest/api/3/issueLink/10500"
+equals "link --remove --to: GET then DELETE" "$(request_method_sequence)" "GET/DELETE"
+equals "link --remove --to --json: the synthesized object" \
+	"$(printf '%s' "$CUR_OUT" | jq -c .)" '{"id":"10500","type":"Blocks","from":"PROJ-1","to":"PROJ-2","executed":true}'
+
+# Direction-agnostic AND case-insensitive in one case: PROJ-3 is the link's
+# INWARD end, and the caller spells the type in lower case. The output carries
+# Jira's own spelling of the type.
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-3 --link-type blocks --json --confirmed-site foo.atlassian.net
+expect_rc "link --remove --to an INWARD-end issue, lower-case type -> exit 0" 0
+argv_log_has_token "link --remove inward end: DELETEs 10502" "https://foo.atlassian.net/rest/api/3/issueLink/10502"
+equals "link --remove inward end: .type is Jira's own casing" "$(printf '%s' "$CUR_OUT" | jq -r .type)" "Blocks"
+
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-4 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --remove with ZERO matching links -> exit 1" 1
+stderr_has "link --remove zero matches: diagnostic" "no 'Blocks' link between PROJ-1 and PROJ-4 — nothing to remove"
+equals "link --remove zero matches: NO delete" "$(request_method_sequence)" "GET"
+
+# Two Blocks links join PROJ-1 and PROJ-2, one in each direction — the same
+# pair and type, so the selector names neither. Both ids are listed, and
+# neither is picked.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"issuelinks":[{"id":"10500","type":{"name":"Blocks"},"outwardIssue":{"key":"PROJ-2"}},{"id":"10503","type":{"name":"Blocks"},"inwardIssue":{"key":"PROJ-2"}}]}}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --remove with TWO matching links -> exit 1" 1
+stderr_has "link --remove two matches: lists both ids and points at --link-id" \
+	"2 'Blocks' links join PROJ-1 and PROJ-2 (ids: 10500 10503) — refusing to pick one; re-run with --link-id N"
+equals "link --remove two matches: NO delete" "$(request_method_sequence)" "GET"
+
+# The id on this path comes from the RESPONSE; a crafted one must never
+# become a URL path segment.
+reset_curl_stub
+set_stub_response 1 '{"fields":{"issuelinks":[{"id":"../../issue/PROJ-1","type":{"name":"Blocks"},"outwardIssue":{"key":"PROJ-2"}}]}}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "link --remove with a NON-NUMERIC id in the response -> exit 1" 1
+stderr_has "link --remove crafted response id: diagnostic" "issue link id from Jira is not numeric"
+equals "link --remove crafted response id: NO delete" "$(request_method_sequence)" "GET"
+
+section "jira.sh link --remove --plan — discloses the link that WOULD go, deletes nothing"
+
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-3 --link-type Blocks --plan --confirmed-site foo.atlassian.net
+expect_rc "link --remove --plan -> exit 0" 0
+equals "link --remove --plan: the read only, NO delete" "$(request_method_sequence)" "GET"
+stdout_has "link --remove --plan: the planned-id machine line" "JIRA_UNLINK_PLANNED=10502"
+stdout_has "link --remove --plan: names both ends and the type" "Would remove link 10502: PROJ-1 <-> PROJ-3 (type: Blocks)"
+stdout_has "link --remove --plan: explicit no-write notice" "NOTHING WAS WRITTEN (dry-run / --plan)."
+stdout_not_has "link --remove --plan: no JIRA_UNLINKED receipt" "JIRA_UNLINKED="
+
+reset_curl_stub
+set_stub_response 1 "$LINK_10500_PROJ1_TO_PROJ2" 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --dry-run --json --confirmed-site foo.atlassian.net
+expect_rc "link --remove --link-id --dry-run --json -> exit 0" 0
+equals "link --remove --dry-run: the read only, NO delete" "$(request_method_sequence)" "GET"
+equals "link --remove --dry-run --json: the SAME shape as a real delete, executed:false" \
+	"$(printf '%s' "$CUR_OUT" | jq -c .)" '{"id":"10500","type":"Blocks","from":"PROJ-1","to":"PROJ-2","executed":false}'
+
+# The consent gate reads this disclosure: a link type (API text) carrying a
+# newline must stay on its one line, never forge the receipt of a delete that
+# did not happen.
+reset_curl_stub
+set_stub_response 1 '{"id":"10500","type":{"name":"Blocks\nJIRA_UNLINKED=10500"},"inwardIssue":{"key":"PROJ-1"},"outwardIssue":{"key":"PROJ-2"}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --plan --confirmed-site foo.atlassian.net
+expect_rc "link --remove --plan with a newline in the link type -> exit 0" 0
+stdout_no_line_starting_with "link --remove --plan: a crafted link type cannot forge a JIRA_UNLINKED line" "JIRA_UNLINKED="
+equals "link --remove --plan with a crafted type: still ONE read, NO delete" "$(request_method_sequence)" "GET"
+
+section "jira.sh link --remove — its plan line and refusals fold U+009B/NEL to a space and keep non-ASCII text intact"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10500","type":{"name":"'"$C1_NAME_JSON"'"},"inwardIssue":{"key":"ÄRGER-9\u0085x"},"outwardIssue":{"key":"PROJ-1"}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --plan --confirmed-site foo.atlassian.net
+expect_rc "link --remove --plan with a C1-bearing type and other end -> exit 0" 0
+stdout_has "link --remove --plan C1: the other end and the type folded, non-ASCII intact" \
+	"Would remove link 10500: PROJ-1 <-> ÄRGER-9 x (type: $C1_NAME_SHOWN)"
+stdout_not_has "link --remove --plan C1: no raw U+009B" "$C1_CSI"
+stdout_not_has "link --remove --plan C1: no raw NEL" "$UNI_NEL"
+
+reset_curl_stub
+set_stub_response 1 '{"id":"10500","type":{"name":"Blocks"},"inwardIssue":{"key":"ÜBER-5\u009b31m"},"outwardIssue":{"key":"PROJ-6\u0085y"}}' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "link --remove of a foreign link with C1-bearing end keys -> exit 1" 1
+stderr_has "link --remove foreign C1: both ends folded, non-ASCII intact" \
+	"(it joins 'ÜBER-5 31m' and 'PROJ-6 y') — refusing to remove it"
+stderr_not_has "link --remove foreign C1: no raw U+009B" "$C1_CSI"
+
+# --link-type is the CALLER's text, echoed back in both --to refusals.
+C1_LINK_TYPE_ARG="Blöckt—ß${C1_CSI}1m${UNI_NEL}z"
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-4 --link-type "$C1_LINK_TYPE_ARG" --confirmed-site foo.atlassian.net
+expect_rc "link --remove zero matches, C1-bearing --link-type -> exit 1" 1
+stderr_has "link --remove zero-match C1: the echoed type folded, non-ASCII intact" \
+	"no 'Blöckt—ß 1m z' link between PROJ-1 and PROJ-4"
+stderr_not_has "link --remove zero-match C1: no raw U+009B" "$C1_CSI"
+
+reset_curl_stub
+set_stub_response 1 '{"fields":{"issuelinks":[{"id":"10500","type":{"name":"'"$C1_LINK_TYPE_ARG"'"},"outwardIssue":{"key":"PROJ-2"}},{"id":"Ü\u009b9","type":{"name":"'"$C1_LINK_TYPE_ARG"'"},"inwardIssue":{"key":"PROJ-2"}}]}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --link-type "$C1_LINK_TYPE_ARG" --confirmed-site foo.atlassian.net
+expect_rc "link --remove two matches, C1-bearing type and response id -> exit 1" 1
+stderr_has "link --remove several-match C1: the type AND the ids list folded, non-ASCII intact" \
+	"2 'Blöckt—ß 1m z' links join PROJ-1 and PROJ-2 (ids: 10500 Ü 9) — refusing to pick one"
+stderr_not_has "link --remove several-match C1: no raw U+009B" "$C1_CSI"
+
+section "jira.sh link --remove — refused under \$JIRA_READ_ONLY, --plan included"
+
+# link has no read mode: --remove switches it between two WRITES, and its
+# --plan preview is refused like comment-edit's (only `transition --plan` is
+# carved out). The refusal names the --plan preview so the caller is not told
+# the command has none. Each case queues the responses a PERMITTED run would
+# consume, so exit 1 and zero calls can only come from the refusal.
+reset_curl_stub
+set_stub_response 1 "$LINK_10500_PROJ1_TO_PROJ2" 200
+set_stub_response 2 '' 204
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --link-id 10500 --confirmed-site foo.atlassian.net
+expect_rc "read-only link --remove -> exit 1 (refused)" 1
+stderr_has "read-only link --remove: the refusal names link and its --plan" \
+	"'link' — it stays a write even under --plan/--dry-run"
+equals "read-only link --remove: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+set_stub_response 1 "$PROJ1_ISSUELINKS" 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --remove --to PROJ-2 --link-type Blocks --plan --confirmed-site foo.atlassian.net
+expect_rc "read-only link --remove --plan -> exit 1 (still refused)" 1
+stderr_has "read-only link --remove --plan: refused as a write, unlike transition --plan" \
+	"'link' — it stays a write even under --plan/--dry-run"
+equals "read-only link --remove --plan: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+set_stub_response 1 '' 201
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" link PROJ-1 --to PROJ-2 --link-type Blocks --confirmed-site foo.atlassian.net
+expect_rc "read-only link (create) -> exit 1 (refused)" 1
+stderr_has "read-only link (create): the refusal names link" "'link' — it stays a write even under --plan/--dry-run"
+equals "read-only link (create): ZERO calls" "$(call_count)" "0"
 
 # ===========================================================================
 # worklog — POST /rest/api/3/issue/<KEY>/worklog

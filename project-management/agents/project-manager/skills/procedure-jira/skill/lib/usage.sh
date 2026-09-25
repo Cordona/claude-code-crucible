@@ -172,9 +172,34 @@
 #                            no resolution field 400s if this script sets
 #                            one unasked; a workflow that genuinely
 #                            requires one 400s clearly either way, and the
-#                            caller re-runs with --resolution.
+#                            caller re-runs with --resolution. CHECKED before
+#                            the POST: the step that would carry it must list
+#                            a resolution field (and, when Jira lists allowed
+#                            values, STR must be one of them, case-
+#                            insensitively — the allowed value's own spelling
+#                            is what is sent), or the run is refused (exit 1)
+#                            with nothing written. --plan runs the same check
+#                            for a one-step path or --transition-id (and, for
+#                            a one-step --status path, discloses which
+#                            transition it would take when 2+ reach the
+#                            target); for a
+#                            multi-step path it cannot (Jira lists only the
+#                            CURRENT status's transitions), so the plan says
+#                            the resolution is UNVERIFIED and the walk checks
+#                            right before its final step.
+#   --transition-id N             (transition only) POST exactly transition N
+#                            as ONE step — no BFS walk, no project config —
+#                            instead of walking to a --status (the two are
+#                            mutually exclusive, exit 2). N must be available
+#                            from the issue's CURRENT status (refused, exit 1,
+#                            otherwise); `workflow <KEY>` lists the ids. The
+#                            way to pick between two transitions that reach
+#                            the SAME status, which --status can only resolve
+#                            by taking the first. Accepted by transition and
+#                            NOTHING else (usage error, exit 2).
 #   --plan, --dry-run              (transition, comment-edit, bulk, schedule,
-#                            version --delete) One flag, one meaning everywhere:
+#                            version --delete, link --remove) One flag, one
+#                            meaning everywhere:
 #                            DISCLOSE what the real run would do and MUTATE
 #                            NOTHING — the reads a plan needs still happen, no
 #                            write ever does, and the output ends on the same
@@ -186,7 +211,8 @@
 #                            "  | "-prefixed, since that body is untrusted text
 #                            sharing a stream with this engine's own lines);
 #                            bulk/schedule print the resolved issue set + the
-#                            single change; and
+#                            single change; link --remove prints the link it
+#                            would delete (id, type, both ends); and
 #                            version --delete prints what the --id actually
 #                            resolves to (name + owning project key) plus the
 #                            exact DELETE it would send — the site-global id
@@ -195,8 +221,11 @@
 #                            BEFORE authorizing the real write. Only
 #                            `transition --plan` is also a READ to the
 #                            $JIRA_READ_ONLY gate; every other preview here,
-#                            comment-edit's included, stays a refused write
-#                            under it (see lib/readonlygate.sh).
+#                            comment-edit's and link --remove's included, stays
+#                            a refused write under it (see lib/readonlygate.sh).
+#                            Plain `link` (create) has no preview and REJECTS
+#                            it (exit 2) for the same reason the two deletes
+#                            below do.
 #                            The two SIBLING deletes — component --delete and
 #                            attach --delete — implement NO preview, so they
 #                            REJECT this flag (usage error, exit 2) rather than
@@ -205,7 +234,13 @@
 #                            attach --download REJECTS it for the same reason:
 #                            it has no preview either, and it writes a real
 #                            local file.
-#   --limit N / --page-size N  (search, children) Pagination bounds.
+#   --limit N / --page-size N  (search, children) Pagination bounds. --limit also
+#                            caps `users` (default 50, one page — narrow
+#                            --query rather than page through a fuzzy match).
+#   --query STR                (users only) REQUIRED. The name/email fragment
+#                            Jira's /user/search matches (fuzzy, substring);
+#                            urlencoded into the query string. Accepted by
+#                            users and NOTHING else (usage error, exit 2).
 #   --projects-dir DIR         Overrides the project-config directory.
 #   --write                    (discover only) Save the discovered project
 #                            config to $JIRA_PROJECTS_DIR/<PROJECT>.json
@@ -238,16 +273,30 @@
 #   --to TARGET_KEY              (link only) The link's target ticket key.
 #                            See "link direction" below for how the
 #                            positional FROM and --to map onto Jira's
-#                            inwardIssue/outwardIssue.
+#                            inwardIssue/outwardIssue. With --remove, it names
+#                            the link's OTHER end, in either direction.
 #   --link-type NAME              (link only) The issue-link type's NAME
 #                            (e.g. "Blocks", "Relates", "Duplicate") — run
 #                            `link-types` first to discover the valid names
-#                            for your site.
+#                            for your site. With --remove, matched against the
+#                            existing link's type case-insensitively; --to +
+#                            --link-type must select EXACTLY ONE link on FROM
+#                            (none, or several, is refused with exit 1 — the
+#                            several are listed by id for --link-id).
+#   --link-id N                   (link --remove only) Select the link to
+#                            delete by its numeric id (fields.issuelinks[].id
+#                            in `view <KEY> --fields issuelinks --json`).
+#                            Mutually exclusive with --to/--link-type (exit 2).
+#                            The link is fetched first and the delete REFUSED
+#                            (exit 1) unless FROM is one of its two ends, so a
+#                            valid-but-wrong id cannot remove a link elsewhere.
+#                            Rejected everywhere else (usage error, exit 2).
 #   --time-spent STR              (worklog only) REQUIRED. Jira duration
 #                            format, e.g. "2h", "30m", "1d 4h".
 #   --comment-file PATH          (link, worklog) Markdown -> ADF, attached
 #                            as the link's or worklog entry's comment.
-#                            Optional on both.
+#                            Optional on both; `link --remove` rejects it
+#                            (exit 2) — a deletion carries no comment.
 #   --started STR                (worklog only) ISO8601 with milliseconds +
 #                            offset, e.g. "2026-07-24T10:00:00.000+0000".
 #                            Optional — Jira defaults to now when omitted.
@@ -262,7 +311,10 @@
 #                            rejects it too, as a mode conflict rather than a
 #                            foreign flag (listing watchers takes no account).
 #   --remove                      (watch, vote) Remove instead of add;
-#                            mutually exclusive with --list.
+#                            mutually exclusive with --list. (link) Delete an
+#                            existing link instead of creating one — selected
+#                            by --link-id, or by --to + --link-type; prints
+#                            JIRA_UNLINKED=<id>.
 #   --list                          (watch, vote) List instead of add;
 #                            mutually exclusive with --remove.
 #   --download PATH               (attach only) Download the attachment named
@@ -411,6 +463,7 @@ Usage (READ):
          [-h|--help]
   $PROG workflow <KEY> --confirmed-site SITE [--json] [-h|--help]
   $PROG link-types --confirmed-site SITE [--json] [-h|--help]
+  $PROG users --query STR --confirmed-site SITE [--limit N] [--json]
   $PROG children <KEY> --confirmed-site SITE [--fields LIST]
          [--limit N] [--page-size N] [--json]
   $PROG discover <PROJECT> --confirmed-site SITE [--write] [--force]
@@ -442,8 +495,10 @@ Usage (WRITE):
   It always GETs the comment first, so a wrong/stale --comment-id fails before
   any inline image is uploaded; --plan|--dry-run stops after that GET and prints
   the body it would discard, writing nothing)
-  $PROG transition <KEY> --status TARGET --confirmed-site SITE
-         [--resolution STR] [--plan|--dry-run] [--json]
+  $PROG transition <KEY> (--status TARGET | --transition-id N)
+         --confirmed-site SITE [--resolution STR] [--plan|--dry-run] [--json]
+  (--transition-id POSTs exactly that transition as one step; --resolution is
+  refused before any write when the step's screen cannot take it)
   $PROG update <KEY> --confirmed-site SITE
          [--title STR] [--description-file PATH | --append-file PATH]
          [--acceptance-file PATH] [--review-file PATH]
@@ -453,6 +508,8 @@ Usage (WRITE):
          [--component NAME]... [--json]
   $PROG link <FROM> --to TO --link-type NAME --confirmed-site SITE
          [--comment-file PATH] [--json]
+  $PROG link <FROM> --remove (--link-id N | --to TO --link-type NAME)
+         --confirmed-site SITE [--plan|--dry-run] [--json]
   $PROG worklog <KEY> --time-spent STR --confirmed-site SITE
          [--comment-file PATH] [--started STR] [--json]
   $PROG watch <KEY> --confirmed-site SITE [--account VALUE] [--remove]
@@ -559,6 +616,9 @@ Exit codes:
      --acceptance-file/--review-file/--developer/--reviewer /
      no valid transition path /
      a transition step that silently failed to apply /
+     a --resolution the step's screen cannot take / a --transition-id not
+     available from the current status /
+     link --remove: no matching link, several, or a --link-id FROM is not on /
      attach --download: the attachment-content redirect was missing, not https,
      or did not point at Atlassian's media host — or the media fetch itself
      returned a non-2xx (nothing is written at the destination in either case)
@@ -580,7 +640,9 @@ Exit codes:
      / the same refusal applied to attach --download's DESTINATION directory,
      in its pre-flight before any request: a directory other local users can
      write is one where they can replace the installed file afterwards
-  2  usage error (attach --download additionally: the destination path already
+  2  usage error (transition: both or neither of --status/--transition-id.
+     link --remove: both or neither of --link-id and --to/--link-type, or
+     --comment-file. attach --download additionally: the destination path already
      exists, its parent directory does not exist, its parent directory is not
      writable, the destination begins with "-", or
      --force/--plan/--dry-run was passed to a mode that implements neither.

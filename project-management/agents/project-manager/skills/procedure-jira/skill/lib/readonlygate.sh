@@ -20,7 +20,7 @@
 # WHAT IT DOES NOT ENFORCE, stated so nobody reads more into it: this gate
 # permits every READ, which is a SUPERSET of that P2 command list — the Agile
 # reads (boards/board/sprints/backlog/epics/epic, bare `sprint <ID>`),
-# link-types, a bare `discover` and the `--list` read modes of
+# link-types, users, a bare `discover` and the `--list` read modes of
 # watch/vote/version/component/attach are all permitted here while remaining
 # outside the scope SKILL.md grants that credential. Narrowing the permitted
 # reads to exactly those five is still the calling flow's prose; what the
@@ -117,17 +117,22 @@ is_read_only_requested() {
 is_write_invocation() {
 	case "$COMMAND" in
 		# Unconditional writes: no flag turns any of these into a read.
-		# bulk/schedule/comment-edit are writes even with --plan/--dry-run — see
-		# the --plan note at the end of this function. comment-edit belongs here
-		# and not with the mode-flag commands below for a second, independent
-		# reason as well: --comment-id SELECTS the target, it does not switch the
-		# command between a read and a write.
+		# bulk/schedule/comment-edit and `link --remove` are writes even with
+		# --plan/--dry-run — see the --plan note at the end of this function.
+		# comment-edit belongs here and not with the mode-flag commands below
+		# for a second, independent reason as well: --comment-id SELECTS the
+		# target, it does not switch the command between a read and a write.
+		# link is the same shape: --remove switches it between two WRITES
+		# (create/delete), never to a read.
 		create|comment|comment-edit|update|link|worklog|bulk|schedule)
 			return 0
 			;;
 		# transition is a write UNLESS --plan/--dry-run, whose branch in
-		# cmd_transition() computes and prints the walked path from exactly one
-		# READ and returns before any POST (a test asserts zero POSTs). This is
+		# cmd_transition() computes and prints the walked path from its READS
+		# alone — the status GET, plus the transitions GET for --transition-id
+		# or a single-step path — and returns before any POST (a
+		# test asserts zero POSTs), whichever of --status/--transition-id
+		# selects the step. This is
 		# the one read-mode carve-out SKILL.md's read-only credential scope
 		# names explicitly ("transition --plan").
 		transition)
@@ -199,7 +204,7 @@ is_write_invocation() {
 		# dispatch table and not to this list lands in the fail-closed default
 		# and must be classified DELIBERATELY, instead of inheriting "read" by
 		# omission — the direction an omission has to fail in a security gate.
-		view|search|workflow|link-types|children|boards|board|sprints|backlog|epics|epic)
+		view|search|workflow|link-types|users|children|boards|board|sprints|backlog|epics|epic)
 			return 1
 			;;
 		*)
@@ -213,11 +218,12 @@ is_write_invocation() {
 	esac
 }
 #
-# ON --plan/--dry-run, and why only `transition` gets the carve-out. FIVE
+# ON --plan/--dry-run, and why only `transition` gets the carve-out. SIX
 # commands implement a preview that writes nothing: transition, bulk, schedule,
-# version --delete and comment-edit. Only `transition --plan` is treated as a
-# read here, because that is the only one SKILL.md's read-only credential scope
-# actually authorizes. Blocking the other four under $JIRA_READ_ONLY is the
+# version --delete, comment-edit and link --remove. Only `transition --plan` is
+# treated as a read here, because that is the only one SKILL.md's read-only
+# credential scope actually authorizes. Blocking the other five under
+# $JIRA_READ_ONLY is the
 # conservative direction of a deliberately asymmetric call: the cost is a
 # refused preview a caller can re-run without the read-only credential, where
 # the cost of the opposite error is an unauthorized write. Widening the
@@ -229,6 +235,11 @@ is_write_invocation() {
 # write anyway, on the rule above rather than on a mechanical re-judgement —
 # SKILL.md's scope names `transition --plan` and nothing else, and this file is
 # that enumeration's executable form, not a second opinion on it.
+#
+# `link --remove --plan` is the newest, and the same call on the same rule: its
+# one or two GETs reach no write endpoint, but a read-only analysis pass has no
+# use for previewing a deletion it may never perform, and the scope does not
+# name it.
 
 # write_mode_flag -> prints the mode FLAG that made the current invocation a
 # write ("--remove", "--close", "--write", …), or nothing when that command's
@@ -298,16 +309,17 @@ write_refusal_phrase() {
 		discover)
 			printf "'discover --write' — only 'discover' without --write is permitted (it prints the config and persists nothing)"
 			;;
-		# comment-edit joins bulk/schedule here rather than the arm below, now
-		# that it HAS a --plan preview: telling its caller "that command has no
+		# comment-edit (and link, whose --remove mode has one) joins
+		# bulk/schedule here rather than the arm below, now that it HAS a
+		# --plan preview: telling its caller "that command has no
 		# read mode" would be false, and a false refusal costs the caller the
 		# preview it really can run once it is holding a non-read-only
 		# credential — the exact miscue write_refusal_phrase's header note
 		# exists to avoid.
-		bulk|schedule|comment-edit)
+		bulk|schedule|comment-edit|link)
 			printf "'%s' — it stays a write even under --plan/--dry-run, and has no permitted read mode" "$COMMAND"
 			;;
-		create|comment|update|link|worklog)
+		create|comment|update|worklog)
 			printf "'%s' — that command has no read mode" "$COMMAND"
 			;;
 		*)

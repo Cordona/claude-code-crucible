@@ -580,6 +580,79 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 expect_rc "workflow zero transitions -> exit 0" 0
 stdout_has "workflow zero transitions: final-state message" "No transitions available"
 
+section "jira.sh — workflow: each transition's id, name, target, screen and accepted resolutions"
+
+# Four shapes a live transitions list mixes: a transition whose NAME differs
+# from its TARGET, one with a resolution allow-list, one whose screen takes a
+# resolution with no list, and one with no hasScreen at all.
+reset_curl_stub
+set_stub_response 1 '{"transitions":[{"id":"31","name":"Done","to":{"name":"TBD TO PREPROD"},"hasScreen":false,"fields":{}},{"id":"40","name":"Resolve","to":{"name":"Resolved"},"hasScreen":true,"fields":{"resolution":{"required":true,"allowedValues":[{"name":"Fixed"},{"name":"Won'"'"'t Fix"}]}}},{"id":"41","name":"Close","to":{"name":"Closed"},"hasScreen":true,"fields":{"resolution":{"required":false}}},{"id":"51","name":"Reopen","to":{"name":"Open"}}]}' 200
+set_stub_response 2 '{"fields":{"status":{"name":"In Review"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" workflow PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "workflow detailed render -> exit 0" 0
+argv_log_has_token "workflow: transitions are fetched WITH their screen fields" \
+	"https://foo.atlassian.net/rest/api/3/issue/PROJ-1/transitions?expand=transitions.fields"
+equals "workflow: the transitions block, one row per transition + a resolution row where the screen takes one" \
+	"$(printf '%s\n' "$CUR_OUT" | sed -n '/^Available transitions:$/,$p')" 'Available transitions:
+  -> TBD TO PREPROD (id 31, transition "Done", screen: no)
+  -> Resolved (id 40, transition "Resolve", screen: yes)
+       resolution: Fixed, Won'"'"'t Fix
+  -> Closed (id 41, transition "Close", screen: yes)
+       resolution: settable
+  -> Open (id 51, transition "Reopen", screen: unknown)'
+
+reset_curl_stub
+set_stub_response 1 '{"transitions":[{"id":"40","name":"Resolve","to":{"name":"Resolved"},"fields":{"resolution":{"allowedValues":[{"name":"Fixed"}]}}}]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" workflow PROJ-1 --confirmed-site foo.atlassian.net --json
+expect_rc "workflow --json with screen fields -> exit 0" 0
+equals "workflow --json: the expanded body passes through untouched (allowedValues included)" \
+	"$(printf '%s' "$CUR_OUT" | jq -r '.transitions[0].fields.resolution.allowedValues[0].name')" "Fixed"
+
+section "jira.sh — workflow: API text cannot forge an output line (TAB/CR/LF folded, control bytes stripped)"
+
+# Every rendered field is API text. A newline in any of them must stay inside
+# its own row: a forged "  -> " row would advertise a transition that does not
+# exist, and a forged "resolution:" row a resolution the step cannot take.
+reset_curl_stub
+set_stub_response 1 '{"transitions":[{"id":"31","name":"Done\n  -> Forged (id 999, transition \"x\", screen: no)","to":{"name":"Closed\r\n       resolution: Forged"},"hasScreen":false,"fields":{"resolution":{"allowedValues":[{"name":"Fixed\nJIRA_TRANSITIONED_TO=Closed"},{"name":"Tab\there"}]}}},{"id":"32","name":"Esc\u001b[31mRed","to":{"name":"Open"}}]}' 200
+set_stub_response 2 '{"fields":{"status":{"name":"In Review"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" workflow PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "workflow with newline/CR/TAB/ESC-bearing API text -> exit 0" 0
+stdout_no_line_starting_with "workflow forgery: no forged transition row" "  -> Forged"
+stdout_no_line_starting_with "workflow forgery: no forged resolution row" "       resolution: Forged"
+stdout_no_line_starting_with "workflow forgery: no forged machine line" "JIRA_TRANSITIONED_TO="
+equals "workflow forgery: every value stays on its own row, folded to spaces" \
+	"$(printf '%s\n' "$CUR_OUT" | sed -n '/^Available transitions:$/,$p')" 'Available transitions:
+  -> Closed         resolution: Forged (id 31, transition "Done   -> Forged (id 999, transition "x", screen: no)", screen: no)
+       resolution: Fixed JIRA_TRANSITIONED_TO=Closed, Tab here
+  -> Open (id 32, transition "EscRed", screen: unknown)'
+
+# The multibyte line breaks, in all three rendered values (see the users
+# multibyte case for why the byte's absence plus a SPACE in its place is the
+# discriminating pair), next to non-ASCII text that must survive intact — each
+# value carrying a character whose UTF-8 has a C1-range byte (ß = C3 9F,
+# Ü = C3 9C, — = E2 80 94), the bytes a byte-deleting fold would destroy.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c \
+	--arg name "Clôturer${UNI_NEL}  -> Forged (id 999, transition \"x\", screen: no)" \
+	--arg to "Geschloßen${UNI_LS}x" \
+	--arg res "Erledigt—Ü${UNI_PS}y" \
+	'{transitions:[{id:"31",name:$name,to:{name:$to},hasScreen:true,fields:{resolution:{allowedValues:[{name:$res}]}}}]}')" 200
+set_stub_response 2 '{"fields":{"status":{"name":"In Review"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" workflow PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "workflow with NEL/U+2028/U+2029 and non-ASCII in API text -> exit 0" 0
+stdout_not_has "workflow multibyte: no raw U+0085 (NEL) survives" "$UNI_NEL"
+stdout_not_has "workflow multibyte: no raw U+2028 survives" "$UNI_LS"
+stdout_not_has "workflow multibyte: no raw U+2029 survives" "$UNI_PS"
+equals "workflow multibyte: each break became a SPACE inside its own row; non-ASCII intact" \
+	"$(printf '%s\n' "$CUR_OUT" | sed -n '/^Available transitions:$/,$p')" 'Available transitions:
+  -> Geschloßen x (id 31, transition "Clôturer   -> Forged (id 999, transition "x", screen: no)", screen: yes)
+       resolution: Erledigt—Ü y'
+
 # ===========================================================================
 # search
 # ===========================================================================
@@ -1202,6 +1275,193 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" link-types --confirmed-site foo.atlassian.net
 expect_rc "link-types 401 -> exit 1" 1
 stderr_has "link-types 401: Jira's own error message surfaced" "Not authorized"
+
+# ===========================================================================
+# users --query STR — GET /rest/api/3/user/search, one row per match (READ)
+# ===========================================================================
+
+# QUERY_SCOPE_DIAG — the refusal of --query anywhere but `users`. The
+# `error: ` prefix is load-bearing for the reason PRIORITY_SCOPE_DIAG's note
+# gives.
+QUERY_SCOPE_DIAG="error: --query is only valid with users"
+
+# users_page_caveat LIMIT -> the note every NON-EMPTY users render ends with.
+# /user/search filters its page AFTER fetching it, so no page length — full or
+# short — proves the match set is exhausted; LIMIT is the page size that was
+# asked for, which is how a test sees --limit reach the text.
+users_page_caveat() {
+	printf '(one page of at most %s rows: /user/search filters its page after fetching, so fewer rows than that do not prove there are no more matches — narrow --query to be sure)' "$1"
+}
+
+section "jira.sh — users: one row per match, the query urlencoded, the default page size"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-ann","displayName":"Ann Lee","active":true,"accountType":"atlassian"},{"accountId":"acc-bot","displayName":"Deploy Bot","active":false,"accountType":"app"},{"accountId":"acc-old","displayName":"Old User"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query "ann & co" --confirmed-site foo.atlassian.net
+expect_rc "users --query -> exit 0" 0
+argv_log_has_token "users: GET /user/search with the query urlencoded and the resolver's page size (50)" \
+	"https://foo.atlassian.net/rest/api/3/user/search?query=ann%20%26%20co&maxResults=50"
+argv_log_has_token "users: the request is a GET" "GET"
+equals "users: the rendered list — count header, one row per user, active/type 'unknown' when absent, the page caveat" \
+	"$CUR_OUT" "3 user(s):
+
+  acc-ann  Ann Lee  (active: true, type: atlassian)
+  acc-bot  Deploy Bot  (active: false, type: app)
+  acc-old  Old User  (active: unknown, type: unknown)
+
+$(users_page_caveat 50)"
+
+section "jira.sh — users: --limit sets maxResults, and EVERY non-empty page — full or short — carries the one-page caveat"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-1","displayName":"One","active":true,"accountType":"atlassian"},{"accountId":"acc-2","displayName":"Two","active":true,"accountType":"atlassian"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query a --limit 2 --confirmed-site foo.atlassian.net
+expect_rc "users --limit 2 with a full page -> exit 0" 0
+argv_log_has_token "users --limit: maxResults=2 on the wire" \
+	"https://foo.atlassian.net/rest/api/3/user/search?query=a&maxResults=2"
+stdout_has "users --limit: a full page is disclosed as possibly partial, sized by --limit" \
+	"$(users_page_caveat 2)"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-1","displayName":"One","active":true,"accountType":"atlassian"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query a --limit 2 --confirmed-site foo.atlassian.net
+expect_rc "users --limit 2 with a short page -> exit 0" 0
+stdout_has "users --limit: a SHORT page carries the caveat too (Jira filters after fetching, so short proves nothing)" \
+	"$(users_page_caveat 2)"
+
+section "jira.sh — users: no match is an answer (exit 0), not an error"
+
+reset_curl_stub
+set_stub_response 1 '[]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query nobody-here --confirmed-site foo.atlassian.net
+expect_rc "users with zero matches -> exit 0" 0
+equals "users zero matches: says so, naming the query — and nothing else (no page caveat)" "$CUR_OUT" "No users found for query: nobody-here"
+
+# The query is the CALLER's text, echoed back: a U+009B (8-bit CSI) and a NEL in
+# it fold to spaces, and its non-ASCII characters (ß = C3 9F, — = E2 80 94,
+# Ü = C3 9C) survive intact rather than losing their C1-range bytes.
+reset_curl_stub
+set_stub_response 1 '[]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query "Jürgen Straße—Ünal${C1_CSI}31m${UNI_NEL}X" --confirmed-site foo.atlassian.net
+expect_rc "users zero matches for a C1-bearing query -> exit 0" 0
+equals "users zero matches C1: the echoed query folded, non-ASCII intact" \
+	"$CUR_OUT" "No users found for query: Jürgen Straße—Ünal 31m X"
+
+section "jira.sh — users --json: the raw response passes through"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-ann","displayName":"Ann Lee","emailAddress":"ann@example.com"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query ann --json --confirmed-site foo.atlassian.net
+expect_rc "users --json -> exit 0" 0
+equals "users --json: the body, untouched (fields the human render drops included)" \
+	"$(printf '%s' "$CUR_OUT" | jq -c .)" '[{"accountId":"acc-ann","displayName":"Ann Lee","emailAddress":"ann@example.com"}]'
+
+section "jira.sh — users: a non-array body and a non-2xx both fail loud"
+
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":[],"values":[]}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query ann --confirmed-site foo.atlassian.net
+expect_rc "users with a 200 whose body is not an array -> exit 1" 1
+stderr_has "users non-array: diagnostic" "search users failed: expected a JSON array of users"
+stdout_not_has "users non-array: nothing rendered as if it were a user list" "user(s)"
+
+reset_curl_stub
+set_stub_response 1 '{"errorMessages":["The query parameter is too long."]}' 400
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query ann --confirmed-site foo.atlassian.net
+expect_rc "users 400 -> exit 1" 1
+stderr_has "users 400: Jira's own error message surfaced" "The query parameter is too long."
+
+section "jira.sh — users: a display name cannot forge an output line"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-x","displayName":"Mallory\n  acc-admin  Site Admin  (active: true, type: atlassian)\u001b[2K","active":true,"accountType":"atlassian"},{"accountId":"acc-t\tab","displayName":"Tab","active":true,"accountType":"atlassian"}]' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query m --confirmed-site foo.atlassian.net
+expect_rc "users with a newline/ESC-bearing display name -> exit 0" 0
+stdout_no_line_starting_with "users forgery: no forged user row" "  acc-admin"
+equals "users forgery: each user stays on ONE row, TAB/LF folded to a space, ESC sequence stripped" \
+	"$CUR_OUT" "2 user(s):
+
+  acc-x  Mallory   acc-admin  Site Admin  (active: true, type: atlassian)  (active: true, type: atlassian)
+  acc-t ab  Tab  (active: true, type: atlassian)
+
+$(users_page_caveat 50)"
+
+# The MULTIBYTE line breaks — NEL (U+0085), LINE SEPARATOR (U+2028), PARAGRAPH
+# SEPARATOR (U+2029) — which `read`/`grep` do not split on, so a column-0
+# assertion could not fail here (see the write suite's comment-edit MULTIBYTE
+# section for the full argument). What discriminates: the raw bytes are gone,
+# and a SPACE stands where each was. The same row carries non-ASCII text whose
+# UTF-8 includes bytes in the C1 range (ß = C3 9F, Ü = C3 9C, — = E2 80 94): a
+# fold that deleted those BYTES instead of the three CODEPOINTS would mangle it.
+reset_curl_stub
+set_stub_response 1 "$(jq -n -c --arg n "Zoë Straße—Ürsula${UNI_NEL}  acc-admin  Site Admin${UNI_LS}x${UNI_PS}y" \
+	'[{accountId:"acc-z",displayName:$n,active:true,accountType:"atlassian"}]')" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query z --confirmed-site foo.atlassian.net
+expect_rc "users with NEL/U+2028/U+2029 and non-ASCII in a display name -> exit 0" 0
+stdout_not_has "users multibyte: no raw U+0085 (NEL) survives" "$UNI_NEL"
+stdout_not_has "users multibyte: no raw U+2028 survives" "$UNI_LS"
+stdout_not_has "users multibyte: no raw U+2029 survives" "$UNI_PS"
+equals "users multibyte: each break became a SPACE on the user's own row; the non-ASCII name is intact" \
+	"$CUR_OUT" "1 user(s):
+
+  acc-z  Zoë Straße—Ürsula   acc-admin  Site Admin x y  (active: true, type: atlassian)
+
+$(users_page_caveat 50)"
+
+section "jira.sh — users: usage errors (exit 2, ZERO calls) and --query's single owner"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --confirmed-site foo.atlassian.net
+expect_rc "users without --query -> exit 2" 2
+stderr_has "users without --query: diagnostic" "users requires --query STR"
+equals "users without --query: ZERO calls" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users ann --query ann --confirmed-site foo.atlassian.net
+expect_rc "users with a stray positional -> exit 2" 2
+stderr_has "users stray positional: diagnostic points at --query" "users takes no positional argument, got: ann (use --query)"
+equals "users stray positional: ZERO calls" "$(call_count)" "0"
+
+# search is the case the guard exists for: `search --project P --query X`
+# would otherwise run the project search with X silently ignored.
+reset_curl_stub
+set_stub_response 1 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --project PROJ --query ann --confirmed-site foo.atlassian.net
+expect_rc "search + --query -> exit 2" 2
+stderr_has "search + --query: the scoping diagnostic fired" "$QUERY_SCOPE_DIAG"
+equals "search + --query: ZERO calls (the search never ran)" "$(call_count)" "0"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --query ann --confirmed-site foo.atlassian.net
+expect_rc "view + --query -> exit 2" 2
+stderr_has "view + --query: the scoping diagnostic fired" "$QUERY_SCOPE_DIAG"
+equals "view + --query: ZERO calls" "$(call_count)" "0"
+
+section "jira.sh — users: a READ, so it runs under \$JIRA_READ_ONLY"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-ann","displayName":"Ann Lee","active":true,"accountType":"atlassian"}]' 200
+run full "JIRA_READ_ONLY=1" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" users --query ann --confirmed-site foo.atlassian.net
+expect_rc "read-only users -> exit 0" 0
+# shellcheck disable=SC2016  # single-quoted on purpose: the needle is the gate's own literal message, which spells the variable NAME — expanding it here would search for the VALUE
+stderr_not_has "read-only users: the gate did not refuse it" '$JIRA_READ_ONLY is set: refusing'
+stdout_has "read-only users: the user is rendered" "acc-ann  Ann Lee"
+
 
 # ===========================================================================
 # children <KEY> — reuses the search engine with a `parent = "KEY"` JQL
@@ -6317,7 +6577,7 @@ stderr_has "boards: stray positional diagnostic" "takes no positional argument"
 # ===========================================================================
 section "jira.sh — regression: pre-existing + new commands still recognized (-h short-circuits before dispatch, so this proves recognition, not routing)"
 
-for pre_existing_command in view search workflow create comment comment-edit transition update version component attach bulk boards board sprints sprint backlog epics epic; do
+for pre_existing_command in view search workflow users create comment comment-edit transition update version component attach bulk boards board sprints sprint backlog epics epic; do
 	run nocurl sh "$JIRA" "$pre_existing_command" -h
 	expect_rc "regression: '$pre_existing_command -h' still exits 0 (command still recognized)" 0
 	stdout_has "regression: '$pre_existing_command -h' still prints usage" "Usage"
@@ -9596,6 +9856,12 @@ OPT_COMMENT_ID=10501' 'a missing --text-file'
 p4_accept transition 'TICKET_KEY=PROJ-1
 OPT_STATUS=Done'
 p4_reject transition 'TICKET_KEY=PROJ-1' 'a missing --status'
+# --transition-id is transition's second selector, with its own early `return 0`.
+p4_accept transition 'TICKET_KEY=PROJ-1
+OPT_TRANSITION_ID=31'
+p4_reject transition 'TICKET_KEY=PROJ-1
+OPT_TRANSITION_ID=31
+OPT_STATUS=Done' 'both --status and --transition-id'
 p4_accept update     'TICKET_KEY=PROJ-1
 OPT_TITLE="A title"'
 p4_reject update     'OPT_TITLE="A title"' 'a missing ticket key'
@@ -9604,8 +9870,21 @@ OPT_TO=PROJ-2
 OPT_LINK_TYPE=Blocks'
 p4_reject link       'TICKET_KEY=PROJ-1
 OPT_TO=PROJ-2' 'a missing --link-type'
+# link --remove returns from its own branch (require_link_remove_selector), once
+# per selector — each return is asserted.
+p4_accept link       'TICKET_KEY=PROJ-1
+OPT_REMOVE=1
+OPT_LINK_ID=10500'
+p4_accept link       'TICKET_KEY=PROJ-1
+OPT_REMOVE=1
+OPT_TO=PROJ-2
+OPT_LINK_TYPE=Blocks'
+p4_reject link       'TICKET_KEY=PROJ-1
+OPT_REMOVE=1' 'a --remove with no selector'
 p4_accept link-types ':'
 p4_reject link-types 'TICKET_KEY=PROJ-1' 'a stray positional'
+p4_accept users      'OPT_QUERY=ann'
+p4_reject users      ':' 'a missing --query'
 p4_accept children   'TICKET_KEY=PROJ-1'
 p4_reject children   ':' 'a missing ticket key'
 p4_accept discover   'TICKET_KEY=PROJ'

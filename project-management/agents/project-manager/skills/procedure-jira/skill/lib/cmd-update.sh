@@ -33,8 +33,8 @@
 # uniqueness rule that is scoped to the document either way).
 #
 # The three jq helpers below implement exactly that, and nothing about them
-# needs a regex (this engine keeps its jq Oniguruma-free — see jira.sh's
-# Portability header):
+# needs a regex (this engine keeps regex out of its jq wherever it can — see
+# jira.sh's Portability header for the few places it cannot):
 #   * an id PARTICIPATES only if it splits on "-" into exactly TWO parts whose
 #     second is 1..12 ASCII digits ("taskItem-7"). That is the shape
 #     md-to-adf.sh's next_task_local_id mints, for ANY prefix it may grow later,

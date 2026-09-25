@@ -13,7 +13,7 @@
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
 #
-# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 44
+# shellcheck disable=SC2034  # file-wide, deliberately: declaring cross-unit globals IS this file's entire job, and shellcheck lints each unit in isolation so it can never see the readers in the other 45
 
 # ---------------------------------------------------------------------------
 # Diagnostics (all to stderr — stdout stays machine-clean)
@@ -40,7 +40,7 @@ NL='
 # unique to that function. Because POSIX sh has no `local`, a name reused
 # across two functions that can appear in the same call chain (e.g. one helper
 # calling another) will silently clobber the caller's copy — and since the
-# engine was split into 45 sourced units, the two colliding functions are
+# engine was split into 46 sourced units, the two colliding functions are
 # rarely on the same screen any more.
 #
 # The form that survives that split is a SHORT PER-FUNCTION PREFIX, derived
@@ -152,7 +152,7 @@ ensure_workdir() {
 # directory (or a symlink) at the identical name, which is then where this engine
 # writes AND READS BACK every API response body and every staged download. That is
 # the same parent-governed race http.sh's staging relocation closed, one level up,
-# and it is a property all 45 units depend on.
+# and it is a property all 46 units depend on.
 #
 # THE STICKY EXEMPTION IS CORRECT FOR THIS CALLER, which is why it passes
 # assert_safe_dir's `replace-an-existing-entry` policy: every entry this engine
@@ -517,7 +517,7 @@ assert_sticky_dir_owner() {
 
 # strip_control_ansi — reads stdin, writes stdout with ANSI CSI sequences
 # and C0/DEL control bytes removed. Deliberately implemented with sed/tr
-# (not jq regex) so this script has no Oniguruma dependency.
+# (not jq regex) so this helper has no Oniguruma dependency.
 #
 # TAB (\011) and NEWLINE (\012) are the two C0 bytes deliberately KEPT: callers
 # split multi-line values on newlines, and a tab is legitimate text (cmd-version.sh
@@ -528,7 +528,7 @@ assert_sticky_dir_owner() {
 # text off column 0 — defeating for a watching human what still held at the byte
 # level for grep. Nothing in this engine parses CRLF through this helper (http.sh's
 # redirect-Location parsing greps the raw header dump and never routes it here),
-# so deleting it is safe for all 44 other units.
+# so deleting it is safe for all 45 other units.
 #
 # The C1 range (\200-\237) is deliberately NOT stripped here, even though it holds
 # NEL (\205) and other bytes an 8-bit-control terminal honors as a line break: those
@@ -582,6 +582,36 @@ strip_control_ansi() {
 # "not required", never "must not".
 fold_disclosed_value() {
 	printf '%s' "$1" | strip_control_ansi | tr -d '\011\012\200-\237'
+}
+
+# JQ_ONE_LINE_DEF — a jq `one_line` def, the CODEPOINT-level twin of
+# fold_disclosed_value for text that has to stay readable UTF-8. It maps to a
+# space every codepoint that strip_control_ansi (whose job is bytes) lets
+# through and that a reader could honor as a break or a control: TAB, LF, CR,
+# the whole C1 range U+0080-U+009F (NEL, and the 8-bit CSI U+009B among them —
+# the same class fold_disclosed_value removes), LINE SEPARATOR (U+2028) and
+# PARAGRAPH SEPARATOR (U+2029). So a crafted API value (a display name, a
+# transition name) cannot forge a row of its own in a render. The remaining C0
+# controls (VT, FF, FS/GS/RS, ESC sequences) are left to strip_control_ansi,
+# which every caller still pipes through afterwards. Codepoints, not bytes, which
+# is the point: fold_disclosed_value's `tr` deletes the \200-\237 BYTES, which
+# are also UTF-8 continuation bytes and so mangle "ß" (C3 9F) or an em dash;
+# here U+0085 is one codepoint and "ß" is another. explode/implode, not gsub, so this
+# needs no Oniguruma-enabled jq.
+#
+# Prepended to a caller's STATIC program (`jq "$JQ_ONE_LINE_DEF"'…'`): two
+# constants joined, never data, so the jq-program-is-never-built-from-input
+# rule holds.
+JQ_ONE_LINE_DEF='def one_line: tostring | explode | map(if . == 9 or . == 10 or . == 13 or (. >= 128 and . <= 159) or . == 8232 or . == 8233 then 32 else . end) | implode;'
+
+# one_line_display VALUE -> VALUE on one line, via JQ_ONE_LINE_DEF then
+# strip_control_ansi — the same protection as fold_disclosed_value (no
+# line break, no C0/C1 control, no ANSI sequence survives), for any API- or
+# caller-sourced value printed into a line whose integrity matters (a plan row,
+# a JIRA_*= line, a diagnostic), without fold_disclosed_value's byte deletion,
+# which corrupts legitimate UTF-8.
+one_line_display() {
+	jq -rn --arg v "$1" "$JQ_ONE_LINE_DEF"'$v | one_line' | strip_control_ansi
 }
 
 # ---------------------------------------------------------------------------
