@@ -21,7 +21,7 @@
 #      a SIBLING of the paragraph, never its own top-level block. See the
 #      "Nested lists" design note below.)
 #   ---  (a line that IS exactly "---")  -> a rule node
-#   ```lang / ```           -> a fenced code block (see "Fenced code" below)
+#   ```lang / ~~~lang       -> a fenced code block (see "Fenced code" below)
 #   > ...                   -> a blockquote wrapping ONE OR MORE paragraphs
 #   > [!INFO]/[!NOTE]/[!WARNING]/[!SUCCESS]/[!ERROR] (+ GitHub-alert aliases
 #     [!TIP]->success, [!CAUTION]->error, [!IMPORTANT]->warning), as the
@@ -590,6 +590,63 @@ emit_code_block() {
 		  content: (if (. | length) == 0 then [] else [{type:"text", text:.}] end)}' \
 		<"$FENCE_BODY_FILE" >>"$BLOCKS_FILE" \
 		|| { error "internal jq failure (code block assembly)"; exit 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Fenced code — CommonMark's fence rule, so a fence can CONTAIN a fence.
+#
+# An opening fence is a run of 3+ of ONE fence character, ` or ~, followed by
+# an optional info string (here: the language); a BACKTICK fence's info string
+# may not itself contain a backtick, or the line is not a fence at all (it
+# degrades to paragraph text). The run's character and length are recorded,
+# and the fence closes ONLY on a line that is nothing but the SAME character,
+# at least as many of it, plus optional surrounding whitespace. Everything in
+# between is literal — which is exactly what lets a ```` block show a ``` block
+# as its content instead of being split by it. An unclosed fence still
+# auto-closes at EOF with whatever it collected.
+#
+# lib/inline-images.sh mirrors these two predicates in jira.sh's own process
+# (this script runs as a separate subprocess and is never sourced), so both
+# agree on which lines are fence content; change them together.
+# ---------------------------------------------------------------------------
+
+# parse_fence_opener TRIMMED_LINE — 0 and sets FENCE_CHAR/FENCE_LEN/FENCE_LANG
+# when TRIMMED_LINE opens a fence; 1 (setting nothing) otherwise.
+parse_fence_opener() {
+	pfo_line=$1
+	case "$pfo_line" in
+		'```'*) pfo_char='`' ;;
+		'~~~'*) pfo_char='~' ;;
+		*) return 1 ;;
+	esac
+	pfo_rest=$pfo_line
+	pfo_len=0
+	while :; do
+		case "$pfo_rest" in
+			"$pfo_char"*) pfo_rest=${pfo_rest#?}; pfo_len=$((pfo_len + 1)) ;;
+			*) break ;;
+		esac
+	done
+	if [ "$pfo_char" = '`' ]; then
+		case "$pfo_rest" in
+			*'`'*) return 1 ;;
+		esac
+	fi
+	FENCE_CHAR=$pfo_char
+	FENCE_LEN=$pfo_len
+	FENCE_LANG=$(trim "$pfo_rest")
+}
+
+# is_fence_closer TRIMMED_LINE — 0 when TRIMMED_LINE closes the OPEN fence:
+# only FENCE_CHAR, at least FENCE_LEN of it.
+is_fence_closer() {
+	ifc_line=$1
+	[ -n "$ifc_line" ] || return 1
+	case "$FENCE_CHAR" in
+		'`') case "$ifc_line" in *[!'`']*) return 1 ;; esac ;;
+		*)   case "$ifc_line" in *[!'~']*) return 1 ;; esac ;;
+	esac
+	[ "${#ifc_line}" -ge "$FENCE_LEN" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1352,6 +1409,8 @@ PARA_TEXT=""
 PARA_PENDING_HARD_BREAK=0
 FENCE_OPEN=0
 FENCE_LANG=""
+FENCE_CHAR=""
+FENCE_LEN=0
 TABLE_STATE="CLOSED"
 QUOTE_OPEN=0
 QUOTE_PANEL_TYPE=""
@@ -1367,7 +1426,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 	# byte-verbatim, untrimmed, with no markdown parsing whatsoever. ---
 	if [ "$FENCE_OPEN" = "1" ]; then
 		fence_trimmed=$(trim "$raw_line")
-		if [ "$fence_trimmed" = '```' ]; then
+		if is_fence_closer "$fence_trimmed"; then
 			emit_code_block
 			FENCE_OPEN=0
 			FENCE_LANG=""
@@ -1453,14 +1512,15 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 			list_close_all
 			emit_rule
 			continue ;;
-		'```'*)
-			flush_paragraph
-			list_close_all
-			FENCE_LANG=$(trim "${trimmed#'```'}")
-			: >"$FENCE_BODY_FILE"
-			FENCE_OPEN=1
-			continue ;;
 	esac
+
+	if parse_fence_opener "$trimmed"; then
+		flush_paragraph
+		list_close_all
+		: >"$FENCE_BODY_FILE"
+		FENCE_OPEN=1
+		continue
+	fi
 
 	# --- own-line inline image (block-level media). ONLY when --media-map is
 	# supplied: a line that is SOLELY `![alt](PATH)` with a LOCAL (non-http(s))

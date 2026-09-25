@@ -41,7 +41,10 @@
 #     The FULL-ADF-set fixtures are hand-authored for the SAME reason —
 #     the oracle predates all of them, full stop: strike, headings-1-6,
 #     bold-italic-stacked, hardbreak, code-block-plain/-lang/-markdown-
-#     inside, blockquote-plain, panel-info/-note/-warning/-success/-error/
+#     inside, the CommonMark-fence set (code-block-fence-nested/-tilde/
+#     -tilde-holds-backticks/-unclosed-longer-fence/-closer-rules; its
+#     code-block-backtick-info-not-fence.md has NO golden and is asserted on
+#     block structure instead), blockquote-plain, panel-info/-note/-warning/-success/-error/
 #     -alias-tip, nested-list, table-basic, table-empty-cell. (table-basic
 #     replaces the old degrade-table fixture from before real table support
 #     existed — the SAME input now correctly parses as a table instead of
@@ -696,6 +699,41 @@ if printf '%s' "$codeblock_text" | grep -Fq -- '**not bold**'; then
 else
 	fail "golden: code-block-markdown-inside — markdown-looking text survives LITERALLY" "got: $codeblock_text"
 fi
+
+section "md-to-adf.sh — golden-file: CommonMark fences (a fence can contain a fence)"
+
+# A fence opens on 3+ of ONE character, ` or ~, and closes only on a line of
+# that SAME character at least as long. The golden fixtures below were
+# hand-authored from that rule, not generated from the converter; none of them
+# contains inline markup, so each golden pins BLOCK structure and literal code
+# text only.
+golden_match "golden: code-block-fence-nested (a \`\`\`\` fence shows a \`\`\` block as content)" \
+	"$FIXTURES_DIR/code-block-fence-nested.md" "$FIXTURES_DIR/code-block-fence-nested.expected.json"
+golden_match "golden: code-block-tilde (~~~lang opens and ~~~ closes a fence)" \
+	"$FIXTURES_DIR/code-block-tilde.md" "$FIXTURES_DIR/code-block-tilde.expected.json"
+golden_match "golden: code-block-tilde-holds-backticks (\`\`\` inside ~~~ is content; a ~~~ info string may hold a backtick)" \
+	"$FIXTURES_DIR/code-block-tilde-holds-backticks.md" "$FIXTURES_DIR/code-block-tilde-holds-backticks.expected.json"
+golden_match "golden: code-block-unclosed-longer-fence (a shorter run never closes it; it runs to EOF)" \
+	"$FIXTURES_DIR/code-block-unclosed-longer-fence.md" "$FIXTURES_DIR/code-block-unclosed-longer-fence.expected.json"
+golden_match "golden: code-block-closer-rules (plain \`\`\`: \`\`\`js is content; a LONGER run closes)" \
+	"$FIXTURES_DIR/code-block-closer-rules.md" "$FIXTURES_DIR/code-block-closer-rules.expected.json"
+
+# ```a`b is NOT a fence opener (a backtick fence's info string may not contain a
+# backtick), so the next line is not code either. Asserted on BLOCK STRUCTURE
+# only, not as a golden: the line's backticks also go through the inline
+# code-span tokenizer, whose (non-CommonMark) rendering of them is not what this
+# fixture is about and would be pinned by a byte-exact golden.
+TESTS_RUN=$((TESTS_RUN + 1))
+not_fence_blocks=$(env -i HOME="$WORK/home" PATH="$TOOLBOX" TMPDIR="$WORK" sh "$CONVERTER" \
+	--file "$FIXTURES_DIR/code-block-backtick-info-not-fence.md" \
+	| jq -c '[.content[] | {type, holds_following_line: ([.. | objects | .text? // empty] | join("") | contains("not code"))}]')
+if [ "$not_fence_blocks" = '[{"type":"paragraph","holds_following_line":true}]' ]; then
+	pass "code-block-backtick-info-not-fence: \`\`\`a\`b opens NO fence — ONE paragraph, the following line inside it, no codeBlock"
+else
+	fail "code-block-backtick-info-not-fence: \`\`\`a\`b opens NO fence — ONE paragraph, the following line inside it, no codeBlock" \
+		"got blocks: $not_fence_blocks"
+fi
+
 
 section "md-to-adf.sh — golden-file: blockquote / panel"
 

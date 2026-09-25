@@ -4829,6 +4829,111 @@ equals "scan mixed images: EXACTLY ONE mediaSingle in the comment body (fenced +
 SCAN_MEDIA_ID=$(jq -r '[.body.content[] | select(.type=="mediaSingle")][0].content[0].attrs.id' "$CURL_STUB_BODY_LOG_DIR/call-3.body")
 equals "scan mixed images: the one mediaSingle references the resolved UUID" "$SCAN_MEDIA_ID" "$MEDIA_UUID"
 
+section "jira.sh — inline-image scan agrees with md-to-adf on CommonMark fences: nested, tilde, and longer fences hide their images"
+
+# Each fenced image path deliberately does NOT EXIST (the same technique as the
+# section above): a scan that treated any of them as a real image would abort
+# the command at require_readable_file (exit 2). The two REAL images exist and
+# must both upload — one of them sits right after a fence that only a LONGER run
+# closes, so a scan that required an exact-length closer would still be inside
+# that fence and skip it. Fence shapes the scan must read exactly as the
+# converter does:
+#   * a ```` fence CONTAINING a ``` fence — the inner ``` must not close it, so
+#     the image AFTER the inner block is still fence content;
+#   * a ~~~ fence, which the old scan did not recognize at all;
+#   * a ~~~ fence containing ``` — only ~~~ (or longer) closes it;
+#   * a ``` line carrying an info string (```js) inside an open ``` fence —
+#     content, not a closer;
+#   * a ``` fence containing ~~~ — a closer must be the OPENER's character;
+#   * a ```` fence closed by ````` — a closer may be LONGER than the opener;
+#   * a fence left unclosed by a SHORTER run — it runs to end of document.
+reset_curl_stub
+INLINE_FENCE_REAL="$WORK/fence-real.png"
+printf 'REAL' >"$INLINE_FENCE_REAL"
+INLINE_AFTER_LONGER_CLOSE="$WORK/after-longer-close.png"
+printf 'AFTERLONGER' >"$INLINE_AFTER_LONGER_CLOSE"
+FENCE_SCAN_MD="$WORK/scan-commonmark-fences.md"
+{
+	printf 'Before.\n\n'
+	printf '````markdown\n'
+	printf '```\n'
+	printf '![inner](/nonexistent/inner.png)\n'
+	printf '```\n'
+	printf '![after-inner-close](/nonexistent/after-inner-close.png)\n'
+	printf '````\n\n'
+	printf '~~~\n'
+	printf '![tilde](/nonexistent/tilde.png)\n'
+	printf '~~~\n\n'
+	printf '~~~text\n'
+	printf '```\n'
+	printf '![tilde-holds-backticks](/nonexistent/tilde-holds-backticks.png)\n'
+	printf '```\n'
+	printf '~~~\n\n'
+	printf '```\n'
+	printf '```js\n'
+	printf '![after-info-line](/nonexistent/after-info-line.png)\n'
+	printf '```\n\n'
+	printf '```\n'
+	printf '~~~\n'
+	printf '![backticks-hold-tilde](/nonexistent/backticks-hold-tilde.png)\n'
+	printf '~~~\n'
+	printf '```\n\n'
+	printf '````\n'
+	printf '![inside-long](/nonexistent/inside-long.png)\n'
+	printf '`````\n\n'
+	printf '![after-longer-close](%s)\n\n' "$INLINE_AFTER_LONGER_CLOSE"
+	printf '![real](%s)\n\n' "$INLINE_FENCE_REAL"
+	printf '````\n'
+	printf '```\n'
+	printf '![unclosed](/nonexistent/unclosed.png)\n'
+} >"$FENCE_SCAN_MD"
+# calls 1-2: upload + resolve the image after the longer-closed fence;
+# calls 3-4: the same for the last real image; call 5: the comment POST.
+set_stub_response 1 "[$ATTACH_OBJ_PNG]" 200
+set_stub_response 2 '' 303
+set_stub_headers 2 "$MEDIA_303_HEADERS"
+set_stub_response 3 "[$ATTACH_OBJ_PNG]" 200
+set_stub_response 4 '' 303
+set_stub_headers 4 "$MEDIA_303_HEADERS"
+set_stub_response 5 '{"id":"10010"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment PSWS-1 --text-file "$FENCE_SCAN_MD" --confirmed-site foo.atlassian.net
+expect_rc "scan CommonMark fences -> exit 0 (no fenced path was extracted)" 0
+equals "scan CommonMark fences: exactly FIVE calls — the TWO images outside every fence upload (2 x upload+resolve) + the comment" \
+	"$(call_count)" "5"
+equals "scan CommonMark fences: the image after the ````-closed-by-\`\`\`\`\` fence is the FIRST upload" \
+	"$(argv_call_token_count 1 "file=@\"$INLINE_AFTER_LONGER_CLOSE\"")" "1"
+equals "scan CommonMark fences: the converter agrees — both images are mediaSingle, in document order, and every fence is code" \
+	"$(jq -c '[.body.content[] | .type | select(. == "mediaSingle" or . == "codeBlock")]' "$CURL_STUB_BODY_LOG_DIR/call-5.body")" \
+	'["codeBlock","codeBlock","codeBlock","codeBlock","codeBlock","codeBlock","mediaSingle","mediaSingle","codeBlock"]'
+
+section "jira.sh — inline-image scan agrees with md-to-adf: a backtick run with a backtick in its info string opens NO fence"
+
+# ```a`b is paragraph text in CommonMark, not a fence opener, so the image line
+# after it is a REAL image — uploaded by the scan, and rendered as media by the
+# converter. A scan that opened a fence there would skip the upload while the
+# converter still rendered the line, leaving the two disagreeing.
+reset_curl_stub
+INLINE_NOT_FENCED="$WORK/not-fenced.png"
+printf 'NOTFENCED' >"$INLINE_NOT_FENCED"
+NOT_A_FENCE_MD="$WORK/scan-not-a-fence.md"
+{
+	# shellcheck disable=SC2016  # the backticks are the markdown FIXTURE — they must stay literal, never expand
+	printf '```a`b\n\n'
+	printf '![after-non-fence](%s)\n' "$INLINE_NOT_FENCED"
+} >"$NOT_A_FENCE_MD"
+set_stub_response 1 "[$ATTACH_OBJ_PNG]" 200
+set_stub_response 2 '' 303
+set_stub_headers 2 "$MEDIA_303_HEADERS"
+set_stub_response 3 '{"id":"10011"}' 201
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" comment PSWS-1 --text-file "$NOT_A_FENCE_MD" --confirmed-site foo.atlassian.net
+expect_rc "scan non-fence backtick line -> exit 0" 0
+equals "scan non-fence backtick line: THREE calls — the image after it WAS uploaded" "$(call_count)" "3"
+equals "scan non-fence backtick line: the converter renders it as media, and no code block" \
+	"$(jq -c '[.body.content[] | .type]' "$CURL_STUB_BODY_LOG_DIR/call-3.body")" '["paragraph","mediaSingle"]'
+
+
 section "jira.sh — create --json with an inline image: emitted JSON is the CREATE's 201 body (snapshot), NOT the follow-up 204 PUT"
 
 reset_curl_stub
