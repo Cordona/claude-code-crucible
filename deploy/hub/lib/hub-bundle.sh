@@ -171,14 +171,6 @@ hub_bundle_install() {
 	done <"$hbi_contracts"
 }
 
-# hub_bundle_count SRC -> how many items the bundle holds (1 config + N
-# contracts), for the preview's "not counted above" line.
-hub_bundle_count() {
-	hbc_contracts="$(hub_mktemp_dir)/contracts.txt"
-	hub_disc_contract_files "$1" >"$hbc_contracts"
-	printf '%s\n' "$(($(hub_count_lines "$hbc_contracts") + 1))"
-}
-
 # hub_bundle_backups TARGET_DIR -> one CLAUDE.md.backup.* path per line, oldest
 # first (the timestamp format sorts lexically).
 hub_bundle_backups() {

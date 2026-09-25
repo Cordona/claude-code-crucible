@@ -241,18 +241,34 @@ fx_link_alpha_and_sd_baseline() {
 
 # --- The bundle tree --------------------------------------------------------
 #
-# A THIRD source tree, and the only one that ships a root CLAUDE.md — the file
-# that makes a first run also install the bundle (lib/hub-bundle.sh). Kept out of
-# the primary tree because a bundle there would add a block to every install
-# preview and Result both runners assert. GTD alone is enough beside it: it is
-# one self-contained group a caller can put wholly `installed` with
+# A THIRD source tree, and the only one that ships the first-run BUNDLE: a root
+# CLAUDE.md and two contract schemas (lib/hub-bundle.sh). Kept out of the primary
+# tree because a bundle there would add a block to every install preview and
+# Result both runners assert. GTD alone is enough beside it: it is one
+# self-contained group a caller can put wholly `installed` with
 # fx_link_bundle_tree_gtd, which is the one state where install still has
 # something to do (the bundle) while every selected unit is already in place.
+#
+# TWO schemas, not one, because uninstall names what it finds at the target by
+# count ("N contract schemas" vs "1 contract schema"), and only a source with more
+# than one lets a target hold a strict subset of them.
+
+# Source-relative and deployed paths of the bundle's three items. The deployed
+# layout is written out rather than read from lib/hub-domains.sh's
+# HUB_BUNDLE_CONTRACTS_SUBDIR, for the reason the unit layout above is.
+FX_BUNDLE_CONFIG='CLAUDE.md'
+FX_BUNDLE_SRC_SCHEMA_A='contracts/fixture-alpha.schema.json'
+FX_BUNDLE_SRC_SCHEMA_B='contracts/fixture-beta.schema.json'
+FX_BUNDLE_DEPLOYED_SCHEMA_A='crucible/contracts/fixture-alpha.schema.json'
+FX_BUNDLE_DEPLOYED_SCHEMA_B='crucible/contracts/fixture-beta.schema.json'
 
 # fx_build_bundle_source DIR -> that tree.
 fx_build_bundle_source() {
 	fx_write_gtd "$1"
-	printf '# fixture operating contract\n' >"$1/CLAUDE.md"
+	printf '# fixture operating contract\n' >"$1/$FX_BUNDLE_CONFIG"
+	mkdir -p "$1/${FX_BUNDLE_SRC_SCHEMA_A%/*}"
+	printf '{}\n' >"$1/$FX_BUNDLE_SRC_SCHEMA_A"
+	printf '{}\n' >"$1/$FX_BUNDLE_SRC_SCHEMA_B"
 }
 
 # fx_link_bundle_tree_gtd TARGET DIR -> GTD's three units linked to the bundle
@@ -261,6 +277,14 @@ fx_link_bundle_tree_gtd() {
 	ln -s "$2/$FX_SRC_GTD_AGENT" "$1/$FX_DEPLOYED_GTD_AGENT"
 	ln -s "$2/$FX_SRC_GTD_CAPTURE" "$1/$FX_DEPLOYED_GTD_CAPTURE"
 	ln -s "$2/$FX_SRC_GTD_FLOW" "$1/$FX_DEPLOYED_GTD_FLOW"
+}
+
+# fx_link_bundle_item TARGET DIR DEPLOYED_RELPATH SRC_RELPATH -> one bundle item
+# installed from the bundle tree at DIR — fx_link's counterpart for that tree,
+# creating the contracts directory a schema lands in.
+fx_link_bundle_item() {
+	mkdir -p "$(dirname "$1/$3")"
+	ln -s "$2/$4" "$1/$3"
 }
 
 # --- The badge-color tree ---------------------------------------------------

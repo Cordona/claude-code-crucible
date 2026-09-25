@@ -9,7 +9,8 @@
 #                contract is that it never removes a unit from the pipeline —
 #                and the preview's dry-run wording, which hub-install.sh AND
 #                hub-uninstall.sh must drop on the one path that writes with no
-#                prompt in between.
+#                prompt in between, and uninstall --all's count of the first-run
+#                bundle, taken from what the target actually holds.
 #
 # The shared machinery lives in lib/: the runner primitives and the isolated
 # PATH toolbox in lib/harness.sh (which also states why this is hand-rolled
@@ -1307,8 +1308,8 @@ section "uninstall --all --apply WITHOUT --confirm: blocked, so the wording is s
 # refuses it outright, so "Nothing has changed yet" is exactly right. The two
 # sections differ in --confirm alone.
 #
-# The totals line is matched on its CLAUSE, not its count: --all's total includes
-# the bundle row, whose own counting is not this section's subject.
+# The totals line is matched on its CLAUSE, not its count: --all's total also
+# counts whatever bundle items the target holds, which the bundle sections own.
 TARGET_WORDING_ALL_BLOCKED="$WORK/target-wording-all-blocked"
 fx_target_reset "$TARGET_WORDING_ALL_BLOCKED"
 fx_link_alpha_and_sd_baseline "$TARGET_WORDING_ALL_BLOCKED"
@@ -1335,5 +1336,230 @@ stderr_lacks "uninstall(wording/all-confirmed): no [DRY RUN] marker" '[DRY RUN]'
 stderr_lacks "uninstall(wording/all-confirmed): no \"Nothing has changed yet\"" "$NOT_CHANGED_YET"
 path_absent "uninstall(wording/all-confirmed): the removal really happened" \
 	"$TARGET_WORDING_ALL_CONFIRMED/$FX_DEPLOYED_ALPHA_DEV"
+
+# ===========================================================================
+# uninstall --all — the first-run BUNDLE (CLAUDE.md and the contract schemas) is
+# counted and named from what the TARGET holds, never from what the source ships.
+#
+# Every case runs against the bundle tree (lib/fixture.sh), whose source ships
+# CLAUDE.md and TWO schemas, over a target whose GTD units are installed from it —
+# so "Remove: 3 items" is fixed and only the bundle's share of the total moves. A
+# count taken from the source would be 3 on every target here; each case below
+# holds a different subset, which is what makes that answer wrong somewhere.
+#
+# "PRESENT" is every occupant the apply will ATTEMPT, a foreign one included: it is
+# counted, then reported as left untouched, exactly as a component row is.
+# ===========================================================================
+BUNDLE_ALSO_REMOVING="  Also removing (the framework's own operating contract, removed last):"
+# The GTD rows' LAST line: the bundle block, when there is one, follows it after a
+# blank line, so a block pinned from here says nothing sits between the two.
+BUNDLE_REMOVE_TAIL='    - Procedure GTD fixture capture'
+# A backup name in the timestamp shape hub_bundle_backups globs for. Fixed rather
+# than generated, so the restore note and the payload can be matched exactly.
+BUNDLE_BACKUP_NAME='CLAUDE.md.backup.2026-01-01T00-00-00Z'
+BUNDLE_BACKUP_CONTENT='the contract this user had before the framework'
+
+# invoke_uninstall_bundle_tree TARGET [FLAG ...] -> hub-uninstall.sh --all against the
+# bundle tree: invoke_uninstall binds the primary source, which ships no bundle.
+invoke_uninstall_bundle_tree() {
+	iubt_target=$1
+	shift
+	harness_run sh "$UNINSTALL" --source "$BUNDLE_SRC" --target "$iubt_target" \
+		--non-interactive --no-color --all "$@"
+}
+
+# bundle_target TARGET ITEM... -> a fresh target with GTD installed from the bundle
+# tree plus the named bundle items: `config` and `schema-a` / `schema-b` link the
+# framework's own; `foreign-config` puts the user's own file at CLAUDE.md;
+# `backup` leaves a CLAUDE.md backup, as an earlier install that replaced one does.
+bundle_target() {
+	bt_target=$1
+	shift
+	fx_target_reset "$bt_target"
+	fx_link_bundle_tree_gtd "$bt_target" "$BUNDLE_SRC"
+	for bt_item in "$@"; do
+		case $bt_item in
+		config) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_CONFIG" "$FX_BUNDLE_CONFIG" ;;
+		schema-a) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_A" "$FX_BUNDLE_SRC_SCHEMA_A" ;;
+		schema-b) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_B" "$FX_BUNDLE_SRC_SCHEMA_B" ;;
+		foreign-config) fx_occupy "$bt_target" "$FX_BUNDLE_CONFIG" ;;
+		backup) printf '%s\n' "$BUNDLE_BACKUP_CONTENT" >"$bt_target/$BUNDLE_BACKUP_NAME" ;;
+		*) printf 'FATAL: bundle_target: unknown item %s\n' "$bt_item" >&2; exit 1 ;;
+		esac
+	done
+}
+
+# expect_bundle_line LABEL ITEM TOTAL -> the preview's bundle block names exactly
+# ITEM — pinned as a whole line, so "CLAUDE.md" cannot pass on "CLAUDE.md and 1
+# contract schema" — and the total that follows it is TOTAL. The totals line is
+# matched up to its period only, so the one helper serves a preview and an apply.
+expect_bundle_line() {
+	stdout_has_block "$1: the bundle line names exactly what the target holds, and the total counts it" \
+		"$BUNDLE_REMOVE_TAIL
+
+$BUNDLE_ALSO_REMOVING
+    - $2
+
+  $3 items total."
+}
+
+section "uninstall --all, NO bundle at the target: no bundle line, and the total counts none of it"
+TARGET_BUNDLE_ABSENT="$WORK/target-bundle-absent"
+bundle_target "$TARGET_BUNDLE_ABSENT"
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ABSENT" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle/absent): -> exit 0" 0
+stdout_lacks "uninstall(bundle/absent): no \"Also removing\" block for a bundle that is not there" \
+	'Also removing'
+# The whole totals line, with the GTD rows directly above it: a bundle block of any
+# shape, or a bundle-inflated count, breaks the one match.
+stdout_has_block "uninstall(bundle/absent): the total is the three GTD rows alone" \
+	"$BUNDLE_REMOVE_TAIL
+
+  3 items total.
+"
+stdout_has "uninstall(bundle/absent): and every attempted item was removed" \
+	"Uninstalled 3/3 items from $TARGET_BUNDLE_ABSENT"
+
+TARGET_BUNDLE_ABSENT_ENV="$WORK/target-bundle-absent-env"
+bundle_target "$TARGET_BUNDLE_ABSENT_ENV"
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ABSENT_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(bundle/absent-env): -> exit 0" 0
+stdout_has "uninstall(bundle/absent-env): the payload attempted the three GTD rows only" \
+	"HUB_ATTEMPTED_COUNT='3'"
+stdout_has "uninstall(bundle/absent-env): and acted on all three, so attempted == acted on" \
+	"HUB_ACTED_ON_COUNT='3'"
+
+section "uninstall --all, the WHOLE bundle at the target: named in full, counted, and removed"
+TARGET_BUNDLE_FULL="$WORK/target-bundle-full"
+bundle_target "$TARGET_BUNDLE_FULL" config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_FULL" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle/full): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/full)" 'CLAUDE.md and 2 contract schemas' 6
+stdout_has "uninstall(bundle/full): all six came out" "Uninstalled 6/6 items from $TARGET_BUNDLE_FULL"
+path_absent "uninstall(bundle/full): CLAUDE.md was removed" "$TARGET_BUNDLE_FULL/$FX_BUNDLE_CONFIG"
+path_absent "uninstall(bundle/full): the first schema was removed" "$TARGET_BUNDLE_FULL/$FX_BUNDLE_DEPLOYED_SCHEMA_A"
+path_absent "uninstall(bundle/full): the second schema was removed" "$TARGET_BUNDLE_FULL/$FX_BUNDLE_DEPLOYED_SCHEMA_B"
+
+# THE FOUR PARTIAL SHAPES, previewed: the line is built from two independent counts
+# (config present or not, schemas 0/1/2), and each shape below is one arm of that
+# rendering — with and without CLAUDE.md, singular and plural.
+section "uninstall --all preview, CLAUDE.md alone: named alone"
+TARGET_BUNDLE_CONFIG_ONLY="$WORK/target-bundle-config-only"
+bundle_target "$TARGET_BUNDLE_CONFIG_ONLY" config
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_CONFIG_ONLY"
+expect_rc "uninstall(bundle/config-only): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/config-only)" 'CLAUDE.md' 4
+
+section "uninstall --all preview, the schemas alone: counted, plural"
+TARGET_BUNDLE_SCHEMAS_ONLY="$WORK/target-bundle-schemas-only"
+bundle_target "$TARGET_BUNDLE_SCHEMAS_ONLY" schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_SCHEMAS_ONLY"
+expect_rc "uninstall(bundle/schemas-only): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/schemas-only)" '2 contract schemas' 5
+
+section "uninstall --all preview, ONE schema of the source's two: counted, singular"
+TARGET_BUNDLE_ONE_SCHEMA="$WORK/target-bundle-one-schema"
+bundle_target "$TARGET_BUNDLE_ONE_SCHEMA" schema-a
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ONE_SCHEMA"
+expect_rc "uninstall(bundle/one-schema): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/one-schema)" '1 contract schema' 4
+
+section "uninstall --all preview, CLAUDE.md and ONE schema: both named, singular"
+TARGET_BUNDLE_CONFIG_ONE_SCHEMA="$WORK/target-bundle-config-one-schema"
+bundle_target "$TARGET_BUNDLE_CONFIG_ONE_SCHEMA" config schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_CONFIG_ONE_SCHEMA"
+expect_rc "uninstall(bundle/config-one-schema): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/config-one-schema)" 'CLAUDE.md and 1 contract schema' 5
+
+section "uninstall --all, a FOREIGN CLAUDE.md: counted as attempted, left untouched"
+TARGET_BUNDLE_FOREIGN="$WORK/target-bundle-foreign"
+bundle_target "$TARGET_BUNDLE_FOREIGN" foreign-config
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_FOREIGN" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle/foreign): -> exit 0" 0
+expect_bundle_line "uninstall(bundle/foreign)" 'CLAUDE.md' 4
+stdout_has "uninstall(bundle/foreign): one of the four was not removed" \
+	"Uninstalled 3/4 items from $TARGET_BUNDLE_FOREIGN"
+stdout_has "uninstall(bundle/foreign): and the Result names it as refused" \
+	'CLAUDE.md left untouched — a file that is not framework-owned occupies its path'
+expect_ok "uninstall(bundle/foreign): the user's own file is still there, unchanged" \
+	"CLAUDE.md now reads: $(cat "$TARGET_BUNDLE_FOREIGN/$FX_BUNDLE_CONFIG" 2>&1)" \
+	"$(grep -qxF 'not a framework symlink' "$TARGET_BUNDLE_FOREIGN/$FX_BUNDLE_CONFIG" && echo 0 || echo 1)"
+
+TARGET_BUNDLE_FOREIGN_ENV="$WORK/target-bundle-foreign-env"
+bundle_target "$TARGET_BUNDLE_FOREIGN_ENV" foreign-config
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_FOREIGN_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(bundle/foreign-env): -> exit 0" 0
+stdout_has "uninstall(bundle/foreign-env): the payload counts the refusal" "HUB_FOREIGN_BLOCKED_COUNT='1'"
+stdout_has "uninstall(bundle/foreign-env): the foreign CLAUDE.md was attempted" "HUB_ATTEMPTED_COUNT='4'"
+stdout_has "uninstall(bundle/foreign-env): but not acted on" "HUB_ACTED_ON_COUNT='3'"
+
+section "uninstall --all, a BACKUP and no bundle: the restore note stands alone, and the restore happens"
+TARGET_BUNDLE_BACKUP="$WORK/target-bundle-backup"
+bundle_target "$TARGET_BUNDLE_BACKUP" backup
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_BACKUP" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle/backup): -> exit 0" 0
+stdout_lacks "uninstall(bundle/backup): no \"Also removing\" block, since no bundle item is there" \
+	'Also removing'
+stdout_has_block "uninstall(bundle/backup): the restore note, directly after the rows, then the total" \
+	"$BUNDLE_REMOVE_TAIL
+
+  A backed-up CLAUDE.md was found and will be restored:
+    $BUNDLE_BACKUP_NAME → CLAUDE.md
+
+  3 items total.
+"
+stdout_has "uninstall(bundle/backup): the Result reports the restore" \
+	"restored CLAUDE.md from $BUNDLE_BACKUP_NAME"
+expect_ok "uninstall(bundle/backup): CLAUDE.md holds the backed-up content again" \
+	"CLAUDE.md now reads: $(cat "$TARGET_BUNDLE_BACKUP/$FX_BUNDLE_CONFIG" 2>&1)" \
+	"$(grep -qxF "$BUNDLE_BACKUP_CONTENT" "$TARGET_BUNDLE_BACKUP/$FX_BUNDLE_CONFIG" && echo 0 || echo 1)"
+path_absent "uninstall(bundle/backup): and the backup was consumed" "$TARGET_BUNDLE_BACKUP/$BUNDLE_BACKUP_NAME"
+
+TARGET_BUNDLE_BACKUP_ENV="$WORK/target-bundle-backup-env"
+bundle_target "$TARGET_BUNDLE_BACKUP_ENV" backup
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_BACKUP_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(bundle/backup-env): -> exit 0" 0
+stdout_has "uninstall(bundle/backup-env): the payload names the backup that was restored" \
+	"HUB_BUNDLE_RESTORED='$BUNDLE_BACKUP_NAME'"
+
+section "uninstall --all preview: classifying the bundle writes NOTHING"
+# The classification ASKS the removal routine what it would do, so a preview is only
+# as read-only as that call's APPLY argument. Asserted on the whole target tree —
+# every path, where each link points and what each file holds — over the richest
+# state: the whole bundle AND a backup, so a stray removal or a stray restore would
+# each show.
+#
+# tree_snapshot DIR -> one line per path under DIR: its type, and its link target
+# or its content checksum.
+tree_snapshot() {
+	find "$1" | LC_ALL=C sort | while IFS= read -r ts_path; do
+		if [ -h "$ts_path" ]; then
+			printf 'L %s -> %s\n' "$ts_path" "$(readlink "$ts_path")"
+		elif [ -f "$ts_path" ]; then
+			printf 'F %s %s\n' "$ts_path" "$(cksum <"$ts_path")"
+		else
+			printf 'D %s\n' "$ts_path"
+		fi
+	done
+}
+TARGET_BUNDLE_PREVIEW="$WORK/target-bundle-preview"
+bundle_target "$TARGET_BUNDLE_PREVIEW" config schema-a schema-b backup
+BUNDLE_TREE_BEFORE=$(tree_snapshot "$TARGET_BUNDLE_PREVIEW")
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_PREVIEW"
+BUNDLE_TREE_AFTER=$(tree_snapshot "$TARGET_BUNDLE_PREVIEW")
+expect_rc "uninstall(bundle/preview): -> exit 0" 0
+# The POSITIVE anchor: the preview really classified the bundle it then left alone,
+# and really planned the restore it then did not perform.
+stdout_has_block "uninstall(bundle/preview): the whole bundle and the restore were both planned" \
+	"$BUNDLE_ALSO_REMOVING
+    - CLAUDE.md and 2 contract schemas
+
+  A backed-up CLAUDE.md was found and will be restored:
+    $BUNDLE_BACKUP_NAME → CLAUDE.md
+
+  6 items total."
+expect_ok "uninstall(bundle/preview): the target tree is identical before and after" \
+	"before: [$BUNDLE_TREE_BEFORE] after: [$BUNDLE_TREE_AFTER]" \
+	"$([ "$BUNDLE_TREE_BEFORE" = "$BUNDLE_TREE_AFTER" ] && echo 0 || echo 1)"
 
 harness_summary

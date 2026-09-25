@@ -1439,6 +1439,48 @@ hu_preview_remove_items() {
 	hu_row_lines "$(hub_glyph_remove)" '    ' "$PREVIEW_ROWS" "$REMOVE_ONLY"
 }
 
+# hu_bundle_present_build -> classify the first-run bundle's items as they sit in
+# TARGET_DIR now, by asking hub_bundle_remove itself in PREVIEW mode (APPLY=0)
+# rather than through a second copy of its presence test — the same way
+# hub-install.sh previews its bundle through hub_bundle_install. Sets
+# HU_BUNDLE_CONFIG_PRESENT (0 | 1) and HU_BUNDLE_SCHEMA_COUNT.
+#
+# PRESENT MEANS EVERY OUTCOME BUT already-absent, i.e. exactly what the apply call
+# will attempt. A foreign occupant is therefore counted: it is attempted and then
+# reported foreign-blocked, just like a component whose path a foreign file holds
+# (REMOVABLE_ROWS keeps every row that is not "available"). The source's own
+# item count, used before, promised items the target never had, so a complete
+# removal read as "Uninstalled 50/70".
+#
+# APPLY=0 CANNOT WRITE: hub_unlink_at removes only under APPLY=1, and the restore
+# is gated on APPLY=1 as well (no restore path is passed here anyway). The call
+# resets HUB_BUNDLE_RESTORED to empty; nothing reads it before the apply call,
+# which sets it afresh.
+hu_bundle_present_build() {
+	hubpb_log="$(hub_mktemp_dir)/bundle-preview.tsv"
+	hub_bundle_remove "$FRAMEWORK_ROOT" "$TARGET_DIR" 0 "" >"$hubpb_log"
+	HU_BUNDLE_CONFIG_PRESENT=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 != "already-absent" && $2 == ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_SCHEMA_COUNT=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 != "already-absent" && $2 != ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+}
+
+# hu_bundle_preview_item -> the bundle's "Also removing" line, naming only what
+# hu_bundle_present_build found: "CLAUDE.md and 3 contract schemas", "CLAUDE.md"
+# or "1 contract schema". The caller prints nothing when neither is present.
+hu_bundle_preview_item() {
+	hubpi_schemas="$HU_BUNDLE_SCHEMA_COUNT $(hub_plural "$HU_BUNDLE_SCHEMA_COUNT" 'contract schema' 'contract schemas')"
+	if [ "$HU_BUNDLE_CONFIG_PRESENT" -eq 0 ]; then
+		printf '%s\n' "$hubpi_schemas"
+	elif [ "$HU_BUNDLE_SCHEMA_COUNT" -gt 0 ]; then
+		printf '%s and %s\n' "$HUB_BUNDLE_CONFIG_NAME" "$hubpi_schemas"
+	else
+		printf '%s\n' "$HUB_BUNDLE_CONFIG_NAME"
+	fi
+}
+
 # hu_result_remove_items -> the Result screen's receipt, at the granularity the user
 # actually chose at: one line per TECHNOLOGY or TRACKER that came out ("✓ Java
 # (3 items)"), one line per cascaded domain baseline ("✓ Software Development
@@ -1898,16 +1940,22 @@ fi
 
 TOTAL=$REMOVE_COUNT
 if [ "$BUNDLE_REMOVE" -eq 1 ]; then
-	BUNDLE_COUNT=$(hub_bundle_count "$FRAMEWORK_ROOT")
-	TOTAL=$((TOTAL + BUNDLE_COUNT))
-	printf "  Also removing (the framework's own operating contract, removed last):\n"
-	printf '    %s %s and %s contract %s\n' "$(hub_glyph_remove)" "$HUB_BUNDLE_CONFIG_NAME" \
-		"$((BUNDLE_COUNT - 1))" "$(hub_plural "$((BUNDLE_COUNT - 1))" schema schemas)"
-	if [ -n "$RESTORE_TARGET" ]; then
-		printf '\n  A backed-up %s was found and will be restored:\n' "$HUB_BUNDLE_CONFIG_NAME"
-		printf '    %s %s %s\n' "${RESTORE_TARGET##*/}" "$(hub_glyph_arrow)" "$HUB_BUNDLE_CONFIG_NAME"
+	# Only the bundle items present in the target are counted and named — see
+	# hu_bundle_present_build. The restore note stands on its own: a backup is
+	# restored even when the CLAUDE.md link itself is already absent.
+	hu_bundle_present_build
+	HU_BUNDLE_PRESENT_COUNT=$((HU_BUNDLE_CONFIG_PRESENT + HU_BUNDLE_SCHEMA_COUNT))
+	TOTAL=$((TOTAL + HU_BUNDLE_PRESENT_COUNT))
+	if [ "$HU_BUNDLE_PRESENT_COUNT" -gt 0 ]; then
+		printf "  Also removing (the framework's own operating contract, removed last):\n"
+		printf '    %s %s\n' "$(hub_glyph_remove)" "$(hu_bundle_preview_item)"
+		printf '\n'
 	fi
-	printf '\n'
+	if [ -n "$RESTORE_TARGET" ]; then
+		printf '  A backed-up %s was found and will be restored:\n' "$HUB_BUNDLE_CONFIG_NAME"
+		printf '    %s %s %s\n' "${RESTORE_TARGET##*/}" "$(hub_glyph_arrow)" "$HUB_BUNDLE_CONFIG_NAME"
+		printf '\n'
+	fi
 fi
 
 printf '  %s %s total.%s\n' "$TOTAL" "$(hub_plural "$TOTAL" item items)" "$(hub_not_changed_yet_clause)"
@@ -1922,7 +1970,10 @@ printf '\n'
 # stderr under --format=env|json — leaving stdout completely EMPTY and breaking
 # this script's own invariant that a machine caller always receives a HUB_STATUS
 # line on stdout. Reachable whenever every selected row resolves to "Kept".
-if [ "$TOTAL" -eq 0 ]; then
+#
+# A PENDING RESTORE IS NOT "nothing": hub_bundle_remove restores a chosen backup
+# even when no bundle item is present, so exiting here would silently drop it.
+if [ "$TOTAL" -eq 0 ] && [ -z "$RESTORE_TARGET" ]; then
 	hu_ok_exit 'Nothing to remove.'
 fi
 
