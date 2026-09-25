@@ -201,3 +201,22 @@ equals() {
 }
 
 section() { printf '\n== %s ==\n' "$1"; }
+
+# ---------------------------------------------------------------------------
+# Byte needles for the render-forgery cases, shared by every suite
+# ---------------------------------------------------------------------------
+# UNI_NEL / UNI_LS / UNI_PS — the three MULTIBYTE line-break codepoints, U+0085
+# (NEL), U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR), as their UTF-8
+# bytes. `read` and `grep` do NOT split on them, so a column-0 assertion
+# (stdout_no_line_starting_with) cannot fail for them: what discriminates is the
+# raw bytes being gone AND a space standing where each was.
+# C1_CSI — U+009B, the 8-bit CSI an 8-bit terminal reads as ESC-[: not a line
+# break, but in the same C1 range the engine's one-line fold replaces with a
+# space.
+# shellcheck disable=SC2034  # read by the suites that source this file, which shellcheck lints separately
+{
+	UNI_NEL=$(printf '\302\205')
+	UNI_LS=$(printf '\342\200\250')
+	UNI_PS=$(printf '\342\200\251')
+	C1_CSI=$(printf '\302\233')
+}

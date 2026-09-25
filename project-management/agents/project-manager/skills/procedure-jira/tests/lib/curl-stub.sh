@@ -169,3 +169,14 @@ call_count() { cat "$CURL_STUB_COUNTER_FILE" 2>/dev/null || printf '0'; }
 request_method_sequence() {
 	sed -n '/^-X$/{n;p;}' "$CURL_STUB_ARGV_LOG" | tr '\n' '/' | sed 's|/$||'
 }
+
+# argv_call_token_count N TOKEN -> how many times TOKEN appears as an EXACT argv
+# token inside call N's OWN CALL_<n>_BEGIN/END block. The per-call counterpart of
+# argv_log_has_token/argv_log_not_has_token (lib/harness.sh), which span the whole
+# log and therefore cannot say WHICH call carried a token — e.g. that a read and
+# the write after it both addressed one URL, when either one alone would satisfy a
+# log-wide needle.
+argv_call_token_count() {
+	sed -n "/^CALL_$1_BEGIN\$/,/^CALL_$1_END\$/p" "$CURL_STUB_ARGV_LOG" \
+		| grep -Fxc -- "$2" || true
+}

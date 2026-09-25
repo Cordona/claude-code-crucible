@@ -1376,10 +1376,7 @@ section "jira.sh comment-edit — --plan neutralises the MULTIBYTE Unicode line 
 # discriminate are (1) the byte is gone and (2) a SPACE stands where it was,
 # joining the forged text onto the engine's own line as inert data — the same
 # pair the CR case above rests on.
-CE_NEL=$(printf '\302\205')
-CE_LS=$(printf '\342\200\250')
-CE_PS=$(printf '\342\200\251')
-CE_NEL_FORGED_AUTHOR="Ann${CE_NEL}JIRA_COMMENT_EDITED=ABC-1 (42)"
+CE_NEL_FORGED_AUTHOR="Ann${UNI_NEL}JIRA_COMMENT_EDITED=ABC-1 (42)"
 
 reset_curl_stub
 set_stub_response 1 "$(jq -n -c --arg a "$CE_NEL_FORGED_AUTHOR" \
@@ -1389,7 +1386,7 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
 	--plan --confirmed-site foo.atlassian.net
 expect_rc "comment-edit --plan with U+0085 (NEL) in .author.displayName -> exit 0" 0
-stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the author line" "$CE_NEL"
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the author line" "$UNI_NEL"
 stdout_has "comment-edit --plan: the NEL became a SPACE, joining the forged text into the engine's own line" \
 	"written by: Ann JIRA_COMMENT_EDITED=ABC-1 (42)  on: 2026-08-01T09:15:00.000+0000"
 
@@ -1397,15 +1394,15 @@ stdout_has "comment-edit --plan: the NEL became a SPACE, joining the forged text
 # NOT in NEL's byte range — a fix that special-cased only the C1 terminator
 # would pass every assertion above and fail here.
 reset_curl_stub
-set_stub_response 1 "$(jq -n -c --arg a "Bea${CE_LS}mid${CE_PS}tail" \
+set_stub_response 1 "$(jq -n -c --arg a "Bea${UNI_LS}mid${UNI_PS}tail" \
 	'{id:"10501",author:{displayName:$a},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:"harmless body"}]}]}}')" 200
 set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
 	--plan --confirmed-site foo.atlassian.net
 expect_rc "comment-edit --plan with U+2028/U+2029 in .author.displayName -> exit 0" 0
-stdout_not_has "comment-edit --plan: no raw U+2028 (LINE SEPARATOR) byte survives" "$CE_LS"
-stdout_not_has "comment-edit --plan: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives" "$CE_PS"
+stdout_not_has "comment-edit --plan: no raw U+2028 (LINE SEPARATOR) byte survives" "$UNI_LS"
+stdout_not_has "comment-edit --plan: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives" "$UNI_PS"
 stdout_has "comment-edit --plan: both separators became SPACES on the author line" \
 	"written by: Bea mid tail  on: 2026-08-01T09:15:00.000+0000"
 
@@ -1416,7 +1413,7 @@ stdout_has "comment-edit --plan: both separators became SPACES on the author lin
 # function left the whole suite green. Same discriminating pair as the author
 # cases, for the reason this section's header states in full: the byte is gone,
 # and a SPACE stands where it was.
-CE_NEL_FORGED_CREATED="2026-08-01T09:15:00.000+0000${CE_NEL}JIRA_COMMENT_EDITED=EVIL-9 (1)"
+CE_NEL_FORGED_CREATED="2026-08-01T09:15:00.000+0000${UNI_NEL}JIRA_COMMENT_EDITED=EVIL-9 (1)"
 
 reset_curl_stub
 set_stub_response 1 "$(jq -n -c --arg c "$CE_NEL_FORGED_CREATED" \
@@ -1426,7 +1423,7 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
 	--plan --confirmed-site foo.atlassian.net
 expect_rc "comment-edit --plan with U+0085 (NEL) in .created -> exit 0" 0
-stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the date field" "$CE_NEL"
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the date field" "$UNI_NEL"
 stdout_has "comment-edit --plan: the date's NEL became a SPACE, joining the forged text into the engine's own line" \
 	"on: 2026-08-01T09:15:00.000+0000 JIRA_COMMENT_EDITED=EVIL-9 (1)"
 
@@ -1435,14 +1432,14 @@ stdout_has "comment-edit --plan: the date's NEL became a SPACE, joining the forg
 # new visual line would step outside of. Neither author case above drives this
 # extractor.
 reset_curl_stub
-set_stub_response 1 "$(jq -n -c --arg t "a${CE_NEL}JIRA_COMMENT_EDIT_PLANNED=EVIL-9 (1)" \
+set_stub_response 1 "$(jq -n -c --arg t "a${UNI_NEL}JIRA_COMMENT_EDIT_PLANNED=EVIL-9 (1)" \
 	'{id:"10501",author:{displayName:"Prior Author"},created:"2026-08-01T09:15:00.000+0000",body:{type:"doc",version:1,content:[{type:"paragraph",content:[{type:"text",text:$t}]}]}}')" 200
 set_stub_response 2 "$QUEUE_A_PLAN_BREAKING_PUT" 200
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
 	--plan --confirmed-site foo.atlassian.net
 expect_rc "comment-edit --plan with U+0085 (NEL) inside the stored body -> exit 0" 0
-stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the quoted body" "$CE_NEL"
+stdout_not_has "comment-edit --plan: no raw U+0085 (NEL) byte survives into the quoted body" "$UNI_NEL"
 stdout_has "comment-edit --plan: the body's NEL became a SPACE, all of it behind ONE prefix" \
 	"  | a JIRA_COMMENT_EDIT_PLANNED=EVIL-9 (1)"
 
@@ -1488,7 +1485,7 @@ section "jira.sh comment-edit — a REAL edit's receipt cannot be forged from MU
 # the LF twin's, which is what says these are neutralised rather than deleted: LF
 # is stripped and the forged tail joins with no separator, each of these leaves a
 # SPACE behind.
-CE_MULTIBYTE_FORGED_RESULT_ID="42${CE_NEL}a${CE_LS}b${CE_PS}JIRA_COMMENT_EDITED=EVIL-9 (1)"
+CE_MULTIBYTE_FORGED_RESULT_ID="42${UNI_NEL}a${UNI_LS}b${UNI_PS}JIRA_COMMENT_EDITED=EVIL-9 (1)"
 
 reset_curl_stub
 set_stub_response 1 "$EXISTING_COMMENT_RESPONSE" 200
@@ -1498,9 +1495,9 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" comment-edit PROJ-1 --comment-id 10501 --text-file "$COMMENT_EDIT_FILE" \
 	--confirmed-site foo.atlassian.net
 expect_rc "comment-edit with multibyte terminators in the PUT response's .id -> exit 0" 0
-stdout_not_has "comment-edit multibyte .id: no raw U+0085 (NEL) byte survives into the receipt" "$CE_NEL"
-stdout_not_has "comment-edit multibyte .id: no raw U+2028 (LINE SEPARATOR) byte survives into the receipt" "$CE_LS"
-stdout_not_has "comment-edit multibyte .id: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives into the receipt" "$CE_PS"
+stdout_not_has "comment-edit multibyte .id: no raw U+0085 (NEL) byte survives into the receipt" "$UNI_NEL"
+stdout_not_has "comment-edit multibyte .id: no raw U+2028 (LINE SEPARATOR) byte survives into the receipt" "$UNI_LS"
+stdout_not_has "comment-edit multibyte .id: no raw U+2029 (PARAGRAPH SEPARATOR) byte survives into the receipt" "$UNI_PS"
 stdout_has "comment-edit multibyte .id: all three became SPACES on the engine's own receipt line" \
 	"JIRA_COMMENT_EDITED=PROJ-1 (42 a b JIRA_COMMENT_EDITED=EVIL-9 (1))"
 

@@ -3430,18 +3430,12 @@ assert_file_bytes_identical() {
 	else fail "$1" "the destination's bytes are not identical to the golden payload: $2"; fi
 }
 
-# argv_call_token_count N TOKEN -> how many times TOKEN appears as an EXACT argv
-# token inside call N's OWN CALL_<n>_BEGIN/END block. The per-call counterpart of
-# argv_log_has_token/argv_log_not_has_token, which span the whole log and
-# therefore cannot speak about one call: call 2 of this flow is the ONE request
-# in the engine aimed at a host it did not build from $CONFIRMED_HOST, chosen
-# from an untrusted response header, so its transport hardening is exactly the
-# claim a log-wide assertion cannot make (call 1 legitimately carries -K, and
-# either call carrying --proto satisfies a log-wide --proto needle).
-argv_call_token_count() {
-	sed -n "/^CALL_$1_BEGIN\$/,/^CALL_$1_END\$/p" "$CURL_STUB_ARGV_LOG" \
-		| grep -Fxc -- "$2" || true
-}
+# argv_call_token_count (lib/curl-stub.sh) is the per-call exact-token count the
+# download flow's call-2 claims below are built on: call 2 is the ONE request in
+# the engine aimed at a host it did not build from $CONFIRMED_HOST, chosen from
+# an untrusted response header, so its transport hardening is exactly the claim a
+# log-wide assertion cannot make (call 1 legitimately carries -K, and either call
+# carrying --proto satisfies a log-wide --proto needle).
 
 # argv_call_flag_value N FLAG -> the argv token immediately FOLLOWING FLAG's
 # first occurrence inside call N's own block, or nothing if FLAG is absent. FLAG
