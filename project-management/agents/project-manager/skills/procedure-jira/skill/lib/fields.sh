@@ -151,16 +151,16 @@ require_custom_field() {
 	# name pasted in by mistake — must fail here, BEFORE merge_ref_field/
 	# merge_json_field aims the write at it and Jira answers 204. The value is
 	# config-authored (in practice API-derived, since `discover --write` fills
-	# the map), so it goes through runtime.sh's fold_disclosed_value — the shared
+	# the map), so it goes through runtime.sh's one_line_display — the shared
 	# one-line fold this diagnostic shares with cmd-update.sh's --plan summary and
 	# accounts.sh's resolver diagnostics, for the reason stated there: this
 	# diagnostic shares a stream with the engine's own single-line output, so an
 	# embedded newline (or tab, or a C1 byte a terminal honors as one) could
-	# otherwise put attacker-influenced text at column 0 and forge a line. Mangling
+	# otherwise put attacker-influenced text at column 0 and forge a line. Folding
 	# costs nothing here: a VALID id is `customfield_<digits>`, pure ASCII, and this
 	# branch only ever renders a value already known invalid.
 	if ! validate_custom_field_id "$rcf_resolved_field_id"; then
-		rcf_safe_field_id=$(fold_disclosed_value "$rcf_resolved_field_id")
+		rcf_safe_field_id=$(one_line_display "$rcf_resolved_field_id")
 		error "$rcf_flag_name resolved custom_fields.$rcf_semantic_field_name to '$rcf_safe_field_id', which is not a customfield_<digits> field id — fix the mapping in the project config"
 		exit 1
 	fi

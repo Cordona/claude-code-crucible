@@ -295,7 +295,7 @@ cmd_update() {
 }
 
 # fold_summary_value RAW -> the disclosed form of ONE "who" value as it appears
-# inside update_field_summary's list: runtime.sh's fold_disclosed_value (which
+# inside update_field_summary's list: runtime.sh's one_line_display (which
 # keeps the value on one line — see it for why that matters here) plus the list's
 # own "," delimiter, which no entry may contain.
 #
@@ -306,12 +306,20 @@ cmd_update() {
 # second field this write also changes. A spaced value is not an exotic input
 # either — resolve_account_id matches a displayName EXACTLY, so the full "Sam
 # Okafor" is often the only value that resolves at all. The list therefore joins
-# on ", " and this fold deletes the comma, making entry boundaries unforgeable by
-# construction; quoting each value instead would only move the problem to the
-# quote character. A comma inside a display name ("Okafor, Sam") is mangled in the
-# DISCLOSURE alone — the write sends the untouched $OPT_* carrier.
+# on ", " and this fold deletes the comma, making entry boundaries unforgeable
+# with the ASCII delimiter; quoting each value instead would only move the
+# problem to the quote character. Comma LOOKALIKES (U+201A, U+FF0C, U+060C,
+# U+3001, U+FE50) survive the fold and can still make one entry read as two — a
+# residual of the disclosure only. The write never reads this rendering: it
+# resolves the raw value through resolve_account_id, which accepts a sole search
+# result or else the one exact match and refuses anything else, and only the
+# fields the caller actually set are written. A comma inside a display name
+# ("Okafor, Sam") is mangled in the DISCLOSURE alone — the write sends the
+# untouched $OPT_* carrier. The deletion
+# is byte-level under LC_ALL=C, which is UTF-8-safe only because "," is ASCII:
+# no multibyte sequence contains a byte below 0x80.
 fold_summary_value() {
-	fold_disclosed_value "$1" | tr -d ','
+	one_line_display "$1" | tr -d ','
 }
 
 # update_field_summary -> a ", "-joined list of the update aspects the caller

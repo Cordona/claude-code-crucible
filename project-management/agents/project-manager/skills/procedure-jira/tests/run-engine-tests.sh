@@ -4530,17 +4530,19 @@ fi
 
 section "jira.sh — attach --download: a raw newline in the destination path cannot forge a line in a precondition diagnostic"
 
-# All FOUR of --download's precondition diagnostics now fold their disclosed path
-# through fold_disclosed_value; only the machine line's own disclosure did before.
+# All FOUR of --download's precondition diagnostics fold their disclosed path
+# through one_line_display (runtime.sh); only the machine line's own disclosure
+# did before.
 # The three added ones share one fold call each, so a regression removes them
 # independently — and this case drives the already-exists one, the only one of the
 # three whose fixture can carry the byte AND be reached (a newline-bearing path is
 # creatable, so `-e` sees it).
 #
-# Same fixture shape and same two-channel claim as the bulk --plan forgery cases
-# further below: the fold DELETES, so the forged tail arrives WELDED to the
-# engine's own words, and a `jira.sh: error:` needle over the welded form is
-# absent the moment the raw newline survives instead.
+# Same fixture shape and same claim as the bulk --plan forgery cases further
+# below: the fold turns the newline into a SPACE, so the forged tail arrives on
+# the engine's own diagnostic line as inert data, and a needle spanning that one
+# line is absent the moment the raw newline survives instead (grep matches a
+# needle within ONE line).
 ATTACH_DL_FORGED_DEST=$(printf '%s/forged\nFAKE-DOWNLOAD-LINE.bin' "$WORK")
 printf 'x' >"$ATTACH_DL_FORGED_DEST"
 equals "attach --download forged destination fixture: the PATH really holds exactly ONE raw newline" \
@@ -4557,8 +4559,8 @@ reset_curl_stub
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
 	sh "$JIRA" attach --download "$ATTACH_DL_FORGED_DEST" --id 303980 --confirmed-site foo.atlassian.net
 expect_rc "attach --download forged destination -> exit 2" 2
-stderr_has "attach --download forged destination: the newline was DELETED — the forged tail welds onto the refusal as inert data" \
-	"--download destination already exists (refusing to overwrite it): $WORK/forgedFAKE-DOWNLOAD-LINE.bin"
+stderr_has "attach --download forged destination: the newline became a SPACE — the forged tail stays on the refusal's own line as inert data" \
+	"--download destination already exists (refusing to overwrite it): $WORK/forged FAKE-DOWNLOAD-LINE.bin"
 equals "attach --download forged destination: ZERO curl calls" "$(call_count)" "0"
 
 section "jira.sh — attach --download: a NON-3xx first response fails loud (exit 1) and never reaches a second host"
@@ -5846,59 +5848,83 @@ equals "bulk real update --reviewer: PSWS-2's PUT body carries the SAME pre-reso
 # --- the disclosed who-value is FOLDED onto one line (C1 controls included) ---
 # The three who-values are the only ones update_field_summary quotes VERBATIM, and
 # this --plan output is a consent gate a human reads line by line, so a crafted
-# --reviewer must not be able to add a line to it. fold_disclosed_value therefore
-# deletes TAB/LF *and* the C1 range (\200-\237), which holds the raw NEL byte
-# (\205) an 8-bit-control terminal honors as a line break — a fold
-# strip_control_ansi deliberately does NOT do engine-wide, because those bytes are
-# also UTF-8 continuation bytes.
+# --reviewer must not be able to add a line to it. update_field_summary therefore
+# folds each value through one_line_display (runtime.sh), which works on
+# CODEPOINTS: TAB/LF/CR, the whole C1 range (U+0080–U+009F, NEL U+0085 included)
+# and U+2028/U+2029 become a space, while legitimate UTF-8 — whose continuation
+# bytes overlap \200-\237 — passes intact. A raw, INVALID byte such as a lone
+# \205 is not a codepoint at all: jq's --arg decoding replaces it with U+FFFD.
 #
 # WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT — the same reasoning
 # run-write-tests.sh's multibyte-terminator section states in full. A column-0
 # assertion would be false confidence here: no tool in this harness splits a line
 # on a raw \205, so `stdout_no_line_starting_with FAKE-LINE-HERE` could not fail
-# even with the whole `\200-\237` class deleted from the fold. Nor can the byte's
-# ABSENCE be grepped — a lone \205 is an illegal UTF-8 sequence, so the assertion
-# helpers' own `grep -F` exits 2 ("illegal byte sequence") on that needle and
-# stdout_not_has would pass vacuously. The two channels that DO discriminate are
-# the byte-level count below, and the joined line: the fold DELETES rather than
-# substitutes, so the forged text arrives welded to the engine's own disclosure
-# with no separator, as inert data.
+# even with the fold removed. Nor can the lone byte's ABSENCE be grepped — a
+# lone \205 is an illegal UTF-8 sequence, so the assertion helpers' own `grep -F`
+# exits 2 ("illegal byte sequence") on that needle and stdout_not_has would pass
+# vacuously. What DOES discriminate: the byte-level count below (no byte in
+# \200-\237 survives — the lone byte's replacement, U+FFFD, is EF BF BD), and the
+# exact disclosure, U+FFFD standing where the invalid byte was.
 section "jira.sh — bulk --plan update --reviewer: a raw C1 (NEL) byte in the who-value cannot forge a line in the consent disclosure"
 
-# A RAW \205, not U+0085's two-byte UTF-8 form (\302\205): the fold is a byte-wise
-# `tr -d`, so the single-byte form is the one it claims to catch.
+# c1_byte_count TEXT -> how many raw bytes in \200-\237 TEXT holds. Counted, not
+# grepped: a lone C1 byte is illegal UTF-8, which `grep -F` refuses as a needle.
+# LC_ALL=C makes `tr` see bytes, not characters. Only meaningful for text whose
+# legitimate content is ASCII or U+FFFD (EF BF BD) — a real ß (C3 9F) would count.
+c1_byte_count() {
+	printf '%s' "$1" | LC_ALL=C tr -dc '\200-\237' | wc -c | tr -d ' '
+}
+
+# c1_bytes_in_disclosed_line NEEDLE -> c1_byte_count of the ONE stdout line that
+# carries NEEDLE (an ASCII anchor of the engine's own disclosure, e.g. "update
+# field(s):"), or a "no line" message when none does, so a missing line can never
+# count as zero. Scoped to that line rather than all of stdout so legitimate
+# non-ASCII elsewhere in the engine's own template (an em dash is E2 80 94) cannot
+# break the count for an unrelated reason. LC_ALL=C grep, because under a
+# regression the line holds the very invalid bytes a UTF-8 grep refuses.
+c1_bytes_in_disclosed_line() {
+	cbidl_line=$(printf '%s\n' "$CUR_OUT" | LC_ALL=C grep -F -- "$1" || true)
+	if [ -z "$cbidl_line" ]; then
+		printf 'no stdout line contains: %s' "$1"
+		return 0
+	fi
+	c1_byte_count "$cbidl_line"
+}
+
+# A RAW \205, not U+0085's two-byte UTF-8 form (\302\205): invalid UTF-8, the
+# input a byte-level fold would have deleted and the codepoint fold must replace.
+# (The valid two-byte form is covered by "bulk --plan update: all three who-values
+# keep their UTF-8…" further below, whose --assignee carries a real U+0085.)
 BULK_RAW_C1=$(printf '\205')
+UNICODE_REPLACEMENT_CHAR=$(printf '\357\277\275')
 
 reset_curl_stub
 run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$BULK_REVIEWER_PROJECTS_DIR" \
 	sh "$JIRA" bulk --op update --reviewer "sam${BULK_RAW_C1}FAKE-LINE-HERE" \
 	--keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
 expect_rc "bulk --plan update --reviewer with a raw C1 byte -> exit 0" 0
-stdout_has "bulk --plan C1 reviewer: the C1 byte was DELETED — the forged text welds onto the engine's own disclosure as inert data" \
-	"update field(s): reviewer=samFAKE-LINE-HERE"
-# The byte-level half, counted rather than grepped for the reason above. LC_ALL=C
-# is load-bearing: the developer's own locale is UTF-8, where `tr` refuses the
-# illegal sequence and would report zero surviving bytes for either outcome.
-TESTS_RUN=$((TESTS_RUN + 1))
-BULK_C1_SURVIVORS=$(printf '%s' "$CUR_OUT" | LC_ALL=C tr -dc '\200-\237' | wc -c | tr -d ' ')
-if [ "$BULK_C1_SURVIVORS" -eq 0 ]; then
-	pass "bulk --plan C1 reviewer: ZERO C1 bytes survive anywhere in the disclosure"
-else
-	fail "bulk --plan C1 reviewer: ZERO C1 bytes survive anywhere in the disclosure" \
-		"$BULK_C1_SURVIVORS C1 byte(s) reached the consent gate"
-fi
+stdout_has "bulk --plan C1 reviewer: the invalid byte became U+FFFD — the forged text stays inside the engine's own disclosure as inert data" \
+	"update field(s): reviewer=sam${UNICODE_REPLACEMENT_CHAR}FAKE-LINE-HERE for 2 issue(s):"
+# The byte-level half, counted rather than grepped for the reason above, over the
+# disclosure line itself.
+equals "bulk --plan C1 reviewer: ZERO C1 bytes survive in the disclosure line" \
+	"$(c1_bytes_in_disclosed_line 'update field(s):')" "0"
+# Nor does the lone byte come out as the VALID two-byte NEL (\302\205) — a
+# "repair" that re-encoded it instead of replacing it would still be a line break
+# to a UTF-8 renderer.
+stdout_not_has "bulk --plan C1 reviewer: the lone byte was not re-encoded as a valid U+0085" "$UNI_NEL"
 
 # --- the OTHER TWO intent arms fold their own disclosed values ---------------
 # The update arm's values arrive already folded, by update_field_summary (the C1
 # case above). bulk_intent_phrase's transition and comment arms interpolate their
-# OPT_* carriers THEMSELVES, so they carry their own fold_disclosed_value calls —
+# OPT_* carriers THEMSELVES, so they carry their own one_line_display calls —
 # and a fold that exists on one arm proves nothing about the other two, because
 # there is no shared call site to regress.
 #
 # A RAW NEWLINE is the byte used here, not the C1 the update case needs: unlike
 # \205, an LF genuinely does split a line for every tool in this harness, so
-# BOTH channels below discriminate — the weld (the fold DELETES, so the forged
-# text arrives joined to the engine's own words) and the column-0 assertion the
+# BOTH channels below discriminate — the one-line needle (the fold turns the LF
+# into a SPACE, so the forged text stays on the engine's own line) and the column-0 assertion the
 # C1 case had to forgo as vacuous. The forged line is aimed at the plan's own
 # closing "NOTHING WAS WRITTEN" row: a second one, above real keys, is exactly
 # the consent-gate forgery the fold exists to stop.
@@ -5920,8 +5946,8 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" 
 	--keys "PSWS-1,PSWS-2" --plan --confirmed-site foo.atlassian.net
 expect_rc "bulk --plan transition with a forged --status -> exit 0" 0
 equals "bulk --plan forged --status: ZERO curl calls (no read, no write)" "$(call_count)" "0"
-stdout_has "bulk --plan forged --status: the newline was DELETED — the forged text welds onto the engine's own intent phrase as inert data" \
-	'would transition to "DoneFAKE-LINE-HERE" for 2 issue(s):'
+stdout_has "bulk --plan forged --status: the newline became a SPACE — the forged text stays inside the engine's own intent phrase as inert data" \
+	'would transition to "Done FAKE-LINE-HERE" for 2 issue(s):'
 stdout_no_line_starting_with "bulk --plan forged --status: the forged text never reaches column 0 of its own line" \
 	"FAKE-LINE-HERE"
 
@@ -5936,8 +5962,8 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" 
 	sh "$JIRA" bulk --op transition --status Closed --resolution "$BULK_FORGED_RESOLUTION" \
 	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
 expect_rc "bulk --plan transition with a forged --resolution -> exit 0" 0
-stdout_has "bulk --plan forged --resolution: the newline was DELETED — the forged text welds into the parenthesised clause" \
-	'would transition to "Closed" (resolution: FixedFAKE-RESOLUTION-LINE)'
+stdout_has "bulk --plan forged --resolution: the newline became a SPACE — the forged text stays inside the parenthesised clause" \
+	'would transition to "Closed" (resolution: Fixed FAKE-RESOLUTION-LINE)'
 stdout_no_line_starting_with "bulk --plan forged --resolution: the forged text never reaches column 0 of its own line" \
 	"FAKE-RESOLUTION-LINE"
 
@@ -5970,10 +5996,212 @@ run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" 
 	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
 expect_rc "bulk --plan comment with a forged --text-file path -> exit 0" 0
 equals "bulk --plan forged --text-file: ZERO curl calls (no comment was posted)" "$(call_count)" "0"
-stdout_has "bulk --plan forged --text-file: the newline was DELETED — the path's forged tail welds into the intent phrase" \
-	"noteFAKE-PATH-LINE.md for 1 issue(s):"
+stdout_has "bulk --plan forged --text-file: the newline became a SPACE — the path's forged tail stays inside the intent phrase" \
+	"note FAKE-PATH-LINE.md for 1 issue(s):"
 stdout_no_line_starting_with "bulk --plan forged --text-file: the forged text never reaches column 0 of its own line" \
 	"FAKE-PATH-LINE.md"
+
+# ===========================================================================
+# one_line_display at every former fold_disclosed_value caller: CODEPOINT
+# folding. A line break or C1 control inside a disclosed value becomes a SPACE;
+# legitimate UTF-8 — whose continuation bytes overlap \200-\237 — survives
+# byte-for-byte; an INVALID byte becomes U+FFFD. The old byte-level fold
+# (`tr -d '\200-\237'` under LC_ALL=C) deleted continuation bytes, so every
+# fixture below carries characters whose UTF-8 includes one: ß = C3 9F,
+# — = E2 80 94, Ü = C3 9C, À = C3 80.
+# ===========================================================================
+
+UTF8_WHO_PROJECTS_DIR="$WORK/utf8-who-projects"
+mkdir -p "$UTF8_WHO_PROJECTS_DIR"
+cat >"$UTF8_WHO_PROJECTS_DIR/PSWS.json" <<'EOF'
+{
+  "key": "PSWS",
+  "custom_fields": { "developer": "customfield_25500", "reviewer": "customfield_26758" }
+}
+EOF
+
+section "jira.sh — bulk --plan update: all three who-values keep their UTF-8, fold breaks to a SPACE, and lose only a literal comma"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$UTF8_WHO_PROJECTS_DIR" \
+	sh "$JIRA" bulk --op update \
+	--assignee "Jürgen Straße—Ünal${C1_CSI}31m${UNI_NEL}X" \
+	--developer "Àlvaro${UNI_LS}Dev" \
+	--reviewer "Straße, Ü${UNI_PS}Rev" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan update with UTF-8/C1/U+2028/U+2029/comma who-values -> exit 0" 0
+equals "bulk --plan update UTF-8: ZERO curl calls (the plan resolves nothing)" "$(call_count)" "0"
+stdout_has "bulk --plan update UTF-8: every who-value folded, its non-ASCII text intact, the comma gone — so the ', '-joined list holds exactly its THREE entries" \
+	"would update field(s): assignee=Jürgen Straße—Ünal 31m X, developer=Àlvaro Dev, reviewer=Straße Ü Rev for 1 issue(s):"
+stdout_not_has "bulk --plan update UTF-8: no raw U+009B" "$C1_CSI"
+stdout_not_has "bulk --plan update UTF-8: no raw NEL" "$UNI_NEL"
+stdout_not_has "bulk --plan update UTF-8: no raw U+2028" "$UNI_LS"
+stdout_not_has "bulk --plan update UTF-8: no raw U+2029" "$UNI_PS"
+
+section "jira.sh — bulk --plan transition/comment: --status, --resolution and the --text-file path keep their UTF-8"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op transition --status "Überprüfung${UNI_NEL}—ß" --resolution "Erledigt${UNI_LS}À" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan transition with UTF-8/NEL/U+2028 --status and --resolution -> exit 0" 0
+stdout_has "bulk --plan transition UTF-8: --status and --resolution folded, non-ASCII intact" \
+	'would transition to "Überprüfung —ß" (resolution: Erledigt À) for 1 issue(s):'
+stdout_not_has "bulk --plan transition UTF-8: no raw NEL" "$UNI_NEL"
+stdout_not_has "bulk --plan transition UTF-8: no raw U+2028" "$UNI_LS"
+
+UTF8_TEXT_FILE="$WORK/Notiz—ß${UNI_PS}Überprüfung.md"
+printf 'note\n' >"$UTF8_TEXT_FILE"
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op comment --text-file "$UTF8_TEXT_FILE" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan comment with a UTF-8/U+2029 --text-file path -> exit 0" 0
+stdout_has "bulk --plan comment UTF-8: the path folded, non-ASCII intact" \
+	"would add a comment from $WORK/Notiz—ß Überprüfung.md for 1 issue(s):"
+stdout_not_has "bulk --plan comment UTF-8: no raw U+2029" "$UNI_PS"
+
+section "jira.sh — bulk --plan transition: an INVALID byte (a lone \\233, the 8-bit CSI) becomes U+FFFD, never a raw C1 byte"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$WORK/noconfig" \
+	sh "$JIRA" bulk --op transition --status "Done$(printf '\233')2JFAKE" \
+	--keys "PSWS-1" --plan --confirmed-site foo.atlassian.net
+expect_rc "bulk --plan transition with a lone \\233 in --status -> exit 0" 0
+stdout_has "bulk --plan invalid byte: the lone \\233 became U+FFFD, the rest intact" \
+	"would transition to \"Done${UNICODE_REPLACEMENT_CHAR}2JFAKE\" for 1 issue(s):"
+equals "bulk --plan invalid byte: ZERO raw C1 bytes survive in the disclosure line" \
+	"$(c1_bytes_in_disclosed_line 'would transition to')" "0"
+
+section "jira.sh — resolve_account_id: its diagnostics keep the caller's UTF-8 and fold breaks/C1 to a SPACE"
+
+# Each case also queues the search a NON-refusing resolver would go on to run
+# (call 2), so the exit 1 can only come from the refusal itself.
+reset_curl_stub
+set_stub_response 1 '[]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee "Jürgen Straße—Ünal${C1_CSI}31m${UNI_NEL}X"
+expect_rc "resolve --assignee UTF-8/C1 with no match -> exit 1" 1
+stderr_has "resolve no-user UTF-8: the value folded, non-ASCII intact" "no Jira user found for 'Jürgen Straße—Ünal 31m X'"
+equals "resolve no-user UTF-8: only the lookup ran — the search never did" "$(call_count)" "1"
+stderr_not_has "resolve no-user UTF-8: no raw U+009B" "$C1_CSI"
+stderr_not_has "resolve no-user UTF-8: no raw NEL" "$UNI_NEL"
+
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-1","emailAddress":"j1@example.com","displayName":"Jürgen A"},{"accountId":"acc-2","emailAddress":"j2@example.com","displayName":"Jürgen B"}]' 200
+set_stub_response 2 '{"issues":[],"isLast":true}' 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" search --confirmed-site foo.atlassian.net --assignee "Jürgen—ß${UNI_LS}À"
+expect_rc "resolve --assignee UTF-8/U+2028 with two fuzzy matches -> exit 1" 1
+stderr_has "resolve ambiguous UTF-8: the value folded, non-ASCII intact" "2 Jira users matched 'Jürgen—ß À'"
+equals "resolve ambiguous UTF-8: only the lookup ran — the search never did" "$(call_count)" "1"
+stderr_not_has "resolve ambiguous UTF-8: no raw U+2028" "$UNI_LS"
+
+section "jira.sh — attach --download: the receipt and a refusal keep the destination's UTF-8 and fold its breaks"
+
+ATTACH_DL_UTF8_DEST="$WORK/Überprüfung—ß${UNI_NEL}Anhang.bin"
+reset_curl_stub
+queue_attach_download_media_flow "$ATTACH_DL_CTRL_PAYLOAD" 200
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --download "$ATTACH_DL_UTF8_DEST" --id 303980 --confirmed-site foo.atlassian.net
+expect_rc "attach --download to a UTF-8/NEL-named destination -> exit 0" 0
+equals "attach --download UTF-8: the receipt names the path folded, non-ASCII intact" \
+	"$CUR_OUT" "JIRA_ATTACHMENT_DOWNLOADED=303980 -> $WORK/Überprüfung—ß Anhang.bin"
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ -f "$ATTACH_DL_UTF8_DEST" ]; then
+	pass "attach --download UTF-8: the file was installed at the RAW path (the fold is display-only)"
+else
+	fail "attach --download UTF-8: the file was installed at the RAW path (the fold is display-only)" "missing: $ATTACH_DL_UTF8_DEST"
+fi
+
+ATTACH_DL_UTF8_EXISTING="$WORK/Vorhanden—ß${UNI_LS}Ü.bin"
+printf 'x' >"$ATTACH_DL_UTF8_EXISTING"
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --download "$ATTACH_DL_UTF8_EXISTING" --id 303980 --confirmed-site foo.atlassian.net
+expect_rc "attach --download onto an existing UTF-8/U+2028-named file -> exit 2" 2
+stderr_has "attach --download UTF-8 refusal: the path folded, non-ASCII intact" \
+	"--download destination already exists (refusing to overwrite it): $WORK/Vorhanden—ß Ü.bin"
+stderr_not_has "attach --download UTF-8 refusal: no raw U+2028" "$UNI_LS"
+equals "attach --download UTF-8 refusal: ZERO curl calls" "$(call_count)" "0"
+
+# The other three precondition refusals each fold their OWN interpolation. The
+# leading-dash one is reached with a RELATIVE path (a leading "-" cannot be an
+# absolute one); the directory ones name the DERIVED parent directory.
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --download "-Überprüfung—ß${UNI_NEL}x.bin" --id 303980 --confirmed-site foo.atlassian.net
+expect_rc "attach --download of a '-'-leading UTF-8/NEL path -> exit 2" 2
+stderr_has "attach --download UTF-8 leading-dash refusal: the path folded, non-ASCII intact" \
+	"--download destination must not begin with '-' (it would be read as an option): -Überprüfung—ß x.bin"
+stderr_not_has "attach --download UTF-8 leading-dash refusal: no raw NEL" "$UNI_NEL"
+
+reset_curl_stub
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" attach --download "$WORK/Nicht—ß${UNI_LS}Da/out.bin" --id 303980 --confirmed-site foo.atlassian.net
+expect_rc "attach --download into a missing UTF-8/U+2028-named directory -> exit 2" 2
+stderr_has "attach --download UTF-8 missing-directory refusal: the directory folded, non-ASCII intact" \
+	"--download destination directory does not exist: $WORK/Nicht—ß Da"
+stderr_not_has "attach --download UTF-8 missing-directory refusal: no raw U+2028" "$UNI_LS"
+
+# GUARDED ON EUID, like the ASCII unwritable-parent case above: root ignores the
+# `w` bit, so under root this refusal correctly never comes.
+ATTACH_DL_UTF8_READONLY_DIR="$WORK/Schreibgeschützt—Ü${UNI_PS}À"
+mkdir -p "$ATTACH_DL_UTF8_READONLY_DIR"
+if [ "$(id -u)" -ne 0 ]; then
+	chmod 0555 "$ATTACH_DL_UTF8_READONLY_DIR"
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if [ -d "$ATTACH_DL_UTF8_READONLY_DIR" ] && [ ! -w "$ATTACH_DL_UTF8_READONLY_DIR" ]; then
+		pass "attach --download UTF-8 unwritable-directory fixture: the directory really exists and is really not writable"
+	else
+		fail "attach --download UTF-8 unwritable-directory fixture: the directory really exists and is really not writable" \
+			"chmod 0555 did not take on $ATTACH_DL_UTF8_READONLY_DIR"
+	fi
+	reset_curl_stub
+	run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+		sh "$JIRA" attach --download "$ATTACH_DL_UTF8_READONLY_DIR/out.bin" --id 303980 --confirmed-site foo.atlassian.net
+	expect_rc "attach --download into an unwritable UTF-8/U+2029-named directory -> exit 2" 2
+	stderr_has "attach --download UTF-8 unwritable-directory refusal: the directory folded, non-ASCII intact" \
+		"--download destination directory is not writable: $WORK/Schreibgeschützt—Ü À"
+	stderr_not_has "attach --download UTF-8 unwritable-directory refusal: no raw U+2029" "$UNI_PS"
+	chmod 0755 "$ATTACH_DL_UTF8_READONLY_DIR"
+fi
+
+section "jira.sh — assert_safe_dir: the refusal names a UTF-8 \$TMPDIR intact, its line breaks folded"
+
+UTF8_UNSAFE_TMPDIR="$WORK/tmp—ß${UNI_PS}Ünsicher"
+mkdir -p "$UTF8_UNSAFE_TMPDIR"
+chmod 0777 "$UTF8_UNSAFE_TMPDIR"
+reset_curl_stub
+set_stub_response 1 '{"key":"PROJ-1","fields":{"summary":"s","status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "TMPDIR=$UTF8_UNSAFE_TMPDIR" "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" \
+	sh "$JIRA" view PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "a world-writable UTF-8/U+2029-named \$TMPDIR -> exit 1 (refused)" 1
+stderr_has "assert_safe_dir UTF-8: the directory folded, non-ASCII intact" \
+	"the temp directory '$WORK/tmp—ß Ünsicher' is writable by other local users and has no sticky bit"
+stderr_not_has "assert_safe_dir UTF-8: no raw U+2029" "$UNI_PS"
+equals "assert_safe_dir UTF-8: ZERO curl calls" "$(call_count)" "0"
+
+section "jira.sh — require_custom_field: a mis-shaped mapped id is named with its UTF-8 intact, its breaks folded"
+
+UTF8_BADFIELD_PROJECTS_DIR="$WORK/utf8-badfield-projects"
+mkdir -p "$UTF8_BADFIELD_PROJECTS_DIR"
+printf '%s\n' '{"key":"BADFLD","custom_fields":{"reviewer":"Prüfer—ß Ü\u009bx"}}' >"$UTF8_BADFIELD_PROJECTS_DIR/BADFLD.json"
+# The queued lookup + 204 are what an update that ACCEPTED the bad id would
+# consume, so the exit 1 can only come from the shape refusal.
+reset_curl_stub
+set_stub_response 1 '[{"accountId":"acc-rev","emailAddress":"rev@example.com","displayName":"Rev"}]' 200
+set_stub_response 2 '' 204
+run full "JIRA_EMAIL=a@b.com" "JIRA_TOKEN=t" "JIRA_PROJECTS_DIR=$UTF8_BADFIELD_PROJECTS_DIR" \
+	sh "$JIRA" update BADFLD-1 --reviewer rev@example.com --confirmed-site foo.atlassian.net
+expect_rc "update --reviewer mapped to a UTF-8/U+2028/U+009B-bearing field id -> exit 1" 1
+stderr_has "mis-shaped field id UTF-8: the bad value folded, non-ASCII intact" \
+	"resolved custom_fields.reviewer to 'Prüfer—ß Ü x', which is not a customfield_<digits> field id"
+stderr_not_has "mis-shaped field id UTF-8: no raw U+2028" "$UNI_LS"
+stderr_not_has "mis-shaped field id UTF-8: no raw U+009B" "$C1_CSI"
+equals "mis-shaped field id UTF-8: ZERO curl calls" "$(call_count)" "0"
+
 
 # --- all THREE "who" flags at once: the crossed-wire surface -----------------
 # The hoist is three INDEPENDENT pre-resolves (BULK_RESOLVED_ASSIGNEE_ID /

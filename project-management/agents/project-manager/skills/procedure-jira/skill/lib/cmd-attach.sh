@@ -103,9 +103,9 @@ cmd_attach() {
 		else
 			# The path is CALLER-supplied and shares this stream with the
 			# engine's other machine lines, so it goes through
-			# runtime.sh's fold_disclosed_value — a newline in it would
+			# runtime.sh's one_line_display — a newline in it would
 			# otherwise forge a second line here.
-			printf 'JIRA_ATTACHMENT_DOWNLOADED=%s -> %s\n' "$OPT_ID" "$(fold_disclosed_value "$OPT_DOWNLOAD")"
+			printf 'JIRA_ATTACHMENT_DOWNLOADED=%s -> %s\n' "$OPT_ID" "$(one_line_display "$OPT_DOWNLOAD")"
 		fi
 		return 0
 	fi
@@ -245,7 +245,7 @@ validate_attach_args() {
 		# never a followed symlink.
 		if [ -e "$OPT_DOWNLOAD" ] || [ -L "$OPT_DOWNLOAD" ]; then
 			usage >&2
-			error "--download destination already exists (refusing to overwrite it): $(fold_disclosed_value "$OPT_DOWNLOAD")"
+			error "--download destination already exists (refusing to overwrite it): $(one_line_display "$OPT_DOWNLOAD")"
 			exit 2
 		fi
 		# A leading "-" is refused because this path reaches two option-parsed
@@ -267,7 +267,7 @@ validate_attach_args() {
 		case "$OPT_DOWNLOAD" in
 			-*)
 				usage >&2
-				error "--download destination must not begin with '-' (it would be read as an option): $(fold_disclosed_value "$OPT_DOWNLOAD")"
+				error "--download destination must not begin with '-' (it would be read as an option): $(one_line_display "$OPT_DOWNLOAD")"
 				exit 2 ;;
 		esac
 		# runtime.sh's parent_dir, not a copy of its expansion, because
@@ -277,7 +277,7 @@ validate_attach_args() {
 		attach_download_dir=$(parent_dir "$OPT_DOWNLOAD")
 		if [ ! -d "$attach_download_dir" ]; then
 			usage >&2
-			error "--download destination directory does not exist: $(fold_disclosed_value "$attach_download_dir")"
+			error "--download destination directory does not exist: $(one_line_display "$attach_download_dir")"
 			exit 2
 		fi
 		# Writability too, not existence alone: without this, an unwritable
@@ -286,7 +286,7 @@ validate_attach_args() {
 		# command's own usage error.
 		if [ ! -w "$attach_download_dir" ]; then
 			usage >&2
-			error "--download destination directory is not writable: $(fold_disclosed_value "$attach_download_dir")"
+			error "--download destination directory is not writable: $(one_line_display "$attach_download_dir")"
 			exit 2
 		fi
 		# AND THAT DIRECTORY MUST ITSELF BE SAFE TO KEEP A FILE IN — the same gate

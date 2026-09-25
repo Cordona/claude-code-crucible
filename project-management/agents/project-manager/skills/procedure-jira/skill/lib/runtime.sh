@@ -293,14 +293,15 @@ assert_safe_install_dir() {
 # unsafe for both callers alike (see assert_sticky_dir_owner).
 #
 # DIR IS FOLDED FOR DISPLAY, NEVER FOR THE VERDICT: every check below reads the
-# RAW "$asd_dir", and only the diagnostics render it through fold_disclosed_value.
+# RAW "$asd_dir", and only the diagnostics render it through one_line_display.
 # assert_safe_download_dir's directory is derived from a caller ARGUMENT (the
 # --download path), which is exactly what earns a value that fold — the sibling
 # refusals in cmd-attach.sh's own pre-flight already fold the same string, and an
 # unfolded newline inside it would forge a line in this engine's stderr. The
 # $TMPDIR caller inherits the fold, which its own policy note calls exempt rather
-# than forbidden: the fold only deletes TAB/LF/C1, so a real $TMPDIR renders
-# byte-for-byte as before.
+# than forbidden: a real UTF-8 $TMPDIR holds none of the characters the fold
+# touches, so it renders unchanged; a POSIX-legal non-UTF-8 byte in it displays
+# as U+FFFD. Either way the verdict reads the raw path.
 #
 # COMPLETE FOR POSIX-MODE-ONLY DIRECTORIES, AND DELIBERATELY ONLY THOSE: the
 # verdict is read out of the 9 traditional mode bits plus the owner uid, and an
@@ -346,7 +347,7 @@ assert_safe_dir() {
 	# shellcheck disable=SC2012  # SC2012's `find` alternative is not in this engine's toolbox (see jira.sh's Portability header), and the parse reads a MODE STRING and a NUMERIC UID, never a filename — the non-alphanumeric-name hazard behind that check does not apply
 	asd_ls=$(ls -ldn "$asd_dir/." 2>/dev/null) || asd_ls=""
 	asd_mode=$(printf '%s\n' "$asd_ls" | sed -n '1s/[[:space:]].*//p')
-	asd_shown=$(fold_disclosed_value "$asd_dir")
+	asd_shown=$(one_line_display "$asd_dir")
 	case "$asd_mode" in
 		d?????????*) : ;;
 		*)
@@ -443,7 +444,7 @@ assert_safe_dir() {
 	# on both sides the list stores it with, so one directory's name cannot satisfy
 	# it by being another's suffix or prefix. The memo keys on the RAW directory,
 	# never the folded rendering, so two distinct paths cannot collapse into one by
-	# having a control byte deleted.
+	# having a control character folded or deleted.
 	case "$asd_mode" in
 		*+*)
 			case "$NL$ACL_WARNED_DIRS" in
@@ -536,80 +537,59 @@ assert_sticky_dir_owner() {
 # \342\200\224, curly quotes \342\200\230-\235), and this helper's input is arbitrary
 # user-authored UTF-8 — display names, summaries, comment bodies — so a byte-level
 # C1 deletion here would corrupt legitimate text at every one of its 40-odd call
-# sites. The call sites that genuinely need the C1 fold go through
-# fold_disclosed_value below, where the corruption is bounded and disclosed.
+# sites. The call sites that genuinely need C1 folded go through one_line_display
+# below, which folds it at the CODEPOINT level and so leaves UTF-8 intact.
 strip_control_ansi() {
 	sed "s/${ESC}\\[[0-9;]*[a-zA-Z]//g" | tr -d '\000-\010\013-\037\177'
 }
 
-# fold_disclosed_value RAW -> RAW with ANSI/C0 controls, TAB/LF and the C1 range
-# removed, so the value can never contribute more than its own fragment of ONE
-# line of output.
-#
-# Its callers render a short, CALLER- or CONFIG-SUPPLIED value into a line whose
-# integrity is load-bearing: cmd-update.sh's --plan field summary and
-# cmd-bulk.sh's --plan intent phrase (a consent gate a human reads line by line),
-# accounts.sh's resolver diagnostics and fields.sh's invalid-field-id diagnostic
-# (stderr an agent reads as this engine's output). A raw newline inside such a
-# value FORGES a line there — the closing "NOTHING WAS WRITTEN (dry-run /
-# --plan)" row, an extra issue key, a second "jira.sh: error:" — exactly the
-# forgery cmd-comment-edit.sh's own `| tr -d '\012'` sites exist to prevent. TAB
-# goes too (whitespace a terminal expands), and the C1 range (\200-\237) because
-# it holds NEL (\205), which an 8-bit-control terminal honors as a line break;
-# that byte class is why this fold is NOT inside strip_control_ansi — see its own
-# note above.
-#
-# Deletion rather than substitution, matching those sites: the forged text then
-# welds onto the engine's own words with no separator, as visibly inert data. A
-# MANGLED value is visible to whoever reads the line where a forged line is not,
-# and the write itself always sends the untouched carrier, never this rendering.
-#
-# ENVIRONMENT-DERIVED PATHS ARE EXEMPT RATHER THAN FORBIDDEN, stated here because
-# this is the policy's home and several diagnostics rely on it: cmd-discover.sh
-# renders $JIRA_PROJECTS_DIR's derived config path unfolded, and http.sh renders
-# $WORKDIR the same way. What EARNS a value this fold is being an ARGUMENT — a
-# --download path, a --status value, a field id — a byte string some other party
-# may have chosen for a line this engine then emits. $TMPDIR and
-# $JIRA_PROJECTS_DIR come from the environment of whoever launched the process,
-# i.e. the same party reading the output, so there is no second party for the fold
-# to defend against, and folding them buys nothing.
-#
-# It also costs nothing, which is why assert_safe_dir folds BOTH of its
-# directories rather than branching: one of its two callers passes a directory
-# derived from the --download argument (which does earn the fold, and whose
-# sibling refusals in cmd-attach.sh already apply it), and since this fold only
-# DELETES TAB/LF/C1, a real $TMPDIR renders byte-for-byte either way. Exempt means
-# "not required", never "must not".
-fold_disclosed_value() {
-	printf '%s' "$1" | strip_control_ansi | tr -d '\011\012\200-\237'
-}
-
-# JQ_ONE_LINE_DEF — a jq `one_line` def, the CODEPOINT-level twin of
-# fold_disclosed_value for text that has to stay readable UTF-8. It maps to a
-# space every codepoint that strip_control_ansi (whose job is bytes) lets
-# through and that a reader could honor as a break or a control: TAB, LF, CR,
-# the whole C1 range U+0080-U+009F (NEL, and the 8-bit CSI U+009B among them —
-# the same class fold_disclosed_value removes), LINE SEPARATOR (U+2028) and
-# PARAGRAPH SEPARATOR (U+2029). So a crafted API value (a display name, a
-# transition name) cannot forge a row of its own in a render. The remaining C0
-# controls (VT, FF, FS/GS/RS, ESC sequences) are left to strip_control_ansi,
-# which every caller still pipes through afterwards. Codepoints, not bytes, which
-# is the point: fold_disclosed_value's `tr` deletes the \200-\237 BYTES, which
-# are also UTF-8 continuation bytes and so mangle "ß" (C3 9F) or an em dash;
-# here U+0085 is one codepoint and "ß" is another. explode/implode, not gsub, so this
-# needs no Oniguruma-enabled jq.
+# JQ_ONE_LINE_DEF — a jq `one_line` def that maps to a space every codepoint
+# that strip_control_ansi (whose job is bytes) lets through and that a reader
+# could honor as a break or a control: TAB, LF, CR, the whole C1 range
+# U+0080-U+009F (NEL, and the 8-bit CSI U+009B among them), LINE SEPARATOR
+# (U+2028) and PARAGRAPH SEPARATOR (U+2029). The remaining C0 controls (VT, FF,
+# FS/GS/RS, ESC sequences) are left to strip_control_ansi, which every caller
+# still pipes through afterwards. Codepoints, not bytes, which is the point:
+# under this engine's LC_ALL=C a `tr -d '\200-\237'` deletes BYTES, which are
+# also UTF-8 continuation bytes and so mangle "ß" (C3 9F) or an em dash
+# (E2 80 94); here U+0085 is one codepoint and "ß" is another. explode/implode,
+# not gsub, so this needs no Oniguruma-enabled jq.
 #
 # Prepended to a caller's STATIC program (`jq "$JQ_ONE_LINE_DEF"'…'`): two
 # constants joined, never data, so the jq-program-is-never-built-from-input
 # rule holds.
 JQ_ONE_LINE_DEF='def one_line: tostring | explode | map(if . == 9 or . == 10 or . == 13 or (. >= 128 and . <= 159) or . == 8232 or . == 8233 then 32 else . end) | implode;'
 
-# one_line_display VALUE -> VALUE on one line, via JQ_ONE_LINE_DEF then
-# strip_control_ansi — the same protection as fold_disclosed_value (no
-# line break, no C0/C1 control, no ANSI sequence survives), for any API- or
-# caller-sourced value printed into a line whose integrity matters (a plan row,
-# a JIRA_*= line, a diagnostic), without fold_disclosed_value's byte deletion,
-# which corrupts legitimate UTF-8.
+# one_line_display VALUE -> VALUE on one line: JQ_ONE_LINE_DEF's fold, then
+# strip_control_ansi. No line break, no C0/C1 control and no ANSI sequence
+# survives, and valid UTF-8 stays valid. Bytes that are NOT valid UTF-8 arrive
+# as U+FFFD (jq's --arg decoding), so a lone raw C1 byte cannot survive either.
+#
+# Its callers render an API-, caller- or config-supplied value into a line whose
+# integrity is load-bearing: a consent gate a human reads line by line
+# (cmd-update.sh's --plan field summary, cmd-bulk.sh's --plan intent phrase,
+# cmd-transition.sh's plan), a JIRA_*= machine line, or a diagnostic on stderr an
+# agent reads as this engine's own output. A raw newline inside such a value
+# FORGES a line there — the closing "NOTHING WAS WRITTEN (dry-run / --plan)"
+# row, an extra issue key, a second "jira.sh: error:".
+#
+# Folded to a SPACE rather than deleted: the value stays inside the engine's own
+# quoted or delimited slot on that one line, as visibly inert data, and the
+# write itself always sends the untouched carrier, never this rendering.
+#
+# ENVIRONMENT-DERIVED PATHS ARE EXEMPT RATHER THAN FORBIDDEN, stated here because
+# this is the policy's home and several diagnostics rely on it: cmd-discover.sh
+# renders $JIRA_PROJECTS_DIR's derived config path unfolded, and http.sh renders
+# $WORKDIR the same way. What EARNS a value this fold is being an ARGUMENT or an
+# API/config value — a --download path, a --status value, a field id — a string
+# some other party may have chosen for a line this engine then emits. $TMPDIR and
+# $JIRA_PROJECTS_DIR come from the environment of whoever launched the process,
+# i.e. the same party reading the output, so there is no second party for the
+# fold to defend against. assert_safe_dir folds BOTH of its directories rather
+# than branching, because one of its callers passes a directory derived from the
+# --download argument, and a real UTF-8 $TMPDIR renders unchanged either way
+# (non-UTF-8 bytes display as U+FFFD; assert_safe_dir's verdict reads the raw
+# path). Exempt means "not required", never "must not".
 one_line_display() {
 	jq -rn --arg v "$1" "$JQ_ONE_LINE_DEF"'$v | one_line' | strip_control_ansi
 }

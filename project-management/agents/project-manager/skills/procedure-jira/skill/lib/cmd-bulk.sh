@@ -44,7 +44,7 @@
 # forges a line at a consent gate — an extra key, a second header, a premature
 # "nothing was written" with real writes listed below it.
 #
-# fold_disclosed_value, NOT fold_summary_value: the comma deletion is specific to
+# one_line_display, NOT fold_summary_value: the comma deletion is specific to
 # update_field_summary's ", "-joined LIST, where a comma inside an entry reads as
 # a second entry. Neither phrase built here is a list — each value sits in a
 # fixed sentence this function's own format string supplies — so a comma cannot
@@ -55,14 +55,14 @@
 bulk_intent_phrase() {
 	case "$OPT_OP" in
 		transition)
-			bip_status=$(fold_disclosed_value "$OPT_STATUS")
+			bip_status=$(one_line_display "$OPT_STATUS")
 			if [ -n "$OPT_RESOLUTION" ]; then
-				printf 'transition to "%s" (resolution: %s)' "$bip_status" "$(fold_disclosed_value "$OPT_RESOLUTION")"
+				printf 'transition to "%s" (resolution: %s)' "$bip_status" "$(one_line_display "$OPT_RESOLUTION")"
 			else
 				printf 'transition to "%s"' "$bip_status"
 			fi
 			;;
-		comment) printf 'add a comment from %s' "$(fold_disclosed_value "$OPT_TEXT_FILE")" ;;
+		comment) printf 'add a comment from %s' "$(one_line_display "$OPT_TEXT_FILE")" ;;
 		update)  printf 'update field(s): %s' "$(update_field_summary)" ;;
 	esac
 }

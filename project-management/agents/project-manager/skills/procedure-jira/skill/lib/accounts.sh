@@ -76,9 +76,9 @@ resolve_account_id() {
 	# caller's own typed string, so a crafted one carrying a newline would otherwise
 	# forge a line on stderr — a second "jira.sh: error: …" an agent reading this
 	# engine's output takes for the engine's own verdict, the same forgery
-	# fold_disclosed_value stops at cmd-update.sh's consent gate (see runtime.sh).
+	# one_line_display stops at cmd-update.sh's consent gate (see runtime.sh).
 	# The wire is unaffected: the lookup below sends the untouched, urlencoded value.
-	rai_safe_value=$(fold_disclosed_value "$rai_value")
+	rai_safe_value=$(one_line_display "$rai_value")
 
 	rai_encoded=$(urlencode "$rai_value")
 	rai_url="https://${CONFIRMED_HOST}/rest/api/3/user/search?query=${rai_encoded}&maxResults=$((USER_SEARCH_MAX_RESULTS + 1))"
