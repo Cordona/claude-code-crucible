@@ -6,7 +6,10 @@
 #                the hub_domain_selectable_groups_of_kind accessor the guard is
 #                built on, and lib/hub-checklist.sh's own entry guards — plus
 #                lib/hub-discovery.sh's warn-only `color:` check, whose whole
-#                contract is that it never removes a unit from the pipeline.
+#                contract is that it never removes a unit from the pipeline —
+#                and the preview's dry-run wording, which hub-install.sh AND
+#                hub-uninstall.sh must drop on the one path that writes with no
+#                prompt in between.
 #
 # The shared machinery lives in lib/: the runner primitives and the isolated
 # PATH toolbox in lib/harness.sh (which also states why this is hand-rolled
@@ -30,6 +33,7 @@ set -eu
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd -P)
 HUB_DIR=$(cd "$TESTS_DIR/.." && pwd -P)
 INSTALL="$HUB_DIR/hub-install.sh"
+UNINSTALL="$HUB_DIR/hub-uninstall.sh"
 HUB_LIB="$HUB_DIR/lib"
 
 # shellcheck source=SCRIPTDIR/lib/harness.sh
@@ -1031,5 +1035,305 @@ path_exists "install(color): the broken-color unit was installed anyway" \
 	"$TARGET_COLOR/$FX_COLOR_DEPLOYED_BROKEN"
 path_exists "install(color): so was the unrecognized-color one" \
 	"$TARGET_COLOR/$FX_COLOR_DEPLOYED_UNRECOGNIZED"
+
+# ===========================================================================
+# The preview's DRY-RUN WORDING — the totals line's "Nothing has changed yet." and
+# the "[DRY RUN] Nothing has changed yet." marker line (lib/hub-render.sh's
+# hub_not_changed_yet_clause and hub_dry_run_marker).
+#
+# THE ONE RULE EVERY CASE HERE IS ABOUT: the wording is true everywhere except on
+# the path that writes STRAIGHT AFTER the preview — --apply on a run that cannot
+# prompt — where the very next thing printed is the Result that contradicts it. So
+# a pure preview must keep it, a non-interactive --apply must drop it, and an
+# uninstall --all --apply that is BLOCKED for want of --confirm writes nothing and
+# must keep it too. Install and uninstall each decide this for themselves, so each
+# has its own cases.
+#
+# THE SPACING IS ASSERTED AS A BLOCK, not as two line checks: the marker owns its
+# own leading blank line so that dropping it leaves exactly one blank line between
+# the preview and whatever follows, and a doubled or missing gap is a change only a
+# contiguous multi-line match can see (see lib/harness.sh's stdout_has_block).
+#
+# --format=text (neither helper's mode) wherever the spacing is the assertion: it
+# is the one format in which the preview AND the Result share stdout.
+# ===========================================================================
+DRY_RUN_MARKER_LINE='[DRY RUN] Nothing has changed yet.'
+NOT_CHANGED_YET='Nothing has changed yet.'
+
+# invoke_uninstall TARGET [FLAG ...] -> hub-uninstall.sh's counterpart of
+# invoke_install: the fixture source, TARGET, and the machine-facing, byte-clean
+# flags every case shares. Mode and selection stay at the call site, for the reason
+# invoke_install's own note gives.
+invoke_uninstall() {
+	iu_target=$1
+	shift
+	harness_run sh "$UNINSTALL" --source "$SRC" --target "$iu_target" \
+		--non-interactive --no-color "$@"
+}
+
+# probe_dry_run_wording FUNCTION [VAR=VALUE ...] -> one of lib/hub-render.sh's two
+# wording functions at its OWN boundary, its output wrapped in <…>.
+#
+# THE DELIMITERS ARE THE ASSERTION'S RESOLUTION: harness_capture reads stdout
+# through a command substitution, which strips trailing newlines, so the marker's
+# closing \n — and whether a suppressed call printed a bare \n instead of nothing —
+# would be invisible without them. They also make an empty answer falsifiable: a
+# probe that died prints no `<` at all, so `<>` can only come from a function that
+# ran and printed nothing.
+DRY_RUN_WORDING_PROBE="$WORK/probe-dry-run-wording.sh"
+cat >"$DRY_RUN_WORDING_PROBE" <<'PROBE_EOF'
+set -eu
+# Set before sourcing: warn/die interpolate it, and `set -u` would abort on the
+# unset variable before either could print a diagnostic.
+HUB_PROG='crucible-hub probe'
+. "$HUB_LIB/hub-common.sh"
+. "$HUB_LIB/hub-render.sh"
+printf '<'
+"$1"
+printf '>'
+PROBE_EOF
+probe_dry_run_wording() {
+	pdrw_function=$1
+	shift
+	harness_run "HUB_LIB=$HUB_LIB" "$@" sh "$DRY_RUN_WORDING_PROBE" "$pdrw_function"
+}
+
+section "lib/hub-render.sh: the dry-run wording prints unless APPLY_WITHOUT_PROMPT=1"
+# UNSET is its own case, not a synonym for 0: the libraries run under `set -u`, so
+# a reader that lost its default would die on every script that never sets it.
+probe_dry_run_wording hub_dry_run_marker
+stdout_is "render(marker/unset): the marker line, owning its own leading blank line" \
+	"<
+$DRY_RUN_MARKER_LINE
+>"
+probe_dry_run_wording hub_dry_run_marker APPLY_WITHOUT_PROMPT=0
+stdout_is "render(marker/0): the same marker line, blank line included" \
+	"<
+$DRY_RUN_MARKER_LINE
+>"
+probe_dry_run_wording hub_dry_run_marker APPLY_WITHOUT_PROMPT=1
+stdout_is "render(marker/1): NOTHING, its blank line included, so no doubled gap is left behind" '<>'
+probe_dry_run_wording hub_not_changed_yet_clause
+stdout_is "render(clause/unset): the totals clause, with its own leading space and no newline" \
+	"< $NOT_CHANGED_YET>"
+probe_dry_run_wording hub_not_changed_yet_clause APPLY_WITHOUT_PROMPT=1
+stdout_is "render(clause/1): NOTHING, not even the space" '<>'
+
+# expect_wording_dropped LABEL TOTALS REST RESULT_HEADER -> the checks every
+# no-prompt --apply case makes on a --format=text capture: exit 0, no marker, no
+# clause anywhere, and the preview's tail running straight into the Result with ONE
+# blank line between.
+#
+# TOTALS is the totals line exactly as it must print WITHOUT its clause; REST is
+# whatever the preview prints after it (the "already installed" note, the bundle
+# block), each line led by its own newline, or empty. The block is built from the
+# two so the totals line is pinned WHOLE: a clause still appended to it breaks the
+# match even where REST follows.
+expect_wording_dropped() {
+	expect_rc "$1: -> exit 0" 0
+	stdout_lacks "$1: no [DRY RUN] marker line" '[DRY RUN]'
+	stdout_lacks "$1: no \"Nothing has changed yet\" anywhere" "$NOT_CHANGED_YET"
+	stdout_has_block "$1: ONE blank line between the preview and the Result, not two" \
+		"$2$3
+
+$4"
+}
+
+# expect_wording_kept LABEL TOTALS REST -> the pure-preview twin: exit 0, the clause
+# on the totals line itself, and the marker after the preview's last block with ONE
+# blank line between — the one block that fails for a missing clause, a clause on
+# the wrong line, a marker without its own blank line, and a doubled gap alike.
+expect_wording_kept() {
+	expect_rc "$1: -> exit 0" 0
+	stdout_has_block "$1: the totals clause, then ONE blank line before the marker" \
+		"$2 $NOT_CHANGED_YET$3
+
+$DRY_RUN_MARKER_LINE"
+}
+
+# hi_preview_totals phrases its totals line FOUR ways, and each way carries the clause
+# through its own printf, so each is a separate place for it to go missing or come
+# back. One apply/preview pair per phrasing, on the target state that reaches it:
+#   all new             nothing of the plan present
+#   all re-syncing      the plan's one missing unit is a STALE framework link
+#   N new, M re-syncing the same stale link, with the baseline not yet installed
+#   plain total         every unit installed, only the bundle left to write
+ALREADY_INSTALLED_NOTE='
+  (3 already installed and up to date, not counted above.)'
+
+section "install --apply with no prompt, all-new totals: the preview drops its dry-run wording"
+TARGET_WORDING_INSTALL="$WORK/target-wording-install"
+fx_target_reset "$TARGET_WORDING_INSTALL"
+invoke_install "$TARGET_WORDING_INSTALL" --apply --domains=software-development --technologies=alpha
+expect_wording_dropped "install(wording/apply)" '  6 items total, all new.' '' \
+	"Installed 6/6 items to $TARGET_WORDING_INSTALL"
+path_exists "install(wording/apply): and the install really wrote" "$TARGET_WORDING_INSTALL/$FX_DEPLOYED_ALPHA_DEV"
+
+section "install WITHOUT --apply, all-new totals: a pure preview keeps its dry-run wording"
+TARGET_WORDING_INSTALL_PREVIEW="$WORK/target-wording-install-preview"
+fx_target_reset "$TARGET_WORDING_INSTALL_PREVIEW"
+invoke_install "$TARGET_WORDING_INSTALL_PREVIEW" --domains=software-development --technologies=alpha
+expect_wording_kept "install(wording/preview)" '  6 items total, all new.' ''
+stdout_has "install(wording/preview): it really was the without---apply exit" \
+	'Nothing changed. Re-run with --apply to install.'
+path_absent "install(wording/preview): the preview wrote nothing" "$TARGET_WORDING_INSTALL_PREVIEW/$FX_DEPLOYED_ALPHA_DEV"
+
+section "install --apply with no prompt, all-re-syncing totals: the wording is dropped"
+TARGET_WORDING_RESYNC="$WORK/target-wording-resync"
+fx_target_reset "$TARGET_WORDING_RESYNC"
+fx_link_sd_baseline "$TARGET_WORDING_RESYNC"
+fx_link_stale "$TARGET_WORDING_RESYNC" "$FX_DEPLOYED_BETA_DEV"
+invoke_install "$TARGET_WORDING_RESYNC" --apply --domains=software-development --technologies=beta
+expect_wording_dropped "install(wording/resync-apply)" '  1 item total, all re-syncing.' \
+	"$ALREADY_INSTALLED_NOTE" "Installed 1/1 item to $TARGET_WORDING_RESYNC"
+path_exists "install(wording/resync-apply): the stale link really was re-synced" \
+	"$TARGET_WORDING_RESYNC/$FX_DEPLOYED_BETA_DEV"
+
+section "install WITHOUT --apply, all-re-syncing totals: the wording is kept"
+TARGET_WORDING_RESYNC_PREVIEW="$WORK/target-wording-resync-preview"
+fx_target_reset "$TARGET_WORDING_RESYNC_PREVIEW"
+fx_link_sd_baseline "$TARGET_WORDING_RESYNC_PREVIEW"
+fx_link_stale "$TARGET_WORDING_RESYNC_PREVIEW" "$FX_DEPLOYED_BETA_DEV"
+invoke_install "$TARGET_WORDING_RESYNC_PREVIEW" --domains=software-development --technologies=beta
+expect_wording_kept "install(wording/resync-preview)" '  1 item total, all re-syncing.' \
+	"$ALREADY_INSTALLED_NOTE"
+
+section "install --apply with no prompt, new-and-re-syncing totals: the wording is dropped"
+TARGET_WORDING_MIXED="$WORK/target-wording-mixed"
+fx_target_reset "$TARGET_WORDING_MIXED"
+fx_link_stale "$TARGET_WORDING_MIXED" "$FX_DEPLOYED_BETA_DEV"
+invoke_install "$TARGET_WORDING_MIXED" --apply --domains=software-development --technologies=beta
+expect_wording_dropped "install(wording/mixed-apply)" '  4 items total: 3 new, 1 re-syncing.' '' \
+	"Installed 4/4 items to $TARGET_WORDING_MIXED"
+path_exists "install(wording/mixed-apply): the new baseline really was written" \
+	"$TARGET_WORDING_MIXED/$FX_DEPLOYED_LENS"
+
+section "install WITHOUT --apply, new-and-re-syncing totals: the wording is kept"
+TARGET_WORDING_MIXED_PREVIEW="$WORK/target-wording-mixed-preview"
+fx_target_reset "$TARGET_WORDING_MIXED_PREVIEW"
+fx_link_stale "$TARGET_WORDING_MIXED_PREVIEW" "$FX_DEPLOYED_BETA_DEV"
+invoke_install "$TARGET_WORDING_MIXED_PREVIEW" --domains=software-development --technologies=beta
+expect_wording_kept "install(wording/mixed-preview)" '  4 items total: 3 new, 1 re-syncing.' ''
+
+# The plain-total phrasing needs the bundle tree (lib/fixture.sh's own section on
+# it), so these two call harness_run directly: invoke_install binds the primary
+# source. Its REST is the bundle block, which is the preview's last block here.
+BUNDLE_SRC="$WORK/bundle-source"
+fx_build_bundle_source "$BUNDLE_SRC"
+BUNDLE_PREVIEW_TAIL="$ALREADY_INSTALLED_NOTE
+
+  Also installing (first run only, not counted above):
+    CLAUDE.md and the framework's contract schemas."
+
+section "install --apply with no prompt, plain totals (bundle only): the wording is dropped"
+TARGET_WORDING_PLAIN="$WORK/target-wording-plain"
+fx_target_reset "$TARGET_WORDING_PLAIN"
+fx_link_bundle_tree_gtd "$TARGET_WORDING_PLAIN" "$BUNDLE_SRC"
+harness_run sh "$INSTALL" --source "$BUNDLE_SRC" --target "$TARGET_WORDING_PLAIN" \
+	--non-interactive --no-color --apply --domains=gtd
+expect_wording_dropped "install(wording/plain-apply)" '  0 items total.' \
+	"$BUNDLE_PREVIEW_TAIL" "Installed 0/0 items to $TARGET_WORDING_PLAIN"
+path_exists "install(wording/plain-apply): the bundle really was written" \
+	"$TARGET_WORDING_PLAIN/CLAUDE.md"
+
+section "install WITHOUT --apply, plain totals (bundle only): the wording is kept"
+TARGET_WORDING_PLAIN_PREVIEW="$WORK/target-wording-plain-preview"
+fx_target_reset "$TARGET_WORDING_PLAIN_PREVIEW"
+fx_link_bundle_tree_gtd "$TARGET_WORDING_PLAIN_PREVIEW" "$BUNDLE_SRC"
+harness_run sh "$INSTALL" --source "$BUNDLE_SRC" --target "$TARGET_WORDING_PLAIN_PREVIEW" \
+	--non-interactive --no-color --domains=gtd
+expect_wording_kept "install(wording/plain-preview)" '  0 items total.' "$BUNDLE_PREVIEW_TAIL"
+path_absent "install(wording/plain-preview): the preview wrote no bundle" \
+	"$TARGET_WORDING_PLAIN_PREVIEW/CLAUDE.md"
+
+# The --format=env cases assert the payload's SHAPE, not its fields: the claim is
+# that the preview moved to stderr and left stdout nothing but KEY='value' lines,
+# and pinning every field would fail these cases for any unrelated new one.
+HUB_ENV_LINE="^HUB_[A-Z_]*='"
+
+section "install --apply --format=env: stdout stays pure payload, the stderr preview loses the wording"
+TARGET_WORDING_INSTALL_ENV="$WORK/target-wording-install-env"
+fx_target_reset "$TARGET_WORDING_INSTALL_ENV"
+run_install "$TARGET_WORDING_INSTALL_ENV" --domains=software-development --technologies=alpha
+expect_rc "install(wording/env): -> exit 0" 0
+stdout_has "install(wording/env): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_lines_all_match "install(wording/env): every stdout line is a payload field" "$HUB_ENV_LINE"
+stdout_lacks "install(wording/env): no preview totals leaked into stdout" 'items total'
+stdout_lacks "install(wording/env): no marker leaked into stdout" '[DRY RUN]'
+# The POSITIVE anchor for the two absences: the preview really rendered on stderr.
+stderr_has_line "install(wording/env): the preview's totals line is on stderr, without its clause" \
+	'  6 items total, all new.'
+stderr_lacks "install(wording/env): no [DRY RUN] marker on stderr" '[DRY RUN]'
+stderr_lacks "install(wording/env): no \"Nothing has changed yet\" on stderr" "$NOT_CHANGED_YET"
+
+section "uninstall --components --apply with no prompt: the preview drops its dry-run wording"
+TARGET_WORDING_UNINSTALL="$WORK/target-wording-uninstall"
+fx_target_reset "$TARGET_WORDING_UNINSTALL"
+fx_link_alpha_and_sd_baseline "$TARGET_WORDING_UNINSTALL"
+invoke_uninstall "$TARGET_WORDING_UNINSTALL" --apply --components=alpha
+expect_wording_dropped "uninstall(wording/apply)" '  6 items total.' '' \
+	"Uninstalled 6/6 items from $TARGET_WORDING_UNINSTALL"
+path_absent "uninstall(wording/apply): and the removal really happened" \
+	"$TARGET_WORDING_UNINSTALL/$FX_DEPLOYED_ALPHA_DEV"
+
+section "uninstall --components WITHOUT --apply: a pure preview keeps its dry-run wording"
+TARGET_WORDING_UNINSTALL_PREVIEW="$WORK/target-wording-uninstall-preview"
+fx_target_reset "$TARGET_WORDING_UNINSTALL_PREVIEW"
+fx_link_alpha_and_sd_baseline "$TARGET_WORDING_UNINSTALL_PREVIEW"
+invoke_uninstall "$TARGET_WORDING_UNINSTALL_PREVIEW" --components=alpha
+expect_wording_kept "uninstall(wording/preview)" '  6 items total.' ''
+stdout_has "uninstall(wording/preview): it really was the without---apply exit" \
+	'Nothing changed. Re-run with --apply to uninstall.'
+path_exists "uninstall(wording/preview): the preview removed nothing" \
+	"$TARGET_WORDING_UNINSTALL_PREVIEW/$FX_DEPLOYED_ALPHA_DEV"
+
+section "uninstall --apply --format=env: stdout stays pure payload, the stderr preview loses the wording"
+TARGET_WORDING_UNINSTALL_ENV="$WORK/target-wording-uninstall-env"
+fx_target_reset "$TARGET_WORDING_UNINSTALL_ENV"
+fx_link_alpha_and_sd_baseline "$TARGET_WORDING_UNINSTALL_ENV"
+invoke_uninstall "$TARGET_WORDING_UNINSTALL_ENV" --apply --format=env --components=alpha
+expect_rc "uninstall(wording/env): -> exit 0" 0
+stdout_has "uninstall(wording/env): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_lines_all_match "uninstall(wording/env): every stdout line is a payload field" "$HUB_ENV_LINE"
+stdout_lacks "uninstall(wording/env): no preview totals leaked into stdout" 'items total'
+stdout_lacks "uninstall(wording/env): no marker leaked into stdout" '[DRY RUN]'
+stderr_has_line "uninstall(wording/env): the preview's totals line is on stderr, without its clause" \
+	'  6 items total.'
+stderr_lacks "uninstall(wording/env): no [DRY RUN] marker on stderr" '[DRY RUN]'
+stderr_lacks "uninstall(wording/env): no \"Nothing has changed yet\" on stderr" "$NOT_CHANGED_YET"
+
+section "uninstall --all --apply WITHOUT --confirm: blocked, so the wording is still true and stays"
+# The one --apply with no prompt that still writes NOTHING: the critical tier
+# refuses it outright, so "Nothing has changed yet" is exactly right. The two
+# sections differ in --confirm alone.
+#
+# The totals line is matched on its CLAUSE, not its count: --all's total includes
+# the bundle row, whose own counting is not this section's subject.
+TARGET_WORDING_ALL_BLOCKED="$WORK/target-wording-all-blocked"
+fx_target_reset "$TARGET_WORDING_ALL_BLOCKED"
+fx_link_alpha_and_sd_baseline "$TARGET_WORDING_ALL_BLOCKED"
+invoke_uninstall "$TARGET_WORDING_ALL_BLOCKED" --all --apply --format=env
+expect_rc "uninstall(wording/all-blocked): -> exit 1" 1
+stdout_has "uninstall(wording/all-blocked): HUB_STATUS=blocked" "HUB_STATUS='blocked'"
+stdout_has "uninstall(wording/all-blocked): for want of the critical phrase" \
+	"HUB_BLOCKED_REASON='confirmation_required'"
+stderr_has "uninstall(wording/all-blocked): the totals line keeps its clause" "items total. $NOT_CHANGED_YET"
+stderr_has_line "uninstall(wording/all-blocked): and the marker line is still printed" "$DRY_RUN_MARKER_LINE"
+path_exists "uninstall(wording/all-blocked): nothing was removed" \
+	"$TARGET_WORDING_ALL_BLOCKED/$FX_DEPLOYED_ALPHA_DEV"
+
+section "uninstall --all --apply WITH --confirm=UNINSTALL: it writes, so the wording goes"
+TARGET_WORDING_ALL_CONFIRMED="$WORK/target-wording-all-confirmed"
+fx_target_reset "$TARGET_WORDING_ALL_CONFIRMED"
+fx_link_alpha_and_sd_baseline "$TARGET_WORDING_ALL_CONFIRMED"
+invoke_uninstall "$TARGET_WORDING_ALL_CONFIRMED" --all --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(wording/all-confirmed): -> exit 0" 0
+stdout_has "uninstall(wording/all-confirmed): the run really applied" "HUB_APPLIED='true'"
+# The POSITIVE anchor for the two absences: the --all preview really rendered.
+stderr_has "uninstall(wording/all-confirmed): the --all preview rendered on stderr" 'Uninstall ALL from'
+stderr_lacks "uninstall(wording/all-confirmed): no [DRY RUN] marker" '[DRY RUN]'
+stderr_lacks "uninstall(wording/all-confirmed): no \"Nothing has changed yet\"" "$NOT_CHANGED_YET"
+path_absent "uninstall(wording/all-confirmed): the removal really happened" \
+	"$TARGET_WORDING_ALL_CONFIRMED/$FX_DEPLOYED_ALPHA_DEV"
 
 harness_summary

@@ -94,6 +94,12 @@ FX_DEPLOYED_GTD_AGENT='agents/gtd-fixture-writer.md'
 FX_DEPLOYED_GTD_CAPTURE='skills/procedure-gtd-fixture-capture'
 FX_DEPLOYED_GTD_FLOW='skills/flow-gtd-fixture'
 
+# GTD's three SOURCE-relative paths, named because two trees ship them: the primary
+# one below and the bundle tree at the bottom of this file.
+FX_SRC_GTD_AGENT="$FX_GTD_AGENT/gtd-fixture-writer.md"
+FX_SRC_GTD_CAPTURE="$FX_GTD_AGENT/skills/procedure-gtd-fixture-capture"
+FX_SRC_GTD_FLOW='gtd/flows/flow-gtd-fixture'
+
 # fx_write_md PATH NAME [COLOR] -> one agent-shaped markdown file. The YAML
 # frontmatter `name:` is what discovery reads for identity (lib/hub-discovery.sh's
 # hub_disc_resolve_names); the PATH is what decides which group it lands in.
@@ -141,9 +147,15 @@ fx_build_source() {
 	# walks: an agent (with a skill nested under it, the shape its `-maxdepth 2`
 	# agent walk exists for) and a flow. All three land in the one `atomic:gtd`
 	# group — see this file's header for why that group shape is the point.
-	fx_write_md "$FX_SRC/$FX_GTD_AGENT/gtd-fixture-writer.md" gtd-fixture-writer
-	fx_write_skill "$FX_SRC/$FX_GTD_AGENT/skills/procedure-gtd-fixture-capture" procedure-gtd-fixture-capture
-	fx_write_skill "$FX_SRC/gtd/flows/flow-gtd-fixture" flow-gtd-fixture
+	fx_write_gtd "$FX_SRC"
+}
+
+# fx_write_gtd ROOT -> GTD's three units under ROOT. Its own writer because the
+# bundle tree below ships the identical domain.
+fx_write_gtd() {
+	fx_write_md "$1/$FX_SRC_GTD_AGENT" gtd-fixture-writer
+	fx_write_skill "$1/$FX_SRC_GTD_CAPTURE" procedure-gtd-fixture-capture
+	fx_write_skill "$1/$FX_SRC_GTD_FLOW" flow-gtd-fixture
 }
 
 # fx_target_reset DIR -> DIR as a pristine, empty deployment target.
@@ -155,6 +167,15 @@ fx_target_reset() {
 # fx_link TARGET DEPLOYED_RELPATH SRC_RELPATH -> the symlink that makes one unit
 # read `installed`: a link at its deployed path resolving to exactly its source.
 fx_link() { ln -s "$FX_SRC/$3" "$1/$2"; }
+
+# fx_link_stale TARGET DEPLOYED_RELPATH -> a FRAMEWORK-OWNED symlink at a unit's
+# deployed path that resolves to a different place inside the fixture tree, as a
+# link left behind by a moved source does. It reads DIVERGED like fx_occupy's
+# file, but install RE-SYNCS it (lib/hub-symlink.sh's `replace`) where it refuses
+# a foreign file — so this is the state behind the preview's "re-syncing" counts.
+# The link DANGLES, so path_exists (which follows it) reads the unit as absent
+# until an install has re-synced it.
+fx_link_stale() { ln -s "$FX_SRC/stale/${2##*/}" "$1/$2"; }
 
 # fx_occupy TARGET DEPLOYED_RELPATH -> a non-framework regular file at a unit's
 # deployed path, which reads DIVERGED and so makes its group read `partial`.
@@ -205,6 +226,41 @@ fx_link_sd_baseline() {
 fx_link_pm_baseline() {
 	fx_link "$1" "$FX_DEPLOYED_PM_AGENT" "$FX_SRC_PM_AGENT"
 	fx_link "$1" "$FX_DEPLOYED_PM_FLOW" "$FX_SRC_PM_FLOW"
+}
+
+# fx_link_alpha_and_sd_baseline TARGET -> alpha's three units plus Software
+# Development's baseline: an installed technology to uninstall. `--components=alpha`
+# then removes SIX items — alpha, and the baseline it cascades once no technology is
+# left — which is the count the uninstall preview and Result cases assert.
+fx_link_alpha_and_sd_baseline() {
+	fx_link "$1" "$FX_DEPLOYED_ALPHA_DEV" "$FX_SRC_ALPHA_DEV"
+	fx_link "$1" "$FX_DEPLOYED_ALPHA_REVIEWER" "$FX_SRC_ALPHA_REVIEWER"
+	fx_link "$1" "$FX_DEPLOYED_ALPHA_STANDARD" "$FX_SRC_ALPHA_STANDARD"
+	fx_link_sd_baseline "$1"
+}
+
+# --- The bundle tree --------------------------------------------------------
+#
+# A THIRD source tree, and the only one that ships a root CLAUDE.md — the file
+# that makes a first run also install the bundle (lib/hub-bundle.sh). Kept out of
+# the primary tree because a bundle there would add a block to every install
+# preview and Result both runners assert. GTD alone is enough beside it: it is
+# one self-contained group a caller can put wholly `installed` with
+# fx_link_bundle_tree_gtd, which is the one state where install still has
+# something to do (the bundle) while every selected unit is already in place.
+
+# fx_build_bundle_source DIR -> that tree.
+fx_build_bundle_source() {
+	fx_write_gtd "$1"
+	printf '# fixture operating contract\n' >"$1/CLAUDE.md"
+}
+
+# fx_link_bundle_tree_gtd TARGET DIR -> GTD's three units linked to the bundle
+# tree at DIR, i.e. installed from THAT source rather than from $FX_SRC.
+fx_link_bundle_tree_gtd() {
+	ln -s "$2/$FX_SRC_GTD_AGENT" "$1/$FX_DEPLOYED_GTD_AGENT"
+	ln -s "$2/$FX_SRC_GTD_CAPTURE" "$1/$FX_DEPLOYED_GTD_CAPTURE"
+	ln -s "$2/$FX_SRC_GTD_FLOW" "$1/$FX_DEPLOYED_GTD_FLOW"
 }
 
 # --- The badge-color tree ---------------------------------------------------

@@ -172,6 +172,37 @@ stdout_is() {
 	else fail "$1" "expected stdout [$2], got [$CUR_OUT]"; fi
 }
 
+# stdout_lines_all_match NAME ERE — every stdout line matches ERE, for a channel
+# whose SHAPE is the contract (a machine payload with nothing else mixed in) while
+# its field set is free to grow. The offending lines are the failure diagnostic.
+# Pair it with a positive check: an empty stdout has no line to offend.
+stdout_lines_all_match() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	# grep's status is read three ways, not two: 2 is a broken ERE, and folding it
+	# into "no stray line" would pass a check that never ran.
+	slam_status=0
+	slam_stray=$(printf '%s\n' "$CUR_OUT" | grep -Ev -- "$2") || slam_status=$?
+	case $slam_status in
+	1) pass "$1" ;;
+	0) fail "$1" "stdout lines not matching $2: $slam_stray" ;;
+	*) fail "$1" "grep could not apply $2 (exit $slam_status)" ;;
+	esac
+}
+
+# stdout_has_block — a MULTI-LINE span that must appear in stdout contiguously, for
+# an assertion about the SPACING between two rendered lines (one blank separator,
+# not two). No grep can express it: `grep -F` reads a multi-line pattern as one
+# pattern PER LINE and passes when ANY of them matches, so the blank lines — the
+# whole point — would be matched on their own. A quoted `case` pattern is a literal
+# substring match over the whole capture instead.
+stdout_has_block() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	case $CUR_OUT in
+	*"$2"*) pass "$1" ;;
+	*) fail "$1" "stdout has no contiguous block [$2]; got [$CUR_OUT]" ;;
+	esac
+}
+
 # stderr_has — the HUMAN channel, which under --format=env|json is where the hub
 # puts everything that is not the machine payload (its fd 3 is stderr there; see
 # hub-install.sh's own fd-3 block). A no-op exit's MESSAGE is the only thing that

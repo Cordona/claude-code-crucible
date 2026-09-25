@@ -415,12 +415,35 @@ hub_print_hint() {
 	printf '\n'
 }
 
+# hub_preview_is_dry_run -> exit 0 unless the preview being printed is followed
+# by a write with NO confirmation prompt in between — --apply on a run that
+# cannot prompt (see hub_interactive), which the calling script decides ONCE and
+# records as APPLY_WITHOUT_PROMPT=1. Read from the calling script, defaulted, the
+# same way hub_interactive reads OPT_NONINTERACTIVE. On that one path the screen
+# is a receipt of what is about to happen, not a dry run: "Nothing has changed
+# yet" would be immediately contradicted by the Result line that follows it.
+hub_preview_is_dry_run() {
+	[ "${APPLY_WITHOUT_PROMPT:-0}" -eq 0 ]
+}
+
 # hub_dry_run_marker -> the fixed interactive dry-run line (spec: "the
 # `[DRY RUN]` marker line reads simply `[DRY RUN] Nothing has changed yet.`" —
 # the flag-bearing "re-run with --apply" clause belongs to agent-facing mode
-# only, and is printed there, never here).
+# only, and is printed there, never here), preceded by its own blank separator
+# line. Prints nothing — separator included, so a suppressed marker leaves no
+# doubled blank line behind — when hub_preview_is_dry_run says the preview is
+# not one.
 hub_dry_run_marker() {
-	printf '[DRY RUN] Nothing has changed yet.\n'
+	hub_preview_is_dry_run || return 0
+	printf '\n[DRY RUN] Nothing has changed yet.\n'
+}
+
+# hub_not_changed_yet_clause -> " Nothing has changed yet." for the end of a
+# preview's totals line, or nothing — the same rule as hub_dry_run_marker, so
+# the two can never disagree about whether the screen is a dry run.
+hub_not_changed_yet_clause() {
+	hub_preview_is_dry_run || return 0
+	printf ' Nothing has changed yet.'
 }
 
 # hub_confirm_prompt TIER -> the fixed prompt text for a confirmation tier, per

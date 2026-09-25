@@ -27,6 +27,9 @@
 #     mandatory and an optional pick, and the fact that `r` adds to a hand-made
 #     selection rather than replacing it. All of those exist only on a route that
 #     walks back to the domains checklist.
+#   * the preview's dry-run wording on a flag-driven --apply that still PROMPTS, for
+#     install and uninstall alike — the terminal half of run-tests.sh's own wording
+#     cases, where --apply writes with no prompt and the wording is dropped.
 # The pty driving lives in the lib/drive-*.exp scripts; every assertion is here, on
 # the same vocabulary run-tests.sh uses.
 #
@@ -41,6 +44,7 @@ set -eu
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd -P)
 HUB_DIR=$(cd "$TESTS_DIR/.." && pwd -P)
 INSTALL="$HUB_DIR/hub-install.sh"
+UNINSTALL="$HUB_DIR/hub-uninstall.sh"
 DRIVER="$TESTS_DIR/lib/drive-empty-technology.exp"
 DESELECT_DRIVER="$TESTS_DIR/lib/drive-deselect-baseline-only.exp"
 RETRACT_DRIVER="$TESTS_DIR/lib/drive-retract-baseline-only.exp"
@@ -50,6 +54,7 @@ REQUIRED_ONLY_DRIVER="$TESTS_DIR/lib/drive-required-only-key.exp"
 EXEMPT_DRIVER="$TESTS_DIR/lib/drive-required-only-exempt.exp"
 EXEMPT_OPTIONAL_DRIVER="$TESTS_DIR/lib/drive-required-only-exempt-optional.exp"
 PRESERVES_TICK_DRIVER="$TESTS_DIR/lib/drive-required-only-preserves-tick.exp"
+APPLY_DECLINED_DRIVER="$TESTS_DIR/lib/drive-apply-declined.exp"
 
 # shellcheck source=SCRIPTDIR/lib/harness.sh
 . "$TESTS_DIR/lib/harness.sh"
@@ -86,6 +91,7 @@ export DESELECTED_MARKER='MARKER:DOMAIN-DESELECTED'
 export CHOSE_MARKER='MARKER:TECHNOLOGY-CHOSEN'
 export BASELINE_MARKER='MARKER:BASELINE-ONLY='
 export EXEMPT_MARKER='MARKER:REQUIRED-ONLY-EXEMPTED'
+export CANCELLED_MARKER='MARKER:CANCELLED'
 
 # SCREEN_MARKER is a PREFIX, not a verdict, and it is the only marker here that is:
 # drive-required-only-screens.exp echoes a whole rendered screen back one line at a
@@ -542,5 +548,61 @@ path_absent "interactive(preserves-tick): r chose no technology for the candidat
 # walk stalls and nothing installs, leaving the same absence the correct behaviour
 # leaves. interactive(required-only) is where that claim IS falsifiable, because there
 # the screen is skipped rather than walked.
+
+# ===========================================================================
+# The preview's dry-run wording on a terminal.
+#
+# run-tests.sh pins the other half: --apply with no terminal writes straight after
+# the preview, so the preview drops "Nothing has changed yet". The same flags on a
+# terminal still stop at the confirm prompt, so here the preview is a genuine dry
+# run and must keep both the totals clause and the [DRY RUN] marker line.
+# ===========================================================================
+# drive_apply_declined SCRIPT TARGET FLAG... -> lib/drive-apply-declined.exp for one
+# capability script, against the primary fixture source.
+drive_apply_declined() {
+	dad_script=$1
+	dad_target=$2
+	shift 2
+	harness_capture expect -f "$APPLY_DECLINED_DRIVER" \
+		"$SRC" "$dad_target" "$dad_script" "$HARNESS_HOME" "$HARNESS_TOOLBOX" "$@"
+}
+SCREEN_CONFIRM="${SCREEN_MARKER}confirm|"
+
+section "interactive: install --apply on a terminal still prompts, so its preview keeps the dry-run wording"
+TARGET_APPLY_DECLINED="$WORK/target-apply-declined"
+fx_target_reset "$TARGET_APPLY_DECLINED"
+drive_apply_declined "$INSTALL" "$TARGET_APPLY_DECLINED" \
+	--domains=software-development --technologies=alpha --apply
+expect_ok "interactive(apply-declined): the confirm prompt was reached and answered" \
+	"driver said: $CUR_OUT" "$CUR_RC"
+# ONE block, so the spacing is asserted with the wording: the marker owns its leading
+# blank line, and a doubled or missing gap here is the same defect run-tests.sh's
+# block assertions catch off a terminal.
+stdout_has_block "interactive(apply-declined): the totals clause, ONE blank line, then the [DRY RUN] marker" \
+	"${SCREEN_CONFIRM}  6 items total, all new. Nothing has changed yet.
+${SCREEN_CONFIRM}
+${SCREEN_CONFIRM}[DRY RUN] Nothing has changed yet."
+stdout_has "interactive(apply-declined): declining took the cancel exit" "$CANCELLED_MARKER"
+path_absent "interactive(apply-declined): and nothing was written, as the wording promised" \
+	"$TARGET_APPLY_DECLINED/$FX_DEPLOYED_ALPHA_DEV"
+path_absent "interactive(apply-declined): not even the baseline" \
+	"$TARGET_APPLY_DECLINED/$FX_DEPLOYED_LENS"
+
+section "interactive: uninstall --apply on a terminal still prompts, so its preview keeps the dry-run wording"
+TARGET_UNINSTALL_DECLINED="$WORK/target-uninstall-declined"
+fx_target_reset "$TARGET_UNINSTALL_DECLINED"
+fx_link_alpha_and_sd_baseline "$TARGET_UNINSTALL_DECLINED"
+drive_apply_declined "$UNINSTALL" "$TARGET_UNINSTALL_DECLINED" --components=alpha --apply
+expect_ok "interactive(uninstall-declined): the confirm prompt was reached and answered" \
+	"driver said: $CUR_OUT" "$CUR_RC"
+stdout_has_block "interactive(uninstall-declined): the totals clause, ONE blank line, then the [DRY RUN] marker" \
+	"${SCREEN_CONFIRM}  6 items total. Nothing has changed yet.
+${SCREEN_CONFIRM}
+${SCREEN_CONFIRM}[DRY RUN] Nothing has changed yet."
+stdout_has "interactive(uninstall-declined): declining took the cancel exit" "$CANCELLED_MARKER"
+path_exists "interactive(uninstall-declined): alpha is still installed, as the wording promised" \
+	"$TARGET_UNINSTALL_DECLINED/$FX_DEPLOYED_ALPHA_DEV"
+path_exists "interactive(uninstall-declined): and so is the baseline it would have cascaded" \
+	"$TARGET_UNINSTALL_DECLINED/$FX_DEPLOYED_LENS"
 
 harness_summary

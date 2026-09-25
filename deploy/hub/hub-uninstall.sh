@@ -1525,6 +1525,21 @@ hu_result_remove_items() {
 		"$hurri_unattributed"
 }
 
+# APPLY_WITHOUT_PROMPT — whether the confirm block below will fall straight
+# through to Apply with no prompt: --apply on a run that cannot prompt, and — for
+# --all — one that already carries the critical phrase, since without it the run
+# is BLOCKED rather than applied and "Nothing has changed yet" stays true. The
+# preview reads it (via lib/hub-render.sh's hub_preview_is_dry_run) to drop its
+# dry-run wording on exactly that path, where the very next line is the Result.
+# INTERACTIVE_SELECTION needs no term of its own: the checklist is reachable only
+# when hub_interactive holds, so it always ends at a prompt.
+APPLY_WITHOUT_PROMPT=0
+if [ "$OPT_APPLY" -eq 1 ] && ! hub_interactive; then
+	if [ "$OPT_ALL" -eq 0 ] || [ "$OPT_CONFIRM" = "$HUB_CRITICAL_PHRASE" ]; then
+		APPLY_WITHOUT_PROMPT=1
+	fi
+fi
+
 # ===========================================================================
 # THE PLAN LOOP — selection -> units -> retention -> preview -> confirm.
 #
@@ -1836,7 +1851,9 @@ fi
 # informed-consent surface and an agent-facing caller reads it too. The block is
 # wrapped in `{ ... } >&3` (the human channel opened at the top of this script);
 # a brace group, not a subshell, so the variables it sets — notably TOTAL, which
-# the confirm and result stages both need — survive it.
+# the confirm and result stages both need — survive it. Its dry-run wording (the
+# total's "Nothing has changed yet." and the [DRY RUN] marker) is dropped only
+# when APPLY_WITHOUT_PROMPT=1, where the removal follows with no prompt between.
 # ---------------------------------------------------------------------------
 {
 if [ "$OPT_ALL" -eq 1 ]; then
@@ -1893,9 +1910,8 @@ if [ "$BUNDLE_REMOVE" -eq 1 ]; then
 	printf '\n'
 fi
 
-printf '  %s %s total. Nothing has changed yet.\n' "$TOTAL" "$(hub_plural "$TOTAL" item items)"
+printf '  %s %s total.%s\n' "$TOTAL" "$(hub_plural "$TOTAL" item items)" "$(hub_not_changed_yet_clause)"
 
-printf '\n'
 hub_dry_run_marker
 printf '\n'
 } >&3

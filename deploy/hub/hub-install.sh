@@ -2595,18 +2595,23 @@ hi_preview_shared() {
 # this function is ever called), so the plain, no-breakdown line below is for
 # the one remaining edge case: a bundle-only run where every component is
 # already installed and unchanged.
+#
+# The trailing "Nothing has changed yet." is hub_not_changed_yet_clause's, and is
+# dropped on the one path that writes straight after this screen (see
+# APPLY_WITHOUT_PROMPT) — the same rule hi_preview's [DRY RUN] marker follows.
 hi_preview_totals() {
+	hipt_not_yet=$(hub_not_changed_yet_clause)
 	if [ "$NEW_COUNT" -gt 0 ] && [ "$REPLACE_COUNT" -gt 0 ]; then
-		printf '  %s %s total: %s new, %s re-syncing. Nothing has changed yet.\n' \
-			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)" "$NEW_COUNT" "$REPLACE_COUNT"
+		printf '  %s %s total: %s new, %s re-syncing.%s\n' \
+			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)" "$NEW_COUNT" "$REPLACE_COUNT" "$hipt_not_yet"
 	elif [ "$NEW_COUNT" -gt 0 ]; then
-		printf '  %s %s total, all new. Nothing has changed yet.\n' \
-			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)"
+		printf '  %s %s total, all new.%s\n' \
+			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)" "$hipt_not_yet"
 	elif [ "$REPLACE_COUNT" -gt 0 ]; then
-		printf '  %s %s total, all re-syncing. Nothing has changed yet.\n' \
-			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)"
+		printf '  %s %s total, all re-syncing.%s\n' \
+			"$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)" "$hipt_not_yet"
 	else
-		printf '  %s %s total. Nothing has changed yet.\n' "$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)"
+		printf '  %s %s total.%s\n' "$ATTEMPT_COUNT" "$(hub_plural "$ATTEMPT_COUNT" item items)" "$hipt_not_yet"
 	fi
 	if [ "$SKIP_COUNT" -gt 0 ]; then
 		printf '  (%s already installed and up to date, not counted above.)\n' "$SKIP_COUNT"
@@ -2634,7 +2639,9 @@ hi_preview_bundle() {
 
 # hi_preview -> the whole dry-run screen. Always human-readable text, in EVERY
 # mode: the dry run is the informed-consent surface and an agent-facing caller
-# gets to read it too.
+# gets to read it too. Its dry-run wording (the [DRY RUN] marker and the totals'
+# "Nothing has changed yet.") is dropped only when APPLY_WITHOUT_PROMPT=1, where
+# the install follows this screen with no prompt in between.
 #
 # EVERY BLOCK OF ONE DOMAIN PRINTS TOGETHER, before moving to the next domain —
 # a live test session found the previous shape (one pass per BLOCK KIND across
@@ -2671,7 +2678,6 @@ hi_preview() {
 		hi_preview_totals
 		hi_preview_bundle
 
-		printf '\n'
 		hub_dry_run_marker
 		printf '\n'
 	} >&3
@@ -3074,6 +3080,17 @@ PLAN_UNITS="$HUB_WORK/plan-units.tsv"
 NEW_LIST="$HUB_WORK/new.txt"
 REPLACE_LIST="$HUB_WORK/replace.txt"
 SKIP_LIST="$HUB_WORK/skip.txt"
+
+# APPLY_WITHOUT_PROMPT — whether the confirm block below will fall straight
+# through to Apply with no prompt: --apply on a run that cannot prompt. The
+# preview reads it (via lib/hub-render.sh's hub_preview_is_dry_run) to drop its
+# "Nothing has changed yet" wording on exactly that path, where the very next
+# line is the Result. INTERACTIVE_SELECTION needs no term of its own: the walk is
+# reachable only when hub_interactive holds, so it always ends at a prompt.
+APPLY_WITHOUT_PROMPT=0
+if [ "$OPT_APPLY" -eq 1 ] && ! hub_interactive; then
+	APPLY_WITHOUT_PROMPT=1
+fi
 
 while :; do
 

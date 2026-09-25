@@ -1,0 +1,73 @@
+#!/usr/bin/env expect
+#
+# drive-apply-declined.exp — run a FLAG-DRIVEN `--apply` of one capability script
+#                            on a pty, echo back the preview it renders ahead of the
+#                            confirm prompt, then decline that prompt.
+#
+# WHAT THIS REACHES THAT run-tests.sh CANNOT: --apply off a terminal writes straight
+# after the preview, so there the preview drops its "Nothing has changed yet" wording.
+# On a terminal the same flags still stop at "Proceed?", so the preview IS still a
+# dry run and must keep that wording. Only a pty makes hub_interactive hold with
+# --apply set, which is why this is a driver at all (see drive-empty-technology.exp's
+# header on why expect(1) and not script(1)).
+#
+# THE SCRIPT AND ITS SELECTION ARE THE CALLER'S: hub-install.sh and hub-uninstall.sh
+# each decide the no-prompt path with their OWN `! hub_interactive` term, so each
+# needs its own terminal case, and the key sequence is the same for both.
+#
+# THE PROMPT IS DECLINED, not accepted: "n" is what makes the wording's promise
+# checkable — the caller asserts that nothing was in fact written. It declines both
+# tiers: the safe gate (install) takes anything but y/Enter as no, the dangerous gate
+# (uninstall) anything but y.
+#
+# Markers, on stdout. The caller exports them and this script echoes them back, so
+# the strings emitted and the strings grepped for cannot drift apart:
+#   $env(SCREEN_MARKER)confirm|<line>  every line rendered before "Proceed?", CR
+#                                     stripped (see drive-baseline-only-common.exp's
+#                                     dump_screen for why a screen is echoed rather
+#                                     than matched).
+#   $env(CANCELLED_MARKER)            the decline was answered with the cancel exit.
+#   MARKER:TIMEOUT-<stage>            a screen never arrived; a diagnostic only.
+#
+# Usage: expect -f drive-apply-declined.exp SRC TARGET SCRIPT HOME PATH FLAG...
+#        with SCREEN_MARKER and CANCELLED_MARKER exported. FLAG... is the selection
+#        and --apply, passed to SCRIPT verbatim.
+
+set timeout 30
+log_user 0
+
+set fixture_source    [lindex $argv 0]
+set target_dir        [lindex $argv 1]
+set capability_script [lindex $argv 2]
+set isolated_home     [lindex $argv 3]
+set toolbox_path      [lindex $argv 4]
+set capability_flags  [lrange $argv 5 end]
+
+set screen_marker    $env(SCREEN_MARKER)
+set cancelled_marker $env(CANCELLED_MARKER)
+
+spawn env -i HOME=$isolated_home PATH=$toolbox_path TMPDIR=$isolated_home TERM=dumb \
+	sh $capability_script --source $fixture_source --target $target_dir --no-color \
+	{*}$capability_flags
+
+expect {
+	-ex "Proceed?" {
+		foreach dline [split $expect_out(buffer) "\n"] {
+			puts "${screen_marker}confirm|[string trimright $dline "\r"]"
+		}
+	}
+	timeout {
+		puts "MARKER:TIMEOUT-confirm-screen"
+		exit 1
+	}
+}
+
+send "n\r"
+expect {
+	-ex "Cancelled. Nothing changed." { puts $cancelled_marker }
+	timeout {
+		puts "MARKER:TIMEOUT-cancelled"
+		exit 1
+	}
+}
+exit 0
