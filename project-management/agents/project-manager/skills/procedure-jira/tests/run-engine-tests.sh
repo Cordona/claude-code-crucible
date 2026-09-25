@@ -397,7 +397,12 @@ argv_log_has_token "argv log DOES contain -K (the config-file handoff)" "-K"
 
 section "jira.sh — credential handoff: JIRA_CURL_CONFIG passthrough is never deleted"
 
-OWN_CFG="$WORK/preexisting.curlrc"
+# The supplied file must be named `<confirmed-host>.cfg` — resolve_credential_config
+# binds an external config to the site by its basename (the refusal of a
+# mis-named one is the next section). It lives in its OWN directory so it cannot
+# be confused with the other `foo.atlassian.net.cfg` fixture far below.
+mkdir -p "$WORK/supplied-cfg"
+OWN_CFG="$WORK/supplied-cfg/foo.atlassian.net.cfg"
 printf 'user = "someone@example.com:their-token"\n' >"$OWN_CFG"
 reset_curl_stub
 set_stub_response 1 '{"key":"PROJ-1","fields":{"summary":"s","status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
@@ -408,6 +413,34 @@ argv_log_has_token "JIRA_CURL_CONFIG: curl was invoked with -K \$OWN_CFG (the ex
 TESTS_RUN=$((TESTS_RUN + 1))
 if [ -f "$OWN_CFG" ]; then pass "pre-supplied curl-config file survives (not ours to delete)"
 else fail "pre-supplied curl-config file survives" "file was removed"; fi
+
+section "jira.sh — credential handoff: a JIRA_CURL_CONFIG not named for the confirmed site is refused before any request"
+
+# Two mis-names, one per way a caller gets it wrong: a generic name that says
+# nothing about its site, and a file named for a DIFFERENT site — the case the
+# basename binding exists for. Both hold valid-looking credentials, so the
+# refusal can only come from the name.
+mkdir -p "$WORK/misnamed-cfg"
+MISNAMED_GENERIC_CFG="$WORK/misnamed-cfg/preexisting.curlrc"
+MISNAMED_OTHER_SITE_CFG="$WORK/misnamed-cfg/bar.atlassian.net.cfg"
+printf 'user = "someone@example.com:their-token"\n' >"$MISNAMED_GENERIC_CFG"
+printf 'user = "someone@example.com:their-token"\n' >"$MISNAMED_OTHER_SITE_CFG"
+
+reset_curl_stub
+set_stub_response 1 '{"key":"PROJ-1","fields":{"summary":"s","status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_CURL_CONFIG=$MISNAMED_GENERIC_CFG" sh "$JIRA" view PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "JIRA_CURL_CONFIG named preexisting.curlrc -> exit 1 (refused)" 1
+stderr_has "JIRA_CURL_CONFIG generic name: the diagnostic names the file and the expected basename" \
+	"basename 'preexisting.curlrc' does not match the confirmed site 'foo.atlassian.net.cfg'"
+equals "JIRA_CURL_CONFIG generic name: ZERO curl calls (the credential never reached curl)" "$(call_count)" "0"
+
+reset_curl_stub
+set_stub_response 1 '{"key":"PROJ-1","fields":{"summary":"s","status":{"name":"Open"},"issuetype":{"name":"Task"}}}' 200
+run full "JIRA_CURL_CONFIG=$MISNAMED_OTHER_SITE_CFG" sh "$JIRA" view PROJ-1 --confirmed-site foo.atlassian.net
+expect_rc "JIRA_CURL_CONFIG named for ANOTHER site -> exit 1 (refused)" 1
+stderr_has "JIRA_CURL_CONFIG other site: the diagnostic names the other site's file" \
+	"basename 'bar.atlassian.net.cfg' does not match the confirmed site 'foo.atlassian.net.cfg'"
+equals "JIRA_CURL_CONFIG other site: ZERO curl calls" "$(call_count)" "0"
 
 # ===========================================================================
 # view <KEY>
