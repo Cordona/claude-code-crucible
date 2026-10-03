@@ -10,7 +10,8 @@
 #                and the preview's dry-run wording, which hub-install.sh AND
 #                hub-uninstall.sh must drop on the one path that writes with no
 #                prompt in between, and uninstall --all's count of the first-run
-#                bundle, taken from what the target actually holds.
+#                bundle, taken from what the target actually holds — including on
+#                a target with no component left.
 #
 # The shared machinery lives in lib/: the runner primitives and the isolated
 # PATH toolbox in lib/harness.sh (which also states why this is hand-rolled
@@ -1358,6 +1359,10 @@ BUNDLE_REMOVE_TAIL='    - Procedure GTD fixture capture'
 # than generated, so the restore note and the payload can be matched exactly.
 BUNDLE_BACKUP_NAME='CLAUDE.md.backup.2026-01-01T00-00-00Z'
 BUNDLE_BACKUP_CONTENT='the contract this user had before the framework'
+# A SECOND backup, for the one rule that turns on how many there are: several, with
+# nothing chosen, cannot be resolved without asking.
+BUNDLE_BACKUP_NAME_2='CLAUDE.md.backup.2026-02-01T00-00-00Z'
+BUNDLE_BACKUP_CONTENT_2='a later contract this user also had'
 
 # invoke_uninstall_bundle_tree TARGET [FLAG ...] -> hub-uninstall.sh --all against the
 # bundle tree: invoke_uninstall binds the primary source, which ships no bundle.
@@ -1368,25 +1373,46 @@ invoke_uninstall_bundle_tree() {
 		--non-interactive --no-color --all "$@"
 }
 
-# bundle_target TARGET ITEM... -> a fresh target with GTD installed from the bundle
-# tree plus the named bundle items: `config` and `schema-a` / `schema-b` link the
-# framework's own; `foreign-config` puts the user's own file at CLAUDE.md;
-# `backup` leaves a CLAUDE.md backup, as an earlier install that replaced one does.
-bundle_target() {
-	bt_target=$1
+# bundle_items TARGET ITEM... -> the named bundle items put into TARGET: `config` and
+# `schema-a` / `schema-b` link the framework's own; `foreign-config` puts the user's
+# own file at CLAUDE.md; `backup` and `backup-2` leave a CLAUDE.md backup each, as an
+# earlier install that replaced one does.
+bundle_items() {
+	bi_target=$1
 	shift
-	fx_target_reset "$bt_target"
-	fx_link_bundle_tree_gtd "$bt_target" "$BUNDLE_SRC"
-	for bt_item in "$@"; do
-		case $bt_item in
-		config) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_CONFIG" "$FX_BUNDLE_CONFIG" ;;
-		schema-a) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_A" "$FX_BUNDLE_SRC_SCHEMA_A" ;;
-		schema-b) fx_link_bundle_item "$bt_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_B" "$FX_BUNDLE_SRC_SCHEMA_B" ;;
-		foreign-config) fx_occupy "$bt_target" "$FX_BUNDLE_CONFIG" ;;
-		backup) printf '%s\n' "$BUNDLE_BACKUP_CONTENT" >"$bt_target/$BUNDLE_BACKUP_NAME" ;;
-		*) printf 'FATAL: bundle_target: unknown item %s\n' "$bt_item" >&2; exit 1 ;;
+	for bi_item in "$@"; do
+		case $bi_item in
+		config) fx_link_bundle_item "$bi_target" "$BUNDLE_SRC" "$FX_BUNDLE_CONFIG" "$FX_BUNDLE_CONFIG" ;;
+		schema-a) fx_link_bundle_item "$bi_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_A" "$FX_BUNDLE_SRC_SCHEMA_A" ;;
+		schema-b) fx_link_bundle_item "$bi_target" "$BUNDLE_SRC" "$FX_BUNDLE_DEPLOYED_SCHEMA_B" "$FX_BUNDLE_SRC_SCHEMA_B" ;;
+		foreign-config) fx_occupy "$bi_target" "$FX_BUNDLE_CONFIG" ;;
+		backup) printf '%s\n' "$BUNDLE_BACKUP_CONTENT" >"$bi_target/$BUNDLE_BACKUP_NAME" ;;
+		backup-2) printf '%s\n' "$BUNDLE_BACKUP_CONTENT_2" >"$bi_target/$BUNDLE_BACKUP_NAME_2" ;;
+		*) printf 'FATAL: bundle_items: unknown item %s\n' "$bi_item" >&2; exit 1 ;;
 		esac
 	done
+}
+
+# bundle_target TARGET ITEM... -> a fresh target with GTD installed from the bundle
+# tree, plus the named bundle items.
+bundle_target() {
+	fx_target_reset "$1"
+	fx_link_bundle_tree_gtd "$1" "$BUNDLE_SRC"
+	bundle_items "$@"
+}
+
+# component_free_target TARGET ITEM... -> a fresh target holding the named bundle
+# items and NO component at all — the state a complete uninstall leaves behind.
+component_free_target() {
+	fx_target_reset "$1"
+	bundle_items "$@"
+}
+
+# expect_file_holds NAME PATH LINE -> PATH is a file whose whole content is LINE:
+# the check that a user's own contract came through (or back) intact.
+expect_file_holds() {
+	expect_ok "$1" "$2 reads: $(cat "$2" 2>&1)" \
+		"$([ "$(cat "$2" 2>/dev/null)" = "$3" ] && echo 0 || echo 1)"
 }
 
 # expect_bundle_line LABEL ITEM TOTAL -> the preview's bundle block names exactly
@@ -1481,9 +1507,8 @@ stdout_has "uninstall(bundle/foreign): one of the four was not removed" \
 	"Uninstalled 3/4 items from $TARGET_BUNDLE_FOREIGN"
 stdout_has "uninstall(bundle/foreign): and the Result names it as refused" \
 	'CLAUDE.md left untouched — a file that is not framework-owned occupies its path'
-expect_ok "uninstall(bundle/foreign): the user's own file is still there, unchanged" \
-	"CLAUDE.md now reads: $(cat "$TARGET_BUNDLE_FOREIGN/$FX_BUNDLE_CONFIG" 2>&1)" \
-	"$(grep -qxF 'not a framework symlink' "$TARGET_BUNDLE_FOREIGN/$FX_BUNDLE_CONFIG" && echo 0 || echo 1)"
+expect_file_holds "uninstall(bundle/foreign): the user's own file is still there, unchanged" \
+	"$TARGET_BUNDLE_FOREIGN/$FX_BUNDLE_CONFIG" "$FX_OCCUPANT_CONTENT"
 
 TARGET_BUNDLE_FOREIGN_ENV="$WORK/target-bundle-foreign-env"
 bundle_target "$TARGET_BUNDLE_FOREIGN_ENV" foreign-config
@@ -1510,9 +1535,8 @@ stdout_has_block "uninstall(bundle/backup): the restore note, directly after the
 "
 stdout_has "uninstall(bundle/backup): the Result reports the restore" \
 	"restored CLAUDE.md from $BUNDLE_BACKUP_NAME"
-expect_ok "uninstall(bundle/backup): CLAUDE.md holds the backed-up content again" \
-	"CLAUDE.md now reads: $(cat "$TARGET_BUNDLE_BACKUP/$FX_BUNDLE_CONFIG" 2>&1)" \
-	"$(grep -qxF "$BUNDLE_BACKUP_CONTENT" "$TARGET_BUNDLE_BACKUP/$FX_BUNDLE_CONFIG" && echo 0 || echo 1)"
+expect_file_holds "uninstall(bundle/backup): CLAUDE.md holds the backed-up content again" \
+	"$TARGET_BUNDLE_BACKUP/$FX_BUNDLE_CONFIG" "$BUNDLE_BACKUP_CONTENT"
 path_absent "uninstall(bundle/backup): and the backup was consumed" "$TARGET_BUNDLE_BACKUP/$BUNDLE_BACKUP_NAME"
 
 TARGET_BUNDLE_BACKUP_ENV="$WORK/target-bundle-backup-env"
@@ -1561,5 +1585,267 @@ stdout_has_block "uninstall(bundle/preview): the whole bundle and the restore we
 expect_ok "uninstall(bundle/preview): the target tree is identical before and after" \
 	"before: [$BUNDLE_TREE_BEFORE] after: [$BUNDLE_TREE_AFTER]" \
 	"$([ "$BUNDLE_TREE_BEFORE" = "$BUNDLE_TREE_AFTER" ] && echo 0 || echo 1)"
+
+# ===========================================================================
+# uninstall on a target with NO COMPONENT left — the state a complete uninstall
+# leaves behind, and the one where "nothing selected" stops meaning "nothing to do".
+#
+# --all is the only path that removes CLAUDE.md and the contract schemas or puts a
+# backed-up CLAUDE.md back, so an empty component selection must still go through
+# the preview, the gate and the apply whenever --all has bundle work of its own: a
+# bundle item present, or a backup to restore. It ends at "Nothing selected" only
+# when there is none — and a selective uninstall never has any.
+# ===========================================================================
+NOTHING_SELECTED='Nothing selected — nothing removed.'
+FULL_BUNDLE_LINE='    - CLAUDE.md and 2 contract schemas'
+BUNDLE_RESTORE_NOTE="  A backed-up CLAUDE.md was found and will be restored:
+    $BUNDLE_BACKUP_NAME → CLAUDE.md"
+
+section "uninstall --all --apply, a BUNDLE-ONLY target: the bundle is previewed, counted and removed"
+TARGET_BUNDLE_ONLY="$WORK/target-bundle-only"
+component_free_target "$TARGET_BUNDLE_ONLY" config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ONLY" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle-only): -> exit 0" 0
+stdout_lacks "uninstall(bundle-only): the empty component selection did NOT end the run" "$NOTHING_SELECTED"
+stdout_has_block "uninstall(bundle-only): the bundle block is the whole plan, and the total counts it" \
+	"$BUNDLE_ALSO_REMOVING
+$FULL_BUNDLE_LINE
+
+  3 items total.
+"
+stdout_has "uninstall(bundle-only): all three came out" "Uninstalled 3/3 items from $TARGET_BUNDLE_ONLY"
+path_absent "uninstall(bundle-only): CLAUDE.md was removed" "$TARGET_BUNDLE_ONLY/$FX_BUNDLE_CONFIG"
+path_absent "uninstall(bundle-only): the first schema was removed" "$TARGET_BUNDLE_ONLY/$FX_BUNDLE_DEPLOYED_SCHEMA_A"
+path_absent "uninstall(bundle-only): the second schema was removed" "$TARGET_BUNDLE_ONLY/$FX_BUNDLE_DEPLOYED_SCHEMA_B"
+
+TARGET_BUNDLE_ONLY_ENV="$WORK/target-bundle-only-env"
+component_free_target "$TARGET_BUNDLE_ONLY_ENV" config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ONLY_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(bundle-only-env): -> exit 0" 0
+stdout_has "uninstall(bundle-only-env): the run applied" "HUB_APPLIED='true'"
+stdout_has "uninstall(bundle-only-env): and says the bundle was removed" "HUB_BUNDLE_REMOVED='true'"
+stdout_has "uninstall(bundle-only-env): three bundle items attempted" "HUB_ATTEMPTED_COUNT='3'"
+stdout_has "uninstall(bundle-only-env): and all three acted on" "HUB_ACTED_ON_COUNT='3'"
+
+section "uninstall --all --apply WITHOUT --confirm, a bundle-only target: still gated"
+# The run no longer ends at the empty selection, so it now reaches the critical
+# tier's gate — which must hold here exactly as it does with components present.
+TARGET_BUNDLE_ONLY_BLOCKED="$WORK/target-bundle-only-blocked"
+component_free_target "$TARGET_BUNDLE_ONLY_BLOCKED" config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ONLY_BLOCKED" --apply --format=env
+expect_rc "uninstall(bundle-only-blocked): -> exit 1" 1
+stdout_has "uninstall(bundle-only-blocked): HUB_STATUS=blocked" "HUB_STATUS='blocked'"
+stdout_has "uninstall(bundle-only-blocked): for want of the critical phrase" \
+	"HUB_BLOCKED_REASON='confirmation_required'"
+path_exists "uninstall(bundle-only-blocked): CLAUDE.md is still installed" "$TARGET_BUNDLE_ONLY_BLOCKED/$FX_BUNDLE_CONFIG"
+path_exists "uninstall(bundle-only-blocked): and so is a schema" "$TARGET_BUNDLE_ONLY_BLOCKED/$FX_BUNDLE_DEPLOYED_SCHEMA_A"
+
+section "uninstall --all preview, a bundle-only target: the full preview, and nothing written"
+TARGET_BUNDLE_ONLY_PREVIEW="$WORK/target-bundle-only-preview"
+component_free_target "$TARGET_BUNDLE_ONLY_PREVIEW" config schema-a schema-b
+BUNDLE_ONLY_TREE_BEFORE=$(tree_snapshot "$TARGET_BUNDLE_ONLY_PREVIEW")
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_ONLY_PREVIEW"
+BUNDLE_ONLY_TREE_AFTER=$(tree_snapshot "$TARGET_BUNDLE_ONLY_PREVIEW")
+expect_rc "uninstall(bundle-only-preview): -> exit 0" 0
+stdout_has_block "uninstall(bundle-only-preview): the bundle block, the total and the [DRY RUN] marker" \
+	"$BUNDLE_ALSO_REMOVING
+$FULL_BUNDLE_LINE
+
+  3 items total. $NOT_CHANGED_YET
+
+$DRY_RUN_MARKER_LINE"
+stdout_has "uninstall(bundle-only-preview): it ended at the without---apply exit" \
+	'Nothing changed. Re-run with --apply to uninstall.'
+expect_ok "uninstall(bundle-only-preview): the target tree is identical before and after" \
+	"before: [$BUNDLE_ONLY_TREE_BEFORE] after: [$BUNDLE_ONLY_TREE_AFTER]" \
+	"$([ "$BUNDLE_ONLY_TREE_BEFORE" = "$BUNDLE_ONLY_TREE_AFTER" ] && echo 0 || echo 1)"
+
+section "uninstall --all --apply, a BACKUP and nothing else: the restore still happens"
+TARGET_BACKUP_ONLY="$WORK/target-backup-only"
+component_free_target "$TARGET_BACKUP_ONLY" backup
+invoke_uninstall_bundle_tree "$TARGET_BACKUP_ONLY" --apply --confirm=UNINSTALL
+expect_rc "uninstall(backup-only): -> exit 0" 0
+stdout_lacks "uninstall(backup-only): not ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+stdout_lacks "uninstall(backup-only): nor as \"Nothing to remove\"" 'Nothing to remove.'
+stdout_has_block "uninstall(backup-only): the restore note is the whole plan, over a zero total" \
+	"$BUNDLE_RESTORE_NOTE
+
+  0 items total.
+"
+stdout_has "uninstall(backup-only): the Result reports the restore" \
+	"restored CLAUDE.md from $BUNDLE_BACKUP_NAME"
+expect_file_holds "uninstall(backup-only): CLAUDE.md holds the backed-up content again" \
+	"$TARGET_BACKUP_ONLY/$FX_BUNDLE_CONFIG" "$BUNDLE_BACKUP_CONTENT"
+path_absent "uninstall(backup-only): and the backup was consumed" "$TARGET_BACKUP_ONLY/$BUNDLE_BACKUP_NAME"
+
+TARGET_BACKUP_ONLY_ENV="$WORK/target-backup-only-env"
+component_free_target "$TARGET_BACKUP_ONLY_ENV" backup
+invoke_uninstall_bundle_tree "$TARGET_BACKUP_ONLY_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(backup-only-env): -> exit 0" 0
+stdout_has "uninstall(backup-only-env): the payload names the backup that was restored" \
+	"HUB_BUNDLE_RESTORED='$BUNDLE_BACKUP_NAME'"
+
+section "uninstall --all --apply, the bundle AND a backup, no component: removed, then restored"
+TARGET_BUNDLE_AND_BACKUP="$WORK/target-bundle-and-backup"
+component_free_target "$TARGET_BUNDLE_AND_BACKUP" config schema-a schema-b backup
+invoke_uninstall_bundle_tree "$TARGET_BUNDLE_AND_BACKUP" --apply --confirm=UNINSTALL
+expect_rc "uninstall(bundle-and-backup): -> exit 0" 0
+stdout_has_block "uninstall(bundle-and-backup): both the bundle and the restore are planned" \
+	"$BUNDLE_ALSO_REMOVING
+$FULL_BUNDLE_LINE
+
+$BUNDLE_RESTORE_NOTE
+
+  3 items total.
+"
+stdout_has "uninstall(bundle-and-backup): all three came out" \
+	"Uninstalled 3/3 items from $TARGET_BUNDLE_AND_BACKUP"
+path_absent "uninstall(bundle-and-backup): the schemas were removed" \
+	"$TARGET_BUNDLE_AND_BACKUP/$FX_BUNDLE_DEPLOYED_SCHEMA_A"
+expect_file_holds "uninstall(bundle-and-backup): CLAUDE.md is the user's own contract again, not the link" \
+	"$TARGET_BUNDLE_AND_BACKUP/$FX_BUNDLE_CONFIG" "$BUNDLE_BACKUP_CONTENT"
+path_absent "uninstall(bundle-and-backup): and the backup was consumed" \
+	"$TARGET_BUNDLE_AND_BACKUP/$BUNDLE_BACKUP_NAME"
+
+section "uninstall --all, a TRULY EMPTY target: nothing selected, nothing to do"
+TARGET_TRULY_EMPTY="$WORK/target-truly-empty"
+component_free_target "$TARGET_TRULY_EMPTY"
+invoke_uninstall_bundle_tree "$TARGET_TRULY_EMPTY" --apply --confirm=UNINSTALL
+expect_rc "uninstall(truly-empty): -> exit 0" 0
+stdout_has "uninstall(truly-empty): ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+invoke_uninstall_bundle_tree "$TARGET_TRULY_EMPTY" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(truly-empty-env): -> exit 0" 0
+stdout_has "uninstall(truly-empty-env): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stderr_has "uninstall(truly-empty-env): and the same message, on the human channel" "$NOTHING_SELECTED"
+
+section "uninstall --all --restore-backup=<no match>, a truly empty target: a usage error"
+# The backup choice is resolved BEFORE the empty-selection exit now, so a timestamp
+# naming no backup is rejected here too rather than swallowed by "Nothing selected".
+TARGET_BOGUS_BACKUP="$WORK/target-bogus-backup"
+component_free_target "$TARGET_BOGUS_BACKUP"
+invoke_uninstall_bundle_tree "$TARGET_BOGUS_BACKUP" --apply --confirm=UNINSTALL \
+	--restore-backup=2020-01-01T00-00-00Z
+expect_rc "uninstall(truly-empty-bogus-backup): -> exit 2" 2
+stderr_has "uninstall(truly-empty-bogus-backup): the diagnostic names the timestamp that matched nothing" \
+	'no backup matches --restore-backup=2020-01-01T00-00-00Z'
+
+section "uninstall --all, TWO backups and no choice, no component: blocked, nothing restored"
+TARGET_TWO_BACKUPS="$WORK/target-two-backups"
+component_free_target "$TARGET_TWO_BACKUPS" backup backup-2
+invoke_uninstall_bundle_tree "$TARGET_TWO_BACKUPS" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(two-backups): -> exit 1" 1
+stdout_has "uninstall(two-backups): HUB_STATUS=blocked" "HUB_STATUS='blocked'"
+stdout_has "uninstall(two-backups): because only the caller can say which backup" \
+	"HUB_BLOCKED_REASON='restore_selection_required'"
+path_absent "uninstall(two-backups): no CLAUDE.md was restored" "$TARGET_TWO_BACKUPS/$FX_BUNDLE_CONFIG"
+expect_file_holds "uninstall(two-backups): the first backup is untouched" \
+	"$TARGET_TWO_BACKUPS/$BUNDLE_BACKUP_NAME" "$BUNDLE_BACKUP_CONTENT"
+expect_file_holds "uninstall(two-backups): and so is the second" \
+	"$TARGET_TWO_BACKUPS/$BUNDLE_BACKUP_NAME_2" "$BUNDLE_BACKUP_CONTENT_2"
+
+section "uninstall --all --restore-backup=none, TWO backups, no component: nothing to do"
+TARGET_TWO_BACKUPS_NONE="$WORK/target-two-backups-none"
+component_free_target "$TARGET_TWO_BACKUPS_NONE" backup backup-2
+invoke_uninstall_bundle_tree "$TARGET_TWO_BACKUPS_NONE" --apply --confirm=UNINSTALL --restore-backup=none
+expect_rc "uninstall(two-backups-none): -> exit 0" 0
+stdout_has "uninstall(two-backups-none): ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+path_absent "uninstall(two-backups-none): no CLAUDE.md was restored" "$TARGET_TWO_BACKUPS_NONE/$FX_BUNDLE_CONFIG"
+expect_file_holds "uninstall(two-backups-none): the first backup is untouched" \
+	"$TARGET_TWO_BACKUPS_NONE/$BUNDLE_BACKUP_NAME" "$BUNDLE_BACKUP_CONTENT"
+expect_file_holds "uninstall(two-backups-none): and so is the second" \
+	"$TARGET_TWO_BACKUPS_NONE/$BUNDLE_BACKUP_NAME_2" "$BUNDLE_BACKUP_CONTENT_2"
+
+# A FOREIGN CLAUDE.md — the user's own file — is never bundle work by itself: apply
+# refuses it as an item, and it blocks a restore onto its path. So on a target with
+# no component it ends the run as "Nothing selected", alone or beside a backup, and
+# only a framework-owned item beside it makes the run proceed.
+BUNDLE_WARNING='WARNING: this removes CLAUDE.md'
+
+section "uninstall --all --apply, a FOREIGN CLAUDE.md and nothing else: nothing selected, file untouched"
+TARGET_FOREIGN_ONLY="$WORK/target-foreign-only"
+component_free_target "$TARGET_FOREIGN_ONLY" foreign-config
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_ONLY" --apply --confirm=UNINSTALL
+expect_rc "uninstall(foreign-only): -> exit 0" 0
+stdout_has "uninstall(foreign-only): ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+stdout_lacks "uninstall(foreign-only): no \"Also removing\" block was previewed" 'Also removing'
+stdout_lacks "uninstall(foreign-only): nor the critical-tier warning" "$BUNDLE_WARNING"
+expect_file_holds "uninstall(foreign-only): the user's own CLAUDE.md is unchanged" \
+	"$TARGET_FOREIGN_ONLY/$FX_BUNDLE_CONFIG" "$FX_OCCUPANT_CONTENT"
+
+TARGET_FOREIGN_ONLY_ENV="$WORK/target-foreign-only-env"
+component_free_target "$TARGET_FOREIGN_ONLY_ENV" foreign-config
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_ONLY_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(foreign-only-env): -> exit 0" 0
+stdout_has "uninstall(foreign-only-env): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_has "uninstall(foreign-only-env): nothing was applied" "HUB_APPLIED='false'"
+stderr_has "uninstall(foreign-only-env): the \"Nothing selected\" message, on the human channel" "$NOTHING_SELECTED"
+stderr_lacks "uninstall(foreign-only-env): and no preview before it" 'Also removing'
+
+section "uninstall --all --apply, a FOREIGN CLAUDE.md and a backup: nothing selected, both untouched"
+# The backup cannot be restored over the user's file, so it is no work either.
+TARGET_FOREIGN_BACKUP="$WORK/target-foreign-backup"
+component_free_target "$TARGET_FOREIGN_BACKUP" foreign-config backup
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_BACKUP" --apply --confirm=UNINSTALL
+expect_rc "uninstall(foreign-backup): -> exit 0" 0
+stdout_has "uninstall(foreign-backup): ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+stdout_lacks "uninstall(foreign-backup): no \"Also removing\" block was previewed" 'Also removing'
+stdout_lacks "uninstall(foreign-backup): no restore was promised" 'will be restored'
+stdout_lacks "uninstall(foreign-backup): nor the critical-tier warning" "$BUNDLE_WARNING"
+expect_file_holds "uninstall(foreign-backup): the user's own CLAUDE.md is unchanged" \
+	"$TARGET_FOREIGN_BACKUP/$FX_BUNDLE_CONFIG" "$FX_OCCUPANT_CONTENT"
+expect_file_holds "uninstall(foreign-backup): and the backup is still there, unchanged" \
+	"$TARGET_FOREIGN_BACKUP/$BUNDLE_BACKUP_NAME" "$BUNDLE_BACKUP_CONTENT"
+
+TARGET_FOREIGN_BACKUP_ENV="$WORK/target-foreign-backup-env"
+component_free_target "$TARGET_FOREIGN_BACKUP_ENV" foreign-config backup
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_BACKUP_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(foreign-backup-env): -> exit 0" 0
+stdout_has "uninstall(foreign-backup-env): HUB_STATUS=ok" "HUB_STATUS='ok'"
+stdout_has "uninstall(foreign-backup-env): nothing was applied" "HUB_APPLIED='false'"
+stderr_has "uninstall(foreign-backup-env): the \"Nothing selected\" message, on the human channel" "$NOTHING_SELECTED"
+
+section "uninstall --all --apply, a FOREIGN CLAUDE.md beside the framework's schemas: proceeds, CLAUDE.md refused"
+# The schemas are framework-owned, so there IS work; once the run proceeds, the
+# foreign CLAUDE.md is listed and attempted like any present item, then refused.
+TARGET_FOREIGN_SCHEMAS="$WORK/target-foreign-schemas"
+component_free_target "$TARGET_FOREIGN_SCHEMAS" foreign-config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_SCHEMAS" --apply --confirm=UNINSTALL
+expect_rc "uninstall(foreign-schemas): -> exit 0" 0
+stdout_has_block "uninstall(foreign-schemas): CLAUDE.md and both schemas are listed, and counted" \
+	"$BUNDLE_ALSO_REMOVING
+$FULL_BUNDLE_LINE
+
+  3 items total.
+"
+stdout_has "uninstall(foreign-schemas): all but CLAUDE.md came out" \
+	"Uninstalled 2/3 items from $TARGET_FOREIGN_SCHEMAS"
+stdout_has "uninstall(foreign-schemas): and the Result names CLAUDE.md as refused" \
+	'CLAUDE.md left untouched — a file that is not framework-owned occupies its path'
+path_absent "uninstall(foreign-schemas): the first schema was removed" \
+	"$TARGET_FOREIGN_SCHEMAS/$FX_BUNDLE_DEPLOYED_SCHEMA_A"
+path_absent "uninstall(foreign-schemas): the second schema was removed" \
+	"$TARGET_FOREIGN_SCHEMAS/$FX_BUNDLE_DEPLOYED_SCHEMA_B"
+expect_file_holds "uninstall(foreign-schemas): the user's own CLAUDE.md is unchanged" \
+	"$TARGET_FOREIGN_SCHEMAS/$FX_BUNDLE_CONFIG" "$FX_OCCUPANT_CONTENT"
+
+TARGET_FOREIGN_SCHEMAS_ENV="$WORK/target-foreign-schemas-env"
+component_free_target "$TARGET_FOREIGN_SCHEMAS_ENV" foreign-config schema-a schema-b
+invoke_uninstall_bundle_tree "$TARGET_FOREIGN_SCHEMAS_ENV" --apply --confirm=UNINSTALL --format=env
+expect_rc "uninstall(foreign-schemas-env): -> exit 0" 0
+stdout_has "uninstall(foreign-schemas-env): the payload counts the refusal" "HUB_FOREIGN_BLOCKED_COUNT='1'"
+stdout_has "uninstall(foreign-schemas-env): all three were attempted" "HUB_ATTEMPTED_COUNT='3'"
+stdout_has "uninstall(foreign-schemas-env): the two schemas were acted on" "HUB_ACTED_ON_COUNT='2'"
+
+section "uninstall --components resolving to NOTHING, a bundle-only target: still \"Nothing selected\""
+# A selective uninstall never touches the bundle, so the bundle sitting right there
+# gives it no work: its empty selection (`,` splits to no component at all) ends
+# the run as it always did.
+TARGET_SELECTIVE_EMPTY="$WORK/target-selective-empty"
+component_free_target "$TARGET_SELECTIVE_EMPTY" config schema-a schema-b
+harness_run sh "$UNINSTALL" --source "$BUNDLE_SRC" --target "$TARGET_SELECTIVE_EMPTY" \
+	--non-interactive --no-color --components=, --apply
+expect_rc "uninstall(selective-empty): -> exit 0" 0
+stdout_has "uninstall(selective-empty): ended as \"Nothing selected\"" "$NOTHING_SELECTED"
+path_exists "uninstall(selective-empty): the bundle was not touched" "$TARGET_SELECTIVE_EMPTY/$FX_BUNDLE_CONFIG"
 
 harness_summary

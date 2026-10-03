@@ -179,7 +179,10 @@ fx_link_stale() { ln -s "$FX_SRC/stale/${2##*/}" "$1/$2"; }
 
 # fx_occupy TARGET DEPLOYED_RELPATH -> a non-framework regular file at a unit's
 # deployed path, which reads DIVERGED and so makes its group read `partial`.
-fx_occupy() { printf 'not a framework symlink\n' >"$1/$2"; }
+# FX_OCCUPANT_CONTENT is its whole content, named so a case can check the occupant
+# came through a run unchanged.
+FX_OCCUPANT_CONTENT='not a framework symlink'
+fx_occupy() { printf '%s\n' "$FX_OCCUPANT_CONTENT" >"$1/$2"; }
 
 # fx_link_every_technology TARGET -> every unit of every technology group linked,
 # so ALL THREE technology groups read `installed` and none is left available.

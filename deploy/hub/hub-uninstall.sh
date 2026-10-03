@@ -1049,8 +1049,8 @@ hu_row_counts_build() {
 	hurcb_units=$1
 	hurcb_out=$2
 	# Per-row unit counts in one pass. The phase test carries the usual
-	# FILENAME == ARGV[1] anchor (see hu_group_in_plan) even though ROW_MAP cannot
-	# be empty here, so the shape stays the same everywhere it appears in this file.
+	# FILENAME == ARGV[1] anchor (see hu_group_in_plan), which is load-bearing here:
+	# ROW_MAP is empty on an --all run over a bundle-only target.
 	hurcb_counts="$HUB_WORK/row-counts.tsv"
 	awk -F '\t' -v OFS='\t' '
 		FNR == NR && FILENAME == ARGV[1] { row[$1] = $2; next }
@@ -1443,7 +1443,11 @@ hu_preview_remove_items() {
 # TARGET_DIR now, by asking hub_bundle_remove itself in PREVIEW mode (APPLY=0)
 # rather than through a second copy of its presence test — the same way
 # hub-install.sh previews its bundle through hub_bundle_install. Sets
-# HU_BUNDLE_CONFIG_PRESENT (0 | 1) and HU_BUNDLE_SCHEMA_COUNT.
+# HU_BUNDLE_CONFIG_PRESENT (0 | 1), HU_BUNDLE_SCHEMA_COUNT and their sum,
+# HU_BUNDLE_PRESENT_COUNT, plus two facts hu_bundle_work_pending needs:
+# HU_BUNDLE_REMOVABLE_COUNT — the subset apply would actually remove (outcome
+# `removed`, i.e. framework-owned) — and HU_BUNDLE_CONFIG_FOREIGN (0 | 1), whether
+# a foreign occupant holds CLAUDE.md's path.
 #
 # PRESENT MEANS EVERY OUTCOME BUT already-absent, i.e. exactly what the apply call
 # will attempt. A foreign occupant is therefore counted: it is attempted and then
@@ -1465,6 +1469,28 @@ hu_bundle_present_build() {
 	HU_BUNDLE_SCHEMA_COUNT=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
 		$1 != "already-absent" && $2 != ENVIRON["hubpb_config"] { n++ }
 		END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_PRESENT_COUNT=$((HU_BUNDLE_CONFIG_PRESENT + HU_BUNDLE_SCHEMA_COUNT))
+	HU_BUNDLE_REMOVABLE_COUNT=$(awk -F '\t' '$1 == "removed" { n++ } END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_CONFIG_FOREIGN=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 == "foreign-blocked" && $2 == ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+}
+
+# hu_bundle_work_pending -> exit 0 when this run has bundle work of its own: a
+# framework-owned bundle item to remove, or a backup restore that can actually
+# land. Never on a selective uninstall (BUNDLE_REMOVE=0), which does not touch the
+# bundle at all. Reads the classification hu_bundle_present_build made and the
+# resolved RESTORE_TARGET.
+#
+# A FOREIGN CLAUDE.md (the user's own file) IS NEVER PENDING WORK BY ITSELF, in
+# either role. As an item it is attempted and counted once the run proceeds for
+# another reason, but apply would refuse it. And it blocks the restore: hub_bundle_remove
+# skips a restore onto a foreign-blocked path. So a target holding only that file,
+# with or without a backup, would preview work and then change nothing.
+hu_bundle_work_pending() {
+	[ "$BUNDLE_REMOVE" -eq 1 ] || return 1
+	[ "$HU_BUNDLE_REMOVABLE_COUNT" -gt 0 ] && return 0
+	[ -n "$RESTORE_TARGET" ] && [ "$HU_BUNDLE_CONFIG_FOREIGN" -eq 0 ]
 }
 
 # hu_bundle_preview_item -> the bundle's "Also removing" line, naming only what
@@ -1623,7 +1649,67 @@ if [ "$INTERACTIVE_SELECTION" -eq 1 ]; then
 	esac
 fi
 
-if [ ! -s "$SELECTED_ROWS" ]; then
+# The first-run bundle comes out only on a complete uninstall. A selective
+# uninstall never touches CLAUDE.md or the contract schemas: they are not any
+# domain's component, so no selection of components can imply removing them.
+BUNDLE_REMOVE=$OPT_ALL
+
+# ---------------------------------------------------------------------------
+# CLAUDE.md backup selection (--all only).
+# ---------------------------------------------------------------------------
+RESTORE_TARGET=""
+BACKUPS="$HUB_WORK/backups.txt"
+: >"$BACKUPS"
+if [ "$BUNDLE_REMOVE" -eq 1 ]; then
+	hub_bundle_backups "$TARGET_DIR" >"$BACKUPS"
+	BACKUP_COUNT=$(hub_count_lines "$BACKUPS")
+	# --restore-backup IS CONSULTED FIRST, BEFORE the count branches below, and
+	# that ordering is the fix for two silent failures. It used to be read only
+	# inside the "more than one backup" arm, so with EXACTLY ONE backup present
+	# `--restore-backup=none` was ignored outright and that backup was restored
+	# anyway (and, per lib/hub-bundle.sh, consumed) — a caller's explicit
+	# instruction not to touch its contract, silently inverted. A bogus timestamp
+	# matching no real backup was ignored the same way instead of being rejected.
+	# The count now decides only what happens when the caller said NOTHING, and a
+	# named timestamp is validated against the backups that actually exist however
+	# many that is — including none, where naming one is a usage error and not a
+	# no-op.
+	if [ -n "$OPT_RESTORE_BACKUP" ]; then
+		if [ "$OPT_RESTORE_BACKUP" = none ]; then
+			RESTORE_TARGET=""
+		else
+			# An exact whole-line match against the fully-qualified backup
+			# path, not a substring/suffix search: a timestamp is
+			# attacker-irrelevant but user-typo-prone, and a partial match
+			# would happily restore a DIFFERENT backup than the one named.
+			RESTORE_TARGET=$(grep -xF -- "$TARGET_DIR/$HUB_BUNDLE_CONFIG_NAME.backup.$OPT_RESTORE_BACKUP" "$BACKUPS") ||
+				die_usage "no backup matches --restore-backup=$OPT_RESTORE_BACKUP"
+		fi
+	elif [ "$BACKUP_COUNT" -eq 1 ]; then
+		RESTORE_TARGET=$(cat "$BACKUPS")
+	elif [ "$BACKUP_COUNT" -gt 1 ]; then
+		if ! hub_interactive; then
+			hu_blocked restore_selection_required \
+				"multiple $HUB_BUNDLE_CONFIG_NAME backups found; pass --restore-backup=<timestamp> or --restore-backup=none"
+		fi
+		hu_choose_backup
+	fi
+fi
+
+# CLASSIFIED HERE, not in the preview, because the empty-selection exit just below
+# needs the answer too; the preview reads the same variables.
+if [ "$BUNDLE_REMOVE" -eq 1 ]; then
+	hu_bundle_present_build
+fi
+
+# AN EMPTY SELECTION IS NOT "NOTHING TO DO" UNDER --all while hu_bundle_work_pending
+# holds. Once every component is gone, --all is the only path that removes CLAUDE.md
+# and the contract schemas or restores a backed-up CLAUDE.md, and exiting here left
+# a bundle-only target impossible to uninstall. Such a run continues through the
+# normal preview, gate and apply, where every component table is simply empty. A
+# selective uninstall never has bundle work, so its empty selection still ends here,
+# and so does an --all run on a target holding nothing at all.
+if [ ! -s "$SELECTED_ROWS" ] && ! hu_bundle_work_pending; then
 	hu_ok_exit 'Nothing selected — nothing removed.'
 fi
 
@@ -1841,53 +1927,6 @@ PREVIEW_ROWS="$HUB_WORK/preview-rows.tsv"
 : >"$PREVIEW_ROWS"
 hu_row_counts_build "$REMOVE_ONLY" "$PREVIEW_ROWS"
 
-# The first-run bundle comes out only on a complete uninstall. A selective
-# uninstall never touches CLAUDE.md or the contract schemas: they are not any
-# domain's component, so no selection of components can imply removing them.
-BUNDLE_REMOVE=$OPT_ALL
-
-# ---------------------------------------------------------------------------
-# CLAUDE.md backup selection (--all only).
-# ---------------------------------------------------------------------------
-RESTORE_TARGET=""
-BACKUPS="$HUB_WORK/backups.txt"
-: >"$BACKUPS"
-if [ "$BUNDLE_REMOVE" -eq 1 ]; then
-	hub_bundle_backups "$TARGET_DIR" >"$BACKUPS"
-	BACKUP_COUNT=$(hub_count_lines "$BACKUPS")
-	# --restore-backup IS CONSULTED FIRST, BEFORE the count branches below, and
-	# that ordering is the fix for two silent failures. It used to be read only
-	# inside the "more than one backup" arm, so with EXACTLY ONE backup present
-	# `--restore-backup=none` was ignored outright and that backup was restored
-	# anyway (and, per lib/hub-bundle.sh, consumed) — a caller's explicit
-	# instruction not to touch its contract, silently inverted. A bogus timestamp
-	# matching no real backup was ignored the same way instead of being rejected.
-	# The count now decides only what happens when the caller said NOTHING, and a
-	# named timestamp is validated against the backups that actually exist however
-	# many that is — including none, where naming one is a usage error and not a
-	# no-op.
-	if [ -n "$OPT_RESTORE_BACKUP" ]; then
-		if [ "$OPT_RESTORE_BACKUP" = none ]; then
-			RESTORE_TARGET=""
-		else
-			# An exact whole-line match against the fully-qualified backup
-			# path, not a substring/suffix search: a timestamp is
-			# attacker-irrelevant but user-typo-prone, and a partial match
-			# would happily restore a DIFFERENT backup than the one named.
-			RESTORE_TARGET=$(grep -xF -- "$TARGET_DIR/$HUB_BUNDLE_CONFIG_NAME.backup.$OPT_RESTORE_BACKUP" "$BACKUPS") ||
-				die_usage "no backup matches --restore-backup=$OPT_RESTORE_BACKUP"
-		fi
-	elif [ "$BACKUP_COUNT" -eq 1 ]; then
-		RESTORE_TARGET=$(cat "$BACKUPS")
-	elif [ "$BACKUP_COUNT" -gt 1 ]; then
-		if ! hub_interactive; then
-			hu_blocked restore_selection_required \
-				"multiple $HUB_BUNDLE_CONFIG_NAME backups found; pass --restore-backup=<timestamp> or --restore-backup=none"
-		fi
-		hu_choose_backup
-	fi
-fi
-
 # ---------------------------------------------------------------------------
 # Preview. Always human-readable text, in EVERY mode — the dry run is the
 # informed-consent surface and an agent-facing caller reads it too. The block is
@@ -1943,8 +1982,6 @@ if [ "$BUNDLE_REMOVE" -eq 1 ]; then
 	# Only the bundle items present in the target are counted and named — see
 	# hu_bundle_present_build. The restore note stands on its own: a backup is
 	# restored even when the CLAUDE.md link itself is already absent.
-	hu_bundle_present_build
-	HU_BUNDLE_PRESENT_COUNT=$((HU_BUNDLE_CONFIG_PRESENT + HU_BUNDLE_SCHEMA_COUNT))
 	TOTAL=$((TOTAL + HU_BUNDLE_PRESENT_COUNT))
 	if [ "$HU_BUNDLE_PRESENT_COUNT" -gt 0 ]; then
 		printf "  Also removing (the framework's own operating contract, removed last):\n"
