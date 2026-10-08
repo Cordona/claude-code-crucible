@@ -43,3 +43,4 @@ A diff-shaped body (a per-file changelog instead of an outcome) · no test/verif
 - Never omit How-to-test or the risk callout — a reviewer without either is reviewing blind.
 - Never restate the title in the body with no added information.
 - Never claim scope the PR itself doesn't actually contain.
+- **No request-sending or chained shell lines anywhere in the body** — describe such a check in prose: what to send and what comes back ("a JSON POST to `/api/banners` with a foreign `Origin` header returns 403"). Out: a `curl`/`wget` line, any command with header or data flags, a pipe. Fine: naming one plain command (`./gradlew test`). A host's firewall can block a request whose body carries such a line (a GitLab host in use does) so the PR/MR is never created and the rewording needs the human's approval again.

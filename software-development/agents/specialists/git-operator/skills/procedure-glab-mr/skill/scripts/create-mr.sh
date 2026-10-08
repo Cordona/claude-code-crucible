@@ -469,6 +469,10 @@ fi
 # as the cd failure; that is an accepted, narrow ambiguity — glab's documented
 # failure code is 1, and the alternative, a marker on stdout, would collide with
 # the output the URL is parsed from.)
+#
+# A failed create whose captured stderr is a Cloudflare error page is reported
+# without the page's HTML — see emit_glab_write_failure_detail in the output lib.
+# It is still exit 1, like every other glab failure.
 # ---------------------------------------------------------------------------
 CREATE_RC=0
 CREATE_OUT=$( cd "$OPT_REPO_DIR" 2>/dev/null || exit "$SUBSHELL_CD_FAILED"; "$@" 2>"$TMP_ERR" ) || CREATE_RC=$?
@@ -479,7 +483,8 @@ if [ "$CREATE_RC" -eq "$SUBSHELL_CD_FAILED" ]; then
 fi
 if [ "$CREATE_RC" -ne 0 ]; then
 	error "glab mr create failed"
-	emit_captured_stderr
+	emit_glab_write_failure_detail "the MR description" \
+		"a Cloudflare 5xx can arrive after GitLab received the request, so the MR may nonetheless have been created — check with find-mr.sh before retrying"
 	exit 1
 fi
 
