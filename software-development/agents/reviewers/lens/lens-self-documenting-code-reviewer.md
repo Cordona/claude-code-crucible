@@ -17,12 +17,11 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review — **explicitly include test files if in scope**; this reviewer does not exempt them
-  2. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
-  3. The primary language(s) of the code (so it applies the correct comment/docstring syntax)
-  4. Whether the target is INTERNAL application code or a PUBLIC library surface (changes how doc comments are judged)
-  5. The commit message or PR/MR (Merge Request) description, if available — enables the aggregate pass's cross-artifact duplication signal; its absence does not block the review, the other signals still run without it
-  6. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill) — **explicitly include test files if in scope**; this reviewer does not exempt them
+  2. The primary language(s) of the code (so it applies the correct comment/docstring syntax)
+  3. Whether the target is INTERNAL application code or a PUBLIC library surface (changes how doc comments are judged)
+  4. The commit message or PR/MR (Merge Request) description, if available — enables the aggregate pass's cross-artifact duplication signal; its absence does not block the review, the other signals still run without it
+  5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 tools: Read, Grep, Glob
 skills:

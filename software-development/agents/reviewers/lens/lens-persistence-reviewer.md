@@ -15,11 +15,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files/dirs to review
-  2. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
-  3. **The target store and its relevant guarantees** (e.g. "Postgres 16, read-committed" / "DynamoDB, single-item atomic, eventual reads") — or the store name so the reviewer can establish them
-  4. The primary language(s) + data-access library (JPA (Java Persistence API)/Hibernate, SQLx, Eloquent, Mongoose, the AWS (Amazon Web Services) SDK (Software Development Kit), …)
-  5. For a re-review: the prior round's findings + any prior store-guarantee note (so it reuses finding IDs and does not re-derive — see the review-report-standards skill)
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
+  2. **The target store and its relevant guarantees** (e.g. "Postgres 16, read-committed" / "DynamoDB, single-item atomic, eventual reads") — or the store name so the reviewer can establish them
+  3. The primary language(s) + data-access library (JPA (Java Persistence API)/Hibernate, SQLx, Eloquent, Mongoose, the AWS (Amazon Web Services) SDK (Software Development Kit), …)
+  4. For a re-review: the prior round's findings + any prior store-guarantee note (so it reuses finding IDs and does not re-derive — see the review-report-standards skill)
 
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__context7
 skills:

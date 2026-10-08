@@ -35,17 +35,45 @@
       "type": "string",
       "format": "date"
     },
+    "diff_files": {
+      "description": "The diff this review covers, cumulative across rounds, sorted by path and unique by path: the repo-relative paths flow-review/scripts/diff-scope.sh wrote, as {path, sha} objects when the writer was given diff-files.tsv and plain path strings when given diff-files.txt (diff-file.schema.json). review-create.sh sets it from round 1's list; review-add-round.sh merges each round's list in by path, the newer entry winning (each round's own list is rounds[].diff_files). The writers check the locations they accept at write time against the round's own list: every location a new finding gives, every location an update adds to a stored finding, every speculative location and every new handoff location names one of the paths (minus a trailing :line or :start-end) or is anchored by its own entry's relates_to on a line the diff changed (diff-hunks.tsv); a finding carried from an earlier round is not re-checked against a later list, but review-add-round.sh sets one RESOLVED only when one of its files is in that round's list. OPTIONAL in this shape; an artifact without it gains it on its next round (review-add-round.sh).",
+      "type": "array",
+      "items": { "$ref": "diff-file.schema.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "plan_review": {
+      "description": "OPTIONAL. Present (true) when the artifact records the review of a flow-testing test plan (review-create.sh --plan-review): a location may then be plan:<item> (plan:test-3, plan:not_tested-1, plan:B2), in scope without naming a diff file and covered for a resolution. review-add-round.sh takes --plan-review exactly when it is set. Only the value true is written.",
+      "const": true
+    },
+    "snapshot": {
+      "description": "OPTIONAL. The tree sha flow-review/scripts/diff-scope.sh --snapshot-out recorded, when the reviewed diff was taken since that snapshot (review-create.sh --snapshot). Not rendered.",
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
     "rounds": {
       "description": "One entry per review round that has run, in order. A light history log for traceability — not a full per-finding change log (git history of this file already provides that if the file is committed).",
       "type": "array",
       "items": { "$ref": "#/$defs/round_entry" },
       "minItems": 1
     },
-    "overall_verdict": { "$ref": "report-verdict.schema.json" },
-    "summary": { "$ref": "finding-summary.schema.json" },
+    "overall_verdict": {
+      "description": "Counting rule: review-report-standards, Verdict Arithmetic. Computed by flow-review/scripts/lib/review-aggregates.jq.",
+      "$ref": "report-verdict.schema.json"
+    },
+    "summary": {
+      "description": "Counting rule: review-report-standards, Verdict Arithmetic. Computed by flow-review/scripts/lib/review-aggregates.jq.",
+      "$ref": "finding-summary.schema.json"
+    },
     "findings": {
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
+    },
+    "handoffs": {
+      "description": "OPTIONAL. Concerns one reviewer passed to another seat, in the order recorded, each open until ruled once (review-create.sh / review-add-round.sh). Omitted when there are none. Never counted toward the verdict.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/handoff" },
+      "minItems": 1
     }
   },
   "$defs": {
@@ -61,11 +89,91 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "minItems": 1
+        },
+        "diff_files": {
+          "description": "OPTIONAL. The diff this round was given (review-add-round.sh's --diff-files), in the form of the top-level diff_files; absent on round 1, whose list is the top-level diff_files as created.",
+          "type": "array",
+          "items": { "$ref": "diff-file.schema.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "speculative": {
+          "description": "OPTIONAL. This round's speculative concerns (review-core, Realism test); not findings. Omitted when the round recorded none. Counting rule: review-report-standards, Verdict Arithmetic.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/speculative_entry" }
+        }
+      }
+    },
+    "speculative_entry": {
+      "$comment": "review-finding-report.schema.json's speculative_entry plus `key`, `reviewer`, `recheck` and `promoted_to`, inlined for the same additionalProperties:false reason as `finding` below.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer", "location", "concern", "why_speculative"],
+      "properties": {
+        "key": {
+          "description": "The entry's key: the first 12 hex digits of the SHA-256 of `reviewer|location|concern`, computed by the writer (review-create.sh, review-add-round.sh; review-update-status.sh keys a stored entry without one), the same in every round that repeats the entry. The <key> of render-md.sh's REVIEW_ITEM_<n>=speculative:<key> and of review-update-status.sh --speculative-key. Never taken from a reviewer report. OPTIONAL in this shape: an entry stored without one is keyed by the next writer.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{12}$"
+        },
+        "reviewer": {
+          "description": "Which reviewer/lens agent raised this concern.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "location": {
+          "description": "One `file:line` (or `file:start-end`) site — the same locator form as a finding's locations.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "concern": {
+          "description": "ONE line: the concern as the reviewer would have raised it.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "why_speculative": {
+          "description": "ONE line: what the concern would need that is not in evidence.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "category": {
+          "description": "The reviewer's category for the concern, from its own vocabulary (x-reviewers in contracts/review-category.schema.json; the union of every vocabulary for a reviewer it does not list): required on every entry a writer records, and in that vocabulary (writer-enforced); OPTIONAL in this shape, so a stored entry without one is read as it is. A category flagged security in contracts/review-category.schema.json (x-categories) puts the item under the security floor: proof alone, never unproven (writer-enforced); once there, the item is recorded security_floor: true and stays under the floor — a later change to a non-security category is refused (writer-enforced). An item whose text names a security weakness listed in x-security-terms (a finding's problem or trigger, a speculative entry's concern) is refused under a category that is not a security one (writer-enforced). A repeat of the entry in a later round whose category, proof or unproven changed starts fresh: it carries no re-check or promotion from the earlier copy; otherwise it carries a pending re-check, and the finding it was promoted to while that finding is open.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "real_if": {
+          "description": "OPTIONAL. ONE line of at most 100 characters: the evidence that would make the concern real (review-core, Realism test). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "relates_to": {
+          "description": "OPTIONAL. ONE `file:line` (or `file:start-end`) location of at most 300 characters whose line, or whole range, lies inside one hunk the diff changed (diff-scope.sh's diff-hunks.tsv): the changed code that relies on or exposes a defect located outside the diff. A location outside the diff is accepted only when its own entry's relates_to is on a changed line, and a relates_to given always is (writer-enforced at write time). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 300,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: every speculative entry carries exactly one of proof or unproven, and under the security floor (reviewer lens-security-reviewer, or a security category) proof alone — a security concern stays realistic until proven harmless. ONE line of at most 100 characters: the evidence that the item is not real or harmless, named as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "unproven": {
+          "description": "OPTIONAL in this shape; writer-enforced as for proof, which it excludes: the item is set aside without proof. Only the value true is written.",
+          "const": true
+        },
+        "recheck": {
+          "description": "OPTIONAL. The human's record of re-checking this set-aside item, set only through flow-review/scripts/review-update-status.sh --recheck; never taken from a reviewer report.",
+          "$ref": "#/$defs/recheck"
+        },
+        "security_floor": {
+          "description": "OPTIONAL. Recorded by the flow-review writers, never taken from a reviewer report: the item has been under the security floor (reviewer lens-security-reviewer, or a security category). It stays there whatever later changes: proof alone, never unproven, and its category stays a security one (writer-enforced).",
+          "const": true
+        },
+        "promoted_to": {
+          "description": "OPTIONAL. The id of the finding this entry was promoted to after its re-check survived or escalated it to the human, set only through flow-review/scripts/review-update-status.sh --promote-to-id; never taken from a reviewer report. A promoted entry is listed, counted and re-checked only as that finding.",
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3,}$"
         }
       }
     },
     "finding": {
-      "$comment": "Duplicates review-finding-report.schema.json's finding shape (id/status/severity/category/locations/first_seen/problem/fix) rather than composing via allOf, plus adds reviewer/tracked_status/addressed_in_round: that base finding has additionalProperties:false, and allOf does not extend a closed schema cleanly (the base's additionalProperties:false evaluates against the whole instance, so a sibling allOf branch adding new properties fails validation). Same pattern — document-and-inline rather than compose — as external-review-advocate-verdict.schema.json vs finding-verdict.schema.json (there the reason is a narrower enum subset, not an additionalProperties/allOf conflict, but both cases choose to duplicate-and-explain over forcing a $ref).",
+      "$comment": "Duplicates review-finding-report.schema.json's finding shape (id/status/severity/category/locations/first_seen/problem/fix, with realism/trigger/realism_reason OPTIONAL here — an absent realism means realistic) rather than composing via allOf, plus adds reviewer/tracked_status/addressed_in_round/realism_confirmed/realism_confirmed_severity/recheck/resolution_proof/ack_reason: that base finding has additionalProperties:false, and allOf does not extend a closed schema cleanly (the base's additionalProperties:false evaluates against the whole instance, so a sibling allOf branch adding new properties fails validation). Same pattern — document-and-inline rather than compose — as external-review-advocate-verdict.schema.json vs finding-verdict.schema.json (there the reason is a narrower enum subset, not an additionalProperties/allOf conflict, but both cases choose to duplicate-and-explain over forcing a $ref).",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "reviewer", "status", "tracked_status", "severity", "category", "locations", "first_seen", "problem", "fix"],
@@ -76,7 +184,7 @@
           "pattern": "^[A-Z]+-[0-9]{3,}$"
         },
         "reviewer": {
-          "description": "Which reviewer/lens agent raised this finding. Present here (unlike review-finding-report.schema.json, where it's a top-level field) because this document aggregates multiple reviewers.",
+          "description": "Which reviewer/lens agent raised this finding. Present here (unlike review-finding-report.schema.json, where it's a top-level field) because this document aggregates multiple reviewers. Fixed once written: an update never changes it (writer-enforced).",
           "type": "string",
           "minLength": 1
         },
@@ -89,16 +197,74 @@
           "$ref": "tracked-status.schema.json"
         },
         "severity": { "$ref": "severity.schema.json" },
+        "realism": {
+          "description": "OPTIONAL. review-core, Realism test; ABSENT means realistic. Counting rule: review-report-standards, Verdict Arithmetic.",
+          "$ref": "finding-realism.schema.json"
+        },
+        "realism_confirmed": {
+          "description": "OPTIONAL. The human's confirmation of an edge-case finding, set only through flow-review/scripts/review-update-status.sh --confirm-edge-case; never taken from a reviewer report. Present only alongside realism edge-case. Counting rule: review-report-standards, Verdict Arithmetic.",
+          "type": "boolean"
+        },
+        "realism_confirmed_severity": {
+          "description": "OPTIONAL. The severity realism_confirmed was given at, set and cleared with it by the flow-review scripts; a different current severity voids the confirmation. Counting rule: review-report-standards, Verdict Arithmetic.",
+          "$ref": "severity.schema.json"
+        },
+        "trigger": {
+          "description": "OPTIONAL. ONE line: the concrete real-use scenario that makes the problem happen (review-core, Realism test).",
+          "$ref": "one-line-text.schema.json"
+        },
+        "realism_reason": {
+          "description": "OPTIONAL. ONE line of at most 100 characters: why the finding is classed edge-case (review-core, Realism test). Allowed on any finding; rendered only beside an open edge case. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
         "category": {
-          "description": "Sub-lens tag from the reviewer's own controlled vocabulary.",
+          "description": "Sub-lens tag from the reviewer's own controlled vocabulary: one of its list in x-reviewers of contracts/review-category.schema.json, or of the union of every vocabulary for a reviewer it does not list (writer-enforced). A category flagged security in contracts/review-category.schema.json (x-categories) puts the item under the security floor: proof alone, never unproven (writer-enforced); once there, the item is recorded security_floor: true and stays under the floor — a later change to a non-security category is refused (writer-enforced). An item whose text names a security weakness listed in x-security-terms (a finding's problem or trigger, a speculative entry's concern) is refused under a category that is not a security one (writer-enforced).",
           "type": "string",
           "minLength": 1
         },
         "locations": {
-          "description": "One or more `file:line` (or `file:start-end`) sites. An array because a finding may span sites (e.g. duplication).",
+          "description": "One or more `file:line` (or `file:start-end`) sites, each one line. An array because a finding may span sites (e.g. duplication). A site outside the diff needs its own entry's relates_to on a changed line. In a test-plan review (plan_review), a site may also be plan:<item>.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "one-line-text.schema.json" },
           "minItems": 1
+        },
+        "relates_to": {
+          "description": "OPTIONAL. ONE `file:line` (or `file:start-end`) location of at most 300 characters whose line, or whole range, lies inside one hunk the diff changed (diff-scope.sh's diff-hunks.tsv): the changed code that relies on or exposes a defect located outside the diff. A location outside the diff is accepted only when its own entry's relates_to is on a changed line, and a relates_to given always is (writer-enforced at write time). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 300,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: an edge-case finding carries exactly one of proof or unproven — kept through every reclassification and confirmation — and under the security floor (reviewer lens-security-reviewer, or a security category) proof alone — a security concern stays realistic until proven harmless. ONE line of at most 100 characters: the evidence that the item is rare or harmless. A proof names its evidence as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan), or, recorded by the orchestrator only (review-update-status.sh --proof), as text starting \"ran \" (a command and its result); a reviewer fields-file never gives that form (writer-enforced). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "unproven": {
+          "description": "OPTIONAL in this shape; writer-enforced as for proof, which it excludes: the item is set aside without proof. Only the value true is written.",
+          "const": true
+        },
+        "recheck": {
+          "description": "OPTIONAL. The human's record of re-checking this set-aside item (an edge-case finding), set only through flow-review/scripts/review-update-status.sh --recheck; never taken from a reviewer report.",
+          "$ref": "#/$defs/recheck"
+        },
+        "security_floor": {
+          "description": "OPTIONAL. Recorded by the flow-review writers, never taken from a reviewer report: the item has been under the security floor (reviewer lens-security-reviewer, or a security category). It stays there whatever later changes: proof alone, never unproven, and its category stays a security one (writer-enforced).",
+          "const": true
+        },
+        "resolution_proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: present when the finding was set RESOLVED by a writer that requires it (review-update-status.sh --resolution-proof, a review-add-round.sh entry setting RESOLVED), and dropped when the finding leaves RESOLVED. ONE line of at most 100 characters: the evidence the fix holds, named as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan), or, recorded by the orchestrator only (review-update-status.sh --resolution-proof), as text starting \"ran \" (a command and its result). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "ack_reason": {
+          "description": "OPTIONAL in this shape; writer-enforced: present when the finding was set ACK through review-update-status.sh --status ACK --reason (the human's reason for waiving it, in their words), and dropped when the finding leaves ACK; never taken from a reviewer report. An ACK finding stored before the field existed carries none. ONE line of at most 200 characters. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 200,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
         },
         "first_seen": {
           "description": "ISO 8601 date only, frozen at creation; kept unchanged across rounds.",
@@ -119,6 +285,88 @@
           "description": "Which round (per `rounds`) the tech pair's fix was verified. OMITTED (never null) while tracked_status is PENDING or IN_PROGRESS.",
           "type": "integer",
           "minimum": 1
+        }
+      }
+    },
+    "recheck": {
+      "description": "A re-check of a set-aside item — an edge-case finding, a speculative entry or a handoff (review-update-status.sh --recheck): pending; survived or cleared with the one-line proof of the outcome; escalated to the human with the one-line reason the re-check could not settle it (the verifier's or the adversary's unresolved disagreement), in plain words; or, on a speculative entry only, dismissed by the human with their reason, in their words. An outcome is recorded once per item (writer-enforced), except that an escalated speculative entry is closed by the human: promoted to a NEW finding through review-update-status.sh --promote-to-id (as a survived one is), or dismissed through --recheck dismissed --reason, which is refused on an entry under the security floor. Never counted toward the verdict; an escalated one not yet decided, and a survived one on a confirmed edge case, mark the item as needing the human's decision; a dismissed one, and an escalated one on a finding the human has since decided (decided), do not.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "round"],
+      "properties": {
+        "status": { "enum": ["pending", "survived", "cleared", "escalated", "dismissed"] },
+        "proof": {
+          "description": "Present exactly when status is survived or cleared (writer-enforced): ONE line of at most 100 characters, the evidence of the outcome from a reviewer or the review-arbiter, named as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan); never a \"ran \" form (writer-enforced). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "reason": {
+          "description": "Present exactly when status is escalated or dismissed (writer-enforced): ONE line of at most 200 characters, in plain words — for escalated, why the re-check escalated the item to the human (the verifier's or the adversary's unresolved disagreement); for dismissed, the human's reason for dismissing it, in their words. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 200,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "round": {
+          "description": "The newest recorded round when the re-check was recorded.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "decided": {
+          "description": "OPTIONAL. On an escalated re-check of a finding only: the human decided the finding after the escalation was recorded — review-update-status.sh --confirm-edge-case, --realism realistic or --status ACK on it — so it no longer needs the human's decision; the finding still counts toward the verdict as its status, realism and severity say. Only the value true is written, by review-update-status.sh; a review-add-round.sh update that changes the finding's evidence drops the re-check with it.",
+          "const": true
+        }
+      }
+    },
+    "handoff": {
+      "description": "A concern one reviewer passed to another seat (review-core). open until ruled once — by a round (review-add-round.sh, an entry whose index is the handoff's 1-based place in handoffs) or by the orchestrator (review-update-status.sh --handoff-index N --ruling, N the same 1-based place, the <N> of render-md.sh's REVIEW_ITEM_<n>=handoff:<N>) — as filed (as the finding filed_as names), rejected, or out-of-scope, each with its proof; or waived by the human, only through review-update-status.sh --handoff-index N --ruling waived --reason, with the human's reason in their words. A new location outside the diff needs its own relates_to on a changed line, as for a finding (writer-enforced).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "concern", "location", "ruling"],
+      "properties": {
+        "from": {
+          "description": "The reviewer/lens agent that passed the concern on.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "to": {
+          "description": "The reviewer/lens seat the concern was passed to.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "concern": {
+          "description": "ONE line: the concern as passed on.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "location": {
+          "description": "One `file:line` (or `file:start-end`) site.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "relates_to": {
+          "description": "OPTIONAL. As a finding's relates_to: its line, or whole range, inside one hunk the diff changed.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 300,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "ruling": { "enum": ["open", "filed", "rejected", "out-of-scope", "waived"] },
+        "proof": {
+          "description": "Present exactly when ruling is filed, rejected or out-of-scope (writer-enforced): ONE line of at most 100 characters, the evidence behind the ruling from the seat or the review-arbiter, named as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan); never a \"ran \" form (writer-enforced).",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "filed_as": {
+          "description": "Present exactly when ruling is filed: the id of the finding the concern was filed as, which the artifact holds (writer-enforced).",
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3,}$"
+        },
+        "reason": {
+          "description": "Present exactly when ruling is waived (writer-enforced): the human's reason for waiving the handoff, in their own words — free text, not a proof form. ONE line of at most 200 characters. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 200,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "recheck": {
+          "description": "OPTIONAL. The human's record of re-checking this handoff, set only through flow-review/scripts/review-update-status.sh --handoff-index N --recheck; never taken from a reviewer report. An open handoff whose re-check was escalated needs the human's decision.",
+          "$ref": "#/$defs/recheck"
         }
       }
     }

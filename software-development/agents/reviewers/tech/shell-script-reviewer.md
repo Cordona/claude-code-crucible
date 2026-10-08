@@ -10,10 +10,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific script files or directories to review
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
   2. Target shell (Bash 4+, POSIX sh) and environment (Linux, macOS, containers)
   3. Any project-specific conventions
-  4. The scope (safety, correctness, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
+  4. The scope (safety, correctness)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 skills:

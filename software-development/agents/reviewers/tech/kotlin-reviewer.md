@@ -10,10 +10,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
   2. Kotlin version + JVM target (Kotlin 2.0, JVM 21)
   3. Any project-specific conventions
-  4. The scope (correctness, coroutines, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
+  4. The scope (correctness, coroutines)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 skills:
@@ -68,7 +68,7 @@ The rest of your surface (coroutine safety, type-system leverage, immutability /
 
 ## Category Vocabulary (for the report `category` field)
 
-Use ONLY these: `correctness`, `null-safety`, `not-null-assertion`, `platform-type`, `unsafe-cast`, `exhaustiveness`, `coroutine`, `structured-concurrency`, `cancellation`, `dispatcher`, `flow`, `equals-hashcode`, `mutability`, `type-safety`, `scope-function`, `micro-perf`, `static-analysis`.
+Use ONLY these: `correctness`, `null-safety`, `not-null-assertion`, `platform-type`, `unsafe-cast`, `exhaustiveness`, `coroutine`, `structured-concurrency`, `cancellation`, `dispatcher`, `flow`, `equals-hashcode`, `mutability`, `type-safety`, `scope-function`, `micro-perf`, `static-analysis`, `sql-injection`, `command-injection`, `deserialization`, `secrets-handling`, `path-traversal`, `ssrf`. The last six are security categories (`review-core`, Security is never rare).
 
 ## Kotlin Severity Adjustments (maps onto the `review-report-standards` scale)
 

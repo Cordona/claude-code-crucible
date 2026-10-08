@@ -10,10 +10,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
   2. Python version + target (Python 3.12+, target runtime/interpreter)
   3. Any project-specific conventions
-  4. The scope (correctness, concurrency, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
+  4. The scope (correctness, concurrency)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 skills:
@@ -74,7 +74,7 @@ The rest of your surface (type-hint fidelity and data modeling, micro-performanc
 
 ## Category Vocabulary (for the report `category` field)
 
-Use ONLY these: `correctness`, `mutable-default`, `class-mutable-state`, `closure-binding`, `identity-vs-equality`, `eq-hash-contract`, `numeric-comparison`, `bare-except`, `finally-control-flow`, `resource-management`, `gil-concurrency`, `threading-race`, `multiprocessing-start-method`, `circular-import`, `generator-exhaustion`, `type-hint-fidelity`, `data-modeling`, `micro-perf`, `lint-type-check`.
+Use ONLY these: `correctness`, `mutable-default`, `class-mutable-state`, `closure-binding`, `identity-vs-equality`, `eq-hash-contract`, `numeric-comparison`, `bare-except`, `finally-control-flow`, `resource-management`, `gil-concurrency`, `threading-race`, `multiprocessing-start-method`, `circular-import`, `generator-exhaustion`, `type-hint-fidelity`, `data-modeling`, `micro-perf`, `lint-type-check`, `sql-injection`, `command-injection`, `deserialization`, `secrets-handling`, `path-traversal`, `ssrf`. The last six are security categories (`review-core`, Security is never rare).
 
 ## Python Severity Adjustments (maps onto the `review-report-standards` scale)
 

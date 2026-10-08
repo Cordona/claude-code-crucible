@@ -10,10 +10,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
   2. PHP version + framework (PHP 8.4, Laravel 12 / Symfony 7)
   3. Any project-specific conventions
-  4. The scope (correctness, framework, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
+  4. The scope (correctness, framework)
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 skills:
@@ -78,7 +78,7 @@ Flag PHPStan/Psalm errors at the project's configured level and any unjustified 
 
 ## Category Vocabulary (for the report `category` field)
 
-Use ONLY these: `correctness`, `type-juggling`, `null-safety`, `array-access`, `exhaustiveness`, `exception-handling`, `type-safety`, `strict-types`, `framework-correctness`, `transaction`, `orm`, `micro-perf`, `static-analysis`.
+Use ONLY these: `correctness`, `type-juggling`, `null-safety`, `array-access`, `exhaustiveness`, `exception-handling`, `type-safety`, `strict-types`, `framework-correctness`, `transaction`, `orm`, `micro-perf`, `static-analysis`, `sql-injection`, `command-injection`, `deserialization`, `secrets-handling`, `path-traversal`, `ssrf`. The last six are security categories (`review-core`, Security is never rare).
 
 ## PHP Severity Adjustments (maps onto the `review-report-standards` scale)
 

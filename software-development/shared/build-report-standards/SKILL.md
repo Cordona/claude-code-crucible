@@ -15,6 +15,7 @@ It is the constructive twin of `review-report-standards` — but deliberately **
 
 - **INLINE ONLY.** Emit the report in your response text. NEVER write a report file to disk (no `.md`/`.json` artifact) — documentation is the tech-writer's job, not this contract.
 - **TOKEN-DISCIPLINED.** Be concise: one line per file, a few sentences of summary, no restating large code blocks. The primary agent skims this to brief reviewers.
+- **SHORT PATHS.** Name files repo-relative (`src/order/OrderApi.kt`), and in running prose by file name plus line (`OrderApi.kt:88`) once the repo-relative path has appeared. Never an absolute path — a home or temp directory prefix is noise a human cannot scan.
 
 ## The Implementation Report (canonical shape)
 
@@ -29,7 +30,7 @@ Report these fields, in this order:
 | **Validation** | Which gates ran and their result — format · lint · type-check · test · build — plus any remaining warnings. State honestly if a gate did not run or failed. **If your own change broke an EXISTING test's compilation** (`build-core`'s Implementation Workflow, step 5), report it here as an open blocker, not a failed-but-complete gate: name each broken call site and mechanically why, and state that fixing it needs a `tests-developer` dispatch with repair scope. The primary agent MUST carry this forward into its own executive summary — it is not resolved by this report alone. |
 | **Handoff to reviewer** | What the `{tech}-reviewer` should focus on: areas of concern, trade-offs you made, and any contract/convention conflict you surfaced (per `build-core`). This is the dev→review contract. |
 
-A dispatch with its own genuine extra reporting need (e.g. `tests-developer`'s Mutation Verification and repair-vs-authoring fields) may append the additional field(s) its own agent body mandates after Handoff to reviewer, clearly labeled — never replacing or reordering a mandated field above.
+A dispatch with its own genuine extra reporting need (e.g. `tests-developer`'s Mutation Verification, Plan conformance, and repair-vs-authoring fields) may append the additional field(s) its own agent body mandates after Handoff to reviewer, clearly labeled — never replacing or reordering a mandated field above.
 
 ## Rendering (default)
 
@@ -66,7 +67,8 @@ When the primary agent hands you review findings to fix, close the loop so the r
 
 - Reference each finding by its **reviewer-assigned ID** and say what you changed:
   `RUST-003 (HIGH) — fixed: replaced unwrap() with ? and a thiserror variant in parse_config.`
-- If you deliberately did NOT fix one, say so and why — this is a proposal, not a resolution: only the primary agent/user can decide to accept it, at which point the reviewer marks it `ACK` (per `review-report-standards`' Status Lifecycle). You do not close a finding by declining to fix it.
+- **An item the brief marks as chosen by the human is mandatory — fix it.** If you cannot, report it as an open blocker naming what stops you; never a quiet decline. The flow stops until the human waives it explicitly (`flow-implementation` §5).
+- For an item not marked chosen, if you deliberately did NOT fix it, say so and why — this is a proposal, not a resolution: only the primary agent/user can decide to accept it, at which point the reviewer marks it `ACK` (per `review-report-standards`' Status Lifecycle). You do not close a finding by declining to fix it.
 - Then give the normal **Validation** line for the changed files.
 
 Do NOT invent your own finding IDs — reuse the reviewer's so IDs stay stable across the loop.
@@ -78,10 +80,11 @@ Do NOT invent your own finding IDs — reuse the reviewer's so IDs stay stable a
 
 ## Constraints (NEVER Violate)
 
-- Do NOT violate either Absolute Mandate above (inline-only, token-discipline).
+- Do NOT violate any Absolute Mandate above (inline-only, token-discipline, short paths).
 - Do NOT omit the Validation line, or claim gates passed that you did not run.
 - Do NOT drop the Handoff-to-reviewer block — it is the dev→review contract.
 - Do NOT renumber or invent finding IDs in a fix round — reuse the reviewer's.
+- Do NOT decline, defer, or partly fix an item the human chose without reporting it as an open blocker.
 
 ---
 *Pair with: build-core (conduct/workflow). Constructive twin of: review-report-standards (the reviewer's finding schema).*

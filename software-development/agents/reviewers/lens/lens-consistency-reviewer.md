@@ -18,11 +18,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review
-  2. Whether this is a DIFF/PR (review only changed code) or a FULL AUDIT (review the whole target) — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
-  3. The primary language(s) of the code
-  4. Any explicit architecture docs or style/lint config if present (e.g. `docs/adr/`, `ARCHITECTURE.md`, `.editorconfig`, ESLint/ktlint/Checkstyle) — these override inferred conventions
-  5. For a re-review: the prior round's findings + the prior `conventions_profile` field value (so it reuses finding IDs and does not re-profile — see the review-report-standards skill)
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
+  2. The primary language(s) of the code
+  3. Any explicit architecture docs or style/lint config if present (e.g. `docs/adr/`, `ARCHITECTURE.md`, `.editorconfig`, ESLint/ktlint/Checkstyle) — these override inferred conventions
+  4. For a re-review: the prior round's findings + the prior `conventions_profile` field value (so it reuses finding IDs and does not re-profile — see the review-report-standards skill)
 
 tools: Read, Grep, Glob
 skills:

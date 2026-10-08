@@ -633,6 +633,8 @@ EOF
 run 1 sh "$CREATE" --repo-root "$REPO_TRUST" --slug dup-repo --fields-file "$FIELDS_DUP_IDS"
 expect_rc "create(duplicate finding ids in round-1 payload): -> exit 2" 2
 stderr_has "create(duplicate finding ids in round-1 payload): diagnostic" "duplicate finding ids"
+stderr_has "create(duplicate finding ids in round-1 payload): detail names both entries and the escaped id" \
+	'  findings[0] and findings[1] share id "DUP-001"'
 assert_no_artifact "create(duplicate finding ids in round-1 payload): nothing written" "$REPO_TRUST"
 
 # ---------------------------------------------------------------------------
@@ -1283,22 +1285,27 @@ run 1 sh "$ADD_ROUND" --bogus-flag
 expect_rc "add-round(diag: unknown option): -> exit 2" 2
 stderr_has "add-round(diag: unknown option): usage block still printed for a flag error" "Usage:"
 
-# copy_add_round_with_sabotage DIR SED_SCRIPT — DIR/review-add-round.sh is the
-# script under test rewritten by SED_SCRIPT, with lib/ beside it because the
-# script resolves its library relative to itself. The real script is never
-# touched.
+# copy_add_round_with_sabotage DIR TARGET SED_SCRIPT — DIR holds a copy of the
+# script under test with lib/ beside it (the script resolves its library
+# relative to itself), and the copy's TARGET (review-add-round.sh or
+# lib/review-aggregates.jq) is rewritten by SED_SCRIPT. The real files are
+# never touched.
 copy_add_round_with_sabotage() {
 	mkdir -p "$1/lib"
 	cp "$SCRIPTS_DIR/lib/review-aggregates.jq" "$1/lib/"
-	sed "$2" "$ADD_ROUND" >"$1/review-add-round.sh"
+	cp "$ADD_ROUND" "$1/review-add-round.sh"
+	sed "$3" "$1/$2" >"$1/$2.sabotaged"
+	mv "$1/$2.sabotaged" "$1/$2"
 }
 
-# The fallback: a copy of the script whose diagnostic jq no longer compiles
-# (a renamed `shown` def) must still reject with the bare headline.
-copy_add_round_with_sabotage "$WORK/diag-sabotaged" 's/^def shown:$/def shown_renamed:/'
+# The fallback: a copy whose diagnostic jq no longer compiles (the lib's
+# `shown` def renamed) must still reject with the bare headline. The rename
+# lives in the lib copy because that is where the diagnostic's defs now live.
+copy_add_round_with_sabotage "$WORK/diag-sabotaged" lib/review-aggregates.jq 's/^def shown:$/def shown_renamed:/'
 DIAG_SABOTAGED_ADD_ROUND="$WORK/diag-sabotaged/review-add-round.sh"
-check "add-round(diag fallback): sabotage actually applied to the copy" "no 'def shown_renamed:' line in $DIAG_SABOTAGED_ADD_ROUND" \
-	"$( grep -qx 'def shown_renamed:' "$DIAG_SABOTAGED_ADD_ROUND" && echo 0 || echo 1 )"
+DIAG_SABOTAGED_LIB="$WORK/diag-sabotaged/lib/review-aggregates.jq"
+check "add-round(diag fallback): sabotage actually applied to the lib copy" "no 'def shown_renamed:' line in $DIAG_SABOTAGED_LIB" \
+	"$( grep -qx 'def shown_renamed:' "$DIAG_SABOTAGED_LIB" && echo 0 || echo 1 )"
 
 run 1 sh "$DIAG_SABOTAGED_ADD_ROUND" --json-file "$DIAGNOSTICS_JSON" --fields-file "$FIELDS_DIAG_NEW_MISSING_FIX"
 expect_rc "add-round(diag fallback, entry): still rejects -> exit 2" 2
@@ -1320,7 +1327,7 @@ stderr_lacks "add-round(diag fallback, shape): no per-field detail" "reviewers m
 # The rewritten line ends BOTH diagnostic programs (shape and entries); the
 # guard requires both, since a copy with only one silenced would run the
 # other unsabotaged and fail below for a harness reason, not a product one.
-copy_add_round_with_sabotage "$WORK/diag-silent" 's/^| "  " + \.$/| empty/'
+copy_add_round_with_sabotage "$WORK/diag-silent" review-add-round.sh 's/^| "  " + \.$/| empty/'
 DIAG_SILENT_ADD_ROUND="$WORK/diag-silent/review-add-round.sh"
 check "add-round(diag fallback, silent): sabotage silenced both diagnostic programs in the copy" "expected 2 '| empty' lines in $DIAG_SILENT_ADD_ROUND" \
 	"$( [ "$(grep -cx '| empty' "$DIAG_SILENT_ADD_ROUND")" -eq 2 ] && echo 0 || echo 1 )"
@@ -2832,9 +2839,11 @@ expect_array_enum_rejected "explicit null id" '{"id": null, "status": "RESOLVED"
 expect_array_enum_rejected "id key absent" '{"status": "RESOLVED"}' \
 	'  findings[0] (no id) — NEW (no id given): missing required field "id"'
 
-# review-create.sh carries its own copy of is_severity. It has no per-field
-# diagnostic, so the rejection is pinned by its headline plus the absence of
-# any artifact — the value is otherwise a well-formed round-1 finding.
+# review-create.sh carries its own copy of is_severity. Its per-field
+# diagnostic is built from the lib's explainer defs, so the detail line pins
+# that create's diagnostic still loads them — the headline alone survives a
+# diagnostic that fails and falls back. The value is otherwise a well-formed
+# round-1 finding, so the severity is the only problem reported.
 REPO_ARRAY_SEVERITY_CREATE="$WORK/repo-array-severity-create"; mkdir -p "$REPO_ARRAY_SEVERITY_CREATE"
 FIELDS_ARRAY_SEVERITY_CREATE="$WORK/fields-array-severity-create.json"
 cat >"$FIELDS_ARRAY_SEVERITY_CREATE" <<'EOF'
@@ -2850,6 +2859,8 @@ run 1 sh "$CREATE" --repo-root "$REPO_ARRAY_SEVERITY_CREATE" --slug array-severi
 expect_rc "create(severity [\"HIGH\"]): -> exit 2" 2
 stderr_has "create(severity [\"HIGH\"]): validation headline" \
 	"review-create.sh: error: --fields-file failed validation (repo/reviewers/findings shape)"
+stderr_has "create(severity [\"HIGH\"]): per-field detail line" \
+	'  findings[0] id "ARR-001" — severity a JSON array is not one of CRITICAL | HIGH | MEDIUM | LOW'
 assert_no_artifact "create(severity [\"HIGH\"]): no artifact written" "$REPO_ARRAY_SEVERITY_CREATE"
 
 # ===========================================================================

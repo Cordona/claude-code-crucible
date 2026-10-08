@@ -10,10 +10,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files or directories to review
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
   2. The IaC technology + target (Terraform/AWS (Amazon Web Services), Helm/EKS (Elastic Kubernetes Service), …)
   3. Any project-specific conventions / state backend
-  4. The scope (security posture, deployment safety, full audit) and whether this is a DIFF/PR or FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill). Include the human-produced `terraform show -json tfplan` output when a destroy/replace or drift judgement is in scope (this reviewer never runs `plan` itself — see `devops-engineer`'s plan constraint; the plan file carries plaintext secrets, handle it accordingly).
+  4. The scope (security posture, deployment safety). Include the human-produced `terraform show -json tfplan` output when a destroy/replace or drift judgement is in scope (this reviewer never runs `plan` itself — see `devops-engineer`'s plan constraint; the plan file carries plaintext secrets, handle it accordingly).
   5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 skills:

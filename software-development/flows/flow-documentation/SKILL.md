@@ -145,9 +145,9 @@ The **matching `{tech}`-reviewer** (not a separate docs-reviewer) validates:
 
 **State this explicitly in the dispatch: this is a deliberate deviation from the reviewer's normal lens.** No `{tech}-reviewer` body names documentation fact-checking, `tech-writer`, or this flow, and its `standard-{tech}` rubric does not apply to prose accuracy — brief it plainly that it is being asked to check factual correctness of documentation against code, not code correctness, and that a doc-accuracy defect should be reported with `category:"documentation-accuracy"` (not one of its normal category-vocabulary entries) at whatever severity the consequence of the inaccuracy actually warrants (a wrong parameter name that would break a caller is not the same severity as a stale version number).
 
-**Same-repo (the default case):** the reviewer is shell-less like any other dispatch (`review-core`) — it cannot read a diff itself. **State the dispatch mode explicitly: FULL AUDIT over the documented source files + the new/updated docs** (a docs fact-check has no "diff" of its own to materialize; hand exact file paths for both). Do not leave the mode unstated — an unstated mode reads as DIFF/PR with no artifact, which `review-core` requires the reviewer to score as LOW-attributed findings, silently weakening the fact-check.
+**Same-repo (the default case):** the reviewer is shell-less like any other dispatch (`review-core`) — it cannot read a diff itself. **The review target is the docs this effort wrote — they are its diff.** Pick and restrict the effort's diff per `flow-review` §2 — the doc files `tech-writer` created or updated — and hand the restricted `diff.patch` and `diff-files.txt` — the fact-check reports only on those files. Hand the documented source files' exact paths separately, as **reference to verify against, not a review target**: an inaccuracy is located in the doc, never in the code, and an issue noticed in the code is at most a `## Notes` Pre-existing line. Without the diff artifact, `review-core` requires the reviewer to score its findings as LOW-attributed, silently weakening the fact-check.
 
-**Cross-repo (docs and code live in different repos):** the reviewer's toolset is exactly as local-filesystem-bound as `tech-writer`'s — it cannot fact-check against a repo it can't read. **Hand it the SAME source-repo checkout path used in Step D2**, explicitly, alongside the docs it's fact-checking; do not assume it can discover this itself, since its normal dispatch shape (diff-or-full-audit within one repo) has no field for "the code under discussion lives somewhere else." If that checkout still doesn't exist (Step D2 already flagged this), do not dispatch a fact-check that has nothing to check against — report the gap instead of manufacturing a verdict (see Step D7).
+**Cross-repo (docs and code live in different repos):** the reviewer's toolset is exactly as local-filesystem-bound as `tech-writer`'s — it cannot fact-check against a repo it can't read. **Hand it the SAME source-repo checkout path used in Step D2**, explicitly, alongside the docs it's fact-checking; do not assume it can discover this itself, since its normal dispatch shape (a diff within one repo) has no field for "the code under discussion lives somewhere else." If that checkout still doesn't exist (Step D2 already flagged this), do not dispatch a fact-check that has nothing to check against — report the gap instead of manufacturing a verdict (see Step D7).
 
 The reviewer MUST use `WebFetch`, `WebSearch`, and the `context7` MCP to cross-reference external documentation.
 
@@ -175,13 +175,10 @@ The reviewer MUST use `WebFetch`, `WebSearch`, and the `context7` MCP to cross-r
 
 ## Step D8 — Loop until approved
 
-**The verdict arithmetic — all three branches, owned by `review-report-standards`** (the `{tech}-reviewer`'s bound contract):
-- any open `CRITICAL`/`HIGH`-equivalent accuracy defect → **`CHANGES_REQUIRED`** → the loop below runs
-- only lower-severity issues open → **`APPROVED_WITH_FOLLOWUPS`** → does NOT block; list them and stop
-- nothing open → **`APPROVED`** → stop
+**The verdict** is computed per `review-report-standards` (Verdict Arithmetic); after each review the human chooses what to fix at `flow-implementation` §5's Address question, and every chosen item is mandatory.
 
 ```
-IF reviewer verdict == CHANGES_REQUIRED:
+IF reviewer verdict == CHANGES_REQUIRED, or the human chose items to fix:
     1. Delegate fixes to tech-writer (include reviewer feedback)
     2. Expose docs fix summary
     3. Re-run Step D5's doc-lint gate against the revised draft — BEFORE the reviewer
@@ -190,13 +187,15 @@ IF reviewer verdict == CHANGES_REQUIRED:
        point 4 until the revised draft lints clean. A fix made mid-loop can reintroduce
        a bare fence, a ticket-ID string, a local path, or a single-item list just as
        easily as the original draft could -- this gate is never a one-time-only check.
-    4. Delegate re-review to the {tech}-reviewer
+    4. Re-run Step D6's diff-scope.sh step with the same paths file plus any doc
+       file the fix added, then delegate re-review to the {tech}-reviewer with that
+       current diff.patch + diff-files.txt -- never a stale snapshot
     5. Expose docs re-review report
-    6. REPEAT until verdict == APPROVED or APPROVED_WITH_FOLLOWUPS, or user intervenes
+    6. REPEAT until verdict == APPROVED, or APPROVED_WITH_FOLLOWUPS with no item the human chose still open, or user intervenes
 
 LOOP POLICY (binds — same as `flow-implementation` §5): fix → verify → stop.
     A 3rd round ONLY if a gating defect is still open — "gating defect" covers BOTH
-    an open reviewer-found accuracy defect at CRITICAL/HIGH-equivalent severity (i.e. a
+    an open, gating reviewer-found accuracy defect at CRITICAL/HIGH-equivalent severity (i.e. a
     CHANGES_REQUIRED verdict, point 4) AND a
     Step D5 lint violation that a fix reintroduced or failed to clear (point 3); a
     persistent lint failure is not a separate, uncapped sub-loop, it consumes the SAME
@@ -232,7 +231,7 @@ Both **tech-writer** and the **{tech}-reviewer** MUST use these to ensure accura
 - **`doc-lint.sh` runs from the orchestrator, never from `tech-writer`, and never on `tech-writer`'s say-so that it already ran** — `procedure-doc-lint`'s own Constraint (Step D5).
 - **The lint gate and the fact-check are orthogonal — both must pass independently** — `procedure-doc-lint`'s own framing (Step D5).
 - **The person-name redaction confirmation always reaches the human, even when the rest of `### Verification` is omitted** — it's the one check with no mechanical backstop (Step D4).
-- **The `{tech}-reviewer`'s fact-check dispatch states its mode explicitly (FULL AUDIT) and that this is a deliberate deviation from its normal lens** — an unstated mode silently weakens the check (Step D6).
+- **The `{tech}-reviewer`'s fact-check targets only the docs this effort wrote — their restricted `diff.patch` + `diff-files.txt` from `diff-scope.sh` — with the documented source as read-only reference, and the dispatch states that this is a deliberate deviation from its normal lens** — a missing diff artifact silently weakens the check (Step D6).
 - **Cross-repo: no fact-check is manufactured against a source checkout that doesn't exist** — report the gap instead (Steps D2/D6/D7).
 - **One fix loop, one round counter** — a lint violation and a reviewer-found defect share the same 3-round cap; exceeding it needs a new approval, not a counter (Step D8). **Step D3's pre-approval batch-lint loop is a separate counter that resets at that step's own human approval** — it does not carry rounds forward into D8's counter for the documents subsequently generated against the locked template.
 - **A fix to an already-locked template document reopens Step D3's re-approval, even when the fix came from the lint gate or the reviewer, not a human change request** (Step D3 point 6).

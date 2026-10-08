@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/review-arbiter-verdict.schema.json",
   "title": "Review Arbiter Verdict",
-  "description": "The output payload the review-arbiter returns when ruling on ONE code-review finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the ruling SEMANTICS (recommended-default rule, ALREADY_RESOLVED-vs-false-positive, the ESCALATE hatch, the three standing duties) live in the review-arbiter agent + the standard-judging constitution. How the orchestrator ROUTES and VALIDATES this payload (the verdict->disposition map, the standing-duty completeness gate, the already_resolved_by->resolved_by_commit field mapping) lives in flow-external-review. `verdict` is the FULL arbiter set (see finding-verdict.schema.json); `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
+  "description": "The output payload the review-arbiter returns when ruling on ONE code-review finding: in the external-review pattern (flow-external-review), or on a realism check (flow-implementation §5), where `realism` carries the ruling. This file defines the SHAPE and value domains ONLY; the ruling SEMANTICS (recommended-default rule, ALREADY_RESOLVED-vs-false-positive, the ESCALATE hatch, the three standing duties) live in the review-arbiter agent + the standard-judging constitution. How the orchestrator ROUTES and VALIDATES this payload (the verdict->disposition map, the standing-duty completeness gate, the already_resolved_by->resolved_by_commit field mapping) lives in flow-external-review. `verdict` is the FULL arbiter set (see finding-verdict.schema.json); `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -55,6 +55,15 @@
     "confidence": {
       "description": "Standing duty 3: the arbiter's stated confidence in the ruling. REQUIRED every time.",
       "$ref": "confidence.schema.json"
+    },
+    "item": {
+      "description": "OPTIONAL in this shape; REQUIRED on every re-check ruling (re-check mode), where it names the set-aside item ruled on in ONE key format, each the value of the render's item map: `<finding id>` (e.g. SEC-004; review-update-status.sh --id) | `speculative:<key>` (the 12 hex digits of the review render's REVIEW_ITEM_<n>=speculative:<key>; review-update-status.sh --speculative-key) | `handoff:<N>` (the 1-based N of REVIEW_ITEM_<n>=handoff:<N>; review-update-status.sh --handoff-index) | `not_tested:<N>` (the entry's number in the test-plan render's Not tested list, which runs on after the tests and the rejected proposals; test-plan-recheck.sh --not-tested). The verdict is recorded against that item: an escalated re-check takes its reason as --recheck-reason, a survived or cleared one its file:line evidence as --recheck-proof.",
+      "type": "string",
+      "pattern": "^([A-Z]+-[0-9]{3,}|speculative:[0-9a-f]{12}|handoff:[1-9][0-9]*|not_tested:[1-9][0-9]*)$"
+    },
+    "realism": {
+      "description": "OPTIONAL. Present only on a realism check — an on-demand ruling on whether one reported item's trigger is realistic: a finding of any severity or class, or a speculative entry (review-core, Realism test; flow-implementation §5).",
+      "enum": ["realistic", "edge-case", "speculative"]
     }
   }
 }

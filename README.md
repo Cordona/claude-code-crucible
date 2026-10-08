@@ -282,14 +282,16 @@ their costs differ wildly and shouldn't all be paid on every build:
    only on an open CRITICAL/HIGH). **Never a lens.** The reviewer always runs — deferred or
    immediate — before the effort is called done; this is the safety net every real build gets.
 3. **Review** ([`flow-review`](./software-development/flows/flow-review)) — *on demand only.*
-   Derives a lens roster from the confirmed scope, gates it, dispatches the swarm in parallel, and
+   Derives a lens roster from the effort's diff, gates it, dispatches the swarm in parallel, and
    persists a durable, trackable report. Runs no fix loop of its own; findings re-enter step 2.
 4. **Test** ([`flow-testing`](./software-development/flows/flow-testing)) — *on demand only, never
    before confirmation.* Fires once the human confirms the implementation is right — including a
    live-validation confirmation on a not-yet-reviewed Validate-First build, in which case tests run
-   before the `{tech}-reviewer`. `tests-developer` writes
-   the tests — never the developer that wrote the code under test — and `lens-test-quality-reviewer`
-   verifies them.
+   before the `{tech}-reviewer`. `tests-developer` drafts
+   a test plan, `lens-test-quality-reviewer` challenges it, and the human approves the
+   script-rendered plan; only then does `tests-developer` — never the developer that wrote the code
+   under test — write exactly those tests, and `lens-test-quality-reviewer` verifies them against
+   the plan.
 
 **Nothing here fires from repository state.** Keying the full review swarm off `git status` would
 let a misjudged cross-repo build get fully polished — and tested — before a human ever got a cheap
@@ -310,8 +312,8 @@ defined in [`CLAUDE.md`](./CLAUDE.md).
 |---|---|---|
 | **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer (alone first when live-testable) → *[live-validate → tests]* → `{tech}`-reviewer → gated fix loop — reviewer deferred or immediate, never a lens |
 | **Spec** | cross-repo work, parallel tech pairs, a forked interface decision, or an explicit spec-first ask | `software-architect` drafts a contract → gate → durable artifact every pair builds against |
-| **Review** | an explicit ask for a full/lens review — never automatic | Scope confirmed → lens swarm derived from it → gate → durable, trackable report |
-| **Test** | the human's explicit confirmation an implementation is right | `tests-developer` writes tests → mandatory test-quality pass → bounded fix loop |
+| **Review** | an explicit ask for a full/lens review — never automatic | The effort's diff → lens swarm derived from it → gate → durable, trackable report |
+| **Test** | the human's explicit confirmation an implementation is right | end-to-end-first test plan → reviewer approves or rejects each test → human approval → `tests-developer` writes the plan → mandatory test-quality pass → bounded fix loop |
 | **Direct** | no subagent matches the stack | Orchestrator implements, self-checks via an execution test |
 | **Tech-pair** | "I need a new tech pair" (bare, or "...for Go") | Poll → collision check → gate → research swarm → generate the pair in order → lens review before deploy → human deploys |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers with different lenses + a neutral `decision-arbiter` |

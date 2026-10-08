@@ -1,0 +1,1533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/test-plan.schema.json",
+  "title": "Test Plan",
+  "description": "The wire contract for a flow-testing test plan: the test-free plan of tests to write, persisted only through the flow-testing scripts and shown to the human only as render-md.sh's Markdown. This file defines the SHAPE only; the lifecycle SEMANTICS live in flow-testing §3, and the test-selection rules in standard-testing §0 and §4. Rules JSON Schema cannot express are enforced by flow-testing's scripts/lib/test-plan-validate.jq only: test numbering, the write-only level order (end-to-end, then integration, then unit), the write-only not_tested evidence (exactly one of proof or unproven per entry, every proof a file:line locator with a path-like file naming a real line under the writer's --repo-root, or a test number the plan holds; never a \"ran \" form), category and unique what, the waiver keys only test-plan-amend.sh --waive-not-tested sets, the approval-time rule that no exclusion in a required test category, and no unproven exclusion, is left unwaived and none is left without a category (test-plan-approve.sh), a removed amendment naming a not_tested entry it removes, behavior ids and coverage, the redundancy rule, path listing and uniqueness, reviewer coverage, recorded changes, the accepted-needs-an-amendment rule, calendar-valid dates, the astral, backtick and HTML-tag text rules, and the write-only diff scope (change.files present and in the diff; files.existing and files.new paths in the diff or a test or test-data file). A re-check of a not_tested entry is never stored in the plan: test-plan-recheck.sh records it in the test-plan-recheck.schema.json sidecar.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "status",
+    "created",
+    "change",
+    "run",
+    "behaviors",
+    "existing_tests",
+    "tests",
+    "not_tested",
+    "files",
+    "approx_lines"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Contract version. Pinned so a consumer can detect a shape change. Stamped by test-plan-create.sh, never supplied by the caller.",
+      "const": "1.0"
+    },
+    "id": {
+      "description": "The plan slug — also the filename stem (`{id}.json`). Stamped by test-plan-create.sh from --slug.",
+      "$ref": "artifact-slug.schema.json"
+    },
+    "status": {
+      "description": "draft / challenged / approved. Value domain only; the lifecycle SEMANTICS live in flow-testing §3. Stamped by the scripts, never supplied by the caller.",
+      "enum": [
+        "draft",
+        "challenged",
+        "approved"
+      ]
+    },
+    "created": {
+      "description": "Date (UTC) the draft was created. Frozen at creation; never changed by challenge, amendment, or approval.",
+      "$ref": "#/$defs/date"
+    },
+    "approved_at": {
+      "description": "Date (UTC) of approval. Present only when status is approved; omitted (never null) otherwise. The lifecycle SEMANTICS live in flow-testing §3.",
+      "$ref": "#/$defs/date"
+    },
+    "diff_files": {
+      "description": "The diff this plan tests, sorted by path and unique: the repo-relative paths flow-review/scripts/diff-scope.sh wrote, as {path, sha} objects when the writer was given diff-files.tsv and plain path strings when given diff-files.txt (diff-file.schema.json). Recorded by the three writers that check the diff scope, test-plan-create.sh, test-plan-challenge.sh and test-plan-amend.sh, from their --diff-files, never supplied in a fields-file; test-plan-approve.sh carries it unchanged. Each of those three writers checks change.files, files.existing and files.new against the paths it receives (validator-enforced) and refuses one that runs through a symlink or resolves outside its --repo-root; a stored plan is never re-checked. OPTIONAL in this shape: a stored plan without it stays readable.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "diff-file.schema.json"
+      }
+    },
+    "snapshot": {
+      "description": "OPTIONAL. The tree sha flow-review/scripts/diff-scope.sh --snapshot-out recorded, when the tested diff was taken since that snapshot (test-plan-create.sh --snapshot); carried unchanged by every later writer, never supplied in a fields-file. Not rendered.",
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "change": {
+      "description": "What the plan tests.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "under_test"
+      ],
+      "properties": {
+        "subject": {
+          "description": "One-line title of the change under test; rendered in the plan heading.",
+          "$ref": "#/$defs/subject_line"
+        },
+        "under_test": {
+          "description": "The units/paths whose behavior the tests pin, one line each.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/text_line"
+          }
+        },
+        "files": {
+          "description": "The production files whose behavior this plan tests, repo-relative. Required in every fields-file a writer accepts, and each must be in the diff (diff_files) (validator-enforced); OPTIONAL in this shape, so a stored plan without it stays readable.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        }
+      }
+    },
+    "run": {
+      "description": "The exact targeted command that runs the planned tests.",
+      "$ref": "#/$defs/run_line"
+    },
+    "builds_on": {
+      "description": "The project's test base the tests build on — base classes, helpers (standard-testing §0). Optional; need not be listed in files.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/code_line"
+      }
+    },
+    "behaviors": {
+      "description": "The behaviors the change adds or alters (standard-testing §0). Each is guarded by an end-to-end, required or accepted unit test (validator-enforced).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/behavior"
+      }
+    },
+    "existing_tests": {
+      "$ref": "#/$defs/existing_tests"
+    },
+    "tests": {
+      "description": "The planned tests, numbered 1..N in order across the levels, every end-to-end test before every integration test and every integration test before every unit test in a body being written by create, challenge or amend (validator-enforced; a stored plan is read whatever its order). No two tests share both a level and the same set of guarded behaviors (standard-testing §0; validator-enforced).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test"
+      },
+      "minItems": 1
+    },
+    "no_e2e_reason": {
+      "description": "Why there is no end-to-end test (standard-testing §4). Present exactly when no test is end-to-end.",
+      "$ref": "#/$defs/text_line"
+    },
+    "no_unit_reason": {
+      "description": "Why there is no unit test. Present exactly when no test is a unit test.",
+      "$ref": "#/$defs/text_line"
+    },
+    "not_tested": {
+      "description": "Deliberate coverage exclusions, each naming the risk it accepts (standard-testing §0). May be empty — never omitted. Every entry in a body being written by create, challenge or amend carries a category, exactly one of proof or unproven, and a what no other entry has; an entry whose what, reason or accepting names a security weakness or subject (the matcher and word lists of review-category.schema.json) carries category security or authentication (validator-enforced, write-only). render-md.sh numbers the entries on after the tests and the rejected proposals, so no two items of the plan share a number; test-plan-amend.sh --waive-not-tested and test-plan-recheck.sh --not-tested take that number.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exclusion"
+      }
+    },
+    "files": {
+      "description": "Every file the plan touches. Each test's file, input path and golden path must be listed; a path appears at most once across existing and new (validator-enforced).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "existing",
+        "new"
+      ],
+      "properties": {
+        "existing": {
+          "description": "Existing test files the plan adds to — the default home for new tests (standard-testing §0). On every write, each must be in the diff (diff_files) or be a test or test-data file (validator-enforced).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "new": {
+          "description": "New files the plan creates, each with the stated reason standard-testing §0 requires. On every write, each path must be in the diff (diff_files) or be a test or test-data file (validator-enforced).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/new_file"
+          }
+        }
+      }
+    },
+    "approx_lines": {
+      "description": "Rough size of the planned test code, in lines.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "reviewer": {
+      "$ref": "#/$defs/reviewer"
+    },
+    "amendments": {
+      "description": "Changes recorded after the challenge, oldest first; never empty when present, absent while draft (flow-testing §3d).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/amendment"
+      }
+    },
+    "approved_baseline": {
+      "description": "The fingerprint of the plan as it was last approved, so render-md.sh can show what an amendment changed since approval (new, changed and removed tests and existing-test entries, and which other sections changed) rather than presenting every test as proposed. Recorded only by test-plan-amend.sh when it amends an approved plan (from that plan, before replacing it), kept unchanged by a later amend while the plan stays challenged, and removed by test-plan-approve.sh, so the next amend of the approved plan records a fresh one; never supplied in a fields-file. Present only while status is challenged (validator-enforced). OPTIONAL: a plan amended only before approval has none.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approved_at",
+        "amendments",
+        "tests",
+        "existing_tests"
+      ],
+      "properties": {
+        "approved_at": {
+          "description": "approved_at of the plan this fingerprint was taken from.",
+          "$ref": "#/$defs/date"
+        },
+        "amendments": {
+          "description": "How many amendments the approved plan held: the plan's first that many amendments were made before approval, the rest since (render-md.sh shows only the later ones in full). At most the number of amendments the plan holds (validator-enforced).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "tests": {
+          "description": "One fingerprint per approved test, in order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "existing_tests": {
+          "description": "One fingerprint per approved existing_tests entry, per list, in order.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reused",
+            "repair",
+            "delete"
+          ],
+          "properties": {
+            "reused": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fingerprint"
+              }
+            },
+            "repair": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fingerprint"
+              }
+            },
+            "delete": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fingerprint"
+              }
+            }
+          }
+        },
+        "sections": {
+          "description": "The fingerprint of every other section the render shows, so the change view can leave out each section unchanged since approval and list only the new, changed and removed entries of one that changed. OPTIONAL: a baseline recorded before it existed has none, and render-md.sh then shows those sections whole; test-plan-amend.sh always records it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "files",
+            "fixtures",
+            "builds_on",
+            "behaviors",
+            "not_tested",
+            "run",
+            "existing_tests",
+            "reviewer",
+            "rejected"
+          ],
+          "properties": {
+            "files": {
+              "description": "One fingerprint per file listed under Files, by path: the path, its new-file kind (null for an existing file) and its inline-unit mark, as render-md.sh lists it.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/path_fingerprint"
+              }
+            },
+            "fixtures": {
+              "description": "One fingerprint per file listed under Fixtures, as for files.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/path_fingerprint"
+              }
+            },
+            "builds_on": {
+              "description": "One fingerprint per builds_on entry, named by the entry itself.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/fingerprint"
+              }
+            },
+            "behaviors": {
+              "description": "One fingerprint per behavior, by id.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/behavior_fingerprint"
+              }
+            },
+            "not_tested": {
+              "description": "One fingerprint per not_tested entry, by what: the whole entry, its waiver included.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/exclusion_fingerprint"
+              }
+            },
+            "run": {
+              "description": "SHA-256 of run.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "existing_tests": {
+              "description": "SHA-256 of the whole existing_tests object.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "reviewer": {
+              "description": "SHA-256 of the reviewer lines render-md.sh shows: the approved names, the changes and no_e2e_agreed.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "rejected": {
+              "description": "SHA-256 of the rejected proposals render-md.sh lists (name, level, guards, reason), without their numbers.",
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "draft"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reviewer"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "approved_at"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "amendments"
+              ],
+              "type": "object"
+            },
+            {
+              "required": [
+                "approved_baseline"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "challenged"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "reviewer"
+        ],
+        "not": {
+          "required": [
+            "approved_at"
+          ],
+          "type": "object"
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "reviewer",
+          "approved_at"
+        ],
+        "type": "object",
+        "not": {
+          "required": [
+            "approved_baseline"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tests": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "level": {
+                    "const": "e2e"
+                  }
+                },
+                "required": [
+                  "level"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "no_e2e_reason"
+        ],
+        "properties": {
+          "reviewer": {
+            "required": [
+              "no_e2e_agreed"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "else": {
+        "not": {
+          "required": [
+            "no_e2e_reason"
+          ],
+          "type": "object"
+        },
+        "properties": {
+          "reviewer": {
+            "not": {
+              "required": [
+                "no_e2e_agreed"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tests": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "level": {
+                    "const": "unit"
+                  }
+                },
+                "required": [
+                  "level"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "no_unit_reason"
+        ],
+        "type": "object"
+      },
+      "else": {
+        "not": {
+          "required": [
+            "no_unit_reason"
+          ],
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "date": {
+      "description": "An ISO 8601 date, YYYY-MM-DD. The pattern checks the shape only; calendar validity (e.g. rejecting 2026-02-30) is checked only by test-plan-validate.jq.",
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "prose_text": {
+      "description": "Free text the human reads as approved prose: no control character (C0, DEL, C1), line or paragraph separator, or invisible format character (U+00AD, U+061C, U+180E, U+200B–200F, U+202A–202E, U+2060–2064, U+2066–206F, U+FE00–FE0F, U+FEFF, U+FFF9–FFFB, U+E0000–E007F, U+E0100–E01EF). The pattern lists the BMP part of the set test-plan-validate.jq rejects and render-md.sh neutralizes; the astral ranges (U+E0000–E007F, U+E0100–E01EF) appear only as UTF-16 surrogate pairs, which match in non-unicode ECMA mode alone, so they are a best-effort check here and are enforced by test-plan-validate.jq only; no leading or trailing whitespace and no run of 2+ whitespace characters (Unicode space separators included); no \"<!--\" or \"-->\" and no Markdown link or image syntax (\"](\" or \"![\"); and no trailing \".\" or backslash — the renderer owns all punctuation. Two further rules are enforced by test-plan-validate.jq only, like calendar validity for dates: every backtick must belong to a code span that closes within the value, and an HTML tag outside a code span is rejected — telling a code span from literal backticks needs CommonMark's backtick-run matching, which this pattern cannot express.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![\\s\\S]*(?:[\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]|\\uDB40[\\uDC00-\\uDC7F\\uDD00-\\uDDEF]|[\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000]{2}|<!--|-->|\\]\\(|!\\[))(?:[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000.\\\\]|[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000][\\s\\S]*[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000.\\\\])$"
+    },
+    "text_line": {
+      "description": "A prose_text of at most 100 characters, so every rendered line stays scannable.",
+      "$ref": "#/$defs/prose_text",
+      "maxLength": 100
+    },
+    "reason_line": {
+      "description": "A reason in plain words (the human's reason for a waiver or a dismissal, why a re-check escalated an entry), which gets more room than other prose: at most 200 characters, under every prose_text rule but one — it may end with \".\", since the human's or the review-arbiter's sentence is quoted as written and the renderer adds no punctuation after it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^(?![\\s\\S]*(?:[\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]|\\uDB40[\\uDC00-\\uDC7F\\uDD00-\\uDDEF]|[\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000]{2}|<!--|-->|\\]\\(|!\\[))(?:[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000\\\\]|[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000][\\s\\S]*[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000\\\\])$"
+    },
+    "subject_line": {
+      "description": "A text_line that does not end with whitespace followed by \"#\" (Markdown would drop it from the heading as a closing sequence).",
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/text_line"
+        }
+      ],
+      "not": {
+        "pattern": "\\s#+$"
+      }
+    },
+    "code_line": {
+      "description": "An identifier, path or command rendered inside a Markdown code span: at most 300 characters (not prose, so not held to text_line's cap — long test names and deep paths must fit) with at least one visible character; no control character (C0, DEL, C1), line or paragraph separator, or invisible format character (U+00AD, U+061C, U+180E, U+200B–200F, U+202A–202E, U+2060–2064, U+2066–206F, U+FE00–FE0F, U+FEFF, U+FFF9–FFFB, U+E0000–E007F, U+E0100–E01EF). The pattern lists the BMP part of the set test-plan-validate.jq rejects and render-md.sh neutralizes; the astral ranges (U+E0000–E007F, U+E0100–E01EF) appear only as UTF-16 surrogate pairs, which match in non-unicode ECMA mode alone, so they are a best-effort check here and are enforced by test-plan-validate.jq only; and no backtick.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^(?![\\s\\S]*(?:[\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]|\\uDB40[\\uDC00-\\uDC7F\\uDD00-\\uDDEF]|`))(?=[\\s\\S]*[^\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000])[\\s\\S]+$"
+    },
+    "path": {
+      "description": "A repo-relative file path: a code_line that does not start with \"/\", \"~\" or \"-\", and has no backslash, no \"..\" segment, and no empty segment (\"//\" or a trailing \"/\").",
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/code_line"
+        }
+      ],
+      "pattern": "^(?![/~-])(?![\\s\\S]*(?:\\\\|//|/$))(?![\\s\\S]*(?:^|/)\\.\\.(?:/|$))[\\s\\S]+$"
+    },
+    "run_line": {
+      "description": "A command line: a code_line holding plain commands chained only with &&; no ; | $ < > ( ) or backslash, and no single &.",
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/code_line"
+        }
+      ],
+      "pattern": "^(?:[^;|$<>()\\\\&]|&&)*$"
+    },
+    "existing_name": {
+      "description": "One existing test's exact name: a code_line with no glob character (* ? [ ]).",
+      "type": "string",
+      "allOf": [
+        {
+          "$ref": "#/$defs/code_line"
+        }
+      ],
+      "pattern": "^[^*?\\[\\]]*$"
+    },
+    "behavior_id": {
+      "description": "A behavior id: B followed by a positive integer with no leading zero.",
+      "type": "string",
+      "pattern": "^B[1-9][0-9]*$"
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "description": "Unique within behaviors[] (validator-enforced).",
+          "$ref": "#/$defs/behavior_id"
+        },
+        "text": {
+          "description": "The behavior the change adds or alters, as it should hold.",
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "named_reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "description": "A test name.",
+          "$ref": "#/$defs/code_line"
+        },
+        "reason": {
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "reused_test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/existing_name"
+        },
+        "reason": {
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "changed_test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "file",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/existing_name"
+        },
+        "file": {
+          "description": "The test's file; must be listed in files.existing (validator-enforced).",
+          "$ref": "#/$defs/path"
+        },
+        "reason": {
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "existing_tests": {
+      "description": "What happens to the project's existing tests (standard-testing §0). none_reason is present exactly when reused, repair and delete are all empty.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reused",
+        "repair",
+        "delete"
+      ],
+      "properties": {
+        "reused": {
+          "description": "Existing tests that already guard a behavior.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reused_test"
+          }
+        },
+        "repair": {
+          "description": "Existing tests the change breaks, each in its file.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/changed_test"
+          }
+        },
+        "delete": {
+          "description": "Existing tests the change makes obsolete, each in its file.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/changed_test"
+          }
+        },
+        "none_reason": {
+          "description": "Why no existing test is reused, repaired or deleted.",
+          "$ref": "#/$defs/text_line"
+        }
+      },
+      "if": {
+        "properties": {
+          "reused": {
+            "maxItems": 0,
+            "type": "array"
+          },
+          "repair": {
+            "maxItems": 0,
+            "type": "array"
+          },
+          "delete": {
+            "maxItems": 0,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "none_reason"
+        ],
+        "type": "object"
+      },
+      "else": {
+        "not": {
+          "required": [
+            "none_reason"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    "fingerprint": {
+      "description": "One approved entry, by name and digest: sha256 is the SHA-256 of the entry as `jq -S -c` prints it, followed by a newline — a test without its n (so renumbering alone is no change), a reused, repair or delete entry whole, a section entry as approved_baseline.sections describes it. render-md.sh matches an entry by name: an equal digest is unchanged, the same name with another digest changed, else new.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "description": "The test, existing-test entry or builds_on entry.",
+          "$ref": "#/$defs/code_line"
+        },
+        "sha256": {
+          "description": "64 lowercase hex digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "path_fingerprint": {
+      "description": "A fingerprint named by a path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "description": "The file path.",
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "description": "64 lowercase hex digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "behavior_fingerprint": {
+      "description": "A fingerprint named by a behavior id.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "description": "The behavior id.",
+          "$ref": "#/$defs/behavior_id"
+        },
+        "sha256": {
+          "description": "64 lowercase hex digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "exclusion_fingerprint": {
+      "description": "A fingerprint named by a not_tested entry's what.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "properties": {
+        "name": {
+          "description": "The entry's what.",
+          "$ref": "#/$defs/text_line"
+        },
+        "sha256": {
+          "description": "64 lowercase hex digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "from"
+      ],
+      "properties": {
+        "path": {
+          "description": "Must be listed in files (validator-enforced).",
+          "$ref": "#/$defs/path"
+        },
+        "from": {
+          "description": "Where the fixture's content comes from.",
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "test_level_rules": {
+      "description": "e2e requires golden and forbids unit_kind / why_not_e2e; integration requires why_not_e2e and forbids unit_kind; unit requires unit_kind and why_not_e2e.",
+      "type": "object",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "level": {
+                "const": "e2e"
+              }
+            },
+            "required": [
+              "level"
+            ],
+            "type": "object"
+          },
+          "then": {
+            "required": [
+              "golden"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "unit_kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "required": [
+                    "why_not_e2e"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "object"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "level": {
+                "const": "integration"
+              }
+            },
+            "required": [
+              "level"
+            ],
+            "type": "object"
+          },
+          "then": {
+            "required": [
+              "why_not_e2e"
+            ],
+            "not": {
+              "required": [
+                "unit_kind"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "level": {
+                "const": "unit"
+              }
+            },
+            "required": [
+              "level"
+            ],
+            "type": "object"
+          },
+          "then": {
+            "required": [
+              "unit_kind",
+              "why_not_e2e"
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "test": {
+      "description": "A planned test (standard-testing §4). unit_kind accepted requires an accepted amendment naming the test (validator-enforced; flow-testing §3d).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n",
+        "name",
+        "level",
+        "guards",
+        "why",
+        "fails_if",
+        "file"
+      ],
+      "properties": {
+        "n": {
+          "description": "1-based position; must equal the test's index + 1 (validator-enforced).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "description": "The test's name as it will appear in code; unique within tests[].",
+          "$ref": "#/$defs/code_line"
+        },
+        "level": {
+          "description": "e2e (drives the feature through its entry point), integration (exercises real infrastructure — a real database, service or process — with no mock of the project's own code) or unit (standard-testing §4).",
+          "enum": [
+            "e2e",
+            "integration",
+            "unit"
+          ]
+        },
+        "unit_kind": {
+          "description": "Unit tests only: required / optional (offered; written only if the human accepts it) / accepted (an optional test the human accepted).",
+          "enum": [
+            "required",
+            "optional",
+            "accepted"
+          ]
+        },
+        "guards": {
+          "description": "Ids of the behaviors this test turns red for; each must exist in behaviors[] (validator-enforced).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/behavior_id"
+          }
+        },
+        "why": {
+          "description": "Why this test exists.",
+          "$ref": "#/$defs/text_line"
+        },
+        "why_not_e2e": {
+          "description": "Integration and unit tests only: why no end-to-end test can observe this (standard-testing §4).",
+          "$ref": "#/$defs/text_line"
+        },
+        "fails_if": {
+          "description": "The break that turns this test red.",
+          "$ref": "#/$defs/text_line"
+        },
+        "file": {
+          "description": "The test file; must be listed in files (validator-enforced).",
+          "$ref": "#/$defs/path"
+        },
+        "input": {
+          "description": "Optional input fixture the test feeds in.",
+          "$ref": "#/$defs/fixture"
+        },
+        "golden": {
+          "description": "Golden the test compares against (standard-testing §7); required for an end-to-end test.",
+          "$ref": "#/$defs/fixture"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/test_level_rules"
+        }
+      ]
+    },
+    "proposed_test": {
+      "description": "A test the reviewer rejected, as proposed: a test entry without n.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "level",
+        "guards",
+        "why",
+        "fails_if",
+        "file"
+      ],
+      "properties": {
+        "name": {
+          "description": "The proposed test's name; unique within reviewer.rejected (validator-enforced).",
+          "$ref": "#/$defs/code_line"
+        },
+        "level": {
+          "description": "e2e (drives the feature through its entry point), integration (exercises real infrastructure — a real database, service or process — with no mock of the project's own code) or unit (standard-testing §4).",
+          "enum": [
+            "e2e",
+            "integration",
+            "unit"
+          ]
+        },
+        "unit_kind": {
+          "description": "Unit tests only: required / optional — a proposal cannot carry accepted.",
+          "enum": [
+            "required",
+            "optional"
+          ]
+        },
+        "guards": {
+          "description": "Ids of the behaviors the proposed test would have guarded.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/behavior_id"
+          }
+        },
+        "why": {
+          "description": "Why this test exists.",
+          "$ref": "#/$defs/text_line"
+        },
+        "why_not_e2e": {
+          "description": "Integration and unit tests only: why no end-to-end test can observe this (standard-testing §4).",
+          "$ref": "#/$defs/text_line"
+        },
+        "fails_if": {
+          "description": "The break that turns this test red.",
+          "$ref": "#/$defs/text_line"
+        },
+        "file": {
+          "description": "The test file it would have lived in.",
+          "$ref": "#/$defs/path"
+        },
+        "input": {
+          "description": "Optional input fixture the test feeds in.",
+          "$ref": "#/$defs/fixture"
+        },
+        "golden": {
+          "description": "Golden the test compares against (standard-testing §7); required for an end-to-end test.",
+          "$ref": "#/$defs/fixture"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/test_level_rules"
+        }
+      ]
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "what",
+        "reason",
+        "accepting"
+      ],
+      "properties": {
+        "what": {
+          "description": "What is deliberately not tested.",
+          "$ref": "#/$defs/text_line"
+        },
+        "reason": {
+          "description": "Why it is not tested.",
+          "$ref": "#/$defs/text_line"
+        },
+        "accepting": {
+          "description": "The risk knowingly accepted.",
+          "$ref": "#/$defs/text_line"
+        },
+        "category": {
+          "description": "What the exclusion leaves untested. Required in a body being written (validator-enforced, write-only); optional in this shape, so a stored entry without one stays readable: render-md.sh marks it \"Legacy entry — not judged\", test-plan-approve.sh refuses it, and an amend gives it one. Every value but other is a required test category: test-plan-approve.sh refuses a plan holding such an entry, or an entry of any category without proof, without waived_by_human. A proven other entry needs no waiver.",
+          "enum": [
+            "security",
+            "persisted-data",
+            "concurrency",
+            "authentication",
+            "other"
+          ]
+        },
+        "proof": {
+          "description": "The evidence behind the exclusion, one line naming a file:line whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42; never 10:30), naming a regular file under the writer's --repo-root and a line within it, or a test number the plan holds (\"Covered by test 3\"). Exactly one of proof or unproven, and the proof in one of those forms, in a body being written (validator-enforced, write-only); never a proof starting \"ran \".",
+          "$ref": "#/$defs/text_line"
+        },
+        "unproven": {
+          "description": "The exclusion has no proof yet; excludes proof. Only the value true is written.",
+          "const": true
+        },
+        "waived_by_human": {
+          "description": "The human waived testing this exclusion — one in a required test category, or an unproven one of any category. Set only by test-plan-amend.sh --waive-not-tested after the human answers (recorded as a waived amendment), never supplied in a fields-file; kept by a later amend only while the entry is unchanged. Only the value true is written.",
+          "const": true
+        },
+        "waiver_reason": {
+          "description": "The human's reason for the waiver, in their words: one line, no proof form (test-plan-amend.sh --waive-not-tested --reason). Present exactly when waived_by_human is (validator-enforced).",
+          "$ref": "#/$defs/reason_line"
+        }
+      },
+      "not": {
+        "required": [
+          "proof",
+          "unproven"
+        ],
+        "type": "object"
+      }
+    },
+    "new_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "justification"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "description": "test-file / harness / fixture.",
+          "enum": [
+            "test-file",
+            "harness",
+            "fixture"
+          ]
+        },
+        "justification": {
+          "description": "Why no existing file or test base can serve (standard-testing §0).",
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "reviewer_change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "item",
+        "reason"
+      ],
+      "properties": {
+        "action": {
+          "description": "merged / to-unit / to-integration / to-e2e (re-levelled) / changed (edited in place) / added.",
+          "enum": [
+            "merged",
+            "to-unit",
+            "to-integration",
+            "to-e2e",
+            "changed",
+            "added"
+          ]
+        },
+        "item": {
+          "description": "The tests affected.",
+          "$ref": "#/$defs/text_line"
+        },
+        "reason": {
+          "$ref": "#/$defs/text_line"
+        },
+        "test": {
+          "description": "The draft test this change applies to (flow-testing §3c).",
+          "$ref": "#/$defs/code_line"
+        },
+        "field": {
+          "description": "The body section this entry records a change to (flow-testing §3d).",
+          "enum": [
+            "change",
+            "run",
+            "builds_on",
+            "behaviors",
+            "existing_tests",
+            "no_e2e_reason",
+            "no_unit_reason",
+            "not_tested",
+            "files",
+            "approx_lines"
+          ]
+        }
+      }
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "test",
+        "reason"
+      ],
+      "properties": {
+        "test": {
+          "$ref": "#/$defs/proposed_test"
+        },
+        "reason": {
+          "description": "Why the reviewer rejected it.",
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "lens-test-quality-reviewer's verdict on the plan (flow-testing §3c). How it must cover tests[] is validator-enforced (flow-testing §3d).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approved",
+        "rejected",
+        "changes"
+      ],
+      "properties": {
+        "approved": {
+          "description": "Tests the reviewer approved, each with its reason.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/named_reason"
+          }
+        },
+        "rejected": {
+          "description": "Tests the reviewer rejected, as proposed, each with its reason.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rejected"
+          }
+        },
+        "changes": {
+          "description": "Edits the reviewer made to the proposed tests, and every changed body section by field (flow-testing §3c). May be empty.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reviewer_change"
+          }
+        },
+        "no_e2e_agreed": {
+          "description": "Why the reviewer agrees no end-to-end test is possible. Present exactly when no test is end-to-end (flow-testing §3d).",
+          "$ref": "#/$defs/text_line"
+        }
+      }
+    },
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "item",
+        "reason"
+      ],
+      "properties": {
+        "action": {
+          "description": "restored (a rejected test put back) / accepted (an optional unit test the human accepted) / removed (a test, or with field not_tested a not_tested entry named by its what in item) / merged / to-unit / to-integration / to-e2e (re-levelled) / changed / added / waived (the human waived a not_tested entry that needs it: a required test category, or unproven; recorded only by test-plan-amend.sh --waive-not-tested, with item the entry's what and reason the human's reason).",
+          "enum": [
+            "restored",
+            "accepted",
+            "removed",
+            "merged",
+            "to-unit",
+            "to-integration",
+            "to-e2e",
+            "changed",
+            "added",
+            "waived"
+          ]
+        },
+        "item": {
+          "description": "The tests affected.",
+          "$ref": "#/$defs/text_line"
+        },
+        "reason": {
+          "description": "Why the change was made: a text_line, or for a waived amendment the human's waiver reason, a reason_line.",
+          "$ref": "#/$defs/reason_line"
+        },
+        "test": {
+          "description": "The test this amendment applies to; required for restored, accepted, removed and added — except a removed amendment with field not_tested, which names the removed entry by item (validator-enforced).",
+          "$ref": "#/$defs/code_line"
+        },
+        "renamed_from": {
+          "description": "On an added amendment only: the old name of the test it adds under a new name, which an earlier removed amendment records (validator-enforced), so render-md.sh shows one renamed test instead of a removed and a new one.",
+          "$ref": "#/$defs/code_line"
+        },
+        "field": {
+          "description": "The body section this entry records a change to (flow-testing §3d).",
+          "enum": [
+            "change",
+            "run",
+            "builds_on",
+            "behaviors",
+            "existing_tests",
+            "no_e2e_reason",
+            "no_unit_reason",
+            "not_tested",
+            "files",
+            "approx_lines"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "restored",
+              "accepted",
+              "removed",
+              "added"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "not": {
+          "properties": {
+            "action": {
+              "const": "removed"
+            },
+            "field": {
+              "const": "not_tested"
+            }
+          },
+          "required": [
+            "action",
+            "field"
+          ],
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "then": {
+        "required": [
+          "test"
+        ],
+        "type": "object"
+      },
+      "description": "One recorded change to the plan after the challenge (flow-testing §3d).",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "not": {
+                  "const": "waived"
+                }
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "maxLength": 100
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "submit-backslash-prompts",
+      "status": "approved",
+      "created": "2026-10-03",
+      "approved_at": "2026-10-03",
+      "diff_files": [
+        "src/infra/tmux/pane_delivery.rs",
+        "src/infra/tmux/pane_paste.rs"
+      ],
+      "change": {
+        "subject": "submit prompts ending in a backslash",
+        "under_test": [
+          "`escaped_for_submit`, `matches_submitted` (src/infra/tmux/pane_paste.rs)",
+          "paste delivery (src/infra/tmux/pane_delivery.rs)"
+        ],
+        "files": [
+          "src/infra/tmux/pane_paste.rs",
+          "src/infra/tmux/pane_delivery.rs"
+        ]
+      },
+      "run": "cargo test --test pane_delivery_test && cargo test --lib tmux::pane_paste",
+      "builds_on": [
+        "tests/common/stub_tmux.rs"
+      ],
+      "behaviors": [
+        {
+          "id": "B1",
+          "text": "a prompt ending in `\\` is pasted with one escape space so tmux submits it"
+        },
+        {
+          "id": "B2",
+          "text": "the echo check accepts the escaped prompt and nothing looser"
+        }
+      ],
+      "existing_tests": {
+        "reused": [
+          {
+            "name": "a_plain_prompt_is_pasted_and_submitted",
+            "reason": "already proves delivery of a prompt with no backslash"
+          }
+        ],
+        "repair": [],
+        "delete": []
+      },
+      "tests": [
+        {
+          "n": 1,
+          "name": "a_backslash_prompt_is_pasted_escaped_and_echo_accepted",
+          "level": "e2e",
+          "guards": [
+            "B1",
+            "B2"
+          ],
+          "why": "proves escape, paste and echo check in one delivery flow",
+          "fails_if": "the pasted bytes lack the escape space or the echo check rejects them",
+          "file": "tests/pane_delivery_test.rs",
+          "input": {
+            "path": "tests/fixtures/pane_delivery/backslash_prompt.json",
+            "from": "captured from a real hook payload"
+          },
+          "golden": {
+            "path": "tests/fixtures/pane_delivery/backslash_prompt.golden",
+            "from": "captured from a real stub-tmux run"
+          }
+        },
+        {
+          "n": 2,
+          "name": "the_matcher_rejects_extra_or_leading_spaces",
+          "level": "unit",
+          "unit_kind": "optional",
+          "guards": [
+            "B2"
+          ],
+          "why": "pins the matcher's reject cases with a few inputs",
+          "why_not_e2e": "each reject case would need its own stubbed delivery run",
+          "fails_if": "an extra or leading space is accepted",
+          "file": "src/infra/tmux/pane_paste.rs"
+        }
+      ],
+      "not_tested": [
+        {
+          "what": "Live Claude behavior on `\\`",
+          "reason": "upstream behavior, not our code",
+          "accepting": "Claude changes how it handles a trailing backslash"
+        },
+        {
+          "what": "Debug log line",
+          "reason": "cosmetic",
+          "accepting": "a misleading log message"
+        }
+      ],
+      "files": {
+        "existing": [
+          "src/infra/tmux/pane_paste.rs",
+          "tests/pane_delivery_test.rs",
+          "tests/fixtures/pane_delivery/backslash_prompt.json"
+        ],
+        "new": [
+          {
+            "path": "tests/fixtures/pane_delivery/backslash_prompt.golden",
+            "kind": "fixture",
+            "justification": "the golden pasted bytes and echo test 1 compares against"
+          }
+        ]
+      },
+      "approx_lines": 70,
+      "reviewer": {
+        "approved": [
+          {
+            "name": "a_backslash_prompt_is_pasted_escaped_and_echo_accepted",
+            "reason": "only level that sees the pasted bytes and the echo"
+          },
+          {
+            "name": "the_matcher_rejects_extra_or_leading_spaces",
+            "reason": "reject cases are cheaper to vary at the matcher"
+          }
+        ],
+        "rejected": [
+          {
+            "test": {
+              "name": "trailing_backslash_gains_one_space",
+              "level": "unit",
+              "unit_kind": "required",
+              "guards": [
+                "B1"
+              ],
+              "why": "pins the escape helper directly",
+              "why_not_e2e": "the helper is pure",
+              "fails_if": "no escape space is added",
+              "file": "src/infra/tmux/pane_paste.rs"
+            },
+            "reason": "test 1 already proves it end to end"
+          },
+          {
+            "test": {
+              "name": "a_real_tmux_server_submits_the_prompt",
+              "level": "e2e",
+              "guards": [
+                "B1",
+                "B2"
+              ],
+              "why": "proves real tmux behavior",
+              "fails_if": "a live tmux server doesn't submit the prompt",
+              "file": "tests/tmux_live_test.rs",
+              "golden": {
+                "path": "tests/fixtures/tmux_live/backslash.golden",
+                "from": "hand-written expected pane contents"
+              }
+            },
+            "reason": "the stub observes the same bytes without a live-server harness"
+          }
+        ],
+        "changes": [
+          {
+            "action": "merged",
+            "test": "a_backslash_prompt_is_pasted_escaped",
+            "item": "2 end-to-end flows → test 1 covering B1 and B2",
+            "reason": "One delivery run observes both"
+          },
+          {
+            "action": "merged",
+            "test": "the_echo_check_accepts_the_escaped_prompt",
+            "item": "2 end-to-end flows → test 1 covering B1 and B2",
+            "reason": "One delivery run observes both"
+          },
+          {
+            "action": "changed",
+            "field": "files",
+            "item": "tests/tmux_live_test.rs dropped",
+            "reason": "Its only test was rejected"
+          },
+          {
+            "action": "changed",
+            "field": "approx_lines",
+            "item": "120 → 70 lines",
+            "reason": "Fewer tests after the merge and rejections"
+          }
+        ]
+      }
+    }
+  ]
+}

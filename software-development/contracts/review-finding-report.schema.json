@@ -5,11 +5,11 @@
   "description": "The canonical wire contract every reviewer subagent EMITS to the primary agent (review-report-standards Rendering 2). The primary agent parses it to merge the swarm, compute the merged verdict, and track fixes across rounds. This file defines the SHAPE and value domains only; the SEMANTICS (severity anchoring, verdict arithmetic, ID stability, status lifecycle, the human rendering) live in the review-report-standards skill. Emit MINIFIED JSON conforming to this schema.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "reviewer", "target", "round", "generated", "verdict", "summary", "findings"],
+  "required": ["schema_version", "reviewer", "target", "round", "generated", "verdict", "summary", "findings", "speculative"],
   "properties": {
     "schema_version": {
       "description": "Contract version. Pinned so a consumer can detect a shape change.",
-      "const": "1.1"
+      "const": "1.2"
     },
     "reviewer": {
       "description": "The reviewer/lens name (e.g. \"lens-clean-code-reviewer\", \"kotlin-reviewer\").",
@@ -32,14 +32,34 @@
       "type": "string",
       "format": "date"
     },
-    "verdict": { "$ref": "report-verdict.schema.json" },
-    "summary": { "$ref": "finding-summary.schema.json" },
+    "verdict": {
+      "description": "Counting rule: review-report-standards, Verdict Arithmetic.",
+      "$ref": "report-verdict.schema.json"
+    },
+    "summary": {
+      "description": "Counting rule: review-report-standards, Verdict Arithmetic.",
+      "$ref": "finding-summary.schema.json"
+    },
     "findings": {
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     },
+    "speculative": {
+      "description": "Concerns that failed the Realism test (review-core, Realism test); not findings. May be empty. Counting rule: review-report-standards, Verdict Arithmetic.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/speculative_entry" }
+    },
     "conventions_profile": {
       "description": "OPTIONAL. A reusable summary of this codebase's own conventions. Which reviewers use this field, and its reuse behavior, are owned by review-report-standards.",
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_revision": {
+      "description": "OPTIONAL. Used only by lens-test-quality-reviewer on a flow-testing dispatch: the full test-plan body plus reviewer (PLAN-CHALLENGE mode) or amendments (TESTS mode, or a trim re-challenge), which the orchestrator writes unchanged to a fields-file. Its shape is test-plan.schema.json's and is validated by the flow-testing scripts (test-plan-challenge.sh / test-plan-amend.sh), never by this schema — hence an open object here.",
+      "type": "object"
+    },
+    "volume": {
+      "description": "OPTIONAL. Used only by lens-test-quality-reviewer in flow-testing TESTS mode: its one-line volume verdict on the authored tests.",
       "type": "string",
       "minLength": 1
     }
@@ -48,7 +68,7 @@
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "status", "severity", "category", "locations", "first_seen", "problem", "fix"],
+      "required": ["id", "status", "severity", "realism", "trigger", "category", "locations", "first_seen", "problem", "fix"],
       "properties": {
         "id": {
           "description": "Stable, reviewer-prefixed identifier; ID stability (assignment/reuse/renumbering) is owned by review-report-standards. PREFIX = the reviewer's own declared tag (non-exhaustive examples: CLEAN, DOC, SEC, TEST, CONS, OBS, PERF, COMPAT, PERS; tech reviewers use their distinguishing word, e.g. RUST, JAVA, KOTLIN, PHP, REACT, PYTHON, SHELL, DEVOPS, CLOUDFLARE) — see review-report-standards for the derivation rule; each reviewer's own body is authoritative.",
@@ -57,16 +77,52 @@
         },
         "status": { "$ref": "finding-status.schema.json" },
         "severity": { "$ref": "severity.schema.json" },
+        "realism": {
+          "description": "review-core, Realism test. Counting rule: review-report-standards, Verdict Arithmetic.",
+          "$ref": "finding-realism.schema.json"
+        },
+        "trigger": {
+          "description": "ONE line: the concrete real-use scenario that makes the problem happen (review-core, Realism test).",
+          "$ref": "one-line-text.schema.json"
+        },
+        "realism_reason": {
+          "description": "OPTIONAL. ONE line of at most 100 characters: why the finding is classed edge-case (review-core, Realism test). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
         "category": {
-          "description": "Sub-lens tag from the reviewer's OWN controlled vocabulary (not free text). The closed per-reviewer value set is owned by each reviewer agent.",
+          "description": "Sub-lens tag from the reviewer's OWN controlled vocabulary (not free text). The closed per-reviewer value set is owned by each reviewer agent; their union, each category flagged security or not, is contracts/review-category.schema.json, and the flow-review writers reject a category outside it. A category flagged security in contracts/review-category.schema.json (x-categories) puts the item under the security floor: proof alone, never unproven (writer-enforced); the floor stays on a finding whose stored or updated category is a security one. An item whose text names a security weakness listed in x-security-terms (a finding's problem or trigger, a speculative entry's concern) takes one of the reviewer's own security categories; a reviewer with none passes it to lens-security-reviewer as a handoff (writer-enforced).",
           "type": "string",
           "minLength": 1
         },
         "locations": {
-          "description": "One or more `file:line` (or `file:start-end`) sites. An array because a finding may span sites (e.g. duplication).",
+          "description": "One or more `file:line` (or `file:start-end`) sites. An array because a finding may span sites (e.g. duplication). A site outside the diff needs its own entry's relates_to on a changed line. On a flow-testing dispatch, lens-test-quality-reviewer may also use `plan:<item>` locators naming a test-plan entry (e.g. `plan:test-3`).",
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "minItems": 1
+        },
+        "relates_to": {
+          "description": "OPTIONAL. ONE `file:line` (or `file:start-end`) location of at most 300 characters, on a line the diff changed (diff-scope.sh's diff-hunks.tsv): the changed code that relies on or exposes a defect located outside the diff. A location outside the diff is accepted only when its own entry's relates_to is on a changed line, and a relates_to given always is (writer-enforced at write time). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 300,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: an edge-case finding carries exactly one of proof or unproven, and under the security floor (reviewer lens-security-reviewer, or a security category) proof alone — a security concern stays realistic until proven harmless. ONE line of at most 100 characters: the evidence that the item is rare or harmless. A proof names its evidence as a file:line locator whose file is path-like — it holds a letter and has an extension, a \"/\", or is Makefile, Dockerfile, Justfile, Rakefile, Gemfile or Procfile — and is no part of a URL (src/a.rs:42, src/a.rs:42-50, Makefile:3; never 10:30), naming a regular file under the writer's --repo-root and a line within it (writer-enforced), or in a test-plan review (plan_review) also a test number the reviewed plan holds (test 3; resolved against the writer's --plan). A reviewer has no shell, so a proof starting \"ran \" (a command and its result) is recorded only by the orchestrator (review-update-status.sh --proof or --resolution-proof). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "unproven": {
+          "description": "OPTIONAL in this shape; writer-enforced as for proof, which it excludes: the item is set aside without proof. Only the value true is written.",
+          "const": true
+        },
+        "resolution_proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: required when the entry sets status RESOLVED on a finding not already RESOLVED, and given only with status RESOLVED. ONE line of at most 100 characters: the evidence the fix holds, in the proof form of proof. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
         },
         "first_seen": {
           "description": "ISO 8601 date only, frozen at creation; kept unchanged across rounds.",
@@ -84,29 +140,112 @@
           "minLength": 1
         }
       }
+    },
+    "speculative_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "concern", "why_speculative", "category"],
+      "properties": {
+        "location": {
+          "description": "One `file:line` (or `file:start-end`) site — the same locator form as a finding's locations.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "concern": {
+          "description": "ONE line: the concern as the reviewer would have raised it.",
+          "$ref": "one-line-text.schema.json"
+        },
+        "why_speculative": {
+          "description": "ONE line: what the concern would need that is not in evidence (review-core, Realism test).",
+          "$ref": "one-line-text.schema.json"
+        },
+        "category": {
+          "description": "The reviewer's category for the concern, from its own controlled vocabulary, as for a finding (contracts/review-category.schema.json; writer-enforced). A category flagged security in contracts/review-category.schema.json (x-categories) puts the item under the security floor: proof alone, never unproven (writer-enforced); the floor stays on a finding whose stored or updated category is a security one. An item whose text names a security weakness listed in x-security-terms (a finding's problem or trigger, a speculative entry's concern) takes one of the reviewer's own security categories; a reviewer with none passes it to lens-security-reviewer as a handoff (writer-enforced).",
+          "$ref": "one-line-text.schema.json"
+        },
+        "real_if": {
+          "description": "OPTIONAL. ONE line of at most 100 characters: the evidence that would make the concern real (review-core, Realism test). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "relates_to": {
+          "description": "OPTIONAL. ONE `file:line` (or `file:start-end`) location of at most 300 characters, on a line the diff changed (diff-scope.sh's diff-hunks.tsv): the changed code that relies on or exposes a defect located outside the diff. A location outside the diff is accepted only when its own entry's relates_to is on a changed line, and a relates_to given always is (writer-enforced at write time). No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 300,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "proof": {
+          "description": "OPTIONAL in this shape; writer-enforced: every speculative entry carries exactly one of proof or unproven, and under the security floor (reviewer lens-security-reviewer, or a security category) proof alone — a security concern stays realistic until proven harmless. ONE line of at most 100 characters: the evidence that the item is not real or harmless, in the proof form of a finding's proof. No invisible format character (bidi, zero-width, soft hyphen, variation selector, BOM, tag): `not` covers the BMP ones; the flow-review scripts also reject tag characters and supplementary variation selectors.",
+          "$ref": "one-line-text.schema.json",
+          "maxLength": 100,
+          "not": { "pattern": "[\\u00AD\\u061C\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\uFFF9-\\uFFFB]" }
+        },
+        "unproven": {
+          "description": "OPTIONAL in this shape; writer-enforced as for proof, which it excludes: the item is set aside without proof. Only the value true is written.",
+          "const": true
+        }
+      }
     }
   },
   "examples": [
     {
-      "schema_version": "1.1",
+      "schema_version": "1.2",
       "reviewer": "lens-clean-code-reviewer",
       "target": ["src/order/"],
       "round": 2,
       "generated": "2026-07-12",
-      "verdict": "CHANGES_REQUIRED",
-      "summary": { "open": { "critical": 0, "high": 1, "medium": 2, "low": 1 }, "resolved": 3, "new": 1, "ack": 0 },
+      "verdict": "APPROVED_WITH_FOLLOWUPS",
+      "summary": { "open": { "critical": 0, "high": 0, "medium": 1, "low": 0 }, "resolved": 3, "new": 1, "ack": 0 },
       "findings": [
         {
           "id": "CLEAN-004",
           "status": "NEW",
           "severity": "MEDIUM",
+          "realism": "realistic",
+          "trigger": "this change adds a field to OrderDto and had to repeat the mapping edit in all three sites",
           "category": "dry",
           "locations": ["order/mapper.rs:40-71", "order/api.rs:88", "order/batch.rs:22"],
           "first_seen": "2026-07-12",
           "problem": "dto->entity mapping duplicated across 3 sites; edits must be made in parallel",
           "fix": "extract map_order(); call from all three"
         }
+      ],
+      "speculative": [
+        {
+          "location": "order/service.rs:30",
+          "concern": "OrderService may grow a second responsibility if refunds are added",
+          "why_speculative": "no refund work is in the diff or planned; the service has one job today",
+          "category": "srp",
+          "real_if": "refund handling is added to OrderService",
+          "unproven": true
+        }
       ]
+    },
+    {
+      "schema_version": "1.2",
+      "reviewer": "shell-script-reviewer",
+      "target": ["scripts/deploy.sh"],
+      "round": 1,
+      "generated": "2026-07-12",
+      "verdict": "APPROVED",
+      "summary": { "open": { "critical": 0, "high": 0, "medium": 0, "low": 0 }, "resolved": 0, "new": 1, "ack": 0 },
+      "findings": [
+        {
+          "id": "SHELL-001",
+          "status": "NEW",
+          "severity": "MEDIUM",
+          "realism": "edge-case",
+          "trigger": "a release tag containing a newline is passed as --tag; tags come from the team's own CI, which never emits one",
+          "realism_reason": "tags come only from the team's own CI, which never emits a newline",
+          "proof": ".github/workflows/release.yml:12 builds the tag from the semver",
+          "category": "correctness",
+          "locations": ["scripts/deploy.sh:41"],
+          "first_seen": "2026-07-12",
+          "problem": "the tag is read with a line-based read, so an embedded newline truncates it",
+          "fix": "reject a --tag containing a newline before it reaches the read"
+        }
+      ],
+      "speculative": []
     }
   ]
 }

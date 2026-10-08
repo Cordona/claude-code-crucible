@@ -9,11 +9,38 @@ The **one** definition of a good test suite. `tests-developer` builds to it; the
 
 This skill defines **WHAT good looks like**. It deliberately does NOT contain: the builder's workflow (that is `build-core`), or the reviewer's scoring machinery — severity, `category` vocabulary, scope-boundary/handoff, and false-positive guards live in the lens.
 
+## The short list
+
+The standard at a glance. Each line points at the section that defines it.
+
+1. **Tests behavior, end to end** — through the feature's real entry point, compared against golden fixtures holding realistic payloads, responses, and entities (§1, §4, §7).
+2. **Every test earns its place** — it guards a behavior no other test at its level guards (§0).
+3. **Smallest set, never below the required categories** — only enough tests to guard what the change adds or alters; code guarding security, persisted data, concurrency, or authentication always gets a test, unless the human waives it (§0).
+4. **End-to-end first, then integration, then unit** — at least one end-to-end test wherever the feature has an entry point to drive; an integration test where a real boundary we own must be exercised and no end-to-end test observes it; a unit test only when neither can observe the behavior, or when the human opts in (§4).
+5. **One test per branch** — several inputs in one test, not a micro-test per input (§4).
+6. **Existing files first** — a new test file or harness needs a stated reason (§0).
+7. **Can fail** — every test is shown to fail when its behavior breaks (§2).
+8. **A bug fix gets a test that fails on the old code** (§2).
+9. **The name is the spec** — scenario and expected outcome (§3).
+10. **Errors are behavior** — test failure paths and check what the error says (§6).
+11. **No mocks of our own code** — fakes only at external boundaries we don't control (§5).
+12. **Golden hygiene** — normalize ids and timestamps; regenerate on purpose; read the diff (§7).
+
 ## Philosophy
 
 - Tests are **executable documentation**: a reader should learn what the system does from them.
 - **False confidence is worse than no tests.** A suite that passes regardless of whether the behavior works manufactures trust it hasn't earned.
-- **Quality over quantity** — 5 meaningful tests beat 50 that assert nothing real.
+- **Volume is a cost, not a virtue.** Every test is code to read, run, and maintain; a suite that is larger than the behaviors it guards slows every change and buries the tests that matter.
+
+## 0. Minimal sufficient set
+
+- Start from the **behaviors the change adds or alters** — new behavior and behavior that could break — never from the code's line or branch list. Each test guards named behaviors.
+- **Every test guards a behavior no other test at its level guards.** Two tests that fail on exactly the same breakage are one test too many: merge them (a parameterized test) or delete one.
+- **One test per branch or equivalence class.** Further examples on an already-pinned branch add no protection.
+- **Existing tests count.** A behavior an existing test already guards needs no new test; a test the change breaks is repaired, and its repair is named; a test the change makes obsolete is deleted.
+- **Prefer the existing test file and the project's test base** (base classes, request/assertion/fixture helpers). A new test file, harness, or live-server fixture is a cost every run pays (and, in compiled stacks, often a new build target); add one only with a stated reason.
+- **Required categories — always tested, even under the smallest set, unless the human waives it** (at `flow-testing` §3d). Code that guards **security**, **persisted data**, **concurrency** (races, retries, compare-and-set, idempotency), or **authentication** gets a test that fails when the guard breaks. Smallness never removes one. A `not_tested` entry for such code carries that category; when it falls under two, security or authentication wins — the plan writers refuse an entry that names security or authentication under any other category.
+- **Deliberately untested is a valid outcome — with proof.** Name the case, the reason, and the risk accepted, plus one line of `proof` that the risk is covered or absent ("Covered by test 3", a `file:line`) — or mark it `unproven`. "Not testable at level X" names the level where it can be tested. An accepted risk with a user-visible effect is behavior: it gets a test, or the human waives it explicitly.
 
 ## Framework-agnostic
 
@@ -49,6 +76,8 @@ Every test must be able to **FAIL if the behavior breaks**. Self-check: *"Would 
 - "Coverage theater" — exercises code but verifies nothing meaningful.
 - **Catch-and-ignore** — a `try`/`catch` that swallows the failure so the test passes no matter what.
 
+**A bug fix's key test must fail on the pre-fix code.** If reverting the fix leaves the test green, it does not guard the bug.
+
 ## 3. Structure & naming
 
 - **AAA** — Arrange (data/conditions), Act (invoke the behavior), Assert (verify the outcome). One clear behavior per test.
@@ -62,14 +91,27 @@ Every test must be able to **FAIL if the behavior breaks**. Self-check: *"Would 
 
 Prefer the project's established naming style (e.g. `should <behavior> when <condition>`).
 
-## 4. Granularity & altitude
+## 4. Granularity & altitude — end-to-end first
 
-- **Test at the altitude of the public contract (§1).** For a **service/app**, prefer **flow / integration tests** through real boundaries. For a **library / CLI / pure logic**, testing the public API / commands / function directly *is* behavior testing — unit tests are legitimate and appropriate; do not force them into end-to-end tests.
-- A unit test that **mocks collaborators to test a thin slice of *flow-shaped* code** usually should be an integration test.
-- **Pure, side-effect-free logic** (mappers, formatters, resolvers, calculations) is legitimately unit-tested regardless of code shape.
-- For **invariant-shaped pure logic** (parsers, encoders, math), prefer **property-based tests** (QuickCheck/Hypothesis/proptest/jqwik) — example-based tests miss the edge space properties cover.
-- The same flow asserted across **distinct observable channels** (persistence vs. message published vs. response) is **not** duplication — it verifies distinct outcomes.
-- **Redundant or low-value tests** should be removed — but the distinct-channels case above is not redundant.
+A suite is built in three phases, and a plan lists its tests in that order: end-to-end, integration, unit.
+
+**Phase 1 — end-to-end (the default).**
+- **At least one end-to-end test wherever the feature has an entry point to drive** — an endpoint, a command, a consumer, a hook. It enters through that entry point, runs our own code for real, and asserts every observable outcome of the flow: the response or output, the persisted entity, the emitted message.
+- One end-to-end test proves what a pile of unit tests would: if a payload goes in and the expected response comes out and the expected entity is stored, the whole path works. Error paths are end-to-end too — a bad input in, the expected error body out.
+- Only external systems are replaced (§5); infrastructure we own runs for real, in containers where possible.
+- The same flow asserted across **distinct observable channels** (response vs. persistence vs. message) is **not** duplication — it verifies distinct outcomes.
+- A feature with no entry point to drive (a pure library function nothing calls yet) has no end-to-end test; say why, and name the level that does test it.
+
+**Phase 2 — integration tests.**
+- An integration test runs a slice of our code against a **real** database, service, or process — no mocks of our own code — without driving the whole feature through its entry point.
+- Write one when the behavior crosses a real boundary we own and no end-to-end test can observe it: a repository's query against the real store, a retry or compare-and-set under real concurrency, a consumer handling a real message, a feature with no entry point yet.
+- It states why no end-to-end test observes the behavior.
+
+**Phase 3 — unit tests (the exception).**
+- A unit test is written only when **no end-to-end or integration test can observe the behavior** (unreachable in test time, too many cases to drive through the flow, pure logic with no boundary) — and then it states why — or when the human explicitly opts in to an offered one.
+- A unit test verifies **behavior or business logic**, never wiring, call sequences, or a mocked imitation of a flow.
+- **Several inputs on one branch belong in one test** (parameterized / table-driven), not one micro-test per input. For invariant-shaped pure logic (parsers, encoders, math), a property-based test (QuickCheck/Hypothesis/proptest/jqwik) is the stronger form.
+- A live harness (a real external server, a spawned client) is the most expensive kind of end-to-end test; use it only when a stub of the external system cannot observe the behavior.
 
 ## 5. Mocking discipline
 
@@ -83,13 +125,16 @@ Prefer the project's established naming style (e.g. `should <behavior> when <con
 
 - **Failure behavior IS behavior:** test invalid input, error responses, and exception paths — not just happy paths.
 - When asserting an error, **verify the error's shape/body** (type, message contract, fields) — not merely a status code or that *an* error occurred.
-- **Boundary & equivalence classes:** cover the standard classes — empty/null, zero, one, max/limit, off-by-one, negative, invalid-type — not just the happy value.
+- **Boundary & equivalence classes:** cover the classes that apply to the changed behavior — empty/null, zero, one, max/limit, off-by-one, negative, invalid-type are the candidates, not a checklist to run on every function.
 - **Test your own logic, not the framework's** — do not write tests that merely re-verify framework or library behavior; test the code you wrote.
 - **Coverage is behavior coverage, not line coverage.** Do not chase a percentage; verify that what matters is exercised. Untested behavior is a liability; a false-confidence test is worse.
 
 ## 7. Golden / snapshot assets
 
-- For output with a stable, reviewable shape (serialized documents, rendered files, API payloads), compare against a committed **golden/expected** asset instead of sprawling hand-built assertions.
+- **End-to-end tests compare against golden fixtures** — realistic request payloads in; expected responses, persisted entities, and emitted messages out — instead of hand-built field-by-field assertions. The same applies to any test whose result has a shape worth comparing as a whole.
+- **Realistic means captured**: prefer a fixture captured from a real run, copied from a real schema, or recorded from a real exchange over a hand-written one; a hand-written golden states why nothing could be captured.
+- Hand-written assertions are for what a fixture can't capture: a single scalar or boolean, a short literal string, a property, an error's type.
+- A golden fixture is an assertion technique, not a test level.
 - **Mask or normalize non-deterministic fields** (ids, timestamps, versions) before comparing, so the test fails only on a real change.
 - Regenerate goldens deliberately and review the diff — never blind-accept.
 
@@ -114,7 +159,7 @@ Test code is real code — hold it to the same structural bar, with test-aware t
 ## 10. Efficiency & altitude
 
 - **Small but fast** — unit tests stay well under ~100ms so people actually run them.
-- **Right altitude** — pure, side-effect-free logic stays a no-framework unit test; do not boot a full context (`@SpringBootTest`-style) to exercise a pure function.
+- **Right altitude** — when a unit test is warranted (§4), it stays framework-free; do not boot a full context (`@SpringBootTest`-style) to exercise a pure function.
 - **Ration context reboots** — per-test context-dirtying is a big speed tax; default to the cheapest lifecycle that stays correct unless stateful components genuinely leak between tests.
 
 ## Consistency with the project

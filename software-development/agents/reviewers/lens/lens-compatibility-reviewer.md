@@ -15,11 +15,10 @@ description: |
 
   **How to prompt this agent:**
   IMPORTANT: No memory of prior turns. You MUST include:
-  1. The specific files/dirs to review
-  2. Whether this is a DIFF/PR or a FULL AUDIT — and for a DIFF/PR, the **diff artifact** path (the `git diff`/`git show` the orchestrator materializes, since you have no shell to read one; it omits untracked files, so those are enumerated too — see the `review-core` skill)
-  3. The primary language(s) and the contract types in play (public library API, REST/gRPC/GraphQL, events, DB schema, config/CLI)
-  4. The consumer reach — who consumes this (external clients, other services, downstream teams) vs. all in-repo — for the surface gate
-  5. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
+  1. The **diff artifact** from `diff-scope.sh` — `diff.patch` and `diff-files.txt`; the review targets these files and traces their effects (`review-core` Review Scope) (you have no shell to read a diff yourself — see the `review-core` skill)
+  2. The primary language(s) and the contract types in play (public library API, REST/gRPC/GraphQL, events, DB schema, config/CLI)
+  3. The consumer reach — who consumes this (external clients, other services, downstream teams) vs. all in-repo — for the surface gate
+  4. For a re-review: the prior round's findings (so it reuses finding IDs — see the review-report-standards skill)
 
 tools: Read, Grep, Glob
 skills:

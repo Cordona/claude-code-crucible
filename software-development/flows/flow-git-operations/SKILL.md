@@ -54,13 +54,16 @@ skill also owns the consent + reviewed preconditions below, not just the mechani
    not run yet — that diff has NOT cleared the floor, no matter how much scrutiny the live validation
    and the test suite gave it. What "cleared" means depends on which of `flow-implementation`'s two
    correctness-floor mechanisms applies to this diff:
-   - **A stack with a `{tech}-reviewer`** (Validate-First or Pair-First) — cleared only once that
-     reviewer's own gating findings have closed for this diff.
-   - **No `{tech}-reviewer` exists for the stack** (`flow-implementation` §6 Direct implementation,
-     or any framework-prose change — `CLAUDE.md`, a `SKILL.md`, an agent definition) — cleared once
-     that flow's **execution-test** floor (§2, and §6's Direct implementation step 3, there) has run against this diff and found nothing
-     it couldn't comply with. Do not read "no reviewer exists" as "this precondition doesn't apply" —
-     it applies via this branch instead.
+   - **Code — a stack with a `{tech}-reviewer`** (Validate-First or Pair-First), including anything
+     a script runs or reads (shell scripts, jq libraries, JSON contracts/schemas) — cleared only once
+     that reviewer's own gating findings have closed for this diff; for the scripts and what they
+     read, that reviewer is `shell-script-reviewer`.
+   - **Prose, or no `{tech}-reviewer` for the stack** — instruction prose (`CLAUDE.md`, a
+     `SKILL.md`, an agent definition, a template), docs (a README — or, when written through `flow-documentation`, cleared by its `{tech}-reviewer` fact-check instead), or `flow-implementation` §6
+     Direct implementation — cleared once that flow's **execution test** (§2, and §6's Direct
+     implementation step 3, there) has run against this diff and no gap the human chose to fix is
+     still open (`flow-implementation` §2). Do not read "no reviewer exists" as "this precondition
+     doesn't apply" — it applies via this branch instead.
 
    **A single diff spanning BOTH classes clears only when EACH class has cleared its own mechanism** —
    never one branch standing in for the whole diff. A working tree mixing reviewer-backed code with
@@ -84,8 +87,8 @@ skill also owns the consent + reviewed preconditions below, not just the mechani
    together?"* Pre-existing dirty work you did not author is not yours to gate on; say it is there and
    leave it alone.
 3. **No open gating finding** — the merged verdict is not `CHANGES_REQUIRED`. **"It has been
-   reviewed" is not "it passed."** Open CRITICAL/HIGH findings do not clear a commit; they document
-   one. Shipping against an ignored report is worse than shipping unreviewed — it manufactures a
+   reviewed" is not "it passed."** Open gating CRITICAL/HIGH findings (`review-report-standards`, Verdict Arithmetic)
+   do not clear a commit; they document one. Shipping against an ignored report is worse than shipping unreviewed — it manufactures a
    paper trail.
 
 ---
