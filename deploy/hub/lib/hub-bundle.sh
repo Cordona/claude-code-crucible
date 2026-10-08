@@ -27,6 +27,12 @@
 #     always the same file, and its presence-as-a-framework-symlink is exactly
 #     the question "is this a first run" is asking.
 #
+#     The gate answers that question only. A bootstrapped target can still lack
+#     a contract schema the framework gained after its first run, so the
+#     contracts are re-checked on every install and the missing ones linked as
+#     a TOP-UP (hub_bundle_contracts_pending / hub_bundle_contracts_link) —
+#     without revisiting CLAUDE.md, which the gate already reports as in place.
+#
 #   * THE MECHANISM is now this module rather than a deploy.sh subprocess.
 #     deploy.sh is an all-or-nothing whole-tree deployer — precisely the model
 #     the domain hub replaces — and its prune pass is actively wrong under the
@@ -160,15 +166,65 @@ hub_bundle_install() {
 	hbi_outcome=$(hub_symlink_at "$hbi_config" "$hbi_tp" "$hbi_src" 1 "$hbi_apply")
 	printf '%s\t%s\n' "$hbi_outcome" "$HUB_BUNDLE_CONFIG_NAME"
 
-	hbi_contracts="$(hub_mktemp_dir)/contracts.txt"
-	hub_disc_contract_files "$hbi_src" >"$hbi_contracts"
-	while IFS= read -r hbi_file; do
-		[ -n "$hbi_file" ] || continue
-		hbi_base=${hbi_file##*/}
-		hbi_outcome=$(hub_symlink_at "$hbi_file" \
-			"$hbi_target/$HUB_BUNDLE_CONTRACTS_SUBDIR/$hbi_base" "$hbi_src" 1 "$hbi_apply")
-		printf '%s\t%s\n' "$hbi_outcome" "$hbi_base"
-	done <"$hbi_contracts"
+	hub_bundle_contracts_link "$hbi_src" "$hbi_target" "$hbi_apply"
+}
+
+# hub_bundle_contracts_link SRC TARGET_DIR APPLY -> link (or, with APPLY=0,
+# classify) every contract schema the source ships, printing one
+# "outcome<TAB>basename" line per schema in hub_symlink_at's vocabulary.
+#
+# The contract half of the bundle ON ITS OWN, never touching CLAUDE.md: besides
+# being hub_bundle_install's second half, it is the whole of a TOP-UP — linking
+# the schemas a bootstrapped target is missing because the framework gained them
+# after its first run. ALLOW_DIVERGED=1 as on the first run, which re-syncs only
+# the framework's own stale link; a foreign occupant still reads foreign-blocked
+# and is left untouched.
+hub_bundle_contracts_link() {
+	hbcl_src=$1
+	hbcl_target=$2
+	hbcl_apply=$3
+	hbcl_contracts="$(hub_mktemp_dir)/contracts.txt"
+	hub_disc_contract_files "$hbcl_src" >"$hbcl_contracts"
+	while IFS= read -r hbcl_file; do
+		[ -n "$hbcl_file" ] || continue
+		hbcl_base=${hbcl_file##*/}
+		# Assign, then print — see hub_bundle_install's note above.
+		hbcl_outcome=$(hub_symlink_at "$hbcl_file" \
+			"$hbcl_target/$HUB_BUNDLE_CONTRACTS_SUBDIR/$hbcl_base" "$hbcl_src" 1 "$hbcl_apply")
+		printf '%s\t%s\n' "$hbcl_outcome" "$hbcl_base"
+	done <"$hbcl_contracts"
+}
+
+# hub_bundle_contracts_pending SRC TARGET_DIR MISSING_OUT BLOCKED_OUT -> write
+# the basename of every contract schema a BOOTSTRAPPED target does not have
+# linked: to MISSING_OUT when an install would link it (nothing at its path, or
+# the framework's own stale link), to BLOCKED_OUT when a file that is not
+# framework-owned occupies its path. Both files are truncated first, and stay
+# empty on a target the bundle has not bootstrapped — its first run links every
+# contract anyway, so nothing there is a top-up.
+#
+# Read-only: the classification is hub_bundle_contracts_link's own APPLY=0 pass,
+# so install's preview, its apply step, Status and Doctor cannot disagree about
+# which schemas are missing.
+hub_bundle_contracts_pending() {
+	hbcp_missing=$3
+	hbcp_blocked=$4
+	: >"$hbcp_missing"
+	: >"$hbcp_blocked"
+	hbcp_state=$(hub_bundle_state "$1" "$2")
+	[ "$hbcp_state" = installed ] || return 0
+
+	hbcp_log="$(hub_mktemp_dir)/contracts-pending.tsv"
+	hub_bundle_contracts_link "$1" "$2" 0 >"$hbcp_log"
+	while IFS="$HUB_TAB" read -r hbcp_outcome hbcp_base; do
+		[ -n "$hbcp_base" ] || continue
+		case $hbcp_outcome in
+		create | replace) printf '%s\n' "$hbcp_base" >>"$hbcp_missing" ;;
+		foreign-blocked) printf '%s\n' "$hbcp_base" >>"$hbcp_blocked" ;;
+		skip) : ;;
+		*) die "hub_bundle_contracts_pending: unexpected outcome '$hbcp_outcome' for $hbcp_base" ;;
+		esac
+	done <"$hbcp_log"
 }
 
 # hub_bundle_backups TARGET_DIR -> one CLAUDE.md.backup.* path per line, oldest

@@ -2590,10 +2590,10 @@ hi_preview_shared() {
 # (ATTEMPT_COUNT = new + diverged), not the full size of what was selected (the
 # whole PLAN_UNITS row count) — the same "say what will happen, not what was selected" rule
 # every hi_preview_domain block follows above. Reached only when ATTEMPT_COUNT is
-# known to be positive OR the bundle needs installing (hi_preview's own caller
-# already routed the "nothing at all" case straight to the no-op exit before
-# this function is ever called), so the plain, no-breakdown line below is for
-# the one remaining edge case: a bundle-only run where every component is
+# known to be positive OR the bundle needs installing or topping up (hi_preview's
+# own caller already routed the "nothing at all" case straight to the no-op exit
+# before this function is ever called), so the plain, no-breakdown line below is
+# for the one remaining edge case: a bundle-only run where every component is
 # already installed and unchanged.
 #
 # The trailing "Nothing has changed yet." is hub_not_changed_yet_clause's, and is
@@ -2637,6 +2637,28 @@ hi_preview_bundle() {
 		"$(hub_glyph_arrow)" "$TARGET_DIR/$HUB_BUNDLE_CONFIG_NAME"
 }
 
+# hi_preview_bundle_topup -> the contract schemas a bootstrapped target is
+# missing, named one per line, and — separately — the ones a foreign occupant
+# blocks, which the apply step reports and skips exactly as it does a domain
+# unit's foreign occupant. CLAUDE.md is deliberately absent from both: a top-up
+# never touches it.
+hi_preview_bundle_topup() {
+	if [ -s "$BUNDLE_TOPUP_MISSING" ]; then
+		printf '\n  Also adding (missing contract schemas, not counted above):\n'
+		while IFS= read -r hipbt_name; do
+			[ -n "$hipbt_name" ] || continue
+			printf '    %s %s\n' "$(hub_glyph_new)" "$hipbt_name"
+		done <"$BUNDLE_TOPUP_MISSING"
+	fi
+	if [ -s "$BUNDLE_TOPUP_BLOCKED" ]; then
+		printf '\n  Not adding (a file that is not framework-owned occupies its path):\n'
+		while IFS= read -r hipbt_name; do
+			[ -n "$hipbt_name" ] || continue
+			printf '    %s %s\n' "$(hub_glyph_fail)" "$hipbt_name"
+		done <"$BUNDLE_TOPUP_BLOCKED"
+	fi
+}
+
 # hi_preview -> the whole dry-run screen. Always human-readable text, in EVERY
 # mode: the dry run is the informed-consent surface and an agent-facing caller
 # gets to read it too. Its dry-run wording (the [DRY RUN] marker and the totals'
@@ -2677,6 +2699,7 @@ hi_preview() {
 		hi_preview_shared
 		hi_preview_totals
 		hi_preview_bundle
+		hi_preview_bundle_topup
 
 		hub_dry_run_marker
 		printf '\n'
@@ -3136,6 +3159,22 @@ if [ "$BUNDLE_STATE" != installed ] && hub_bundle_config_src "$FRAMEWORK_ROOT" >
 	BUNDLE_NEEDED=1
 fi
 
+# THE TOP-UP: on a target the bundle has already bootstrapped, the contract
+# schemas it does not have linked. BUNDLE_NEEDED's gate is CLAUDE.md alone, so
+# without this a schema the framework gained after the first run was never
+# deployed while install reported "Already up to date". Both lists are empty
+# whenever BUNDLE_NEEDED=1 (hub_bundle_contracts_pending's own bootstrap gate),
+# so a first run and a top-up can never both apply. A BLOCKED schema alone still
+# makes the run non-empty: it is reported and skipped, the same treatment a
+# domain unit's foreign occupant gets.
+BUNDLE_TOPUP_MISSING="$HUB_WORK/bundle-topup-missing.txt"
+BUNDLE_TOPUP_BLOCKED="$HUB_WORK/bundle-topup-blocked.txt"
+hub_bundle_contracts_pending "$FRAMEWORK_ROOT" "$TARGET_DIR" "$BUNDLE_TOPUP_MISSING" "$BUNDLE_TOPUP_BLOCKED"
+BUNDLE_TOPUP_NEEDED=0
+if [ -s "$BUNDLE_TOPUP_MISSING" ] || [ -s "$BUNDLE_TOPUP_BLOCKED" ]; then
+	BUNDLE_TOPUP_NEEDED=1
+fi
+
 # WHETHER applying would BACK UP an existing foreign CLAUDE.md, answered by asking
 # hub_bundle_install itself in preview mode (APPLY=0) rather than by a second copy
 # of its foreign-occupant test here. Replacing the user's operating contract is the
@@ -3158,7 +3197,7 @@ fi
 # individually, said something would happen, immediately followed by a message
 # saying nothing would. When there is truly nothing to do, there is nothing to
 # preview either; go straight to the no-op exit.
-if [ "$ATTEMPT_COUNT" -eq 0 ] && [ "$BUNDLE_NEEDED" -eq 0 ]; then
+if [ "$ATTEMPT_COUNT" -eq 0 ] && [ "$BUNDLE_NEEDED" -eq 0 ] && [ "$BUNDLE_TOPUP_NEEDED" -eq 0 ]; then
 	hi_ok_exit false 'Already up to date. Nothing to do.'
 fi
 
@@ -3248,6 +3287,25 @@ if [ "$BUNDLE_NEEDED" -eq 1 ]; then
 	done <"$BUNDLE_LOG"
 fi
 
+# The top-up re-classifies every schema at write time (hub_symlink_at's own
+# re-check), so the count is what was actually written — create or replace —
+# not what the preview listed; a schema linked by someone else in between reads
+# `skip` and is not counted.
+BUNDLE_TOPUP_COUNT=0
+if [ "$BUNDLE_TOPUP_NEEDED" -eq 1 ]; then
+	BUNDLE_TOPUP_LOG="$HUB_WORK/bundle-topup.tsv"
+	hub_bundle_contracts_link "$FRAMEWORK_ROOT" "$TARGET_DIR" 1 >"$BUNDLE_TOPUP_LOG"
+	while IFS="$HUB_TAB" read -r HI_OUTCOME HI_ITEM; do
+		[ -n "$HI_ITEM" ] || continue
+		case $HI_OUTCOME in
+		create | replace) BUNDLE_TOPUP_COUNT=$((BUNDLE_TOPUP_COUNT + 1)) ;;
+		foreign-blocked) printf '%s\n' "$HI_ITEM" >>"$FOREIGN_BLOCKED" ;;
+		skip) : ;;
+		*) die "bundle top-up: unexpected outcome '$HI_OUTCOME' for $HI_ITEM" ;;
+		esac
+	done <"$BUNDLE_TOPUP_LOG"
+fi
+
 # Reading this table with IFS=TAB is safe against a crafted name for a reason
 # stated once, at the gate: a unit NAME cannot contain a TAB, because
 # HUB_NAME_CHARSET_RE does not admit one and every name is checked against it as
@@ -3308,6 +3366,7 @@ env)
 	hub_env_kv HUB_ATTEMPTED_COUNT "$ATTEMPT_COUNT"
 	hub_env_kv HUB_BUNDLE_INSTALLED "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)"
 	hub_env_kv HUB_BUNDLE_BACKUP "${HUB_BUNDLE_BACKUP:-}"
+	hub_env_kv HUB_BUNDLE_CONTRACTS_TOPPED_UP "$BUNDLE_TOPUP_COUNT"
 	hub_emit_itemized_env HUB_FOREIGN_BLOCKED "$FOREIGN_BLOCKED"
 	;;
 json)
@@ -3321,6 +3380,7 @@ json)
 		--arg bundle_backup "${HUB_BUNDLE_BACKUP:-}" \
 		--argjson acted_on_count "$RESULT_COUNT" --argjson attempted_count "$ATTEMPT_COUNT" \
 		--argjson bundle_installed "$([ "$BUNDLE_NEEDED" -eq 1 ] && printf true || printf false)" \
+		--argjson bundle_contracts_topped_up "$BUNDLE_TOPUP_COUNT" \
 		--argjson foreign_blocked_count "$FOREIGN_BLOCKED_COUNT" \
 		--slurpfile foreign_blocked_items "$HI_FB_JSON" \
 		'{status:"ok", action:$action, applied:true,
@@ -3331,6 +3391,7 @@ json)
 		  baseline_only:($baseline_only | if . == "" then [] else split(",") end),
 		  acted_on_count:$acted_on_count, attempted_count:$attempted_count,
 		  bundle_installed:$bundle_installed, bundle_backup:$bundle_backup,
+		  bundle_contracts_topped_up:$bundle_contracts_topped_up,
 		  foreign_blocked_count:$foreign_blocked_count,
 		  foreign_blocked_items:$foreign_blocked_items}'
 	;;
@@ -3345,6 +3406,9 @@ text)
 			printf '  %s your existing %s was preserved as %s\n' \
 				"$(hub_glyph_arrow)" "$HUB_BUNDLE_CONFIG_NAME" "${HUB_BUNDLE_BACKUP##*/}"
 		fi
+	elif [ "$BUNDLE_TOPUP_COUNT" -gt 0 ]; then
+		printf '  %s %s missing contract %s added\n' "$(hub_glyph_ok)" "$BUNDLE_TOPUP_COUNT" \
+			"$(hub_plural "$BUNDLE_TOPUP_COUNT" schema schemas)"
 	fi
 
 	# SELECTIVE results always itemize; only the bulk --all result summarizes and
