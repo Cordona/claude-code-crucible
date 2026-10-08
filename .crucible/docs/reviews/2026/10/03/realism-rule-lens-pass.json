@@ -1,0 +1,472 @@
+{
+  "schema_version": "1.0",
+  "id": "realism-rule-lens-pass",
+  "repo": "claude-code-crucible",
+  "created": "2026-10-03",
+  "last_updated": "2026-10-03",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-10-03",
+      "reviewers": [
+        "lens-consistency-reviewer",
+        "lens-self-documenting-code-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-clean-code-reviewer",
+        "lens-security-reviewer"
+      ],
+      "speculative": [
+        {
+          "reviewer": "lens-clean-code-reviewer",
+          "location": "software-development/flows/flow-review/scripts/review-update-status.sh",
+          "concern": "the realism case arm is another copy of the value domain",
+          "why_speculative": "house convention hard-codes enums in case arms; no vocabulary change planned"
+        },
+        {
+          "reviewer": "lens-security-reviewer",
+          "location": "software-development/flows/flow-review/scripts/render-md.sh",
+          "concern": "bidi or zero-width characters could reorder text",
+          "why_speculative": "ingest already rejects control and format characters"
+        },
+        {
+          "reviewer": "lens-compatibility-reviewer",
+          "location": "software-development/contracts/review-finding-report.schema.json",
+          "concern": "finding-realism.schema.json not yet deployed",
+          "why_speculative": "nothing resolves $ref mechanically; hub tops it up"
+        },
+        {
+          "reviewer": "lens-compatibility-reviewer",
+          "location": "software-development/shared/review-core/SKILL.md",
+          "concern": "advocate seats might emit realism fields",
+          "why_speculative": "advocates do not file findings"
+        },
+        {
+          "reviewer": "lens-consistency-reviewer",
+          "location": "software-development/contracts/review-artifact.schema.json",
+          "concern": "artifact schema_version unchanged",
+          "why_speculative": "no consumer pins it; additions optional"
+        }
+      ]
+    }
+  ],
+  "overall_verdict": "CHANGES_REQUIRED",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 2,
+      "medium": 10,
+      "low": 10
+    },
+    "resolved": 0,
+    "new": 25,
+    "ack": 0
+  },
+  "findings": [
+    {
+      "id": "SEC-001",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "HIGH",
+      "realism": "realistic",
+      "trigger": "an overflow reachable only through a malformed length field is filed edge-case as 'rare input' and approved",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Q3 treats rare input as unlikely, but attackers choose rare inputs, so exploitable defects leave the gate.",
+      "fix": "Rarity never lowers a trigger an untrusted party can choose; such a path is realistic."
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "HIGH",
+      "realism": "realistic",
+      "trigger": "a new shell sink downstream of an agent that reads PR comments is classed speculative as 'an agent in the loop'",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md",
+        "software-development/agents/reviewers/lens/lens-security-reviewer.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Q2 conflates actors who control the system with actors who can influence its inputs.",
+      "fix": "Out of model only an actor who already holds the access the attack would grant; influencers are in model; widening or newly relying on an untrusted feed counts."
+    },
+    {
+      "id": "SEC-003",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a reviewer or a realism check labels an exploitable HIGH edge-case and the loop reaches APPROVED",
+      "category": "fail-open",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md",
+        "software-development/flows/flow-review/scripts/lib/review-aggregates.jq"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Moving a CRITICAL/HIGH out of the gate needs no human consent, unlike ACK.",
+      "fix": "Require a human decision for an edge-case or demoted CRITICAL/HIGH; show edge cases by severity."
+    },
+    {
+      "id": "SEC-004",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "edge-case",
+      "trigger": "an unclosed details tag in a trigger collapses later sections in an HTML preview",
+      "category": "xss",
+      "locations": [
+        "software-development/flows/flow-review/scripts/render-md.sh"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Inline raw HTML still renders in the new text fields.",
+      "fix": "Escape < and & in neutralize."
+    },
+    {
+      "id": "COMPAT-001",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "an open edge-case HIGH meets the commit gate or the docs/tech-pair loop that still gate on any open CRITICAL/HIGH",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md",
+        "software-development/flows/flow-documentation/SKILL.md",
+        "software-development/flows/flow-tech-pair/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Untouched flows still gate on any open CRITICAL/HIGH.",
+      "fix": "Qualify each as realistic; decide tech-pair's fully-clean rule."
+    },
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the orchestrator dispatches the arbiter on its own and a HIGH leaves the verdict without a human decision",
+      "category": "architecture-style",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "An orchestrator-initiated ruling drops a CRITICAL/HIGH, a power reserved for the human.",
+      "fix": "Make the ruling a recommendation the human decides."
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "every realism check dispatch picks the arbiter by a description scoped to external review",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/agents/specialists/review-arbiter.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The arbiter description, prompt list and schema still scope it to flow-external-review.",
+      "fix": "Advertise the realism check and its brief; mark external-review-only inputs."
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "an arbiter on a realism check looks for a rationale field",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/agents/specialists/review-arbiter.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Names a rationale output the schema lacks.",
+      "fix": "Say evidence."
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "every reviewer shapes its first 1.2 report from the schema example",
+      "category": "api-shape",
+      "locations": [
+        "software-development/contracts/review-finding-report.schema.json"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The worked example contradicts the domain's severity, vocabulary and ownership.",
+      "fix": "Fix the example's grades, categories and reviewer."
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a maintainability finding must class a next-change trigger",
+      "category": "architecture-style",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Q3 makes any future change an edge case, contradicting MEDIUM's definition.",
+      "fix": "The next ordinary edit to touched code is a realistic trigger."
+    },
+    {
+      "id": "CONS-006",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the human elects an edge case and the orchestrator looks up how to record it",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "flow-review's script summary is stale and never names --realism.",
+      "fix": "Update the script surface and name the elect command."
+    },
+    {
+      "id": "CONS-007",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the orchestrator renders a report with edge cases",
+      "category": "api-shape",
+      "locations": [
+        "software-development/shared/review-report-standards/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "Item 3 grouping disagrees with the example.",
+      "fix": "Align item 3 and the example."
+    },
+    {
+      "id": "CONS-008",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a reader hits the new example lines",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/shared/review-report-standards/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "DTO and DB are not expanded.",
+      "fix": "Expand or reword."
+    },
+    {
+      "id": "CONS-009",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a caller passes an invalid realism to review-create.sh",
+      "category": "error-pattern",
+      "locations": [
+        "software-development/flows/flow-review/scripts/review-create.sh"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The new exit-2 rejection skips usage.",
+      "fix": "Print usage first."
+    },
+    {
+      "id": "CONS-010",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "edge-case",
+      "trigger": "a later edit tightens one-line in one schema only",
+      "category": "colocation",
+      "locations": [
+        "software-development/contracts/review-finding-report.schema.json"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "one_line is duplicated in two schemas. Convergent with CLEAN-002.",
+      "fix": "Extract a shared schema."
+    },
+    {
+      "id": "CONS-011",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "edge-case",
+      "trigger": "a later rename of a realism value leaves the arbiter's inline enum stale",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/contracts/review-arbiter-verdict.schema.json"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The arbiter's realism enum is inlined without explanation.",
+      "fix": "Add a $comment or anyOf."
+    },
+    {
+      "id": "CLEAN-001",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the next change to the realism vocabulary must be made in two scripts",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-review/scripts/review-create.sh",
+        "software-development/flows/flow-review/scripts/review-add-round.sh"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "JQ_REALISM is duplicated; the lib the fixtures copy could hold it.",
+      "fix": "Move it into review-aggregates.jq."
+    },
+    {
+      "id": "CLEAN-002",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "tightening one_line in one schema leaves the other accepting it",
+      "category": "dry",
+      "locations": [
+        "software-development/contracts/review-artifact.schema.json"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "one_line is duplicated. Convergent with CONS-010.",
+      "fix": "Extract a shared schema."
+    },
+    {
+      "id": "DOC-001",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the next change to the counting rule must be edited in about nine schema descriptions",
+      "category": "comment-placement",
+      "locations": [
+        "software-development/contracts/review-finding-report.schema.json"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The counting rule is restated in schema descriptions.",
+      "fix": "Cite review-report-standards only."
+    },
+    {
+      "id": "DOC-002",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "every reviewer reads the edge-case rule twice",
+      "category": "comment-placement",
+      "locations": [
+        "software-development/shared/review-core/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "review-core restates consequences review-report-standards owns.",
+      "fix": "Trim review-core's table rows."
+    },
+    {
+      "id": "DOC-003",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "every reviewer load pays for orchestrator procedure",
+      "category": "comment-placement",
+      "locations": [
+        "software-development/shared/review-report-standards/SKILL.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The election procedure is duplicated into a reviewer skill.",
+      "fix": "Delete it there."
+    },
+    {
+      "id": "DOC-004",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "CLAUDE.md loads every session",
+      "category": "comment-placement",
+      "locations": [
+        "CLAUDE.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The invariant restates the class consequences and cites the wrong owner.",
+      "fix": "Shorten and cite both owners."
+    },
+    {
+      "id": "DOC-005",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "an edit to Q2 leaves the security lens copy stale",
+      "category": "comment-placement",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-security-reviewer.md"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "The lens paraphrases review-core Q2.",
+      "fix": "Cite Q2; keep only lens-specific clauses."
+    },
+    {
+      "id": "DOC-006",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "an editor expects the check below the banner",
+      "category": "comment-placement",
+      "locations": [
+        "software-development/flows/flow-review/scripts/review-create.sh"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "A banner sits 75 lines from its check.",
+      "fix": "Move it above the check."
+    },
+    {
+      "id": "DOC-007",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a reader gets change history from comments",
+      "category": "redundant-comment",
+      "locations": [
+        "software-development/flows/flow-review/scripts/lib/review-aggregates.jq",
+        "software-development/flows/flow-review/scripts/render-md.sh"
+      ],
+      "first_seen": "2026-10-03",
+      "problem": "History narration in two comments.",
+      "fix": "Rephrase as present-tense rules."
+    }
+  ]
+}
