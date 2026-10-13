@@ -1,0 +1,18 @@
+# 07 · Scripts and dependencies (SCR)
+
+Purpose: bundled scripts and external tools work on a fresh machine, from any directory, and say exactly what happened.
+Judges script interfaces, error handling, side-effect safety and dependencies; mode bits, strict mode, prompts and paths are lint.
+
+**Applies when:** the skill bundles or calls scripts; SCR-07 also when its body has the agent invoke an external tool (CLI, MCP server, plugin, companion agent or skill).
+**MUST lint:** LNT-28, LNT-30, LNT-47.
+
+- **SCR-01** · MUST · Does SKILL.md say, for each script, whether to run or read it, with purpose, exact invocation and output format (fields, nullability, sample, expected runtime)? · Check: yes if no script is mentioned without "Run …"/"See …" and its output shape. · Fix: add a table: name · purpose · command · output.
+- **SCR-02** · SHOULD · Does each script validate input first (a malformed call errors and writes nothing), handle edge cases itself, and parse model-written text tolerantly but by tag position? · Check: read the argument and parse code. · Fix: add an early validation block that exits with usage before any write.
+- **SCR-03** · SHOULD · Do error messages say what failed, what was expected, and what to try next? An agent given a bare error retries the same call or improvises a workaround. · Check: read every error path. · Fix: "<what>; expected <x>; try <y>".
+- **SCR-04** · SHOULD · Is output structured on stdout with diagnostics on stderr, size-bounded with a truncation notice, and are exit codes distinct and documented? · Check: read. · Fix: JSON/TSV to stdout; "showing N of M"; list exit codes in the header.
+- **SCR-05** · MUST · Are scripts idempotent, do destructive or stateful ones default to dry-run or need an explicit flag, and does none delete another party's output without a backup? · Check: read every write and delete path. · Fix: add `--apply`/`--confirm`; default to dry-run; move instead of delete.
+- **SCR-06** · SHOULD · Is every constant (timeout, limit, magic number) explained? The next editor or agent, unable to tell a measured limit from a guess, retunes an unexplained one. · Check: read. · Fix: add a one-line reason beside it.
+- **SCR-07** · MUST · Does SKILL.md list every external dependency — tools its scripts need and tools the agent calls directly — with, for CLIs, MCP servers and plugins, a one-line install/setup hint, a version floor where behavior depends on one, and the step when it is missing; are companion agents and skills named (a missing seat stops, SUB-06); and do scripts check their dependencies at start? · Check: also, where a path or interpreter may vary, the skill runs the script once for its `usage:` line before first use; text-parsing scripts set UTF-8 I/O. · Fix: add the dependency list; add `command -v x || { echo "x missing: install …" >&2; exit N; }`.
+- **SCR-08** · SHOULD · Do script paths resolve independent of the current directory — `$HOME/.claude/skills/<name>/` in skills run by or preloaded into agents, `${CLAUDE_SKILL_DIR}` only in `!` lines and Skill-tool or slash invocations? · Check: judge beyond LNT-37 (bare relative paths), including how scripts find siblings. · Fix: use the matching form; resolve siblings from the script's own dir.
+- **SCR-09** · SHOULD · Is logic every run would rewrite, and every hard-to-type command, bundled as a tested script? · Check: yes if no step asks the agent to compose a multi-line command or helper each run. · Fix: move it into `scripts/<verb>.sh`.
+- **SCR-10** · SHOULD · Are child processes and temp state cleaned up on every exit path? · Check: judge beyond LNT-32 (`mktemp` + `trap`). · Fix: kill children and remove state in the `EXIT` trap.
