@@ -3,7 +3,7 @@
 Purpose: the skill loads cheaply and the agent finds what it needs at the step that needs it.
 Judges layout, progressive disclosure and what survives compaction; sizes, links and citations are lint.
 
-**Applies when:** every skill and command file. Agent files: STR-05 and STR-06 only (via the agent checklists).
+**Applies when:** every skill and command file. Agent files: STR-05, STR-06 and STR-09 only (via the agent checklists).
 **MUST lint:** LNT-01, LNT-20, LNT-25, LNT-30, LNT-46. SHOULD lint used here: LNT-15, LNT-16, LNT-18, LNT-19, LNT-51.
 **Restructuring:** every Fix that moves, merges or renumbers a section follows the restructuring invariant in `SKILL.md` (LNT-46).
 
@@ -15,3 +15,4 @@ Judges layout, progressive disclosure and what survives compaction; sizes, links
 - **STR-06** · SHOULD · When the skill depends on another skill or file, does it say whether to load it and when, with every chain one level deep from SKILL.md? · Check: yes if acting never needs A → B → C (LNT-18 checks file links). · Context: headings of the cited skills. · Fix: link the deep file from SKILL.md, or cite the owning skill's § and say to load it; never paste a copy (STR-05).
 - **STR-07** · SHOULD · Are names descriptive and directories split by role (`scripts/`, `references/`, `assets/`, `examples/`, `lib/`)? · Check: yes if a name alone tells what a file holds (LNT-22 flags generic names). · Fix: rename to `<topic>-<kind>`; move under the role directory and update every reference.
 - **STR-08** · SHOULD · Is every example the skill ships — `examples/`, `assets/` templates, runnable code blocks — complete and consistent with the current scripts, flags and paths? · Check: judge by reading only; parsing is LNT-51; yes if fragments are labelled illustrative. · Fix: repair or delete it; label fragments.
+- **STR-09** · SHOULD · Are the sections in the order the reader uses them: what it acts on first, then what it consults while acting, then reference material last? · Check: take the target's kind and its row from `SKILL.md` "Reading order by kind"; confirm the reader's first action from the target itself (a flow's step 1, an agent's dispatch check), and where it differs from the row, that action leads and the rest of the row follows. FAIL each section out of the row's order, and each reference section the row doesn't name (a lookup table, background) that sits above the first step that consults it, unless the target gives a one-line reason. · Context: `SKILL.md` "Which checklists apply" and "Reading order by kind". · Fix: move the section to its place in the expected order, or add the one-line reason it must sit higher.

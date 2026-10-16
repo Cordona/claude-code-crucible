@@ -4,6 +4,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 
 ## Contents
 
+- Script exits: after every `lint.sh` or `merge-verdicts.sh` run
 - Run files: at Start step 2 and on Resume
 - Resume: after a compaction, an interruption or a new session
 - Dispatch budget: before each wave of dispatches
@@ -12,6 +13,23 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 - Deploy: G4
 - Run and grade: Skill flow step 6, Agent flow step 6
 - Closing report: the flow's last step
+
+## Script exits
+
+Output lines that go to G3:
+
+- `lint.sh`, whatever its exit: each `FAIL` line with a `SHOULD:` or `MAY:` prefix and each `WARN` line.
+- `merge-verdicts.sh`: every output line the rulebook's Script reference lists, except `dropped-duplicate:`.
+
+| Exit | `lint.sh` | `merge-verdicts.sh` |
+|---|---|---|
+| 0 | Seat the swarm (on a re-check, only the seats Merging step 5 names) | PASS → Merging step 4 when anything is listed for G3; else the flow's next step |
+| 1 | Back to the author (FIX, with the lint output) | BLOCKED → Merging step 4 |
+| 3 | As exit 0; tell the owner which `MUST` items it skipped | Re-dispatch the malformed seat (stderr names it) once; a second exit 3 for it: report the seat to the owner as missing at G3, never as passed |
+| 2, 4 | Usage error (2), rulebook not found (4): stop; show the owner stdout and stderr verbatim | As `lint.sh` |
+| 5 | A required tool is missing (stderr names it) or an internal error: stop; show the owner stderr verbatim | As `lint.sh` |
+| 130, 143 | Interrupted (INT, TERM): stop and tell the owner; Resume runs the step again | As `lint.sh` |
+| other | Stop; show the owner stdout and stderr verbatim | As `lint.sh` |
 
 ## Run files
 
@@ -22,7 +40,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 | `spec.md` | New skill or agent: the approved spec | orchestrator, with the owner |
 | `change-request.md` | Agent refactor: the approved change request | orchestrator, with the owner |
 | `decisions.md` | The owner's decisions, one entry each: `D<n> · <date> · <gate or step> · <item ID or none> · "<owner's words>"`; a CONFORMANCE `CHANGED` cites `decision D<n>` | orchestrator |
-| `snapshot/` (skill), `snapshot.md` (agent) | Refactor: the old version, the baseline for Run and grade | orchestrator |
+| `snapshot/` (skill), `snapshot.md` (agent) | Refactor: the old version, the baseline for Run and grade; not taken when the old skill stays in place (its path is the baseline) | orchestrator |
 | `author-report.md` | The author's report | `skill-author` writes it; for `agent-author`, the orchestrator saves the reply |
 | `lint/round-<n>.txt` | `lint.sh` output | orchestrator |
 | `review/<seat>.md`, `review-r<n>.md` | Each seat's reply; each round's merged report, never overwritten | orchestrator |
@@ -46,7 +64,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 
 1. Dispatch `skill-analyst` in `EXPLAIN` mode; save the reply as `explanation.md`.
 2. Dispatch a second `skill-analyst` in `VERIFY` mode with that path; save the reply as `verify.md`.
-3. On any `WRONG LINE`, `UNSUPPORTED` or missing card: copy both files to `pre-fix/explain-r<n>/` (also before a G1 *Re-explain*), dispatch `skill-analyst` in `EXPLAIN` again with the correction brief (the old explanation and `verify.md`), save the reply as `explanation.md`, and give it its own `VERIFY` into `verify.md`. That is the loop: one `EXPLAIN`, one `VERIFY`, and at most one correction, which gets its own `VERIFY`.
+3. On a missing card, or a `WRONG LINE` or `UNSUPPORTED` on a rule card's rule, source or enforcement: copy both files to `pre-fix/explain-r<n>/` (also before a G1 *Re-explain*), dispatch `skill-analyst` in `EXPLAIN` again with the correction brief (the old explanation and `verify.md`), save the reply as `explanation.md`, and give it its own `VERIFY` into `verify.md`. That is the loop: one `EXPLAIN`, one `VERIFY`, and at most one correction, which gets its own `VERIFY`. Any other `WRONG LINE` or `UNSUPPORTED` (a citation or claim that changes no card) goes to G1 as found, with no correction.
 4. Add one line at the top of `explanation.md` naming the last `verify.md` and its counts.
 
 ## Script builds
@@ -67,7 +85,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 ## Run and grade
 
 1. Give each approved eval an id (`E1`, `E2`, …).
-2. Dispatch both arms of every eval in one message, each a fresh subagent with the run-arm brief. The skill arms and the agent baseline are `general-purpose`; the agent new arm is a real dispatch of the agent under test. The new arm uses the target; the baseline uses nothing (new; `baseline: none`) or the snapshot (refactor; `baseline: old version`).
+2. Dispatch both arms of every eval in one message, each a fresh subagent with the run-arm brief. The skill arms and the agent baseline are `general-purpose`; the agent new arm is a real dispatch of the agent under test. The new arm uses the target; the baseline uses nothing (new; `baseline: none`) or the snapshot, or the old skill's own path when no snapshot was taken (refactor; `baseline: old version`).
 3. Save each output as `runs/<id>-new.md` and `runs/<id>-base.md` (an empty file when a run returned nothing).
 4. Dispatch `eval-grader` once per eval, all in one message; save each grade as `runs/<id>-grade.md`.
 5. Show the owner the outputs beside the grades, then G3. Their feedback, each failed outcome, and each outcome the baseline also passes go back to the author in `FIX` mode with the chosen run outputs and grades. Then re-run only the evals with a chosen FAIL.

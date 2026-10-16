@@ -1,6 +1,6 @@
 ---
-name: harness-build-core
-description: Shared writer conduct for the harness authors `skill-author` and `agent-author` — fail-closed dispatch, approval and write scope, source fidelity, evidence, FIX rounds, reply, eval-set and field-table conventions. Bind ONLY when preloaded through `skills:` by those two agents; never invoked directly or from a user prompt. Does NOT define reviewer conduct (`harness-review-core`), builder conduct for code (`build-core`), or the authoring checklists (`standard-harness-authoring`).
+name: harness-authoring-core
+description: Shared writer conduct for the harness authors `skill-author` and `agent-author` — fail-closed dispatch, approval and write scope, source fidelity, evidence, FIX rounds, reply, eval-set and field-table conventions. Bind ONLY when preloaded through `skills:` by those two agents; never invoked directly or from a user prompt. Does NOT define reviewer conduct (`harness-review-core`), builder conduct for code (`code-developer`), or the authoring checklists (`standard-harness-authoring`).
 ---
 
 # Harness Build Core — Writer Conduct
@@ -50,6 +50,7 @@ Terms: **the source** is the spec, explanation or change request the owner appro
 - **A failed eval outcome is a fix target only once you confirm it in the run output.**
 - **Cite a failed outcome as `E<n>.O<n>`.**
 - **Generalise the fix;** never a special case for one prompt.
+- **Current state only.** A FIX reply lists only what this round changed. The report file holds the current trace and open points; replace a fixed item's lines, never append a round's history.
 - **An outcome the baseline also passes can't tell the runs apart.** It goes back to the owner as an eval change, through an open point.
 
 ## 6. Reply and eval set
@@ -62,8 +63,8 @@ Terms: **the source** is the spec, explanation or change request the owner appro
 - Your end line is the last line of the reply.
 - Eval ids are `E<n>`, each with numbered observable outcomes `O<n>`.
 - You write the eval set; you never run it (§1).
-- **NEW and REFACTOR replies include a "Field table"** so the owner never forgets an optional field: one row per field of the artifact type that the lint doesn't require (LNT-64 for skills, LNT-66 for agents), in `frontmatter-fields.md`'s order.
-- Each row is `<field> · <what it does, ≤ 1 line, from frontmatter-fields.md> · leave unset — <why, ≤ 1 line>` or `· set to <value> — <why, ≤ 1 line>`, with no prose around the table.
+- **NEW and REFACTOR replies include a "Field table"** so the owner never forgets an optional field: check every field of the artifact type that the lint doesn't require (LNT-64 for skills, LNT-66 for agents), in `frontmatter-fields.md`'s order, and write a row only for a field you set.
+- Each row is `<field> · <what it does, ≤ 1 line, from frontmatter-fields.md> · set to <value> — <why, ≤ 1 line>`; then one line `Left unset: <the other fields>`, with no prose around the table.
 - You recommend each row; the owner decides it, and the orchestrator records the decision in `decisions.md`.
 - FIX: include the table only when a frontmatter field changed.
 

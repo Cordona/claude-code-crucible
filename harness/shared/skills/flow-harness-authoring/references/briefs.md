@@ -170,7 +170,7 @@ FIX (a G2 send-back; a lint FAIL, Agent flow step 4; Run and grade step 5; Agent
 
 ## skill-reviewer
 
-CHECKLIST (one per seat):
+CHECKLIST (one or more checklists per seat, by the approved swarm size):
 
 ```
 STEP: Skill flow step 5, round <n> · AGENT: skill-reviewer · MODE: CHECKLIST
@@ -187,8 +187,11 @@ LINT OUTPUT: <run dir>/lint/round-<n>.txt
 WAIVERS: <waivers>
 RUN OUTPUTS AND GRADES: <paths> (after Run and grade), or none
 PRIOR REPORT: <run dir>/review/<seat>.md (re-check), or none
+NOT BUILT YET: <each dependency the target names that doesn't exist yet>, or none
 A marked gap beats ...
 ```
+
+A small-swarm seat lists its checklists comma-separated on `CHECKLIST` and in READ.
 
 CONFORMANCE: as CHECKLIST, with `MODE: CONFORMANCE`; no `CHECKLIST`, `LINT SPEC`, `LINT OUTPUT` or `WAIVERS` line; READ holding `<rulebook>/SKILL.md`, `<flow>`, the source, `decisions.md` and each target file (plus run outputs, grades and prior report when given), with no checklist or lint spec; and these lines:
 
@@ -196,6 +199,7 @@ CONFORMANCE: as CHECKLIST, with `MODE: CONFORMANCE`; no `CHECKLIST`, `LINT SPEC`
 FLOW: <flow> (Merging the swarm step 6 sets this mode's bar; Skill flow step 1 defines the item IDs)
 SOURCE: <run dir>/explanation.md | <run dir>/spec.md
 DECISIONS: <run dir>/decisions.md, or none
+SIBLING SKILLS: <each sibling skill's SKILL.md, also in READ>, or none
 ```
 
 ## agent-reviewer
@@ -213,6 +217,7 @@ LINT OUTPUT: <run dir>/lint/round-<n>.txt
 AGENT FILE: <agent file> · GIT SHA: <sha>
 SEARCH ROOTS: <roots>
 WAIVERS: <waivers>
+NOT BUILT YET: <each dependency the agent names that doesn't exist yet>, or none
 RUN OUTPUTS AND GRADES: <paths> (after Run and grade), or none
 PRIOR REPORT: <run dir>/review/<seat>.md (re-check), or none
 A marked gap beats ...
@@ -252,6 +257,6 @@ TASK:
 A marked gap beats ...
 ```
 
-Instruction line: skill new arm `Use the skill at <target dir>/SKILL.md: read it first and follow it.` · skill refactor baseline `Use the skill at <run dir>/snapshot/SKILL.md: read it first and follow it.` · agent refactor baseline `Follow <run dir>/snapshot.md, everything after its frontmatter, as your instructions.` · skill new-skill baseline and agent new-agent baseline: none.
+Instruction line: skill new arm `Use the skill at <target dir>/SKILL.md: read it first and follow it.` · skill refactor baseline `Use the skill at <run dir>/snapshot/SKILL.md (or the old skill's SKILL.md when no snapshot was taken): read it first and follow it.` · agent refactor baseline `Follow <run dir>/snapshot.md, everything after its frontmatter, as your instructions.` · skill new-skill baseline and agent new-agent baseline: none.
 
 The agent new arm is a dispatch of the agent under test; its brief is the eval's dispatch text, verbatim.

@@ -3,7 +3,7 @@
 Purpose: decisions that must not vary are made by scripts and gates, restrictions last as long as needed, and the skill fails closed.
 Judges what is scripted, outcome handling, state and recovery, and turn-scoped frontmatter fields. Hook mechanics are in 10.
 
-**Applies when:** flows and procedures; standards: DET-08 and DET-09 only.
+**Applies when:** flows and procedures; standards: DET-08 and DET-09 only. DET-08 is N/A for a standard that ships no script: only agents preload it, so its hook belongs to the binding agent and is judged there (agent-02, agent-07).
 **MUST lint:** LNT-31.
 
 - **DET-01** · SHOULD · Is every mechanical decision — inputs are files or counts, outcome is a fixed vocabulary (caps, verdicts, status transitions, dates, ids, digests, renders shown for approval) — computed by a script? · Check: list the skill's mechanical decisions; yes if each names its script or a rule-owning skill's fixed arithmetic. · Fix: move the decision into a script; the skill acts on its output.

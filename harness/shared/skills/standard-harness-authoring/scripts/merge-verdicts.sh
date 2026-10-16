@@ -13,7 +13,7 @@ set -Eeuo pipefail
 #   --kind skill  references/skills/[0-9]*.md + references/shared/lint-spec.md
 #   --kind agent  references/agents/[0-9]*.md + references/skills/[0-9]*.md
 #                 + references/shared/lint-spec.md (the skill checklists
-#                 resolve the items an agent seat borrows: 02, STR-05/06,
+#                 resolve the items an agent seat borrows: 02, STR-05/06/09,
 #                 SAFE-01/03/07, checklist 10)
 # An ID found in none of them is treated as MUST and listed as unknown-id, so
 # a rulebook gap can never let a report pass silently. Every CONFORMANCE item
@@ -47,6 +47,8 @@ set -Eeuo pipefail
 # WAIVED is honoured only for a SHOULD or MAY item named by an owner line
 # "<ID>: <reason> (owner)" in the --waivers file; any other WAIVED counts as
 # a FAIL at its level, so a reviewer cannot waive a MUST item or forge one.
+# A SHOULD or MAY FAIL whose ID has an owner line counts as WAIVED: the seat
+# reviewed before the owner waived it.
 #
 # One file may hold several reports (a combined agent seat): every report
 # ends at its end line "=== END OF <checklist> ===". The last report's end
@@ -175,6 +177,7 @@ Options:
                      it is SHOULD or MAY and FILE has its "<ID>: <reason>
                      (owner)" line; any other WAIVED counts as a FAIL at its
                      level, with a warning. Without it, every WAIVED does.
+                     A SHOULD or MAY FAIL with such a line counts as WAIVED.
   --previous FILE  A previous run's saved output. Adds, last:
                      "progress: fixed <n> · still open <n> · new <n>" over
                      the blocking: and should-fail: IDs, and "unchanged: yes"
@@ -869,7 +872,16 @@ function waived_as_fail(r, k,   id, sev) {
 	return ""
 }
 
+# owner_waived_fail — item k of report r is a SHOULD or MAY FAIL the owner
+# has since waived.
+function owner_waived_fail(r, k,   sev) {
+	if (item_kw[r, k] != "FAIL" || !have_waivers || !(item_id[r, k] in owner_waived)) return 0
+	sev = severity(r, item_id[r, k])
+	return sev == "SHOULD" || sev == "MAY"
+}
+
 function counts_as_fail(r, k) {
+	if (owner_waived_fail(r, k)) return 0
 	return item_kw[r, k] == "FAIL" || waived_as_fail(r, k) != ""
 }
 
@@ -1009,7 +1021,7 @@ function print_result(   i, r, k, sev, label, ids, nblock, block, nshould, shoul
 		label = chk[r]
 		split("", c)
 		for (k = 1; k <= nitems[r]; k++) {
-			c[item_kw[r, k]]++
+			c[owner_waived_fail(r, k) ? "WAIVED" : item_kw[r, k]]++
 			sev = severity(r, item_id[r, k])
 			if (sev == "UNKNOWN") unk[++nunk] = item_id[r, k] " " label " " item_loc[r, k] " " item_status[r, k]
 			if (blocks(r, k)) {
