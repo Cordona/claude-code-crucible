@@ -1,0 +1,42 @@
+# Boundary map: which plugin owns a shared concern
+
+The one concern-to-owner table for the plugins. Read it at SKILL.md's step 4, when two plugins' descriptions both match one concern of a task.
+
+- **The concern goes to its owner:** load the owner for it.
+- **A non-owner is still loaded for a concern of its own** the task also touches: the half a row leaves it, or a concern no row lists. A shared concern alone never pulls it in.
+- **A plugin left out by a row** goes under **Not loaded** as *(<concern>: owned by `<owner>`)*.
+- **The tech plugin** is the tech plugin of the stack the code is in, such as `tech-shell`.
+
+| Concern | Owner | What the others keep |
+|---|---|---|
+| Secrets: storing, fetching and handling one, and never passing one on a command line (`ps` shows it) | `standard-security` | `tech-shell`: only the shell's own forms, such as `VAR=… cmd` and `umask 077`. `standard-persistence`: nothing |
+| A secret, PII or untrusted input in a log line | `standard-observability` | `standard-security`: nothing |
+| Security events, audit records and their alerts (OWASP A09) | `standard-observability` | `standard-security`: nothing |
+| Alert routing: where an alert the code raises goes | `standard-observability` | every other standard: nothing |
+| Data protection beyond logs: encryption at rest, PII minimization, erasure and retention policy | `standard-security` | `standard-persistence`: the store's mechanism (a hard delete, a TTL, the store's encryption). `standard-observability`: nothing |
+| A soft-delete is not erasure | `standard-security` | `standard-persistence`: nothing |
+| Legally required history: storing it, append-only | `standard-persistence` | `standard-observability`: nothing |
+| Legally required history: emitting the audit event about it | `standard-observability` | `standard-persistence`: nothing |
+| History the domain rebuilds state from | `standard-persistence` | `standard-observability`: nothing |
+| Slow-query logging, query metrics, data-layer tracing, an audit trail kept for its own sake | `standard-observability` | `standard-persistence`: nothing |
+| Query injection and unsafe query construction | `standard-security` | `standard-persistence`: nothing |
+| Untrusted input reaching a shell or `eval` | `standard-security` | `tech-shell`: the shell's own forms (`eval`, `bash -c`, `sh -c`, arithmetic on untrusted input) |
+| Id enumeration (IDOR) and an id that grants access | `standard-security` | `standard-persistence`: the id's fit to the store's partition and index model |
+| A durable store's correctness, its key shape included | `standard-persistence` | `standard-security`, `standard-performance`: nothing |
+| Index design for a store query | `standard-persistence` | every other standard: nothing |
+| Store choice: which durable store a need goes to | `standard-persistence` | every other standard: nothing |
+| Aggregate and transaction-boundary sizing | `standard-persistence` | every other standard: nothing |
+| Cache coherence: an application or read-model cache kept in step with its store | `standard-persistence` | `standard-performance`: whether to cache a result fetched again across calls |
+| A migration's consumer axis: who outside the change breaks | `standard-persistence` | every other standard: nothing |
+| Backup, restore and disaster recovery | `standard-persistence` | every other standard: nothing |
+| A cap on body, collection and page size | `standard-security`: the cap on what a caller controls | `standard-performance`: its cost at scale. `standard-persistence`: its correctness |
+| N+1, bounded reads, offset paging, over-wide reads | `standard-performance`: their cost at scale | `standard-persistence`: their correctness (stable paging, a result set held within memory) |
+| Blocking I/O on a latency-sensitive path | `standard-performance` | `standard-observability`: the logging side (async, non-blocking appenders) |
+| How code scales with its input | `standard-performance` | `standard-clean-code`: nothing |
+| Test-only rules | `standard-testing` | every other standard: nothing (`standard-observability` covers no test code) |
+| Test and scenario names | `standard-testing` | `standard-self-documenting-code`: nothing |
+| Every other name, comment and docstring, test code included | `standard-self-documenting-code` | `standard-clean-code`, `standard-testing`: nothing |
+| Code structure: responsibility, duplication, coupling, function size, dead code, file layout | `standard-clean-code` | `standard-self-documenting-code`: nothing |
+| Test-code structure | `standard-clean-code` | `standard-testing`: its tie-breakers where a test pulls against clean code |
+| A stack's own form of a rule: language mechanics, memory safety, ORM mechanics, micro-performance, the logging library's API, doc-comment syntax, layout idioms | the tech plugin | each standard: the language-agnostic rule |
+| Rule-section shape | each standard, for its own file | every standard: rule sections are numbered top-level `## N. <title>` sections, cited as §N; framing sections (Scope, Taint model, Store guarantees and the like) stay unnumbered. Exceptions: `standard-security` cites its sections by OWASP id (A01–A10) and keeps its Foundations, which hold rules, unnumbered; `standard-performance`'s "Rule N" items live inside its §2 |
