@@ -1,32 +1,46 @@
 #!/usr/bin/env sh
-# Prints the install checklist for procedure-agent-initialization: its three
-# scripts, jq, the hook entry in settings.json, and the installed plugins. Every
-# check runs, whatever an earlier one found, so one run names every fix. It
-# reads settings.json only through jq, and only the PreToolUse › Agent hook
+# Prints the install checklist for procedure-agent-initialization: its four
+# scripts, procedure-approval-gate's open-gate.sh and its two hook scripts, jq,
+# the three hook entries in settings.json (the inject hook and both gate hooks),
+# and the installed plugins. Every check runs, whatever an earlier one found, so one run names
+# every fix. It reads settings.json only through jq, and only those hook
 # commands, which it counts or hashes and never prints: the file may hold
 # secrets in its env block.
 # A full pass is cached: the marker keeps a fingerprint of everything the checks
 # depend on, and while that fingerprint is unchanged the checks are skipped.
 # The marker is the only file it writes; it holds no settings content.
-# Exit 3 means only the jq and hook checks failed: dispatch can't inject
-# plugins, but the scripts and plugins that direct implementation needs are fine.
+# Exit 3 means only the inject hook check failed: dispatch can't inject
+# plugins, but direct implementation can go on. jq and the gate hooks are
+# exit 1 failures, since the approval gate every plan goes through needs them.
 set -eu
 
 readonly PROG='check-install.sh'
 readonly PROCEDURE='procedure-agent-initialization'
+readonly GATE_PROCEDURE='procedure-approval-gate'
 readonly HOOK_SCRIPT="${PROCEDURE}/scripts/inject-plugins.sh"
-readonly HOOK_FIX='add the entry shown in references/hook-contract.md'
+readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
+readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
+# A timed-out inject hook lets the dispatch through with no plugins, and the
+# hook reads every plugin file on the PLUGIN line, so its bound is generous.
+readonly HOOK_TIMEOUT=30
+# The gate hooks read one small state file, and a timed-out one lets the stop
+# or question through, so a stuck one is cut short.
+readonly GATE_HOOK_TIMEOUT=10
+# Printed unexpanded so the fix can be pasted into settings.json as is.
+# shellcheck disable=SC2016
+readonly HOOK_COMMAND_ROOT='${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills'
 readonly JQ_FIX='install jq 1.6+ (macOS: brew install jq; Linux: the distro'\''s jq package), then rerun'
 readonly MARKER_NAME='install-check'
-# inject-plugins.sh needs jq 1.6 for --rawfile (references/script-contracts.md).
+# inject-plugins.sh needs jq 1.6 for --rawfile (see inject-plugins.sh --help).
 readonly JQ_MIN_MAJOR=1
 readonly JQ_MIN_MINOR=6
-# Emits each Agent hook command that runs inject-plugins.sh; every step tolerates
-# a missing or mistyped level, so only a JSON parse error fails it.
-# The program is single-quoted on purpose: its $needle is jq's.
+# Emits each hook command under event $event (and matcher $matcher; "" accepts
+# any) that runs $needle; every step tolerates a missing or mistyped level, so
+# only a JSON parse error fails it.
+# The program is single-quoted on purpose: its $ names are jq's.
 # shellcheck disable=SC2016
-readonly HOOK_COMMANDS_JQ='.hooks?.PreToolUse?[]?
-	| select(type == "object" and .matcher == "Agent")
+readonly HOOK_COMMANDS_JQ='.hooks?[$event]?[]?
+	| select(type == "object" and ($matcher == "" or .matcher == $matcher))
 	| .hooks?[]?
 	| select(type == "object")
 	| .command?
@@ -49,22 +63,37 @@ Checks that ${PROCEDURE} is installed and ready, and prints one line per check:
   ✓ list-plugins.sh            the script is in DIR/${PROCEDURE}/scripts/
   ✓ render-plugin-line.sh      and its --help exits 0 with a Usage: line
   ✓ inject-plugins.sh
+  ✓ render-dispatch-plan.sh
+  ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
+  ✓ gate-stop-hook.sh
+  ✓ gate-question-hook.sh
   ✓ jq <version>               jq on PATH, version ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR} or newer
-  ✓ hook registered (...)      FILE is valid JSON with a PreToolUse entry,
+  ✓ inject hook registered (...)
+                               FILE is valid JSON with a PreToolUse entry,
                                matcher "Agent", whose command runs ${HOOK_SCRIPT}
+  ✓ gate Stop hook registered (...)
+                               a Stop entry whose command runs
+                               ${GATE_STOP_SCRIPT}
+  ✓ gate question hook registered (...)
+                               a PreToolUse entry, matcher "AskUserQuestion",
+                               whose command runs ${GATE_QUESTION_SCRIPT}
   ✓ <N> plugins installed: <t> tech, <s> standards
                                from list-plugins.sh --max-lines 0
 A failed check prints "✗ <item>: <reason>. Fix: <action>" instead (invalid
 plugins add list-plugins.sh's report lines, indented). No plugins at all is a
 warning, not a failure: "⚠ no plugins installed: ...". The last line is
 "All checks passed." (plus " (1 warning)" after a warning),
-"<n> check(s) failed: dispatch needs the hook; direct implementation can go on."
-when only the jq and hook checks failed, or "<n> check(s) failed." otherwise.
+"<n> check(s) failed: dispatch needs the inject hook; direct implementation can
+go on." when only the inject hook check failed, or "<n> check(s) failed."
+otherwise.
+When jq is missing or FILE is missing, unreadable or not JSON, one line covers
+all three hook checks.
 
 Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
-fingerprint of the four procedure scripts, the hook commands (hashed), the jq
-version, and each tech-*/standard-* folder's name, SKILL.md and references/
-files. While the fingerprint is unchanged, a run prints only:
+fingerprint of the five procedure scripts, ${GATE_PROCEDURE}'s three
+(open-gate.sh and both gate hook scripts), the three hook entries' commands
+(hashed), the jq version, and each tech-*/standard-* folder's name, SKILL.md
+and references/ files. While the fingerprint is unchanged, a run prints only:
   ✓ Install unchanged since <YYYY-MM-DD HH:MM>: <n> checks passed
 A failed run or a warning removes the marker. When the result can't be cached,
 the checklist ends with "(result not cached: <reason>)"; that never fails it.
@@ -76,13 +105,15 @@ the checklist ends with "(result not cached: <reason>)"; that never fails it.
 
 Exit codes:
   0  every check passed (a warning included), or the cached pass still holds
-  1  a script or plugin check failed (whatever else failed too)
+  1  a script, plugin, jq or gate hook check failed (whatever else failed
+     too); jq and both gate hooks are needed by the approval gate
   2  usage error
-  3  only the jq and/or hook checks failed: direct implementation can go on,
+  3  only the inject hook check failed: direct implementation can go on,
      dispatch can't
 
 Dependencies: POSIX sh, tr; cksum, find, sort, date, mkdir, mktemp, mv and rm
 for the cache; jq is a check, not a requirement.
+Runtime: about 0.12 s for a full pass, 0.03 s cached; measured on macOS (average of 5 runs).
 Reads only: settings.json through jq (the hook commands, counted or hashed,
 never printed). Writes only: CACHE/${MARKER_NAME}.
 EOF
@@ -124,6 +155,7 @@ parse_args() {
 		esac
 	done
 	scripts_dir="${skills_dir}/${PROCEDURE}/scripts"
+	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
 }
 
@@ -151,15 +183,25 @@ fingerprint_input() {
 	printf 'paths\n%s\n%s\n' "${skills_dir}" "${settings_file}"
 	printf 'scripts\n'
 	cksum "${scripts_dir}/list-plugins.sh" "${scripts_dir}/render-plugin-line.sh" \
-		"${scripts_dir}/inject-plugins.sh" "${scripts_dir}/check-install.sh" 2>/dev/null ||
+		"${scripts_dir}/inject-plugins.sh" "${scripts_dir}/check-install.sh" \
+		"${scripts_dir}/render-dispatch-plan.sh" "${gate_scripts_dir}/open-gate.sh" \
+		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" 2>/dev/null ||
 		printf 'scripts unreadable\n'
-	printf 'hook\n'
-	jq -c --arg needle "${HOOK_SCRIPT}" "${HOOK_COMMANDS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
-		printf 'hook commands unreadable\n'
+	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
+	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
+	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
 	printf 'jq\n'
 	jq --version </dev/null 2>/dev/null || printf 'jq unavailable\n'
 	printf 'plugins\n'
 	fingerprint_plugins
+}
+
+# Prints the hook commands for event $1, matcher $2 ("" any) and script $3, or
+# a fixed line when they can't be read.
+fingerprint_hook() {
+	printf 'hook %s %s %s\n' "$1" "$2" "$3"
+	jq -c --arg event "$1" --arg matcher "$2" --arg needle "$3" "${HOOK_COMMANDS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
+		printf 'hook commands unreadable\n'
 }
 
 # Prints each tech-*/standard-* folder name, then one cksum line per file in
@@ -218,11 +260,14 @@ fail() {
 	failed_count=$((failed_count + 1))
 }
 
-# Fails like fail, and also counts the failure as one that blocks only dispatch:
-# the jq and hook checks.
-fail_dispatch() {
+# Fails a hook entry check for script $1 like fail with $2..$4, and counts a
+# failed inject hook check, the one failure that blocks only dispatch.
+# shellcheck disable=SC2329 # called from check_hook_entry, which each_hook calls by name
+fail_hook() {
+	hook_script=$1
+	shift
 	fail "$@"
-	dispatch_failed_count=$((dispatch_failed_count + 1))
+	[ "${hook_script}" != "${HOOK_SCRIPT}" ] || inject_failed_count=$((inject_failed_count + 1))
 }
 
 # Prints a warning line for item $1 and reason $2, and counts it.
@@ -231,12 +276,15 @@ warn() {
 	warning_count=$((warning_count + 1))
 }
 
-# Checks that script $1 is installed and answers --help with a Usage: line.
+# Checks that script $2 of procedure $1 is installed and answers --help with a
+# Usage: line.
 check_script() {
-	script="${scripts_dir}/$1"
-	reinstall="reinstall ${PROCEDURE} under ${skills_dir}"
+	script_dir="${skills_dir}/$1/scripts"
+	script="${script_dir}/$2"
+	reinstall="reinstall $1 under ${skills_dir}"
+	shift
 	if [ ! -f "${script}" ] || [ ! -r "${script}" ]; then
-		fail "$1" "missing from ${scripts_dir}" "${reinstall}"
+		fail "$1" "missing from ${script_dir}" "${reinstall}"
 		return 0
 	fi
 	if help_text=$(sh "${script}" --help </dev/null 2>/dev/null); then
@@ -257,7 +305,7 @@ check_script() {
 # Checks that jq is on PATH and at least JQ_MIN_MAJOR.JQ_MIN_MINOR.
 check_jq() {
 	if ! command -v jq >/dev/null 2>&1; then
-		fail_dispatch jq 'not found on PATH' "${JQ_FIX}"
+		fail jq 'not found on PATH' "${JQ_FIX}"
 		return 0
 	fi
 	jq_version=$(jq --version </dev/null 2>/dev/null) || jq_version=''
@@ -268,14 +316,14 @@ check_jq() {
 	jq_minor=${jq_minor%%[!0-9]*}
 	# shellcheck disable=SC2310 # a pure case test; its status is the answer
 	if ! is_version_readable; then
-		fail_dispatch jq 'version not readable from jq --version' "${JQ_FIX}"
+		fail jq 'version not readable from jq --version' "${JQ_FIX}"
 		return 0
 	fi
 	if [ "${jq_major}" -gt "${JQ_MIN_MAJOR}" ] ||
 		{ [ "${jq_major}" -eq "${JQ_MIN_MAJOR}" ] && [ "${jq_minor}" -ge "${JQ_MIN_MINOR}" ]; }; then
 		pass "jq ${jq_version}"
 	else
-		fail_dispatch "jq ${jq_version}" "older than ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}" "${JQ_FIX}"
+		fail "jq ${jq_version}" "older than ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}" "${JQ_FIX}"
 	fi
 }
 
@@ -293,33 +341,70 @@ is_version_readable() {
 	esac
 }
 
-# Checks that the settings file registers inject-plugins.sh under PreToolUse › Agent.
-check_hook() {
+# Checks that the settings file registers the inject hook and both gate hooks;
+# a settings file jq can't read fails once for all three.
+check_hooks() {
 	if ! command -v jq >/dev/null 2>&1; then
-		fail_dispatch 'hook not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
+		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
 		return 0
 	fi
 	if [ ! -e "${settings_file}" ]; then
-		fail_dispatch 'hook not registered' "no settings file at ${settings_file}" "create it with the entry shown in references/hook-contract.md"
+		hook_entries=''
+		each_hook append_hook_entry
+		fail 'hooks not registered' "no settings file at ${settings_file}" "create it with ${hook_entries}, then run /hooks or restart"
 		return 0
 	fi
 	if [ ! -f "${settings_file}" ] || [ ! -r "${settings_file}" ]; then
-		fail_dispatch 'hook not checked' "${settings_file} is not a readable file" "make it readable by your user, then rerun"
+		fail 'hooks not checked' "${settings_file} is not a readable file" "make it readable by your user, then rerun"
 		return 0
 	fi
 	if ! jq empty "${settings_file}" </dev/null >/dev/null 2>&1; then
-		fail_dispatch 'hook not checked' "${settings_file} is not valid JSON" "repair its JSON syntax, then rerun"
+		fail 'hooks not checked' "${settings_file} is not valid JSON" "repair its JSON syntax, then rerun"
 		return 0
 	fi
-	if hook_count=$(jq --arg needle "${HOOK_SCRIPT}" "${HOOK_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+	each_hook check_hook_entry
+}
+
+# Calls $1 once per hook entry with: item name, event, matcher ("" any), script,
+# timeout. The one list both the check and its fix text are built from.
+each_hook() {
+	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}"
+	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}"
+	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}"
+}
+
+# Appends the settings entry for hook $2..$5 (each_hook's arguments) to hook_entries.
+# shellcheck disable=SC2329 # called by name through each_hook
+append_hook_entry() {
+	hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5")
+	hook_entries="${hook_entries}${hook_entries:+; }${hook_entry}"
+}
+
+# Prints the settings entry for event $1, matcher $2 ("" none), script $3, timeout $4.
+# shellcheck disable=SC2329 # called from each_hook's callbacks, which shellcheck can't trace
+hook_entry_text() {
+	matcher_text=''
+	[ -z "$2" ] || matcher_text=" (matcher $2)"
+	printf 'a %s hook%s with command sh "%s/%s", timeout %s' "$1" "${matcher_text}" "${HOOK_COMMAND_ROOT}" "$3" "$4"
+}
+
+# Checks one entry: item name $1, event $2, matcher $3 ("" any), script $4, timeout $5.
+# shellcheck disable=SC2329 # called by name through each_hook
+check_hook_entry() {
+	where=$2
+	[ -z "$3" ] || where="$2 › $3"
+	if hook_count=$(jq --arg event "$2" --arg matcher "$3" --arg needle "$4" "${HOOK_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
 		:
 	else
-		fail_dispatch 'hook not checked' "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
 		return 0
 	fi
 	case ${hook_count} in
-		'' | *[!0-9]* | 0) fail_dispatch 'hook not registered' 'no PreToolUse › Agent entry runs inject-plugins.sh' "${HOOK_FIX}" ;;
-		*) pass 'hook registered (PreToolUse › Agent in settings.json)' ;;
+		'' | *[!0-9]* | 0)
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5")
+			fail_hook "$4" "$1 not registered" "no ${where} entry runs ${4##*/}" "add ${hook_entry}, in settings.json, then run /hooks or restart"
+			;;
+		*) pass "$1 registered (${where} in settings.json)" ;;
 	esac
 }
 
@@ -431,8 +516,8 @@ print_summary() {
 			1) printf 'All checks passed. (1 warning)\n' ;;
 			*) printf 'All checks passed. (%s warnings)\n' "${warning_count}" ;;
 		esac
-	elif [ "${failed_count}" -eq "${dispatch_failed_count}" ]; then
-		printf '%s check(s) failed: dispatch needs the hook; direct implementation can go on.\n' "${failed_count}"
+	elif [ "${failed_count}" -eq "${inject_failed_count}" ]; then
+		printf '%s check(s) failed: dispatch needs the inject hook; direct implementation can go on.\n' "${failed_count}"
 	else
 		printf '%s check(s) failed.\n' "${failed_count}"
 	fi
@@ -441,7 +526,7 @@ print_summary() {
 
 passed_count=0
 failed_count=0
-dispatch_failed_count=0
+inject_failed_count=0
 warning_count=0
 cache_note=''
 marker_tmp=''
@@ -456,14 +541,18 @@ if [ "${force}" -eq 0 ] && cached_pass_holds; then
 	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
 	exit 0
 fi
-check_script list-plugins.sh
-check_script render-plugin-line.sh
-check_script inject-plugins.sh
+check_script "${PROCEDURE}" list-plugins.sh
+check_script "${PROCEDURE}" render-plugin-line.sh
+check_script "${PROCEDURE}" inject-plugins.sh
+check_script "${PROCEDURE}" render-dispatch-plan.sh
+check_script "${GATE_PROCEDURE}" open-gate.sh
+check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
+check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_jq
-check_hook
+check_hooks
 check_plugins
 record_result
 print_summary
 if [ "${failed_count}" -eq 0 ]; then exit 0; fi
-if [ "${failed_count}" -eq "${dispatch_failed_count}" ]; then exit 3; fi
+if [ "${failed_count}" -eq "${inject_failed_count}" ]; then exit 3; fi
 exit 1

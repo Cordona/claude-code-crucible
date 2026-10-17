@@ -1,0 +1,431 @@
+#!/usr/bin/env sh
+# Renders one dispatch plan, or its approval question, from a JSON file, so the
+# main thread never hand-formats either; --no-plugin-fits does the same for a
+# part no installed tech plugin fits. This script owns the layout, the question
+# wording and the input rules it checks (see --help), including the check of a
+# plan against the installed plugins; references/dispatch-plan-rules.md keeps
+# only the rules it can't check. Pipe its stdout into procedure-approval-gate's
+# open-gate.sh.
+set -eu
+
+readonly PROG='render-dispatch-plan.sh'
+readonly PROCEDURE='procedure-agent-initialization'
+readonly DIRECT_AGENT='main thread'
+readonly TESTING_PLUGIN='standard-testing'
+
+# Definitions every program below starts with. The programs are single-quoted
+# on purpose: their $ signs are jq's.
+# shellcheck disable=SC2016
+readonly COMMON_JQ='
+def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
+def clean: gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
+def option($label; $description): {label: $label, description: $description};
+def checked_object(problems):
+	if length != 1 then "expected exactly one JSON object, got \(length) values"
+	elif (.[0] | type) != "object" then "input is a JSON \(.[0] | type); expected an object"
+	else .[0] | problems end;
+def unknown_keys($allowed): (keys - $allowed)[] | "\(.): unknown field; expected one of \($allowed | join(", "))";
+def strings_problems($key):
+	if (.[$key] | type) != "array" or (.[$key] | length) == 0 then "\($key) missing or empty; expected an array of one or more strings"
+	else .[$key] | to_entries[] | select(.value | text_ok | not) | "\($key)[\(.key)] is not a non-empty string" end;
+def task_lines:
+	(.tasks | length) as $count
+	| if $count == 1 then "**Task:** \(.tasks[0] | clean)"
+	  else "**Tasks:**\n\n" + ([.tasks | to_entries[] | "\(.key + 1). \(.value | clean)"] | join("\n")) end;
+'
+
+# Prints one line per problem with the slurped plan; nothing when it is valid.
+# $listing holds list-plugins.sh's plugin lines.
+# shellcheck disable=SC2016
+readonly CHECK_JQ='
+def top_keys: ["agent", "mode", "technology", "tasks", "loaded", "loaded_reason", "not_loaded", "replan"];
+def plugins_problems($key):
+	if (.[$key] | type) != "array" then "\($key) missing or not an array; expected [{\"plugin\": str, \"reason\": str}, ...] ([] for none)"
+	else .[$key] | to_entries[]
+		| if (.value | type) != "object" then "\($key)[\(.key)] is a \(.value | type); expected {\"plugin\": str, \"reason\": str}"
+		  else (.key as $index | .value
+			| ((keys - ["plugin", "reason"])[] | "\($key)[\($index)].\(.): unknown field; expected only plugin and reason"),
+			  (if (.plugin | text_ok) and (.reason | text_ok) then empty
+			   else "\($key)[\($index)] is not {\"plugin\": non-empty string, \"reason\": non-empty string}" end))
+		  end
+	end;
+def installed:
+	$listing | split("\n") | map(split("\t") | select(length >= 3 and (.[0] == "tech" or .[0] == "standard"))
+		| {key: .[1], value: {kind: .[0], label: .[2]}}) | from_entries;
+def named_items:
+	[("loaded", "not_loaded") as $key
+	 | .[$key] | select(type == "array") | to_entries[]
+	 | select((.value | type) == "object" and (.value.plugin | text_ok))
+	 | {path: "\($key)[\(.key)].plugin", list: $key, plugin: .value.plugin, reason: .value.reason}];
+# A step-9 re-plan may list, under not_loaded, a plugin list-plugins.sh no longer prints.
+def dropped_reasons: "invalid", "uninstalled after approval", "faulty files";
+def installed_problems:
+	. as $plan
+	| installed as $installed
+	| named_items as $items
+	| ($items[] | select(.plugin as $name | $installed | has($name) | not)
+		| select(.list == "loaded" or (.reason | IN(dropped_reasons) | not))
+		| "\(.path): \(.plugin | tojson) is not installed; expected a name list-plugins.sh prints"),
+	  ($items | group_by(.plugin)[] | .[1:][]
+		| "\(.path): \(.plugin | tojson) listed more than once; expected each plugin once, in loaded or not_loaded"),
+	  (if ($plan.loaded | type) == "array" and ($plan.not_loaded | type) == "array" then
+		($items | map(.plugin)) as $named
+		| $installed | keys[] | select(IN($named[]) | not)
+		| "not_loaded: \(tojson) is installed but in neither loaded nor not_loaded; expected every installed plugin in one of them"
+	   else empty end),
+	  ([$items[] | select(.list == "loaded" and $installed[.plugin].kind == "tech")] as $tech
+		| if ($tech | length) > 1 then "loaded: \($tech | map(.plugin) | join(", ")) are all tech plugins; expected at most one"
+		  elif ($plan.loaded | type) != "array" or ($plan.technology | text_ok | not) then empty
+		  elif ($tech | length) == 1 then
+			$installed[$tech[0].plugin].label as $label
+			| if $plan.technology == $label then empty
+			  else "technology: \($plan.technology | tojson) is not the label of \($tech[0].plugin); expected \($label | tojson)" end
+		  elif $plan.technology == "none" then empty
+		  else "technology: \($plan.technology | tojson) with no tech plugin loaded; expected \"none\"" end),
+	  (if ($plan.loaded | type) != "array" then empty
+	   else [$items[] | select(.list == "loaded" and .plugin == $testing)] as $testing_items
+		| if $plan.mode == "TEST" and ($testing_items | length) == 0 then
+			"loaded: mode \"TEST\" without \($testing); expected \($testing) in loaded"
+		  elif $plan.mode == "BUILD" then
+			($testing_items[] | "\(.path): \($testing | tojson) in a mode \"BUILD\" plan; expected it only in a TEST plan, under not_loaded here")
+		  else empty end
+	   end);
+checked_object(
+	unknown_keys(top_keys),
+	(if (.agent | text_ok) then empty else "agent missing or empty; expected a non-empty string" end),
+	(if .mode == "BUILD" or .mode == "TEST" then empty else "mode missing or unknown; expected \"BUILD\" or \"TEST\"" end),
+	(if (.technology | text_ok) then empty else "technology missing or empty; expected a label or \"none\"" end),
+	(if .agent == $direct and (.mode != "BUILD" or .technology != "none")
+	 then "agent \"\($direct)\" (direct implementation) needs mode \"BUILD\" and technology \"none\"" else empty end),
+	strings_problems("tasks"),
+	plugins_problems("loaded"),
+	plugins_problems("not_loaded"),
+	(if (.loaded | type) != "array" then empty
+	 elif (.loaded | length) == 0 then
+		(if has("loaded_reason") | not then "loaded_reason missing; expected a non-empty string saying why loaded is []"
+		 elif (.loaded_reason | text_ok) | not then "loaded_reason is not a non-empty string"
+		 else empty end)
+	 elif has("loaded_reason") then "loaded_reason given with a non-empty loaded list; expected it only when loaded is []"
+	 else empty end),
+	(if has("replan") | not then empty
+	 elif .replan == "invalid" or .replan == "stop-recommended" then empty
+	 else "replan unknown; expected \"invalid\" or \"stop-recommended\", or no replan field" end),
+	installed_problems)
+'
+
+# Control characters (a newline in a task) become one space, so every value
+# stays on its own line.
+# shellcheck disable=SC2016
+readonly RENDER_JQ='
+def item: (if (.plugin | clean) == "none" then "- none" else "- `\(.plugin | clean)`" end)
+	+ "\\\n  *(\(.reason | clean))*";
+def section($title; $list):
+	"**\($title)**\n\n" + (if ($list | length) == 0 then "- none" else $list | map(item) | join("\n") end);
+.[0]
+| (.tasks | length) as $count
+| "## 🎯 Agent dispatch plan\n\n"
+	+ "**Agent:** \(.agent | clean)\(if $count > 1 then " (\($count))" else "" end)\n\n"
+	+ "**Mode:** \(.mode)\n\n"
+	+ "**Technology:** \(.technology | clean)\n\n"
+	+ task_lines
+	+ "\n\n" + section("Loaded"; if (.loaded | length) == 0 then [{plugin: "none", reason: .loaded_reason}] else .loaded end)
+	+ "\n\n" + section("Not loaded"; .not_loaded)
+'
+
+# Prints the AskUserQuestion fields for the plan, or nothing for replan
+# "invalid" (that plan is shown with no question). $plans is how many plans
+# this run of step 6 shows, one after another.
+# shellcheck disable=SC2016
+readonly QUESTION_JQ='
+.[0]
+| (.tasks | length) as $count
+| (.agent == $direct) as $is_direct
+| " To change the plugins, choose \"Type something\" and write what to add or drop." as $change
+| (if $is_direct then "Implement with the plugins shown." else "Dispatch with the plugins shown." end) as $approve
+| (if $is_direct then "Nothing is implemented." else "Nothing is dispatched." end) as $stop
+| if .replan == "invalid" then empty
+  else {
+	header: (if $count > 1 then "Dispatch ×\($count)" else "Dispatch" end),
+	question: ((if $is_direct then "Approve implementing directly with the plugins shown?"
+		elif $count > 1 then "Approve these \($count) dispatches with the plugins shown?"
+		else "Approve this dispatch with the plugins shown?" end) + $change),
+	options: (if .replan == "stop-recommended" then
+			[option("Stop (Recommended)"; "Nothing is dispatched; reinstall the dropped plugin (faulty files: fix it), then rerun."),
+			 option("Approve"; $approve)]
+		elif $plans > 1 then
+			[option("Approve (Recommended)"; $approve),
+			 option("Skip"; "This plan does not run; the next plan is still shown."),
+			 option("Stop all"; "No further plan is shown and nothing is dispatched, including plans already approved.")]
+		else
+			[option("Approve (Recommended)"; $approve), option("Stop"; $stop)]
+		end)
+  } end
+'
+
+# shellcheck disable=SC2016
+readonly NO_FIT_CHECK_JQ='
+checked_object(
+	unknown_keys(["stack", "files", "tasks"]),
+	(if (.stack | text_ok) then empty else "stack missing or empty; expected a non-empty string" end),
+	strings_problems("files"),
+	strings_problems("tasks"))
+'
+
+# shellcheck disable=SC2016
+readonly NO_FIT_RENDER_JQ='
+.[0]
+| "## 🧩 No plugin fits\n\n"
+	+ "**Stack:** \(.stack | clean)\n\n"
+	+ "**Files:**\n\n" + (.files | map("- `\(clean)`") | join("\n")) + "\n\n"
+	+ task_lines
+	+ "\n\nNo installed tech plugin fits this stack: the main thread would write the code itself."
+'
+
+# shellcheck disable=SC2016
+readonly NO_FIT_QUESTION_JQ='
+.[0]
+| {header: "No plugin",
+   question: "No installed tech plugin fits \(.stack | clean). Stop, or implement directly?",
+   options: [option("Stop (Recommended)"; "build the tech plugin first; nothing runs for this part"),
+	option("Implement directly"; "the main thread writes the code, with the standard plugins the next plan settles")]}
+'
+
+usage() {
+	cat <<EOF
+Usage: sh ${PROG} --plan-file PATH [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh
+       sh ${PROG} --plan-file PATH [--skills-dir DIR] --question --plans N
+       sh ${PROG} --no-plugin-fits --plan-file PATH [--question]
+
+Reads one plan as a JSON object from PATH, and prints the plan Markdown headed
+by "## 🎯 Agent dispatch plan". PATH is required in every mode; stdin is not read.
+It prints no gate marker; open-gate.sh adds it.
+
+Input shape:
+  {"agent": str, "mode": "BUILD"|"TEST", "technology": str,
+   "tasks": [str, ...],
+   "loaded": [{"plugin": str, "reason": str}, ...],
+   "loaded_reason": str,
+   "not_loaded": [{"plugin": str, "reason": str}, ...],
+   "replan": "invalid"|"stop-recommended"}
+Rules it checks (one stderr line per broken rule, exit 2):
+  - exactly one JSON object, with no field other than those above; a plugin
+    item has no field other than plugin and reason
+  - a "string" below holds at least one character that is not a space or a
+    control character
+  - agent: a string; "${DIRECT_AGENT}" means direct implementation, which needs
+    mode "BUILD" and technology "none"
+  - mode: "BUILD" or "TEST"
+  - technology: a string, the tech plugin's label or "none"
+  - tasks: an array of one or more strings; one task is one dispatch, two or
+    more a group
+  - loaded, not_loaded: arrays, [] for none, of {"plugin", "reason"} strings
+  - loaded_reason: a string, required when loaded is [] and refused otherwise
+  - replan: optional; "invalid" or "stop-recommended"
+Rules checked against the installed plugins, each problem printed as
+"<path>: <what>; expected <x>":
+  - every loaded and not_loaded plugin is installed; a not_loaded item whose
+    reason is exactly "invalid", "uninstalled after approval" or "faulty
+    files" may name a plugin list-plugins.sh no longer prints
+  - no plugin is named twice across loaded and not_loaded
+  - every installed plugin is in loaded or not_loaded
+  - at most one tech plugin is loaded; technology is its label, or "none"
+    when none is loaded
+  - mode "TEST" has ${TESTING_PLUGIN} in loaded; mode "BUILD" doesn't
+The installed plugins are the plugin lines of
+DIR/${PROCEDURE}/scripts/list-plugins.sh --max-lines 0, run with
+--skills-dir DIR; its stderr is passed through. Its exit 1 (no plugin) is an
+empty list, and its exit 3 (invalid plugins) leaves them out of the list.
+  DIR  the skills folder, as list-plugins.sh's --skills-dir; defaults to
+       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills.
+Layout: a group prints "**Agent:** <agent> (<count>)" and a numbered task list.
+Loaded [] prints "- none" with loaded_reason as its reason; not_loaded []
+prints "- none"; a plugin named "none" prints as a bare none with its reason.
+A control character in a value prints as a space.
+
+--question --plans N prints the plan's AskUserQuestion fields instead, as one
+JSON object to copy as is:
+  {"header": str, "question": str, "options": [{"label": str, "description": str}, ...]}
+N is how many plans this run of step 6 shows, one after another (1 or more).
+  - header "Dispatch", or "Dispatch ×<count>" for a group of <count> tasks
+  - question: direct implementation, a group, or one dispatch, each with
+    how to change the plugins ("Type something")
+  - options: one plan, Approve (Recommended) / Stop; N > 1, Approve
+    (Recommended) / Skip / Stop all; replan "stop-recommended", Stop
+    (Recommended) / Approve
+  - replan "invalid": prints nothing, exit 0 (the plan is shown, nothing asked)
+
+--no-plugin-fits reads a part no installed tech plugin fits instead:
+  {"stack": str, "files": [str, ...], "tasks": [str, ...]}
+with no other field; each array holds one or more strings. It reads no
+plugin list, and takes neither --plans nor --skills-dir. It prints a plan
+headed by "## 🧩 No plugin fits": the stack, the files, the task or tasks, and
+the line "No installed tech plugin fits this stack: the main thread would
+write the code itself." With --question it prints the question JSON instead:
+header "No plugin", options "Stop (Recommended)", then "Implement directly".
+
+Exit codes:
+  0  the plan or question printed (nothing for --question with replan "invalid")
+  1  jq missing
+  2  usage error (--plan-file missing included), an unreadable plan file, or
+     bad input (one stderr line per problem, nothing on stdout)
+  3  jq failed while checking or rendering valid JSON (its stderr is printed)
+  4  list-plugins.sh missing from DIR
+  6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
+     (skills folder missing or unreadable); its stderr and exit are printed
+The codes match render-plugin-line.sh's for list-plugins.sh; 5 is unused here.
+
+Dependencies: POSIX sh, jq 1.6+; list-plugins.sh for a plan or its question.
+Runtime: about 85 ms for a plan or its question with 8 plugins installed, 25 ms
+for --no-plugin-fits; measured on macOS (average of 5 runs).
+EOF
+}
+
+warn() {
+	printf '%s: %s\n' "${PROG}" "$1" >&2
+}
+
+die() {
+	warn "$2"
+	exit "$1"
+}
+
+usage_error() {
+	warn "$1"
+	printf "Try '%s --help'.\n" "${PROG}" >&2
+	exit 2
+}
+
+# Sets plan_file, skills_dir, want_question, no_plugin_fits and plans from the
+# arguments, and refuses a combination the modes don't take.
+parse_args() {
+	plan_file=''
+	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
+	skills_dir_given=0
+	want_question=0
+	no_plugin_fits=0
+	plans=''
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			--help | -h)
+				usage
+				exit 0
+				;;
+			--question)
+				want_question=1
+				shift
+				;;
+			--no-plugin-fits)
+				no_plugin_fits=1
+				shift
+				;;
+			--plan-file | --plans | --skills-dir)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
+				set_option "$1" "$2"
+				shift 2
+				;;
+			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits or --help" ;;
+		esac
+	done
+	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
+	if [ "${no_plugin_fits}" -eq 1 ]; then
+		check_no_fit_args
+	else
+		check_plan_args
+	fi
+}
+
+set_option() {
+	case $1 in
+		--plan-file) plan_file=$2 ;;
+		--plans) plans=$2 ;;
+		*)
+			skills_dir=$2
+			skills_dir_given=1
+			;;
+	esac
+}
+
+check_no_fit_args() {
+	[ -z "${plans}" ] || usage_error '--plans is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH [--question]'
+	[ "${skills_dir_given}" -eq 0 ] ||
+		usage_error '--skills-dir is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH [--question]'
+}
+
+check_plan_args() {
+	if [ "${want_question}" -eq 1 ]; then
+		case ${plans} in
+			'') usage_error '--question needs --plans N; expected --question --plans N, N how many plans this run of step 6 shows, one after another' ;;
+			*[!0-9]* | 0*) usage_error "--plans value '${plans}' is not a positive integer; expected --plans N such as 1 or 3" ;;
+			*) ;;
+		esac
+	elif [ -n "${plans}" ]; then
+		usage_error '--plans is used only with --question; expected --question --plans N'
+	fi
+}
+
+# Prints the plan file slurped into one array, or exits 2 when it is
+# unreadable or not JSON.
+read_input() {
+	[ -f "${plan_file}" ] && [ -r "${plan_file}" ] ||
+		usage_error "plan file not readable: ${plan_file}; expected a readable JSON file"
+	jq -s '.' "${plan_file}" </dev/null 2>/dev/null && return 0
+	warn 'input is not valid JSON; expected one JSON object; try checking its quotes, commas and brackets, then rerun'
+	exit 2
+}
+
+# Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
+# exits 4 when the script is missing and 6 when it fails.
+read_listing() {
+	list_script="${skills_dir}/${PROCEDURE}/scripts/list-plugins.sh"
+	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
+		die 4 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
+	if listing=$(sh "${list_script}" --max-lines 0 --skills-dir "${skills_dir}" </dev/null); then
+		list_status=0
+	else
+		list_status=$?
+	fi
+	case ${list_status} in
+		0 | 1 | 3) ;;
+		*) die 6 "list-plugins.sh failed (exit ${list_status}); expected exit 0, 1 or 3; fix what its stderr above names, or reinstall ${PROCEDURE}" ;;
+	esac
+}
+
+# Runs jq program $1, after the common definitions, over the slurped input; a
+# jq failure exits 3.
+run_jq() {
+	printf '%s' "${slurped}" | jq -rc --arg direct "${DIRECT_AGENT}" --arg testing "${TESTING_PLUGIN}" \
+		--arg listing "${listing}" --argjson plans "${plans:-1}" "${COMMON_JQ}$1" || {
+		warn 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
+		exit 3
+	}
+}
+
+parse_args "$@"
+command -v jq >/dev/null 2>&1 || {
+	warn 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq)'
+	exit 1
+}
+
+# One slurped value so an empty file and several values are caught as one problem.
+slurped=$(read_input)
+listing=''
+if [ "${no_plugin_fits}" -eq 1 ]; then
+	check_program=${NO_FIT_CHECK_JQ}
+	render_program=${NO_FIT_RENDER_JQ}
+	question_program=${NO_FIT_QUESTION_JQ}
+else
+	read_listing
+	check_program=${CHECK_JQ}
+	render_program=${RENDER_JQ}
+	question_program=${QUESTION_JQ}
+fi
+problems=$(run_jq "${check_program}")
+if [ -n "${problems}" ]; then
+	printf '%s\n' "${problems}" | while IFS= read -r problem; do warn "${problem}"; done
+	exit 2
+fi
+if [ "${want_question}" -eq 1 ]; then
+	run_jq "${question_program}"
+else
+	run_jq "${render_program}"
+fi
