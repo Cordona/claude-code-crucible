@@ -1,0 +1,8 @@
+- DET-01: no new machinery in this effort; the reply's first-line match and the description length stay model checks (owner, D1) (owner)
+- DET-04: no new machinery in this effort; no state file for the resend count and approvals (owner, D1) (owner)
+- DET-05: no new machinery in this effort; no plan file or validating script before dispatch (owner, D1) (owner)
+- DET-06: no new machinery in this effort; no state file or resume section (owner, D1) (owner)
+- DET-08: no new machinery in this effort; no PreToolUse hook on code-developer dispatches (owner, D1) (owner)
+- SUB-07: no new machinery in this effort; no run file for the developer's report (owner, D1) (owner)
+- SUB-08: no new machinery in this effort; no incremental run file or resume from it (owner, D1) (owner)
+- SUB-01: direct implementation by the main thread on the user's explicit go is the approved design (owner, D2) (owner)
