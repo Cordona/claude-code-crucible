@@ -1,17 +1,22 @@
 #!/usr/bin/env sh
-# Renders one dispatch plan, or its approval question, from a JSON file, so the
-# main thread never hand-formats either; --no-plugin-fits does the same for a
-# part no installed tech plugin fits. This script owns the layout, the question
+# Renders one dispatch plan with its context, or its approval question, from
+# JSON files, so the main thread never hand-formats either; --no-plugin-fits
+# does the same for a part no installed tech plugin fits. This script owns the layout, the question
 # wording and the input rules it checks (see --help), including the check of a
 # plan against the installed plugins; references/dispatch-plan-rules.md keeps
 # only the rules it can't check. Pipe its stdout into procedure-approval-gate's
 # open-gate.sh.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='procedure-agent-initialization'
 readonly DIRECT_AGENT='main thread'
 readonly TESTING_PLUGIN='standard-testing'
+# The context file's cap, the same as inject-plugins.sh's (change both together):
+# references and a few notes fit far below it; a bigger file means text was
+# copied in rather than referenced.
+readonly CONTEXT_MAX_BYTES=65536
 
 # Definitions every program below starts with. The programs are single-quoted
 # on purpose: their $ signs are jq's.
@@ -32,6 +37,61 @@ def task_lines:
 	(.tasks | length) as $count
 	| if $count == 1 then "**Task:** \(.tasks[0] | clean)"
 	  else "**Tasks:**\n\n" + ([.tasks | to_entries[] | "\(.key + 1). \(.value | clean)"] | join("\n")) end;
+# The context file, slurped into $context, as groups the human scans: each
+# path in the first group it fits (saved beside the context file, a task file,
+# any other file), then the links, then every note in full. A path or link is
+# shown, never run, so a backtick in it becomes a quote to keep its code span.
+# The cap keeps every code span on one line beside its bullet.
+def span_cap: 80;
+def cut_head: 30;
+def middle_cut($tail): .[:(span_cap - 1 - $tail)] + "…" + .[(length - $tail):];
+def capped: if length > span_cap then middle_cut(span_cap - 1 - cut_head) else . end;
+def code_span: "`" + (gsub("`"; [39] | implode) | capped) + "`";
+def counted($count; $noun): if $count == 0 then empty elif $count == 1 then "1 \($noun)" else "\($count) \($noun)s" end;
+def base_name: sub("^.*/"; "");
+def dir_segments: split("/") | .[1:-1];
+def home_form: ($home | rtrimstr("/")) as $prefix
+	| if $prefix != "" and (. == $prefix or startswith($prefix + "/")) then "~" + .[($prefix | length):] else . end;
+# Capped, but with the basename kept whole while one character of the head fits.
+def short_path: home_form | (base_name | length) as $base
+	| if length <= span_cap or $base > span_cap - 2 then capped
+	  else middle_cut([span_cap - 1 - cut_head, $base] | max) end;
+def task_file: capture("/tasks/(?<list>[^/]+)/(?<number>[0-9]+)\\.json$");
+def shared_start($next): . as $prefix
+	| first(range(0; length + 1) | select(. == ($prefix | length) or $prefix[.] != $next[.])) as $count
+	| $prefix[:$count];
+def item($shown): "- \(.why | clean)\\\n  \($shown | clean | code_span)";
+def group($heading; $items): if ($items | length) == 0 then empty else "\($heading)\n" + ($items | join("\n")) end;
+def task_groups($entries):
+	[$entries[] | . + (.path | task_file)] as $tasks
+	| reduce $tasks[].list as $list ([]; if any(.[]; . == $list) then . else . + [$list] end)
+	| .[] as $list
+	| group("**Tasks** · \($list | clean | code_span)"; [$tasks[] | select(.list == $list) | item("\(.number).json")]);
+def file_group($entries):
+	if ($entries | length) == 0 then empty
+	else ($entries | map(.path | dir_segments) | reduce .[1:][] as $next (.[0]; shared_start($next))) as $root
+		| ("/" + ($root | map(. + "/") | join(""))) as $root_dir
+		| (if ($root | length) == 0 then "/" else ($root[-2:] | join("/")) + "/" end) as $label
+		| group("**Files** · \($label | clean | code_span)"; [$entries[] | .path[($root_dir | length):] as $relative
+			| item(if ($root | length) == 0 or ($relative | length) > span_cap then .path | short_path else $relative end)])
+	end;
+def notes_group($notes):
+	group("**Notes** · written by Claude from your words, so check these"; [$notes | to_entries[] | "\(.key + 1). \(.value | clean)"]);
+def context_section:
+	$context[0] as $file
+	| ($file.paths // []) as $paths
+	| ($file.links // []) as $links
+	| ($file.notes // []) as $notes
+	| ($context_file | dir_segments) as $saved_dir
+	| [$paths[] | select(.path | dir_segments != $saved_dir)] as $others
+	| [([("**Context**", ($context_file | base_name | clean | code_span), "sha256 `\($context_digest[:12])`",
+			counted($paths | length; "file"), counted($links | length; "link"), counted($notes | length; "note"))] | join(" · ")),
+		group("**Saved by Claude**"; [$paths[] | select(.path | dir_segments == $saved_dir) | item(.path | base_name)]),
+		task_groups([$others[] | select([.path | task_file] | length > 0)]),
+		file_group([$others[] | select([.path | task_file] | length == 0)]),
+		group("**Links**"; [$links[] | item(.url)]),
+		notes_group($notes)]
+	| join("\n\n");
 '
 
 # Prints one line per problem with the slurped plan; nothing when it is valid.
@@ -130,6 +190,7 @@ def section($title; $list):
 	+ task_lines
 	+ "\n\n" + section("Loaded"; if (.loaded | length) == 0 then [{plugin: "none", reason: .loaded_reason}] else .loaded end)
 	+ "\n\n" + section("Not loaded"; .not_loaded)
+	+ "\n\n" + context_section
 '
 
 # Prints the AskUserQuestion fields for the plan, or nothing for replan
@@ -179,6 +240,7 @@ readonly NO_FIT_RENDER_JQ='
 	+ "**Files:**\n\n" + (.files | map("- `\(clean)`") | join("\n")) + "\n\n"
 	+ task_lines
 	+ "\n\nNo installed tech plugin fits this stack: the main thread would write the code itself."
+	+ "\n\n" + context_section
 '
 
 # shellcheck disable=SC2016
@@ -192,13 +254,15 @@ readonly NO_FIT_QUESTION_JQ='
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh
+Usage: sh ${PROG} --plan-file PATH --context-file CTX [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh
        sh ${PROG} --plan-file PATH [--skills-dir DIR] --question --plans N
-       sh ${PROG} --no-plugin-fits --plan-file PATH [--question]
+       sh ${PROG} --no-plugin-fits --plan-file PATH --context-file CTX
+       sh ${PROG} --no-plugin-fits --plan-file PATH --question
 
 Reads one plan as a JSON object from PATH, and prints the plan Markdown headed
-by "## 🎯 Agent dispatch plan". PATH is required in every mode; stdin is not read.
-It prints no gate marker; open-gate.sh adds it.
+by "## 🎯 Agent dispatch plan", ending in its Context section. PATH is required
+in every mode; stdin is not read. CTX is required when printing a plan (either
+kind) and refused with --question. It prints no gate marker; open-gate.sh adds it.
 
 Input shape:
   {"agent": str, "mode": "BUILD"|"TEST", "technology": str,
@@ -242,8 +306,50 @@ Loaded [] prints "- none" with loaded_reason as its reason; not_loaded []
 prints "- none"; a plugin named "none" prints as a bare none with its reason.
 A control character in a value prints as a space.
 
+The context file CTX, checked as inject-plugins.sh checks it, apart from the
+digest the hook compares (the path checks are scripts/lib/context-file.sh and
+the shape check scripts/lib/context-shape.jq, both beside this script). Before
+it is opened, CTX must be absolute and hold no control character, no double
+quote and no .. segment, and must not name a sensitive file in any letter
+case (a basename .env*, *.pem, *.key or id_*, or a .git component). It must
+be a readable regular file, not a symlink, of at most ${CONTEXT_MAX_BYTES} bytes,
+holding exactly one JSON object
+  {"paths": null | [{"path": str, "why": str}, ...],
+   "links": null | [{"url": str, "why": str}, ...],
+   "notes": [str, ...]}
+with no other key in it or its entries; path absolute (starts with /), url
+http:// or https:// with a host of letters, digits, dots and hyphens and an
+optional :port, then optionally a path, query or fragment of letters, digits
+and . _ ~ / ? # = % : + , @ - only (no space, quote, ; $ \` ( ) & | < or >),
+why one non-empty line, notes may be []. No value, and not CTX, may hold, in
+any letter case, "<crucible-context", "</crucible-context", "<untrusted-data",
+"</untrusted-data" or the brief's closing line
+"A marked gap beats a papered-over one:". Each problem prints as
+"context file: <what>; expected <x>" (the shape problems at most 20, then a
+count), exit 2; every line about a problem of CTX itself starts
+"context file:", and no other line does. The plan ends with its Context
+section, these groups in this order, each in file order and left out when
+it has no entry:
+  **Context** · \`<CTX basename>\` · sha256 \`<first 12 hex>\` · <P> files · <L> links · <N> notes
+                     (a zero count is left out; 1 prints as "1 file")
+  **Saved by Claude**  each path in CTX's own folder, as its basename
+  **Tasks** · \`<list>\`  each other path ending /tasks/<list>/<n>.json, as
+                     <n>.json; one group per list, in first-seen order
+  **Files** · \`<root>/\`  every other path, relative to the folder they all
+                     share, labelled by its last two segments; under a
+                     shared / alone, or past 80 characters, the full path
+                     with \$HOME as ~, its basename kept whole when it is
+                     at most 78 characters
+  **Links**            each url
+  **Notes** · written by Claude from your words, so check these
+                     each note in full, numbered 1., 2., ...
+A path, task or link entry prints as "- <why>\\" then "  \`<shown>\`". Every
+code span holds at most 80 characters: a longer text is cut in the middle to
+its first 30, …, and its last 49. A backtick in a span prints as '. A control
+character prints as a space.
+
 --question --plans N prints the plan's AskUserQuestion fields instead, as one
-JSON object to copy as is:
+JSON object to copy as is (no context is read):
   {"header": str, "question": str, "options": [{"label": str, "description": str}, ...]}
 N is how many plans this run of step 6 shows, one after another (1 or more).
   - header "Dispatch", or "Dispatch ×<count>" for a group of <count> tasks
@@ -260,23 +366,36 @@ with no other field; each array holds one or more strings. It reads no
 plugin list, and takes neither --plans nor --skills-dir. It prints a plan
 headed by "## 🧩 No plugin fits": the stack, the files, the task or tasks, and
 the line "No installed tech plugin fits this stack: the main thread would
-write the code itself." With --question it prints the question JSON instead:
+write the code itself.", then the Context section. With --question it prints
+the question JSON instead:
 header "No plugin", options "Stop (Recommended)", then "Implement directly".
+
+Every install or host fault, a missing or failing tool or shared file (the
+exits 1, 3, 4, 5 and 6 below), prints one line starting
+"${PROG}: install:", after any stderr of the failing tool;
+no other line starts with it. A problem of the plan file or the arguments
+starts with neither "install:" nor "context file:".
 
 Exit codes:
   0  the plan or question printed (nothing for --question with replan "invalid")
-  1  jq missing
-  2  usage error (--plan-file missing included), an unreadable plan file, or
-     bad input (one stderr line per problem, nothing on stdout)
-  3  jq failed while checking or rendering valid JSON (its stderr is printed)
+  1  jq missing, or, when printing a plan, both sha256sum and shasum missing
+  2  usage error (--plan-file or --context-file missing included), an
+     unreadable plan or context file, or bad input (one stderr line per
+     problem, nothing on stdout)
+  3  jq failed while checking or rendering valid JSON, or wc or the sha256
+     tool failed (its stderr is printed)
   4  list-plugins.sh missing from DIR
+  5  scripts/lib/context-file.sh or context-shape.jq missing beside this
+     script, when printing a plan
   6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
      (skills folder missing or unreadable); its stderr and exit are printed
-The codes match render-plugin-line.sh's for list-plugins.sh; 5 is unused here.
+The codes match render-plugin-line.sh's for list-plugins.sh.
 
-Dependencies: POSIX sh, jq 1.6+; list-plugins.sh for a plan or its question.
-Runtime: about 85 ms for a plan or its question with 8 plugins installed, 25 ms
-for --no-plugin-fits; measured on macOS (average of 5 runs).
+Dependencies: POSIX sh, jq 1.6+ (\$ARGS, --slurpfile), wc; for a plan also
+sha256sum or shasum (macOS: shasum -a 256) and scripts/lib/context-file.sh and
+context-shape.jq; list-plugins.sh for a plan or its question.
+Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
+30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
 EOF
 }
 
@@ -284,8 +403,10 @@ warn() {
 	printf '%s: %s\n' "${PROG}" "$1" >&2
 }
 
-die() {
-	warn "$2"
+# Prints an install or host fault (a missing or failing tool or shared file,
+# never a problem of the input) with the "install:" prefix and exits $1.
+install_fault() {
+	warn "install: $2"
 	exit "$1"
 }
 
@@ -295,10 +416,11 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file, skills_dir, want_question, no_plugin_fits and plans from the
-# arguments, and refuses a combination the modes don't take.
+# Sets plan_file, context_file, skills_dir, want_question, no_plugin_fits and
+# plans from the arguments, and refuses a combination the modes don't take.
 parse_args() {
 	plan_file=''
+	context_file=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	skills_dir_given=0
 	want_question=0
@@ -318,15 +440,16 @@ parse_args() {
 				no_plugin_fits=1
 				shift
 				;;
-			--plan-file | --plans | --skills-dir)
+			--plan-file | --context-file | --plans | --skills-dir)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits or --help" ;;
+			*) usage_error "unknown argument: $1; expected --plan-file PATH, --context-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits or --help" ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
+	check_context_arg
 	if [ "${no_plugin_fits}" -eq 1 ]; then
 		check_no_fit_args
 	else
@@ -337,6 +460,7 @@ parse_args() {
 set_option() {
 	case $1 in
 		--plan-file) plan_file=$2 ;;
+		--context-file) context_file=$2 ;;
 		--plans) plans=$2 ;;
 		*)
 			skills_dir=$2
@@ -345,10 +469,21 @@ set_option() {
 	esac
 }
 
+# A plan shows its context; a question does not.
+check_context_arg() {
+	if [ "${want_question}" -eq 1 ]; then
+		[ -z "${context_file}" ] ||
+			usage_error '--context-file is not used with --question; expected it only when printing the plan'
+	else
+		[ -n "${context_file}" ] ||
+			usage_error '--context-file PATH missing; expected --context-file PATH naming the effort'\''s context file, required when printing a plan'
+	fi
+}
+
 check_no_fit_args() {
-	[ -z "${plans}" ] || usage_error '--plans is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH [--question]'
+	[ -z "${plans}" ] || usage_error '--plans is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH --context-file CTX, or --no-plugin-fits --plan-file PATH --question'
 	[ "${skills_dir_given}" -eq 0 ] ||
-		usage_error '--skills-dir is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH [--question]'
+		usage_error '--skills-dir is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH --context-file CTX, or --no-plugin-fits --plan-file PATH --question'
 }
 
 check_plan_args() {
@@ -373,12 +508,72 @@ read_input() {
 	exit 2
 }
 
+# Checks the context file as inject-plugins.sh does, apart from the digest,
+# and sets context_digest to its sha256; exits 2 with one "context file:"
+# stderr line per problem, or with an "install:" line 1 when no sha256 tool is
+# on PATH, 3 when jq, wc or the tool fails, 5 when a shared check is missing.
+read_context() {
+	load_context_checks
+	path_problem=$(context_path_problem "${context_file}")
+	[ -z "${path_problem}" ] || context_error "${path_problem}: ${context_file}; expected ${context_path_expected}"
+	[ ! -L "${context_file}" ] ||
+		context_error "file is a symlink: ${context_file}; expected the regular file the main thread wrote"
+	[ -f "${context_file}" ] && [ -r "${context_file}" ] ||
+		context_error "file is missing, unreadable or not a regular file: ${context_file}; expected a readable regular JSON file"
+	context_size=$(wc -c <"${context_file}") || install_fault 3 "wc could not count the bytes of ${context_file}; expected a byte count; check wc, then rerun"
+	context_size=${context_size##* }
+	[ "${context_size}" -le "${CONTEXT_MAX_BYTES}" ] ||
+		context_error "file is ${context_size} bytes: ${context_file}; expected at most ${CONTEXT_MAX_BYTES} bytes, references and short notes rather than copied text"
+	jq empty "${context_file}" </dev/null >/dev/null 2>&1 ||
+		context_error "file is not valid JSON: ${context_file}; expected one JSON object; try checking its quotes, commas and brackets, then rerun"
+	shape_report=$(jq -rs --arg context_path "${context_file}" -f "${shape_program}" "${context_file}" </dev/null) || {
+		install_fault 3 'jq failed on the shape check; expected jq 1.6+; try jq --version, then rerun'
+	}
+	if [ -n "${shape_report}" ]; then
+		printf '%s\n' "${shape_report}" | while IFS= read -r problem; do warn "context file: ${problem}"; done
+		exit 2
+	fi
+	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
+	compute_context_digest "${context_file}" ||
+		install_fault 3 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
+}
+
+# Sources the shared path checks, finds the shape check and the sha256 tool;
+# exits 5 when a shared check is missing, 1 when no sha256 tool is on PATH.
+load_context_checks() {
+	context_lib=$(script_dir)/lib/context-file.sh
+	shape_program=$(script_dir)/lib/context-shape.jq
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		install_fault 5 "shared path check missing; expected ${context_lib}; reinstall the ${PROCEDURE} skill"
+	[ -f "${shape_program}" ] && [ -r "${shape_program}" ] ||
+		install_fault 5 "shape check missing; expected ${shape_program}; reinstall the ${PROCEDURE} skill"
+	# shellcheck source=lib/context-file.sh
+	. "${context_lib}"
+	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
+	find_context_digest_tool ||
+		install_fault 1 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+}
+
+# Prints "context file: $1" on stderr and exits 2.
+context_error() {
+	warn "context file: $1"
+	exit 2
+}
+
+# Prints the folder this script was run from (".", when run by a bare name).
+script_dir() {
+	case $0 in
+		*/*) printf '%s' "${0%/*}" ;;
+		*) printf '.' ;;
+	esac
+}
+
 # Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
 # exits 4 when the script is missing and 6 when it fails.
 read_listing() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
-		die 4 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
+		install_fault 4 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
 	if listing=$(sh "${list_script}" --max-lines 0 --skills-dir "${skills_dir}" </dev/null); then
 		list_status=0
 	else
@@ -386,28 +581,37 @@ read_listing() {
 	fi
 	case ${list_status} in
 		0 | 1 | 3) ;;
-		*) die 6 "list-plugins.sh failed (exit ${list_status}); expected exit 0, 1 or 3; fix what its stderr above names, or reinstall ${PROCEDURE}" ;;
+		*) install_fault 6 "list-plugins.sh failed (exit ${list_status}); expected exit 0, 1 or 3; fix what its stderr above names, or reinstall ${PROCEDURE}" ;;
 	esac
 }
 
-# Runs jq program $1, after the common definitions, over the slurped input; a
-# jq failure exits 3.
+# Runs jq program $1, after the common definitions, over the slurped input,
+# with the context file read by jq itself (none for a question); a jq failure
+# exits 3.
 run_jq() {
+	if [ -n "${context_file}" ]; then
+		set -- "$1" --slurpfile context "${context_file}"
+	else
+		set -- "$1" --argjson context '[]'
+	fi
+	program=$1
+	shift
 	printf '%s' "${slurped}" | jq -rc --arg direct "${DIRECT_AGENT}" --arg testing "${TESTING_PLUGIN}" \
-		--arg listing "${listing}" --argjson plans "${plans:-1}" "${COMMON_JQ}$1" || {
-		warn 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
-		exit 3
+		--arg listing "${listing}" --argjson plans "${plans:-1}" "$@" \
+		--arg context_file "${context_file}" --arg context_digest "${context_digest}" --arg home "${HOME:-}" \
+		"${COMMON_JQ}${program}" || {
+		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }
 
 parse_args "$@"
-command -v jq >/dev/null 2>&1 || {
-	warn 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq)'
-	exit 1
-}
+command -v jq >/dev/null 2>&1 ||
+	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq)'
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
+context_digest=''
+[ -z "${context_file}" ] || read_context
 listing=''
 if [ "${no_plugin_fits}" -eq 1 ]; then
 	check_program=${NO_FIT_CHECK_JQ}

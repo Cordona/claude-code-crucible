@@ -25,6 +25,8 @@ The layout of the Implementation Report a developer sends back, and of its findi
 ```
 ## Implementation Report
 
+**Context read:** <on a dispatch only: the line procedure-dispatch-context sets>
+
 **Technology:** <language or framework, with its version>
 
 **Files created/modified**
@@ -81,6 +83,8 @@ The finding line, exact: `<reviewer ID> (<severity>) — fixed|not fixed (propos
 Illustrative: a build dispatch on a Kotlin service. Its `>` marks only set it apart here and are not part of the report.
 
 > ## Implementation Report
+>
+> **Context read:** request.md read · docs/rate-limits.md read; conflicts: none
 >
 > **Technology:** Kotlin 2.0, Ktor 3
 >

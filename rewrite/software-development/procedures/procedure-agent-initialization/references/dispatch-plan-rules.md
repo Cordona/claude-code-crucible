@@ -9,11 +9,12 @@ The input shape and every rule the script checks (each field, its values, the pl
 - **`tasks`:** which dispatches form a group is SKILL.md's step 5.
 - **Direct implementation** (SKILL.md's step 10): `agent` is `main thread`.
 - **`replan`** (a step-9 re-plan only, as Step-9 re-plans below sets): `invalid` or `stop-recommended`; leave it out otherwise.
+- **`--context-file`:** the part's context file, as the calling flow wrote it; the script renders it as the plan's Context section, so never copy the context into the plan's JSON.
 - **`--plans <n>`** (with `--question`): how many plans this run of step 6 shows, one after another; `1` for a step-9 re-plan and for step 10.
 
 ## Reasons
 
-- **Each reason cites its plugin's description,** in a few words: what in it matched the task (`loaded`), or what didn't match, or which "Not for …" excludes it (`not_loaded`).
+- **Each reason cites its plugin's description,** in a few words: what in it matched the task or what its context names (`loaded`), or what didn't match, or which "Not for …" excludes it (`not_loaded`).
 - **A boundary-map drop** (SKILL.md's step 4): `<concern>: owned by <owner>`.
 - **A step-9 drop:** `invalid`, `uninstalled after approval` or `faulty files`, as Step-9 re-plans below sets.
 - **No plugins at all** (a config value, a doc): `loaded_reason` says why, such as `a config value change, no code`.

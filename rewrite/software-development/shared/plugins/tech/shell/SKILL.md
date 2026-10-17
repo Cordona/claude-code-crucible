@@ -22,7 +22,7 @@ Settle it before writing a line. The first match wins:
 
 1. The file's own shebang.
 2. For a new file, the shebang of its sibling scripts. Siblings on `#!/usr/bin/env sh` mean POSIX `sh`.
-3. What the `CONVENTIONS` files say about the shell.
+3. What the project's own docs on its shell code say, where the task's context lists them.
 4. Otherwise Bash, with `#!/usr/bin/env bash`. Whichever shell wins, the script runs on every platform Scope names.
 
 ## Quoting, expansion and comparisons

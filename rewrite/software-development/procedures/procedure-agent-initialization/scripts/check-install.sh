@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Prints the install checklist for procedure-agent-initialization: its four
-# scripts, procedure-approval-gate's open-gate.sh and its two hook scripts, jq,
-# the three hook entries in settings.json (the inject hook and both gate hooks),
-# and the installed plugins. Every check runs, whatever an earlier one found, so one run names
+# scripts and the two context checks they share, procedure-approval-gate's
+# open-gate.sh and its two hook scripts, jq, the three hook entries in
+# settings.json (the inject hook and both gate hooks), and the installed
+# plugins. Every check runs, whatever an earlier one found, so one run names
 # every fix. It reads settings.json only through jq, and only those hook
 # commands, which it counts or hashes and never prints: the file may hold
 # secrets in its env block.
@@ -18,6 +19,8 @@ readonly PROG='check-install.sh'
 readonly PROCEDURE='procedure-agent-initialization'
 readonly GATE_PROCEDURE='procedure-approval-gate'
 readonly HOOK_SCRIPT="${PROCEDURE}/scripts/inject-plugins.sh"
+readonly CONTEXT_SHAPE_LIB='lib/context-shape.jq'
+readonly CONTEXT_FILE_LIB='lib/context-file.sh'
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 # A timed-out inject hook lets the dispatch through with no plugins, and the
@@ -67,6 +70,8 @@ Checks that ${PROCEDURE} is installed and ready, and prints one line per check:
   ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
   ✓ gate-stop-hook.sh
   ✓ gate-question-hook.sh
+  ✓ ${CONTEXT_SHAPE_LIB}       a readable file in DIR/${PROCEDURE}/scripts/
+  ✓ ${CONTEXT_FILE_LIB}        the same
   ✓ jq <version>               jq on PATH, version ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR} or newer
   ✓ inject hook registered (...)
                                FILE is valid JSON with a PreToolUse entry,
@@ -90,10 +95,10 @@ When jq is missing or FILE is missing, unreadable or not JSON, one line covers
 all three hook checks.
 
 Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
-fingerprint of the five procedure scripts, ${GATE_PROCEDURE}'s three
-(open-gate.sh and both gate hook scripts), the three hook entries' commands
-(hashed), the jq version, and each tech-*/standard-* folder's name, SKILL.md
-and references/ files. While the fingerprint is unchanged, a run prints only:
+fingerprint of the five procedure scripts, ${CONTEXT_SHAPE_LIB}, ${CONTEXT_FILE_LIB},
+${GATE_PROCEDURE}'s three (open-gate.sh and both gate hook scripts), the
+three hook entries' commands (hashed), the jq version, and each
+tech-*/standard-* folder's name, SKILL.md and references/ files. While the fingerprint is unchanged, a run prints only:
   ✓ Install unchanged since <YYYY-MM-DD HH:MM>: <n> checks passed
 A failed run or a warning removes the marker. When the result can't be cached,
 the checklist ends with "(result not cached: <reason>)"; that never fails it.
@@ -184,7 +189,8 @@ fingerprint_input() {
 	printf 'scripts\n'
 	cksum "${scripts_dir}/list-plugins.sh" "${scripts_dir}/render-plugin-line.sh" \
 		"${scripts_dir}/inject-plugins.sh" "${scripts_dir}/check-install.sh" \
-		"${scripts_dir}/render-dispatch-plan.sh" "${gate_scripts_dir}/open-gate.sh" \
+		"${scripts_dir}/render-dispatch-plan.sh" "${scripts_dir}/${CONTEXT_SHAPE_LIB}" "${scripts_dir}/${CONTEXT_FILE_LIB}" \
+		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
@@ -300,6 +306,16 @@ check_script() {
 		*"${NL}Usage:"*) pass "$1" ;;
 		*) fail "$1" "--help printed no Usage: line" "${reinstall}" ;;
 	esac
+}
+
+# Checks that the shared context check $1, which the scripts beside it run, is installed.
+check_context_lib() {
+	lib_file="${scripts_dir}/$1"
+	if [ -f "${lib_file}" ] && [ -r "${lib_file}" ]; then
+		pass "$1"
+	else
+		fail "$1" "missing or unreadable in ${scripts_dir}" "reinstall ${PROCEDURE} under ${skills_dir}"
+	fi
 }
 
 # Checks that jq is on PATH and at least JQ_MIN_MAJOR.JQ_MIN_MINOR.
@@ -548,6 +564,8 @@ check_script "${PROCEDURE}" render-dispatch-plan.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
+check_context_lib "${CONTEXT_SHAPE_LIB}"
+check_context_lib "${CONTEXT_FILE_LIB}"
 check_jq
 check_hooks
 check_plugins

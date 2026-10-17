@@ -28,6 +28,7 @@ The report's fields, in this order:
 
 | Field | Holds |
 |---|---|
+| **Context read** | On a dispatch, required: the line `procedure-dispatch-context` sets, as it sets it. Left out when implementing directly. |
 | **Technology** | Language or framework, with its version (`Kotlin 2.0, Ktor 3`); with `TECH: none`, the file type changed (`YAML`), or the stack when implementing directly. |
 | **Files created/modified** | One line per file: `path` — purpose. The orchestrator picks the diff to review from this list. |
 | **What was implemented** | 2–3 sentences: what and why. |
@@ -68,14 +69,14 @@ Guidance for a report a person scans:
 
 - **Write it in the reply,** never as a file on disk (`.md`, `.json`): documentation is the tech writer's job.
 - **Keep it short, never by dropping a field:** fewer words per field, one line per file, a few sentences of summary, no large code blocks restated; the orchestrator skims it to brief reviewers.
-- **Every file a field names is repo-relative** (`src/order/OrderApi.kt`), then by file name and line (`OrderApi.kt:88`) once the full path has appeared; never an absolute path: a home or temp prefix is noise nobody can scan.
+- **Every file a field names is repo-relative** (`src/order/OrderApi.kt`), then by file name and line (`OrderApi.kt:88`) once the full path has appeared; a file outside the repo (a scratchpad or task file) by its file name alone (`request.md`); never an absolute path: a home or temp prefix is noise nobody can scan.
 - **A location takes one of three forms,** wherever the report gives one: repo-relative `path:line` for repository code (`src/order/OrderApi.kt:88`); `brief: <FIELD>` for text in a brief; for plugin text, the plugin's name and file, and the line when clear, never a repository `path:line`.
 - **Emit live Markdown, never inside a code fence:** a fence turns the report into a grey copy-box, and a table inside it renders as raw pipes.
 
 ## Self-check before sending the report
 
 1. The template was read, or its failed read is under Open points.
-2. Every field in order; extra fields come only after Handoff to reviewer.
+2. Every field in order, Context read included on a dispatch; extra fields come only after Handoff to reviewer.
 3. Every gate in Verification ran as reported; none that didn't run is shown as passed.
 4. Every open blocker is listed: a broken test compile, a gate red after 3 attempts, a chosen finding not fixed, production code a TEST dispatch found wrong or untestable, existing tests not green before a refactor.
 5. Fix round: the finding lines first, by the reviewer's ID, no new IDs, every chosen finding fixed or an open blocker; then every field, `unchanged` where nothing is new.

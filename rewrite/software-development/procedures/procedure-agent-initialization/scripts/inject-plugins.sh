@@ -1,16 +1,18 @@
 #!/usr/bin/env sh
 # PreToolUse hook on Agent. For a dispatch of a listed agent it validates the
-# brief's PLUGIN line and appends each named plugin file to the prompt, built as
-# Claude Code builds a preloaded skill; any problem denies the dispatch. Every
-# other Agent call passes untouched. The decision is the only output, so a
-# listed agent is denied on any unexpected exit (fail closed).
-# Each checked file is read once, into a private temp copy that the plugin
-# test, the scan and the injection all read, so the checked bytes are the
-# injected bytes. One window stays open, since POSIX sh can't test an open
-# file: the path checks (regular, readable, resolving inside its plugin folder)
-# run on the path just before the copy, so a path swapped in between, such as
-# for a symlink out of the folder or a FIFO, is copied unchecked or blocks until
-# the hook times out. Swapping it takes write access to the plugin folder.
+# brief's CONTEXT and PLUGIN lines, appends the context file, then each named
+# plugin file built as Claude Code builds a preloaded skill, to the prompt; any
+# problem denies the dispatch. Every other Agent call passes untouched. The
+# decision is the only output, so a listed agent is denied on any unexpected
+# exit (fail closed).
+# Each checked file is read once, into a private temp copy that the checks and
+# the injection all read, so the checked bytes are the injected bytes. One
+# window stays open, since POSIX sh can't test an open file: the path checks
+# (not a symlink or resolving inside its plugin folder, regular, readable) run
+# on the path just before the copy, so a path swapped in between, such as for a
+# symlink or a FIFO, is copied unchecked or blocks until the hook times out.
+# Swapping it takes write access to the plugin folder or the context file's folder.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='inject-plugins.sh'
@@ -22,6 +24,10 @@ readonly EMPTY_ENTRY='<empty>'
 # Bounds the symlink chain followed for one file, so a link loop ends in a deny.
 readonly MAX_LINK_HOPS=40
 readonly PATH_HINT='The expected form is "PLUGIN: none" or "PLUGIN: <path>, <path>" with absolute paths, as render-plugin-line.sh prints it from the approved plan (procedure-agent-initialization steps 7 and 9).'
+# A context file holds references and a few notes, far below this; a bigger
+# file means text was copied in rather than referenced.
+readonly CONTEXT_MAX_BYTES=65536
+readonly CONTEXT_HINT="The expected form is \"CONTEXT: <absolute path> sha256=<64 lowercase hex>\", the line render-plugin-line.sh --context-file prints for the approved context file (procedure-agent-initialization step 7), naming one JSON object of at most ${CONTEXT_MAX_BYTES} bytes with exactly the keys paths (null or [{\"path\": absolute path, \"why\": one line}]), links (null or [{\"url\": http(s) URL, \"why\": one line}]) and notes ([string, ...], [] for none), no value holding a <crucible-context> or <untrusted-data> tag or the brief's closing line."
 # Fixed texts, built without jq: the deny when jq is missing, the deny when stdin
 # can't be read, and the deny when the hook stops before deciding or jq fails to
 # build a deny.
@@ -30,6 +36,9 @@ readonly STDIN_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permis
 readonly INTERNAL_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-agent-initialization: the hook stopped before deciding, so this dispatch is denied; the cause is on the hook'\''s stderr."}}'
 TAB=$(printf '\t')
 readonly TAB
+NL='
+'
+readonly NL
 # The C locale keeps awk byte-wise and identical on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -95,7 +104,8 @@ END { exit !(text ~ pattern) }
 
 # The opening words of the line that ends every brief (flow-code-development's
 # Brief fields); code-developer keys on them, so a plugin file holding them could
-# fake the end of the brief. Change it together with that flow and the agent.
+# fake the end of the brief. Change it together with that flow, the agent and
+# lib/context-shape.jq's forbidden texts.
 readonly BRIEF_CLOSING_LINE='A marked gap beats a papered-over one:'
 
 # Prints one "PLUGIN <problem>: <file>" item per expansion token found in a file,
@@ -157,6 +167,8 @@ def join_with_empty_line:
 	(.[:-1] | map(if endswith("\n") then . else . + "\n" end)) + .[-1:] | join("\n");
 def block:
 	"<command-message>\(.name)</command-message>\n<command-name>\(.name)</command-name>\n<skill-format>true</skill-format>\nBase directory for this skill: \($skills)/\(.name)\n\n\(.bodies | join_with_empty_line)";
+def context_block:
+	"<crucible-context path=\"\($context_path)\">\n\($context | if endswith("\n") then . else . + "\n" end)</crucible-context>";
 . as $hook
 |'
 # shellcheck disable=SC2016
@@ -166,7 +178,7 @@ readonly BUILD_JQ_TAIL='
 	then .[length - 1].bodies += [$item | body]
 	else . + [{name: $item[0], bodies: [$item | body]}]
 	end)
-| ("\n\n" + (map(block) | join_with_empty_line)) as $blocks
+| ("\n\n" + ([context_block] + map(block) | join_with_empty_line)) as $blocks
 | {hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "allow",
 	updatedInput: ($hook.tool_input + {prompt: ($hook.tool_input.prompt + $blocks)})}}
 '
@@ -206,8 +218,10 @@ main() {
 		deny "${REASON_PREFIX} jq could not read tool_input.prompt; the hook needs jq 1.6+ and a string prompt; the cause is on the hook's stderr."
 	plugin_status=${plugin_value%%
 *}
+	plugin_paths=''
+	copy_args=''
 	case ${plugin_status} in
-		none) pass ;;
+		none) ;;
 		absent) deny "${REASON_PREFIX} PLUGIN line missing: no prompt line starts with \"PLUGIN:\". ${PATH_HINT}" ;;
 		empty) deny "${REASON_PREFIX} PLUGIN value is empty. ${PATH_HINT}" ;;
 		control) deny "${REASON_PREFIX} PLUGIN value holds a control character. ${PATH_HINT}" ;;
@@ -216,16 +230,10 @@ main() {
 		*) deny "${REASON_PREFIX} the PLUGIN line parsed to an unknown status (${plugin_status}); the fault is in ${PROG}, not in the brief." ;;
 	esac
 
+	make_snapshot_dir
+	check_context
 	resolve_skills_dir
-	check_paths
-	[ -z "${problems}" ] || deny "${REASON_PREFIX} ${problems}. ${PATH_HINT}"
-	snapshot_files
-	[ -z "${problems}" ] || deny "${REASON_PREFIX} ${problems}. ${PATH_HINT}"
-
-	# shellcheck disable=SC2310 # the function's status is its final awk's; a failure denies
-	scan_report=$(scan_files) ||
-		deny "${REASON_PREFIX} awk could not scan the plugin files; the hook expects readable text files; the cause is on the hook's stderr."
-	[ -z "${scan_report}" ] || deny "${REASON_PREFIX} ${scan_report}. The hook expects plugin files without expansion tokens or the brief's closing line, and each SKILL.md with a closed frontmatter; the fault is in the named plugin's installed files."
+	[ -z "${plugin_paths}" ] || check_plugins
 
 	# shellcheck disable=SC2310 # the function's status is its final jq's; a failure denies
 	decision=$(build_allow) ||
@@ -241,7 +249,33 @@ A Claude Code PreToolUse hook (matcher Agent); it reads one hook input on stdin.
 Acts only when tool_name is Agent and tool_input.subagent_type is one of:
 ${LISTED_AGENTS}. Every other call: no output, exit 0.
 
-For a listed agent, the first prompt line starting with "PLUGIN:" holds "none"
+For a listed agent, the first prompt line starting with "CONTEXT:" holds
+  CONTEXT: <absolute path> sha256=<64 lowercase hex>
+as render-plugin-line.sh --context-file prints it for the approved context
+file (the brief puts it right after the PLUGIN line). Before the file is
+opened, the path must be absolute and hold no control character, no double
+quote (it is written into the block's path attribute) and no .. segment, and
+must not name a sensitive file in any letter case: a basename .env*, *.pem,
+*.key or id_*, or a .git component. It must name a readable regular file
+that is not a symlink (its folders may be), of at most ${CONTEXT_MAX_BYTES} bytes,
+whose sha256 is the line's digest, holding valid JSON: exactly one object
+with exactly these keys:
+  {"paths": null | [{"path": str, "why": str}, ...],
+   "links": null | [{"url": str, "why": str}, ...],
+   "notes": [str, ...]}
+where path is absolute (starts with /), url is http:// or https:// with a
+host of letters, digits, dots and hyphens and an optional :port, then
+optionally a path, query or fragment of letters, digits and
+. _ ~ / ? # = % : + , @ - only (no space, quote, ; \$ \` ( ) & | < or >),
+why is one non-empty line, notes may be [], no entry has another
+key, and no value but a note holds a control character. No value, and not
+the path, may hold, in any letter case, "<crucible-context",
+"</crucible-context", "<untrusted-data", "</untrusted-data" or the brief's
+closing line "${BRIEF_CLOSING_LINE}". The path checks are
+scripts/lib/context-file.sh and the shape check scripts/lib/context-shape.jq,
+both shared with render-dispatch-plan.sh.
+
+The first prompt line starting with "PLUGIN:" holds "none"
 or a comma-separated list of absolute paths. Each path must have no .. segment
 and lie under \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/ (compared as text).
 Its folder there must be a plugin: named tech-* or standard-*, holding a SKILL.md
@@ -258,7 +292,12 @@ the frontmatter tolerate CR; the body keeps its CRs).
 
 Output (stdout, one JSON line):
   allow  hookSpecificOutput.updatedInput = tool_input with the prompt followed
-         by "\n\n" and one block per plugin folder, in PLUGIN order:
+         by "\n\n", the context block, then one block per plugin folder, in
+         PLUGIN order (none for PLUGIN: none). The context block:
+         <crucible-context path="PATH">
+         the context file's JSON as read (a newline added if it has none)
+         </crucible-context>
+         A plugin block:
          <command-message>NAME</command-message>
          <command-name>NAME</command-name>
          <skill-format>true</skill-format>
@@ -270,20 +309,38 @@ Output (stdout, one JSON line):
          last file of the last block), then "\n".
   deny   permissionDecisionReason =
          "${REASON_PREFIX} PLUGIN <problem>: <path>[; PLUGIN ...]. <hint>"
-         (a folder that fails the plugin test: "not a plugin (<why>)")
-  none   PLUGIN: none, or not a listed agent: no output.
-A listed agent is denied when PLUGIN is missing, empty or holds a control
-character, or jq is missing or fails; other agents pass then, unless jq can't
+         (a folder that fails the plugin test: "not a plugin (<why>)"), or
+         "${REASON_PREFIX} CONTEXT <problem>: <path>. <hint>", the problem
+         one of: line has no sha256 digest (<path> is then the whole value);
+         path is not absolute; path holds a control character; path holds a
+         double quote; path has a .. segment; path names a sensitive file;
+         file is a symlink; file is missing, unreadable or not a regular file;
+         file is larger than ${CONTEXT_MAX_BYTES} bytes; file changed since it was
+         approved (sha256 <12 hex> approved, <12 hex> now); file is not valid
+         JSON; file does not have the context shape (<what>; expected <x>[;
+         ...], at most 20 listed)
+         and, without a path: "CONTEXT line missing", "CONTEXT value is
+         empty", "CONTEXT value holds a control character".
+         Every reason about the CONTEXT line or its file starts
+         "${REASON_PREFIX} CONTEXT"; a fault of this script, its install or
+         the host (jq, wc, a sha256 tool, mktemp) never does.
+  none   not a listed agent: no output.
+A listed agent is denied when CONTEXT or PLUGIN is missing, empty or holds a
+control character, when scripts/lib/context-file.sh or context-shape.jq is
+missing beside this script, when neither sha256sum nor shasum is on PATH, or
+jq is missing or fails; other agents pass then, unless jq can't
 read the input and its subagent_type text holds an escape (the agent can't be
 known without decoding it). A closed or unreadable stdin denies every call at
 once, listed agent or not, since the agent can't be known.
 
 Exit codes: 0 every hook decision (read stdout); 2 usage error.
 Each checked file is read once into a private temp folder, removed on exit;
-the scan and the injected text both come from that copy.
-Dependencies: POSIX sh, jq 1.6+ (--rawfile), awk, cat, mktemp, readlink, rm.
-Runtime: about 16 ms for an agent not listed, 138 ms injecting 12 plugin files;
-measured on macOS (average of 5 runs).
+the checks and the injected text all come from that copy.
+Dependencies: POSIX sh, jq 1.6+ (--rawfile, \$ARGS), awk, cat, dd, mktemp,
+readlink, rm, wc, and sha256sum or shasum (macOS: shasum -a 256);
+scripts/lib/context-file.sh and context-shape.jq beside this script.
+Runtime: about 10 ms for an agent not listed, 45 ms injecting the context file
+alone, 80 ms with it and 4 plugin files; measured on macOS (average of 5 runs).
 EOF
 }
 
@@ -341,6 +398,151 @@ read_plugin_line() {
 		end'
 }
 
+# Creates the private temp folder that holds every checked file's copy.
+make_snapshot_dir() {
+	snapshot_dir=$(mktemp -d "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
+		deny "${REASON_PREFIX} mktemp could not create a temp folder; the hook needs a writable \${TMPDIR:-/tmp}; the cause is on the hook's stderr."
+	case ${snapshot_dir} in
+		/*) ;;
+		*) snapshot_dir="${PWD}/${snapshot_dir}" ;;
+	esac
+}
+
+# Sets context_path and context_copy from the brief's CONTEXT line once the
+# file passes every check, or denies.
+check_context() {
+	load_context_lib
+	# shellcheck disable=SC2310 # the function's status is its final jq's; a failure denies
+	context_value=$(read_context_line) ||
+		deny "${REASON_PREFIX} jq could not read tool_input.prompt; the hook needs jq 1.6+ and a string prompt; the cause is on the hook's stderr."
+	context_status=${context_value%%"${NL}"*}
+	context_fields=${context_value#*"${NL}"}
+	case ${context_status} in
+		path)
+			context_path=${context_fields%%"${NL}"*}
+			approved_digest=${context_fields#*"${NL}"}
+			;;
+		nodigest)
+			context_path=${context_fields}
+			deny_context 'line has no sha256 digest'
+			;;
+		absent) deny "${REASON_PREFIX} CONTEXT line missing: no prompt line starts with \"CONTEXT:\". ${CONTEXT_HINT}" ;;
+		empty) deny "${REASON_PREFIX} CONTEXT value is empty. ${CONTEXT_HINT}" ;;
+		control) deny "${REASON_PREFIX} CONTEXT value holds a control character. ${CONTEXT_HINT}" ;;
+		*) deny "${REASON_PREFIX} the line parser returned an unknown status (${context_status}); the fault is in ${PROG}, not in the brief." ;;
+	esac
+	check_context_path
+	copy_context
+	check_context_digest
+	check_context_shape
+}
+
+# Sources the shared path checks and finds the sha256 tool, or denies: either
+# missing is an install or host fault, not the brief's.
+load_context_lib() {
+	context_lib=$(script_dir)/lib/context-file.sh
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		deny "${REASON_PREFIX} the shared path check ${context_lib} is missing or unreadable; the hook needs it beside ${PROG}; the fault is in the ${REASON_PREFIX%:} install, not in the brief."
+	# shellcheck source=lib/context-file.sh
+	. "${context_lib}"
+	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
+	find_context_digest_tool ||
+		deny "${REASON_PREFIX} neither sha256sum nor shasum is on PATH, so the brief's digest can't be checked; the fault is in the host, not in the brief; install coreutils (Linux) or use the system shasum (macOS)."
+}
+
+# Prints the CONTEXT value as lines: a status (absent, empty, control,
+# nodigest or path), then for nodigest the trimmed value, and for path the
+# path and the digest the line ends in.
+read_context_line() {
+	printf '%s' "${hook_input}" | jq -r '
+		(.tool_input.prompt | if type == "string" then split("\n") else [] end
+			| map(select(startswith("CONTEXT:"))) | first) as $line
+		| if $line == null then "absent"
+		else ($line[8:] | sub("^[ \t]+"; "") | sub("[ \t\r]+$"; "")) as $value
+			| ($value | capture("^(?<path>.+) sha256=(?<digest>[0-9a-f]{64})$")? // null) as $parts
+			| if $value == "" then "empty"
+			elif ($value | explode | any(. < 32 or . == 127)) then "control"
+			elif $parts == null then "nodigest", $value
+			else "path", $parts.path, $parts.digest
+			end
+		end'
+}
+
+# Denies when context_path fails the shared path checks (run on the text,
+# before the file is opened) or is not a readable regular file of its own.
+check_context_path() {
+	path_problem=$(context_path_problem "${context_path}")
+	[ -z "${path_problem}" ] || deny_context "${path_problem}"
+	[ ! -L "${context_path}" ] || deny_context 'file is a symlink'
+	[ -f "${context_path}" ] && [ -r "${context_path}" ] ||
+		deny_context 'file is missing, unreadable or not a regular file'
+}
+
+# Copies at most one byte over the cap, so an oversized file is never read whole.
+copy_context() {
+	context_copy="${snapshot_dir}/context"
+	dd if="${context_path}" of="${context_copy}" bs="$((CONTEXT_MAX_BYTES + 1))" count=1 2>/dev/null ||
+		deny_context 'file is missing, unreadable or not a regular file'
+	context_size=$(wc -c <"${context_copy}") ||
+		deny "${REASON_PREFIX} wc could not count the bytes of the hook's temp copy; the fault is in the host, not in the brief; the cause is on the hook's stderr."
+	context_size=${context_size##* }
+	case ${context_size} in
+		'' | *[!0-9]*) deny "${REASON_PREFIX} wc printed no byte count for the hook's temp copy; the fault is in the host's wc, not in the brief." ;;
+		*) ;;
+	esac
+	[ "${context_size}" -le "${CONTEXT_MAX_BYTES}" ] ||
+		deny_context "file is larger than ${CONTEXT_MAX_BYTES} bytes"
+}
+
+# Denies when the copy's sha256 is not the digest the CONTEXT line carries, the
+# one render-plugin-line.sh printed for the approved file.
+check_context_digest() {
+	# shellcheck disable=SC2310 # its status is the tool's; a failure denies
+	compute_context_digest "${context_copy}" ||
+		deny "${REASON_PREFIX} ${context_digest_tool} could not hash the hook's temp copy; the fault is in the host, not in the brief; the cause is on the hook's stderr."
+	# 12 hex, as the approved plan's Context section shows them, so the two can be matched by eye.
+	[ "${context_digest}" = "${approved_digest}" ] ||
+		deny_context "file changed since it was approved (sha256 $(printf '%.12s' "${approved_digest}") approved, $(printf '%.12s' "${context_digest}") now)"
+}
+
+# Denies when the copy is not valid JSON or not the context shape; the shape
+# check also refuses the forbidden texts in the path.
+check_context_shape() {
+	jq empty "${context_copy}" </dev/null >/dev/null 2>&1 || deny_context 'file is not valid JSON'
+	shape_program=$(script_dir)/lib/context-shape.jq
+	[ -f "${shape_program}" ] && [ -r "${shape_program}" ] ||
+		deny "${REASON_PREFIX} the shape check ${shape_program} is missing or unreadable; the hook needs it beside ${PROG}; the fault is in the ${REASON_PREFIX%:} install, not in the brief."
+	shape_report=$(jq -rs --arg context_path "${context_path}" -f "${shape_program}" "${context_copy}" </dev/null) ||
+		deny "${REASON_PREFIX} jq could not run the shape check ${shape_program}; the hook needs jq 1.6+; the fault is in the host or the install, not in the brief; the cause is on the hook's stderr."
+	[ -n "${shape_report}" ] || return 0
+	shape_problems=$(join_lines "${shape_report}")
+	deny_context "file does not have the context shape (${shape_problems})"
+}
+
+# Prints the folder this script was run from (".", when run by a bare name).
+script_dir() {
+	case $0 in
+		*/*) printf '%s' "${0%/*}" ;;
+		*) printf '.' ;;
+	esac
+}
+
+# Prints the lines of $1 joined by "; ".
+join_lines() {
+	joined=''
+	while IFS= read -r line; do
+		joined="${joined}${joined:+; }${line}"
+	done <<EOF
+$1
+EOF
+	printf '%s' "${joined}"
+}
+
+# Denies with "CONTEXT <problem $1>: <context_path>" and the context hint.
+deny_context() {
+	deny "${REASON_PREFIX} CONTEXT $1: ${context_path}. ${CONTEXT_HINT}"
+}
+
 # Sets skills_dir to the installed skills folder, absolute, without a trailing slash.
 resolve_skills_dir() {
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
@@ -351,6 +553,19 @@ resolve_skills_dir() {
 	while [ "${skills_dir}" != '/' ] && [ "${skills_dir%/}" != "${skills_dir}" ]; do
 		skills_dir=${skills_dir%/}
 	done
+}
+
+# Checks, copies and scans the files in plugin_paths, or denies.
+check_plugins() {
+	check_paths
+	[ -z "${problems}" ] || deny "${REASON_PREFIX} ${problems}. ${PATH_HINT}"
+	snapshot_files
+	[ -z "${problems}" ] || deny "${REASON_PREFIX} ${problems}. ${PATH_HINT}"
+
+	# shellcheck disable=SC2310 # the function's status is its final awk's; a failure denies
+	scan_report=$(scan_files) ||
+		deny "${REASON_PREFIX} awk could not scan the plugin files; the hook expects readable text files; the cause is on the hook's stderr."
+	[ -z "${scan_report}" ] || deny "${REASON_PREFIX} ${scan_report}. The hook expects plugin files without expansion tokens or the brief's closing line, and each SKILL.md with a closed frontmatter; the fault is in the named plugin's installed files."
 }
 
 # Validates every path in plugin_paths; sets problems and the per-file jq
@@ -519,16 +734,10 @@ add_problem() {
 	problems="${problems}${problems:+; }PLUGIN $1: $2"
 }
 
-# Copies each file in build_args once into a private temp folder and sets
+# Copies each file in build_args once into the private temp folder and sets
 # copy_args to its name, kind, path and copy lines; re-runs the plugin test on
 # each SKILL.md copy. Adds a problem for a file that can't be copied or fails it.
 snapshot_files() {
-	snapshot_dir=$(mktemp -d "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
-		deny "${REASON_PREFIX} mktemp could not create a temp folder; the hook needs a writable \${TMPDIR:-/tmp}; the cause is on the hook's stderr."
-	case ${snapshot_dir} in
-		/*) ;;
-		*) snapshot_dir="${PWD}/${snapshot_dir}" ;;
-	esac
 	copy_args=''
 	copy_index=0
 	while IFS= read -r name && IFS= read -r kind && IFS= read -r path; do
@@ -570,7 +779,8 @@ EOF
 	INJECT_PLUGINS_SCAN_PATHS=${checked_paths} awk -v closing="${BRIEF_CLOSING_LINE}" "${SCAN_AWK}" "$@"
 }
 
-# Prints the allow decision for the files in copy_args, each copy read byte for byte by jq.
+# Prints the allow decision for the context copy and the files in copy_args,
+# each copy read byte for byte by jq.
 build_allow() {
 	set --
 	items=''
@@ -583,7 +793,8 @@ build_allow() {
 ${copy_args}
 EOF
 	printf '%s' "${hook_input}" |
-		jq -c --arg skills "${skills_dir}" "$@" "${BUILD_JQ_HEAD} [${items}] ${BUILD_JQ_TAIL}"
+		jq -c --arg skills "${skills_dir}" --arg context_path "${context_path}" --rawfile context "${context_copy}" \
+			"$@" "${BUILD_JQ_HEAD} [${items}] ${BUILD_JQ_TAIL}"
 }
 
 # Prints a deny decision with reason $1 and exits 0.

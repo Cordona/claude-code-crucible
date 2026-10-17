@@ -2,6 +2,10 @@
 # Prints the brief's PLUGIN line for the approved plugin names, with the paths
 # taken from list-plugins.sh's plugin lines in load order, so the main thread
 # never types or orders a path; --labels prints the plugins' LABELS line instead.
+# --context-file adds the CONTEXT line, which pins the approved context file by
+# its digest so inject-plugins.sh injects only that file; --context-digest
+# refuses a file that changed after the plan showed it.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='render-plugin-line.sh'
@@ -69,10 +73,26 @@ END {
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --role developer|reviewer --mode BUILD|TEST [--skills-dir DIR] [--labels] [--] [NAME ...]
+Usage: sh ${PROG} --role developer|reviewer --mode BUILD|TEST [--skills-dir DIR]
+           [--context-file CTX [--context-digest HEX] | --labels] [--] [NAME ...]
 
 Prints one line, "PLUGIN: " and the paths of the named plugins joined by ", ",
 or "PLUGIN: none" for zero names on --mode BUILD.
+With --context-file CTX it prints a second line after it:
+  CONTEXT: <CTX> sha256=<64 lowercase hex>
+the sha256 of the approved context file, which inject-plugins.sh checks
+before it injects the file. CTX must be absolute and hold no control
+character, no double quote and no .. segment, must not name a sensitive file
+in any letter case (a basename .env*, *.pem, *.key or id_*, or a .git
+component), and must be a readable regular file that is not a symlink; these
+are inject-plugins.sh's path checks (scripts/lib/context-file.sh). Its content
+is not checked here: render-dispatch-plan.sh checked it for the plan and the
+hook checks it again. --context-file is not used with --labels.
+  HEX  with --context-digest, 12 to 64 lowercase hex digits: the sha256 the
+       plan's Context section showed for CTX (its first 12 hex). When CTX's
+       sha256 does not start with HEX, it prints nothing on stdout and exits 3
+       with "context file: changed since the plan was shown". Only with
+       --context-file.
 With --labels it prints, instead of the PLUGIN line, one line, "LABELS: " and
 the same names' labels (list-plugins.sh's label field, a control character as "?"):
   LABELS: Technology: <tech label, or none> · Used standards: <labels, or none>
@@ -97,17 +117,23 @@ template name holding a comma or control character exits 3).
 Exit codes:
   0  the line printed
   2  usage error
-  3  a name or mode problem (one stderr line each, nothing on stdout),
+  3  a name or mode problem, or a context file problem, a changed file
+     included (one stderr line each, the context one starting
+     "context file:", nothing on stdout),
      invalid plugins reported by list-plugins.sh (its stderr is printed), a
      listing list-plugins.sh reports as TRUNCATED (its stderr is printed), or
      a template name the line can't carry
   4  list-plugins.sh missing
-  5  a required tool missing, an awk failure, or no temp file could be made
+  5  a required tool missing (sha256sum or shasum with --context-file), an awk
+     or sha256 tool failure, no temp file could be made, or
+     scripts/lib/context-file.sh missing beside this script (--context-file)
   6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
      (skills folder missing or unreadable); its stderr and exit are printed
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
 
 Dependencies: POSIX sh, awk, cat, mktemp, rm; checked at start, a missing one exits 5.
+With --context-file also sha256sum or shasum (macOS: shasum -a 256) and
+scripts/lib/context-file.sh beside this script.
 Runtime: about 79 ms for a tech plugin and 5 standards, measured on macOS (average of 5 runs).
 EOF
 }
@@ -132,7 +158,8 @@ remove_stderr_file() {
 	[ -z "${stderr_file}" ] || rm -f "${stderr_file}"
 }
 
-# Sets role, mode, skills_dir, want and the positional names from the arguments.
+# Sets role, mode, skills_dir, want, context_file, shown_digest and the
+# positional names from the arguments.
 # Callers run it as: parse_args "$@"; shift "${names_offset}".
 parse_args() {
 	[ "$#" -gt 0 ] || {
@@ -143,6 +170,8 @@ parse_args() {
 	mode=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	want=paths
+	context_file=''
+	shown_digest=''
 	names_offset=0
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -150,7 +179,7 @@ parse_args() {
 				usage
 				exit 0
 				;;
-			--role | --mode | --skills-dir)
+			--role | --mode | --skills-dir | --context-file | --context-digest)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
@@ -165,7 +194,7 @@ parse_args() {
 				names_offset=$((names_offset + 1))
 				break
 				;;
-			-*) usage_error "unknown option: $1; expected --role, --mode, --skills-dir, --labels, -- or --help" ;;
+			-*) usage_error "unknown option: $1; expected --role, --mode, --skills-dir, --context-file, --context-digest, --labels, -- or --help" ;;
 			*) break ;;
 		esac
 	done
@@ -179,13 +208,68 @@ parse_args() {
 		'') usage_error '--mode missing; expected --mode BUILD or --mode TEST' ;;
 		*) usage_error "--mode value '${mode}' unknown; expected BUILD or TEST" ;;
 	esac
+	[ -z "${context_file}" ] || [ "${want}" = paths ] ||
+		usage_error '--context-file is not used with --labels; expected it only when printing the PLUGIN line'
+	[ -z "${shown_digest}" ] || check_shown_digest
+}
+
+# Refuses a --context-digest without --context-file, or one that is not 12 to
+# 64 lowercase hex digits.
+check_shown_digest() {
+	[ -n "${context_file}" ] ||
+		usage_error '--context-digest is used only with --context-file; expected --context-file CTX --context-digest HEX'
+	digest_problem="--context-digest value '${shown_digest}' is not 12 to 64 lowercase hex digits; expected the sha256 the plan's Context section shows, such as its 12 hex"
+	case ${shown_digest} in
+		*[!0-9a-f]*) usage_error "${digest_problem}" ;;
+		*) ;;
+	esac
+	[ "${#shown_digest}" -ge 12 ] && [ "${#shown_digest}" -le 64 ] || usage_error "${digest_problem}"
 }
 
 set_option() {
 	case $1 in
 		--role) role=$2 ;;
 		--mode) mode=$2 ;;
+		--context-file) context_file=$2 ;;
+		--context-digest) shown_digest=$2 ;;
 		*) skills_dir=$2 ;;
+	esac
+}
+
+# Sets context_digest to the sha256 of context_file once its path passes the
+# hook's path checks; exits 3 on a path or file problem or a digest that does
+# not start with shown_digest, 5 when the shared check or a sha256 tool is
+# missing or the tool fails.
+digest_context_file() {
+	context_lib=$(script_dir)/lib/context-file.sh
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		die 5 "context path check missing; expected ${context_lib}; reinstall the procedure-agent-initialization skill"
+	# shellcheck source=lib/context-file.sh
+	. "${context_lib}"
+	path_problem=$(context_path_problem "${context_file}")
+	[ -z "${path_problem}" ] ||
+		die 3 "context file: ${path_problem}: ${context_file}; expected ${context_path_expected}"
+	[ ! -L "${context_file}" ] ||
+		die 3 "context file: file is a symlink: ${context_file}; expected the regular file the main thread wrote"
+	[ -f "${context_file}" ] && [ -r "${context_file}" ] ||
+		die 3 "context file: file is missing, unreadable or not a regular file: ${context_file}; expected the readable context file the plan was approved with"
+	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
+	find_context_digest_tool ||
+		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
+	compute_context_digest "${context_file}" ||
+		die 5 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
+	case ${context_digest} in
+		"${shown_digest}"*) ;;
+		*) die 3 "context file: changed since the plan was shown: ${context_file} (sha256 ${shown_digest} shown, ${context_digest} now); expected the file as the plan showed it; show the plan again for the changed file" ;;
+	esac
+}
+
+# Prints the folder this script was run from (".", when run by a bare name).
+script_dir() {
+	case $0 in
+		*/*) printf '%s' "${0%/*}" ;;
+		*) printf '.' ;;
 	esac
 }
 
@@ -293,12 +377,14 @@ shift "${names_offset}"
 for name in "$@"; do
 	[ -n "${name}" ] || usage_error 'empty NAME; expected plugin names such as tech-shell'
 done
+[ -z "${context_file}" ] || digest_context_file
 read_listing
 select_plugins paths "$@"
 # The paths are joined on --labels too, so their checks and exit codes still apply.
 join_paths
 if [ "${want}" = paths ]; then
 	printf 'PLUGIN: %s\n' "${plugin_value:-none}"
+	[ -z "${context_file}" ] || printf 'CONTEXT: %s sha256=%s\n' "${context_file}" "${context_digest}"
 	exit 0
 fi
 select_plugins labels "$@"
