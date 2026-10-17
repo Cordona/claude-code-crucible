@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Persistence
 
-What a correct data layer holds, for any durable store. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists, #64) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What a correct data layer holds, for any durable store. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
 
 It assumes fluent SQL and NoSQL, so it holds only the non-default priorities and the easy-to-miss correctness traps, never a store tutorial.
 

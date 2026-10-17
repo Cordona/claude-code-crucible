@@ -62,7 +62,7 @@ The layout of the Implementation Report a developer sends back, and of its findi
 
 ## Fix rounds
 
-A fix round needs the reviewer (once `code-reviewer` exists, #64). The finding lines come first, one per finding the brief hands you; then the heading and every field, as The layout sets.
+A fix round needs the reviewer (once `code-reviewer` exists). The finding lines come first, one per finding the brief hands you; then the heading and every field, as The layout sets.
 
 ```
 <reviewer ID> (<severity>) — fixed|not fixed (proposal)|blocked: <what changed, or why not>

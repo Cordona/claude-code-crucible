@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Clean Code
 
-What well-structured code looks like, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists, #64) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What well-structured code looks like, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
 
 ## Scope
 

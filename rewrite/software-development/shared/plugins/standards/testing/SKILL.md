@@ -9,14 +9,14 @@ metadata:
 
 # Standard: Testing
 
-What a good test suite holds, in any language. A test that can't fail is worse than no test: a suite that passes whether or not the behaviour works earns trust it hasn't got. Volume is a cost: every test is code to read, run and maintain, so a suite larger than the behaviours it guards slows every change. Tests are executable documentation: a reader learns from them what the system does. The developer builds tests to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists, #64) judges tests by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What a good test suite holds, in any language. A test that can't fail is worse than no test: a suite that passes whether or not the behaviour works earns trust it hasn't got. Volume is a cost: every test is code to read, run and maintain, so a suite larger than the behaviours it guards slows every change. Tests are executable documentation: a reader learns from them what the system does. The developer builds tests to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists) judges tests by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 ## Scope
 
 - **In:** the tests the developer writes or changes in a test dispatch, test data and fixtures included.
 - **Following it writes only test files and test data:** a mutation or pre-fix check never edits, reverts or stashes a production file. Use the project's mutation-testing tool where one exists; otherwise name the mutation and the line it would change, and mark the check unproven.
 - **Production code is out:** a dispatch that writes production code writes no tests, so its `PLUGIN` never names this standard; it would have nothing here to act on.
-- **Waivers and opt-ins:** this standard says only when the user (the person who approves the work, not the software's end user) must give one (§2, §5).
+- **Waivers and opt-ins:** this standard says only when the human must give one (§2, §5).
 - **Project conventions:** follow the project's test conventions: its framework, assertion style, test location and naming, base classes and helpers, fixture layout, and how it handles external dependencies. A deliberate, consistent convention is the local norm. A convention never excuses a wrong test: a test that can't fail is a defect even where the project's other tests do the same.
 
 ## Any framework
@@ -44,11 +44,11 @@ Read every rule below through this section. Each framework or library named here
 
 ## 2. Required tests and proven gaps
 
-- **Code that guards security, persisted data, concurrency (races, retries, compare-and-set, idempotency) or authentication always gets a test that fails when the guard breaks, unless the user waives it:** smallness never removes one.
-- **Name the category of a required-category behaviour left untested;** when it falls under two, name it security or authentication, never another. Its untested line needs the user's waiver (the rule above), noted in its reason.
+- **Code that guards security, persisted data, concurrency (races, retries, compare-and-set, idempotency) or authentication always gets a test that fails when the guard breaks, unless the human waives it:** smallness never removes one.
+- **Name the category of a required-category behaviour left untested;** when it falls under two, name it security or authentication, never another. Its untested line needs the human's waiver (the rule above), noted in its reason.
 - **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus one line showing the risk is covered or absent (`test 3`, a `file:line`), or mark it unproven. Write each case as the one line `references/untested-template.md` sets; that file arrives in the developer's prompt after `references/development.md`. A reviewer gets no template: it checks each line holds the case, reason, risk, category and proof these two rules name.
 - **"Not testable at level X" names the level where it can be tested.**
-- **An accepted risk with a user-visible effect is behaviour:** test it, or the user waives it explicitly.
+- **An accepted risk with a user-visible effect is behaviour:** test it, or the human waives it explicitly.
 
 ## 3. The smallest sufficient set
 
@@ -90,7 +90,7 @@ Read every rule below through this section. Each framework or library named here
 
 ### Unit
 
-- **Write a unit test only when no end-to-end or integration test can observe the behaviour, and state why;** or when the user explicitly opts in to an offered one. The reasons: unreachable in test time, too many cases to drive through the flow, or pure logic with no boundary.
+- **Write a unit test only when no end-to-end or integration test can observe the behaviour, and state why;** or when the human explicitly opts in to an offered one. The reasons: unreachable in test time, too many cases to drive through the flow, or pure logic with no boundary.
 - **A unit test verifies behaviour or business logic,** never wiring, call sequences or a mocked imitation of a flow.
 - **Put several inputs on one branch in one parameterised or table-driven test,** not a micro-test per input.
 - **For invariant-shaped pure logic (parsers, encoders, math), a property-based test is the stronger form** (QuickCheck, Hypothesis, proptest, jqwik).

@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Observability
 
-What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists, #64) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident. The developer builds to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
 
 It is grounded in OpenTelemetry, W3C Trace Context, Google SRE (RED, USE and the Four Golden Signals), OWASP Top 10:2025, GDPR and 12-factor. A library named here (SLF4J, structlog, slog or zap, pino, OpenTelemetry) is an example only: map it to the stack in front of you.
 
