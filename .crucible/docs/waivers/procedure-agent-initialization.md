@@ -5,3 +5,4 @@
 - DET-04: no plan-status state file; the only file the procedure writes is the gate's transient plan file (render input, removed with its gate), and every approval is an AskUserQuestion answer visible in the conversation (owner)
 - DET-06: no persisted step/state file; the plan file is render input, not state (as DET-04), and the Resume section re-runs steps 1-2 and re-asks every plan whose approval is not visible (owner)
 - SCH-15: no rejection log by design; the only file written is the gate's transient plan file, and render-dispatch-plan.sh reports each input problem on stderr (owner)
+- LNT-15: body 5,080 tokens, a known overrun; slimming is a follow-up (owner)

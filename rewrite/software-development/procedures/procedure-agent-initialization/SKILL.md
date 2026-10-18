@@ -7,7 +7,7 @@ description: Main thread's procedure for the plugins a developer or reviewer sta
 
 Run by the main thread when a flow is about to dispatch a plugin-loading agent, one whose brief carries a `PLUGIN` line: `code-developer`, and `code-reviewer` (once `code-reviewer` exists); or when the main thread implements directly on the human's go. It decides which tech and standard plugins each dispatch gets and gets each choice approved. The `inject-plugins.sh` hook then puts those plugins, and the task's context file, into the agent's prompt, so the agent starts with them already in context.
 
-The calling flow owns the task, its context file, the rest of the brief, the dispatch, the reply check and the resend loop. This procedure takes from it the tasks (each with its agent, mode, files in scope and context file), and hands back the `PLUGIN` and `CONTEXT` lines per approved dispatch.
+The calling flow owns the task, its context file, the rest of the brief, the dispatch, the reply check and the resend loop. This procedure takes from it the tasks (each with its agent, mode, files in scope and context file), and hands back the `PLUGIN`, `CONTEXT` and `LABELS` lines per approved dispatch.
 
 ## Invariants
 
@@ -87,14 +87,15 @@ After a compaction, or when this procedure is invoked again mid-run: load this s
 
 ## Hand-back
 
-One entry per part, in task order: `<n>` numbers the parts 1, 2, 3 … (a task in two stacks is two parts). Four lines per approved dispatch (a group gives one set per task), one line per other part. Required shape, the field names exact:
+One entry per part, in task order: `<n>` numbers the parts 1, 2, 3 … (a task in two stacks is two parts). Four lines per approved dispatch (a group gives one set per task), one line per other part, and after a `no plugin fits` line one `FILE:` line per file, so the calling flow never splits a list. Required shape, the field names exact:
 
 ```
 DISPATCH <n>: <agent> · <BUILD or TEST> · TECH <name or none> · LABEL <label or General> · FILES <files in scope> · TASK <the task as approved>
 PLUGIN: <path>, <path>, ... | none
 CONTEXT: <absolute path> sha256=<64 hex>
 LABELS: Technology: <label or none> · Used standards: <label>, <label>, ... | none
-PLAN <n>: skipped | stopped | stopped: <reason> | no plugin fits (<stack>, <files>)
+PLAN <n>: skipped | stopped | stopped: <reason> | no plugin fits (<stack>)
+FILE: <path>
 ```
 
 `LABEL` feeds only the `Agent` call's description. Step 10 hands back one `LABELS:` line, in the same shape.
@@ -107,7 +108,7 @@ The steps give each command and the exits they act on. A developer or reviewer r
 
 | Script | Run | Does | Output |
 |---|---|---|---|
-| `scripts/check-install.sh` | step 1, every start | checks this procedure's scripts, `procedure-approval-gate`'s scripts, `jq`, the hook entries in `settings.json` (the inject hook and the gate's two) and the plugins; caches a full pass by an install fingerprint | the ✓/⚠/✗ checklist, or one cached-pass line |
+| `scripts/check-install.sh` | step 1, every start | checks this procedure's scripts, `procedure-approval-gate`'s scripts, lib-render's `paths.jq`, `jq`, the hook entries in `settings.json` (the inject hook and the gate's two) and the plugins; caches a full pass by an install fingerprint | the ✓/⚠/✗ checklist, or one cached-pass line |
 | `scripts/list-plugins.sh` | step 2; and by `render-plugin-line.sh` and `render-dispatch-plan.sh` | lists the installed plugins | one plugin line each |
 | `scripts/render-dispatch-plan.sh` | step 6, as the gate's renderer | checks the plan's JSON (`--plan-file`) against the installed plugins and renders it, with the Context section from `--context-file`; with `--question --plans <n>`, its question; with `--no-plugin-fits`, `flow-code-development`'s no-plugin-fits choice | the plan Markdown, or its question as one JSON object |
 | `scripts/render-plugin-line.sh` | steps 7, 9, 10 | builds the `PLUGIN` line from the approved names, then the `CONTEXT:` line with the `--context-file` file's digest; or with `--labels` the `LABELS:` line | the `PLUGIN` and `CONTEXT:` lines, or one `LABELS:` line |

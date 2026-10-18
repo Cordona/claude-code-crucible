@@ -1,4 +1,4 @@
-- LNT-69: body + one preload (the report standard) over 12k by design; plugins arrive injected by the hook (owner)
+- LNT-69: body + two preloads (the report standard and procedure-dispatch-context) over 12k by design; plugins arrive injected by the hook (owner)
 - LNT-68: the developer method is merged into the agent body (owner D9); same load as a preload (owner)
 - ATEST-01: no run on record yet; evals run in the sandbox A/B (task #60) (owner)
 - ATEST-02: no run on record yet; evals run in the sandbox A/B (task #60) (owner)
@@ -6,3 +6,4 @@
 - ATEST-04: no run on record yet; evals run in the sandbox A/B (task #60) (owner)
 - ATEST-05: no run on record yet; evals run in the sandbox A/B (task #60) (owner)
 - ATEST-06: no run on record yet; evals run in the sandbox A/B (task #60) (owner)
+- AOUT-08: writing the report early and updating it every step costs tokens on every dispatch for a rare cut-off; report.sh's git check already shows unreported changes (owner)

@@ -2,6 +2,13 @@
 
 Apply after `SKILL.md`'s rules, before writing any shell.
 
+## Reporting
+
+`standard-code-development-report` sets each item's shape.
+
+- **The shebang** -> the report's `tech` (`#!/usr/bin/env sh` is POSIX `sh`, not Bash), because the reviewer checks every feature used against the shell it names.
+- **Each Verification gate command and its result** -> the report's `verification`, one item per command, with each existing shellcheck warning in `note` with its count, and a step 4 you didn't run as `not_run` with its reason in `note`, never left out, because a gate result the report doesn't show reads as a gate that never ran.
+
 ## Defaults when the brief is silent
 
 - **Always on:** strict mode, a quote on every expansion, and injection safety.
@@ -20,15 +27,10 @@ Apply after `SKILL.md`'s rules, before writing any shell.
 
 Run it on every shell file written or changed, before reporting done. Its tools are `shellcheck` and `bash` or `sh`.
 
-1. `head -1 <file>`: the shebang names the shell for step 3 and for the report's Technology field (`#!/usr/bin/env sh` is POSIX `sh`, not Bash). A new file has the shebang `SKILL.md`'s Target shell settles.
-2. `shellcheck -x -o all <file>`, with no new warnings: run it on the file before and after your change. `-o all` turns on the optional checks, such as `set -e`'s blind spots, which are off by default. A warning that was already there is listed under Open points with its count, never counted as a pass.
+1. `head -1 <file>`: the shebang names the shell for step 3. A new file has the shebang `SKILL.md`'s Target shell settles.
+2. `shellcheck -x -o all <file>`, with no new warnings: run it on the file before and after your change. `-o all` turns on the optional checks, such as `set -e`'s blind spots, which are off by default. The step passes when your change adds no warning.
 3. `sh -n <file>` when the shebang names `sh`, `bash -n <file>` when it names Bash: the syntax check.
-4. The script's own `--help`, or `--dry-run` where it has one, only when its code (not its usage text) shows that flag makes no write, delete, network call or change to system state; otherwise, or when you didn't check the code, Verification reads `<file> --help: not run: <reason>`. Never leave the step out.
-
-Put each command and its result in the report's Verification field:
-
-- Good: `shellcheck -x -o all bin/backup.sh: pass (0 warnings) · bash -n bin/backup.sh: pass · bin/backup.sh --dry-run: pass`
-- Bad: `lint: pass` (no command, no file, no count).
+4. The script's own `--help`, or `--dry-run` where it has one, only when its code (not its usage text) shows that flag makes no write, delete, network call or change to system state; otherwise, or when you didn't check the code, don't run it.
 
 ## Self-check before reporting
 
@@ -37,6 +39,7 @@ Put each command and its result in the report's Verification field:
 3. Every expansion that splits is quoted, and every built command is an array.
 4. No untrusted value reaches `eval`, `sh -c` or arithmetic before validation.
 5. Every temp file comes from `mktemp`, with an `EXIT` trap removing it.
-6. Each gate step ran (step 4 only where step 4 allows it), or is reported as `not run: <reason>`; each is in Verification with its command and result.
+6. Each gate step ran, step 4 only where step 4 allows it.
+7. Each item `## Reporting` names is in the report.
 
 A failed item: fix it, then run the check again.

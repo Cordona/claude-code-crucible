@@ -6,3 +6,4 @@
 - SUB-07: no new machinery in this effort; no run file for the developer's report (owner, D1) (owner)
 - SUB-08: no new machinery in this effort; no incremental run file or resume from it (owner, D1) (owner)
 - SUB-01: direct implementation by the main thread on the user's explicit go is the approved design (owner, D2) (owner)
+- LNT-15: body over 5,000 tokens after the JSON report reply check; slimming is a follow-up, not risked in this effort (owner)
