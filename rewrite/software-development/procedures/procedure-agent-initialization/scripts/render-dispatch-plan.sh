@@ -4,13 +4,14 @@
 # does the same for a part no installed tech plugin fits. This script owns the layout, the question
 # wording and the input rules it checks (see --help), including the check of a
 # plan against the installed plugins; references/dispatch-plan-rules.md keeps
-# only the rules it can't check. Pipe its stdout into procedure-approval-gate's
-# open-gate.sh.
+# only the rules it can't check. The path display helpers are lib-render's
+# paths.jq. Pipe its stdout into procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='procedure-agent-initialization'
+readonly RENDER_LIB='lib-render'
 readonly DIRECT_AGENT='main thread'
 readonly TESTING_PLUGIN='standard-testing'
 # The context file's cap, the same as inject-plugins.sh's (change both together):
@@ -37,29 +38,18 @@ def task_lines:
 	(.tasks | length) as $count
 	| if $count == 1 then "**Task:** \(.tasks[0] | clean)"
 	  else "**Tasks:**\n\n" + ([.tasks | to_entries[] | "\(.key + 1). \(.value | clean)"] | join("\n")) end;
-# The context file, slurped into $context, as groups the human scans: each
+'
+
+# What a printed plan adds, after the common definitions: lib-render's path
+# helpers (the include, which jq takes only at the start of the program) and
+# the context file, slurped into $context, as groups the human scans: each
 # path in the first group it fits (saved beside the context file, a task file,
-# any other file), then the links, then every note in full. A path or link is
-# shown, never run, so a backtick in it becomes a quote to keep its code span.
-# The cap keeps every code span on one line beside its bullet.
-def span_cap: 80;
-def cut_head: 30;
-def middle_cut($tail): .[:(span_cap - 1 - $tail)] + "…" + .[(length - $tail):];
-def capped: if length > span_cap then middle_cut(span_cap - 1 - cut_head) else . end;
-def code_span: "`" + (gsub("`"; [39] | implode) | capped) + "`";
+# any other file), then the links, then every note in full.
+readonly PATHS_INCLUDE='include "paths";'
+# shellcheck disable=SC2016
+readonly CONTEXT_JQ='
 def counted($count; $noun): if $count == 0 then empty elif $count == 1 then "1 \($noun)" else "\($count) \($noun)s" end;
-def base_name: sub("^.*/"; "");
-def dir_segments: split("/") | .[1:-1];
-def home_form: ($home | rtrimstr("/")) as $prefix
-	| if $prefix != "" and (. == $prefix or startswith($prefix + "/")) then "~" + .[($prefix | length):] else . end;
-# Capped, but with the basename kept whole while one character of the head fits.
-def short_path: home_form | (base_name | length) as $base
-	| if length <= span_cap or $base > span_cap - 2 then capped
-	  else middle_cut([span_cap - 1 - cut_head, $base] | max) end;
 def task_file: capture("/tasks/(?<list>[^/]+)/(?<number>[0-9]+)\\.json$");
-def shared_start($next): . as $prefix
-	| first(range(0; length + 1) | select(. == ($prefix | length) or $prefix[.] != $next[.])) as $count
-	| $prefix[:$count];
 def item($shown): "- \(.why | clean)\\\n  \($shown | clean | code_span)";
 def group($heading; $items): if ($items | length) == 0 then empty else "\($heading)\n" + ($items | join("\n")) end;
 def task_groups($entries):
@@ -73,7 +63,7 @@ def file_group($entries):
 		| ("/" + ($root | map(. + "/") | join(""))) as $root_dir
 		| (if ($root | length) == 0 then "/" else ($root[-2:] | join("/")) + "/" end) as $label
 		| group("**Files** · \($label | clean | code_span)"; [$entries[] | .path[($root_dir | length):] as $relative
-			| item(if ($root | length) == 0 or ($relative | length) > span_cap then .path | short_path else $relative end)])
+			| item(if ($root | length) == 0 or ($relative | length) > span_cap then .path | short_path($home) else $relative end)])
 	end;
 def notes_group($notes):
 	group("**Notes** · written by Claude from your words, so check these"; [$notes | to_entries[] | "\(.key + 1). \(.value | clean)"]);
@@ -237,7 +227,7 @@ readonly NO_FIT_RENDER_JQ='
 .[0]
 | "## 🧩 No plugin fits\n\n"
 	+ "**Stack:** \(.stack | clean)\n\n"
-	+ "**Files:**\n\n" + (.files | map("- `\(clean)`") | join("\n")) + "\n\n"
+	+ "**Files:**\n\n" + (.files | map("- \(clean | short_path($home) | code_span)") | join("\n")) + "\n\n"
 	+ task_lines
 	+ "\n\nNo installed tech plugin fits this stack: the main thread would write the code itself."
 	+ "\n\n" + context_section
@@ -300,7 +290,8 @@ DIR/${PROCEDURE}/scripts/list-plugins.sh --max-lines 0, run with
 --skills-dir DIR; its stderr is passed through. Its exit 1 (no plugin) is an
 empty list, and its exit 3 (invalid plugins) leaves them out of the list.
   DIR  the skills folder, as list-plugins.sh's --skills-dir; defaults to
-       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills.
+       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. A printed plan of either
+       kind also loads DIR/${RENDER_LIB}/paths.jq, the path display helpers.
 Layout: a group prints "**Agent:** <agent> (<count>)" and a numbered task list.
 Loaded [] prints "- none" with loaded_reason as its reason; not_loaded []
 prints "- none"; a plugin named "none" prints as a bare none with its reason.
@@ -363,11 +354,12 @@ N is how many plans this run of step 6 shows, one after another (1 or more).
 --no-plugin-fits reads a part no installed tech plugin fits instead:
   {"stack": str, "files": [str, ...], "tasks": [str, ...]}
 with no other field; each array holds one or more strings. It reads no
-plugin list, and takes neither --plans nor --skills-dir. It prints a plan
-headed by "## 🧩 No plugin fits": the stack, the files, the task or tasks, and
-the line "No installed tech plugin fits this stack: the main thread would
-write the code itself.", then the Context section. With --question it prints
-the question JSON instead:
+plugin list, and takes neither --plans nor --skills-dir (its paths.jq is the
+default DIR's). It prints a plan headed by "## 🧩 No plugin fits": the stack,
+the files (each with \$HOME as ~ and capped as a Files path is, a backtick
+printed as '), the task or tasks, and the line "No installed tech plugin fits
+this stack: the main thread would write the code itself.", then the Context
+section. With --question it prints the question JSON instead:
 header "No plugin", options "Stop (Recommended)", then "Implement directly".
 
 Every install or host fault, a missing or failing tool or shared file (the
@@ -386,14 +378,15 @@ Exit codes:
      tool failed (its stderr is printed)
   4  list-plugins.sh missing from DIR
   5  scripts/lib/context-file.sh or context-shape.jq missing beside this
-     script, when printing a plan
+     script, or DIR/${RENDER_LIB}/paths.jq missing, when printing a plan
   6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
      (skills folder missing or unreadable); its stderr and exit are printed
 The codes match render-plugin-line.sh's for list-plugins.sh.
 
 Dependencies: POSIX sh, jq 1.6+ (\$ARGS, --slurpfile), wc; for a plan also
-sha256sum or shasum (macOS: shasum -a 256) and scripts/lib/context-file.sh and
-context-shape.jq; list-plugins.sh for a plan or its question.
+sha256sum or shasum (macOS: shasum -a 256), scripts/lib/context-file.sh and
+context-shape.jq, and the ${RENDER_LIB} skill's paths.jq; list-plugins.sh for a
+plan or its question.
 Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
 30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
 EOF
@@ -568,6 +561,14 @@ script_dir() {
 	esac
 }
 
+# Exits 5 when lib-render's path helpers, which a printed plan includes, are
+# not a readable file in the skills folder.
+check_render_lib() {
+	paths_module="${render_lib_dir}/paths.jq"
+	[ -f "${paths_module}" ] && [ -r "${paths_module}" ] ||
+		install_fault 5 "path helpers missing; expected ${paths_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
+}
+
 # Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
 # exits 4 when the script is missing and 6 when it fails.
 read_listing() {
@@ -585,9 +586,9 @@ read_listing() {
 	esac
 }
 
-# Runs jq program $1, after the common definitions, over the slurped input,
-# with the context file read by jq itself (none for a question); a jq failure
-# exits 3.
+# Runs jq program $1 over the slurped input, with lib-render on jq's module
+# path and the context file read by jq itself (none for a question); a jq
+# failure exits 3.
 run_jq() {
 	if [ -n "${context_file}" ]; then
 		set -- "$1" --slurpfile context "${context_file}"
@@ -596,10 +597,10 @@ run_jq() {
 	fi
 	program=$1
 	shift
-	printf '%s' "${slurped}" | jq -rc --arg direct "${DIRECT_AGENT}" --arg testing "${TESTING_PLUGIN}" \
+	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --arg direct "${DIRECT_AGENT}" --arg testing "${TESTING_PLUGIN}" \
 		--arg listing "${listing}" --argjson plans "${plans:-1}" "$@" \
 		--arg context_file "${context_file}" --arg context_digest "${context_digest}" --arg home "${HOME:-}" \
-		"${COMMON_JQ}${program}" || {
+		"${program}" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }
@@ -610,18 +611,22 @@ command -v jq >/dev/null 2>&1 ||
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
+render_lib_dir="${skills_dir}/${RENDER_LIB}"
 context_digest=''
-[ -z "${context_file}" ] || read_context
+if [ -n "${context_file}" ]; then
+	check_render_lib
+	read_context
+fi
 listing=''
 if [ "${no_plugin_fits}" -eq 1 ]; then
-	check_program=${NO_FIT_CHECK_JQ}
-	render_program=${NO_FIT_RENDER_JQ}
-	question_program=${NO_FIT_QUESTION_JQ}
+	check_program=${COMMON_JQ}${NO_FIT_CHECK_JQ}
+	render_program=${PATHS_INCLUDE}${COMMON_JQ}${CONTEXT_JQ}${NO_FIT_RENDER_JQ}
+	question_program=${COMMON_JQ}${NO_FIT_QUESTION_JQ}
 else
 	read_listing
-	check_program=${CHECK_JQ}
-	render_program=${RENDER_JQ}
-	question_program=${QUESTION_JQ}
+	check_program=${COMMON_JQ}${CHECK_JQ}
+	render_program=${PATHS_INCLUDE}${COMMON_JQ}${CONTEXT_JQ}${RENDER_JQ}
+	question_program=${COMMON_JQ}${QUESTION_JQ}
 fi
 problems=$(run_jq "${check_program}")
 if [ -n "${problems}" ]; then
