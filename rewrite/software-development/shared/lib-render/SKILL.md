@@ -1,6 +1,6 @@
 ---
 name: lib-render
-description: Shared jq modules that format what renderer scripts print for the human, first `paths.jq` for path and link display (the `~` form, a middle cut, an 80-character cap). Use when a renderer script shows a path, link or file name. Scripts load it by path with `jq -L` and `include`, so the model has no reason to load it and the human never types it. Writes nothing; needs jq 1.6+. Not for checking input (each renderer validates its own) or a report's layout (its renderer owns it).
+description: Shared jq modules that format what renderer scripts print for the human, first `paths.jq` for path and link display (text paths get the `~` form, a middle cut, an 80-character cap; links stay whole and absolute). Use when a renderer shows a path, link or file name. Scripts load it with `jq -L` and `include`; the model never loads it, the human never types it. Writes nothing; needs jq 1.6+. Not for checking input (each renderer validates its own) or a report's layout (its renderer's).
 user-invocable: false
 ---
 
@@ -32,7 +32,7 @@ include "paths";
 
 | Module | Holds |
 |---|---|
-| `paths.jq` | Path and link display: the path shortening, the `~` form for the home folder, the middle cut, and the 80-character cap on every shown path or link, which keeps a code span on one line beside its bullet |
+| `paths.jq` | Path and link display: for a path shown as text, the shortening, the `~` form for the home folder, the middle cut and the 80-character cap, which keeps a code span on one line beside its bullet; for a path shown as a link, the whole absolute path |
 
 `paths.jq`'s public defs. Each reads a string and returns a string unless its row says otherwise. None cleans control characters, so clean a value before passing it:
 
@@ -43,6 +43,7 @@ include "paths";
 | `middle_cut($tail)` | string | its first `span_cap - 1 - $tail` characters, `…`, then its last `$tail` |
 | `capped` | string | the input, or when over `span_cap`, its first `cut_head` characters, `…` and its last 49 |
 | `code_span` | string | the input capped and in backticks, each backtick in it shown as `'` |
+| `link_span` | string | the input whole in backticks, never `~`-shortened or cut, each backtick in it shown as `'`: for a path shown as a link |
 | `base_name` | string | the text after the last `/` |
 | `dir_segments` | absolute path | array: its folders, without the leading `/` or the basename |
 | `home_form($home)` | string | the input with a leading `$home` folder written as `~`; unchanged when `$home` is empty or isn't its start |

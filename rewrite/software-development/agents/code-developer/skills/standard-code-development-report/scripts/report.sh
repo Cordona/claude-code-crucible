@@ -258,10 +258,12 @@ def context_problems:
 def count_line:
 	"blockers=\(objects_of("blockers") | length) instruction_found=\(open_of("instruction_found") | length) secret_found=\(open_of("secret_found") | length) missing_plugin=\(open_of("missing_plugin") | length) could_not=\(open_of("could_not") | length) deviations=\(objects_of("deviations") | length) unlisted=\(file_mismatches | length)";
 
-def problems:
+def all_problems:
 	[key_problems, summary_problems, tech_problems, files_problems,
 	 (("deviations", "behavior", "verification", "focus", "decisions", "noticed", "open", "blockers", "review_responses") as $key | list_problems($key)),
-	 minimum_problems, findings_problems, context_problems]
+	 minimum_problems, findings_problems, context_problems];
+def problems:
+	all_problems
 	| .[:max_problems] + (if length > max_problems then ["report: \(length - max_problems) more problems not shown (showing \(max_problems) of \(length)); expected none"] else [] end);
 '
 
@@ -271,7 +273,8 @@ readonly CHECK_JQ='
 $report[0] | count_line, problems[]
 '
 
-# The human view and the --for slice. Tolerant of a broken shape, since the main
+# The full human view (render --full) and the --for slice; the summary below
+# reuses its definitions. Tolerant of a broken shape, since the main
 # thread renders an invalid report once the resends run out: its problems show
 # under Check these, a value of the wrong type prints as its JSON, a list of the
 # wrong type as no items.
@@ -385,20 +388,90 @@ def slice_view($problems):
 	(($problems | length) == 0 and (blocked | not)) as $clean
 	| ["## Implementation report: for the \(if $for == "test" then "test dispatch" else "reviewer" end)",
 	   problems_group($problems), behavior_group, deviations_group($clean), open_groups, gap_groups, missing_group, decisions_group, focus_group];
+'
 
+# shellcheck disable=SC2016
+readonly FULL_MAIN_JQ='
 $report[0] | problems as $problems | if $for == "" then human_view($problems) else slice_view($problems) end | join("\n\n")
+'
+
+# The default render: the summary the main thread shows the human. Counts, the
+# items to act on (a group past max_per_group ends in a count of the rest, which
+# render --full shows; problems, blockers, secrets, instructions found and
+# deviations are never cut) and the report file's path as a link.
+# shellcheck disable=SC2016
+readonly SUMMARY_JQ='
+def max_per_group: 3;
+def counted($count; $one; $many): "\($count) \(if $count == 1 then $one else $many end)";
+def capped_group($lines; $one; $many):
+	($lines | length) as $count
+	| $lines[:max_per_group]
+	  + (if $count > max_per_group then ["- \(counted($count - max_per_group; "more \($one)"; "more \($many)")) in the full report"] else [] end);
+def at_line($label; $at; $text): "- \($label): " + (if ($at | txt) == "" then "" else "\($at | span): " end) + ($text | txt);
+def text_lines($kind; $label): [open_of($kind)[] | "- \($label): \(.text | txt)"];
+def could_not_line:
+	[(.ref, .at) | select(txt != "") | span] as $spans
+	| ($spans | if length == 2 and .[0] == .[1] then .[:1] else . end) as $where
+	| "- Not read: " + (if ($where | length) == 0 then "" else "\($where | join(", ")): " end) + (.text | txt);
+
+def summary_tech: (labels.technology // "none" | txt) as $label | if $label == "none" or $label == "" then .tech | txt else $label end;
+def summary_task: if $task == "" then .summary | txt else $task | txt end;
+def summary_status($invalid): if $invalid then "Invalid" elif blocked then "Done with blockers" else "Done" end;
+def behaviour_counts:
+	objects_of("behavior") as $items
+	| ($items | length) as $count
+	| ([$items[] | select(.checked == true)] | length) as $exercised
+	| if $count == 0 then "0"
+	  elif $exercised == $count then "\($count), all exercised"
+	  elif $exercised == 0 then "\($count), none exercised"
+	  else "\($count), \($exercised) exercised" end;
+def gate_counts:
+	[objects_of("verification")[] | .result] as $results
+	| [("pass", "fail", "narrowed", "not_run") as $result
+		| ([$results[] | select(. == $result)] | length) as $count
+		| select($count > 0) | "\($count) \($result | result_words)"]
+	| if length == 0 then "none" else join(", ") end;
+
+def urgent_lines($problems):
+	[$problems[] | "- Report problem: \(txt)"]
+	+ [objects_of("blockers")[] | at_line("Blocker"; .location; .detail)]
+	+ [open_of("secret_found")[] | at_line("Secret found"; .at; .text)]
+	+ [open_of("instruction_found")[] | at_line("Instruction found, not followed"; .at; .text)]
+	+ [objects_of("deviations")[] | "- Deviation: \(.what | bare)" + (if (.why | txt) == "" then "" else " (\(.why | bare))" end)];
+def capped_lines:
+	capped_group([open_of("could_not")[] | could_not_line]; "item not read"; "items not read")
+	+ capped_group(text_lines("assumption"; "Assumption"); "assumption"; "assumptions")
+	+ capped_group(text_lines("missing_plugin"; "Missing plugin"); "missing plugin"; "missing plugins")
+	+ capped_group([open_of("contract_break")[] | at_line("Contract break"; .at; .text)]; "contract break"; "contract breaks")
+	+ capped_group(text_lines("gate_refused"; "Gate refused"); "refused gate"; "refused gates")
+	+ capped_group([file_mismatches[] | "- Unlisted change: \(.path | span)" + (if .note then ", \(.note)" else "" end)]; "unlisted change"; "unlisted changes")
+	+ (baseline_skipped | length | if . == 0 then [] else ["- Not checked: \(counted(.; "file"; "files")) changed before this dispatch"] end);
+
+def bullets: map("- \(.)") | join("\n");
+def summary_view($problems):
+	($problems | length > 0) as $invalid
+	| (urgent_lines($problems) + capped_lines) as $check
+	| ["## Developer Report",
+	   (["Tech: \(summary_tech)", "Task: \(summary_task)", "Status: \(summary_status($invalid))"] | bullets),
+	   "### Result\n\n" + (["Files changed: \(listed_files | length)", "Behaviours: \(behaviour_counts)", "Gates: \(gate_counts)"] | bullets),
+	   (if ($check | length) == 0 then empty else "### Check these\n\n" + ($check | join("\n")) end),
+	   "### Full report\n\n- \($report_path | txt | link_span)"];
+
+$report[0] | summary_view(all_problems) | join("\n\n")
 '
 
 usage() {
 	cat <<'EOF'
 usage: report.sh check --report PATH --repo DIR --mode BUILD [--baseline FILE] [--findings FILE] [--context FILE]
-       report.sh render --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE]] [--skills-dir DIR]
+       report.sh render --report PATH [--task TEXT] [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE]] [--skills-dir DIR]
+       report.sh render --full --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE]] [--skills-dir DIR]
        report.sh render --report PATH --for reviewer|test [--repo DIR [--baseline FILE]] [--skills-dir DIR]
        report.sh --help
 
-Checks the developer's report, one JSON object in the file PATH (absolute),
-and renders it. stdin is never read. The validator in this script owns the
-shape; there is no schema file. This --help and the report standard's field
+Checks the developer's report, one JSON object in the file PATH (absolute:
+the Crucible space, ${CRUCIBLE_HOME:-$HOME/.crucible}), and renders it.
+stdin is never read. The validator in this script owns the shape; there is
+no schema file. This --help and the report standard's field
 table document it (the main thread reads this, the developer the field
 table), and the validator wins where they differ.
 
@@ -463,10 +536,38 @@ check stderr: one line per problem, "<field>: <what>; expected <x>", at most
 30, then a count of the rest.
 --mode TEST is refused until the testing flow exists.
 
-render prints the report as Markdown on stdout: the human view, or with --for
+render prints the report as Markdown on stdout. It runs the shape check
+first and still prints an invalid report, as far as its shape allows.
+
+render (the default) prints the summary the main thread shows the human,
+every item on its own line:
+  ## Developer Report
+  - Tech: the labels FILE's Technology label (the report's tech when there is
+    no FILE or the label is none), Task: TEXT (the report's summary without
+    --task), Status: Done, Done with blockers or Invalid
+  ### Result
+  - Files changed: <n>, Behaviours: <n>, all|none|<k> exercised (checked
+    true), Gates: <n> pass, <n> fail, <n> narrowed, <n> not run (zero counts
+    left out; none when there is no gate)
+  ### Check these   (left out when it has nothing)
+  - in full, never cut: every validation problem of an invalid report
+    ("Report problem: <line>", all of them, not the 30 check prints),
+    blockers, secrets found, instructions found and deviations
+  - at most 3 lines each, then "<n> more <items> in the full report": not
+    read (could_not, "Not read: <ref>, <at>: <text>", at only when present),
+    assumptions, missing plugins, contract breaks, gates refused, unlisted
+    changes (with --repo)
+  - "Not checked: <n> files changed before this dispatch" (with --baseline)
+  ### Full report
+  - the absolute PATH, whole, in a code span (lib-render's link_span)
+No standards, decisions, focus, noticed items or review responses show
+there; render --full shows them. --task TEXT is one line (a control
+character prints as a space).
+
+render --full prints the full human view, or with --for
 only behavior, deviations, open, decisions and focus (--labels-file and --round
-are then ignored). It runs the shape check first and still prints an invalid
-report, as far as its shape allows: "Status: Invalid", its problems under
+are then ignored; --for takes neither --full nor --task). The full view of an
+invalid report shows "Status: Invalid", its problems under
 "Report problems:" at the top of Check these, which then follows Summary.
 "None: did what was asked." shows only for a valid report with no blocker and
 no deviation, otherwise "None.". A decision's commit text shows as
@@ -475,8 +576,9 @@ hand-back's LABELS line exactly as given, one line,
 "LABELS: Technology: <label|none> · Used standards: <labels|none>", so label
 text never sits on a command line; --round is initial or 'fix N' with N a
 positive integer. With --repo, files that git and the report disagree on show
-under "Changed but not reported" (at most 20, then a count). Paths are shown through DIR/lib-render/paths.jq: cut in the
-middle past 80 characters, the home folder as ~.
+under "Changed but not reported" (at most 20, then a count). Paths shown as
+text go through DIR/lib-render/paths.jq: cut in the middle past 80
+characters, the home folder as ~.
   DIR (--skills-dir) defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills.
 
 Exit codes:
@@ -534,7 +636,7 @@ parse_args() {
 		*) usage_error "unknown command: $1; expected check, render or --help" ;;
 	esac
 	shift
-	report='' repo='' baseline='' mode='' findings='' context='' labels_file='' labels='' round='' for_reader=''
+	report='' repo='' baseline='' mode='' findings='' context='' labels_file='' labels='' round='' for_reader='' task='' full=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -542,7 +644,11 @@ parse_args() {
 				usage
 				exit 0
 				;;
-			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --for | --skills-dir)
+			--full)
+				full=yes
+				shift
+				;;
+			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --for | --task | --skills-dir)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
@@ -566,6 +672,7 @@ set_option() {
 		--labels-file) labels_file=$2 ;;
 		--round) round=$2 ;;
 		--for) for_reader=$2 ;;
+		--task) task=$2 ;;
 		*) skills_dir=$2 ;;
 	esac
 }
@@ -594,8 +701,8 @@ check_baseline_file() {
 }
 
 check_check_args() {
-	for render_only in "${labels_file}" "${round}" "${for_reader}"; do
-		[ -z "${render_only}" ] || usage_error 'check takes no --labels-file, --round or --for; expected them only with render'
+	for render_only in "${labels_file}" "${round}" "${for_reader}" "${task}" "${full}"; do
+		[ -z "${render_only}" ] || usage_error 'check takes no --labels-file, --round, --for, --task or --full; expected them only with render'
 	done
 	[ -n "${repo}" ] || usage_error '--repo DIR missing; expected the absolute path of the repository root'
 	case ${mode} in
@@ -628,6 +735,10 @@ check_render_args() {
 		'' | reviewer | test) ;;
 		*) usage_error "--for ${for_reader} is unknown; expected --for reviewer or --for test" ;;
 	esac
+	[ -z "${for_reader}" ] || [ -z "${full}${task}" ] ||
+		usage_error '--for takes no --full or --task; expected --for reviewer|test without them'
+	[ -z "${full}" ] || [ -z "${task}" ] ||
+		usage_error '--full takes no --task; expected --task only with the summary render'
 	[ -n "${for_reader}" ] || check_view_args
 }
 
@@ -752,12 +863,14 @@ run_render() {
 	# Only a first round can refuse review_responses: render gets no findings file.
 	findings_mode=unchecked
 	[ "${round}" != initial ] || [ -n "${for_reader}" ] || findings_mode=none
+	if [ -n "${full}${for_reader}" ]; then main_program=${FULL_MAIN_JQ}; else main_program=${SUMMARY_JQ}; fi
 	jq -nr -L "${skills_dir}/${RENDER_LIB}" --slurpfile report "${report}" --rawfile git "${git_file}" \
 		--rawfile baseline "${baseline_file}" --argjson have_git "${have_git}" --argjson max_mismatches "${MAX_MISMATCHES}" \
 		--argjson max_baseline_shown "${MAX_BASELINE_SHOWN}" \
 		--arg mode BUILD --arg findings_mode "${findings_mode}" --arg findings_text '' \
 		--arg labels "${labels}" --arg round "${round}" --arg for "${for_reader}" --arg home "${HOME:-}" \
-		"include \"paths\"; null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}" </dev/null ||
+		--arg task "${task}" --arg report_path "${report}" \
+		"include \"paths\"; null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${main_program}" </dev/null ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
 }
 
