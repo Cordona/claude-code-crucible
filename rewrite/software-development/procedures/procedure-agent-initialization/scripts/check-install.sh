@@ -2,12 +2,13 @@
 # Prints the install checklist for procedure-agent-initialization: its four
 # scripts, the two context checks they share and lib-render's path helpers,
 # which a printed plan loads, procedure-approval-gate's
-# open-gate.sh and its two hook scripts, jq, the three hook entries in
-# settings.json (the inject hook and both gate hooks), and the installed
-# plugins. Every check runs, whatever an earlier one found, so one run names
-# every fix. It reads settings.json only through jq, and only those hook
-# commands, which it counts or hashes and never prints: the file may hold
-# secrets in its env block.
+# open-gate.sh and its two hook scripts, crucible.sh, jq, the three hook
+# entries in settings.json (the inject hook and both gate hooks), the Crucible
+# space in its additionalDirectories, and the installed plugins. Every check
+# runs, whatever an earlier one found, so one run names every fix. It reads
+# settings.json only through jq, and only those hook commands and
+# permissions.additionalDirectories, which it counts or hashes and never
+# prints: the file may hold secrets in its env block.
 # A full pass is cached: the marker keeps a fingerprint of everything the checks
 # depend on, and while that fingerprint is unchanged the checks are skipped.
 # The marker is the only file it writes; it holds no settings content.
@@ -26,6 +27,8 @@ readonly RENDER_LIB='lib-render'
 readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
+readonly CRUCIBLE_SKILL='crucible'
+readonly CRUCIBLE_SCRIPT='crucible.sh'
 # A timed-out inject hook lets the dispatch through with no plugins, and the
 # hook reads every plugin file on the PLUGIN line, so its bound is generous.
 readonly HOOK_TIMEOUT=30
@@ -52,6 +55,13 @@ readonly HOOK_COMMANDS_JQ='.hooks?[$event]?[]?
 	| .command?
 	| select(type == "string" and contains($needle))'
 readonly HOOK_COUNT_JQ="[${HOOK_COMMANDS_JQ}] | length"
+# Emits each permissions.additionalDirectories entry, trailing slashes dropped;
+# a missing or mistyped level emits nothing.
+readonly ALLOWED_DIRS_JQ='.permissions?.additionalDirectories?[]? | strings | sub("/+$"; "")'
+# shellcheck disable=SC2016 # $dir is jq's
+readonly SPACE_COUNT_JQ="[${ALLOWED_DIRS_JQ} | select(. == \$dir)] | length"
+# shellcheck disable=SC2016 # $dir is jq's
+readonly SPACE_FRAGMENT_JQ='{permissions: {additionalDirectories: [$dir]}}'
 # The C locale keeps pattern matching and sort byte-wise; the UTF-8 marks are
 # printed as bytes.
 LC_ALL=C
@@ -73,6 +83,8 @@ Checks that ${PROCEDURE} is installed and ready, and prints one line per check:
   ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
   ✓ gate-stop-hook.sh
   ✓ gate-question-hook.sh
+  ✓ ${CRUCIBLE_SCRIPT}                the script is in DIR/${CRUCIBLE_SKILL}/scripts/ and
+                               its --help exits 0
   ✓ ${CONTEXT_SHAPE_LIB}       a readable file in DIR/${PROCEDURE}/scripts/
   ✓ ${CONTEXT_FILE_LIB}        the same
   ✓ ${PATHS_MODULE}        a readable file in DIR/${RENDER_LIB}/
@@ -86,6 +98,11 @@ Checks that ${PROCEDURE} is installed and ready, and prints one line per check:
   ✓ gate question hook registered (...)
                                a PreToolUse entry, matcher "AskUserQuestion",
                                whose command runs ${GATE_QUESTION_SCRIPT}
+  ✓ Crucible space allowed (...)
+                               FILE's permissions.additionalDirectories holds
+                               \${CRUCIBLE_HOME:-\$HOME/.crucible}, expanded and
+                               without trailing slashes (one may follow an entry);
+                               when it doesn't, the fix names the JSON to add
   ✓ <N> plugins installed: <t> tech, <s> standards
                                from list-plugins.sh --max-lines 0
 A failed check prints "✗ <item>: <reason>. Fix: <action>" instead (invalid
@@ -96,12 +113,13 @@ warning, not a failure: "⚠ no plugins installed: ...". The last line is
 go on." when only the inject hook check failed, or "<n> check(s) failed."
 otherwise.
 When jq is missing or FILE is missing, unreadable or not JSON, one line covers
-all three hook checks.
+all three hook checks and the Crucible space check.
 
 Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
 fingerprint of the five procedure scripts, ${CONTEXT_SHAPE_LIB}, ${CONTEXT_FILE_LIB},
 ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three (open-gate.sh and both gate
-hook scripts), the three hook entries' commands (hashed), the jq version, and each
+hook scripts), ${CRUCIBLE_SCRIPT}, the three hook entries' commands (hashed), the
+Crucible space and the additionalDirectories entries, the jq version, and each
 tech-*/standard-* folder's name, SKILL.md and references/ files. While the fingerprint is unchanged, a run prints only:
   ✓ Install unchanged since <YYYY-MM-DD HH:MM>: <n> checks passed
 A failed run or a warning removes the marker. When the result can't be cached,
@@ -114,8 +132,9 @@ the checklist ends with "(result not cached: <reason>)"; that never fails it.
 
 Exit codes:
   0  every check passed (a warning included), or the cached pass still holds
-  1  a script, plugin, jq or gate hook check failed (whatever else failed
-     too); jq and both gate hooks are needed by the approval gate
+  1  a script, plugin, jq, gate hook or Crucible space check failed
+     (whatever else failed too); jq and both gate hooks are needed by the
+     approval gate
   2  usage error
   3  only the inject hook check failed: direct implementation can go on,
      dispatch can't
@@ -123,8 +142,8 @@ Exit codes:
 Dependencies: POSIX sh, tr; cksum, find, sort, date, mkdir, mktemp, mv and rm
 for the cache; jq is a check, not a requirement.
 Runtime: about 0.12 s for a full pass, 0.03 s cached; measured on macOS (average of 5 runs).
-Reads only: settings.json through jq (the hook commands, counted or hashed,
-never printed). Writes only: CACHE/${MARKER_NAME}.
+Reads only: settings.json through jq (the hook commands and
+permissions.additionalDirectories, counted or hashed, never printed). Writes only: CACHE/${MARKER_NAME}.
 EOF
 }
 
@@ -164,6 +183,8 @@ parse_args() {
 		esac
 	done
 	scripts_dir="${skills_dir}/${PROCEDURE}/scripts"
+	crucible_home="${CRUCIBLE_HOME:-${HOME}/.crucible}"
+	while [ "${crucible_home}" != "${crucible_home%/}" ]; do crucible_home=${crucible_home%/}; done
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
 }
@@ -196,11 +217,15 @@ fingerprint_input() {
 		"${scripts_dir}/render-dispatch-plan.sh" "${scripts_dir}/${CONTEXT_SHAPE_LIB}" "${scripts_dir}/${CONTEXT_FILE_LIB}" \
 		"${skills_dir}/${PATHS_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
-		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" 2>/dev/null ||
+		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
+		"${skills_dir}/${CRUCIBLE_SKILL}/scripts/${CRUCIBLE_SCRIPT}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
+	printf 'crucible space\n%s\n' "${crucible_home}"
+	jq -c "${ALLOWED_DIRS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
+		printf 'additional directories unreadable\n'
 	printf 'jq\n'
 	jq --version </dev/null 2>/dev/null || printf 'jq unavailable\n'
 	printf 'plugins\n'
@@ -290,27 +315,39 @@ warn() {
 # Checks that script $2 of procedure $1 is installed and answers --help with a
 # Usage: line.
 check_script() {
+	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+	read_help "$1" "$2" || return 0
+	case ${NL}${help_text} in
+		*"${NL}Usage:"*) pass "$2" ;;
+		*) fail "$2" "--help printed no Usage: line" "${reinstall}" ;;
+	esac
+}
+
+# Checks that script $2 of skill $1 is installed and its --help exits 0.
+check_runnable() {
+	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+	read_help "$1" "$2" || return 0
+	pass "$2"
+}
+
+# Sets help_text to the --help output of script $2 of skill $1, and reinstall
+# to the fix for it; fails the check for $2 and returns 1 when the script is
+# missing or its --help exits non-zero.
+read_help() {
 	script_dir="${skills_dir}/$1/scripts"
 	script="${script_dir}/$2"
 	reinstall="reinstall $1 under ${skills_dir}"
-	shift
 	if [ ! -f "${script}" ] || [ ! -r "${script}" ]; then
-		fail "$1" "missing from ${script_dir}" "${reinstall}"
-		return 0
+		fail "$2" "missing from ${script_dir}" "${reinstall}"
+		return 1
 	fi
 	if help_text=$(sh "${script}" --help </dev/null 2>/dev/null); then
-		help_status=0
+		return 0
 	else
 		help_status=$?
 	fi
-	if [ "${help_status}" -ne 0 ]; then
-		fail "$1" "--help exited ${help_status}, expected 0" "${reinstall}"
-		return 0
-	fi
-	case ${NL}${help_text} in
-		*"${NL}Usage:"*) pass "$1" ;;
-		*) fail "$1" "--help printed no Usage: line" "${reinstall}" ;;
-	esac
+	fail "$2" "--help exited ${help_status}, expected 0" "${reinstall}"
+	return 1
 }
 
 # Checks that file $1 in folder $2, which the scripts load, is readable; $3
@@ -363,9 +400,10 @@ is_version_readable() {
 	esac
 }
 
-# Checks that the settings file registers the inject hook and both gate hooks;
-# a settings file jq can't read fails once for all three.
-check_hooks() {
+# Checks that the settings file registers the inject hook and both gate hooks
+# and allows the Crucible space; a settings file jq can't read fails once for
+# all four.
+check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
 		return 0
@@ -373,7 +411,8 @@ check_hooks() {
 	if [ ! -e "${settings_file}" ]; then
 		hook_entries=''
 		each_hook append_hook_entry
-		fail 'hooks not registered' "no settings file at ${settings_file}" "create it with ${hook_entries}, then run /hooks or restart"
+		set_space_fix
+		fail 'hooks not registered' "no settings file at ${settings_file}" "create it with ${hook_entries}; and ${space_fix}, then run /hooks or restart"
 		return 0
 	fi
 	if [ ! -f "${settings_file}" ] || [ ! -r "${settings_file}" ]; then
@@ -385,6 +424,7 @@ check_hooks() {
 		return 0
 	fi
 	each_hook check_hook_entry
+	check_space_allowed
 }
 
 # Calls $1 once per hook entry with: item name, event, matcher ("" any), script,
@@ -428,6 +468,52 @@ check_hook_entry() {
 			;;
 		*) pass "$1 registered (${where} in settings.json)" ;;
 	esac
+}
+
+# Checks that permissions.additionalDirectories holds the Crucible space, so
+# the main thread and agents read and write there without a prompt.
+check_space_allowed() {
+	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+	is_space_absolute || return 0
+	if space_count=$(jq --arg dir "${crucible_home}" "${SPACE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+		:
+	else
+		fail 'Crucible space not checked' "jq could not read permissions.additionalDirectories in ${settings_file}" "check it with jq, then rerun"
+		return 0
+	fi
+	case ${space_count} in
+		'' | *[!0-9]* | 0)
+			set_space_fix
+			fail 'Crucible space not allowed' "permissions.additionalDirectories in ${settings_file} has no ${crucible_home} entry" "${space_fix}, then restart Claude Code"
+			;;
+		*) pass "Crucible space allowed (${crucible_home} in permissions.additionalDirectories)" ;;
+	esac
+}
+
+# True when crucible_home is an absolute folder other than /, as crucible.sh
+# needs; fails the space check otherwise.
+is_space_absolute() {
+	case ${crucible_home} in
+		'')
+			fail 'Crucible space not checked' 'CRUCIBLE_HOME is /' 'point CRUCIBLE_HOME at a folder of its own, then rerun'
+			return 1
+			;;
+		/*) return 0 ;;
+		*)
+			fail 'Crucible space not checked' 'CRUCIBLE_HOME is not an absolute path' "set CRUCIBLE_HOME to an absolute path, or unset it for \$HOME/.crucible, then rerun"
+			return 1
+			;;
+	esac
+}
+
+# Sets space_fix to the fix that adds the Crucible space: the JSON to merge
+# into settings.json, built by jq so the path is escaped.
+set_space_fix() {
+	if space_fragment=$(jq -cn --arg dir "${crucible_home}" "${SPACE_FRAGMENT_JQ}" </dev/null 2>/dev/null); then
+		space_fix="merge ${space_fragment} into settings.json (append the path when additionalDirectories exists)"
+	else
+		space_fix="add ${crucible_home} to permissions.additionalDirectories in settings.json"
+	fi
 }
 
 # Checks the plugin listing. list-plugins.sh's stdout and stderr are captured
@@ -570,11 +656,12 @@ check_script "${PROCEDURE}" render-dispatch-plan.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
+check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
 check_lib_file "${CONTEXT_SHAPE_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${CONTEXT_FILE_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq
-check_hooks
+check_settings
 check_plugins
 record_result
 print_summary

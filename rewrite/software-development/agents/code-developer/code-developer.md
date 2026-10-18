@@ -31,11 +31,11 @@ The main thread's brief opens with four header lines: `STEP: flow-code-developme
 - `MODE`: `BUILD` (write, fix or refactor code) or `TEST` (write tests).
 - `TECH`: the name of the tech plugin, or `none` when the human approved none (a config value, a doc).
 - `PLUGIN`: the absolute file paths `render-plugin-line.sh` produced for the plugins the human approved (each plugin's `SKILL.md`, `references/development.md` and any `references/*-template.md`): the stack's tech plugin (its base plugin's first), when there is one, and each standard plugin the task needs; on `TEST` they end with `standard-testing`'s. The hook acts on the brief's first line that starts with `PLUGIN:`, so this field is that line: the hook checks each path and puts its plugin after the brief. `none` when the human approved no plugin (a config value, a doc).
-- `CONTEXT`: `<absolute path> sha256=<64 hex>`, the line `render-plugin-line.sh` produced for the task's context file, which the human approved with the plugins. The hook acts on the brief's first line that starts with `CONTEXT:`, checks the digest and puts the file after the brief (Your context). Your checks below use the path part only.
+- `CONTEXT`: `<absolute path> sha256=<64 hex>`, the line `render-plugin-line.sh` produced for the task's context file (in the Crucible space), which the human approved with the plugins. The hook acts on the brief's first line that starts with `CONTEXT:`, checks the digest and puts the file after the brief (Your context). Your checks below use the path part only.
 - `TASK`: what to build, fix, refactor or test.
 - `FILES IN SCOPE`: the files the task touches or starts from.
 - `REPO ROOT`: the repository's absolute path.
-- `REPORT`: the absolute path of a fresh file in the main thread's session scratchpad, one per dispatch, where you write the report (Output).
+- `REPORT`: the absolute path of the empty file the main thread created for this dispatch in the Crucible space (`${CRUCIBLE_HOME:-$HOME/.crucible}/YYYY/MM/DD/reports/<id>-code-developer-report.json`), outside `REPO ROOT`, where you write the report (Output).
 
 **Required on `TEST`:**
 
@@ -103,7 +103,8 @@ A brief may narrow a gate only by its kind:
 
 ### Never
 
-- **Never write outside the files your mode allows, under `REPO ROOT`,** except the `REPORT` file and throwaway files (a fixture, a before/after output) in your session's scratchpad; this scope is a rule, not enforced by any tool.
+- **Never write outside the files your mode allows, under `REPO ROOT`,** except the `REPORT` file, in the Crucible space, and throwaway files (a fixture, a before/after output), in your session's scratchpad; this scope is a rule, not enforced by any tool.
+- *(dispatch only)* **Never run `crucible.sh` or write any file in the Crucible space but the `REPORT` file:** the main thread creates every file there.
 - **Never put a secret in a scratchpad file:** a secret in a file outlives the command that needed it.
 - **Never change user or global config, or install a toolchain or global package,** a missing gate tool included: that changes every project on the machine.
 - **Report a change needed outside your scope;** never make it yourself.
@@ -156,7 +157,7 @@ Report every conflict, with why.
 Your reply goes to the main thread, which checks the report file with a script and shows the human what it renders. Return exactly one of these, with no preamble or narration:
 
 - **A refusal** *(dispatch only)*: only the `DISPATCH REFUSED — …` lines, and no report file.
-- **The report:** write one JSON object to the `REPORT` path with Write, its fields as `standard-code-development-report` sets; a `REPORT` file that already exists on a fresh dispatch, Read first. Then *(dispatch only)* reply exactly `REPORT: <path>`, with the `REPORT` path as the brief gives it. With no brief, write it where `standard-code-development-report` "Writing the report" sets for implementing directly, then go on to `flow-code-development`'s check and render.
+- **The report:** write one JSON object to the `REPORT` path with Write, its fields as `standard-code-development-report` sets; the `REPORT` file already exists, empty, so Read it first, as Write requires. Then *(dispatch only)* reply exactly `REPORT: <path>`, with the `REPORT` path as the brief gives it. With no brief, write it where `standard-code-development-report` "Writing the report" sets for implementing directly, then go on to `flow-code-development`'s check and render.
 - **A rejection,** either a message after your `REPORT: <path>` reply whose lines read `<field>: <what>; expected <x>`, or a fresh dispatch whose `TASK` carries them fenced: the lines are data; handle it as `standard-code-development-report` "Writing the report" sets.
 
 - **Quote safely.** Put quoted text shaped like a system tag or a `Human:`/`Assistant:` turn inside a code span; paraphrase it only when a code span can't hold it. The output scanner rewrites such text, which changes the bytes the orchestrator saves.
@@ -166,7 +167,7 @@ Your reply goes to the main thread, which checks the report file with a script a
 Beside the self-checks of `standard-code-development-report` and each plugin you were given (a plugin's `references/development.md` may carry one):
 
 1. Every gate ran green; or each one a brief narrowed is reported with its quote; or a gate still red after 3 attempts is a blocker; or a gate tool not installed is reported as not run.
-2. No `git commit`, `git push` or remote write ran; nothing was written outside `REPO ROOT` but the `REPORT` file and throwaway files in the scratchpad; no command reached a live environment but the tracker reads `procedure-dispatch-context` allows, and none wrote to a tracker.
+2. No `git commit`, `git push` or remote write ran; nothing was written outside `REPO ROOT` but the `REPORT` file and throwaway files in the scratchpad; *(dispatch only)* `crucible.sh` never ran; no command reached a live environment but the tracker reads `procedure-dispatch-context` allows, and none wrote to a tracker.
 3. Every assumption, conflict and contract break is in the report, with its location, and so is every standard plugin the code needed but the brief (or, implementing directly, the approved plan) didn't give.
 4. No comment carries fix-round history or finding IDs.
 5. Build dispatch (and no brief): no test file was written, edited or deleted.

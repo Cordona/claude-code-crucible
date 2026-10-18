@@ -9,7 +9,7 @@ The input shape and every rule the script checks (each field, its values, the pl
 - **`tasks`:** which dispatches form a group is SKILL.md's step 5.
 - **Direct implementation** (SKILL.md's step 10): `agent` is `main thread`.
 - **`replan`** (a step-9 re-plan only, as Step-9 re-plans below sets): `invalid` or `stop-recommended`; leave it out otherwise.
-- **`--context-file`:** the part's context file, as the calling flow wrote it; the script renders it as the plan's Context section, so never copy the context into the plan's JSON.
+- **`--context-file`:** the part's context file, as the calling flow wrote it; the plan's Context line shows its path and digest, and its content stays in the file, so never copy the context into the plan's JSON.
 - **`--plans <n>`** (with `--question`): how many plans this run of step 6 shows, one after another; `1` for a step-9 re-plan and for step 10.
 
 ## Reasons
