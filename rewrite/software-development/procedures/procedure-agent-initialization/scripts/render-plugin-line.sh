@@ -19,26 +19,30 @@ export LC_ALL
 # prints the PLUGIN paths one per line in load order (want=paths), or the
 # LABELS line with the standard labels in that order (want=labels); or one
 # stderr line per problem and exit 3. A plugin line is <kind> <name> <label> <description>
-# <paths...>, so the paths start at field 5. The names are taken out of ARGV
-# so awk reads stdin.
+# <paths...>, so the paths start at field 5. The names are taken out of ARGV,
+# each operand split on whitespace, so awk reads stdin.
 # The program is single-quoted on purpose: its $ signs are awk's.
 # shellcheck disable=SC2016
 readonly SELECT_AWK='
 function shown(name) { gsub(/[[:cntrl:]]/, "?", name); return name }
 function problem(text) { printf "%s: %s\n", prog, text > "/dev/stderr"; failed = 1 }
 function add_label(list, label) { return list (list == "" ? "" : ", ") shown(label) }
+function request(name) {
+	if (name in requested) {
+		if (!(name in reported_twice)) problem("name " shown(name) " given twice; expected each plugin once; drop the repeat")
+		reported_twice[name] = 1
+		return
+	}
+	requested[name] = 1
+	order[++count] = name
+}
 BEGIN {
 	FS = "\t"
 	for (i = 1; i < ARGC; i++) {
-		name = ARGV[i]
+		pieces = split(ARGV[i], piece, /[ \t\n]+/)
 		delete ARGV[i]
-		if (name in requested) {
-			if (!(name in reported_twice)) problem("name " shown(name) " given twice; expected each plugin once; drop the repeat")
-			reported_twice[name] = 1
-			continue
-		}
-		requested[name] = 1
-		order[++count] = name
+		for (j = 1; j <= pieces; j++)
+			if (piece[j] != "") request(piece[j])
 	}
 }
 !($2 in requested) { next }
@@ -99,7 +103,8 @@ the same names' labels (list-plugins.sh's label field, a control character as "?
 the standard labels joined by ", " in the PLUGIN line's order (${TESTING_PLUGIN}
 last on --mode TEST). The checks and exit codes are the same as without it.
   NAME  an installed plugin's full name as list-plugins.sh prints it (tech-shell,
-        standard-security). At most one tech name; no name twice; --mode TEST
+        standard-security); a NAME holding whitespace is split into names, in
+        order. At most one tech name; no name twice; --mode TEST
         needs ${TESTING_PLUGIN}, --mode BUILD must not have it.
   DIR   the skills folder, as list-plugins.sh's --skills-dir; defaults to
         \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills.
@@ -375,7 +380,10 @@ trap 'exit 143' TERM
 parse_args "$@"
 shift "${names_offset}"
 for name in "$@"; do
-	[ -n "${name}" ] || usage_error 'empty NAME; expected plugin names such as tech-shell'
+	case ${name} in
+		*[![:space:]]*) ;;
+		*) usage_error 'empty NAME; expected plugin names such as tech-shell' ;;
+	esac
 done
 [ -z "${context_file}" ] || digest_context_file
 read_listing
