@@ -10,13 +10,13 @@ One folder, outside every repository, for the files Crucible keeps. The main thr
 
 ## Rules
 
-- **JSON only:** each item is one JSON object in its writer's shape; Markdown is rendered on demand by `open`, never stored, so the JSON stays the one source.
+- **JSON, but prompts:** every kind is one JSON object in its writer's shape, except `prompts`, the Markdown message the main thread reads on the direct path, stored as `.md`; other Markdown is rendered on demand by `open`, never stored, so the JSON stays the one source.
 - **`"v": 1` is in index lines and gate records only:** a report's or context file's shape is its validator's, which refuses any other key.
-- **The main thread allocates every path** with `crucible.sh new`, before the file is needed, and hands it to the agent in its brief. Agents never run `crucible.sh` (a reviewer has no Bash) and write nothing in the space but the `REPORT` file their brief names.
-- **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. Two exceptions: the context file, which the main thread may revise until its last dispatch, each revision approved again at the gate through its digest; and a report fixed on a rejection, before it passes its check.
+- **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `flow-agent-initialization`'s for the context, dispatch, report and prompt files, `procedure-approval-gate`'s question hook for gate records. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` (a reviewer has no Bash) and write nothing in the space but that `REPORT` file.
+- **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. One exception: a report fixed on a rejection, before it passes its check. A changed context is a new context file, approved again at the gate through its digest.
 - **Throwaway files stay in the session scratchpad:** baselines, labels files, temp files.
 - **Never write a secret into an item;** a found secret is reported masked, by location.
-- **Never edit `settings.json`:** `procedure-agent-initialization`'s install check prints the entry that allows the space, and the human adds it.
+- **Never edit `settings.json`:** `flow-agent-initialization`'s install check prints the entry that allows the space, and the human adds it.
 
 ## The space
 
@@ -24,10 +24,10 @@ One folder, outside every repository, for the files Crucible keeps. The main thr
 
 ```
 <space>/YYYY/MM/DD/index.jsonl                                  one line per item
-<space>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.json
+<space>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<json, or md for prompts>
 ```
 
-- **Kinds:** `context`, `gates`, `reports`; any other is refused.
+- **Kinds:** `context`, `gates`, `reports`, `dispatches`, `prompts` (`.md`); any other is refused.
 - **ID:** `<YYYYMMDDTHHMMSS>-<hex>`, read from the file name. Its 4 hex alone find the newest day holding them; an older item with the same hex needs its full ID.
 - **Private:** folders 700, files 600; a symbolic link in the layout is refused.
 
@@ -39,6 +39,7 @@ One folder, outside every repository, for the files Crucible keeps. The main thr
 |---|---|---|
 | `new --kind <kind> --label <label> [--repo <git root>] [--session <id>]` | creates an empty file, never overwriting one, and its index line; label `a-z0-9-`, at most 60 characters | the file's absolute path |
 | `path <id>` | finds the item through the index | its absolute path |
+| `find --kind <kind> --session <id> [--label <label>]` | finds the session's items of that kind (and label) through the index; read-only | their absolute paths, newest first, one per line; nothing when there is none |
 | `open <id> [--format md\|html] [--editor <cmd>]` | renders the item to a temp folder outside the space (a report through `report.sh render --full`) and opens it with the OS opener (`open` on macOS, `xdg-open` on Linux), or with `--editor <cmd>`, never a terminal editor, which would hang the Bash tool; `--format html` is not available yet | one line, `opened <file>` |
 | `prune --older-than <N>d [--apply]` | lists the day folders older than N days; removes them only with `--apply`, never today, yesterday or a day with a file modified in the last 24 hours | one `would remove`, `removed` or `kept <folder> (<reason>)` line each, then a count |
 

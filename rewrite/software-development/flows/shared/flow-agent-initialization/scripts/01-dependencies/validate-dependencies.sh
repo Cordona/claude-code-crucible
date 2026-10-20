@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
-# Prints the install checklist for procedure-agent-initialization: its four
-# scripts, the two context checks they share and lib-render's path helpers,
-# which a printed plan loads, procedure-approval-gate's
+# Prints the install checklist for flow-agent-initialization: its six
+# scripts, the two context checks they share, the dispatch plan check and its
+# plugin list reader, the dispatch check, the plugin file helper and the
+# dispatch names module,
+# lib-render's path helpers, which a printed plan loads, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the three hook
-# entries in settings.json (the inject hook and both gate hooks), the Crucible
+# entries in settings.json (the inject hook, which must block on failure, and
+# both gate hooks), the Crucible
 # space in its additionalDirectories, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix. It reads
 # settings.json only through jq, and only those hook commands and
@@ -17,21 +20,37 @@
 # exit 1 failures, since the approval gate every plan goes through needs them.
 set -eu
 
-readonly PROG='check-install.sh'
-readonly PROCEDURE='procedure-agent-initialization'
+readonly PROG='validate-dependencies.sh'
+readonly PROCEDURE='flow-agent-initialization'
 readonly GATE_PROCEDURE='procedure-approval-gate'
-readonly HOOK_SCRIPT="${PROCEDURE}/scripts/inject-plugins.sh"
-readonly CONTEXT_SHAPE_LIB='lib/context-shape.jq'
-readonly CONTEXT_FILE_LIB='lib/context-file.sh'
+readonly SELF_SCRIPT='01-dependencies/validate-dependencies.sh'
+readonly LIST_SCRIPT='03-dispatch-plan/list-plugins.sh'
+readonly PLAN_RENDER_SCRIPT='03-dispatch-plan/render-dispatch-plan.sh'
+readonly INJECT_SCRIPT='05-agent-prompt/prepare-agent-prompt.sh'
+readonly HOOK_SCRIPT="${PROCEDURE}/scripts/${INJECT_SCRIPT}"
+readonly CONTEXT_GENERATOR_SCRIPT='02-agent-context/generate-agent-context.sh'
+readonly PLAN_GENERATOR_SCRIPT='03-dispatch-plan/generate-dispatch-plan.sh'
+readonly PLAN_VALIDATOR_LIB='03-dispatch-plan/dispatch-plan-validator.jq'
+readonly INSTALLED_PLUGINS_LIB='03-dispatch-plan/installed-plugins.jq'
+readonly DISPATCH_GENERATOR_SCRIPT='04-agent-dispatch/generate-agent-dispatch.sh'
+readonly DISPATCH_VALIDATOR_LIB='04-agent-dispatch/agent-dispatch-validator.jq'
+readonly PLUGIN_FILES_LIB='04-agent-dispatch/plugin-files.sh'
+readonly DISPATCH_NAMES_LIB='04-agent-dispatch/dispatch-names.jq'
+readonly CONTEXT_VALIDATOR_LIB='02-agent-context/agent-context-validator.jq'
+readonly CONTEXT_FILE_LIB='02-agent-context/agent-context-file-checks.sh'
 readonly RENDER_LIB='lib-render'
 readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
-# A timed-out inject hook lets the dispatch through with no plugins, and the
-# hook reads every plugin file on the PLUGIN line, so its bound is generous.
+# The inject hook reads every plugin file of the dispatch, so its bound is
+# generous; with "onFailure": "block" a timeout blocks the dispatch.
 readonly HOOK_TIMEOUT=30
+# The inject hook's entry must block the dispatch when the hook fails or times
+# out; Claude Code otherwise lets the call through with its prompt untouched.
+readonly HOOK_ON_FAILURE='block'
+
 # The gate hooks read one small state file, and a timed-out one lets the stop
 # or question through, so a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
@@ -40,7 +59,7 @@ readonly GATE_HOOK_TIMEOUT=10
 readonly HOOK_COMMAND_ROOT='${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills'
 readonly JQ_FIX='install jq 1.6+ (macOS: brew install jq; Linux: the distro'\''s jq package), then rerun'
 readonly MARKER_NAME='install-check'
-# inject-plugins.sh needs jq 1.6 for --rawfile (see inject-plugins.sh --help).
+# prepare-agent-prompt.sh needs jq 1.6 for --rawfile (see its --help).
 readonly JQ_MIN_MAJOR=1
 readonly JQ_MIN_MINOR=6
 # Emits each hook command under event $event (and matcher $matcher; "" accepts
@@ -55,6 +74,22 @@ readonly HOOK_COMMANDS_JQ='.hooks?[$event]?[]?
 	| .command?
 	| select(type == "string" and contains($needle))'
 readonly HOOK_COUNT_JQ="[${HOOK_COMMANDS_JQ}] | length"
+# Counts the hook entries under event $event and matcher $matcher that run
+# $needle with "onFailure" set to $on_failure.
+# shellcheck disable=SC2016
+readonly HOOK_ON_FAILURE_COUNT_JQ='[.hooks?[$event]?[]?
+	| select(type == "object" and ($matcher == "" or .matcher == $matcher))
+	| .hooks?[]?
+	| select(type == "object" and (.command? | type == "string" and contains($needle)) and .onFailure? == $on_failure)]
+	| length'
+# Emits each matching hook entry's command and onFailure, for the fingerprint.
+# shellcheck disable=SC2016
+readonly HOOK_FINGERPRINT_JQ='.hooks?[$event]?[]?
+	| select(type == "object" and ($matcher == "" or .matcher == $matcher))
+	| .hooks?[]?
+	| select(type == "object" and (.command? | type == "string" and contains($needle)))
+	| [.command, .onFailure?]'
+
 # Emits each permissions.additionalDirectories entry, trailing slashes dropped;
 # a missing or mistyped level emits nothing.
 readonly ALLOWED_DIRS_JQ='.permissions?.additionalDirectories?[]? | strings | sub("/+$"; "")'
@@ -76,22 +111,40 @@ Usage: sh ${PROG} [--skills-dir DIR] [--settings FILE] [--cache-dir CACHE]
                         [--force] [--help|-h]
 
 Checks that ${PROCEDURE} is installed and ready, and prints one line per check:
-  ✓ list-plugins.sh            the script is in DIR/${PROCEDURE}/scripts/
-  ✓ render-plugin-line.sh      and its --help exits 0 with a Usage: line
-  ✓ inject-plugins.sh
-  ✓ render-dispatch-plan.sh
+  ✓ ${LIST_SCRIPT}
+                               the script is in DIR/${PROCEDURE}/scripts/
+                               and its --help exits 0 with a Usage: line
+  ✓ ${INJECT_SCRIPT}
+  ✓ ${PLAN_RENDER_SCRIPT}
+  ✓ ${CONTEXT_GENERATOR_SCRIPT}
+  ✓ ${PLAN_GENERATOR_SCRIPT}
+  ✓ ${DISPATCH_GENERATOR_SCRIPT}
   ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
   ✓ gate-stop-hook.sh
   ✓ gate-question-hook.sh
   ✓ ${CRUCIBLE_SCRIPT}                the script is in DIR/${CRUCIBLE_SKILL}/scripts/ and
                                its --help exits 0
-  ✓ ${CONTEXT_SHAPE_LIB}       a readable file in DIR/${PROCEDURE}/scripts/
-  ✓ ${CONTEXT_FILE_LIB}        the same
+  ✓ ${CONTEXT_VALIDATOR_LIB}
+                               a readable file in DIR/${PROCEDURE}/scripts/
+  ✓ ${CONTEXT_FILE_LIB}
+                               the same
+  ✓ ${PLAN_VALIDATOR_LIB}
+                               the same
+  ✓ ${INSTALLED_PLUGINS_LIB}
+                               the same
+  ✓ ${DISPATCH_VALIDATOR_LIB}
+                               the same
+  ✓ ${PLUGIN_FILES_LIB}
+                               the same
+  ✓ ${DISPATCH_NAMES_LIB}
+                               the same
   ✓ ${PATHS_MODULE}        a readable file in DIR/${RENDER_LIB}/
   ✓ jq <version>               jq on PATH, version ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR} or newer
   ✓ inject hook registered (...)
                                FILE is valid JSON with a PreToolUse entry,
                                matcher "Agent", whose command runs ${HOOK_SCRIPT}
+                               and that has "onFailure": "${HOOK_ON_FAILURE}" (missing or
+                               another value fails the check)
   ✓ gate Stop hook registered (...)
                                a Stop entry whose command runs
                                ${GATE_STOP_SCRIPT}
@@ -116,8 +169,9 @@ When jq is missing or FILE is missing, unreadable or not JSON, one line covers
 all three hook checks and the Crucible space check.
 
 Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
-fingerprint of the five procedure scripts, ${CONTEXT_SHAPE_LIB}, ${CONTEXT_FILE_LIB},
-${PATHS_MODULE}, ${GATE_PROCEDURE}'s three (open-gate.sh and both gate
+fingerprint of ${PROCEDURE}'s seven scripts, ${CONTEXT_VALIDATOR_LIB},
+${CONTEXT_FILE_LIB}, ${PLAN_VALIDATOR_LIB}, ${INSTALLED_PLUGINS_LIB},
+${DISPATCH_VALIDATOR_LIB}, ${PLUGIN_FILES_LIB}, ${DISPATCH_NAMES_LIB}, ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three (open-gate.sh and both gate
 hook scripts), ${CRUCIBLE_SCRIPT}, the three hook entries' commands (hashed), the
 Crucible space and the additionalDirectories entries, the jq version, and each
 tech-*/standard-* folder's name, SKILL.md and references/ files. While the fingerprint is unchanged, a run prints only:
@@ -212,9 +266,14 @@ compute_fingerprint() {
 fingerprint_input() {
 	printf 'paths\n%s\n%s\n' "${skills_dir}" "${settings_file}"
 	printf 'scripts\n'
-	cksum "${scripts_dir}/list-plugins.sh" "${scripts_dir}/render-plugin-line.sh" \
-		"${scripts_dir}/inject-plugins.sh" "${scripts_dir}/check-install.sh" \
-		"${scripts_dir}/render-dispatch-plan.sh" "${scripts_dir}/${CONTEXT_SHAPE_LIB}" "${scripts_dir}/${CONTEXT_FILE_LIB}" \
+	cksum "${scripts_dir}/${LIST_SCRIPT}" \
+		"${scripts_dir}/${INJECT_SCRIPT}" "${scripts_dir}/${SELF_SCRIPT}" \
+		"${scripts_dir}/${PLAN_RENDER_SCRIPT}" "${scripts_dir}/${CONTEXT_GENERATOR_SCRIPT}" \
+		"${scripts_dir}/${PLAN_GENERATOR_SCRIPT}" "${scripts_dir}/${PLAN_VALIDATOR_LIB}" \
+		"${scripts_dir}/${INSTALLED_PLUGINS_LIB}" "${scripts_dir}/${DISPATCH_GENERATOR_SCRIPT}" \
+		"${scripts_dir}/${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}/${PLUGIN_FILES_LIB}" \
+		"${scripts_dir}/${DISPATCH_NAMES_LIB}" \
+		"${scripts_dir}/${CONTEXT_VALIDATOR_LIB}" "${scripts_dir}/${CONTEXT_FILE_LIB}" \
 		"${skills_dir}/${PATHS_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
@@ -232,11 +291,11 @@ fingerprint_input() {
 	fingerprint_plugins
 }
 
-# Prints the hook commands for event $1, matcher $2 ("" any) and script $3, or
-# a fixed line when they can't be read.
+# Prints the hook commands and their onFailure for event $1, matcher $2 (""
+# any) and script $3, or a fixed line when they can't be read.
 fingerprint_hook() {
 	printf 'hook %s %s %s\n' "$1" "$2" "$3"
-	jq -c --arg event "$1" --arg matcher "$2" --arg needle "$3" "${HOOK_COMMANDS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
+	jq -c --arg event "$1" --arg matcher "$2" --arg needle "$3" "${HOOK_FINGERPRINT_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
 		printf 'hook commands unreadable\n'
 }
 
@@ -312,7 +371,7 @@ warn() {
 	warning_count=$((warning_count + 1))
 }
 
-# Checks that script $2 of procedure $1 is installed and answers --help with a
+# Checks that script $2 of skill $1 is installed and answers --help with a
 # Usage: line.
 check_script() {
 	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
@@ -428,29 +487,34 @@ check_settings() {
 }
 
 # Calls $1 once per hook entry with: item name, event, matcher ("" any), script,
-# timeout. The one list both the check and its fix text are built from.
+# timeout, onFailure ("" not required). The one list both the check and its
+# fix text are built from.
 each_hook() {
-	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}"
-	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}"
-	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}"
+	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}"
+	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
+	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
 }
 
-# Appends the settings entry for hook $2..$5 (each_hook's arguments) to hook_entries.
+# Appends the settings entry for hook $2..$6 (each_hook's arguments) to hook_entries.
 # shellcheck disable=SC2329 # called by name through each_hook
 append_hook_entry() {
-	hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5")
+	hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
 	hook_entries="${hook_entries}${hook_entries:+; }${hook_entry}"
 }
 
-# Prints the settings entry for event $1, matcher $2 ("" none), script $3, timeout $4.
+# Prints the settings entry for event $1, matcher $2 ("" none), script $3,
+# timeout $4 and onFailure $5 ("" none).
 # shellcheck disable=SC2329 # called from each_hook's callbacks, which shellcheck can't trace
 hook_entry_text() {
 	matcher_text=''
 	[ -z "$2" ] || matcher_text=" (matcher $2)"
-	printf 'a %s hook%s with command sh "%s/%s", timeout %s' "$1" "${matcher_text}" "${HOOK_COMMAND_ROOT}" "$3" "$4"
+	on_failure_text=''
+	[ -z "$5" ] || on_failure_text=", \"onFailure\": \"$5\""
+	printf 'a %s hook%s with command sh "%s/%s", timeout %s%s' "$1" "${matcher_text}" "${HOOK_COMMAND_ROOT}" "$3" "$4" "${on_failure_text}"
 }
 
-# Checks one entry: item name $1, event $2, matcher $3 ("" any), script $4, timeout $5.
+# Checks one entry: item name $1, event $2, matcher $3 ("" any), script $4,
+# timeout $5, onFailure $6 ("" not required).
 # shellcheck disable=SC2329 # called by name through each_hook
 check_hook_entry() {
 	where=$2
@@ -463,10 +527,36 @@ check_hook_entry() {
 	fi
 	case ${hook_count} in
 		'' | *[!0-9]* | 0)
-			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5")
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
 			fail_hook "$4" "$1 not registered" "no ${where} entry runs ${4##*/}" "add ${hook_entry}, in settings.json, then run /hooks or restart"
 			;;
-		*) pass "$1 registered (${where} in settings.json)" ;;
+		*)
+			# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+			check_on_failure "$@" || return 0
+			pass "$1 registered (${where} in settings.json)"
+			;;
+	esac
+}
+
+# Fails hook $1..$6 (check_hook_entry's arguments) when onFailure $6 is
+# required and no entry running its script sets it; returns 1 then.
+# shellcheck disable=SC2329 # called from check_hook_entry, which each_hook calls by name
+check_on_failure() {
+	[ -n "$6" ] || return 0
+	if blocking_count=$(jq --arg event "$2" --arg matcher "$3" --arg needle "$4" --arg on_failure "$6" \
+		"${HOOK_ON_FAILURE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+		:
+	else
+		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		return 1
+	fi
+	case ${blocking_count} in
+		'' | *[!0-9]* | 0)
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
+			fail_hook "$4" "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets the dispatch through unprepared" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			return 1
+			;;
+		*) return 0 ;;
 	esac
 }
 
@@ -520,7 +610,7 @@ set_space_fix() {
 # together, so nothing is written: a plugin line starts with its kind and a tab,
 # and every other line is a report.
 check_plugins() {
-	list_script="${scripts_dir}/list-plugins.sh"
+	list_script="${scripts_dir}/${LIST_SCRIPT}"
 	if [ ! -f "${list_script}" ] || [ ! -r "${list_script}" ]; then
 		fail 'plugins not checked' 'list-plugins.sh is missing' "reinstall ${PROCEDURE} under ${skills_dir}"
 		return 0
@@ -639,6 +729,7 @@ warning_count=0
 cache_note=''
 marker_tmp=''
 trap '[ -z "${marker_tmp}" ] || rm -f "${marker_tmp}"' EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 parse_args "$@"
@@ -649,16 +740,23 @@ if [ "${force}" -eq 0 ] && cached_pass_holds; then
 	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
 	exit 0
 fi
-check_script "${PROCEDURE}" list-plugins.sh
-check_script "${PROCEDURE}" render-plugin-line.sh
-check_script "${PROCEDURE}" inject-plugins.sh
-check_script "${PROCEDURE}" render-dispatch-plan.sh
+check_script "${PROCEDURE}" "${LIST_SCRIPT}"
+check_script "${PROCEDURE}" "${INJECT_SCRIPT}"
+check_script "${PROCEDURE}" "${PLAN_RENDER_SCRIPT}"
+check_script "${PROCEDURE}" "${CONTEXT_GENERATOR_SCRIPT}"
+check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
+check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
-check_lib_file "${CONTEXT_SHAPE_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${CONTEXT_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${CONTEXT_FILE_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${PLAN_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${INSTALLED_PLUGINS_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${PLUGIN_FILES_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${DISPATCH_NAMES_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq
 check_settings

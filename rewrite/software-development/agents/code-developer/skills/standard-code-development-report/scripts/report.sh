@@ -120,7 +120,7 @@ def chain_operators:
 	gsub("\\\\.|\u0027[^\u0027]*\u0027|\"(\\\\.|[^\"\\\\])*\""; "") as $bare
 	| [("&&", "||", ";") | select(. as $operator | $bare | contains($operator))
 		| if . == ";" then "a semicolon" else . end];
-def location_expected: "a repo-relative path:line, brief: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or its URL) or commit <sha>";
+def location_expected: "a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or its URL) or commit <sha>";
 
 def expected($name):
 	if enums[$name] then "one of \(enums[$name] | names)"
@@ -140,7 +140,7 @@ def cross_problems($list; $loc):
 	if $list == "verification" then
 		(if .result == "pass" and (has("command") | not) then "\($loc).command: missing on a pass; expected the command as run" else empty end),
 		(if (.result | among(enums["verification.result"])) and .result != "pass" and (has("note") | not)
-		 then "\($loc).note: missing on result \(.result); expected why it did not pass (for narrowed, the brief words quoted and the coverage given up)" else empty end),
+		 then "\($loc).note: missing on result \(.result); expected why it did not pass (for narrowed, the words of the first message quoted and the coverage given up)" else empty end),
 		(.command | strings | chain_operators | select(length > 0)
 		 | "\($loc).command: chains commands with \(join(" and ")); expected one command per item")
 	elif $list == "open" and .kind == "could_not" and (has("ref") | not) then
@@ -224,17 +224,17 @@ def findings_problems:
 	elif $findings_mode == "none" then
 		(if has("review_responses") then "review_responses: given outside a fix round; expected it left out (only a check run with --findings takes it)" else empty end)
 	elif has("review_responses") | not then
-		"review_responses: missing on a fix round; expected one item per brief finding ID: \(findings_list | names)"
+		"review_responses: missing on a fix round; expected one item per finding ID given: \(findings_list | names)"
 	elif (.review_responses | type) != "array" then empty
 	else findings_list as $findings
 		| .blockers as $blockers
 		| [.review_responses[] | objects | .id | strings] as $ids
 		| ($findings[] as $id | [$ids[] | select(. == $id)] | length
-			| if . == 0 then "review_responses: \($id | shown) missing; expected each brief finding ID exactly once"
+			| if . == 0 then "review_responses: \($id | shown) missing; expected each finding ID given exactly once"
 			  elif . > 1 then "review_responses: \($id | shown) given \(.) times; expected it exactly once"
 			  else empty end),
 		  ($ids | unique[] | select(among($findings) | not)
-			| "review_responses: \(shown) is not a brief finding ID; expected only \($findings | names)"),
+			| "review_responses: \(shown) is not a finding ID given; expected only \($findings | names)"),
 		  (.review_responses | to_entries[] | .key as $index | .value
 			| select(type == "object" and .status == "blocked" and (.id | type) == "string") | .id as $id
 			| select([$blockers | arrays | .[] | objects | select(.kind == "finding_blocked" and (.detail | type) == "string" and (.detail | names_token($id)))] | length == 0)
@@ -332,7 +332,7 @@ def gap_groups:
 	group("Not read or not done:"; [open_of("could_not")[] | located(.ref // .at; .text | txt)]),
 	group("Assumptions:"; [open_of("assumption")[] | "- \(.text | txt)"]),
 	group("Contract breaks:"; [open_of("contract_break")[] | located_span(.at; .text | txt)]),
-	group("Gates the brief tried to suspend:"; [open_of("gate_refused")[] | located(.at; .text | txt)]);
+	group("Gates the first message tried to suspend:"; [open_of("gate_refused")[] | located(.at; .text | txt)]);
 def decisions_group: group("Decisions:"; [objects_of("decisions")[]
 	| "- \(.choice | bare)." + because(.why) + (if (.commit | txt) != "" then " Commit: \(.commit | txt)" else "" end)]);
 def focus_group: group("For the reviewer:"; [objects_of("focus")[] | located_span(.at; .question | txt)]);
@@ -504,7 +504,7 @@ Rules the validator enforces (check, and render before it prints):
   - a str holds a non-space character and at most 200 characters (summary:
     its 25-word cap instead); a path or loc is never absolute (/, ~ or a
     drive letter); a files path has no .. segment and is listed once
-  - loc: a repo-relative path:line, brief: <FIELD>, a plugin name and file, a
+  - loc: a repo-relative path:line, message: <FIELD>, a plugin name and file, a
     context entry (paths[<n>], links[<n>] or its URL) or commit <sha>; only
     "never absolute" is enforced
   - verification: a pass has its command; any other result has its note
@@ -789,7 +789,7 @@ check_jq() {
 # Exits 4 unless the report file holds exactly one JSON object.
 check_report() {
 	[ -f "${report}" ] && [ -r "${report}" ] ||
-		not_a_report "${report} is missing, unreadable or not a regular file; expected the file the brief's REPORT line names"
+		not_a_report "${report} is missing, unreadable or not a regular file; expected the file the first message's REPORT names"
 	shape=$(jq -rs 'if length == 1 and (.[0] | type) == "object" then "object" elif length == 1 then "a JSON \(.[0] | type)" else "\(length) values" end' "${report}" </dev/null 2>/dev/null) ||
 		not_a_report "${report} is not valid JSON; expected one JSON object; try checking its quotes, commas and brackets"
 	[ "${shape}" = object ] ||

@@ -5,7 +5,7 @@ set -eu
 umask 077
 
 readonly PROG='crucible.sh'
-readonly KINDS='context, gates, reports'
+readonly KINDS='context, gates, reports, dispatches, prompts'
 readonly MAX_LABEL_CHARS=60
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
@@ -23,18 +23,24 @@ readonly REPORT_RENDERER='skills/standard-code-development-report/scripts/report
 
 # One index line is trusted only when every field has the shape `new` writes
 # and its ID's date matches the day folder it sits in; anything else is skipped.
-# The program is single-quoted on purpose: its $ signs are jq's.
+# The programs are single-quoted on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
-readonly LOOKUP_JQ='
-def kinds: ["context", "gates", "reports"];
+readonly INDEX_ENTRY_JQ='
+def kinds: ["context", "gates", "reports", "dispatches", "prompts"];
+# Every kind is JSON but prompts, the Markdown message the main thread reads.
+def extension($kind): if $kind == "prompts" then "md" else "json" end;
 def day_of_file: capture("/(?<y>[0-9]{4})/(?<m>[0-9]{2})/(?<d>[0-9]{2})/index\\.jsonl$") | .y + .m + .d;
 def valid_entry($index):
 	type == "object" and .v == 1
 	and (.id | type) == "string" and (.id | test("^[0-9]{8}T[0-9]{6}-[0-9a-f]{4}$"))
 	and (.kind | type) == "string" and (.kind as $kind | kinds | index([$kind]) != null)
 	and (.label | type) == "string" and (.label | test("^[a-z0-9-]{1,60}$"))
-	and .file == "\(.kind)/\(.id)-\(.label).json"
+	and .file == "\(.kind)/\(.id)-\(.label).\(extension(.kind))"
 	and ($index | day_of_file? // "") == .id[0:8];
+'
+# Prints id, path, kind and label of each item the ID $want names.
+# shellcheck disable=SC2016
+readonly LOOKUP_JQ="${INDEX_ENTRY_JQ}"'
 def wanted: if ($want | length) == 4 then .id | endswith("-" + $want) else .id == $want end;
 [inputs | input_filename as $index | (fromjson? // empty)
 	| select(valid_entry($index) and wanted)
@@ -42,17 +48,28 @@ def wanted: if ($want | length) == 4 then .id | endswith("-" + $want) else .id =
 | unique_by([.id, .file])[]
 | [.id, .dir + "/" + .file, .kind, .label] | @tsv
 '
+# Prints the path of each item of kind $kind, session $session and, when
+# $label is not empty, label $label, newest first.
+# shellcheck disable=SC2016
+readonly FIND_JQ="${INDEX_ENTRY_JQ}"'
+[inputs | input_filename as $index | (fromjson? // empty)
+	| select(valid_entry($index) and .kind == $kind and .session == $session and ($label == "" or .label == $label))
+	| {id, path: (($index | rtrimstr("/index.jsonl")) + "/" + .file)}]
+| unique_by(.path) | sort_by(.id) | reverse[] | .path
+'
 
 usage() {
 	cat <<'EOF'
 usage: crucible.sh new --kind KIND --label LABEL [--repo PATH] [--session ID]
        crucible.sh path ID
+       crucible.sh find --kind KIND --session ID [--label LABEL]
        crucible.sh open ID [--format md|html] [--editor CMD]
        crucible.sh prune --older-than Nd [--apply]
        crucible.sh --help
 
 Hands out and finds the files of the durable Crucible space, where every
-context file, gate record and agent report lives as one JSON file.
+context file, gate record, dispatch and agent report lives as one JSON file,
+and a prompt (the Markdown message the main thread reads) as one .md file.
 
 The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path. The space
 and every folder in it is a real folder: a root, year, month, day or kind
@@ -62,8 +79,10 @@ root. Folders the script creates are mode 700, files mode 600.
 
 Layout (local time):
   <root>/YYYY/MM/DD/index.jsonl
-  <root>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.json
-  kind: context, gates or reports; hex: 4 random lowercase hex digits.
+  <root>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
+  kind: context, gates, reports, dispatches or prompts; hex: 4 random
+  lowercase hex digits; ext: md for prompts (a Markdown message), json for
+  every other kind.
   The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
 
 Index line, one per item, appended by new (built by jq, written whole
@@ -74,7 +93,8 @@ under the day's index lock):
 
 Commands:
   new    creates an empty file (mode 600) for the caller to write, appends
-         its index line and prints its absolute path. LABEL: lowercase a-z,
+         its index line and prints its absolute path (ending .md for
+         prompts, .json for every other kind). LABEL: lowercase a-z,
          0-9 and -, 1 to 60 characters. --repo (absolute) defaults to the git
          root of the current folder, or empty outside a repository; --session
          defaults to empty. The file is created without overwriting
@@ -86,7 +106,7 @@ Commands:
          broken (stderr says so); after 10 seconds of waiting new exits 4
          and removes the file it created. The content is the caller's to
          write, as one JSON object in its writer's shape ("v": 1 is only in
-         index lines and gate records).
+         index lines and gate records), or for prompts as Markdown.
   path   prints the absolute path of an item. ID: the full ID, which reads
          only the index of the day in its date; or its 4 hex digits, which
          searches the day folders newest first and stops at the first day
@@ -94,6 +114,11 @@ Commands:
          error, and an item in an older day with the same hex is not seen,
          so it needs its full ID. Items are found through the index files
          only; an index line of the wrong shape is skipped.
+  find   prints the absolute path of every item of KIND whose index line has
+         session ID and, with --label, that label, one per line, newest ID
+         first; nothing when there is none (exit 0). It reads only the index
+         files of the day folders that exist, as path does, and prints only
+         items whose file is a regular file, not a symlink. Read-only.
   open   renders an item to a new temp folder in ${TMPDIR:-/tmp} (never
          inside the space; it is left for the editor and not removed) and
          opens it. A report is rendered by
@@ -125,7 +150,8 @@ Exit codes:
   1  path or open: no indexed item has that ID, the ID's hex is shared by
      several items (stderr lists them), or the indexed file is gone
   2  usage error: unknown command or option, bad kind, bad label, a relative
-     --repo or CRUCIBLE_HOME, a malformed ID or Nd, --format html
+     --repo or CRUCIBLE_HOME, a malformed ID or Nd, --format html, find
+     without --kind or --session
   4  the space cannot be created or written, a folder in it is a symlink,
      or new waited 10 seconds for a busy index lock
   5  install fault, its stderr line starting "crucible.sh: install:": a
@@ -177,14 +203,15 @@ main() {
 			usage
 			exit 0
 			;;
-		new | path | open | prune) ;;
-		*) usage_error "unknown command: ${command}; expected new, path, open, prune or --help" ;;
+		new | path | find | open | prune) ;;
+		*) usage_error "unknown command: ${command}; expected new, path, find, open, prune or --help" ;;
 	esac
 	resolve_root
 	check_jq
 	case ${command} in
 		new) run_new "$@" ;;
 		path) run_path "$@" ;;
+		find) run_find "$@" ;;
 		open) run_open "$@" ;;
 		*) run_prune "$@" ;;
 	esac
@@ -249,7 +276,7 @@ run_new() {
 
 check_kind() {
 	case ${kind} in
-		context | gates | reports) ;;
+		context | gates | reports | dispatches | prompts) ;;
 		'') usage_error "--kind missing; expected one of ${KINDS}" ;;
 		*) usage_error "unknown kind: ${kind}; expected one of ${KINDS}" ;;
 	esac
@@ -293,7 +320,7 @@ create_item() {
 	attempt=1
 	while :; do
 		hex=$(random_hex)
-		name="${stamp}-${hex}-${label}.json"
+		name="${stamp}-${hex}-${label}.$(kind_extension)"
 		# shellcheck disable=SC2310 # its status is the create result; errexit adds nothing
 		if create_exclusive "${kind_dir}/${name}"; then
 			# shellcheck disable=SC2310 # its status is the count result; errexit adds nothing
@@ -321,6 +348,15 @@ create_item() {
 	}
 	release_index_lock
 	printf '%s\n' "${item_file}"
+}
+
+# Prints the file extension of kind: md for prompts, json for every other kind.
+kind_extension() {
+	if [ "${kind}" = prompts ]; then
+		printf 'md'
+	else
+		printf 'json'
+	fi
 }
 
 # Sets year, month and day from a YYYYMMDD date.
@@ -358,7 +394,7 @@ random_hex() {
 # one ID at most one sees itself alone.
 id_is_unique() {
 	holders=0
-	for holder in "${day_dir}"/*/"$1"-*.json; do
+	for holder in "${day_dir}"/*/"$1"-*.json "${day_dir}"/*/"$1"-*.md; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
 	done
@@ -535,6 +571,41 @@ run_open() {
 	printf 'opened %s\n' "${rendered}"
 }
 
+run_find() {
+	kind='' session='' label=''
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			--kind | --session | --label) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for find: $1; expected --kind, --session or --label" ;;
+		esac
+		case $1 in
+			--kind) kind=$2 ;;
+			--session) session=$2 ;;
+			*) label=$2 ;;
+		esac
+		shift 2
+	done
+	check_kind
+	[ -n "${session}" ] || usage_error '--session missing; expected --session ID'
+	[ -z "${label}" ] || check_label
+	list_day_indexes
+	[ -n "${newest_first}" ] || return 0
+	set --
+	while IFS= read -r day_index; do
+		set -- "$@" "${root}/${day_index}"
+	done <<EOF
+${newest_first}
+EOF
+	found_paths=$(jq -nrR --arg kind "${kind}" --arg session "${session}" --arg label "${label}" "${FIND_JQ}" "$@") ||
+		install_fault 'jq failed reading the index files; expected jq 1.6+'
+	while IFS= read -r found_path; do
+		[ -n "${found_path}" ] && [ -f "${found_path}" ] && [ ! -L "${found_path}" ] || continue
+		printf '%s\n' "${found_path}"
+	done <<EOF
+${found_paths}
+EOF
+}
+
 # Sets item_id, item_path, item_kind and item_label for the one item an ID names.
 find_item() {
 	case $1 in
@@ -584,19 +655,8 @@ lookup_full_id() {
 # days are searched in batches of 1, 2, 4, ... so a recent item costs one
 # small read and an old one at most twice the data before it.
 lookup_hex() {
-	newline='
-'
-	days=''
-	for day_folder in "${root}"/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]; do
-		# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-		is_real_day "${day_folder}" || continue
-		index="${day_folder}/index.jsonl"
-		[ -f "${index}" ] && [ ! -L "${index}" ] || continue
-		days="${days}${index#"${root}/"}${newline}"
-	done
-	[ -n "${days}" ] || return 0
-	# Paths relative to the root are digits and slashes, so they split safely by line.
-	newest_first=$(printf '%s' "${days}" | sort -r) || install_fault 'sort failed; expected a POSIX sort'
+	list_day_indexes
+	[ -n "${newest_first}" ] || return 0
 	batch_size=1
 	set --
 	while IFS= read -r day_index; do
@@ -611,6 +671,25 @@ ${newest_first}
 EOF
 	# shellcheck disable=SC2310 # its status is the match result; its faults exit
 	[ "$#" -eq 0 ] || search_days "$@" || true
+}
+
+# Sets newest_first to the index files of the real day folders, relative to
+# the root, newest day first, one per line; empty when there is none.
+list_day_indexes() {
+	newline='
+'
+	days=''
+	for day_folder in "${root}"/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]; do
+		# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
+		is_real_day "${day_folder}" || continue
+		index="${day_folder}/index.jsonl"
+		[ -f "${index}" ] && [ ! -L "${index}" ] || continue
+		days="${days}${index#"${root}/"}${newline}"
+	done
+	newest_first=''
+	[ -n "${days}" ] || return 0
+	# Paths relative to the root are digits and slashes, so they split safely by line.
+	newest_first=$(printf '%s' "${days}" | sort -r) || install_fault 'sort failed; expected a POSIX sort'
 }
 
 # Prints the matches of the first of the given days (newest first) that has any.
@@ -673,6 +752,8 @@ render_generic() {
 	printf '# %s: %s\n\n' "${item_kind}" "${item_label}"
 	if [ ! -s "${item_path}" ]; then
 		printf 'Empty: nothing has been written to this item.\n'
+	elif [ "${item_kind}" = prompts ]; then
+		cat "${item_path}"
 	elif jq -e . "${item_path}" >/dev/null 2>&1; then
 		printf '```json\n'
 		jq . "${item_path}"

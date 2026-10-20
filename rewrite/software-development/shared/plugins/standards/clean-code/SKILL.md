@@ -1,6 +1,6 @@
 ---
 name: standard-clean-code
-description: The structural rubric for clean code in any language, tests included — honest contracts, one responsibility, cohesion, DRY weighed against YAGNI, low coupling, small flat functions, no dead code, top-down file layout. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for naming or comments (standard-self-documenting-code), test names and test-only rules (standard-testing), performance (standard-performance) or a stack's idioms (its tech plugin).
+description: The structural rubric for clean code in any language, tests included — honest contracts, one responsibility, cohesion, DRY weighed against YAGNI, low coupling, small flat functions, no dead code, top-down file layout. Injected into the agent's first message when loaded. Writes nothing. Not for naming or comments (standard-self-documenting-code), test names and test-only rules (standard-testing), performance (standard-performance) or a stack's idioms (its tech plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:

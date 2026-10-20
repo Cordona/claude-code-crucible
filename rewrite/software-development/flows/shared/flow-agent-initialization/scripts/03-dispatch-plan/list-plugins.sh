@@ -3,15 +3,16 @@
 # tech plugin (tech-<stack>/) or a standard plugin (standard-<area>/ whose
 # SKILL.md sets disable-model-invocation: true), with its full folder name,
 # label, description and files in load order. The main thread picks plugins by
-# their descriptions and copies the names and labels into its plan;
-# render-plugin-line.sh copies the paths into the brief. A plugin that fails
-# inject-plugins.sh's plugin test (name, disable-model-invocation, closed
+# their descriptions and passes their names to generate-dispatch-plan.sh, which
+# computes the technology label; generate-agent-dispatch.sh copies the paths
+# into the dispatch. A plugin that fails
+# prepare-agent-prompt.sh's plugin test (name, disable-model-invocation, closed
 # frontmatter) or lacks a label or description is reported on stderr instead of
 # listed (a `standard-*` folder whose closed frontmatter lacks
 # `disable-model-invocation: true` is not a plugin: skipped, never reported as
-# invalid), as is one whose path holds a comma or control character, which
-# would split the PLUGIN line or a plugin line; the hook's file checks still run
-# at dispatch.
+# invalid), as is one whose path holds a comma or control character (a tab or a
+# line break would split a plugin line); the hook's file checks still run at
+# dispatch.
 set -eu
 
 readonly PROG='list-plugins.sh'
@@ -30,7 +31,7 @@ readonly DEFAULT_MAX_LINES=200
 
 # Prints "<label>\t<base>\t<disable-model-invocation>\t<name>\t<description>"
 # from the YAML frontmatter, name and disable-model-invocation read as
-# inject-plugins.sh reads them; exits 2 when the file has no closed frontmatter.
+# prepare-agent-prompt.sh reads them; exits 2 when the file has no closed frontmatter.
 # The description may be plain (one line or indented continuation lines),
 # single- or double-quoted, or a > or | block; its lines are joined by single
 # spaces and every control character becomes a space. A form it can't read
@@ -156,10 +157,10 @@ when CLAUDE_CONFIG_DIR is set, else \$HOME/.claude/skills.
                    frontmatter lacks that line is not a plugin and is skipped.
 A plugin (and a tech plugin's base) is valid only when its SKILL.md frontmatter
 is closed by ---, has name: <its folder name> and disable-model-invocation: true,
-the test inject-plugins.sh applies, plus a metadata.label and a description,
-and only when its path (DIR included) holds no comma or control character, so
-the PLUGIN line and the plugin line can carry it; one that fails is reported
-as invalid.
+the test prepare-agent-prompt.sh applies, plus a metadata.label and a description,
+and only when its path (DIR included) holds no comma or control character (a
+tab or line break would split a plugin line); one that fails is reported as
+invalid.
 
 Output (stdout), one line per valid plugin, TAB-separated, tech lines first,
 then standard lines, each sorted by NAME:
@@ -217,7 +218,7 @@ split_frontmatter() {
 }
 
 # Prints the error for a plugin folder $1 whose frontmatter fails the test
-# inject-plugins.sh applies (name: <folder name>, disable-model-invocation:
+# prepare-agent-prompt.sh applies (name: <folder name>, disable-model-invocation:
 # true); prints nothing when it passes.
 plugin_test_error() {
 	if [ "${fm_name}" != "$1" ]; then
@@ -253,19 +254,19 @@ inspect_tech() {
 }
 
 # Prints the error for plugin folder $1 when its path holds a comma or a
-# control character: the hook splits the PLUGIN line on commas, and a tab or a
-# line break would split a plugin line. Prints nothing for a safe path.
+# control character; a tab or a line break would split a plugin line. Prints
+# nothing for a safe path.
 unsafe_path_error() {
 	case ${skills_dir} in
 		*,* | *[[:cntrl:]]*)
-			printf 'skills folder path %s holds a comma or control character; expected a path the PLUGIN line can carry; move the skills folder (CLAUDE_CONFIG_DIR) or pass --skills-dir DIR' "${skills_dir}"
+			printf 'skills folder path %s holds a comma or control character; expected a path with no comma or control character; move the skills folder (CLAUDE_CONFIG_DIR) or pass --skills-dir DIR' "${skills_dir}"
 			return 0
 			;;
 		*) ;;
 	esac
 	case $1 in
 		*,* | *[[:cntrl:]]*)
-			printf 'folder name holds a comma or control character; expected a name the PLUGIN line can carry; rename the folder and reinstall the plugin'
+			printf 'folder name holds a comma or control character; expected a name with no comma or control character; rename the folder and reinstall the plugin'
 			;;
 		*) ;;
 	esac

@@ -1,6 +1,6 @@
 ---
 name: standard-self-documenting-code
-description: The rubric for comments, docstrings and names as documentation in any language, tests included, test names aside — a comment earns its place by saying why, names that carry the meaning, the four comment kinds, docstrings on a public surface, and three proportionality bars. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for code structure (standard-clean-code), test-only rules (standard-testing), or doc-comment syntax or a stack's idioms (its tech plugin).
+description: The rubric for comments, docstrings and names as documentation in any language, tests included, test names aside — a comment earns its place by saying why, names that carry the meaning, the four comment kinds, docstrings on a public surface, and three proportionality bars. Injected into the agent's first message when loaded. Writes nothing. Not for code structure (standard-clean-code), test-only rules (standard-testing), or doc-comment syntax or a stack's idioms (its tech plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:

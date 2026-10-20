@@ -22,7 +22,7 @@ readonly TAB='	'
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly CLASSIFY_JQ='
-# Copy of http_url in procedure-agent-initialization scripts/lib/context-shape.jq;
+# Copy of http_url in flow-agent-initialization scripts/02-agent-context/agent-context-validator.jq;
 # keep both in step. It admits no character that quotes, substitutes, redirects,
 # splits or chains in a shell.
 def http_url: type == "string" and test("^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#][A-Za-z0-9._~/?#=%:+,@-]*)?$"; "i");
@@ -140,7 +140,7 @@ fail() {
 # Sets link_kind and, by kind, link_url, link_host and link_key.
 classify_link() {
 	[ -f "${context_file}" ] && [ -r "${context_file}" ] \
-		|| fail 4 'context file unreadable; expected a readable file; try the path on the CONTEXT line'
+		|| fail 4 'context file unreadable; expected a readable file; try the path in the CONTEXT FILE field'
 	# A separate parse, as jq versions differ in the exit code of a parse error.
 	jq -s 'length' <"${context_file}" >/dev/null 2>&1 \
 		|| fail 4 'context file is not valid JSON; expected one JSON object; try the file the human approved'

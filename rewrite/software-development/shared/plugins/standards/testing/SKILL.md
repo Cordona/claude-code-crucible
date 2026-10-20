@@ -1,6 +1,6 @@
 ---
 name: standard-testing
-description: Test rubric for any language — tests that can fail, required tests, proven gaps, smallest set, public contract, end-to-end first, mocking, failure paths, goldens, isolation, tie-breakers, speed. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for production code (its plugins), test structure (standard-clean-code), comments and other names (standard-self-documenting-code), or store or security rules (standard-persistence, standard-security).
+description: Test rubric for any language — tests that can fail, required tests, proven gaps, smallest set, public contract, end-to-end first, mocking, failure paths, goldens, isolation, tie-breakers, speed. Injected into the agent's first message when loaded. Writes nothing. Not for production code (its plugins), test structure (standard-clean-code), comments and other names (standard-self-documenting-code), or store or security rules (standard-persistence, standard-security).
 disable-model-invocation: true
 user-invocable: false
 metadata:

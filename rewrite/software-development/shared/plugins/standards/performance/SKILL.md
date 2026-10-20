@@ -1,6 +1,6 @@
 ---
 name: standard-performance
-description: The scaling rubric for code in any language, tests included, that runs on a hot path, loops, or handles large or unbounded data, store access included — a cost model, numbered rules (complexity, N+1, bounded reads, redundant work, data-structure fit, chatty I/O, caching) and a baseline every path meets. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for language-level micro-performance (its tech plugin) or a durable store's correctness (standard-persistence).
+description: The scaling rubric for code in any language, tests included, that runs on a hot path, loops, or handles large or unbounded data, store access included — a cost model, numbered rules (complexity, N+1, bounded reads, redundant work, data-structure fit, chatty I/O, caching) and a baseline every path meets. Injected into the agent's first message when loaded. Writes nothing. Not for language-level micro-performance (its tech plugin) or a durable store's correctness (standard-persistence).
 disable-model-invocation: true
 user-invocable: false
 metadata:

@@ -1,6 +1,6 @@
 # Boundary map: which plugin owns a shared concern
 
-The one concern-to-owner table for the plugins. Read it at SKILL.md's step 4, when two plugins' descriptions both match one concern of a task.
+The one concern-to-owner table for the plugins. Read it at SKILL.md's step 5, when two plugins' descriptions both match one concern of a task.
 
 - **The concern goes to its owner:** load the owner for it.
 - **A non-owner is still loaded for a concern of its own** the task also touches: the half a row leaves it, or a concern no row lists. A shared concern alone never pulls it in.

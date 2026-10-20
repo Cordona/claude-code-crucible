@@ -1,6 +1,6 @@
 ---
 name: tech-shell
-description: Shell (Bash and POSIX `sh`) rules for writing scripts — the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing; the gate needs `shellcheck`. Not for shell embedded in another file (a Dockerfile `RUN`, a CI step), or for rules every stack shares (`code-developer` and the standard plugins).
+description: Shell (Bash and POSIX `sh`) rules for writing scripts — the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. Injected into the agent's first message when loaded. Writes nothing; the gate needs `shellcheck`. Not for shell embedded in another file (a Dockerfile `RUN`, a CI step), or for rules every stack shares (`code-developer` and the standard plugins).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -13,7 +13,7 @@ The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role 
 
 ## Scope
 
-- **In:** standalone scripts and sourced libraries run by `bash` or `sh`. Each runs on Linux, macOS, and Windows under Git Bash and WSL, unless the brief names fewer platforms.
+- **In:** standalone scripts and sourced libraries run by `bash` or `sh`. Each runs on Linux, macOS, and Windows under Git Bash and WSL, unless the first message names fewer platforms.
 - **Out:** shell embedded in another file, such as a Dockerfile `RUN` line or a CI step, and native Windows `cmd` and PowerShell.
 
 ## Target shell

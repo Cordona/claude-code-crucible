@@ -1,6 +1,6 @@
 ---
 name: standard-persistence
-description: The correctness rubric for code in any language, tests included, that touches a durable store or its schema — store guarantees, integrity, atomicity, concurrency, queries, migrations, durability, connections, value types. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for injection or erasure policy (standard-security), scaling cost (standard-performance), telemetry (standard-observability), test-only rules (standard-testing) or ORM mechanics (its tech plugin).
+description: The correctness rubric for code in any language, tests included, that touches a durable store or its schema — store guarantees, integrity, atomicity, concurrency, queries, migrations, durability, connections, value types. Injected into the agent's first message when loaded. Writes nothing. Not for injection or erasure policy (standard-security), scaling cost (standard-performance), telemetry (standard-observability), test-only rules (standard-testing) or ORM mechanics (its tech plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:

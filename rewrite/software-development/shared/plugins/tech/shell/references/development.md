@@ -9,7 +9,7 @@ Apply after `SKILL.md`'s rules, before writing any shell.
 - **The shebang** -> the report's `tech` (`#!/usr/bin/env sh` is POSIX `sh`, not Bash), because the reviewer checks every feature used against the shell it names.
 - **Each Verification gate command and its result** -> the report's `verification`, one item per command, with each existing shellcheck warning in `note` with its count, and a step 4 you didn't run as `not_run` with its reason in `note`, never left out, because a gate result the report doesn't show reads as a gate that never ran.
 
-## Defaults when the brief is silent
+## Defaults when the first message is silent
 
 - **Always on:** strict mode, a quote on every expansion, and injection safety.
 - **The target shell** comes from `SKILL.md`'s Target shell order.
@@ -17,7 +17,7 @@ Apply after `SKILL.md`'s rules, before writing any shell.
 
 ## Edge cases
 
-- **The brief names fewer platforms:** only the limits of the platforms it names apply; the Bash 3.2 limit stays while macOS's `/bin/bash` is one of them.
+- **The first message names fewer platforms:** only the limits of the platforms it names apply; the Bash 3.2 limit stays while macOS's `/bin/bash` is one of them.
 - **Needs root:** check `id -u` at the start, and stop with a message on stderr when it isn't 0.
 - **Root only where needed:** run each step that doesn't need root as the invoking user, `sudo -u "$SUDO_USER" …`.
 - **Changes system state:** offer a `--dry-run` that prints each change instead of making it.

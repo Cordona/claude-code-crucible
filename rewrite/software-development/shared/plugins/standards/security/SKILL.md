@@ -1,6 +1,6 @@
 ---
 name: standard-security
-description: The security rubric for code in any language, tests included, that handles untrusted input, auth, secrets, queries, crypto, outbound calls, deserialization or sensitive data — a taint model, foundations and controls grouped by OWASP A01–A10. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for logging or audit (standard-observability), store correctness (standard-persistence), test-only rules (standard-testing) or memory safety (its tech plugin).
+description: The security rubric for code in any language, tests included, that handles untrusted input, auth, secrets, queries, crypto, outbound calls, deserialization or sensitive data — a taint model, foundations and controls grouped by OWASP A01–A10. Injected into the agent's first message when loaded. Writes nothing. Not for logging or audit (standard-observability), store correctness (standard-persistence), test-only rules (standard-testing) or memory safety (its tech plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:

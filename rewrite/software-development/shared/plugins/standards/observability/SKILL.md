@@ -1,6 +1,6 @@
 ---
 name: standard-observability
-description: The observability rubric for production code in any language — pillars by codebase shape, log privacy and safety, security and audit events, log levels, structure, errors and cost, metrics and traces. Injected into the prompt when a brief's `PLUGIN` names it. Writes nothing. Not for data protection beyond logs (standard-security), store correctness (standard-persistence), scaling cost (standard-performance), test code (standard-testing) or the logging library's API (its tech plugin).
+description: The observability rubric for production code in any language — pillars by codebase shape, log privacy and safety, security and audit events, log levels, structure, errors and cost, metrics and traces. Injected into the agent's first message when loaded. Writes nothing. Not for data protection beyond logs (standard-security), store correctness (standard-persistence), scaling cost (standard-performance), test code (standard-testing) or the logging library's API (its tech plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
