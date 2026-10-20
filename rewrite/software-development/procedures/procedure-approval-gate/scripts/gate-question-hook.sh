@@ -29,13 +29,16 @@ usage() {
 Usage: sh ${PROG} < pre-tool-use-input.json
 
 A Claude Code PreToolUse hook for the AskUserQuestion tool. It reads the hook
-JSON on stdin (session_id, tool_name, tool_input, ...) and the gate state
+JSON on stdin (session_id, agent_id, tool_name, ...) and the gate state
 open-gate.sh wrote in
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session_id>/
   - no gate, or a malformed gate or one older than ${STALE_SECONDS}s (removed
-    with its folder, plan.json included): allows the question
-  - no gate state, and a plan.json there older than ${STALE_SECONDS}s: removes
-    the folder, allows the question
+    with its folder, plan.json included, unless plan.json changed in the last
+    ${STALE_SECONDS}s: then only gate.md and the state go, and plan.json stays
+    for the next gate): allows the question
+  - no gate state, and nothing in the folder (the folder itself included)
+    changed in the last ${STALE_SECONDS}s: removes the folder, allows the
+    question
   - pending: prints a PreToolUse deny decision, exit 0:
     {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
      "permissionDecisionReason":"${DENY_REASON}"}}
@@ -57,7 +60,12 @@ open-gate.sh wrote in
     and keeps the gate, so the next question tries again; a gate left so
     goes stale after ${STALE_SECONDS}s like any other. A record whose write
     fails after crucible.sh created it stays as its empty file.
-A tool_name other than AskUserQuestion is allowed untouched.
+A tool_name other than AskUserQuestion is allowed untouched, and so is any
+call whose input has a non-empty agent_id: such a call comes from a subagent,
+or from a side agent Claude Code runs inside the session, which carries the
+main thread's session_id. The gate belongs to the main thread, so only its
+own question saves the record and clears the gate; another agent's question
+leaves the gate, plan.json included, as it is, with no record and no deny.
 
 Exit codes:
   0  allowed, or denied through the JSON above; a hook fault before a pending
@@ -78,18 +86,27 @@ warn() {
 	printf '%s: %s\n' "${PROG}" "$1" >&2
 }
 
-# Removes the gate folder (reason $1 goes to stderr) and allows the question.
+# Removes the gate (reason $1 goes to stderr) and allows the question: the whole
+# folder, or only gate.md and the state when plan.json changed within
+# STALE_SECONDS, since that is the session's next plan, written before its gate
+# opens.
 remove_gate() {
-	warn "$1 removed: ${gate_dir}"
-	rm -rf "${gate_dir}"
+	fresh_plan=$(find "${gate_dir}/plan.json" -prune -type f ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || fresh_plan=''
+	if [ -n "${fresh_plan}" ]; then
+		warn "$1 removed, plan.json kept: ${gate_dir}"
+		rm -f "${gate_dir}/state" "${gate_dir}/gate.md"
+	else
+		warn "$1 removed: ${gate_dir}"
+		rm -rf "${gate_dir}"
+	fi
 	exit 0
 }
 
-# With no gate state, removes the folder when its plan.json is older than
-# STALE_SECONDS; allows the question either way.
-drop_stale_plan() {
-	old_plan=$(find "${gate_dir}/plan.json" -prune -type f -mmin "+${STALE_MINUTES}" 2>/dev/null) || exit 0
-	[ -z "${old_plan}" ] || remove_gate 'stale plan.json with no gate state'
+# With no gate state, removes the folder when nothing in it (the folder
+# included) changed within STALE_SECONDS; allows the question either way.
+drop_idle_folder() {
+	recent=$(find "${gate_dir}" ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || exit 0
+	[ -n "${recent}" ] || remove_gate 'gate folder with no gate state, unchanged for over '"${STALE_SECONDS}"'s,'
 	exit 0
 }
 
@@ -165,10 +182,11 @@ deny_record() {
 }
 
 # Sets gate_status from a live gate, or exits 0 when there is none: no state
-# (a stale plan.json alone is removed), a malformed or stale one (both removed).
+# (an idle folder is removed), or a malformed or stale one (removed as
+# remove_gate sets).
 load_gate() {
 	gate_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate/$1"
-	[ -f "${gate_dir}/state" ] || drop_stale_plan
+	[ -f "${gate_dir}/state" ] || drop_idle_folder
 	read -r gate_status tries created _ <"${gate_dir}/state" || true
 	case ${gate_status-} in
 		pending | relayed | shown | failed) ;;
@@ -192,10 +210,17 @@ esac
 
 command -v jq >/dev/null 2>&1 || handle_jq_missing
 hook_input=$(cat)
-fields=$(printf '%s' "${hook_input}" | jq -r '[(.session_id // "" | strings), (.tool_name // "" | strings)] | join(" ")')
-session_id=${fields% *}
+# Fields: the caller ("main", or "agent" when agent_id is set), session_id and
+# tool_name; none holds a space once checked.
+fields=$(printf '%s' "${hook_input}" | jq -r '[(if (.agent_id // "") == "" then "main" else "agent" end), (.session_id // "" | strings), (.tool_name // "" | strings)] | join(" ")')
+caller=${fields%% *}
+fields=${fields#* }
+session_id=${fields%% *}
 tool_name=${fields#* }
 [ "${tool_name}" = AskUserQuestion ] || exit 0
+# A subagent's or side agent's question carries the parent's session_id plus
+# its own agent_id; only the main thread's question may close the gate.
+[ "${caller}" = main ] || exit 0
 case ${session_id} in
 	'' | . | .. | *[!A-Za-z0-9._-]*) exit 0 ;;
 	*) ;;

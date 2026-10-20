@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 # Claude Code Stop hook for approval gates. While this session's gate is
-# pending, it checks that the turn-ending message relays gate.md word for word
-# and ends with the marker line: a good relay marks the gate relayed and keeps
-# Claude going with "now ask"; a bad one keeps it going with "relay again", at
-# most twice, then marks the gate failed and lets the stop through.
+# pending, it checks that the turn-ending message is gate.md word for word and
+# nothing else, so its last line is the marker: a good relay marks the gate
+# relayed and keeps Claude going with "now ask"; a bad one keeps it going with
+# "relay again", at most twice, then marks the gate failed and lets the stop
+# through.
 # Claude continues through hookSpecificOutput.additionalContext, which Claude
 # Code shows as "Stop hook feedback".
 # It never early-returns on stop_hook_active, because several gates may open in
@@ -29,10 +30,11 @@ readonly ASK_REASON='procedure-approval-gate: the plan was relayed; its approval
 
 # Prints "good" when the message relays the gate; "unverifiable" when
 # last_assistant_message is missing or not a string; otherwise the cause:
-# "text", "marker" or "both". Both texts are normalized (CR dropped, trailing
-# spaces per line removed, blank-line runs collapsed to one, leading and
-# trailing blank lines dropped) before the substring check; the last non-empty
-# line, trimmed, must be the marker.
+# "extra" (the gate text with more above or below it), "text" or "both". Both
+# texts are normalized (CR dropped, trailing spaces per line removed, blank-line
+# runs collapsed to one, leading and trailing blank lines dropped); a good relay
+# is equal to the gate text. Otherwise "text" and "both" tell apart whether the
+# last non-empty line, trimmed, is the marker.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly RELAY_JQ='
@@ -44,11 +46,12 @@ def norm: lines
 	| join("\n");
 if (.last_assistant_message | type) != "string" then "unverifiable"
 else .last_assistant_message as $message
-	| ($message | norm | contains($gate | norm)) as $has_text
+	| ($message | norm) as $relayed
+	| ($gate | norm) as $expected
 	| ([$message | lines[] | sub("^[ \t]+"; "") | select(. != "")] | last == $marker) as $has_marker
-	| if $has_text and $has_marker then "good"
+	| if $relayed == $expected then "good"
+	  elif $relayed | contains($expected) then "extra"
 	  elif $has_marker then "text"
-	  elif $has_text then "marker"
 	  else "both" end
 end
 '
@@ -57,14 +60,20 @@ usage() {
 	cat <<EOF
 Usage: sh ${PROG} < stop-hook-input.json
 
-A Claude Code Stop hook. It reads session_id and last_assistant_message from
-the hook JSON on stdin, and the gate state open-gate.sh wrote in
+A Claude Code Stop hook. It reads session_id, agent_id and
+last_assistant_message from the hook JSON on stdin, and the gate state
+open-gate.sh wrote in
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session_id>/
-  - no gate; a relayed, shown or failed gate; or a malformed gate or one
-    older than ${STALE_SECONDS}s (removed with its folder, plan.json included):
-    prints nothing, allows the stop
-  - no gate state, and a plan.json there older than ${STALE_SECONDS}s: removes
-    the folder, allows the stop
+  - no gate; a relayed, shown or failed gate; or a malformed gate, one with
+    no gate.md, or one older than ${STALE_SECONDS}s (removed with its folder,
+    plan.json included, unless plan.json changed in the last ${STALE_SECONDS}s:
+    then only gate.md and the state go, and plan.json stays for the next
+    gate): prints nothing, allows the stop
+  - no gate state, and nothing in the folder (the folder itself included)
+    changed in the last ${STALE_SECONDS}s: removes the folder, allows the stop
+  - a non-empty agent_id (a subagent's or a side agent's stop, which carries
+    the main thread's session_id; the gate is the main thread's): prints
+    nothing, changes nothing, allows the stop
   - pending, good relay: state becomes relayed; prints the "now ask" context
   - pending, last_assistant_message missing or not a string (the relay can't
     be verified): state becomes relayed, no try is counted; prints the same
@@ -75,11 +84,14 @@ Output shape: {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":
   "now ask": ${ASK_REASON}
   "relay again": procedure-approval-gate: relay try <n> of ${MAX_RELAY_RETRIES} failed: <cause>.
              The gate is still pending, so its question stays denied until a
-             turn's last message holds the full text open-gate.sh printed and
-             ends with the line ${MARKER}.
-  <cause> is one of: the gate text is missing from the last message | the
-  last message's last non-empty line is not ${MARKER} | the gate text is
-  missing and the last non-empty line is not ${MARKER}
+             turn's last message is the full text open-gate.sh printed and
+             nothing else, its last line ${MARKER}.
+  A good relay equals the gate text once both are normalized: CR dropped,
+  trailing spaces per line removed, blank-line runs collapsed to one, leading
+  and trailing blank lines dropped.
+  <cause> is one of: the last message must be the gate text alone, with
+  nothing above or below it | the gate text is missing from the last message |
+  the gate text is missing and the last non-empty line is not ${MARKER}
 
 Exit codes: always 0 (a hook fault allows the stop; a note goes to stderr).
 
@@ -115,20 +127,20 @@ continue_with() {
 # Prints the relay context for try $1 and cause code $2.
 relay_reason() {
 	case $2 in
+		extra) cause='the last message must be the gate text alone, with nothing above or below it' ;;
 		text) cause='the gate text is missing from the last message' ;;
-		marker) cause="the last message's last non-empty line is not ${MARKER}" ;;
 		*) cause="the gate text is missing and the last non-empty line is not ${MARKER}" ;;
 	esac
-	printf 'procedure-approval-gate: relay try %s of %s failed: %s. The gate is still pending, so its question stays denied until a turn'"'"'s last message holds the full text open-gate.sh printed and ends with the line %s.' \
+	printf 'procedure-approval-gate: relay try %s of %s failed: %s. The gate is still pending, so its question stays denied until a turn'"'"'s last message is the full text open-gate.sh printed and nothing else, its last line %s.' \
 		"$1" "${MAX_RELAY_RETRIES}" "${cause}" "${MARKER}"
 }
 
 # Sets gate_status, tries and created from a live gate, or exits 0 when there
-# is none: no state (a stale plan.json alone is removed), a malformed or stale
-# one (both removed), or no gate.md.
+# is none: no state (an idle folder is removed), a malformed or stale one, or
+# no gate.md (each removed as remove_gate sets).
 load_gate() {
 	gate_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate/$1"
-	[ -f "${gate_dir}/state" ] || drop_stale_plan
+	[ -f "${gate_dir}/state" ] || drop_idle_folder
 	read -r gate_status tries created _ <"${gate_dir}/state" || true
 	case ${gate_status-}:${tries-}:${created-} in
 		pending:*:* | relayed:*:* | shown:*:* | failed:*:*) ;;
@@ -143,18 +155,27 @@ load_gate() {
 	[ -f "${gate_dir}/gate.md" ] || remove_gate 'gate.md missing'
 }
 
-# With no gate state, removes the folder when its plan.json is older than
-# STALE_SECONDS; allows the stop either way.
-drop_stale_plan() {
-	old_plan=$(find "${gate_dir}/plan.json" -prune -type f -mmin "+${STALE_MINUTES}" 2>/dev/null) || exit 0
-	[ -z "${old_plan}" ] || remove_gate 'stale plan.json with no gate state'
+# With no gate state, removes the folder when nothing in it (the folder
+# included) changed within STALE_SECONDS; allows the stop either way.
+drop_idle_folder() {
+	recent=$(find "${gate_dir}" ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || exit 0
+	[ -n "${recent}" ] || remove_gate 'gate folder with no gate state, unchanged for over '"${STALE_SECONDS}"'s,'
 	exit 0
 }
 
-# Removes the gate folder (reason $1 goes to stderr) and allows the stop.
+# Removes the gate (reason $1 goes to stderr) and allows the stop: the whole
+# folder, or only gate.md and the state when plan.json changed within
+# STALE_SECONDS, since that is the session's next plan, written before its gate
+# opens.
 remove_gate() {
-	warn "$1 removed: ${gate_dir}"
-	rm -rf "${gate_dir}"
+	fresh_plan=$(find "${gate_dir}/plan.json" -prune -type f ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || fresh_plan=''
+	if [ -n "${fresh_plan}" ]; then
+		warn "$1 removed, plan.json kept: ${gate_dir}"
+		rm -f "${gate_dir}/state" "${gate_dir}/gate.md"
+	else
+		warn "$1 removed: ${gate_dir}"
+		rm -rf "${gate_dir}"
+	fi
 	exit 0
 }
 
@@ -171,7 +192,9 @@ command -v jq >/dev/null 2>&1 || {
 	exit 0
 }
 hook_input=$(cat)
-session_id=$(printf '%s' "${hook_input}" | jq -r '.session_id // empty | strings')
+# A stop with agent_id set is a subagent's or side agent's, which carries the
+# main thread's session_id; only the main thread's relay moves the gate.
+session_id=$(printf '%s' "${hook_input}" | jq -r 'if (.agent_id // "") == "" then (.session_id // empty | strings) else empty end')
 case ${session_id} in
 	'' | . | .. | *[!A-Za-z0-9._-]*) exit 0 ;;
 	*) ;;

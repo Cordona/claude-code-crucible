@@ -7,7 +7,7 @@ set -eu
 
 readonly PROG='open-gate.sh'
 readonly MARKER='_Crucible gate_'
-readonly REQUIRED_TOOLS='awk cat chmod cmp date find mkdir mktemp mv rm'
+readonly REQUIRED_TOOLS='awk cat chmod cmp date find mkdir mktemp mv rm touch'
 # Same bound as both hooks: a gate older than this is treated as absent.
 readonly STALE_SECONDS=1800
 readonly STALE_MINUTES=$((STALE_SECONDS / 60))
@@ -38,12 +38,14 @@ Usage: sh ${PROG} --plan-path
 The session's gate folder is
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session id>/
 (mode 700, files 600; a folder that is a symbolic link is refused).
-  --plan-path  creates the gate folder and prints the absolute path
-               <gate folder>/plan.json, where the caller writes the
-               renderer's input. Reads no stdin, writes no file, opens no gate.
-               plan.json goes with the gate: a hook removes it when it clears
-               the gate or removes a stale or malformed one, and when it is
-               older than ${STALE_SECONDS}s with no gate state beside it.
+  --plan-path  creates the gate folder, sets its modification time to now,
+               and prints the absolute path <gate folder>/plan.json, where the
+               caller writes the renderer's input. Reads no stdin, writes no
+               file, opens no gate. plan.json goes with the gate: the question
+               hook removes it when it clears the gate, and a hook removes it
+               when nothing in the gate folder changed in ${STALE_SECONDS}s. A
+               hook removing a stale or malformed gate state keeps a plan.json
+               changed in the last ${STALE_SECONDS}s, the next gate's plan.
   (default)    reads a rendered gate plan (Markdown) on stdin, drops its
                trailing blank lines, appends "\n${MARKER}\n", and prints
                exactly that text. It stores the text as gate.md, plus a state
@@ -56,10 +58,12 @@ The session's gate folder is
   --show-only  as the default, state "shown": a plan shown with no question;
                the Stop hook lets the stop through and the question hook
                clears it.
-Every run but --help also removes other sessions' gate folders in
-cache/approval-gate/ whose gate opened more than ${STALE_SECONDS}s ago, or that
-hold no gate state and are older than that. It never follows a symbolic link
-and touches nothing outside cache/approval-gate/.
+Every run but --help also sets this session's gate folder's modification
+time to now, and removes other sessions' gate folders in cache/approval-gate/
+that are stale: no gate opened in the last ${STALE_SECONDS}s, and nothing in
+the folder (the folder itself, plan.json, the gate state) changed in that time.
+A folder it cannot judge stays. It never follows a symbolic link and touches
+nothing outside cache/approval-gate/.
 The session id comes from CLAUDE_CODE_SESSION_ID, which Claude Code sets in the
 Bash tool; it must hold only letters, digits, ".", "_" and "-".
 Input is checked before anything is written.
@@ -110,8 +114,9 @@ check_session_id() {
 	esac
 }
 
-# Creates the session's state folder with mode 700; sets gate_root (absolute)
-# and gate_dir.
+# Creates the session's state folder with mode 700 and marks it in use (its
+# modification time is now, which keeps other sessions' sweeps off it while
+# the plan is written); sets gate_root (absolute) and gate_dir.
 make_gate_dir() {
 	gate_root="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate"
 	case ${gate_root} in
@@ -122,6 +127,7 @@ make_gate_dir() {
 	[ ! -L "${gate_dir}" ] || die 1 "state folder is a symbolic link: ${gate_dir}; expected a plain folder; try removing the link, then rerun"
 	mkdir -p "${gate_dir}" || die 1 "cannot create the state folder ${gate_dir}; expected a writable \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache; try checking its owner and free space, then rerun"
 	chmod 700 "${gate_dir}" || die 1 "cannot set mode 700 on ${gate_dir}; expected a folder your user owns; try checking its owner, then rerun"
+	touch "${gate_dir}" || die 1 "cannot set the modification time of ${gate_dir}; expected a folder your user owns; try checking its owner, then rerun"
 }
 
 # Sets state_status, state_tries and state_opened from the state file $1.
@@ -143,16 +149,17 @@ read_state() {
 	esac
 }
 
-# True when gate folder $1 is stale: its gate opened more than STALE_SECONDS
-# ago, or it holds no well-formed state and the folder is older than that.
-is_stale_gate_dir() {
+# True when gate folder $1 may be in use: its gate opened within STALE_SECONDS,
+# or the folder or anything in it changed within that time, or find cannot
+# tell. A stale gate state does not make a folder stale: a session writes its
+# next plan.json beside its last gate's state before it opens the next gate.
+is_live_gate_dir() {
 	# shellcheck disable=SC2310 # its status is the answer; set -e is not needed inside
-	if read_state "$1/state"; then
-		[ $((now - state_opened)) -gt "${STALE_SECONDS}" ]
-	else
-		old_folder=$(find "$1" -prune -type d -mmin "+${STALE_MINUTES}") || return 1
-		[ -n "${old_folder}" ]
+	if read_state "$1/state" && [ $((now - state_opened)) -le "${STALE_SECONDS}" ]; then
+		return 0
 	fi
+	recent=$(find "$1" ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || return 0
+	[ -n "${recent}" ]
 }
 
 # Removes other sessions' stale gate folders in gate_root. Plain folders only:
@@ -166,7 +173,7 @@ sweep_other_gates() {
 		[ ! -L "${entry}" ] && [ -d "${entry}" ] || continue
 		[ "${entry##*/}" != "${session_id}" ] || continue
 		# shellcheck disable=SC2310 # its status is the answer; set -e is not needed inside
-		if is_stale_gate_dir "${entry}"; then
+		if ! is_live_gate_dir "${entry}"; then
 			rm -rf "${entry}" ||
 				warn "cannot remove the stale gate folder ${entry}; expected a folder your user owns; left in place; check its owner"
 		fi
