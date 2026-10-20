@@ -3,10 +3,12 @@
 # denies the question while this session's gate is pending, so the plan is
 # relayed before it is asked about, and clears any other gate as its question
 # goes out, saving a relayed gate's plan as a gates record in the Crucible
-# space first. A fault allows the question, except once a pending gate is
-# loaded, or when jq is missing and any session has a live pending gate: then
-# it fails closed, since that block is confined to an open gate and ends when
-# the gate goes stale. Saving the record never changes the decision.
+# space first: the record is the plan the human was shown, which a dispatch is
+# later matched against, so a relayed gate whose record can't be saved denies
+# the question and stays open. A fault allows the question, except once a
+# pending gate is loaded, or when jq is missing and any session has a live
+# pending gate: then it fails closed, since that block is confined to an open
+# gate and ends when the gate goes stale.
 set -eu
 trap 'exit 0' EXIT
 
@@ -17,6 +19,9 @@ readonly REASON_PREFIX='procedure-approval-gate:'
 readonly STALE_SECONDS=1800
 readonly STALE_MINUTES=$((STALE_SECONDS / 60))
 readonly DENY_REASON="${REASON_PREFIX} this session's gate is pending: its plan has not been relayed as a turn's last message yet, so the question is denied."
+# The record deny when jq can't build the one naming the cause, so a relayed
+# gate without its record never lets the question through.
+readonly RECORD_DENY_FALLBACK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-approval-gate: the gate record could not be saved, so the question is denied; the cause is on the hook'\''s stderr; fix it, then ask again."}}'
 readonly CRUCIBLE_HELPER="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
 
 usage() {
@@ -34,17 +39,24 @@ open-gate.sh wrote in
   - pending: prints a PreToolUse deny decision, exit 0:
     {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
      "permissionDecisionReason":"${DENY_REASON}"}}
-  - relayed, shown or failed: removes the gate folder, plan.json included,
-    allows the question. Relayed only, first: saves plan.json, with "v": 1
-    added, as a gates record through
+  - shown or failed: removes the gate folder, plan.json included, allows the
+    question.
+  - relayed: first saves plan.json, with "v": 1 added, as a gates record
+    through
       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
       new --kind gates --label <dispatch-plan|no-plugin-fits> --session <session_id>
     (no-plugin-fits when the plan has a "stack" field), written to a temp
-    file in the record's folder and moved onto the path crucible.sh prints.
-    A missing helper, a plan.json that is missing, a symbolic link or not
-    one JSON object, or a failing step skips the record with one stderr
-    line; the question is allowed either way. A record whose write fails
-    after crucible.sh created it stays as its empty file.
+    file in the record's folder and moved onto the path crucible.sh prints;
+    then removes the gate folder and allows the question. When the record
+    can't be saved (crucible.sh missing; plan.json missing, a symbolic link
+    or not one JSON object; crucible.sh new failing, its stderr passed
+    through; or the temp file or move failing) it prints a PreToolUse deny,
+    exit 0, its reason
+      "${REASON_PREFIX} the gate record could not be saved (<cause>), so
+       the question is denied; <fix>, then ask again."
+    and keeps the gate, so the next question tries again; a gate left so
+    goes stale after ${STALE_SECONDS}s like any other. A record whose write
+    fails after crucible.sh created it stays as its empty file.
 A tool_name other than AskUserQuestion is allowed untouched.
 
 Exit codes:
@@ -55,8 +67,8 @@ Exit codes:
      has a pending gate younger than ${STALE_SECONDS}s
 
 Dependencies: POSIX sh, jq 1.6+, cat, date, find (with -mmin, as on macOS and
-Linux), rm; for the gates record also crucible.sh, mktemp and mv (optional:
-without them the record is skipped).
+Linux), rm; for the gates record of a relayed gate also crucible.sh, mktemp
+and mv (without them a relayed gate's question is denied).
 Runtime: about 13 ms with no gate, 20 ms denying, 80 ms clearing a relayed gate
 with its record; measured on macOS (average of 5 runs).
 EOF
@@ -110,45 +122,46 @@ handle_jq_missing() {
 	exit 0
 }
 
-# Saves the relayed gate's plan.json as a gates record in the Crucible space.
-# Every failure warns once and returns 0, so the question is never held up.
+# Saves the relayed gate's plan.json as a gates record in the Crucible space,
+# or denies the question (deny_record exits) naming the cause and the fix.
 save_gate_record() {
 	plan_file="${gate_dir}/plan.json"
-	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] || {
-		warn "gate record skipped: no plan file at ${plan_file}"
-		return 0
-	}
-	[ -f "${CRUCIBLE_HELPER}" ] || {
-		warn "gate record skipped: crucible.sh missing at ${CRUCIBLE_HELPER}"
-		return 0
-	}
+	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] ||
+		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer'
+	[ -f "${CRUCIBLE_HELPER}" ] ||
+		deny_record "crucible.sh missing at ${CRUCIBLE_HELPER}" 'install the crucible skill'
 	# A no-plugin-fits plan is the one with a stack field.
-	record_label=$(jq -sr 'if length == 1 and (.[0] | type) == "object" then (if .[0] | has("stack") then "no-plugin-fits" else "dispatch-plan" end) else error("not one object") end' "${plan_file}" 2>/dev/null) || {
-		warn "gate record skipped: ${plan_file} is not one JSON object"
-		return 0
-	}
-	record=$(jq -c '{v: 1} + .' "${plan_file}" 2>/dev/null) || {
-		warn "gate record skipped: jq could not read ${plan_file}"
-		return 0
-	}
-	record_path=$(sh "${CRUCIBLE_HELPER}" new --kind gates --label "${record_label}" --session "${session_id}" </dev/null 2>/dev/null) || {
-		warn "gate record skipped: crucible.sh new failed (exit $?)"
-		return 0
-	}
+	record_label=$(jq -sr 'if length == 1 and (.[0] | type) == "object" then (if .[0] | has("stack") then "no-plugin-fits" else "dispatch-plan" end) else error("not one object") end' "${plan_file}" 2>/dev/null) ||
+		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
+	record=$(jq -c '{v: 1} + .' "${plan_file}" 2>/dev/null) ||
+		deny_record "jq could not read ${plan_file}" 'check jq 1.6+ and the plan file'
+	if record_path=$(sh "${CRUCIBLE_HELPER}" new --kind gates --label "${record_label}" --session "${session_id}" </dev/null); then
+		new_status=0
+	else
+		new_status=$?
+	fi
+	[ "${new_status}" -eq 0 ] ||
+		deny_record "crucible.sh new failed (exit ${new_status}; its stderr is above)" 'fix what crucible.sh names, such as the Crucible space'\''s folder or CRUCIBLE_HOME'
 	case ${record_path} in
 		/*.json) ;;
-		*)
-			warn "gate record skipped: crucible.sh new printed no file path"
-			return 0
-			;;
+		*) deny_record 'crucible.sh new printed no file path' 'reinstall the crucible skill' ;;
 	esac
-	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) || {
-		warn "gate record not written: cannot create a temp file beside ${record_path}"
-		return 0
-	}
+	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) ||
+		deny_record "cannot create a temp file beside ${record_path}, which stays empty" 'make the Crucible space writable'
 	if printf '%s\n' "${record}" >"${record_temp}" && mv -f "${record_temp}" "${record_path}"; then return 0; fi
 	rm -f "${record_temp}"
-	warn "gate record not written: ${record_path} stays empty"
+	deny_record "the write to ${record_path} failed, and it stays empty" 'make the Crucible space writable'
+}
+
+# Denies the question because the record could not be saved (cause $1, fix $2);
+# the gate stays, so the next question tries again.
+deny_record() {
+	record_reason="${REASON_PREFIX} the gate record could not be saved ($1), so the question is denied; $2, then ask again."
+	warn "gate record not saved: $1"
+	jq -cn --arg reason "${record_reason}" \
+		'{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}' ||
+		printf '%s\n' "${RECORD_DENY_FALLBACK}"
+	exit 0
 }
 
 # Sets gate_status from a live gate, or exits 0 when there is none: no state
