@@ -3,7 +3,7 @@
 Purpose: the agent assumes only what a subagent actually gets, loads only what it uses, and stays within its load budget.
 
 **Applies when:** every agent file. ALOAD-01 is N/A for an orchestrator-only agent. This seat also judges 02, STR-05 (a procedure pasted from a skill instead of cited), STR-06 (the skills and files the agent reads on demand) and STR-09 (section order, against the Agent file row of the rulebook's "Reading order by kind").
-**MUST lint:** LNT-36. SHOULD lint used here: LNT-62, LNT-68, LNT-69, LNT-70.
+**MUST lint:** LNT-36, LNT-73. SHOULD lint used here: LNT-62, LNT-68, LNT-69, LNT-70.
 **Terms.** See `README.md` (the agent's text, waivers file).
 
 - **ALOAD-01** · MUST · Does the agent's text never assume context a subagent doesn't get: the conversation, files the caller read, earlier dispatches, the caller's skills, auto memory? A subagent gets only its body, the brief, CLAUDE.md (unless omitted), a git-status snapshot and its preloads. · Check: grep for "as discussed", "the user said", "earlier", "the conversation", "you already"; read the inputs. · Fix: name the brief field or file that carries it.

@@ -27,7 +27,7 @@ Following it writes only the artifact being authored; both scripts write nothing
 |---|---|
 | Flow (dispatches subagents, gates on the human, drives scripts) | 01–07, 09; 10 if it declares hooks; 11 if it or its agents write or read a JSON contract; 08 N/A |
 | Procedure (script wrapper, incl. one preloaded by an agent) | 01–05, 07, 08, 09; 11 if its scripts write or read a JSON contract |
-| Standard / shared conduct (rubric agents bind; tech plugins included) | 01, 02, 03, 08, 09; 07 if it bundles scripts; DET-08 (N/A with no script), DET-09; WF-03, WF-05, WF-06 |
+| Standard / shared conduct (rubric agents bind; tech plugins included) | 01, 02, 03, 08, 09; 07 if it bundles scripts; DET-08 (N/A with no script), DET-09; WF-03, WF-05, WF-06, WF-10 |
 | Command file (`~/.claude/commands/**`) | 01, 02, 03, 05, 09 |
 | Agent file (`agents/**/*.md`) | agent-01–08 in `references/agents/`, through `flow-harness-authoring`'s Agent flow (`agent-author`, `agent-reviewer`) |
 | `~/.claude/CLAUDE.md` | only as a citer for LNT-46 |

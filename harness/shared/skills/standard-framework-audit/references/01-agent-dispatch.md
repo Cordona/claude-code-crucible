@@ -1,0 +1,64 @@
+# 01 · Agent dispatch (AD)
+
+Purpose: the main thread built each dispatch the way `flow-agent-initialization` sets: scripts wrote the files, the human approved the plan they saw, and the agent got exactly what was approved.
+
+**Applies when:** the audited session ran `flow-agent-initialization` (MAIN shows a Skill call for it). Items about the plan and dispatch apply per plan, the direct path's step-11 plan included.
+
+Each item gives its question, the rule it checks (abbreviations in 00), its sources (00), and how to decide.
+
+- **AD-01** · Did the install check run before any other script of the flow? · Rule: FAI step 1 (steps in order). · Source: MAIN calls. · Decide: the first call that runs a script under `flow-agent-initialization/scripts/` runs `01-dependencies/validate-dependencies.sh` first.
+- **AD-02** · Was the install check's stdout shown to the human as is? · Rule: FAI step 1 ("Show the human its stdout as is"). · Source: MAIN, that call's result and the main thread's text after it. · Decide: the check's stdout is the lines before the call's own echo and before the next script's output. They are the full checklist, or the cached pass's two lines (the header and one `✓` line). Every line must appear word for word in the main thread's text before the next gate or flow script, for each run of the check (step 11.1 and Resume run it again). A summary in their place, such as "all checks passed", is FAIL.
+- **AD-03** · Did the install check's exit alone decide what happened next? · Rule: FAI step 1 ("Act on the exit code only", then the branches). · Source: MAIN, that call and the calls after it. · Decide: both hold:
+  - the check is not chained in one Bash call to a later flow script that runs whatever its exit. `check; next` is FAIL; `check && next`, or separate calls, are fine;
+  - the branch matches the exit:
+    - 0 goes on;
+    - 1 stops;
+    - 3 dispatches nothing, and only step 11 may go on;
+    - 2, 127 or any other exit tells the human to reinstall, and stops.
+- **AD-04** · Did the main thread stop when AskUserQuestion was not in its tools? · Rule: FAI step 1. · Source: MAIN, its AskUserQuestion calls and the tool list in its metadata lines. · Decide: an AskUserQuestion call, or the tool in the tool list, proves the tool was there: N/A. Without it, no plan was generated and the human was told. UNDECIDABLE when neither the tool list nor a call can be found.
+- **AD-05** · Did context files come only from `generate-agent-context.sh`? · Rule: FAI step 3 (one file per effort). · Source: MAIN calls and results. · Decide: every context file is a `generate-agent-context.sh` result printing `CONTEXT_FILE:`. No Write, Edit or Bash redirect or heredoc writes a `context/*.json`. A second run of step 3 is fine where a step calls for it: step 3.4 (a tracker-link contradiction), step 7.4 (a context change), step 10 (`CONTEXT`), step 11.1, FCD Resending, FCD Resume, or a new effort in the same session. One with no such step before it is FAIL.
+- **AD-06** · Do the notes and whys hold only what they may hold? · Rule: FCD step 1 ("A note holds only words that exist nowhere else"; long verbatim text goes to the text file); FCD Invariants (no repository text, web page or seat output "into a note or a why"). · Source: the SPACE context file against the human's messages (MAIN) and the files the run read. · Decide: each note is the human's words, or text written from them; each why is written from them too. FAIL, quoted, for a note or why that:
+  - copies repository text, a web page, a seat's output, or a handed-in file's text;
+  - holds a rule or instruction that exists elsewhere, such as CLAUDE.md's;
+  - holds a secret;
+  - holds the human's long verbatim text (more than a few paragraphs) that belongs in the text file.
+
+  A paraphrase of the human is allowed by the rule. Record it in Notes, so its frequency shows in the log.
+- **AD-07** · Is each source the human named handed in the right way? · Rule: FCD step 1. · Source: the human's messages (MAIN) against the SPACE context file. · Decide: all four hold:
+  - every file outside the repository is a `paths` entry with a non-empty `why`;
+  - a repository file is named by its repo-relative path in a note, or is a path entry;
+  - every URL is a `links` entry with a non-empty `why`;
+  - no CLAUDE.md, agent or skill file is a path, and no `.env`, key or credential file is handed in.
+- **AD-08** · Was every listed plugin given a load or skip decision with a reason, by the generator? · Rule: FAI steps 2, 5 and 7.1; DPR. · Source: MAIN, the `list-plugins.sh` result and the `generate-dispatch-plan.sh` call. · Decide: both hold:
+  - every plugin name in the list appears once in the generator's flags, as `--load` or `--skip`, each followed by a `--reason`. A re-plan may also skip a plugin no longer listed (DPR);
+  - the dispatch plan is never written by hand: no Write, Edit or Bash redirect touches its plan file. The no-plugin-fits plan file is not a dispatch plan; the main thread writes it (FCD Invariants, NPF).
+- **AD-09** · Did each approval gate run in order? · Rule: FAI step 7.2; PAG steps 1–3 (step 2: the relay is the final message; a note above only for a show-only gate). · Source: MAIN calls, results and text. · Decide: all four, in order, within one turn:
+  - the renderer's output was piped into `open-gate.sh`;
+  - the text ending that response is `open-gate.sh`'s stdout, ending `_Crucible gate_`, with nothing before or after it in that message (the call's own echo aside);
+  - a Stop hook result says the question is now allowed;
+  - after it, before any human message, one AskUserQuestion call for this plan, plus any clarifying question PAG sets for an unclear answer.
+
+  A show-only gate gets no question. A relay the Stop hook never confirmed, or a question the hook blocked, rightly asks nothing (PAG). Judge those by their own branch.
+- **AD-10** · Did the question the human saw match the renderer's? · Rule: FAI step 7.3 (copy `header`, `question` and `options` "as they are"); DPR. · Source: MAIN, the renderer's `--question` call and result, and the AskUserQuestion input. · Decide: `--plans` is step 6's plan count, or `1` for a step-10 re-plan and for step 11. The header, question, and each option's label and description are the same, in the same order. The no-plugin-fits question takes no `--plans` (DF-12).
+- **AD-11** · Were dispatches generated only for approved plans, after the first round of answers? · Rule: FAI steps 7.4 and 8. · Source: MAIN, the AskUserQuestion results, the generator results and the `generate-agent-dispatch.sh` calls; the SPACE dispatch files. · Decide: all four hold:
+  - in the first round, no `generate-agent-dispatch.sh` call comes before the last plan's answer. A later re-ask can come after dispatches already made: step 8's exit 3, a step-10 re-plan, the step-11 plan, or a re-ask after Resume;
+  - each call follows an answer starting `Approve` for its plan;
+  - its `--plan-sha256` equals that plan's last printed `PLAN_SHA256` (a typed answer makes a new one). The dispatch file's `plan.sha256` holds the same value. Compare with the printed line, never with a hash of the gate record, which differs by design;
+  - after a Stop or Stop all answered at step 7.4 in the first round, no dispatch is generated or sent, approved plans included. A Stop from step 10 or step 11, or no-plugin-fits' Stop, stops only its own dispatch or part.
+- **AD-12** · Did the Agent call carry only the dispatch line? · Rule: FAI step 9; FCD steps 3 and 4. · Source: MAIN, the Agent call, and `generate-agent-dispatch.sh`'s result for its `LABELS:` line. · Decide: all three hold:
+  - `subagent_type` equals the dispatch file's `agent`;
+  - `description` reads `<label>: <summary>`, at most 50 characters. `<label>` is the `LABELS:` line's `Technology:` value, or `General` when that is `none`;
+  - `prompt` is exactly `DISPATCH: <path>` (one trailing newline allowed).
+- **AD-13** · Did the agent receive the hook-built message for this dispatch? · Rule: FAI step 9 (the `prepare-agent-prompt.sh` hook; its `--help` sets the message). · Source: AGENT, its `meta.json` and first message; the SPACE dispatch and context files. · Decide: all of these hold:
+  - `agentType` equals the dispatch's `agent`;
+  - the first message starts `# Your plugins`, and holds no `DISPATCH:` line;
+  - its `<crucible-plugin name=…>` blocks name exactly the dispatch's `plugins[].name`, in the same order;
+  - the JSON inside its `<crucible-context>` block (strip the json fence) equals the context file, compared as JSON;
+  - under `# Your work`, `MODE`, `TASK`, `REPO ROOT`, `STARTING POINTS`, `REPORT` and `CONTEXT FILE` equal the dispatch's fields once the markup is stripped (bold labels, the label's note, backticks; `STARTING POINTS` is a comma list or `none`). `RETURN` is `REPORT: <the dispatch's report>` alone.
+- **AD-14** · Did the agent get the plugins the human approved? · Rule: FAI step 7 (the human approves the plugins shown). · Source: the gate record (the dispatch's `plan.path`) against the dispatch. · Decide: the dispatch's `plugins[].name`, compared as a set, equal the record's `loaded[].plugin`. A tech plugin's base folder (its `metadata.base`) may add one name the record doesn't list. The order differs by design: tech first, then the standards by name.
+- **AD-15** · Did the main thread stay out of `settings.json`? · Rule: FAI Invariants (only `validate-dependencies.sh` reads it; the human edits it). · Source: MAIN calls. · Decide: no Read, `cat`, `jq`, Write, Edit or other call opens or changes a `settings.json`.
+- **AD-16** · After a compaction, was no dispatch sent on an approval no longer in context? · Rule: FAI Resume; FCD Invariants. · Source: MAIN, its compaction markers (a summary `user` line), then the calls after it. · Decide: every Agent call after a compaction belongs to a plan approved after it, or one the main thread asked again. N/A when MAIN has no compaction.
+- **AD-17** · Did step 3 read every context entry, each by its route? · Rule: FAI steps 3.1 and 3.4; CHI Read every entry and Tracker links. · Source: MAIN calls and results against the context file's `paths` and `links`. · Decide: each path, the text file included, has a Read (in parts allowed) and each non-tracker link a WebFetch, before the `generate-agent-context.sh` call that first lists it. Each tracker link has a `read-link.sh --context-file <that CONTEXT_FILE> --link <n>` call after that line, never a WebFetch or tracker command; its exit 3 is followed by a WebFetch, its exit 1 or other by the human told which link. A failed read is fine: the others are weighed without it.
+- **AD-18** · Was each outcome-changing contradiction asked as CHI sets, before any plan? · Rule: FAI step 3.2 and Invariants (no gate while a contradiction is open); CHI Weigh it and Asking. · Source: MAIN, the AskUserQuestion calls and results, against what step 3's reads returned. · Decide: judgement. Each contradiction has its own AskUserQuestion before the first `generate-dispatch-plan.sh` call. The question gives the contradiction in one line, both sides quoted with where each is, and why the first option is recommended; the first option is marked `(Recommended)`; one option per side, each label naming the source it overrules by path or link; `Stop the work` last. An unclear answer is asked again at most twice, then every part is handed back `stopped: context not settled`. A contradiction the reads show but no question asks is FAIL, both sides quoted. N/A when the entries hold none.
+- **AD-19** · Did each answer reach the context as a note, and no small disagreement get asked? · Rule: CHI The answer becomes a note and Weigh it; FAI steps 3.2 and 3.4. · Source: MAIN, AD-18's answers, against the SPACE context file's `notes`. · Decide: each settling answer is one note: the picked label without `(Recommended)`, or the typed answer as given, quoting no source text. A step-3.4 answer is in the rerun's context file, which the dispatches' `context.path` names. A `Stop the work` answer leaves no new context file and no plan. A question on a detail that leaves the outcome as it is is FAIL (judgement). N/A when AD-18 is.
+- **AD-20** · Was the procedure plugin loaded when the context held a tracker link? · Rule: FAI step 5 (a procedure plugin whose description matches the context entries) and step 9 (the `Procedures:` segment); RT description and Scope. · Source: the SPACE context file's `links`, the gate record, and `generate-agent-dispatch.sh`'s `LABELS:` line. · Decide: when `links` holds a tracker link (a github.com issue, a GitLab `/-/issues/<n>` or a Jira `/browse/<KEY>-<n>` URL), the record's `loaded` has `procedure-read-trackers`. The `LABELS:` line has a `Procedures:` segment exactly when a procedure plugin is loaded. N/A when `links` holds no tracker link and no procedure plugin is loaded.

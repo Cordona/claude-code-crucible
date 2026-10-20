@@ -17,7 +17,7 @@ The full field sets Claude Code accepts, one row per field: what it does, the de
 | `when_to_use` | optional | Trigger phrases and example requests, listed with the description. | Description alone is listed | String; description + this truncated at 1,536 chars in the listing (docs) |
 | `argument-hint` | optional | Hint for the arguments a user-invocable skill takes (FM-07). | No hint | String |
 | `arguments` | optional | Names the arguments, mapped to positions in order, usable as `$<name>` in the body (docs; LNT-21); a preload blanks them. | No named arguments | Space-separated string or YAML list (docs) |
-| `disable-model-invocation` | optional | `true`: only a user can invoke it; agents can't preload it; its description is not in context (docs). | `false` (docs) | Boolean; `true` fails LNT-35 on any bound or house-prefixed skill, except a plugin, which (a `tech-` skill, or a `standard-` skill under `plugins/standards/`) is read by path only and sets it by design |
+| `disable-model-invocation` | optional | `true`: only a user can invoke it; agents can't preload it; its description is not in context (docs). | `false` (docs) | Boolean; `true` fails LNT-35 on any bound or house-prefixed skill, except a plugin, which (a `tech-` skill, a `standard-` skill under `plugins/standards/`, or a `procedure-` skill under `plugins/procedures/`) is read by path only and sets it by design |
 | `user-invocable` | optional | `false` hides the `/` entry when only Claude should invoke the skill; blocks neither the Skill tool nor preloading (docs). | `true` (docs) | Boolean |
 | `allowed-tools` | optional | Pre-approves tools (no prompt) without restricting others; lasts until the next user message (SAFE-06, DET-09). | No pre-approvals | Tool names, `Bash(<glob>)`; bare `Bash` fails LNT-41 |
 | `disallowed-tools` | optional | Restricts tools for the invoking turn only (DET-09). | Nothing restricted | Tool names |
@@ -71,3 +71,5 @@ Every version- or model-dependent fact the rulebook relies on, in one place. Re-
 | Read tool limit per call (ALOAD-10) | about 25,000 tokens | docs (tools) | not verified |
 | Agent memory load (`memory`) | first 200 lines / 25 KB of `MEMORY.md` | docs (subagents) | not verified |
 | `!` injected command timeout (DET-10) | 2 minutes | docs (skills) | not verified |
+| Hook `onFailure: block` blocks on crash and timeout (HK-04) | Claude Code 2.1.303, observed | live run | 2026-10-19 |
+| `updatedInput` exempt from the 10,000-char cap (HK-06) | Claude Code 2.1.303, observed with a 17,514-byte updatedInput prompt (over the 10,000-char cap) | live run | 2026-10-19 |

@@ -3,8 +3,8 @@
 Purpose: the agent follows the procedure step by step, knows when a step failed, and knows when to stop.
 Judges steps, checks, loops, freedom per step, human gates and the closing report.
 
-**Applies when:** flows and procedures with two or more steps; standards: WF-03, WF-05, WF-06 only.
-**MUST lint:** none.
+**Applies when:** flows and procedures with two or more steps; standards and plugins: WF-03, WF-05, WF-06, WF-10 only.
+**MUST lint:** LNT-73.
 
 - **WF-01** · SHOULD · Is a multi-step procedure laid out as numbered steps, with a copyable checklist or todo instruction when it has five or more steps or a loop? Without numbered steps the agent skips or merges a step and nothing shows it. · Check: read. · Fix: number the steps; add "copy this checklist into your reply and tick it off".
 - **WF-02** · SHOULD · Can each check step actually fail, and does it name the step to return to? A check that cannot fail passes every run, and a failed check with no return step leaves the agent to improvise. · Check: yes if every check has "on fail → step N". · Fix: add the failure condition and the return line.
@@ -15,3 +15,4 @@ Judges steps, checks, loops, freedom per step, human gates and the closing repor
 - **WF-07** · SHOULD · Does each human gate show the exact proposal, use one AskUserQuestion call (several questions inside are fine) with the recommended option first and facts per option, skip what was already answered, and state the action per answer? A gate that hides the proposal gets an approval of something the human never saw. · Check: read each gate. · Fix: rewrite the gate to that shape.
 - **WF-08** · SHOULD · In an unattended run, does the skill never end its turn to wait, and send notices with the next tool call? An ended turn in an unattended run waits for an answer nobody gives. · Check: N/A for gated flows. · Fix: replace the wait with a rule-based decision.
 - **WF-09** · SHOULD · Does the closing report give counts, why the loop ended and each seat's verdict verbatim, and does a hand-off to a sibling skill pass a restated brief? Without them the owner can't tell a clean run from a cut-off one. · Check: read the summary and hand-off steps. · Fix: add the counts and quoted verdicts; restate the brief at hand-off.
+- **WF-10** · MUST · Is there no nested numbered list, with each sub-step on its own line numbered `N.1`, `N.2` and its cases as plain `-` bullets? Markdown renders a nested numbered item as i, ii or a, b, so the number the reader sees is not the one written. · Check: lint LNT-73. · Fix: renumber each nested item as `N.1`, `N.2` on its own line; turn its cases into `-` bullets.

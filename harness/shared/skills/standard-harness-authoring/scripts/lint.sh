@@ -384,9 +384,11 @@ build_skill_index() {
 repo_skill_name() {
 	local dir=$1 base=${1##*/}
 	if [[ "${base}" == skill ]]; then dir=${dir%/*}; base=${dir##*/}; fi
-	# A plugin's folder has no prefix; it deploys as tech-<folder> or standard-<folder>.
+	# A plugin's folder has no prefix; it deploys as tech-<folder>,
+	# standard-<folder> or procedure-<folder>.
 	if [[ "${dir%/*}" == */plugins/tech ]]; then base="tech-${base}"; fi
 	if [[ "${dir%/*}" == */plugins/standards ]]; then base="standard-${base}"; fi
+	if [[ "${dir%/*}" == */plugins/procedures ]]; then base="procedure-${base}"; fi
 	# The plugin loader lives at plugins/load and deploys as load-plugin.
 	if [[ "${dir}" == */plugins/load ]]; then base="load-plugin"; fi
 	REPLY=${base}
@@ -797,7 +799,8 @@ check_skill_name() {
 }
 
 # LNT-72: a plugin carries metadata.label; a tech plugin's metadata.base names
-# a sibling plugin that has no base of its own; a standard plugin has no base.
+# a sibling plugin that has no base of its own; a standard or procedure plugin
+# has no base.
 tech_meta() {
 	awk -v key="$2" '
 		NR == 1 && $0 != "---" { exit }
@@ -812,6 +815,7 @@ check_tech_plugin() {
 	local name=$1 rec label base base_md
 	local kind=tech
 	if [[ "${name}" == standard-* && "${SKILL_DIR%/*}" == */plugins/standards ]]; then kind=standard
+	elif [[ "${name}" == procedure-* && "${SKILL_DIR%/*}" == */plugins/procedures ]]; then kind=procedure
 	elif [[ "${name}" != tech-* ]]; then return 0; fi
 	if ! awk 'NR == 1 && $0 != "---" { exit 1 } NR > 1 && $0 == "---" { exit 1 } /^disable-model-invocation:[ ]*"?true"?[ ]*$/ { f = 1; exit } END { exit !f }' "${SKILL_MD}"; then
 		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin does not set disable-model-invocation: true (list-plugins.sh would skip or reject it)"
@@ -828,8 +832,8 @@ check_tech_plugin() {
 		return 0
 	fi
 	rec=$(tech_meta "${SKILL_MD}" base)
-	if [[ "${kind}" == standard && -n "${rec}" ]]; then
-		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "a standard plugin takes no metadata.base"
+	if [[ "${kind}" != tech && -n "${rec}" ]]; then
+		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "a ${kind} plugin takes no metadata.base"
 		return 0
 	fi
 	if [[ -z "${rec}" ]]; then
@@ -948,7 +952,7 @@ check_skill_keys() {
 }
 
 # One awk pass over SKILL.md and every other .md: LNT-15/16/18/19/20/21/23/
-# 24/25/26/37/43/49/70 records, plus path (P), bang (B) and code-block (C)
+# 24/25/26/37/43/49/70/73 records, plus path (P), bang (B) and code-block (C)
 # candidates consumed by later checks.
 check_skill_text() {
 	local md_abs=() rel argnames="" item
@@ -1672,6 +1676,38 @@ function sent_report(f,   i, j, t, med) {
 	else rec("LNT-70", "PASS", f, 0, sprintf("median sentence %s words (<= 25)", med))
 }
 
+# ---- LNT-73 nested ordered-list items (shared by md and agent modes)
+# An ordered item arms a run, anchored at the shallowest ordered item's
+# indent. Blank lines, bullets and indented continuation lines keep the run;
+# a heading, an unindented non-list line or any code region ends it. An
+# ordered item indented past the anchor inside a run is nested.
+function nest_reset() { nest_armed = 0; nest_anchor = 0; nest_fails = 0 }
+function indent_width(l,   w, i, ch) {
+	w = 0
+	for (i = 1; i <= length(l); i++) {
+		ch = substr(l, i, 1)
+		if (ch == " ") w++
+		else if (ch == "\t") w += 4 - w % 4  # CommonMark tab stop
+		else break
+	}
+	return w
+}
+function nest_line(l, c, f, ln,   w) {
+	if (c != "text" || heading_level(l)) { nest_armed = 0; return }
+	if (l ~ /^[ \t]*[0-9]+[.)][ \t]/) {
+		w = indent_width(l)
+		if (!nest_armed) { nest_armed = 1; nest_anchor = w; return }
+		if (w > nest_anchor) {
+			rec("LNT-73", "FAIL", f, ln, "nested ordered-list item renders as i, ii or a, b; write sub-steps as N.1, N.2 lines with plain - bullets")
+			nest_fails++
+		} else nest_anchor = w
+		return
+	}
+	if (trim(l) == "" || l ~ /^[ \t]/ || l ~ /^[-*+][ \t]/) return
+	nest_armed = 0
+}
+function nest_report(f) { if (!nest_fails) rec("LNT-73", "PASS", f, 0, "no nested ordered-list items") }
+
 BEGIN {
 	mode = ENVIRON["LINT_MODE"]; STRIP = ENVIRON["LINT_STRIP"]
 	QO = ENVIRON["LINT_QUOTE_OPENING"]; QC = ENVIRON["LINT_CANON_QUOTE"]; sub(/[ \t]+$/, "", QC)
@@ -1892,7 +1928,7 @@ function md_file_begin() {
 	inv_found = 0; inv_lvl = 0; inv_end = -1; inv_line = 0
 	exempt_lvl = 0; nhead = 0; nbul = 0; contents_head = 0; capturing = 0; bang_fence = 0; prev_nb = ""
 	delete hd_line; delete hd_text; delete bul_line; delete bul_text
-	sent_reset()
+	sent_reset(); nest_reset()
 }
 function md_line(   l, c, lvl, x, prose, lo, tk, n, i) {
 	if (FNR == 1) { if (cur != "") md_file_end(); md_file_begin() }
@@ -1901,7 +1937,7 @@ function md_line(   l, c, lvl, x, prose, lo, tk, n, i) {
 	if (isk) { blines++; line_off = bchars; bchars += ulen(l) + 1; if (l ~ /grep/) grep_lines = grep_lines "\n" l }
 	n = split(l, tk, /[ \t]+/); for (i = 1; i <= n; i++) if (tk[i] ~ /[A-Za-z0-9]/) words_all++
 	lnt20(l); if (isk) lnt21(l); lnt30(l); lnt43(l)
-	sent_line(l, c)
+	sent_line(l, c); nest_line(l, c, disp(cur), FNR)
 	if (c == "fence") { md_fence(); return }
 	if (c == "code") { md_code(l); prev_nb = l; return }
 	if ((x = quote_diff(l)) != "") rec("LNT-60", "FAIL", disp(cur), FNR, x)
@@ -1958,7 +1994,7 @@ function md_bang_inline(l,   s, c) {
 }
 function md_file_end(   i, j, hits, tok) {
 	if (capturing) { close(blkf); printf "C\t%s\t%s\t%d\t%s\n", blk_tag, cur, blk_line, blkf; capturing = 0 }
-	sent_report(disp(cur))
+	sent_report(disp(cur)); nest_report(disp(cur))
 	if (isk) {
 		tok = int((bchars + 3) / 4)  # LNT-15: tokens = ceil(chars / 4) (lint-spec Terms)
 		rec("LNT-15", tok <= 5000 ? "PASS" : "FAIL", disp(cur), 0, sprintf("body %d tokens (%d chars; limit 5,000 tokens)", tok, bchars))
@@ -2086,20 +2122,20 @@ function lnt24(x,   lo, what) {
 	if (what != "") rec("LNT-24", "FAIL", disp(cur), FNR, "time-sensitive wording: " clip(what, 40))
 }
 
-# ---- agent: LNT-60, LNT-61, LNT-70 and the body size (Z record).
+# ---- agent: LNT-60, LNT-61, LNT-70, LNT-73 and the body size (Z record).
 function ag_end(   i, fm_end, c, bchars) {
 	F = disp(FILENAME)
 	if (lines[1] ~ /^---[ \t]*$/) for (i = 2; i <= NR; i++) if (lines[i] ~ /^---[ \t]*$/) { fm_end = i; break }
 	UO = ENVIRON["LINT_UNTRUSTED_OPENING"]; SO = ENVIRON["LINT_SECRET_OPENING"]
 	ag_fm_end = fm_end + 0
-	sent_reset(); bchars = 0
+	sent_reset(); nest_reset(); bchars = 0
 	for (i = 1; i <= NR; i++) {
 		c = classify(lines[i], i)
 		if (i > ag_fm_end) bchars += ulen(lines[i]) + 1
-		if (c != "fm" && i > ag_fm_end) sent_line(lines[i], c)
+		if (c != "fm" && i > ag_fm_end) { sent_line(lines[i], c); nest_line(lines[i], c, F, i) }
 	}
 	printf "Z\t%d\n", bchars
-	sent_report(F)
+	sent_report(F); nest_report(F)
 	check_blocks(); check_ask()
 }
 function check_blocks() {
