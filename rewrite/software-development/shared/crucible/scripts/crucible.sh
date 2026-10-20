@@ -5,7 +5,7 @@ set -eu
 umask 077
 
 readonly PROG='crucible.sh'
-readonly KINDS='context, gates, reports, dispatches, prompts'
+readonly KINDS='context, gates, reports, dispatches, baselines, prompts'
 readonly MAX_LABEL_CHARS=60
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
@@ -26,12 +26,13 @@ readonly REPORT_RENDERER='skills/standard-code-development-report/scripts/report
 # The programs are single-quoted on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
 readonly INDEX_ENTRY_JQ='
-def kinds: ["context", "gates", "reports", "dispatches", "prompts"];
+def kinds: ["context", "gates", "reports", "dispatches", "baselines", "prompts"];
 # Every kind is JSON but prompts, the Markdown message the main thread reads.
 def extension($kind): if $kind == "prompts" then "md" else "json" end;
 def day_of_file: capture("/(?<y>[0-9]{4})/(?<m>[0-9]{2})/(?<d>[0-9]{2})/index\\.jsonl$") | .y + .m + .d;
 def valid_entry($index):
 	type == "object" and .v == 1
+	# The ID rule of the Crucible space itself; crucible_id_pattern in dispatch-names.jq must match it.
 	and (.id | type) == "string" and (.id | test("^[0-9]{8}T[0-9]{6}-[0-9a-f]{4}$"))
 	and (.kind | type) == "string" and (.kind as $kind | kinds | index([$kind]) != null)
 	and (.label | type) == "string" and (.label | test("^[a-z0-9-]{1,60}$"))
@@ -68,7 +69,8 @@ usage: crucible.sh new --kind KIND --label LABEL [--repo PATH] [--session ID]
        crucible.sh --help
 
 Hands out and finds the files of the durable Crucible space, where every
-context file, gate record, dispatch and agent report lives as one JSON file,
+context file, gate record, dispatch, dispatch baseline (the repository's git
+status when the dispatch was sent) and agent report lives as one JSON file,
 and a prompt (the Markdown message the main thread reads) as one .md file.
 
 The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path. The space
@@ -80,7 +82,7 @@ root. Folders the script creates are mode 700, files mode 600.
 Layout (local time):
   <root>/YYYY/MM/DD/index.jsonl
   <root>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
-  kind: context, gates, reports, dispatches or prompts; hex: 4 random
+  kind: context, gates, reports, dispatches, baselines or prompts; hex: 4 random
   lowercase hex digits; ext: md for prompts (a Markdown message), json for
   every other kind.
   The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
@@ -276,7 +278,7 @@ run_new() {
 
 check_kind() {
 	case ${kind} in
-		context | gates | reports | dispatches | prompts) ;;
+		context | gates | reports | dispatches | baselines | prompts) ;;
 		'') usage_error "--kind missing; expected one of ${KINDS}" ;;
 		*) usage_error "unknown kind: ${kind}; expected one of ${KINDS}" ;;
 	esac

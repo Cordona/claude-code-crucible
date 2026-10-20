@@ -2,7 +2,9 @@
 # one definition generate-dispatch-plan.sh checks a plan with.
 # Input: the plan slurped (jq -s), so an empty file or several values show as a
 # count. --argjson installed: the installed plugins, from list-plugins.sh's
-# plugin lines, as {"<name>": {"kind": "tech"|"standard", "label": str}, ...}.
+# plugin lines, as {"<name>": {"kind": "tech"|"standard"|"procedure", "label":
+# str}, ...}; the only kind rule is at most one tech plugin loaded, so a
+# procedure plugin is loaded or skipped as a standard one is.
 # Output: one "<where> <problem>; expected <x>" line per problem, nothing when
 # the plan fits. With --arg format json: one {"at": <path>, "problem":
 # "<problem>; expected <x>"} object per problem, at being the field's path in

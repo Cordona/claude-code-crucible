@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
-# Reads one link of a context file through its tracker's single read-only call,
-# so no model ever puts the untrusted URL on a command line it composes. The
-# URL is taken from the file, checked, and passed as one quoted argument only.
+# The procedure-read-trackers plugin's script. Reads one link of a context file
+# through its tracker's single read-only call, so no model ever puts the
+# untrusted URL on a command line it composes. The URL is taken from the file,
+# checked, and passed as one quoted argument only.
 set -eu
 
 readonly PROG='read-link.sh'
@@ -53,6 +54,7 @@ def classify:
 main() {
 	parse_args "$@"
 	command -v jq >/dev/null 2>&1 || fail 5 'jq missing; expected jq 1.6 or later on PATH; try brew install jq'
+	require_base_tools
 	classify_link
 	case ${link_kind} in
 		github) read_github ;;
@@ -66,9 +68,10 @@ usage() {
 	cat <<'EOF'
 usage: read-link.sh --context-file <absolute path> --link <n>
 
-Reads link <n> (1-based) of the context file's links through its tracker's one
-read-only call: gh issue view, glab issue view, or procedure-jira's jira.sh view
-with JIRA_READ_ONLY=1. stdout: the ticket, at most 500 lines.
+The procedure-read-trackers plugin's tracker read. Reads link <n> (1-based)
+of the context file's links through its tracker's one read-only call:
+gh issue view, glab issue view, or procedure-jira's jira.sh view with
+JIRA_READ_ONLY=1. stdout: the ticket, at most 500 lines.
 
 Exit codes:
   0    read, the ticket on stdout
@@ -82,8 +85,9 @@ Exit codes:
   130  interrupted (INT)
   143  terminated (TERM)
 
-Dependencies: jq 1.6+; per read, gh, glab, or the procedure-jira and
-procedure-jira-auth skills under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/.
+Dependencies: jq 1.6+; the base tools awk, head, mktemp, sleep and kill;
+per read, gh, glab, or the procedure-jira and procedure-jira-auth skills
+under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/.
 EOF
 }
 
@@ -135,6 +139,13 @@ fail() {
 	shift
 	printf '%s: %s\n' "${PROG}" "$*" >&2
 	exit "${fail_code}"
+}
+
+require_base_tools() {
+	for base_tool in awk head mktemp sleep kill; do
+		command -v "${base_tool}" >/dev/null 2>&1 \
+			|| fail 5 "${base_tool} missing; expected ${base_tool} on PATH; try installing your system's base tools (coreutils, awk and procps on Linux; macOS ships them)"
+	done
 }
 
 # Sets link_kind and, by kind, link_url, link_host and link_key.
@@ -200,7 +211,7 @@ resolve_jira_curl_config() {
 		1:*'no credential stored for site'*)
 			fail 1 "no stored Jira credential for ${link_host}; expected one set up through procedure-jira-auth; try asking the human to log in through procedure-jira-auth"
 			;;
-		*) fail 1 "jira-curl-config.sh failed (exit ${config_status}): ${config_error:-no message}" ;;
+		*) fail 1 "jira-curl-config.sh failed (exit ${config_status}): ${config_error:-no message}; expected the path of a curl config for ${link_host}; try running procedure-jira-auth's jira-curl-config.sh --site ${link_host} to read its full error" ;;
 	esac
 }
 

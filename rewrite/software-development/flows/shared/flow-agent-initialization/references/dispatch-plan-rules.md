@@ -19,14 +19,14 @@ The technology is no option: the generator computes it from the loaded tech plug
 
 ## Reasons
 
-- **Each reason cites its plugin's description,** in a few words: what in it matched the task or what its context names (`--load`), or what didn't match, or which "Not for …" excludes it (`--skip`).
+- **Each reason cites its plugin's description,** in a few words: what in it matched the task or what the context holds as SKILL.md's step 3 read it (`--load`), or what didn't match, or which "Not for …" excludes it (`--skip`).
 - **A boundary-map drop** (SKILL.md's step 5): `<concern>: owned by <owner>`.
 - **A step-10 drop:** `invalid`, `uninstalled after approval` or `faulty files`, as Step-10 re-plans below sets.
 - **No plugins at all** (a config value, a doc): `--loaded-reason` says why, such as `a config value change, no code`.
 
 ## Example
 
-How the options and reasons read for one shell `BUILD` part. Illustrative: it assumes `tech-shell`, `standard-clean-code`, `standard-observability` and `standard-testing` are installed; `generate-dispatch-plan.sh --help` wins over it.
+How the options and reasons read for one shell `BUILD` part whose context holds no tracker link. Illustrative: it assumes `tech-shell`, `standard-clean-code`, `standard-observability`, `standard-testing` and `procedure-read-trackers` are installed; `generate-dispatch-plan.sh --help` wins over it.
 
 ```
 sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/03-dispatch-plan/generate-dispatch-plan.sh" \
@@ -36,7 +36,8 @@ sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts
   --load tech-shell --reason '"rules for writing scripts": the change is a shell script' \
   --load standard-clean-code --reason '"small flat functions": it restructures a function' \
   --skip standard-observability --reason '"log levels … metrics and traces": none is added or changed' \
-  --skip standard-testing --reason '"Not for production code": a BUILD part; tests are a separate dispatch'
+  --skip standard-testing --reason '"Not for production code": a BUILD part; tests are a separate dispatch' \
+  --skip procedure-read-trackers --reason '"a dispatch'\''s context holds a tracker link": its links hold no GitHub, GitLab or Jira issue'
 ```
 
 The plan it writes holds `"technology": "Shell"` (tech-shell's label) and `"context": {"path": …, "sha256": …}`.

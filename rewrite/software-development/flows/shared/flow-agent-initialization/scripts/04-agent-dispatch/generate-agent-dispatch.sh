@@ -22,7 +22,8 @@ readonly DIRECT_LABEL='main-thread'
 # is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
 readonly PLACEHOLDER_STARTED='0000-00-00T00:00:00+00:00'
-readonly PLACEHOLDER_ITEM='0000/00/00/reports/00000000T000000-0000'
+readonly PLACEHOLDER_REPORT_ITEM='0000/00/00/reports/00000000T000000-0000'
+readonly PLACEHOLDER_DAY='0000/00/00'
 readonly TASK_STAND_IN='(no task chosen)'
 NL='
 '
@@ -46,7 +47,7 @@ def dispatch: {
 	plugins: plugins,
 	plan: {path: $plan_path, sha256: $plan_sha256},
 	context: {path: $context_path, sha256: $context_sha256},
-	task: $task, repo_root: $repo_root, starting_points: $ARGS.positional, report: $report};
+	task: $task, repo_root: $repo_root, starting_points: $ARGS.positional, report: $report, baseline: $baseline};
 
 # A long value keeps its start and end, where a path differs most.
 def max_shown_chars: 80;
@@ -55,7 +56,7 @@ def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \(
 def field_name: map(if type == "number" then "[\(.)]" else "." + . end) | join("") | ltrimstr(".");
 # Fields whose value is a stand-in (the plan not found or not valid, or no
 # task chosen) are not reported again: their problem is reported already.
-def stood_in: (.at[0] | IN("agent", "mode", "tech", "plugins", "plan", "context", "report")) and $plan_known == "false"
+def stood_in: (.at[0] | IN("agent", "mode", "tech", "plugins", "plan", "context", "report", "baseline")) and $plan_known == "false"
 	or .at[0] == "task" and $task_known == "false";
 def named_line:
 	.at as $at | .problem as $problem
@@ -64,6 +65,7 @@ def named_line:
 	  elif $at[0] == "repo_root" then line("--repo-root"; $repo_root; $problem)
 	  elif $at[0] == "task" then line("--task"; $task_number; "the task \($problem)")
 	  elif $at[0] == "report" then line("CRUCIBLE_HOME"; $space_root; "the report file \($problem)")
+	  elif $at[0] == "baseline" then line("CRUCIBLE_HOME"; $space_root; "the baseline file \($problem)")
 	  elif ($at[0] | IN("agent", "mode", "tech", "plugins", "plan", "context")) then
 		line("--plan-sha256"; $plan_sha256; "the plan'"'"'s \($at | field_name) \($problem)")
 	  else "\($prog): dispatch \($at | field_name): \($problem)" end;
@@ -75,12 +77,12 @@ if $mode_of_run == "report" then report else dispatch end
 usage() {
 	cat <<EOF
 Usage: sh ${PROG} --session ID --plan-sha256 HEX --task N --repo-root PATH
-           [--starting-point REL]... [--skills-dir DIR]
+           [--starting-point REL]... [--skills-dir DIR] [--baseline-from DISPATCH]
        sh ${PROG} --help
 
 Writes one agent dispatch file for task N of the plan the human approved, and
-allocates the agent's report file. Every input is checked first; on any
-problem no file is left behind.
+allocates the agent's report file and the dispatch's baseline file. Every
+input is checked first; on any problem no file is left behind.
 
   --session ID       the Claude Code session whose gates records are searched,
                      and the session of the files made.
@@ -101,6 +103,15 @@ problem no file is left behind.
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. The installed
                      plugins are the plugin lines of
                      DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0.
+  --baseline-from DISPATCH  an earlier dispatch file of this task, the one a
+                     resend replaces: the new dispatch's baseline file gets a
+                     byte-for-byte copy of DISPATCH's filled baseline, so the
+                     baseline stays the tree before the first call. DISPATCH
+                     must be absolute, a regular file, not a symlink, pass
+                     agent-dispatch-validator.jq and have repo_root PATH; its
+                     baseline file must lie inside the Crucible space, be a
+                     regular file, not a symlink, not empty, and hold a
+                     baseline of PATH (baseline_problems in ${NAMES_MODULE}.jq).
 
 Checks, all before any file is made:
   - the plan: scripts/03-dispatch-plan/dispatch-plan-validator.jq against the
@@ -119,15 +130,23 @@ The loaded plugins' files are scripts/04-agent-dispatch/plugin-files.sh's:
 role developer for code-developer and "main thread" (SKILL.md,
 references/development.md, each references/*-template.md), role reviewer for
 code-reviewer (SKILL.md, references/review.md when readable), the tech
-plugin's files first (its base first), then the standards in plugin-line
-order.
+plugin's files first (its base first), then the standard and procedure
+plugins in plugin-line order.
 
 Then the report file is made by crucible.sh new --kind reports --label
-<agent>-report --session ID (<agent> being main-thread for "main thread"; it
-must be empty, inside the Crucible space \${CRUCIBLE_HOME:-\$HOME/.crucible},
-and not under PATH), and the dispatch file
+<agent>-report --session ID (<agent> being main-thread for "main thread"),
+the baseline file by crucible.sh new --kind baselines --label
+<agent>-baseline --session ID (each must be empty, inside the Crucible space
+\${CRUCIBLE_HOME:-\$HOME/.crucible}, and not under PATH), and the dispatch file
 by crucible.sh new --kind dispatches --label <agent>-dispatch --session ID,
 written to a temp file in its folder, moved onto its path and checked again.
+The baseline file is left empty: this script writes no git status, since a
+dispatch may be sent long after it is written. prepare-agent-prompt.sh
+writes it at the Agent call (or at --direct), before the agent or the main
+thread changes the tree, and report.sh reads it through the dispatch. With
+--baseline-from, the file instead gets the earlier baseline's bytes, read
+once and checked before any file is made, through a temp file in its folder
+moved onto its path; the hook then keeps it as a resend's.
 
 The dispatch file (one JSON object, exactly these keys):
   {"id": <the dispatch file's Crucible ID>, (*)
@@ -139,27 +158,32 @@ The dispatch file (one JSON object, exactly these keys):
      (kept for audit: the gate record the dispatch came from)
    "context": {"path": str, "sha256": str},
    "task": <the N-th task, exact>, "repo_root": PATH,
-   "starting_points": [REL, ...], "report": <the report file>}
-  (*) read by the report validator's stamps (a later phase of the dispatch
-      pipeline design)
+   "starting_points": [REL, ...], "report": <the report file>,
+   "baseline": <the baseline file, empty until the call>}
+  (*) stamped into the agent's report by report.sh check --dispatch
 
 Output (stdout, exactly two lines, on exit 0):
   DISPATCH: <absolute path of the dispatch file>
-  LABELS: Technology: <tech label, or none> · Used standards: <labels, or none>
-the plugins' labels, as plugin-files.sh builds the line
+  LABELS: Technology: <tech label, or none> · Standards: <labels, or none> · Procedures: <labels>
+the plugins' labels, as plugin-files.sh builds the line; the
+" · Procedures: <labels>" segment is there only when a procedure plugin is
+loaded (never "Procedures: none")
 Problems (stderr, one line each; every problem is listed):
   ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters>: <problem>; expected <x>
 A problem of the plan or its context file names --plan-sha256; one of the
-report file's place names CRUCIBLE_HOME.
+report or baseline file's place names CRUCIBLE_HOME.
 
 Exit codes:
   0  the dispatch file written; its path and the LABELS line printed
   1  making, writing or checking a file failed after the inputs passed; the
-     files this run made are removed (stderr names them)
+     files this run made (report, baseline, dispatch) are removed (stderr
+     names them)
   2  usage error: an unknown option, an option without its value, a second
-     --session, --plan-sha256, --task, --repo-root or --skills-dir, or one of
-     the first four missing
-  3  invalid input, one stderr line per problem; no file made
+     --session, --plan-sha256, --task, --repo-root, --skills-dir or
+     --baseline-from, or one of the first four missing
+  3  invalid input, one stderr line per problem, a --baseline-from DISPATCH
+     that is not a valid dispatch of PATH or whose baseline is empty or not
+     a baseline of PATH among them; no file made
   5  a dependency missing or failing, with the fix named: jq 1.6+, git,
      sha256sum or shasum, crucible.sh, list-plugins.sh, the checks and helpers
      named above, or a base tool below
@@ -172,7 +196,8 @@ agent-context-validator.jq; scripts/03-dispatch-plan/dispatch-plan-validator.jq
 and installed-plugins.jq; plugin-files.sh, agent-dispatch-validator.jq and
 ${NAMES_MODULE}.jq beside this script.
 Reads only: the session's gates records, the plan's context file, git's view
-of PATH, and what list-plugins.sh reads.
+of PATH, what list-plugins.sh reads, and with --baseline-from that dispatch
+and its baseline file.
 Runtime: about 600 ms for a dispatch with 3 plugins; measured on macOS
 (average of 5 runs).
 EOF
@@ -201,6 +226,7 @@ printable() {
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 remove_temp_file() {
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
+	[ -z "${earlier_baseline_copy}" ] || rm -f "${earlier_baseline_copy}"
 }
 
 # Handles option $1 when no option value is awaited: sets awaited_option, or exits 2.
@@ -210,10 +236,10 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--session | --plan-sha256 | --task | --repo-root | --starting-point | --skills-dir) awaited_option=$1 ;;
+		--session | --plan-sha256 | --task | --repo-root | --starting-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --session, --plan-sha256, --task, --repo-root, --starting-point, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --session, --plan-sha256, --task, --repo-root, --starting-point, --skills-dir, --baseline-from or --help"
 			;;
 	esac
 }
@@ -230,6 +256,7 @@ take_value() {
 		--plan-sha256) plan_sha256=$2 ;;
 		--task) task_number=$2 ;;
 		--repo-root) repo_root=$2 ;;
+		--baseline-from) baseline_from=$2 ;;
 		*) skills_dir=$2 ;;
 	esac
 }
@@ -248,7 +275,7 @@ finish_parse() {
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh and every
 # shared check and helper are in place; sources the two shell helpers and
-# reads DIRECT_AGENT from the shared names.
+# reads DIRECT_AGENT and BASELINE_KIND from the shared names.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -269,6 +296,10 @@ load_dependencies() {
 		[ -n "${DIRECT_AGENT}" ] ||
 		die 5 "jq could not read direct_agent from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	readonly DIRECT_AGENT
+	BASELINE_KIND=$(jq -nr -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; baseline_kind" </dev/null) &&
+		[ -n "${BASELINE_KIND}" ] ||
+		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
+	readonly BASELINE_KIND
 	# shellcheck source=../02-agent-context/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck source=plugin-files.sh
@@ -440,7 +471,7 @@ check_context() {
 		add_context_problem 'is missing, unreadable, a symlink or not a regular file; expected the context file the plan was shown with'
 		return 0
 	fi
-	context_size=$(wc -c <"${context_path}") || die 5 "wc could not count the bytes of ${context_path}; check wc, then rerun"
+	context_size=$(wc -c <"${context_path}") || die 5 "wc could not count the bytes of ${context_path}; expected a byte count; check wc, then rerun"
 	context_size=${context_size##* }
 	if [ "${context_size}" -gt "${context_max_bytes}" ]; then
 		add_context_problem "is ${context_size} bytes; expected at most ${context_max_bytes} bytes"
@@ -508,7 +539,8 @@ EOF
 }
 
 # Sets space_root, agent_label (the agent as it goes into a Crucible label:
-# main-thread for "main thread") and placeholder_report, the report path's stand-in.
+# main-thread for "main thread"), and placeholder_report and
+# placeholder_baseline, the stand-ins for the two paths crucible.sh new makes.
 plan_space_paths() {
 	space_root="${CRUCIBLE_HOME:-${HOME:-}/.crucible}"
 	while [ "${space_root}" != '/' ] && [ "${space_root%/}" != "${space_root}" ]; do
@@ -516,20 +548,114 @@ plan_space_paths() {
 	done
 	agent_label=${agent}
 	[ "${agent}" != "${DIRECT_AGENT}" ] || agent_label=${DIRECT_LABEL}
-	placeholder_report="${space_root}/${PLACEHOLDER_ITEM}-${agent_label}-report.json"
+	placeholder_report="${space_root}/${PLACEHOLDER_REPORT_ITEM}-${agent_label}-report.json"
+	placeholder_baseline="${space_root}/${PLACEHOLDER_DAY}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent_label}-baseline.json"
 }
 
-# Runs DISPATCH_JQ in mode $1 with id $2, started $3 and report $4, over the starting points after them.
+# Adds a problem unless the --baseline-from dispatch is a valid dispatch of
+# repo_root whose baseline file holds a baseline of it; on a pass, that
+# baseline is read once into earlier_baseline_copy, the bytes the new
+# dispatch's baseline file gets.
+check_baseline_from() {
+	case ${baseline_from} in
+		/*) ;;
+		*)
+			add_baseline_from_problem 'not an absolute path; expected the DISPATCH path of the earlier dispatch'
+			return 0
+			;;
+	esac
+	if [ -L "${baseline_from}" ] || [ ! -f "${baseline_from}" ] || [ ! -r "${baseline_from}" ]; then
+		add_baseline_from_problem 'missing, unreadable, a symlink or not a regular file; expected the earlier dispatch file generate-agent-dispatch.sh wrote'
+		return 0
+	fi
+	if ! earlier_problems=$(jq -rs -f "${dispatch_validator}" "${baseline_from}" </dev/null 2>/dev/null); then
+		add_baseline_from_problem 'not JSON; expected the earlier dispatch file generate-agent-dispatch.sh wrote'
+		return 0
+	fi
+	if [ -n "${earlier_problems}" ]; then
+		earlier_problems=$(joined_lines "${earlier_problems}")
+		add_baseline_from_problem "fails the dispatch validator (${earlier_problems}); expected a dispatch generate-agent-dispatch.sh wrote"
+		return 0
+	fi
+	earlier_fields=$(jq -r '.repo_root, .baseline' "${baseline_from}" </dev/null) ||
+		die 5 'jq failed reading the --baseline-from dispatch; expected jq 1.6+; try jq --version, then rerun'
+	{
+		IFS= read -r earlier_repo_root
+		IFS= read -r earlier_baseline
+	} <<EOF
+${earlier_fields}
+EOF
+	if [ "${earlier_repo_root}" != "${repo_root}" ]; then
+		add_baseline_from_problem "a dispatch of repo_root ${earlier_repo_root}; expected a dispatch of --repo-root ${repo_root}"
+		return 0
+	fi
+	read_earlier_baseline
+}
+
+add_baseline_from_problem() {
+	add_problem --baseline-from "${baseline_from}" "$1"
+}
+
+# Prints the lines of $1 joined by "; ".
+joined_lines() {
+	joined=''
+	while IFS= read -r joined_line; do
+		joined="${joined}${joined:+; }${joined_line}"
+	done <<EOF
+$1
+EOF
+	printf '%s' "${joined}"
+}
+
+# Copies the earlier dispatch's baseline file once into earlier_baseline_copy
+# and adds a problem unless that copy is a baseline of repo_root.
+read_earlier_baseline() {
+	case ${earlier_baseline} in
+		"${space_root}"/*) ;;
+		*)
+			add_baseline_from_problem "its baseline file ${earlier_baseline} is not inside the Crucible space ${space_root}; expected the baseline file generate-agent-dispatch.sh made"
+			return 0
+			;;
+	esac
+	if [ -L "${earlier_baseline}" ] || [ ! -f "${earlier_baseline}" ] || [ ! -r "${earlier_baseline}" ]; then
+		add_baseline_from_problem "its baseline file ${earlier_baseline} is missing, unreadable, a symlink or not a regular file; expected the regular file the Agent hook or --direct filled"
+		return 0
+	fi
+	earlier_baseline_copy=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
+		die 1 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try checking its permissions and free space, then rerun"
+	if ! cat -- "${earlier_baseline}" >"${earlier_baseline_copy}"; then
+		add_baseline_from_problem "its baseline file ${earlier_baseline} cannot be read; expected the regular file the Agent hook or --direct filled"
+		return 0
+	fi
+	if [ ! -s "${earlier_baseline_copy}" ]; then
+		add_baseline_from_problem "its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook or --direct; expected its filled baseline"
+		return 0
+	fi
+	if ! jq empty "${earlier_baseline_copy}" </dev/null >/dev/null 2>&1; then
+		add_baseline_from_problem "its baseline file ${earlier_baseline} is not JSON; expected a baseline of ${repo_root}"
+		return 0
+	fi
+	earlier_shape=$(jq -rs -L "${dispatch_dir}" --arg repo_root "${repo_root}" \
+		"include \"${NAMES_MODULE}\"; if length == 1 then .[0] | baseline_problems(\$repo_root) else \"\\(length) JSON values; expected one object\" end" \
+		"${earlier_baseline_copy}" </dev/null) ||
+		die 5 "jq failed on the baseline shape in ${names_module}; expected jq 1.6+; try jq --version, then rerun"
+	[ -n "${earlier_shape}" ] || return 0
+	earlier_shape=$(joined_lines "${earlier_shape}")
+	add_baseline_from_problem "its baseline file ${earlier_baseline} holds no baseline of ${repo_root} (${earlier_shape}); expected the baseline the Agent hook or --direct wrote"
+}
+
+# Runs DISPATCH_JQ in mode $1 with id $2, started $3, report $4 and baseline
+# $5, over the starting points after them.
 run_dispatch_jq() {
-	run_mode=$1 run_id=$2 run_started=$3 run_report=$4
-	shift 4
+	run_mode=$1 run_id=$2 run_started=$3 run_report=$4 run_baseline=$5
+	shift 5
 	jq -n --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
 		--arg agent "${agent}" --arg mode "${mode}" --arg tech "${tech}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_path "${record_path}" --arg plan_sha256 "${plan_sha256}" \
 		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
 		--arg task "${task}" --arg task_number "${task_number}" --arg repo_root "${repo_root}" \
-		--arg report "${run_report}" --arg space_root "${space_root}" \
+		--arg report "${run_report}" --arg baseline "${run_baseline}" --arg space_root "${space_root}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		--arg plan_known "${plan_ok}" --arg task_known "${task_known}" \
 		-r "${DISPATCH_JQ}" --args -- "$@" </dev/null
@@ -539,12 +665,12 @@ run_dispatch_jq() {
 # the stand-ins, named by option.
 check_planned_dispatch() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	planned_dispatch=$(run_dispatch_jq dispatch "${PLACEHOLDER_ID}" "${PLACEHOLDER_STARTED}" "${placeholder_report}" "$@") ||
+	planned_dispatch=$(run_dispatch_jq dispatch "${PLACEHOLDER_ID}" "${PLACEHOLDER_STARTED}" "${placeholder_report}" "${placeholder_baseline}" "$@") ||
 		die 5 "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	validator_problems=$(printf '%s\n' "${planned_dispatch}" | jq -cs --arg format json -f "${dispatch_validator}") ||
 		die 5 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	named_problems=$(run_dispatch_jq report '' '' '' "$@") ||
+	named_problems=$(run_dispatch_jq report '' '' '' '' "$@") ||
 		die 5 "jq failed naming the dispatch problems; expected jq 1.6+; try jq --version, then rerun"
 	[ -z "${named_problems}" ] || problems="${problems}${named_problems}${NL}"
 }
@@ -552,14 +678,14 @@ check_planned_dispatch() {
 # Sets created_path to a new empty file crucible.sh made of kind $1 with label $2, or fails the run.
 create_item() {
 	created_path=$(sh "${crucible_script}" new --kind "$1" --label "$2" --session "${session}" </dev/null) ||
-		fail_run "crucible.sh new --kind $1 --label $2 failed; its stderr is above"
+		fail_run "crucible.sh new --kind $1 --label $2 failed; expected it to make an empty file in the Crucible space and print its path; try the crucible.sh error above, check that CRUCIBLE_HOME is writable, then rerun"
 	case ${created_path} in
 		/*.json) ;;
-		*) fail_run "crucible.sh new --kind $1 printed no file path" ;;
+		*) fail_run "crucible.sh new --kind $1 printed no file path; expected one absolute path ending in .json; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun" ;;
 	esac
 	created_files="${created_files}${created_files:+${NL}}${created_path}"
 	[ -f "${created_path}" ] && [ ! -L "${created_path}" ] && [ ! -s "${created_path}" ] ||
-		fail_run "crucible.sh new printed ${created_path}, which is not an empty regular file"
+		fail_run "crucible.sh new printed ${created_path}, which is not an empty regular file; expected a new empty file in the Crucible space; try checking that nothing else writes to ${created_path%/*}, then rerun"
 }
 
 # Removes the files this run made, names them, and exits 1 with $1.
@@ -574,14 +700,26 @@ EOF
 	die 1 "$1"
 }
 
-# Makes the report file and checks it lies in the Crucible space; sets report_path.
-make_report() {
-	create_item reports "${agent_label}-report"
-	report_path=${created_path}
-	case ${report_path} in
+# Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies in
+# the Crucible space; sets created_path.
+make_space_file() {
+	create_item "$1" "${agent_label}-$2"
+	case ${created_path} in
 		"${space_root}"/*) ;;
-		*) fail_run "the report file ${report_path} is not inside the Crucible space ${space_root}" ;;
+		*) fail_run "the $2 file ${created_path} is not inside the Crucible space ${space_root}; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun" ;;
 	esac
+}
+
+# Writes the earlier baseline's checked bytes into the new baseline file,
+# through a temp file in its folder moved onto it.
+copy_earlier_baseline() {
+	temp_file=$(mktemp "${baseline_path%/*}/.${baseline_path##*/}.XXXXXX") ||
+		fail_run "mktemp could not create a temp file beside ${baseline_path}; expected a writable folder ${baseline_path%/*}; try checking its permissions and free space, then rerun"
+	cat -- "${earlier_baseline_copy}" >"${temp_file}" ||
+		fail_run "could not write the temp file ${temp_file}; expected a writable folder ${baseline_path%/*}; try checking its free space, then rerun"
+	mv -f "${temp_file}" "${baseline_path}" ||
+		fail_run "mv could not move the temp file onto ${baseline_path}; expected a writable folder ${baseline_path%/*}; try checking its permissions, then rerun"
+	temp_file=''
 }
 
 # Makes, writes and checks the dispatch file; sets dispatch_path.
@@ -590,21 +728,23 @@ write_dispatch() {
 	dispatch_path=${created_path}
 	dispatch_name=${dispatch_path##*/}
 	dispatch_id=$(printf '%.20s' "${dispatch_name}")
-	started_raw=$(date +%Y-%m-%dT%H:%M:%S%z) || fail_run 'date failed; expected the local time'
+	started_raw=$(date +%Y-%m-%dT%H:%M:%S%z) || fail_run 'date failed; expected it to print the local time as +%Y-%m-%dT%H:%M:%S%z; try date +%Y-%m-%dT%H:%M:%S%z by hand, fix your system date tool, then rerun'
 	started="${started_raw%??}:${started_raw#"${started_raw%??}"}"
 	# shellcheck disable=SC2310 # its status is jq's; a failure fails the run
-	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "${started}" "${report_path}" "$@") ||
-		fail_run 'jq failed building the dispatch'
+	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "${started}" "${report_path}" "${baseline_path}" "$@") ||
+		fail_run "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	final_problems=$(printf '%s\n' "${dispatch_json}" | jq -rs -f "${dispatch_validator}") ||
-		fail_run 'jq failed on the dispatch validator'
+		fail_run 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
 	[ -z "${final_problems}" ] || fail_run "the dispatch would fail its validator: ${final_problems}"
 	temp_file=$(mktemp "${dispatch_path%/*}/.${dispatch_name}.XXXXXX") ||
-		fail_run "mktemp could not create a temp file beside ${dispatch_path}"
-	printf '%s\n' "${dispatch_json}" >"${temp_file}" || fail_run "could not write the temp file ${temp_file}"
-	mv -f "${temp_file}" "${dispatch_path}" || fail_run "mv could not move the temp file onto ${dispatch_path}"
+		fail_run "mktemp could not create a temp file beside ${dispatch_path}; expected a writable folder ${dispatch_path%/*}; try checking its permissions and free space, then rerun"
+	printf '%s\n' "${dispatch_json}" >"${temp_file}" ||
+		fail_run "could not write the temp file ${temp_file}; expected a writable folder ${dispatch_path%/*}; try checking its free space, then rerun"
+	mv -f "${temp_file}" "${dispatch_path}" ||
+		fail_run "mv could not move the temp file onto ${dispatch_path}; expected a writable folder ${dispatch_path%/*}; try checking its permissions and free space, then rerun"
 	temp_file=''
 	written_problems=$(jq -rs -f "${dispatch_validator}" "${dispatch_path}" </dev/null) ||
-		fail_run "the written dispatch ${dispatch_path} is not valid JSON"
+		fail_run "the written dispatch ${dispatch_path} is not valid JSON; expected the JSON this run wrote; try checking that nothing else writes to ${dispatch_path%/*}, then rerun"
 	[ -z "${written_problems}" ] || fail_run "the written dispatch fails its validator: ${written_problems}"
 }
 
@@ -614,6 +754,7 @@ for tool in ${REQUIRED_TOOLS}; do
 done
 
 temp_file=''
+earlier_baseline_copy=''
 created_files=''
 trap remove_temp_file EXIT
 # A signal exits through the EXIT trap, so the temp file goes on every path.
@@ -625,7 +766,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-session='' plan_sha256='' task_number='' repo_root='' skills_dir='' seen_options='' awaited_option=''
+session='' plan_sha256='' task_number='' repo_root='' skills_dir='' baseline_from='' seen_options='' awaited_option=''
 # Each --starting-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
@@ -666,11 +807,19 @@ if [ "${plan_ok}" = true ]; then
 fi
 plan_space_paths
 check_planned_dispatch "$@"
+[ -z "${baseline_from}" ] || check_baseline_from
 if [ -n "${problems}" ]; then
 	printf '%s' "${problems}" >&2
 	exit 3
 fi
 
-make_report
+make_space_file reports report
+report_path=${created_path}
+# Left empty without --baseline-from: prepare-agent-prompt.sh writes git
+# status into it at the Agent call, which for a dispatch waiting on another's
+# result comes much later.
+make_space_file "${BASELINE_KIND}" baseline
+baseline_path=${created_path}
+[ -z "${baseline_from}" ] || copy_earlier_baseline
 write_dispatch "$@"
 printf 'DISPATCH: %s\n%s\n' "${dispatch_path}" "${labels_line}"

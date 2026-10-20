@@ -38,4 +38,5 @@ The one concern-to-owner table for the plugins. Read it at SKILL.md's step 5, wh
 | Every other name, comment and docstring, test code included | `standard-self-documenting-code` | `standard-clean-code`, `standard-testing`: nothing |
 | Code structure: responsibility, duplication, coupling, function size, dead code, file layout | `standard-clean-code` | `standard-self-documenting-code`: nothing |
 | Test-code structure | `standard-clean-code` | `standard-testing`: its tie-breakers where a test pulls against clean code |
+| Reading a tracker link the context holds (a GitHub, GitLab or Jira issue), read-only | `procedure-read-trackers` | every other plugin: nothing. Any other link, and how the whole context is read, weighed and reported, is no plugin's: the first message's `# Handling your context` sets it |
 | A stack's own form of a rule: language mechanics, memory safety, ORM mechanics, micro-performance, the logging library's API, doc-comment syntax, layout idioms | the tech plugin | each standard: the language-agnostic rule |

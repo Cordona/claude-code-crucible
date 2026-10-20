@@ -79,14 +79,15 @@ checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
 # The slim plan: the plugins other than the tech plugin by label (the tech
-# plugin is the Tech line), standard-* first, then the other kinds, each group
-# in plan order; a plugin list-plugins.sh no longer prints shows its name.
-# Every reason stays in the plan JSON.
+# plugin is the Tech line), standard-* first, then procedure-*, then any other
+# kind, each group in plan order; a plugin list-plugins.sh no longer prints
+# shows its name. Every reason stays in the plan JSON.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='
+def name_group: if startswith("standard-") then 0 elif startswith("procedure-") then 1 else 2 end;
 def plugin_labels($list; $installed):
 	[$list[] | select($installed[.plugin].kind != "tech")]
-	| map(select(.plugin | startswith("standard-"))) + map(select(.plugin | startswith("standard-") | not))
+	| map(select(.plugin | name_group == 0)) + map(select(.plugin | name_group == 1)) + map(select(.plugin | name_group == 2))
 	| map($installed[.plugin].label // .plugin | clean);
 def labels_item($title; $labels):
 	if ($labels | length) == 0 then "- \($title): none" else "- \($title):\n" + ($labels | map("  - \(.)") | join("\n")) end;
@@ -157,7 +158,7 @@ readonly NO_FIT_QUESTION_JQ='
 | {header: "No plugin",
    question: "No installed tech plugin fits \(.stack | clean). Stop, or implement directly?",
    options: [option("Stop (Recommended)"; "build the tech plugin first; nothing runs for this part"),
-	option("Implement directly"; "the main thread writes the code, with the standard plugins the next plan settles")]}
+	option("Implement directly"; "the main thread writes the code, with the standard and procedure plugins the next plan settles")]}
 '
 
 usage() {
@@ -214,7 +215,8 @@ context file's content stay in the JSON files and are not printed):
                    list-plugins.sh no longer prints shows its name. A plugin
                    list-plugins.sh prints as tech is left out (the Tech line
                    names it). Each list has the standard-* plugins first,
-                   then every other kind, each group in plan order.
+                   then the procedure-* plugins, then any other kind, each
+                   group in plan order.
   ### Context
   - \`<path>\`     context.path, whole (lib-render's link_span)
 Any other control character in a value prints as a space, and a backtick in
@@ -265,7 +267,9 @@ as ~, cut in the middle past 80 characters), then "### Context" with
 "- \`<CTX>\` (sha256 <hex>)": CTX whole, then the first 12 hex of its
 sha256.
 With --question it prints the question JSON instead:
-header "No plugin", options "Stop (Recommended)", then "Implement directly".
+header "No plugin", options "Stop (Recommended)", then "Implement directly"
+(the main thread writes the code, with the standard and procedure plugins
+the next plan settles).
 
 Every install or host fault, a missing or failing tool or shared file (the
 exits 1, 3, 4, 5 and 6 below), prints one line starting

@@ -100,9 +100,10 @@ Every option is checked first; on any problem nothing is written.
   --skills-dir DIR  the skills folder; defaults to
                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. The installed
                     plugins are the plugin lines of
-                    DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0
-                    (its stderr is passed through; its exit 1, no plugin, is an
-                    empty list, and its exit 3 leaves invalid plugins out).
+                    DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0,
+                    of kind tech, standard or procedure (its stderr is passed
+                    through; its exit 1, no plugin, is an empty list, and its
+                    exit 3 leaves invalid plugins out).
 
 The plan (one JSON object):
   {"agent": str, "mode": "BUILD"|"TEST", "technology": str,
@@ -118,9 +119,9 @@ The plan's rules are scripts/03-dispatch-plan/dispatch-plan-validator.jq's: amon
 them, every installed plugin is loaded or skipped (the main thread gives each
 skip its reason; nothing is filled in), none twice, none unknown (a skip whose
 reason is exactly "invalid", "uninstalled after approval" or "faulty files"
-may name a plugin no longer installed), at most one tech plugin, mode TEST has
-standard-testing loaded and BUILD doesn't, and agent "main thread" needs mode
-BUILD and no tech plugin.
+may name a plugin no longer installed), at most one tech plugin (standard and
+procedure plugins have no limit), mode TEST has standard-testing loaded and
+BUILD doesn't, and agent "main thread" needs mode BUILD and no tech plugin.
 
 Output (stdout, two lines, on exit 0):
   PLAN_FILE: <PATH>
@@ -349,7 +350,7 @@ check_context_file() {
 		add_context_problem 'file is missing, unreadable or not a regular file; expected the readable context file'
 		return 0
 	fi
-	context_size=$(wc -c <"${context_file}") || die 5 "wc could not count the bytes of ${context_file}; check wc, then rerun"
+	context_size=$(wc -c <"${context_file}") || die 5 "wc could not count the bytes of ${context_file}; expected a byte count; check wc, then rerun"
 	context_size=${context_size##* }
 	if [ "${context_size}" -gt "${context_max_bytes}" ]; then
 		add_context_problem "file is ${context_size} bytes; expected at most ${context_max_bytes} bytes"
@@ -442,9 +443,10 @@ build_plan() {
 # Writes plan_json to plan_file through a temp file in its folder, or exits 1.
 write_plan() {
 	temp_file=$(mktemp "${plan_folder}/.${plan_file##*/}.XXXXXX") ||
-		die 1 "mktemp could not create a temp file in ${plan_folder}; nothing was written"
-	printf '%s\n' "${plan_json}" >"${temp_file}" || die 1 "could not write the temp file ${temp_file}; nothing was written"
-	mv -f "${temp_file}" "${plan_file}" || die 1 "mv could not move the temp file onto ${plan_file}; nothing was written"
+		die 1 "mktemp could not create a temp file in ${plan_folder}; nothing was written; expected a writable folder ${plan_folder}; try checking its permissions and free space, then rerun"
+	printf '%s\n' "${plan_json}" >"${temp_file}" ||
+		die 1 "could not write the temp file ${temp_file}; nothing was written; expected a writable folder ${plan_folder}; try checking its free space, then rerun"
+	mv -f "${temp_file}" "${plan_file}" || die 1 "mv could not move the temp file onto ${plan_file}; nothing was written; expected a writable folder ${plan_folder}; try checking its permissions and free space, then rerun"
 	temp_file=''
 }
 
@@ -452,9 +454,9 @@ write_plan() {
 # one line jq -cS . prints for it, its newline included; or exits 1.
 digest_written_plan() {
 	canonical_plan=$(jq -cS . "${plan_file}" </dev/null) ||
-		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed"
+		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed; expected the JSON this run wrote; try checking that nothing else writes to ${plan_folder}, then rerun"
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_stdin_digest <<EOF || die 1 "${context_digest_tool} could not hash the plan ${plan_file}; it is written, but its digest is not printed"
+	compute_stdin_digest <<EOF || die 1 "${context_digest_tool} could not hash the plan ${plan_file}; it is written, but its digest is not printed; expected ${context_digest_tool} to print a sha256; try ${context_digest_tool} on a small file by hand, fix or reinstall it, then rerun"
 ${canonical_plan}
 EOF
 }

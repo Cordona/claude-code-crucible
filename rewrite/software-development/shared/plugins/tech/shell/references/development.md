@@ -6,7 +6,7 @@ Apply after `SKILL.md`'s rules, before writing any shell.
 
 `standard-code-development-report` sets each item's shape.
 
-- **The shebang** -> the report's `tech` (`#!/usr/bin/env sh` is POSIX `sh`, not Bash), because the reviewer checks every feature used against the shell it names.
+- **The shebang** -> the report's `toolchain` (`#!/usr/bin/env sh` is POSIX `sh`, not Bash), because the reviewer checks every feature used against the shell it names.
 - **Each Verification gate command and its result** -> the report's `verification`, one item per command, with each existing shellcheck warning in `note` with its count, and a step 4 you didn't run as `not_run` with its reason in `note`, never left out, because a gate result the report doesn't show reads as a gate that never ran.
 
 ## Defaults when the first message is silent

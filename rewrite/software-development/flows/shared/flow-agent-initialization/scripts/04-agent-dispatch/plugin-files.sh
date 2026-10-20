@@ -6,13 +6,17 @@
 
 # Reads list-plugins.sh's lines on stdin and the requested names as operands;
 # prints the plugin file paths one per line in load order (want=paths), or the
-# LABELS line with the standard labels in that order (want=labels); or one
-# stderr line per name problem (a name given twice or not installed) and exit
-# 3. The at-most-one-tech and standard-testing/mode rules are the plan
-# validator's, checked before this runs, so standard-testing never reaches this
-# lib. A plugin line is <kind> <name> <label> <description> <paths...>, so the
-# paths start at field 5. The names are taken out of ARGV,
-# each operand split on whitespace, so awk reads stdin.
+# LABELS line (want=labels); or one stderr line per name problem (a name given
+# twice or not installed) and exit 3. Load order is the tech plugin, then the
+# standard plugins, then the procedure plugins, each group in plugin-line
+# order. The LABELS line is "LABELS: Technology: <label|none> · Standards:
+# <labels>|none", followed by " · Procedures: <labels>" only when a
+# procedure plugin is loaded; each list is in plugin-line order. The
+# at-most-one-tech and standard-testing/mode rules are the plan validator's,
+# checked before this runs, so standard-testing never reaches this lib. A
+# plugin line is <kind> <name> <label> <description> <paths...>, so the paths
+# start at field 5. The names are taken out of ARGV, each operand split on
+# whitespace, so awk reads stdin.
 # The program is single-quoted on purpose: its $ signs are awk's.
 # shellcheck disable=SC2016,SC2034 # read by select_plugin_lines below
 plugin_select_awk='
@@ -44,6 +48,7 @@ BEGIN {
 	for (i = 5; i <= NF; i++) paths = paths $i "\n"
 }
 $1 == "tech" { tech_paths = paths; tech_label = shown($3); next }
+$1 == "procedure" { procedure_paths = procedure_paths paths; procedure_labels = add_label(procedure_labels, $3); next }
 { standard_paths = standard_paths paths; standard_labels = add_label(standard_labels, $3) }
 END {
 	for (i = 1; i <= count; i++)
@@ -51,10 +56,12 @@ END {
 			problem("name " shown(order[i]) " is not an installed plugin; expected a <NAME> that list-plugins.sh prints, such as tech-shell or standard-security; run list-plugins.sh --max-lines 0 to see them")
 	if (failed) exit 3
 	if (want == "labels") {
-		printf "LABELS: Technology: %s \302\267 Used standards: %s\n", (tech_label == "" ? "none" : tech_label), (standard_labels == "" ? "none" : standard_labels)
+		printf "LABELS: Technology: %s \302\267 Standards: %s", (tech_label == "" ? "none" : tech_label), (standard_labels == "" ? "none" : standard_labels)
+		if (procedure_labels != "") printf " \302\267 Procedures: %s", procedure_labels
+		printf "\n"
 		exit 0
 	}
-	printf "%s%s", tech_paths, standard_paths
+	printf "%s%s%s", tech_paths, standard_paths, procedure_paths
 }
 '
 

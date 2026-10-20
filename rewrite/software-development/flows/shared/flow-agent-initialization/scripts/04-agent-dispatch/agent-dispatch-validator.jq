@@ -14,7 +14,7 @@ include "dispatch-names" {search: "./"};
 # mode TEST is not dispatched through this file yet.
 def dispatched_agents: listed_agents + [direct_agent];
 def dispatched_modes: ["BUILD"];
-def top_keys: ["id", "started", "agent", "mode", "tech", "plugins", "plan", "context", "task", "repo_root", "starting_points", "report"];
+def top_keys: ["id", "started", "agent", "mode", "tech", "plugins", "plan", "context", "task", "repo_root", "starting_points", "report", "baseline"];
 
 def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
 def has_control: test("[[:cntrl:]]");
@@ -36,9 +36,9 @@ def keys_problems:
 	(top_keys[] as $key | select(has($key) | not) | problem([$key]; " "; "missing; expected every one of \(top_keys | join(", "))"));
 
 def field_problems:
-	(if (.id | type) == "string" and (.id | test("^[0-9]{8}T[0-9]{6}-[0-9a-f]{4}$")) then empty
+	(if (.id | type) == "string" and (.id | test(crucible_id_pattern)) then empty
 	 else problem(["id"]; " "; "is not a Crucible ID; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>") end),
-	(if (.started | type) == "string" and (.started | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$")) then empty
+	(if (.started | type) == "string" and (.started | test(local_time_pattern)) then empty
 	 else problem(["started"]; " "; "is not an ISO 8601 local time with offset; expected YYYY-MM-DDTHH:MM:SS+HH:MM") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
@@ -85,17 +85,22 @@ def starting_points_problems:
 		| problem(["starting_points", .key]; " "; "is not a repo-relative path; expected a path inside the repository without a leading /, a .. segment or a control character")
 	end;
 
-def report_problems:
-	.repo_root as $root | .report as $report
-	| if $report | absolute_path | not then problem(["report"]; " "; "is not an absolute path; expected the report file crucible.sh new made")
-	elif ($root | absolute_path) and ($report == $root or ($report | startswith(($root | rtrimstr("/")) + "/"))) then
-		problem(["report"]; " "; "lies under repo_root \($root | tojson); expected a file in the Crucible space, outside the repository")
+# The report and the baseline: files crucible.sh new made in the Crucible
+# space, outside the repository, and not the same file.
+def space_file_problems($key; $what):
+	.repo_root as $root | .[$key] as $file
+	| if $file | absolute_path | not then problem([$key]; " "; "is not an absolute path; expected the \($what) crucible.sh new made")
+	elif ($root | absolute_path) and ($file == $root or ($file | startswith(($root | rtrimstr("/")) + "/"))) then
+		problem([$key]; " "; "lies under repo_root \($root | tojson); expected a file in the Crucible space, outside the repository")
 	else empty end;
+def baseline_path_problems:
+	space_file_problems("baseline"; "baseline file"),
+	(if (.baseline | absolute_path) and .baseline == .report then problem(["baseline"]; " "; "is the report file; expected its own file of kind \(baseline_kind)") else empty end);
 
 (if length != 1 then problem([]; " "; "is \(length) JSON values; expected exactly one object")
  elif (.[0] | type) != "object" then problem([]; " "; "is a JSON \(.[0] | type); expected an object")
  else .[0] | keys_problems, field_problems, pinned_file_problems("plan"; "gate record"),
 	pinned_file_problems("context"; "context file"), plugins_problems, tech_problems,
-	starting_points_problems, report_problems
+	starting_points_problems, space_file_problems("report"; "report file"), baseline_path_problems
  end)
 | if $ARGS.named.format == "json" then {at, problem} else .line end

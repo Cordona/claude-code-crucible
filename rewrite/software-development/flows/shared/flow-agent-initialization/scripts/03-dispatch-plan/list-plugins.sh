@@ -1,14 +1,15 @@
 #!/usr/bin/env sh
 # Prints one tab-separated line per installed plugin under the skills dir: a
-# tech plugin (tech-<stack>/) or a standard plugin (standard-<area>/ whose
-# SKILL.md sets disable-model-invocation: true), with its full folder name,
+# tech plugin (tech-<stack>/), a standard plugin (standard-<area>/) or a
+# procedure plugin (procedure-<name>/), the last two only when their SKILL.md
+# sets disable-model-invocation: true, with its full folder name,
 # label, description and files in load order. The main thread picks plugins by
 # their descriptions and passes their names to generate-dispatch-plan.sh, which
 # computes the technology label; generate-agent-dispatch.sh copies the paths
 # into the dispatch. A plugin that fails
 # prepare-agent-prompt.sh's plugin test (name, disable-model-invocation, closed
 # frontmatter) or lacks a label or description is reported on stderr instead of
-# listed (a `standard-*` folder whose closed frontmatter lacks
+# listed (a `standard-*` or `procedure-*` folder whose closed frontmatter lacks
 # `disable-model-invocation: true` is not a plugin: skipped, never reported as
 # invalid), as is one whose path holds a comma or control character (a tab or a
 # line break would split a plugin line); the hook's file checks still run at
@@ -155,6 +156,9 @@ when CLAUDE_CONFIG_DIR is set, else \$HOME/.claude/skills.
                    disable-model-invocation: true, plus references/development.md;
                    it takes no metadata.base. A standard-* folder whose closed
                    frontmatter lacks that line is not a plugin and is skipped.
+  procedure plugin: DIR/procedure-<name>/, held to the same rules as a
+                   standard plugin; a procedure-* folder without
+                   disable-model-invocation: true is an ordinary skill, skipped.
 A plugin (and a tech plugin's base) is valid only when its SKILL.md frontmatter
 is closed by ---, has name: <its folder name> and disable-model-invocation: true,
 the test prepare-agent-prompt.sh applies, plus a metadata.label and a description,
@@ -163,12 +167,13 @@ tab or line break would split a plugin line); one that fails is reported as
 invalid.
 
 Output (stdout), one line per valid plugin, TAB-separated, tech lines first,
-then standard lines, each sorted by NAME:
+then standard lines, then procedure lines, each sorted by NAME:
   <KIND> <NAME> <label> <description> [<base SKILL.md> <base development.md>] <SKILL.md> <development.md>
-KIND is tech or standard; NAME is the plugin's full folder name (tech-shell,
-standard-clean-code); the label is metadata.label; the description is the
-frontmatter description (plain, quoted, or a > or | block) on one field, its
-tabs and line breaks turned into single spaces. The paths start at field 5.
+KIND is tech, standard or procedure; NAME is the plugin's full folder name
+(tech-shell, standard-clean-code, procedure-read-trackers); the label is
+metadata.label; the description is the frontmatter description (plain,
+quoted, or a > or | block) on one field, its tabs and line breaks turned into
+single spaces. The paths start at field 5.
 A description that is missing, empty or in a form this script can't read
 makes the plugin invalid.
 Each invalid plugin gets one stderr line: ${PROG}: <NAME>: <reason>
@@ -179,13 +184,13 @@ ${DEFAULT_MAX_LINES}; 0 prints all). When lines are cut, one stderr line says so
 
 Exit codes (a cut listing keeps its code):
   0  at least one plugin printed, none invalid
-  1  no plugin of either kind under DIR
+  1  no plugin of any kind under DIR
   2  usage error, or DIR missing or unreadable
   3  one or more invalid plugins (valid ones are still printed)
   5  a required tool is missing from PATH
 
 Dependencies: POSIX sh, awk, sort; checked at start, a missing one exits 5.
-Runtime: about 58 ms for 8 plugins, measured on macOS (average of 5 runs).
+Runtime: about 64 ms for 9 plugins, measured on macOS (average of 5 runs).
 EOF
 }
 
@@ -326,12 +331,12 @@ build_tech_line() {
 	fi
 }
 
-# Sets is_plugin=true for a standard plugin standard-$1, then plugin_line, or
-# line_error when it is invalid. Without a SKILL.md or a closed frontmatter the
-# opt-in line can't be read, so the folder counts as an invalid plugin; a closed
-# frontmatter without the opt-in line is not a plugin.
-build_standard_line() {
-	plugin_dir="${skills_dir}/standard-$1"
+# Sets is_plugin=true for a plugin $1-$2 of kind $1 (standard or procedure),
+# then plugin_line, or line_error when it is invalid. Without a SKILL.md or a
+# closed frontmatter the opt-in line can't be read, so the folder counts as an
+# invalid plugin; a closed frontmatter without the opt-in line is not a plugin.
+build_opt_in_line() {
+	plugin_dir="${skills_dir}/$1-$2"
 	is_plugin=true
 	plugin_line=''
 	line_error=''
@@ -348,9 +353,9 @@ build_standard_line() {
 		is_plugin=false
 		return 0
 	fi
-	line_error=$(unsafe_path_error "standard-$1")
+	line_error=$(unsafe_path_error "$1-$2")
 	[ -z "${line_error}" ] || return 0
-	line_error=$(plugin_test_error "standard-$1")
+	line_error=$(plugin_test_error "$1-$2")
 	[ -z "${line_error}" ] || return 0
 	if [ ! -f "${plugin_dir}/references/development.md" ]; then
 		line_error=$(missing_file_error "${plugin_dir}" references/development.md)
@@ -359,9 +364,9 @@ build_standard_line() {
 	elif [ -z "${fm_description}" ]; then
 		line_error=${NO_DESCRIPTION_ERROR}
 	elif [ -n "${fm_base}" ]; then
-		line_error="a standard plugin takes no metadata.base ('${fm_base}'); expected no base key; remove metadata.base or reinstall the plugin"
+		line_error="a $1 plugin takes no metadata.base ('${fm_base}'); expected no base key; remove metadata.base or reinstall the plugin"
 	else
-		plugin_line="standard${TAB}standard-$1${TAB}${fm_label}${TAB}${fm_description}${TAB}$(plugin_paths "standard-$1")"
+		plugin_line="$1${TAB}$1-$2${TAB}${fm_label}${TAB}${fm_description}${TAB}$(plugin_paths "$1-$2")"
 	fi
 }
 
@@ -374,13 +379,14 @@ record_line() {
 		return 0
 	fi
 	line_count=$((line_count + 1))
-	if [ "$1" = tech ]; then
-		tech_lines="${tech_lines}${plugin_line}
-"
-	else
-		standard_lines="${standard_lines}${plugin_line}
-"
-	fi
+	case $1 in
+		tech) tech_lines="${tech_lines}${plugin_line}
+" ;;
+		standard) standard_lines="${standard_lines}${plugin_line}
+" ;;
+		*) procedure_lines="${procedure_lines}${plugin_line}
+" ;;
+	esac
 }
 
 # Prints $1 with each control character as "?", so a stderr report stays one line.
@@ -408,6 +414,19 @@ parse_max_lines() {
 			0?*) max_lines=${max_lines#0} ;;
 			*) break ;;
 		esac
+	done
+}
+
+# Lists every opt-in plugin folder of kind $1 (standard or procedure); a folder
+# without the opt-in line is skipped.
+scan_opt_in_kind() {
+	for plugin_path in "${skills_dir}/$1"-*; do
+		[ -d "${plugin_path}" ] || continue
+		name=${plugin_path##*/"$1"-}
+		build_opt_in_line "$1" "${name}"
+		[ "${is_plugin}" = true ] || continue
+		found_any=true
+		record_line "$1" "${name}"
 	done
 }
 
@@ -463,6 +482,7 @@ invalid_any=false
 line_count=0
 tech_lines=''
 standard_lines=''
+procedure_lines=''
 for plugin_path in "${skills_dir}"/tech-*; do
 	[ -d "${plugin_path}" ] || continue
 	found_any=true
@@ -470,19 +490,14 @@ for plugin_path in "${skills_dir}"/tech-*; do
 	build_tech_line "${name}"
 	record_line tech "${name}"
 done
-for plugin_path in "${skills_dir}"/standard-*; do
-	[ -d "${plugin_path}" ] || continue
-	name=${plugin_path##*/standard-}
-	build_standard_line "${name}"
-	[ "${is_plugin}" = true ] || continue
-	found_any=true
-	record_line standard "${name}"
-done
+scan_opt_in_kind standard
+scan_opt_in_kind procedure
 
-[ "${found_any}" = true ] || die 1 "no plugins under ${skills_dir}; expected tech-<stack>/ or standard-<area>/ folders; install the plugins or check --skills-dir"
+[ "${found_any}" = true ] || die 1 "no plugins under ${skills_dir}; expected tech-<stack>/, standard-<area>/ or procedure-<name>/ folders; install the plugins or check --skills-dir"
 {
 	print_sorted "${tech_lines}"
 	print_sorted "${standard_lines}"
+	print_sorted "${procedure_lines}"
 } | awk -v max="${max_lines}" 'max == 0 || NR <= max'
 warn_if_truncated
 [ "${invalid_any}" = false ] || exit 3
