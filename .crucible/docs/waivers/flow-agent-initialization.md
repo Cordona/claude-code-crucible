@@ -1,0 +1,16 @@
+# Waivers: flow-agent-initialization
+
+HK-11: harness scripts are live-validated only, no test scripts; the hook's fixture runs are recorded in live-prepare-agent-prompt.md (owner)
+DET-06: no run state file; resume treats only a visible answer as approval (owner)
+SCH-15: no rejection log; stderr names every rejected option (owner)
+DET-08: waived until a live probe shows a hook sees the AskUserQuestion answer (owner)
+DET-01: the plan count is written to the todo list; a script-counted total is an extra script for little gain (owner)
+SUB-03: the STEP header line was dropped by design (dispatch-pipeline design Q-A6) (owner)
+SUB-08: the report is written once; a cut-off dispatch is the calling flow's to handle (owner)
+LNT-15: the body holds the steps the human asked for (quoting rule, KIND routing, /hooks confirm); trimming risks dropping rules (owner)
+- LEAN-03: the "you" wording at SKILL.md:27, :29, :51, :61, :74 was there before the trim experiment; a follow-up, outside it (owner, D29) (owner)
+- LEAN-07: "Check the dependencies" against the siblings' "install check" was there before the trim experiment; a follow-up (owner, D29) (owner)
+- LEAN-09: SKILL.md:88's second rule ("Never edit the plan file") was there before the trim experiment; a follow-up (owner, D29) (owner)
+- STR-02: step 11 (direct implementation) stays in the body for now; moving it to references/ is a follow-up after the trim experiment (owner, D29) (owner)
+SCR-04: the hook's allow carries the whole first message by design; truncating it would change what the agent receives (owner)
+SCR-03: the remaining error texts without expected/try are listed in dispatch-pipeline/status.md follow-ups and fixed in one sweep of every script (owner)
