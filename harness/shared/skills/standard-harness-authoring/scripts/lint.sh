@@ -99,13 +99,21 @@ Last line:
 SUMMARY must_fail=<n> should_fail=<n> warn=<n> skipped_must=<n> files=<n>
 
 Dependencies:
+  shell      bash 3.2+ (macOS /bin/bash works)
   required   awk basename cat cut dirname find grep head mkdir mktemp rm sed
-             sort (with -z) tr; git when no --root is given
-  optional   jq, shellcheck, ruby, python3 (their items are skipped when the
-             tool is missing)
+             sort (with -z) tr, all in every macOS and Linux base system;
+             git when no --root is given (macOS: xcode-select --install;
+             Linux: the distro's git package). A missing one exits 5 and
+             names it
+  optional   jq, shellcheck, ruby 2.6+, python3 3.8+ (their items are
+             skipped when the tool is missing); install with
+             brew install jq shellcheck ruby python, or the distro package
   rulebook   under --rulebook: references/agents/07-agent-safety.md
              (canonical blocks and quote-safely line) and
              references/shared/lint-spec.md (item levels)
+
+Runtime: about 0.2-0.4 s per agent file; about 2 s for the
+standard-harness-authoring skill itself.
 
 Exit codes:
   0  no MUST FAIL (always 0 for findings under --report-only)
@@ -115,7 +123,7 @@ Exit codes:
   3  no MUST FAIL, but a MUST item was skipped for a missing optional tool
   4  rulebook files not found, or their canonical text or item levels
      missing
-  5  internal error, or a required tool is missing
+  5  internal error, or a required tool is missing (named on stderr)
   130/143  interrupted (INT/TERM)
 EOF
 }

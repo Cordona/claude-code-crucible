@@ -30,7 +30,7 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - **SHOULD FAIL:** never fails the run; it is listed for the owner.
 - **Waiver:** a line in the target's waivers file, as `SKILL.md` Invariants define it, passed with `--waivers`; `lint.sh` honours it only for a `SHOULD` or `MAY` `LNT-NN` item.
 - **INFO:** reports a measured value and never fails.
-- **Exit codes:** 0 no MUST FAIL · 1 at least one MUST FAIL · 2 usage error · 3 no MUST FAIL, but a MUST item skipped for a missing optional tool · 4 rulebook not found · 5 internal error, or a required tool missing · 130 or 143 interrupted (INT or TERM). `SKILL.md`'s Scripts section repeats them for callers, as SCR-01 requires; change both together.
+- **Exit codes:** 0 no MUST FAIL · 1 at least one MUST FAIL · 2 usage error · 3 no MUST FAIL, but a MUST item skipped for a missing optional tool · 4 rulebook not found · 5 internal error, or a required tool missing · 130 or 143 interrupted (INT or TERM). `lint.sh --help` carries them for callers, and `SKILL.md` points there without repeating them (SCR-01); change this line and `--help` together.
 - **Report-only run:** every item runs and prints as usual, and findings (a MUST FAIL or a skipped MUST) exit 0; exits 2, 4 and 5 are unchanged. Use it on artifacts not yet brought up to the rulebook, so the run lists their findings without failing.
 - **Scope:** `scripts/lint.sh` judges one skill or one agent (it may read the files that artifact references, e.g. its preloads); collection items — those whose Files name the collection (LNT-08, LNT-35, LNT-42, LNT-46, LNT-65) and the uniqueness clause of LNT-59 — are not run by `lint.sh`.
 - **Collection items gate nothing collection-wide.**

@@ -192,8 +192,12 @@ Options:
 Output lines: VERDICT, report:, blocking:, should-fail:, unknown-id:,
 dropped-duplicate:, warning: (sorted, plain text); TRUNCATED when
 --max-lines cut lines; then progress: and unchanged: with --previous.
+An ID found in no checklist and not in the lint spec counts as MUST and
+is listed as unknown-id:. Diagnostics go to stderr.
 
-Required tools: awk, cat, dirname, mktemp, rm.
+Runtime: bash 3.2+ (macOS) or Linux; under 0.1 s.
+Required tools: awk, cat, dirname, mktemp, rm. A missing one exits 5 and
+is named on stderr.
 
 Exit codes:
   0    PASS
@@ -207,7 +211,8 @@ Exit codes:
        item after VERDICT or after an end line, an end line that names
        another checklist, or a status CONFORMANCE does not allow
   4    rulebook not found or unreadable
-  5    internal error, or a required tool is missing
+  5    internal error (the message names the command), or a required
+       tool is missing (named)
   130  interrupted (INT)
   143  terminated (TERM)
 EOF

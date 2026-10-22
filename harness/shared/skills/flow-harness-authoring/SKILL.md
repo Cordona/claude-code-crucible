@@ -39,11 +39,11 @@ After a compaction, an interruption or a new session: re-invoke this skill first
 
 ## Scripts
 
-Both belong to the rulebook; their output format, dependencies, runtime and install hints (its Script reference) are in its `SKILL.md`. Run them with Bash, never by hand:
+`lint.sh` and `merge-verdicts.sh` belong to the rulebook, `save-reply.sh` to this skill. Each script's `--help` is its full contract: run it first (Start step 4), never restate it. Run them with Bash, never by hand:
 
 - `bash $HOME/.claude/skills/standard-harness-authoring/scripts/lint.sh --max-lines 0 [--waivers <waivers file>] <target dir or agent file>`: `--waivers` when the target's waivers file exists; `--max-lines 0` so no seat decides from cut output.
 - `bash $HOME/.claude/skills/standard-harness-authoring/scripts/merge-verdicts.sh --max-lines 0 --kind skill|agent [--waivers <waivers file>] [--previous <run dir>/review-r<n-1>.md] <report>...`: `--max-lines 0` as for lint; `--waivers` as for lint; `--previous` from round 2.
-- This skill's own `bash $HOME/.claude/skills/flow-harness-authoring/scripts/save-reply.sh --transcript <the agent's transcript .jsonl> --end '<its end line>' --out <run file> [--start <first-line prefix>] [--require <text>] [--strip-end]` (needs jq 1.6+): saves the agent's latest complete report. Exit 1: a cut-off reply; exit 3: a likely secret, so mask it, then save.
+- `bash $HOME/.claude/skills/flow-harness-authoring/scripts/save-reply.sh --transcript <the agent's transcript .jsonl> --end '<its end line>' --out <run file> [--start <first-line prefix>] [--require <text>] [--strip-end]`. Exit 1: a cut-off reply; exit 3: a likely secret: mask it and write the masked reply to the run file yourself; never save it unmasked.
 
 Commands run directly: `git` (macOS: `xcode-select --install`; Linux: the distro's `git` package) and the base-system `wc`, `ls`, `readlink`, `ln`, `rm`, `cp`, `mkdir`. A failure stops as its step or Invariants say.
 

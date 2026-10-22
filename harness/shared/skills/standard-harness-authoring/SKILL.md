@@ -36,12 +36,12 @@ Each checklist's "Applies when" line narrows further; an item that does not appl
 
 ## Reading order by kind
 
-The order STR-09 judges and authors build to: what the reader acts on first comes first, reference material last. The kinds are those of "Which checklists apply". "Invariants" is the early section STR-03 and LNT-25 require of a skill that is invoked or preloaded, and of any body over 20,000 chars (LNT-25); a standard or tech plugin read by path, with a body of 20,000 chars or less, needs none. A term a reader can't infer is defined inline at its first use (LEAN-01 strikes textbook ones); a "Terms" section only when many rules or steps share the same defined term. A section may sit higher than its row only with a one-line reason.
+The order STR-09 judges and authors build to: what the reader acts on first comes first, reference material last. The kinds are those of "Which checklists apply". "Invariants" is the early section STR-03 and LNT-25 require of a skill that is invoked or preloaded, and of any body over 20,000 chars (LNT-25); a standard or tech plugin read by path, with a body of 20,000 chars or less, needs none. A term a reader can't infer is defined inline at its first use (LEAN-01 strikes textbook ones); a "Terms" section only as LEAN-10 sets. A section may sit higher than its row only with a one-line reason.
 
 | Kind | Reader, and when | Expected order |
 |---|---|---|
 | Flow | the main thread, loaded before it acts | when it applies → invariants → terms (only as the paragraph above sets) → steps → what the steps consult (field tables, reply checks, branches) → who owns what, background |
-| Procedure | whoever runs the tool, before running it | when to use it → invariants → terms (only as the paragraph above sets) → run steps and commands → outputs and exit codes → reference |
+| Procedure | whoever runs the tool, before running it | when to use it → invariants → terms (only as the paragraph above sets) → run steps (each script's `--help` once, before its first use in a session) → reference |
 | Standard / shared conduct (tech plugins included) | a developer or reviewer, preloaded or read by path | intro paragraph (a read-by-path plugin's principles) → scope (its convention lines as one `Project conventions` bullet) → invariants (only as the paragraph above sets) → terms (only as the paragraph above sets) → any unnumbered sections the rules are read through (`## Store guarantees`, `## Taint model`) → the rules, the most consequential first (correctness and safety before style), in one `## Rules` section or, when they group, numbered sections `## N. Name`, an external id tagged after the name (`## 6. Insecure design (OWASP A06)`) → gate and self-check → reference (a version ledger) |
 | Command file | the user's command, as it runs | what it does → steps → output |
 | Agent file | the agent, at dispatch | any operational invariant, then the job sentence (AROLE-06) → dispatch check and refusals → ground rules → process → output → self-check (or the process's last step, AJUDG-18) → edge cases and the canonical safety blocks, in either order |
@@ -68,7 +68,10 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 
 ## Scripts
 
-Both are in `$HOME/.claude/skills/standard-harness-authoring/scripts/`; run them with Bash by that full path, which works from any directory and when an agent reads this file instead of invoking it. Before first use in a session, run each with `--help`: a non-zero exit or no usage text means a broken install, so stop and show its stderr. What happens after each exit is `flow-harness-authoring`'s. Their commands, output, exit codes and dependencies are in "Script reference" below.
+Both are in `$HOME/.claude/skills/standard-harness-authoring/scripts/`; run them with Bash by that full path, which works from any directory and when an agent reads this file instead of invoking it. Run each with `--help` once, before the first use in a session, and not again in that session unless the contract is no longer in your context (after a compaction); every other call runs only the command its step names. `--help` is the script's full contract, and a non-zero exit or no usage text means a broken install, so stop and show its stderr. What happens after each exit is `flow-harness-authoring`'s.
+
+- `lint.sh`: on every changed skill dir or agent file, before the reviewer swarm and before deploy (LNT-00).
+- `merge-verdicts.sh`: after a reviewer swarm, on every seat's saved report.
 
 ## Implementor — order of work
 
@@ -121,38 +124,6 @@ Reviewer:
 4. Every `MUST` lint item listed in the checklist header has a result.
 5. No item is failed twice for the same problem.
 6. The verdict matches the statuses.
-
-## Script reference
-
-| Script | Runs when | Command | Output (stdout) | Runtime |
-|---|---|---|---|---|
-| `lint.sh` | On every changed skill dir or agent file, before the reviewer swarm and before deploy (LNT-00) | `lint.sh [--report-only] [--waivers FILE] [--max-lines N] [--root DIR] [--rulebook DIR] [--claude-home DIR] (--all \| TARGET...)`; a TARGET is a skill dir, its `SKILL.md` or an agent file; `--waivers` takes the target's waivers file and needs exactly one TARGET | One line per finding, `LNT-NN PASS\|FAIL\|WARN\|INFO <file>:<line> <message>`, sorted by file; at most `--max-lines` (default 200, 0 = all) per target, then `TRUNCATED INFO <target> showing <N> of <M> lines` when cut; last line `SUMMARY must_fail=<n> should_fail=<n> warn=<n> skipped_must=<n> files=<n>` | About 0.2–0.4 s per agent file; about 2 s for this skill |
-| `merge-verdicts.sh` | After a reviewer swarm, on every seat's saved report | `merge-verdicts.sh [--rulebook DIR] [--waivers FILE] [--previous FILE] [--max-lines N] --kind skill\|agent REPORT...`; `--waivers` takes the target's waivers file; `--previous` takes the previous round's saved merge output | `VERDICT: PASS` or `VERDICT: BLOCKED (<IDs>)`, then sorted `report:`, `blocking:`, `should-fail:`, `unknown-id:`, `dropped-duplicate:` and `warning:` lines, then `TRUNCATED showing <N> of <M> lines` when `--max-lines` cut any; with `--previous`, then `progress: fixed <n> · still open <n> · new <n>` and, when nothing was fixed and nothing is new, `unchanged: yes`; diagnostics on stderr | Under 0.1 s |
-
-- In `lint.sh` output, a `SHOULD` or `MAY` failure prints `FAIL` with a `SHOULD:` or `MAY:` prefix and never fails the run.
-- An item waived by a `--waivers` line prints `WARN` with `waived: <reason>`; without `--waivers` nothing is waived.
-- A skipped item prints `WARN` with `skipped: <tool> missing`.
-- `lint.sh --report-only` exits 0 for findings (a `MUST` FAIL or a skipped `MUST` item); usage, rulebook and internal errors keep their exit codes.
-- `merge-verdicts.sh` reads each item's level from the checklists and the lint spec, never from a report; an ID found in none counts as `MUST` and is listed as `unknown-id:`.
-- `merge-verdicts.sh --max-lines N` (default 200, 0 = all) caps only the `warning:` and `dropped-duplicate:` lines; `VERDICT:`, `report:`, `blocking:` and `should-fail:` lines are never cut, so a cap never hides what blocks.
-- `merge-verdicts.sh` splits a file holding several reports (a combined agent seat) at their end lines.
-- `merge-verdicts.sh --previous FILE` compares this merge's `blocking:` and `should-fail:` IDs with FILE's, so whether a round changed anything is decided by the script.
-
-| Exit | `lint.sh` | `merge-verdicts.sh` |
-|---|---|---|
-| 0 | No `MUST` FAIL | PASS |
-| 1 | At least one `MUST` FAIL | BLOCKED |
-| 2 | Usage error | Usage error |
-| 3 | No `MUST` FAIL, but a `MUST` item was skipped for a missing optional tool | A malformed report (stderr names each problem) |
-| 4 | Rulebook not found | Rulebook not found |
-| 5 | Internal error, or a required tool is missing | Internal error, or a required tool is missing |
-| 130, 143 | Interrupted (INT, TERM) | Interrupted (INT, TERM) |
-
-Dependencies:
-
-- `merge-verdicts.sh`: bash 3.2+ and POSIX `awk`, `cat`, `dirname`, `mktemp`, `rm`; nothing else. Checked at start: a missing one exits 5 and names it.
-- `lint.sh`, required: bash 3.2+ to run it, and `awk`, `basename`, `cat`, `cut`, `dirname`, `find`, `grep`, `head`, `mkdir`, `mktemp`, `rm`, `sed`, `sort` (with `-z`: GNU or BSD), `tr`, all in every macOS and Linux base system; `git` unless `--root` is given (macOS: `xcode-select --install`; Linux: the distro's `git` package). Checked at start: a missing one exits 5 and names it.
-- `lint.sh`, optional: `jq`, `shellcheck`, `ruby` 2.6+ and `python3` 3.8+ (`brew install jq shellcheck ruby python`, or the distro package). A missing one skips its items with a `skipped:` WARN; a skipped `MUST` item exits 3.
 
 ## Flows
 

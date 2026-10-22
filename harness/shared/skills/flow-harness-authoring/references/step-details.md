@@ -19,7 +19,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 Output lines that go to G3:
 
 - `lint.sh`, whatever its exit: each `FAIL` line with a `SHOULD:` or `MAY:` prefix and each `WARN` line.
-- `merge-verdicts.sh`: every output line the rulebook's Script reference lists, except `dropped-duplicate:`.
+- `merge-verdicts.sh`: every line its `--help` lists under "Output lines", except `dropped-duplicate:`.
 
 | Exit | `lint.sh` | `merge-verdicts.sh` |
 |---|---|---|

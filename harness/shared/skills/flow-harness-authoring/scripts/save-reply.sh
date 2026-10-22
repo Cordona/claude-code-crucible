@@ -91,11 +91,17 @@ Options:
 
 Refuses to write when the report matches a likely secret (GitHub ghp_/gho_/
 github_pat_ token, sk- key, AWS access key id, private key block); prints
-the pattern name and report line, never the value.
+the pattern name and report line, never the value, and exits 3. Then mask
+the secret (e.g. ghp_****) and write the masked reply to the --out file
+yourself; never save it unmasked; do not re-dispatch the agent.
 
 Output: one line, "saved: <out> lines=<n> from-line=<transcript line>".
 
-Required tools: jq, dirname, grep, ln, mktemp, mv, rm, wc.
+Required tools: jq 1.6+ (for --rawfile), dirname, grep, ln, mktemp, mv, rm,
+wc. Checked at start: a missing tool is named on stderr and the run exits 5.
+
+Runtime: about 0.1 s for a 680 KB transcript (jq 1.8.1, macOS); it grows with
+the transcript size, which is read whole into memory in one jq pass.
 
 Exit codes:
   0    saved
@@ -275,7 +281,7 @@ while (( i < ${#SECRET_PATTERNS[@]} )); do
 	fi
 done
 if (( found_secret )); then
-	error "secret guard: nothing written to ${OPT_OUT}; remove the secret from the subagent's report and re-dispatch it"
+	error "secret guard: nothing written to ${OPT_OUT}; mask the secret (e.g. ghp_****) and write the masked reply to ${OPT_OUT} yourself; never save it unmasked; do not re-dispatch the agent"
 	exit 3
 fi
 
