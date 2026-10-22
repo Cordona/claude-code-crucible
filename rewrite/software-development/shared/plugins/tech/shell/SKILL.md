@@ -9,7 +9,7 @@ metadata:
 
 # Tech plugin: Shell
 
-The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its prompt. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer (once `code-reviewer` exists) receives no reference file from this plugin until it has one.
+The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its prompt. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
 
 ## Scope
 
