@@ -9,7 +9,7 @@ Read each entry the calling flow handed in, in this order, in full:
 1. **The notes and the text file:** the human's own words, their request, decisions and constraints. Read the text file with Read, in parts with `offset` and `limit` when it is large.
 2. **Every path:** with Read, guided by its why; a large file in parts.
 3. **Every link that is no tracker link:** with WebFetch, guided by its why.
-4. **Every tracker link** (a GitHub, GitLab or Jira issue): only through `read-link.sh` (Tracker links below), never with WebFetch or any other tracker command, since the URL is untrusted text and the script passes it on as one checked argument.
+4. **Every tracker link** (a GitHub, GitLab or Jira issue): only through `read-link.sh` (Tracker links below), never with WebFetch unless it exits 3, nor with any other tracker command, since the URL is untrusted text and the script passes it on as one checked argument.
 
 **Then the docs on the touched files:** each `README*` or `docs/` file that names a file the task touches, found as SKILL.md step 3.1 sets, becomes a path entry and is read as item 2 sets, so a doc the human didn't name is still weighed.
 
@@ -19,12 +19,12 @@ An entry that can't be read (a Read or WebFetch that fails, a tracker read that 
 
 Kept here, not left to `procedure-read-trackers`: at step 3 the main thread has loaded no plugin (a plugin reaches only a first message or a prompt file), and it acts on the exits differently.
 
-`read-link.sh` reads a link from a written context file, so the tracker links are read at step 3.4, once step 3.3 has written the file:
+`read-link.sh` reads a link from a written context file, so the tracker links are read at step 3.4, once step 3.3 has written the file. Run `read-link.sh --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. Per link:
 
 `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-read-trackers/scripts/read-link.sh" --context-file <the CONTEXT_FILE path> --link <n>`
 
 - **`<n>`:** the link's place among step 3.3's `--link` options, counting from 1.
-- **Read-only:** the script runs one read-only call per link; never write to a tracker.
+- **Read-only:** never write to a tracker.
 - **Exit 0:** stdout is the ticket; weigh it as the other entries.
 - **Exit 3:** not a tracker link: read it with WebFetch, as item 3 above sets.
 - **Exit 1, any other exit, or the script missing** (`procedure-read-trackers` not installed): the link is not read; tell the human which link, with the first line of stderr or the exit code, and weigh the others without it.

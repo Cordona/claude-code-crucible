@@ -51,7 +51,7 @@ def context_problems:
 		| ((keys - ["paths", "links", "notes"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only paths, links and notes")),
 		  (["paths", "links", "notes"][] as $key | select(has($key) | not) | problem([$key]; $key; " "; "missing; expected the keys paths, links and notes")),
 		  list_problems("paths"; "path"; absolute_path; "an absolute path"; "a string starting with /, without control characters"),
-		  list_problems("links"; "url"; http_url; "an http(s) URL"; "a string starting with http:// or https://, then a host of letters, digits, dots and hyphens with an optional :port, then optionally a path, query or fragment of letters, digits and . _ ~ / ? # = % : + , @ - only"),
+		  list_problems("links"; "url"; http_url; "an http(s) URL"; "a string starting with http:// or https:// (in any letter case), then a host of letters, digits, dots and hyphens with an optional :port, then optionally a path, query or fragment of letters, digits and . _ ~ / ? # = % : + , @ - only"),
 		  notes_problems
 	end;
 

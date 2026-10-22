@@ -44,16 +44,21 @@ open-gate.sh wrote in
      "permissionDecisionReason":"${DENY_REASON}"}}
   - shown or failed: removes the gate folder, plan.json included, allows the
     question.
-  - relayed: first saves plan.json, with "v": 1 added, as a gates record
+  - relayed: first saves plan.json, with "v": 1 set, as a gates record
     through
       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-      new --kind gates --label <dispatch-plan|no-plugin-fits> --session <session_id>
-    (no-plugin-fits when the plan has a "stack" field), written to a temp
-    file in the record's folder and moved onto the path crucible.sh prints;
+      new --kind gates --label <label> --session <session_id>
+    its label set by the plan's top-level fields, the first that matches:
+      no-plugin-fits  the plan has a "stack" field
+      effort-offer    the plan has a "reasons" field
+      dispatch-plan   any other plan
+    written to a temp file in the record's folder and moved onto the path
+    crucible.sh prints;
     then removes the gate folder and allows the question. When the record
     can't be saved (crucible.sh missing; plan.json missing, a symbolic link
-    or not one JSON object; crucible.sh new failing, its stderr passed
-    through; or the temp file or move failing) it prints a PreToolUse deny,
+    or not one JSON object; jq unable to read plan.json; crucible.sh new
+    failing, its stderr passed through, or printing no .json file path; or
+    the temp file or move failing) it prints a PreToolUse deny,
     exit 0, its reason
       "${REASON_PREFIX} the gate record could not be saved (<cause>), so
        the question is denied; <fix>, then ask again."
@@ -69,12 +74,20 @@ leaves the gate, plan.json included, as it is, with no record and no deny.
 
 Exit codes:
   0  allowed, or denied through the JSON above; a hook fault before a pending
-     gate is loaded also allows (a note goes to stderr)
+     gate is loaded also allows (any stderr is the failing command's own,
+     such as jq's parse error); a missing, non-string or unsafe session_id
+     allows silently
   2  denied with the reason on stderr (starting "${REASON_PREFIX}"): an internal
      error after a pending gate was loaded, or jq missing while some session
      has a pending gate younger than ${STALE_SECONDS}s
 
-Dependencies: POSIX sh, jq 1.6+, cat, date, find (with -mmin, as on macOS and
+Stderr notes (exit 0): "<what> removed: <folder>" or "<what> removed,
+plan.json kept: <folder>" when a gate is cleared as malformed, stale or idle;
+"gate record not saved: <cause>" with a record deny; "jq missing; no pending
+gate; question allowed".
+
+Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
+jq package), cat, date, find (with -mmin, as on macOS and
 Linux), rm; for the gates record of a relayed gate also crucible.sh, mktemp
 and mv (without them a relayed gate's question is denied).
 Runtime: about 13 ms with no gate, 20 ms denying, 80 ms clearing a relayed gate
@@ -147,10 +160,11 @@ save_gate_record() {
 		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer'
 	[ -f "${CRUCIBLE_HELPER}" ] ||
 		deny_record "crucible.sh missing at ${CRUCIBLE_HELPER}" 'install the crucible skill'
-	# A no-plugin-fits plan is the one with a stack field.
-	record_label=$(jq -sr 'if length == 1 and (.[0] | type) == "object" then (if .[0] | has("stack") then "no-plugin-fits" else "dispatch-plan" end) else error("not one object") end' "${plan_file}" 2>/dev/null) ||
+	# The label is the plan's kind, told apart by a field only that kind has.
+	record_label=$(jq -sr 'if length == 1 and (.[0] | type) == "object" then (.[0] | if has("stack") then "no-plugin-fits" elif has("reasons") then "effort-offer" else "dispatch-plan" end) else error("not one object") end' "${plan_file}" 2>/dev/null) ||
 		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
-	record=$(jq -c '{v: 1} + .' "${plan_file}" 2>/dev/null) ||
+	# del(.v) so a plan's own v never overrides the record version; v stays first.
+	record=$(jq -c '{v: 1} + del(.v)' "${plan_file}" 2>/dev/null) ||
 		deny_record "jq could not read ${plan_file}" 'check jq 1.6+ and the plan file'
 	if record_path=$(sh "${CRUCIBLE_HELPER}" new --kind gates --label "${record_label}" --session "${session_id}" </dev/null); then
 		new_status=0
@@ -211,8 +225,9 @@ esac
 command -v jq >/dev/null 2>&1 || handle_jq_missing
 hook_input=$(cat)
 # Fields: the caller ("main", or "agent" when agent_id is set), session_id and
-# tool_name; none holds a space once checked.
-fields=$(printf '%s' "${hook_input}" | jq -r '[(if (.agent_id // "") == "" then "main" else "agent" end), (.session_id // "" | strings), (.tool_name // "" | strings)] | join(" ")')
+# tool_name, a non-string one as "" so the fields never shift; none holds a
+# space once checked.
+fields=$(printf '%s' "${hook_input}" | jq -r '[(if (.agent_id // "") == "" then "main" else "agent" end), ((.session_id | strings) // ""), ((.tool_name | strings) // "")] | join(" ")')
 caller=${fields%% *}
 fields=${fields#* }
 session_id=${fields%% *}

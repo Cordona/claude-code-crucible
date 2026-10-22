@@ -10,6 +10,8 @@ readonly PROG='report.sh'
 readonly DISPATCH_DIR='flow-agent-initialization/scripts/04-agent-dispatch'
 # The lens a dispatch that loads no tech-* or standard-* plugin reviews through.
 readonly NO_LENS='correctness'
+# The one agent whose report this script checks and stamps.
+readonly REVIEWER_AGENT='code-reviewer'
 
 # The shape check: the count line, then one "<field>: <what>; expected <x>" line
 # per problem. Every value taken from the report goes through `shown`, so a
@@ -92,7 +94,7 @@ def path_line_problem:
 def file_problem:
 	name_problem(max_path) // (if absolute then "an absolute path" elif outside_repo then "outside the repo (a .. segment)" else empty end);
 def line_problem:
-	if type == "number" then (if . >= 1 and . == floor then empty else "\(shown) is not a positive integer" end)
+	if type == "number" then (if . >= 1 and . <= 999999999 and . == floor then empty else "\(shown) is not a positive integer of 1 to 9 digits" end)
 	elif type == "string" then
 		[capture("\\A(?<from>[0-9]{1,9})-(?<to>[0-9]{1,9})\\z")][0] as $range
 		| if $range == null then "\(shown) is not a range N-M"
@@ -109,13 +111,45 @@ def location_problems($loc):
 		(select(has("relates_to")) | .relates_to | path_line_problem | "\($loc).relates_to: \(.); expected \(path_line_expected), naming the changed line")
 	end;
 
+# A quoted header path uses the C-style quoting git writes: \NNN octal bytes
+# (every non-ASCII byte under the default core.quotePath) and \a \b \t \n \v
+# \f \r \" \\. The bytes are read back as UTF-8; a path that does not decode
+# stays as written, quotes and escapes included.
+def utf8_bytes:
+	explode | map(
+		if . < 128 then [.]
+		elif . < 2048 then [192 + (. / 64 | floor), 128 + . % 64]
+		elif . < 65536 then [224 + (. / 4096 | floor), 128 + (. / 64 | floor) % 64, 128 + . % 64]
+		else [240 + (. / 262144 | floor), 128 + (. / 4096 | floor) % 64, 128 + (. / 64 | floor) % 64, 128 + . % 64] end)
+	| add // [];
+def utf8_text:
+	reduce .[] as $byte ({points: [], need: 0, point: 0};
+		if .need > 0 then
+			if $byte >= 128 and $byte < 192 then .point = .point * 64 + $byte - 128 | .need -= 1
+				| if .need == 0 then .points += [.point] else . end
+			else error("not UTF-8") end
+		elif $byte < 128 then .points += [$byte]
+		elif $byte >= 194 and $byte < 224 then .point = $byte - 192 | .need = 1
+		elif $byte >= 224 and $byte < 240 then .point = $byte - 224 | .need = 2
+		elif $byte >= 240 and $byte < 245 then .point = $byte - 240 | .need = 3
+		else error("not UTF-8") end)
+	| if .need > 0 then error("not UTF-8") else .points | implode end;
+def c_escape_byte:
+	if test("\\A[0-7]{3}\\z") then explode | map(. - 48) | .[0] * 64 + .[1] * 8 + .[2]
+	else {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, "\"": 34, "\\": 92}[.] end;
+def c_unquoted:
+	if test("\\A\"(\\\\([0-7]{3}|[abtnvfr\"\\\\])|[^\\\\\"])*\"\\z") | not then error("not C-quoted")
+	else .[1:-1] | [match("\\\\([0-7]{3}|.)|[^\\\\]+"; "g").string]
+		| map(if startswith("\\") then [.[1:] | c_escape_byte] else utf8_bytes end)
+		| add // [] | utf8_text end;
+
 # The DIFF file list: the path of every "+++ b/<path>" header and, where that
 # header is /dev/null (a deletion), of its "--- a/<path>" header. Headers are
 # read only between a "diff " line (or the file start) and the first "@@" hunk,
 # so a changed line starting with --- or +++ is never taken for one.
 def header_path:
 	sub("\t.*$"; "")
-	| if startswith("\"") then (try fromjson catch .) else . end
+	| if startswith("\"") then (. as $quoted | try c_unquoted catch $quoted) else . end
 	| if . == "/dev/null" then null
 	  elif startswith("a/") or startswith("b/") then .[2:]
 	  else . end;
@@ -319,7 +353,8 @@ usage() {
 	cat <<'EOF'
 usage: report.sh check --dispatch FILE --diff FILE [--report PATH] [--prior FILE] [--skills-dir DIR]
        report.sh check --report PATH --diff FILE [--prior FILE] [--skills-dir DIR]
-       report.sh --help
+       report.sh --help | -h
+No arguments: this usage on stderr, exit 2.
 
 Checks the reviewer's report for one review round, one JSON object in the
 file PATH, and on a pass with --dispatch stamps the lens and the dispatch
@@ -329,20 +364,36 @@ table document it, and the validator wins where they differ. It renders
 nothing, stamps no ID or round and computes no verdict.
 
 Options (every path absolute):
-  --dispatch FILE  the dispatch file generate-agent-dispatch.sh wrote: a
-                   regular file, not a symlink, passing DIR/flow-agent-
-                   initialization/scripts/04-agent-dispatch/agent-dispatch-
-                   validator.jq. It supplies --report (its report): leave
-                   --report out, or give the same text.
+  --dispatch FILE  the dispatch file generate-agent-dispatch.sh wrote for
+                   agent code-reviewer: a regular file, not a symlink,
+                   passing DIR/flow-agent-initialization/scripts/04-agent-
+                   dispatch/agent-dispatch-validator.jq; another agent's
+                   dispatch is a dispatch fault. It supplies --report (its
+                   report): leave --report out, or give the same text.
   --report PATH    the report file.
   --diff FILE      the DIFF the reviewer was given, unified git diff output;
                    required, since the dispatch does not carry it yet. Its
                    file list: the path of every "+++ b/<path>" header and,
                    for a deletion, of its "--- a/<path>" header, a/ and b/
-                   stripped, /dev/null ignored.
-  --prior FILE     a re-review's prior finding IDs, one per line, blank lines
-                   ignored. Without it, previous_findings is refused.
-  --skills-dir DIR defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills.
+                   stripped, /dev/null ignored. A quoted path, such as
+                   "b/a b.sh" or "b/caf\303\251.sh", is decoded from git's
+                   C-style quoting (\NNN octal bytes read as UTF-8, \a \b
+                   \t \n \v \f \r \" \\); one that does not decode is
+                   listed as written, quotes and escapes included. Headers
+                   count only at the file start or after a "diff " line, up
+                   to the first "@@", as git writes them, so a diff without
+                   "diff " lines gives only its first file. A pure rename, a mode-only change
+                   and a binary change have no +++ header, so their files
+                   are not in the list: a location on one needs relates_to.
+                   A leading ./ on a location's file is ignored.
+  --prior FILE     a re-review's prior finding IDs, one per line, each
+                   trimmed of surrounding spaces, blank lines ignored, a
+                   repeated ID counted once. Without it, previous_findings
+                   is refused. An argument, like --diff, since the dispatch
+                   does not carry the prior IDs yet.
+  --skills-dir DIR defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills;
+                   read and held to absolute (the default included) only
+                   with --dispatch, ignored without it.
 
 The lens: the one plugin of the dispatch whose name starts tech- or
 standard-; procedure-* plugins are not lenses. None: the lens is
@@ -353,8 +404,9 @@ characters):
   - top-level keys only findings, previous_findings, flags, not_reviewed and
     found, each an array; verdict, count, counts, summary, round, date,
     generated, status, ack, waiver and waived are refused by name, here and
-    on a finding, and so are the stamp keys tech, plugins, mode, dispatch,
-    started and finished: a stamped report is never checked again
+    on a finding. The stamp keys tech, plugins, mode, dispatch, started and
+    finished are refused by name here (a stamped report is never checked
+    again); on a finding they are refused as unknown keys
   - findings: severity (CRITICAL, HIGH, MEDIUM or LOW), realism (realistic,
     edge-case or hypothetical), locations (non-empty), trigger, problem and
     fix required; proof, real_if and security optional; id and plugin refused
@@ -362,9 +414,10 @@ characters):
     takes neither. security is true when present; a security: true
     hypothetical finding needs proof
   - a location (findings, previous_findings, flags, not_reviewed) is
-    {file, line, relates_to?}: file repo-relative, never absolute (/, ~ or a
-    drive letter), no .. segment, at most 300 characters; line a positive
-    integer or "N-M" with N <= M; relates_to a path:line. Each location's
+    {file, line, relates_to?}: file with a non-space character and no
+    control character, repo-relative, never absolute (/, ~ or a drive
+    letter), no .. segment, at most 300 characters; line a positive
+    integer or "N-M" with 1 <= N <= M; relates_to a path:line. Each location's
     file on a finding or an OPEN entry is in the DIFF file list, or its
     relates_to path is
   - one line (no newline or carriage return), a non-space character, at
@@ -373,22 +426,25 @@ characters):
     location. proof and relates_to: <path>:<N> or <path>:<N-M>, repo-relative,
     the path at most 300 characters
   - with --prior: previous_findings holds each prior ID exactly once and no
-    other ID, an id at most 40 characters; keys id, status, proof, note, severity, realism, real_if and
+    other ID, an id non-empty, with no control character, at most 40
+    characters; keys id, status, proof, note, severity, realism, real_if and
     locations; status RESOLVED (needs proof; refuses severity, realism,
     real_if and locations) or OPEN (needs note; a realism given pairs with
     proof or real_if as on a finding)
   - flags: exactly source (code or non-code), location, severity (CRITICAL
     or HIGH) and text; fix, trigger and proof refused by name
-  - not_reviewed: text required, location and plugin (a name of at most
-    100 characters) optional
+  - not_reviewed: text required, location and plugin (a non-empty name
+    with no control character, at most 100 characters) optional
   - found: exactly kind (instruction or secret), location and text; the
     location's form is not checked: a repo-relative path:line, message:
     <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>]
     or its URL), a URL, or commit <sha>
   - at most 200 findings, 100 flags, 100 not_reviewed and 100 found items,
     and 20 locations on a finding or an OPEN entry; previous_findings is
-    bounded by the prior IDs; an empty list is accepted. A line number, in
-    line, proof or relates_to, has 1 to 9 digits
+    bounded by the prior IDs; an empty list is accepted. A list over its
+    cap, a locations list included, gets one problem line, and its items
+    are not checked. Every line number, in line (an integer or N-M), proof
+    or relates_to, has 1 to 9 digits
 
 Stamping, on a passing check --dispatch only: each finding gets plugin, the
 lens; the top level gets tech, plugins (the dispatch's plugin names), mode,
@@ -400,28 +456,43 @@ it was.
 
 stdout, one line, on exits 0, 3 and 6:
   findings=<n> previous_findings=<n> flags=<n> not_reviewed=<n> instruction_found=<n> secret_found=<n>
-stderr: one line per problem, "<field>: <what>; expected <x>", at most 30,
-then a count of the rest; faults start "report.sh: dispatch:" or
-"report.sh: install:".
+stderr, by exit (nothing on 0):
+  2  the usage, on no arguments; else "report.sh: <what>; expected <x>"
+     then "Try 'report.sh --help'."; a
+     dispatch fault is one "report.sh: dispatch: <what>" line, after one
+     "report.sh: dispatch: <problem>" line per dispatch validator problem
+  3  one line per problem, "<field>: <what>; expected <x>", at most 30,
+     then "report: <n> more problems not shown (showing 30 of <m>);
+     expected none"
+  4  "report.sh: not a report: <what>; expected <x>"
+  5  "report.sh: install: <what>; expected <x>"
+  6  "report.sh: stamps not written, the report unchanged: <what>; expected
+     <x>"
+A failing tool (mktemp, cp, mv, jq or date) may print its own line first.
 
 Writes: on a passing check --dispatch, the stamped report onto PATH through
-a temp file beside it, and nothing else; a temp folder under TMPDIR,
-removed on every exit, as is the temp file when it was not moved onto PATH.
+a temp file beside it, and nothing else; a temp folder under TMPDIR
+(default /tmp), removed on every exit, as is the temp file when it was not
+moved onto PATH.
 
 Exit codes:
   0  valid (stamped, with --dispatch)
-  2  usage error: an unknown argument, a missing value, a path not absolute,
-     a missing or unreadable --diff or --prior, a --prior holding no ID, a
+  2  usage error: no arguments, an unknown command or argument, a missing
+     value, a path not absolute (DIR only with --dispatch), neither
+     --report nor --dispatch given, --diff not given, a --diff or --prior
+     that is not a readable regular file, a --prior holding no ID, a
      --report that differs from the dispatch's; or a dispatch fault, stderr
-     starting "report.sh: dispatch:": the file missing, a symlink, not JSON,
-     failing the dispatch validator (each problem named) or loading more
-     than one lens
+     starting "report.sh: dispatch:": the file missing, a symlink, not
+     JSON, failing the dispatch validator (each problem named), for an
+     agent other than code-reviewer, or loading more than one lens
   3  invalid (stderr names each problem); nothing written
   4  not a report: PATH missing, unreadable, not JSON or not one object;
      with --dispatch also a symlink
-  5  install fault, stderr starting "report.sh: install:": jq missing or
-     older than 1.6, a base tool missing, or, for --dispatch, the dispatch
-     validator or dispatch-names.jq missing
+  5  install fault, stderr starting "report.sh: install:": jq missing,
+     failing --version, older than 1.6 or failing to run the check, a base
+     tool missing, no temp folder made under TMPDIR (default /tmp), or, for
+     --dispatch, the dispatch validator or dispatch-names.jq missing or the
+     validator failing to run
   6  valid, but the stamps could not be written; the report is unchanged
      and stderr names the step that failed
   129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
@@ -524,7 +595,8 @@ check_paths() {
 	[ -z "${dispatch_file}" ] || require_absolute --dispatch "${dispatch_file}"
 	[ -z "${report}" ] || require_absolute --report "${report}"
 	[ -z "${prior_file}" ] || require_absolute --prior "${prior_file}"
-	require_absolute --skills-dir "${skills_dir}"
+	# Only --dispatch reads DIR, so only it holds DIR (default included) to absolute.
+	[ -z "${dispatch_file}" ] || require_absolute --skills-dir "${skills_dir}"
 	[ -n "${report}" ] || [ -n "${dispatch_file}" ] ||
 		usage_error '--report PATH missing; expected the absolute path of the report file, or --dispatch FILE'
 	[ -n "${diff_file}" ] ||
@@ -575,7 +647,8 @@ locate_dispatch_modules() {
 
 # Checks the --dispatch file, takes --report from it and sets lens and stamps
 # (the five stamps it supplies; finished comes at the pass). Exits 2 on a bad
-# file or a conflicting --report, 5 when the validator fails to run.
+# file, another agent's dispatch or a conflicting --report, 5 when the
+# validator fails to run.
 read_dispatch() {
 	dispatch_expected='expected the dispatch file generate-agent-dispatch.sh wrote'
 	[ ! -L "${dispatch_file}" ] || dispatch_fault "${dispatch_file} is a symlink; ${dispatch_expected}, not a link to it"
@@ -589,6 +662,11 @@ read_dispatch() {
 		printf '%s\n' "${dispatch_problems}" | sed "s/^/${PROG}: dispatch: /" >&2
 		dispatch_fault "${dispatch_file} fails the dispatch validator, each problem above; ${dispatch_expected}, unchanged since"
 	fi
+	# The validator holds agent to a known agent name, so it prints on one line.
+	dispatch_agent=$(jq -r '.agent' "${dispatch_file}" </dev/null) ||
+		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
+	[ "${dispatch_agent}" = "${REVIEWER_AGENT}" ] ||
+		dispatch_fault "${dispatch_file} is a dispatch of agent ${dispatch_agent}; expected a ${REVIEWER_AGENT} dispatch, whose report this checks; try the ${dispatch_agent}'s own report.sh"
 	# The validator holds report to an absolute path without a control character.
 	dispatch_report=$(jq -r '.report' "${dispatch_file}" </dev/null) ||
 		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"

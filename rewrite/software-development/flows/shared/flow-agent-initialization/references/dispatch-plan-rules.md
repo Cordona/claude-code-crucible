@@ -7,15 +7,13 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 - **`--plan-file`:** the gate's plan file, the path `open-gate.sh --plan-path` prints.
 - **`--agent`:** the part's agent, such as `code-developer`; `main thread` for direct implementation (SKILL.md's step 11).
 - **`--mode`:** `BUILD`.
-- **`--context-file`:** the effort's context file from SKILL.md's step 3. The plan holds its path and sha256 only; its content stays in the file.
+- **`--context-file`:** the effort's context file from SKILL.md's step 3.
 - **`--task`:** one per task, in order; two or more make a group (SKILL.md's step 6).
 - **`--load <name> --reason <line>`:** each plugin to load, its name as `list-plugins.sh` prints it.
 - **`--skip <name> --reason <line>`:** every other installed plugin.
 - **`--loaded-reason <line>`:** only with no `--load`: why nothing is loaded.
 - **`--replan`:** only on a step-10 re-plan, as Step-10 re-plans below sets; leave it out otherwise.
 - **`--plans <n>`** (the renderer's, with `--question`): the plan count step 6 wrote into step 7's todo item, the plans this run shows one after another; `1` for a step-10 re-plan and for step 11.
-
-The technology is no option: the generator computes it from the loaded tech plugin's label, or `none`.
 
 ## Reasons
 
@@ -40,13 +38,11 @@ sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts
   --skip procedure-read-trackers --reason '"a dispatch'\''s context holds a tracker link": its links hold no GitHub, GitLab or Jira issue'
 ```
 
-The plan it writes holds `"technology": "Shell"` (tech-shell's label) and `"context": {"path": …, "sha256": …}`.
-
 ## Step-10 re-plans
 
 A re-plan from SKILL.md's step 10 for a `PLUGIN` denial moves the dropped plugin to `--skip`, its reason the step-10 drop step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it, `faulty files` when it still lists it (a fault only the hook finds).
 
-- **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with "fix it, then rerun" above it. Ask nothing: the renderer's question prints nothing for it. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
-- **`uninstalled after approval` or `faulty files`, while the dropped plugin's description still matches the task** (as SKILL.md's step 5 sets): add `--replan stop-recommended`, so the question recommends Stop.
+- **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with "fix it, then rerun" above it. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
+- **`uninstalled after approval` or `faulty files`, while the dropped plugin's description still matches the task** (as SKILL.md's step 5 sets): add `--replan stop-recommended`.
 - **A denial naming both `PLUGIN` and `CONTEXT`:** one re-plan, the plugin moved to `--skip` with the reason and any `--replan` the bullets above set, and `--context-file` set to step 3's new file.
 - **Any other re-plan,** a `CONTEXT` one included: no `--replan`; the one-plan question, `--plans 1`.

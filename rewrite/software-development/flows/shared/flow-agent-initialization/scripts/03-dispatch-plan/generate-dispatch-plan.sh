@@ -69,7 +69,8 @@ Usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-fil
            --task TEXT [--task TEXT]... [--load NAME --reason LINE]...
            [--skip NAME --reason LINE]... [--loaded-reason LINE]
            [--replan invalid|stop-recommended] [--skills-dir DIR]
-       sh ${PROG} --help
+       sh ${PROG} --help|-h
+With no argument it prints this help on stderr and exits 2.
 
 Writes one dispatch plan, the JSON render-dispatch-plan.sh renders, to PATH
 (the approval gate's session plan file, overwritten), then prints its path
@@ -140,19 +141,24 @@ Exit codes:
   2  usage error: an unknown option, an option without its value, a --reason
      not right after a --load or --skip, a --load or --skip without its
      --reason, a second --plan-file, --agent, --mode, --context-file,
-     --loaded-reason, --replan or --skills-dir, or --plan-file, --agent,
+     --loaded-reason, --replan or --skills-dir, an empty --plan-file,
+     --context-file or --skills-dir, no argument, or --plan-file, --agent,
      --mode, --context-file or --task missing
   3  invalid input, one stderr line per problem; nothing written
   5  a dependency missing or failing, with the fix named: jq 1.6+, sha256sum
      or shasum, list-plugins.sh, scripts/02-agent-context/agent-context-file-checks.sh,
-     agent-context-validator.jq, dispatch-plan-validator.jq or
-     installed-plugins.jq, or a base tool below
+     agent-context-validator.jq, dispatch-plan-validator.jq,
+     installed-plugins.jq or scripts/04-agent-dispatch/dispatch-names.jq,
+     or a base tool below
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
 
-Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --argjson); cat, mktemp, mv,
-rm, tr, wc; sha256sum or shasum (macOS: shasum -a 256); list-plugins.sh;
-scripts/02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq, and
-dispatch-plan-validator.jq and installed-plugins.jq beside this script.
+Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --argjson; macOS: brew
+install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
+every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
+(macOS: built in, run as shasum -a 256); list-plugins.sh;
+scripts/02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq,
+dispatch-plan-validator.jq and installed-plugins.jq beside this script, and
+scripts/04-agent-dispatch/dispatch-names.jq, which the validator includes.
 Reads only: the context file, and what list-plugins.sh reads.
 Runtime: about 300 ms for a plan with 8 plugins installed; measured on macOS
 (average of 5 runs).
@@ -284,8 +290,9 @@ finish_parse() {
 	[ -n "${skills_dir}" ] || skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 }
 
-# Exits 5 unless jq, a sha256 tool, list-plugins.sh and the three checks are in
-# place; sources agent-context-file-checks.sh and sets the checks' paths and list_script.
+# Exits 5 unless jq, a sha256 tool, list-plugins.sh, the three checks and the
+# validator's names module are in place; sources agent-context-file-checks.sh
+# and sets the checks' paths and list_script.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -294,7 +301,9 @@ load_dependencies() {
 	context_validator="${plan_dir}/../02-agent-context/agent-context-validator.jq"
 	plan_validator="${plan_dir}/dispatch-plan-validator.jq"
 	installed_program="${plan_dir}/installed-plugins.jq"
-	for shared_file in "${context_lib}" "${context_validator}" "${plan_validator}" "${installed_program}"; do
+	# dispatch-plan-validator.jq includes it; a missing copy would read as a jq fault.
+	dispatch_names="${plan_dir}/../04-agent-dispatch/dispatch-names.jq"
+	for shared_file in "${context_lib}" "${context_validator}" "${plan_validator}" "${installed_program}" "${dispatch_names}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done

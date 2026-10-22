@@ -93,9 +93,13 @@ Output shape: {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":
   nothing above or below it | the gate text is missing from the last message |
   the gate text is missing and the last non-empty line is not ${MARKER}
 
-Exit codes: always 0 (a hook fault allows the stop; a note goes to stderr).
+Exit codes: always 0. A hook fault allows the stop: jq missing, or the state
+or its temp file unwritable, puts a note on stderr; any other fault's stderr
+is the failing command's own, such as jq's parse error. A missing, non-string
+or unsafe session_id allows the stop silently.
 
-Dependencies: POSIX sh, jq 1.6+, cat, date, find (with -mmin, as on macOS and
+Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
+jq package), cat, date, find (with -mmin, as on macOS and
 Linux), mktemp, mv, rm.
 Runtime: about 12 ms with no gate, 31 ms checking a relay; measured on macOS (average of 5 runs).
 EOF

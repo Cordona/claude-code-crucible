@@ -46,7 +46,7 @@ def classify:
   else .[0].links as $links
 	| if ($links | length) == 0 then bad("no link \($n); the file has 0; expected at least one link; try none, as the file lists no links")
 	  elif $index > ($links | length) then bad("no link \($n); the file has \($links | length); try a --link from 1 to \($links | length)")
-	  elif ($links[$index - 1] | type) != "object" or ($links[$index - 1].url | http_url | not) then bad("link \($n) has no URL of the accepted form; expected {\"url\", \"why\"} with an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try fetching it another way")
+	  elif ($links[$index - 1] | type) != "object" or ($links[$index - 1].url | http_url | not) then bad("link \($n) has no URL of the accepted form; expected an object whose \"url\" is an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try the file the human approved")
 	  else $links[$index - 1].url | classify end
   end
 '
@@ -66,28 +66,76 @@ main() {
 
 usage() {
 	cat <<'EOF'
-usage: read-link.sh --context-file <absolute path> --link <n>
+usage: read-link.sh --context-file <absolute path> --link <n> | -h | --help
 
-The procedure-read-trackers plugin's tracker read. Reads link <n> (1-based)
-of the context file's links through its tracker's one read-only call:
-gh issue view, glab issue view, or procedure-jira's jira.sh view with
-JIRA_READ_ONLY=1. stdout: the ticket, at most 500 lines.
+The procedure-read-trackers plugin's tracker read. Reads link <n> of the
+context file's links through its tracker's one read-only call: gh issue view,
+glab issue view, or procedure-jira's jira.sh view with JIRA_READ_ONLY=1.
+-h or --help, given before any bad argument, prints this and exits 0.
+
+Input:
+  --context-file  one JSON object whose links is an array of objects, each
+                  with a "url" (other keys, "why" included, are not read)
+  --link <n>      the link's place in links: a whole number from 1, no
+                  leading zero
+  The url must be http or https and use only letters, digits and
+  . _ ~ / ? # = % : + , @ - (no &, quotes, spaces); any other is exit 4.
+
+Tracker links, by host and URL shape (http or https, host in any case):
+  GitHub  the host github.com exactly, the path /<owner>/<repo>/issues/<n>
+  GitLab  any host without a port, a path ending in /-/issues/<n> (a
+          github.com URL of that shape is read through glab too)
+  Jira    a host procedure-jira-auth's allow-list admits (letters, digits,
+          . and - only, matching its JIRA_HOST_ALLOWLIST_PATTERN glob, default
+          *.atlassian.net), the path /browse/<KEY>-<n>, KEY in capitals
+          ([A-Z][A-Z0-9_]*); that path on any other host is exit 3, the Jira
+          skills installed or not
+Any other URL is not a tracker link (exit 3).
+
+Output:
+  stdout  exit 0: the ticket, at most 500 lines. Empty on every other exit.
+  stderr  exit 0: nothing, or for a longer ticket the one line
+          "read-link.sh: truncated: showing 500 of <total> lines".
+          Any other exit: the first line is "read-link.sh: <reason>";
+          exit 1 from a tool that ran adds up to 20 lines of that tool's
+          own stderr, and exit 2 adds this usage text.
+  Writes  one temp dir ($TMPDIR/read-link.XXXXXX, /tmp if TMPDIR is unset
+          or empty) holding the tool's output, removed on exit; nothing
+          else.
 
 Exit codes:
   0    read, the ticket on stdout
   1    read failed (tool missing, not logged in, network, timeout after 30 s,
-       private or missing ticket, no stored Jira credential, tool non-zero)
+       private or missing ticket, a Jira skill not installed, no stored Jira
+       credential, tool non-zero)
   2    usage error
-  3    not a tracker link (stdout empty)
+  3    not a tracker link, a Jira host outside the allow-list included
   4    context file unreadable, not one JSON object, no links, no link <n>,
        or a URL not of the accepted form
-  5    internal error, or jq missing
+  5    internal error, mktemp failed, or jq or a base tool missing
   130  interrupted (INT)
   143  terminated (TERM)
 
-Dependencies: jq 1.6+; the base tools awk, head, mktemp, sleep and kill;
-per read, gh, glab, or the procedure-jira and procedure-jira-auth skills
-under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/.
+Dependencies (runs under POSIX sh):
+  jq 1.6+       macOS: brew install jq; Linux: the distro's jq package. Only
+                its presence is checked; an older jq exits 5.
+  base tools    awk, cat, env, head, mktemp, rm and sleep; macOS ships them,
+                on Linux coreutils and awk
+  ps            optional (procps on Linux): used to stop a timed-out read's
+                child processes; without it only the read's own process is
+                stopped and its children may run on
+  GitHub read   gh: brew install gh, then gh auth login
+  GitLab read   glab: brew install glab, then glab auth login
+  Jira read     the procedure-jira and procedure-jira-auth skills under
+                ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, with a credential
+                stored through procedure-jira-auth, and curl, which
+                procedure-jira needs
+jq and the base tools are checked at start, after the arguments; the tool a
+read needs is checked just before that read.
+
+Runtime: network bound. The whole read, the Jira credential lookup included,
+is stopped after 30 s (exit 1), the tool's child processes with it; a public
+GitHub issue read takes about 1 s.
 EOF
 }
 
@@ -142,9 +190,9 @@ fail() {
 }
 
 require_base_tools() {
-	for base_tool in awk head mktemp sleep kill; do
+	for base_tool in awk cat env head mktemp rm sleep; do
 		command -v "${base_tool}" >/dev/null 2>&1 \
-			|| fail 5 "${base_tool} missing; expected ${base_tool} on PATH; try installing your system's base tools (coreutils, awk and procps on Linux; macOS ships them)"
+			|| fail 5 "${base_tool} missing; expected ${base_tool} on PATH; try installing your system's base tools (coreutils and awk on Linux; macOS ships them)"
 	done
 }
 
@@ -186,67 +234,119 @@ read_gitlab() {
 }
 
 read_jira() {
+	if [ ! -f "${JIRA_SCRIPT}" ] || [ ! -f "${JIRA_CONFIG_SCRIPT}" ]; then
+		fail_unless_jira_host_allowed
+	fi
 	[ -f "${JIRA_SCRIPT}" ] \
 		|| fail 1 'procedure-jira not installed; expected its jira.sh in the skills dir; try installing the procedure-jira skill'
 	[ -f "${JIRA_CONFIG_SCRIPT}" ] \
 		|| fail 1 'procedure-jira-auth not installed; expected its jira-curl-config.sh in the skills dir; try installing the procedure-jira-auth skill'
+	make_work_dir
+	start_watchdog
 	resolve_jira_curl_config
 	read_with_timeout 'jira.sh view' 'try checking the key exists and the stored credential can see it' \
 		env JIRA_READ_ONLY=1 JIRA_CURL_CONFIG="${jira_curl_config}" \
 		sh "${JIRA_SCRIPT}" view "${link_key}" --confirmed-site "${link_host}"
 }
 
+# Used only when a Jira skill is missing, so that a host outside the allow-list
+# is exit 3 whether or not the skills are installed. Applies the same check as
+# jira-curl-config.sh: host characters, then its JIRA_HOST_ALLOWLIST_PATTERN glob.
+fail_unless_jira_host_allowed() {
+	case ${link_host} in
+		*[!A-Za-z0-9.-]*) fail_outside_jira_allow_list ;;
+		*) ;;
+	esac
+	# shellcheck disable=SC2254 # the pattern is a glob on purpose, as in jira-curl-config.sh
+	case ${link_host} in
+		${JIRA_HOST_ALLOWLIST_PATTERN:-*.atlassian.net}) ;;
+		*) fail_outside_jira_allow_list ;;
+	esac
+}
+
+fail_outside_jira_allow_list() {
+	fail 3 "not a tracker link: ${link_host} is outside procedure-jira-auth's host allow-list"
+}
+
 # Sets jira_curl_config to the path jira-curl-config.sh prints, which is handed
-# on, never opened or printed here. Its exit 1 means either no stored credential
-# or a host outside its allowed shape; only its own message tells them apart.
+# on, never opened or printed here. Its exit 1 means no stored credential, a
+# host outside its allow-list, or another fault; only its own message tells them
+# apart. A host outside the allow-list is no Jira this procedure can read, so it
+# goes back to the caller as any other link (exit 3).
+# Runs under the read's watchdog, which read_jira has already started.
 resolve_jira_curl_config() {
-	make_work_dir
-	if jira_curl_config=$(sh "${JIRA_CONFIG_SCRIPT}" --site "${link_host}" 2>"${work_dir}/config-stderr"); then
+	run_bounded config sh "${JIRA_CONFIG_SCRIPT}" --site "${link_host}"
+	fail_if_timed_out 'jira-curl-config.sh'
+	config_status=${bounded_status}
+	if [ "${config_status}" -eq 0 ]; then
+		jira_curl_config=$(awk '1' "${work_dir}/config.out")
 		return 0
-	else
-		config_status=$?
 	fi
-	config_error=$(head -n 1 "${work_dir}/config-stderr")
+	config_error=$(head -n 1 "${work_dir}/config.err")
 	case ${config_status}:${config_error} in
 		1:*'no credential stored for site'*)
 			fail 1 "no stored Jira credential for ${link_host}; expected one set up through procedure-jira-auth; try asking the human to log in through procedure-jira-auth"
 			;;
+		1:*'is not in the allowed shape'*) fail_outside_jira_allow_list ;;
 		*) fail 1 "jira-curl-config.sh failed (exit ${config_status}): ${config_error:-no message}; expected the path of a curl config for ${link_host}; try running procedure-jira-auth's jira-curl-config.sh --site ${link_host} to read its full error" ;;
 	esac
 }
 
 make_work_dir() {
 	[ -z "${work_dir}" ] || return 0
-	work_dir=$(mktemp -d) || fail 5 'mktemp failed; expected a writable temp dir; try setting TMPDIR'
+	# A full template, as macOS mktemp -d alone prefers its per-user dir to TMPDIR.
+	work_dir=$(mktemp -d "${TMPDIR:-/tmp}/read-link.XXXXXX" 2>/dev/null) \
+		|| fail 5 'mktemp failed; expected a writable temp dir; try setting TMPDIR to one'
 }
 
 # Runs the command after the first two arguments (a label and a hint for
-# errors) with a watchdog, then prints its bounded stdout, or fails with exit 1.
+# errors) under the read's watchdog, starting it unless a step before already
+# did, then prints its bounded stdout, or fails with exit 1.
 read_with_timeout() {
 	read_label=$1
 	read_hint=$2
 	shift 2
 	make_work_dir
-	"$@" >"${work_dir}/stdout" 2>"${work_dir}/stderr" </dev/null &
-	child_pid=$!
-	start_watchdog
-	if wait "${child_pid}"; then read_status=0; else read_status=$?; fi
-	child_pid=''
+	[ -n "${watchdog_pid}" ] || start_watchdog
+	run_bounded read "$@"
 	stop_watchdog
+	read_status=${bounded_status}
 	if [ "${read_status}" -ne 0 ]; then
-		if [ -e "${work_dir}/timed-out" ]; then
-			fail 1 "${read_label} timed out after ${READ_TIMEOUT_SECONDS} s; expected a reply within ${READ_TIMEOUT_SECONDS} s; try again later"
-		fi
+		fail_if_timed_out "${read_label}"
 		printf '%s: %s failed (exit %s); expected the ticket on stdout; %s\n' \
 			"${PROG}" "${read_label}" "${read_status}" "${read_hint}" >&2
-		head -n "${MAX_ERROR_LINES}" "${work_dir}/stderr" >&2
+		head -n "${MAX_ERROR_LINES}" "${work_dir}/read.err" >&2
 		exit 1
 	fi
-	print_bounded "${work_dir}/stdout"
+	print_bounded "${work_dir}/read.out"
 }
 
-# POSIX sh and macOS have no timeout command. The watchdog marks the timeout,
-# then ends the read; killed early, it ends its own sleep so nothing lingers.
+# Runs the command after the step name in the background, its output in
+# <name>.out and <name>.err, and sets bounded_status. The pid is recorded
+# before the timeout mark is checked, and the watchdog marks before it reads
+# the pid, so a step started after the deadline is always ended by one side;
+# it is cleared once the step ends, so the watchdog never ends a stale pid.
+run_bounded() {
+	bounded_name=$1
+	shift
+	"$@" >"${work_dir}/${bounded_name}.out" 2>"${work_dir}/${bounded_name}.err" </dev/null &
+	child_pid=$!
+	printf '%s\n' "${child_pid}" >"${work_dir}/child-pid"
+	[ ! -e "${work_dir}/timed-out" ] || stop_process_tree "${child_pid}"
+	# dash prints "Terminated" for a step ended by a signal; the status is kept.
+	if wait "${child_pid}" 2>/dev/null; then bounded_status=0; else bounded_status=$?; fi
+	child_pid=''
+	: >"${work_dir}/child-pid"
+}
+
+fail_if_timed_out() {
+	[ -e "${work_dir}/timed-out" ] || return 0
+	fail 1 "$1 timed out after ${READ_TIMEOUT_SECONDS} s; expected a reply within ${READ_TIMEOUT_SECONDS} s; try again later"
+}
+
+# POSIX sh and macOS have no timeout command. One watchdog bounds the whole
+# read: it marks the timeout, then ends the step running then; killed early,
+# it ends its own sleep so nothing lingers.
 start_watchdog() {
 	(
 		sleep_pid=''
@@ -255,9 +355,31 @@ start_watchdog() {
 		sleep_pid=$!
 		wait "${sleep_pid}"
 		: >"${work_dir}/timed-out"
-		kill -TERM "${child_pid}" 2>/dev/null || true
+		running_pid=''
+		IFS= read -r running_pid <"${work_dir}/child-pid" || true
+		[ -z "${running_pid}" ] || stop_process_tree "${running_pid}"
 	) >/dev/null 2>&1 &
 	watchdog_pid=$!
+}
+
+# A step's own children (jira.sh's curl, a CLI's helper) outlive a TERM sent to
+# the step alone, so its whole tree is ended. POSIX sh without a tty has no job
+# control, hence no process group to signal; the tree comes from one ps
+# snapshot taken before any kill, as an ended parent's children lose their link.
+# Without ps only the step itself is ended.
+stop_process_tree() {
+	tree_pids=$(ps -A -o pid= -o ppid= 2>/dev/null | awk -v root="$1" '
+		{ parent[$1] = $2 }
+		END {
+			found[root] = 1
+			print root
+			do {
+				added = 0
+				for (pid in parent) if (!(pid in found) && (parent[pid] in found)) { found[pid] = 1; print pid; added = 1 }
+			} while (added)
+		}')
+	# shellcheck disable=SC2086 # one pid per word, all from ps or $!
+	kill -TERM ${tree_pids} 2>/dev/null || true
 }
 
 stop_watchdog() {
@@ -277,7 +399,7 @@ print_bounded() {
 }
 
 cleanup() {
-	[ -z "${child_pid}" ] || kill -TERM "${child_pid}" 2>/dev/null || true
+	[ -z "${child_pid}" ] || stop_process_tree "${child_pid}"
 	[ -z "${watchdog_pid}" ] || kill -TERM "${watchdog_pid}" 2>/dev/null || true
 	[ -z "${work_dir}" ] || rm -rf "${work_dir}"
 }

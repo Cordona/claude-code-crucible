@@ -25,7 +25,7 @@ include "paths";
 ```
 
 - **The `include` line comes first,** before any `def`: jq accepts module directives only at the start of a program, so a script that prepends shared definitions puts the include ahead of them.
-- **The skills dir is the script's:** the plan renderer, render-dispatch-plan.sh, loads lib-render from the skills dir it resolves (`--skills-dir`, or the default above), so a test install finds its own copy.
+- **The skills dir is the script's:** a renderer loads lib-render from the skills dir it resolves, so a test install finds its own copy.
 - **Dependency:** jq 1.6+ (macOS: `brew install jq`; Linux: the distro's `jq` package).
 
 ## Modules

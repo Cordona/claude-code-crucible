@@ -596,9 +596,11 @@ usage: report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUIL
        report.sh doc-check --skill PATH [--skills-dir DIR]
        report.sh --help
 
-Checks the developer's report, one JSON object in the file PATH (absolute:
-the Crucible space, ${CRUCIBLE_HOME:-$HOME/.crucible}), stamps what the
-dispatch file knows into it on a pass, and renders it. stdin is never read.
+Checks the developer's report, one JSON object in the file PATH (absolute;
+normally in the Crucible space, ${CRUCIBLE_HOME:-$HOME/.crucible}, which is
+not enforced), stamps what the dispatch file knows into it on a pass, and
+renders it. stdin is never read. With no arguments it prints this help on
+stderr and exits 2.
 The validator in this script owns the shape; there is no schema file. This
 --help and the report standard's field table document it (the main thread
 reads this, the developer the field table), and the validator wins where
@@ -614,6 +616,9 @@ time the check passed (times are YYYY-MM-DDTHH:MM:SS+HH:MM, local time).
 Rules the validator enforces (check, and render before it prints):
   - no key but the field table's; the reserved keys are for the TEST mode;
     round and LABELS are never written into the file
+  - every required key is present, toolchain among them: a report written
+    before toolchain existed is refused (check exit 3; render shows it
+    Invalid)
   - stamps: check, with or without --dispatch, refuses a report holding any
     stamp key, each key named: a report is checked before it is stamped and
     a stamped one is never checked again, so a stamp key at a check is one
@@ -626,7 +631,9 @@ Rules the validator enforces (check, and render before it prints):
   - loc: a repo-relative path:line, message: <FIELD>, a plugin name and file, a
     context entry (paths[<n>], links[<n>] or its URL) or commit <sha>; only
     "never absolute" is enforced
-  - verification: a pass has its command; any other result has its note
+  - verification: a pass has its command; any other result has its note.
+    Only that the note is there is checked: a narrowed note's quote of the
+    first message is not verified
   - verification: a command is one command, no &&, || or ; outside quotes
   - open: a could_not item has its ref
   - with --findings (a fix round): review_responses holds each finding ID of
@@ -678,6 +685,8 @@ problems listed one per line. It also supplies --report (its report),
 leave them out, or give the same text; a different value is refused. The
 context file is read once and its sha256 must still be the dispatch's
 context.sha256: a context changed since the dispatch was written is refused.
+A fault of that context file or of the repo_root folder is reported as the
+dispatch's (exit 2, "report.sh: dispatch:"), since no flag fixes it.
 The baseline comes from the dispatch's baseline key, never from --baseline
 (given with --dispatch, a usage error), and must be a regular file, not a
 symlink, holding a baseline of the dispatch's repo_root: a file still empty
@@ -718,7 +727,8 @@ every item on its own line:
   - at most 3 lines each, then "<n> more <items> in the full report": not
     read (could_not, "Not read: <ref>, <at>: <text>", at only when present),
     assumptions, missing plugins, contract breaks, gates refused, unlisted
-    changes (with --repo)
+    changes (with --repo; the count covers every one, while render --full
+    lists at most 20 of them, then a count of the rest)
   - "Not checked: <n> files changed before this dispatch" (with a baseline)
   ### Full report
   - the absolute PATH, whole, in a code span (lib-render's link_span)
@@ -726,10 +736,11 @@ No standards, procedures, decisions, focus, noticed items or review
 responses show there; render --full shows them. --task TEXT is one line (a
 control character prints as a space).
 
-render --full prints the full human view, or with --for
-only behavior, deviations, open, decisions and focus (--labels-file and --round
-are then ignored; --for takes neither --full nor --task). Its Summary shows
-"Technology: <label> (<toolchain>)" and, for a stamped report, a "Dispatch:"
+render --full prints the full human view. Its Summary shows "Status: Done",
+"Blocked" or "Invalid" (with " · Initial implementation" or " · Fix round N"
+after it when --round is given), then "Technology: <label> (<toolchain>)",
+or "Technology: <toolchain>" alone without a labels file or when its
+Technology is none, and, for a stamped report, a "Dispatch:"
 group with all six stamps (Tech plugin, Plugins, Mode, Dispatch, Started,
 Finished). The full view of an
 invalid report shows "Status: Invalid", its problems under
@@ -742,10 +753,24 @@ hand-back's LABELS line exactly as given, one line,
 " · Procedures: <labels>" after it when a procedure plugin was loaded, so
 label text never sits on a command line; render --full shows the standards
 and the procedures as their own groups under Summary. --round is initial or
-'fix N' with N a positive integer. With --repo, files that git and the report disagree on show
-under "Changed but not reported" (at most 20, then a count). Paths shown as
-text go through DIR/lib-render/paths.jq: cut in the middle past 80
-characters, the home folder as ~.
+'fix N' with N a positive integer without leading zeros; it shows only in
+render --full's Status line, and initial makes the summary and render --full
+show a review_responses key as a report problem. With --repo, files that git
+and the report disagree on show
+under "Changed but not reported" (at most 20, then a count). Paths and
+verification commands shown as text go through DIR/lib-render/paths.jq:
+cut in the middle past 80 characters (a cut command cannot be copied and
+run; the report file holds it whole), the home folder in a path as ~.
+
+render --for reviewer|test prints a slice for that reader: the heading
+"## Implementation report: for the reviewer" (or "for the test dispatch"),
+the problems of an invalid report under "Report problems:", then behavior,
+deviations, open, decisions and focus. It takes neither --full nor --task
+and ignores --labels-file and --round (neither is checked). --repo,
+--baseline and --dispatch are checked, and git status and the baseline read,
+as for the other renders, with the same exits 2 and 5, but they change
+nothing it prints: the slice shows no "Changed but not reported" or
+"Changed before this dispatch" group.
   DIR (--skills-dir) defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills.
 
 doc-check --skill PATH [--skills-dir DIR]: PATH (absolute) is the report
@@ -777,29 +802,41 @@ SKILL.md, the one beside this script's scripts/ folder: a difference, or
 that file missing, exits 5 with "report.sh: install: the field table in
 <path> and the validator disagree: <first difference>; run doc-check
 --skill <path> for all". doc-check itself still exits 0 or 1 (2 on a
-usage error).
+usage error, 5 on an install fault).
 
 Writes: check --dispatch writes the six stamps into the report file, on a
 pass only, and nothing else; check without --dispatch and render write
 nothing but their own temp folder, removed on exit; doc-check writes nothing.
+Only a SIGKILL leaves the temp folder, or the .report-stamps.* temp file
+beside PATH, behind. git status runs with GIT_OPTIONAL_LOCKS=0, so the repo
+and its index are never changed.
 
 Exit codes:
   0  check: valid (stamped, with --dispatch) · render: printed, an invalid
      report included · doc-check: the text agrees with the validator
   1  check: valid, with open blockers (stamped, with --dispatch) ·
      doc-check: a difference, one line each on stdout
-  2  usage error, --mode TEST, a missing or unreadable --findings, --context,
-     --labels-file, --baseline or --skill file, --baseline without --repo,
-     --baseline with --dispatch, render --dispatch without --repo, a --repo
-     that is not the root of a git work tree, a --report, --repo, --context
+  2  usage error (no arguments among them: this help on stderr), --mode
+     TEST, a missing or unreadable --findings, --context, --labels-file,
+     --baseline or --skill file, a --findings file holding no ID, a
+     --context file that is not one JSON object, a --labels-file over 1000
+     bytes, of more than one line or holding no LABELS line, a --round that
+     is neither initial nor 'fix N', --baseline without --repo, --baseline
+     with --dispatch, render --dispatch without --repo, a --repo that is not
+     a folder ("--repo <dir> is not a folder"), cannot be entered ("--repo
+     <dir> cannot be entered"), is not in a git work tree or is not the root
+     of one, a --report, --repo, --context
      or --mode that differs from the dispatch's, a render --repo that
      differs from the stamped dispatch's repo_root, or a render --dispatch
      whose repo_root is not --repo, whose report is not --report or whose id
      is not the report's dispatch stamp. A fault of the dispatch file itself starts stderr with
      "report.sh: dispatch:", so a caller can tell it from a usage error: the
      file missing, a symlink, not JSON or failing the dispatch validator
-     (each problem named), the CONTEXT file changed since the dispatch was
-     written (its sha256 is not the dispatch's context.sha256), its baseline
+     (each problem named); under check --dispatch its CONTEXT file missing,
+     unreadable, not a regular file or not one JSON object, or changed since
+     the dispatch was written (its sha256 is not the dispatch's
+     context.sha256), and its repo_root not a folder, not enterable, not in
+     a git work tree or not the root of one; its baseline
      file missing, a symlink, unreadable, still empty, not JSON or not a
      baseline of its repo_root (each problem named), or, for render, the
      report's dispatch stamp naming no dispatch crucible.sh path finds
@@ -812,7 +849,11 @@ Exit codes:
      dispatch-names.jq missing (every command), DIR/lib-render/paths.jq
      missing (render only), the dispatch validator or both sha256sum and
      shasum missing (check --dispatch only), the dispatch validator or
-     crucible.sh missing when a dispatch's baseline is read, or this skill's
+     crucible.sh missing when a dispatch's baseline is read, the dispatch
+     validator failing to run (dispatch-names.jq missing beside it),
+     crucible.sh path exiting other than 0 or 1, mktemp -d failing in
+     ${TMPDIR:-/tmp}, the sha256 tool printing no 64-digit digest, jq
+     failing at run time, or this skill's
      SKILL.md missing or its field table disagreeing with the validator
      (check and render)
   6  check --dispatch: valid, but the stamps could not be written; the
@@ -820,7 +861,8 @@ Exit codes:
   129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
-jq), git (check, and render with --repo), the base tools cat, cp, date (+%z),
+jq), git (check, and render with --repo; macOS: xcode-select --install;
+Linux: the distro's git), the base tools cat, cp, date (+%z),
 grep, mktemp, mv, rm, sed, tr and wc (in every macOS and Linux base system;
 Linux: the distro's coreutils, grep and sed packages); the lib-render skill
 for render; this skill's own SKILL.md, beside scripts/, for check and
@@ -834,9 +876,9 @@ base tools and dispatch-names.jq are checked after the arguments parse
 (dispatch-names.jq once they pass), git when --repo is given; a missing one
 exits 5 and names it.
 Runtime: about 90 ms for check, 120 ms for check --dispatch, 60 ms for
-render (each including the 20 to 30 ms check of its own SKILL.md) and 30 ms
-for doc-check on a small repo, measured on macOS (average of 5 runs); git
-status grows with the repo's size.
+render and 90 ms for render --repo (each including the 20 to 30 ms check of
+its own SKILL.md) and 30 ms for doc-check on a small repo, measured on
+macOS (average of 5 runs); git status grows with the repo's size.
 EOF
 }
 
@@ -1057,9 +1099,17 @@ check_check_args() {
 
 check_context_file() {
 	[ -f "${context}" ] && [ -r "${context}" ] ||
-		usage_error "--context file not readable: ${context}; expected the dispatch's context file"
+		dispatch_value_fault CONTEXT --context "${context} is missing, unreadable or not a regular file; expected the context file {\"paths\", \"links\", \"notes\"}"
 	jq -e 'type == "object"' "${context}" </dev/null >/dev/null 2>&1 ||
-		usage_error "--context file is not one JSON object: ${context}; expected the context file {\"paths\", \"links\", \"notes\"}"
+		dispatch_value_fault CONTEXT --context "${context} is not one JSON object; expected the context file {\"paths\", \"links\", \"notes\"}"
+}
+
+# Exits 2 with message $3 about the value of option $2. Under check --dispatch
+# that value is the dispatch's field $1, which no flag fixes, so the fault is
+# reported as the dispatch's ("report.sh: dispatch:"); otherwise as a usage error.
+dispatch_value_fault() {
+	[ "${command}" != check ] || [ -z "${dispatch_file}" ] || dispatch_fault "$1 $3"
+	usage_error "$2 $3"
 }
 
 check_render_args() {
@@ -1189,11 +1239,11 @@ read_git_status() {
 		[ -z "${dispatch_baseline}" ] || load_dispatch_baseline
 	fi
 	command -v git >/dev/null 2>&1 || install_fault 'git missing; expected git on PATH; try installing git'
-	[ -d "${repo}" ] || usage_error "--repo ${repo} is not a folder; expected the repository root"
+	[ -d "${repo}" ] || dispatch_value_fault repo_root --repo "${repo} is not a folder; expected the repository root"
 	top=$(git -C "${repo}" rev-parse --show-toplevel 2>/dev/null) ||
-		usage_error "--repo ${repo} is not in a git work tree; expected the repository root"
-	physical=$(cd "${repo}" && pwd -P) || usage_error "--repo ${repo} cannot be entered; expected a readable folder"
-	[ "${top}" = "${physical}" ] || usage_error "--repo ${repo} is not the root of its work tree; expected ${top}"
+		dispatch_value_fault repo_root --repo "${repo} is not in a git work tree; expected the repository root"
+	physical=$(cd "${repo}" && pwd -P) || dispatch_value_fault repo_root --repo "${repo} cannot be entered; expected a readable folder"
+	[ "${top}" = "${physical}" ] || dispatch_value_fault repo_root --repo "${repo} is not the root of its work tree; expected ${top}"
 	# GIT_OPTIONAL_LOCKS=0: status reads only, never refreshing the index
 	# under a dispatch that is still writing to the tree.
 	GIT_OPTIONAL_LOCKS=0 git -C "${repo}" status --porcelain -z --untracked-files=all --no-renames >"${work_dir}/raw" ||

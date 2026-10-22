@@ -66,7 +66,7 @@ usage: crucible.sh new --kind KIND --label LABEL [--repo PATH] [--session ID]
        crucible.sh find --kind KIND --session ID [--label LABEL]
        crucible.sh open ID [--format md|html] [--editor CMD]
        crucible.sh prune --older-than Nd [--apply]
-       crucible.sh --help
+       crucible.sh --help | -h
 
 Hands out and finds the files of the durable Crucible space, where every
 context file, gate record, dispatch, dispatch baseline (the repository's git
@@ -74,10 +74,14 @@ status when the dispatch was sent) and agent report lives as one JSON file,
 and a prompt (the Markdown message the main thread reads) as one .md file.
 
 The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path. The space
-and every folder in it is a real folder: a root, year, month, day or kind
-folder that is a symbolic link is refused (exit 4 for new; skipped by path,
-open and prune), so nothing is ever read, written or removed outside the
-root. Folders the script creates are mode 700, files mode 600.
+and every folder in it is a real folder: a root that is a symbolic link is
+refused by every command (exit 4); a year, month, day or kind folder that is
+one is refused by new (exit 4) and skipped by path, find and open (an item
+under it is not found: exit 1 for path and open). Prune skips a year, month
+or day folder that is a link; a kind folder that is a link inside an old day
+is removed with that day (the link only, never its target). So nothing is
+ever read, written or removed outside the root. Folders the script creates are
+mode 700, files mode 600.
 
 Layout (local time):
   <root>/YYYY/MM/DD/index.jsonl
@@ -97,9 +101,10 @@ Commands:
   new    creates an empty file (mode 600) for the caller to write, appends
          its index line and prints its absolute path (ending .md for
          prompts, .json for every other kind). LABEL: lowercase a-z,
-         0-9 and -, 1 to 60 characters. --repo (absolute) defaults to the git
-         root of the current folder, or empty outside a repository; --session
-         defaults to empty. The file is created without overwriting
+         0-9 and -, 1 to 60 characters. --repo (absolute, or empty for none)
+         defaults to the git root of the current folder, or empty outside a
+         repository; --session defaults to empty. A repeated option keeps
+         its last value. The file is created without overwriting
          (noclobber) and its ID is claimed across the day's kind folders; a
          clash of either retries with fresh hex, up to 5 times. The index
          line is appended while new holds <day>/.index.lock, a folder only
@@ -120,51 +125,86 @@ Commands:
          session ID and, with --label, that label, one per line, newest ID
          first; nothing when there is none (exit 0). It reads only the index
          files of the day folders that exist, as path does, and prints only
-         items whose file is a regular file, not a symlink. Read-only.
+         items whose file is a regular file, not a symlink, in a kind folder
+         that is not a symlink. Read-only.
   open   renders an item to a new temp folder in ${TMPDIR:-/tmp} (never
-         inside the space; it is left for the editor and not removed) and
-         opens it. A report is rendered by
+         inside the space: a TMPDIR inside the space is replaced by /tmp; the
+         folder is left for the editor and not removed) and opens it. The ID
+         comes first. A report is rendered by
          ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/standard-code-development-report/scripts/report.sh
          render --full when that script's --help names --full and the render
-         succeeds; anything else gets a title line with the kind and label and
-         the JSON pretty-printed in a json fence. It opens with the OS
+         succeeds. Anything else gets a title line "# <kind>: <label>", then:
+         a prompt its Markdown as stored; JSON pretty-printed in a json
+         fence; an empty file "Empty: nothing has been written to this
+         item."; a file that is not valid JSON "Not valid JSON; the file as
+         stored:" and the file in a text fence. It opens with the OS
          opener, open (macOS) or xdg-open (Linux), which hands the file to
          the desktop and never blocks; $VISUAL and $EDITOR are not consulted.
          --editor CMD opens it with CMD instead: CMD is run by sh with the
          file as its last argument, the way git runs $EDITOR. CMD must hand
          the file to a GUI app and return (e.g. code, idea); never a terminal
-         editor or a waiting form such as 'code -w'. The opener's or
+         editor or a waiting form such as 'code -w': open waits for CMD to
+         exit, so a CMD that waits for a terminal or for the file to close
+         hangs a caller with no terminal, such as the Bash tool. The opener's or
          editor's output goes to stderr. Prints exactly one line: opened
          <file>. --format html is not available yet.
   prune  lists the day folders whose date is more than N days before today
          (with 7d on the 18th, the 10th and earlier). Without --apply it
          prints "would remove <folder>" for each and changes nothing; with
-         --apply it removes them, and any month or year folder left empty.
+         --apply it removes them, and any month or year folder left empty,
+         and prints "removed <folder>" for each day folder.
          A session may still write to a recent day, so these are never
          removed, in either mode, and print "kept <folder> (<reason>)":
          today, yesterday, and a day holding a file modified in the last
-         24 hours (or one find cannot fully read). The closing count names
-         the kept folders when there are any. Only folders matching
-         <root>/YYYY/MM/DD are ever touched.
+         24 hours (or one find cannot fully read). It closes with one line:
+           would remove <N> day folders dated before YYYY-MM-DD[ (kept <K>,
+           listed above)]; nothing changed, add --apply to remove them
+         or, with --apply:
+           removed <N> day folders dated before YYYY-MM-DD[ (kept <K>,
+           listed above)]
+         Only folders matching <root>/YYYY/MM/DD are ever touched.
+  --help, -h
+         prints this contract on stdout; any argument after it is ignored.
 
 Exit codes:
   0  ok (prune: also when nothing is old enough)
   1  path or open: no indexed item has that ID, the ID's hex is shared by
-     several items (stderr lists them), or the indexed file is gone
-  2  usage error: unknown command or option, bad kind, bad label, a relative
-     --repo or CRUCIBLE_HOME, a malformed ID or Nd, --format html, find
-     without --kind or --session
-  4  the space cannot be created or written, a folder in it is a symlink,
-     or new waited 10 seconds for a busy index lock
+     several items (stderr lists them), or the indexed file is gone, not a
+     regular file, or in a kind folder that is a symlink
+  2  usage error: no command (this help is printed on stderr), unknown
+     command or option, a missing option value, bad kind, bad label, a
+     relative --repo, a CRUCIBLE_HOME that is relative or /, a relative HOME
+     when CRUCIBLE_HOME is unset or empty, a malformed ID or Nd, open with
+     an option before the ID, --format html, find without --kind or
+     --session. Its stderr is one "crucible.sh: <what failed>; expected
+     <x>" line, then "Try 'crucible.sh --help'."
+  4  space fault, its stderr line starting "crucible.sh: space:": neither
+     CRUCIBLE_HOME nor HOME set; the root is a symlink; the space cannot be
+     created or written (new cannot create a folder, the file or the index
+     line; prune cannot remove a day folder); a folder in it is a symlink
+     (new); new's 5 attempts all found the name or its ID taken; new waited
+     10 seconds for a busy index lock (with no working stat, a lock whose
+     owner process is alive is never judged stale by age, so it waits this
+     out); or open's mktemp -d fails in its temp base
   5  install fault, its stderr line starting "crucible.sh: install:": a
      dependency below missing, too old or failing: jq, od or tr (no random
-     source), date +%s, sleep, sort, grep, uname, the opener or the editor
+     source), date, sleep, sort, grep, find (prune), uname, the opener or
+     the editor. jq is checked once the space is resolved, before the
+     command's arguments; the others when the command first needs them.
 
 Dependencies: POSIX sh; jq 1.6+; cat, cut, find, grep, mkdir, mktemp, mv,
 od, rm, rmdir, sort, tr and uname; a date that knows +%s; a stat that knows
 -c %Y (GNU) or -f %m (BSD); a sleep that takes fractions; git only to
 default --repo; open (macOS) or xdg-open (Linux) only for open without
---editor.
+--editor. Install jq on macOS with brew install jq, on Linux with the
+distro's jq package.
+
+Runtime: under 0.05 s a command: new about 0.04 s; path by full ID about
+0.02 s; path by hex, find and prune about 0.03 s; open with the JSON
+fallback render about 0.04 s; --help about 0.01 s (mean wall time of 20
+runs, sh startup included, one day folder of about 90 items; macOS 26.7 on
+an Apple M1 Max). path by hex, find and prune grow with the number of day
+folders; open adds the report renderer's and the opener's own time.
 EOF
 }
 
@@ -223,14 +263,16 @@ main() {
 resolve_root() {
 	if [ -n "${CRUCIBLE_HOME:-}" ]; then
 		root=${CRUCIBLE_HOME}
+		root_source=CRUCIBLE_HOME
 	elif [ -n "${HOME:-}" ]; then
 		root="${HOME}/.crucible"
+		root_source=HOME
 	else
 		space_fault 'neither CRUCIBLE_HOME nor HOME is set; expected one of them to name the space'
 	fi
 	case ${root} in
 		/*) ;;
-		*) usage_error "CRUCIBLE_HOME ${root} is not absolute; expected an absolute path" ;;
+		*) usage_error "${root_source} gives ${root}, which is not absolute; expected an absolute path" ;;
 	esac
 	while [ "${root}" != "${root%/}" ]; do root=${root%/}; done
 	[ -n "${root}" ] || usage_error 'CRUCIBLE_HOME is /; expected a folder of its own'
@@ -246,7 +288,8 @@ check_jq() {
 	esac
 }
 
-# Option values arrive as the next argument; an empty or missing one is a usage error.
+# Option values arrive as the next argument; a missing one is a usage error,
+# an empty one is accepted (new --repo '' means no repository).
 require_value() {
 	[ "$2" -ge 2 ] || usage_error "$1 needs a value; expected $1 VALUE"
 }
@@ -310,7 +353,7 @@ default_repo() {
 }
 
 create_item() {
-	stamp=$(date +%Y%m%dT%H%M%S) || space_fault 'date failed; expected the local time'
+	stamp=$(date +%Y%m%dT%H%M%S) || install_fault 'date failed; expected the local time'
 	split_date "${stamp%T*}"
 	day_dir="${root}/${year}/${month}/${day}"
 	kind_dir="${day_dir}/${kind}"
@@ -548,6 +591,10 @@ run_path() {
 
 run_open() {
 	[ "$#" -gt 0 ] || usage_error 'open needs an ID; expected crucible.sh open ID [--format md|html] [--editor CMD]'
+	case $1 in
+		-*) usage_error "open needs an ID first, before $1; expected crucible.sh open ID [--format md|html] [--editor CMD]" ;;
+		*) ;;
+	esac
 	wanted_id=$1
 	shift
 	format=md editor=''
@@ -601,7 +648,7 @@ EOF
 	found_paths=$(jq -nrR --arg kind "${kind}" --arg session "${session}" --arg label "${label}" "${FIND_JQ}" "$@") ||
 		install_fault 'jq failed reading the index files; expected jq 1.6+'
 	while IFS= read -r found_path; do
-		[ -n "${found_path}" ] && [ -f "${found_path}" ] && [ ! -L "${found_path}" ] || continue
+		[ -n "${found_path}" ] && [ -f "${found_path}" ] && [ ! -L "${found_path}" ] && [ ! -L "${found_path%/*}" ] || continue
 		printf '%s\n' "${found_path}"
 	done <<EOF
 ${found_paths}
@@ -631,8 +678,9 @@ find_item() {
 	IFS=${tab} read -r item_id item_path item_kind item_label <<EOF
 ${matches}
 EOF
-	[ -f "${item_path}" ] && [ ! -L "${item_path}" ] ||
-		not_found "item ${item_id} is indexed but ${item_path} is missing or not a regular file"
+	# The kind folder is checked too: a link there would lead outside the space.
+	[ -f "${item_path}" ] && [ ! -L "${item_path}" ] && [ ! -L "${item_path%/*}" ] ||
+		not_found "item ${item_id} is indexed but ${item_path} is missing, not a regular file, or in a kind folder that is a symbolic link"
 }
 
 # Prints one tab-separated line (id, path, kind, label) per indexed item matching the ID.
@@ -804,7 +852,8 @@ run_prune() {
 		esac
 	done
 	check_days
-	today=$(date +%Y%m%d) || space_fault 'date failed; expected the local time'
+	command -v find >/dev/null 2>&1 || install_fault 'find missing; expected find on PATH to see recent files'
+	today=$(date +%Y%m%d) || install_fault 'date failed; expected the local time'
 	# shellcheck disable=SC2310 # its status is its jq's; a failure exits
 	cutoff=$(days_before "${count}") || install_fault 'jq failed on the date arithmetic; expected jq 1.6+'
 	# shellcheck disable=SC2310 # its status is its jq's; a failure exits

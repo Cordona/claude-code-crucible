@@ -95,7 +95,7 @@ def labels_item($title; $labels):
 | installed as $installed
 | "## Dispatch Plan\n\n"
 	+ "- Tech: \(.technology | clean)\n"
-	+ "- Mode: \(.mode)\(if .agent == direct_agent then " (direct implementation)" else "" end)\n\n"
+	+ "- Mode: \(.mode | clean)\(if .agent == direct_agent then " (direct implementation)" else "" end)\n\n"
 	+ task_section
 	+ "\n\n"
 	+ labels_item("Loaded"; plugin_labels(.loaded; $installed)) + "\n"
@@ -211,7 +211,7 @@ context file's content stay in the JSON files and are not printed):
                    "- Loaded: none"
   - Not loaded:    the same for not_loaded
                    A label is list-plugins.sh's label field, as
-                   the dispatch's LABELS line uses it; a not_loaded plugin
+                   the dispatch's LABELS line uses it; a plugin
                    list-plugins.sh no longer prints shows its name. A plugin
                    list-plugins.sh prints as tech is left out (the Tech line
                    names it). Each list has the standard-* plugins first,
@@ -236,9 +236,10 @@ holding exactly one JSON object
    "links": null | [{"url": str, "why": str}, ...],
    "notes": [str, ...]}
 with no other key in it or its entries; path absolute (starts with /), url
-http:// or https:// with a host of letters, digits, dots and hyphens and an
-optional :port, then optionally a path, query or fragment of letters, digits
-and . _ ~ / ? # = % : + , @ - only (no space, quote, ; $ \` ( ) & | < or >),
+http:// or https:// (in any letter case) with a host of letters, digits, dots
+and hyphens and an optional :port, then optionally a path, query or fragment
+of letters, digits and . _ ~ / ? # = % : + , @ - only (no space, quote,
+; $ \` ( ) & | < or >),
 why one non-empty line, notes may be []. Each problem prints as
 "context file: <what>; expected <x>" (the shape problems at most 20, then a
 count), exit 2; every line about a problem of CTX itself starts
@@ -295,10 +296,12 @@ Exit codes:
   6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
      (skills folder missing or unreadable); its stderr and exit are printed
 
-Dependencies: POSIX sh, jq 1.6+; for a printed plan the ${RENDER_LIB} skill's
+Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
+jq package); for a printed plan the ${RENDER_LIB} skill's
 paths.jq; for a dispatch plan list-plugins.sh, and for it or its question
 scripts/04-agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
-wc, sha256sum or shasum (macOS: shasum -a 256),
+wc, sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
+shasum -a 256),
 scripts/02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq.
 Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
 30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
@@ -524,7 +527,7 @@ run_jq() {
 
 parse_args "$@"
 command -v jq >/dev/null 2>&1 ||
-	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq)'
+	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)

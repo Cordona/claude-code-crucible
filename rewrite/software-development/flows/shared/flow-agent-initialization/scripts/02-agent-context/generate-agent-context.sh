@@ -56,6 +56,7 @@ def option: {path: "--path", link: "--link", note: "--note", text: "--text-file"
 # Problems of the Crucible space sort after those of the entries.
 def space_order: 1e9;
 def problem_line($order; $option; $value; $problem): {order: $order, text: "\($prog): \($option) \($value | shown): \($problem)"};
+def space_line($problem): problem_line(space_order; "CRUCIBLE_HOME"; $space_root; $problem + $space_source);
 def file_problems: [$file_problem_lines | split("\n")[] | select(. != "") | split("\t") | {index: (.[0] | tonumber), problem: .[1]}];
 def validator_problems: [$validator_problem_lines | split("\n")[] | select(. != "") | fromjson];
 # Names validator problem . by the option behind its field. A path field the
@@ -66,13 +67,13 @@ def validator_line($listed; $refused):
 	| (if ($at | type) == "array" and ($at | length) >= 2 then $listed[$at[0]][$at[1]] else null end) as $entry
 	| if $entry == null then {order: -1, text: "\($prog): context file: \($at | tojson) \($problem)"}
 	  elif $at[2] == "why" then problem_line($entry.index; "--why"; $entry.why; $problem)
-	  elif $entry.kind == "text" then problem_line(space_order; "CRUCIBLE_HOME"; $space_root; $problem)
+	  elif $entry.kind == "text" then space_line($problem)
 	  elif $at[0] == "paths" and ($refused | index([$entry.index])) != null then empty
 	  else problem_line($entry.index; $entry.kind | option; $entry.value; $problem) end;
 def report: entries as $entries | file_problems as $files
 	| [($files[] | .problem as $problem | $entries[.index] | problem_line(.index; .kind | option; .value; $problem)),
 	   (validator_problems[] | validator_line(listed($entries); $files | map(.index))),
-	   (if $space_problem == "" then empty else problem_line(space_order; "CRUCIBLE_HOME"; $space_root; $space_problem) end)]
+	   (if $space_problem == "" then empty else space_line($space_problem) end)]
 	| reduce .[] as $line ([]; if any(.[]; .text == $line.text) then . else . + [$line] end)
 	| sort_by(.order)[].text;
 
@@ -89,7 +90,8 @@ usage() {
 Usage: sh ${PROG} --label LABEL [--session ID] [--path ABS --why LINE]...
            [--link URL --why LINE]... [--text-file FILE --why LINE]
            [--note TEXT]...
-       sh ${PROG} --help
+       sh ${PROG} --help|-h
+With no argument it prints this help on stderr and exits 2.
 
 Writes one agent context file, the file a dispatch's context.path names and
 prepare-agent-prompt.sh sends the agent, into the Crucible space, and prints its path and
@@ -106,9 +108,9 @@ sha256. Every input is checked first; on any problem no file is created.
                   .git component), must not be a symlink (its folders may
                   be), and must be an existing readable regular file or
                   folder. Trailing slashes are dropped.
-  --link URL      http:// or https://, then a host of letters, digits, dots
-                  and hyphens with an optional :port, then optionally a path,
-                  query or fragment of letters, digits and
+  --link URL      http:// or https:// (in any letter case), then a host of
+                  letters, digits, dots and hyphens with an optional :port,
+                  then optionally a path, query or fragment of letters, digits and
                   . _ ~ / ? # = % : + , @ - only (no space, quote, ; \$ \` ( ) & | < or >).
   --text-file FILE  a readable regular file (same path rules as --path, a
                   folder excluded) holding the human's long verbatim text, as
@@ -116,7 +118,7 @@ sha256. Every input is checked first; on any problem no file is created.
                   file, made by crucible.sh new --kind context --label
                   LABEL${TEXT_LABEL_SUFFIX}, holding {"text": "<the content>"}, and that
                   file is the last entry of paths. At most one. Its content
-                  is not checked for the texts below: the agent reads it with
+                  is checked only for valid UTF-8: the agent reads it with
                   Read, it is not injected.
   --why LINE      why the agent needs the entry before it: one non-empty line
                   without control characters. Exactly one right after each
@@ -135,31 +137,52 @@ paths and links in the order given (the --text-file entry last in paths),
 null when there is none of that kind.
 
 Files are made by \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-new, in the space \${CRUCIBLE_HOME:-\$HOME/.crucible}; each is written to a temp
+new --kind context, in the space \${CRUCIBLE_HOME:-\$HOME/.crucible}, the
+--text-file one first; each crucible.sh new also appends the file's line to
+the day's index.jsonl, its repo the git root of the current folder (empty
+outside a repository; see crucible.sh --help). Each file is written to a temp
 file in its folder, then moved onto the path crucible.sh printed.
 
 Output (stdout, exactly two lines, on exit 0):
   CONTEXT_FILE: <absolute path of the context file>
   CONTEXT_SHA256: <64 lowercase hex sha256 of that file>
-Problems (stderr, one line each; every problem of the inputs is listed):
-  ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters>: <problem>; expected <x>
+Problems (stderr, one line each; every problem of the inputs is listed), in
+three forms, a value shown as a JSON string, its middle cut past 80 characters:
+  ${PROG}: <option> <value>: <problem>; expected <x>
+  ${PROG}: context file: <problem>; expected <x>
+      the context JSON as a whole, such as over the size cap
+  ${PROG}: CRUCIBLE_HOME <the space folder>: <problem>; expected <x>
+      the space path a context file would get, from CRUCIBLE_HOME, or
+      \$HOME/.crucible when it is unset or empty; then the line ends
+      "; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix
+      HOME, or set CRUCIBLE_HOME to a folder that passes"; exit 4
 
 Exit codes:
   0  the file written; its path and sha256 printed
   1  crucible.sh new failed (its stderr is printed), or writing or checking a
-     file failed after crucible.sh created it; one stderr line names each
-     file created
-  2  usage error: an unknown option, an option without its value, a --why not
-     right after an entry, an entry without its --why, a second --label,
-     --session or --text-file, --label missing or bad, or no --note
-  3  invalid input, one stderr line per problem; no file created
+     file failed after crucible.sh created it. One stderr line ends with
+     "created and not completed: <path>[, <path>]" or "no file was
+     created"; the files created are left in place, empty or partly
+     written, with their index lines
+  2  usage error: no argument, an unknown option, an option without its
+     value, a --why not right after an entry, an entry without its --why, a
+     second --label, --session or --text-file, an empty --session, --label
+     missing or bad, or no --note
+  3  invalid input, one stderr line per problem; no file created; fix the
+     named inputs
+  4  the Crucible space path is unusable (a CRUCIBLE_HOME line, printed with
+     every other problem); no file created; fixing the inputs does not help:
+     set CRUCIBLE_HOME to a folder that passes the rule the line names, or,
+     when the line says CRUCIBLE_HOME is unset or empty, fix HOME
   5  a dependency missing, with the fix named: jq 1.6+, sha256sum or shasum,
      crucible.sh, agent-context-file-checks.sh or agent-context-validator.jq beside this
      script, or a base tool below
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
 
-Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --rawfile); cat, mktemp, mv,
-rm, tr, wc; sha256sum or shasum (macOS: shasum -a 256); crucible.sh;
+Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --rawfile; macOS: brew
+install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
+every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
+(macOS: built in, run as shasum -a 256); crucible.sh;
 agent-context-file-checks.sh and agent-context-validator.jq beside this script.
 Reads only: the --text-file content; for --path, only whether it exists and
 its type.
@@ -418,17 +441,21 @@ run_context_jq() {
 	shift 2
 	jq -nr --arg prog "${PROG}" --arg mode "${run_mode}" --arg text_path "${run_text_path}" \
 		--arg file_problem_lines "${file_problems}" --arg validator_problem_lines "${validator_problems}" \
-		--arg space_root "${space_root}" --arg space_problem "${space_problem}" \
+		--arg space_root "${space_root}" --arg space_problem "${space_problem}" --arg space_source "${space_source}" \
 		"${CONTEXT_JQ}" --args -- "$@" </dev/null
 }
 
 # Sets space_root, the placeholder paths and space_problem, the main
-# placeholder path's problem as agent-context-file-checks.sh finds it.
+# placeholder path's problem as agent-context-file-checks.sh finds it, and
+# space_source, which a space problem line ends with: when the space comes
+# from HOME, HOME is the part to fix, not CRUCIBLE_HOME.
 plan_space_paths() {
 	if [ -n "${CRUCIBLE_HOME:-}" ]; then
 		space_root=$(without_trailing_slashes "${CRUCIBLE_HOME}")
+		space_source=''
 	else
 		space_root="${HOME:-}/.crucible"
+		space_source="; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix HOME, or set CRUCIBLE_HOME to a folder that passes"
 	fi
 	placeholder_context="${space_root}/${PLACEHOLDER_ITEM}-${label}.json"
 	placeholder_text="${space_root}/${PLACEHOLDER_ITEM}-${label}${TEXT_LABEL_SUFFIX}.json"
@@ -436,9 +463,9 @@ plan_space_paths() {
 	[ -z "${space_problem}" ] || space_problem="${space_problem}; expected ${context_path_expected}"
 }
 
-# Exits 3 after printing every problem the file checks, the validator and the
-# size cap find in the context the entries in "$@" make, built with the
-# placeholder paths before any file exists.
+# Exits 3, or 4 when one is the Crucible space's, after printing every problem
+# the file checks, the validator and the size cap find in the context the
+# entries in "$@" make, built with the placeholder paths before any file exists.
 report_input_problems() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
 	planned_json=$(run_context_jq context "${placeholder_text}" "$@") ||
@@ -454,7 +481,11 @@ report_input_problems() {
 	[ -z "${size_problem}" ] || problems="${problems}${problems:+${NL}}${PROG}: context file: ${size_problem}"
 	[ -n "${problems}" ] || return 0
 	printf '%s\n' "${problems}" >&2
-	exit 3
+	# A space problem is the environment's: no change to the inputs fixes it.
+	case ${NL}${problems} in
+		*"${NL}${PROG}: CRUCIBLE_HOME "*) exit 4 ;;
+		*) exit 3 ;;
+	esac
 }
 
 # Prints the size cap's problem of the context JSON $1, or nothing.

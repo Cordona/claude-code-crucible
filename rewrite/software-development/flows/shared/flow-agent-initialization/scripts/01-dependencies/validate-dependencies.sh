@@ -4,7 +4,8 @@
 # plugin list reader, the dispatch check, the plugin file helper and the
 # dispatch names module, the context-handling template the inject hook sends,
 # lib-render's path helpers, which a printed plan loads, procedure-approval-gate's
-# open-gate.sh and its two hook scripts, crucible.sh, jq, the three hook
+# open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
+# date, git, cmp and sha256sum or shasum, the three hook
 # entries in settings.json (the inject hook, which must block on failure, and
 # both gate hooks), the Crucible
 # space in its additionalDirectories, and the installed plugins. Every check
@@ -66,6 +67,9 @@ readonly MARKER_NAME='install-check'
 # Base tools whose absence would make a check report the wrong thing (a missing
 # grep reads as an empty template), so a run stops before any check without one.
 readonly BASE_TOOLS='cat grep readlink tr'
+# Tools the flow's scripts need when they run that no checked --help tests;
+# sha256sum or shasum is checked apart, since either one will do.
+readonly RUN_TOOLS='date git cmp'
 # prepare-agent-prompt.sh needs jq 1.6 for --rawfile (see its --help).
 readonly JQ_MIN_MAJOR=1
 readonly JQ_MIN_MINOR=6
@@ -154,6 +158,12 @@ then one line per check:
                                holding more than whitespace
   ✓ ${PATHS_MODULE}        a readable file in DIR/${RENDER_LIB}/
   ✓ jq <version>               jq on PATH, version ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR} or newer
+  ✓ date                       on PATH; a failed line names the scripts that
+                               need it and how to install it
+  ✓ git                        the same
+  ✓ cmp                        the same
+  ✓ sha256sum                  sha256sum on PATH, or else shasum ("✓ shasum");
+                               with neither, "✗ sha256sum or shasum: ..."
   ✓ inject hook registered (...)
                                FILE is valid JSON with a PreToolUse entry,
                                matcher "Agent", whose command runs ${HOOK_SCRIPT}
@@ -173,8 +183,13 @@ then one line per check:
   ✓ <N> plugins installed: <t> tech, <s> standards, <p> procedures
                                from list-plugins.sh --max-lines 0
 A failed check prints "✗ <item>: <reason>. Fix: <action>" instead (invalid
-plugins add list-plugins.sh's report lines, indented). No plugins at all is a
-warning, not a failure: "⚠ no plugins installed: ...". The last line is
+plugins add list-plugins.sh's report lines, indented). A script whose --help
+exits non-zero gets "--help exited <n>, expected 0: <its first output line>"
+(stdout and stderr together, control characters dropped) and the fix "fix
+what it names (a tool missing from PATH: install it), or reinstall <skill>
+under DIR"; with no output, "--help exited <n>, expected 0" and the
+reinstall. No plugins at all is a warning, not a failure: "⚠ no plugins
+installed: ...". The last line is
 "All checks passed." (plus " (1 warning)" after a warning),
 "<n> check(s) failed: dispatch needs the inject hook; direct implementation can
 go on." when only the inject hook check failed, or "<n> check(s) failed."
@@ -189,7 +204,8 @@ ${DISPATCH_VALIDATOR_LIB}, ${PLUGIN_FILES_LIB}, ${DISPATCH_NAMES_LIB},
 ${TEMPLATE_FILE}, ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three
 (open-gate.sh and both gate hook scripts), ${CRUCIBLE_SCRIPT}, the three hook
 entries' commands (hashed), the Crucible space and the additionalDirectories
-entries, the jq version, and each tech-*/standard-*/procedure-* folder's name,
+entries, the jq version, where date, git, cmp, sha256sum and shasum are on
+PATH, and each tech-*/standard-*/procedure-* folder's name,
 SKILL.md and references/ files. While the fingerprint is unchanged, a run
 prints the header line, then only:
   ✓ Install unchanged since <YYYY-MM-DD HH:MM>: <n> checks passed
@@ -203,22 +219,40 @@ the checklist ends with "(result not cached: <reason>)"; that never fails it.
 
 Exit codes:
   0  every check passed (a warning included), or the cached pass still holds
-  1  a script, template, plugin, jq, gate hook or Crucible space check failed
-     (whatever else failed too); jq and both gate hooks are needed by the
-     approval gate. Also a missing base tool (cat, grep, readlink or tr): one
-     "✗ <tool>" line each, then "<n> check(s) failed.", and no other check runs
+  1  a script, template, plugin, jq, run-time tool, gate hook or Crucible
+     space check failed (whatever else failed too); jq, the run-time tools and
+     both gate hooks are needed by the approval gate or the dispatch files,
+     direct implementation included. Also a missing base tool (cat, grep,
+     readlink or tr): one "✗ <tool>" line each, then "<n> check(s) failed.",
+     and no other check runs
   2  usage error
   3  only the inject hook check failed: direct implementation can go on,
      dispatch can't
 
 Dependencies: POSIX sh with cat, grep, readlink and tr, checked at start (a
 missing one exits 1 and names it; all ship with macOS, and on Linux grep is the
-grep package and the others coreutils); cksum, find, sort, date, mkdir, mktemp,
-mv and rm for the cache (a missing one leaves the result not cached); jq is a
-check, not a requirement.
+grep package and the others coreutils); cksum, find, sort, mkdir, mktemp, mv
+and rm for the cache (a missing one leaves the result not cached), and date
+to stamp it; jq, date, git, cmp and sha256sum or shasum are checks, not
+requirements: each has its own line, as above. Of the checked scripts' --help,
+only list-plugins.sh's
+tests tools (awk and sort), and generate-agent-context.sh's and
+generate-dispatch-plan.sh's (cat, mktemp, mv, rm, tr and wc); a missing one
+fails that script's line, as above. No other tool a checked script needs
+(such as awk or dd for the inject hook, or find, chmod or touch for
+open-gate.sh) is checked here: that script stops naming it when it runs.
 Runtime: about 0.26 s for a full pass, 0.04 s cached; measured on macOS (average of 10 runs).
-Reads only: settings.json through jq (the hook commands and
-permissions.additionalDirectories, counted or hashed, never printed). Writes only: CACHE/${MARKER_NAME}.
+Runs: sh <script> --help for each script check (stdin /dev/null), and
+DIR/${PROCEDURE}/scripts/${LIST_SCRIPT} --max-lines 0 --skills-dir DIR.
+Reads: the checked files and each plugin folder's SKILL.md and references/
+(hashed for the fingerprint, the template searched for a non-space
+character), CACHE/${MARKER_NAME}, and settings.json only through jq (the hook
+commands and permissions.additionalDirectories, counted or hashed, never
+printed).
+Writes only in CACHE: a clean pass runs mkdir -p CACHE, writes a temp file
+CACHE/${MARKER_NAME}.XXXXXX and moves it onto CACHE/${MARKER_NAME} (a temp file
+left by a failed write is removed on exit); a failure or a warning removes
+CACHE/${MARKER_NAME}.
 EOF
 }
 
@@ -314,6 +348,10 @@ fingerprint_input() {
 		printf 'additional directories unreadable\n'
 	printf 'jq\n'
 	jq --version </dev/null 2>/dev/null || printf 'jq unavailable\n'
+	printf 'tools\n'
+	for tool in ${RUN_TOOLS} sha256sum shasum; do
+		command -v "${tool}" 2>/dev/null || printf '%s missing\n' "${tool}"
+	done
 	printf 'plugins\n'
 	fingerprint_plugins
 }
@@ -427,12 +465,19 @@ read_help() {
 		fail "$2" "missing from ${script_dir}" "${reinstall}"
 		return 1
 	fi
-	if help_text=$(sh "${script}" --help </dev/null 2>/dev/null); then
+	# stderr is kept with stdout: a --help that fails on a tool missing from
+	# PATH names it there, and that cause, not a reinstall, is the fix.
+	if help_text=$(sh "${script}" --help </dev/null 2>&1); then
 		return 0
 	else
 		help_status=$?
 	fi
-	fail "$2" "--help exited ${help_status}, expected 0" "${reinstall}"
+	help_cause=$(printf '%s' "${help_text%%"${NL}"*}" | tr -d '\001-\037\177')
+	if [ -n "${help_cause}" ]; then
+		fail "$2" "--help exited ${help_status}, expected 0: ${help_cause}" "fix what it names (a tool missing from PATH: install it), or ${reinstall}"
+	else
+		fail "$2" "--help exited ${help_status}, expected 0" "${reinstall}"
+	fi
 	return 1
 }
 
@@ -528,6 +573,40 @@ is_version_readable() {
 		:* | *: | *[!0-9:]*) return 1 ;;
 		*) return 0 ;;
 	esac
+}
+
+# Checks the tools the flow's scripts need at run time that their --help
+# doesn't test, so a pass here can't be followed by a stop on a missing one.
+check_run_tools() {
+	for tool in ${RUN_TOOLS}; do
+		if command -v "${tool}" >/dev/null 2>&1; then
+			pass "${tool}"
+			continue
+		fi
+		case ${tool} in
+			date)
+				run_tool_need='open-gate.sh, both gate hooks, the inject hook, generate-agent-dispatch.sh and crucible.sh'
+				run_tool_fix='put date back on PATH (macOS: it ships in /bin; Linux: the distro'\''s coreutils package), then rerun'
+				;;
+			git)
+				run_tool_need='generate-agent-dispatch.sh and the inject hook'\''s baseline'
+				run_tool_fix='install git (macOS: xcode-select --install; Linux: the distro'\''s git package), then rerun'
+				;;
+			*)
+				run_tool_need='open-gate.sh'
+				run_tool_fix='put cmp back on PATH (macOS: it ships in /usr/bin; Linux: the distro'\''s diffutils package), then rerun'
+				;;
+		esac
+		fail "${tool}" "not found on PATH; expected it for ${run_tool_need}" "${run_tool_fix}"
+	done
+	if command -v sha256sum >/dev/null 2>&1; then
+		pass sha256sum
+	elif command -v shasum >/dev/null 2>&1; then
+		pass shasum
+	else
+		fail 'sha256sum or shasum' 'neither is on PATH; expected one for the context, plan and dispatch generators, render-dispatch-plan.sh and the inject hook' \
+			'install coreutils (Linux), or put the system shasum back on PATH (macOS: it ships in /usr/bin), then rerun'
+	fi
 }
 
 # Checks that the settings file registers the inject hook and both gate hooks
@@ -853,6 +932,7 @@ check_lib_file "${DISPATCH_NAMES_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_template
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq
+check_run_tools
 check_settings
 check_plugins
 record_result

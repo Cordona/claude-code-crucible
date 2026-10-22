@@ -14,7 +14,7 @@ umask 077
 
 readonly PROG='generate-agent-dispatch.sh'
 readonly PROCEDURE='flow-agent-initialization'
-readonly REQUIRED_TOOLS='cat date git mktemp mv rm tr wc'
+readonly REQUIRED_TOOLS='awk cat date git mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
 readonly DIRECT_LABEL='main-thread'
@@ -82,7 +82,8 @@ Usage: sh ${PROG} --session ID --plan-sha256 HEX --task N --repo-root PATH
 
 Writes one agent dispatch file for task N of the plan the human approved, and
 allocates the agent's report file and the dispatch's baseline file. Every
-input is checked first; on any problem no file is left behind.
+input is checked first; on a problem no file is left behind, though the
+index lines crucible.sh new appended stay (see the writes below).
 
   --session ID       the Claude Code session whose gates records are searched,
                      and the session of the files made.
@@ -92,19 +93,25 @@ input is checked first; on any problem no file is left behind.
                      newest first) whose content without its top-level "v"
                      hashes to HEX in canonical form (the one line
                      jq -cS 'del(.v)' prints, its newline included).
-  --task N           which of the plan's tasks, from 1.
+  --task N           which of the plan's tasks: a decimal integer from 1, no
+                     leading zero.
   --repo-root PATH   the repository's git work-tree root: absolute, an existing
                      folder, and what git -C PATH rev-parse --show-toplevel
                      prints.
   --starting-point REL  a repo-relative path the task starts from, kept in
                      order; it need not exist (a task may create it). None is
                      allowed.
-  --skills-dir DIR   the skills folder; defaults to
-                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. The installed
-                     plugins are the plugin lines of
+  --skills-dir DIR   the skills folder, which must be
+                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills, the default
+                     (compared as text, trailing slashes dropped): the Agent
+                     hook, prepare-agent-prompt.sh, takes plugin paths only
+                     under that folder, so any other DIR is refused (exit 3).
+                     The installed plugins are the plugin lines of
                      DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0.
   --baseline-from DISPATCH  an earlier dispatch file of this task, the one a
-                     resend replaces: the new dispatch's baseline file gets a
+                     resend replaces (that it is of this task is the
+                     caller's to hold: only the checks below are made): the
+                     new dispatch's baseline file gets a
                      byte-for-byte copy of DISPATCH's filled baseline, so the
                      baseline stays the tree before the first call. DISPATCH
                      must be absolute, a regular file, not a symlink, pass
@@ -124,14 +131,17 @@ Checks, all before any file is made:
     among its rules dispatches only agents code-developer, code-reviewer and
     "main thread" (direct implementation, with no tech plugin), in mode BUILD
     (TEST is refused for now)
-A gate record written before a change to dispatch-plan-validator.jq's rules is
-refused; regenerate the plan at the flow's step 7.
+A gate record that no longer passes dispatch-plan-validator.jq's current
+rules is refused; regenerate the plan at the flow's step 7. Its "v" is not
+read.
 The loaded plugins' files are scripts/04-agent-dispatch/plugin-files.sh's:
 role developer for code-developer and "main thread" (SKILL.md,
 references/development.md, each references/*-template.md), role reviewer for
 code-reviewer (SKILL.md, references/review.md when readable), the tech
 plugin's files first (its base first), then the standard and procedure
-plugins in plugin-line order.
+plugins in plugin-line order. A based tech plugin's base files form their
+own plugins entry, named after the base's folder (tech-<base>), before the
+tech plugin's entry, even though the plan lists that base as not loaded.
 
 Then the report file is made by crucible.sh new --kind reports --label
 <agent>-report --session ID (<agent> being main-thread for "main thread"),
@@ -140,10 +150,15 @@ the baseline file by crucible.sh new --kind baselines --label
 \${CRUCIBLE_HOME:-\$HOME/.crucible}, and not under PATH), and the dispatch file
 by crucible.sh new --kind dispatches --label <agent>-dispatch --session ID,
 written to a temp file in its folder, moved onto its path and checked again.
+Each crucible.sh new also appends the item's line to the day's index.jsonl
+in the Crucible space; a file this run removes on a failure keeps its index
+line.
 The baseline file is left empty: this script writes no git status, since a
 dispatch may be sent long after it is written. prepare-agent-prompt.sh
 writes it at the Agent call (or at --direct), before the agent or the main
-thread changes the tree, and report.sh reads it through the dispatch. With
+thread changes the tree, and the developer's report.sh (the one for
+code-developer and "main thread") reads it through the dispatch; the
+reviewer's report.sh does not read it. With
 --baseline-from, the file instead gets the earlier baseline's bytes, read
 once and checked before any file is made, through a temp file in its folder
 moved onto its path; the hook then keeps it as a resend's.
@@ -151,16 +166,24 @@ moved onto its path; the hook then keeps it as a resend's.
 The dispatch file (one JSON object, exactly these keys):
   {"id": <the dispatch file's Crucible ID>, (*)
    "started": <local time, YYYY-MM-DDTHH:MM:SS+HH:MM>, (*)
-   "agent": str, "mode": str,
+   "agent": str,
+   "mode": str, (*)
    "tech": <the loaded tech plugin's name, or "none">, (*)
-   "plugins": [{"name": str, "paths": [absolute path, ...]}, ...],
+   "plugins": [{"name": <the plugin folder>, "paths": [absolute path, ...]}, ...], (*)
    "plan": {"path": <the gate record>, "sha256": HEX},
      (kept for audit: the gate record the dispatch came from)
    "context": {"path": str, "sha256": str},
    "task": <the N-th task, exact>, "repo_root": PATH,
    "starting_points": [REL, ...], "report": <the report file>,
    "baseline": <the baseline file, empty until the call>}
-  (*) stamped into the agent's report by report.sh check --dispatch
+  (*) stamped at the top level of the agent's report on a passing
+      report.sh check --dispatch, the developer's and the reviewer's alike:
+      id as "dispatch", started, mode and tech under their own names, and
+      plugins as their names only ("plugins": [<name>, ...]). report.sh
+      adds its own "finished", the local time its check passed. The
+      reviewer's report.sh also stamps "plugin" on each finding: the one
+      tech-* or standard-* plugin's name, or "correctness" when none is
+      loaded.
 
 Output (stdout, exactly two lines, on exit 0):
   DISPATCH: <absolute path of the dispatch file>
@@ -171,33 +194,57 @@ loaded (never "Procedures: none")
 Problems (stderr, one line each; every problem is listed):
   ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters>: <problem>; expected <x>
 A problem of the plan or its context file names --plan-sha256; one of the
-report or baseline file's place names CRUCIBLE_HOME.
+report or baseline file's place names CRUCIBLE_HOME. A context file whose
+sha256 is no longer the plan's context.sha256 gives this line (sha256s cut to
+12 digits):
+  ${PROG}: --plan-sha256 "<HEX>": the plan's context file <path>: changed since the plan was shown (sha256 <shown> shown, <now> now); expected it as shown; show the plan again for the changed file
+Other stderr lines:
+  - ${PROG}: <message>; expected <x>...: a usage error (then a
+    "Try ..." line), a dependency fault, a failure after the checks, or
+    "removed <file>, made by this run"
+  - list-plugins.sh: <name>: <reason>, passed through: an invalid plugin it
+    leaves out; the run goes on
+  - ${PROG}: name <name> given twice ... or name <name> is not
+    an installed plugin ..., from plugin-files.sh, before the problem line
+    naming the plan's plugins
+  - crucible.sh's own lines, when crucible.sh find or new fails
 
 Exit codes:
   0  the dispatch file written; its path and the LABELS line printed
   1  making, writing or checking a file failed after the inputs passed; the
      files this run made (report, baseline, dispatch) are removed (stderr
-     names them)
-  2  usage error: an unknown option, an option without its value, a second
-     --session, --plan-sha256, --task, --repo-root, --skills-dir or
-     --baseline-from, or one of the first four missing
+     names them); their index lines stay
+  2  usage error: an unknown option, an option without its value or with an
+     empty one, a second --session, --plan-sha256, --task, --repo-root,
+     --skills-dir or --baseline-from, or one of the first four missing.
+     --help and usage errors are handled before the tool check below, so
+     they need only cat (for --help) and tr (to show an unknown option)
   3  invalid input, one stderr line per problem, a --baseline-from DISPATCH
      that is not a valid dispatch of PATH or whose baseline is empty or not
      a baseline of PATH among them; no file made
   5  a dependency missing or failing, with the fix named: jq 1.6+, git,
      sha256sum or shasum, crucible.sh, list-plugins.sh, the checks and helpers
-     named above, or a base tool below
-  129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
+     named above, a base tool below, or mktemp failing while --baseline-from
+     is checked; no file made
+  129, 130, 143  stopped by HUP, INT or TERM; the temp files and the files
+     this run made are removed (stderr names them); their index lines stay.
+     A crucible.sh new still running when the signal lands is not stopped:
+     it may still make its empty file and index line after this exit
 
-Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS); cat, date (+%z), git, mktemp,
-mv, rm, tr, wc; sha256sum or shasum (macOS: shasum -a 256); crucible.sh;
-list-plugins.sh; scripts/02-agent-context/agent-context-file-checks.sh and
+Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS; macOS: brew install jq;
+Linux: the distro's jq package); git (macOS: xcode-select --install; Linux:
+the distro's git package); awk, cat, date (+%z), mktemp, mv, rm, tr, wc, in
+every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
+(macOS: built in, run as shasum -a 256); crucible.sh; list-plugins.sh;
+scripts/02-agent-context/agent-context-file-checks.sh and
 agent-context-validator.jq; scripts/03-dispatch-plan/dispatch-plan-validator.jq
 and installed-plugins.jq; plugin-files.sh, agent-dispatch-validator.jq and
 ${NAMES_MODULE}.jq beside this script.
-Reads only: the session's gates records, the plan's context file, git's view
-of PATH, what list-plugins.sh reads, and with --baseline-from that dispatch
-and its baseline file.
+Reads only: the session's gates records and, through crucible.sh find, the
+Crucible space's index.jsonl files; the plan's context file; git's view of
+PATH; what list-plugins.sh reads; the loaded plugins' folders (whether
+references/review.md is readable, and the references/*-template.md files);
+and with --baseline-from that dispatch and its baseline file.
 Runtime: about 600 ms for a dispatch with 3 plugins; measured on macOS
 (average of 5 runs).
 EOF
@@ -223,10 +270,14 @@ printable() {
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
+# Removes the temp files; on a failing exit, a signal included, also the
+# files this run made, so no partial dispatch is left behind.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
-remove_temp_file() {
+clean_up() {
+	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
 	[ -z "${earlier_baseline_copy}" ] || rm -f "${earlier_baseline_copy}"
+	[ "${exit_status}" -eq 0 ] || remove_created_files
 }
 
 # Handles option $1 when no option value is awaited: sets awaited_option, or exits 2.
@@ -257,7 +308,7 @@ take_value() {
 		--task) task_number=$2 ;;
 		--repo-root) repo_root=$2 ;;
 		--baseline-from) baseline_from=$2 ;;
-		*) skills_dir=$2 ;;
+		*) given_skills_dir=$2 ;;
 	esac
 }
 
@@ -270,7 +321,26 @@ finish_parse() {
 			*) usage_error "${required} missing; expected ${required} VALUE" ;;
 		esac
 	done
-	[ -n "${skills_dir}" ] || skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
+	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
+}
+
+# Adds a problem when --skills-dir is not the skills folder the Agent hook
+# takes plugin paths under; the run always uses that folder.
+check_skills_dir() {
+	[ -n "${given_skills_dir}" ] || return 0
+	trim_trailing_slashes "${skills_dir}"
+	hook_skills_dir=${trimmed}
+	trim_trailing_slashes "${given_skills_dir}"
+	[ "${trimmed}" != "${hook_skills_dir}" ] || return 0
+	add_problem --skills-dir "${given_skills_dir}" "not the skills folder the Agent hook takes plugin paths under; expected ${skills_dir}; drop --skills-dir, or set CLAUDE_CONFIG_DIR"
+}
+
+# Sets trimmed to $1 without its trailing slashes ("/" stays "/").
+trim_trailing_slashes() {
+	trimmed=$1
+	while [ "${trimmed}" != '/' ] && [ "${trimmed%/}" != "${trimmed}" ]; do
+		trimmed=${trimmed%/}
+	done
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh and every
@@ -312,7 +382,7 @@ load_dependencies() {
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill"
 	list_script="${skills_dir}/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
-		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
+		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -622,7 +692,7 @@ read_earlier_baseline() {
 		return 0
 	fi
 	earlier_baseline_copy=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
-		die 1 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try checking its permissions and free space, then rerun"
+		die 5 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try checking its permissions and free space, then rerun"
 	if ! cat -- "${earlier_baseline}" >"${earlier_baseline_copy}"; then
 		add_baseline_from_problem "its baseline file ${earlier_baseline} cannot be read; expected the regular file the Agent hook or --direct filled"
 		return 0
@@ -690,14 +760,19 @@ create_item() {
 
 # Removes the files this run made, names them, and exits 1 with $1.
 fail_run() {
-	if [ -n "${created_files}" ]; then
-		while IFS= read -r created_file; do
-			rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
-		done <<EOF
+	remove_created_files
+	die 1 "$1"
+}
+
+# Removes and names the files this run made; their index lines stay.
+remove_created_files() {
+	[ -n "${created_files}" ] || return 0
+	while IFS= read -r created_file; do
+		rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
+	done <<EOF
 ${created_files}
 EOF
-	fi
-	die 1 "$1"
+	created_files=''
 }
 
 # Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies in
@@ -748,16 +823,11 @@ write_dispatch() {
 	[ -z "${written_problems}" ] || fail_run "the written dispatch fails its validator: ${written_problems}"
 }
 
-for tool in ${REQUIRED_TOOLS}; do
-	command -v "${tool}" >/dev/null 2>&1 ||
-		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
-done
-
 temp_file=''
 earlier_baseline_copy=''
 created_files=''
-trap remove_temp_file EXIT
-# A signal exits through the EXIT trap, so the temp file goes on every path.
+trap clean_up EXIT
+# A signal exits through the EXIT trap, so the temp files go on every path.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -766,7 +836,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-session='' plan_sha256='' task_number='' repo_root='' skills_dir='' baseline_from='' seen_options='' awaited_option=''
+session='' plan_sha256='' task_number='' repo_root='' skills_dir='' given_skills_dir='' baseline_from='' seen_options='' awaited_option=''
 # Each --starting-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
@@ -785,8 +855,17 @@ done
 finish_parse
 shift "${argument_count}"
 
-load_dependencies
+for tool in ${REQUIRED_TOOLS}; do
+	command -v "${tool}" >/dev/null 2>&1 && continue
+	case ${tool} in
+	git) die 5 "git missing; expected it on PATH; install it (macOS: xcode-select --install; Linux: the distro's git package)" ;;
+	*) die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}" ;;
+	esac
+done
+
 problems='' validator_problems='' plan_sha256_ok=true task_number_ok=true plan_ok=false
+load_dependencies
+check_skills_dir
 check_plan_sha256
 check_task_number
 check_repo_root

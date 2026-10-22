@@ -27,6 +27,8 @@ Apply after `SKILL.md`'s rules, before writing any shell.
 
 Run it on every shell file written or changed, before reporting done. Its tools are `shellcheck` and `bash` or `sh`.
 
+`shellcheck` missing: macOS `brew install shellcheck`, Linux the distro's `shellcheck` package; record step 2 `not_run` with that hint as its note.
+
 1. `head -1 <file>`: the shebang names the shell for step 3. A new file has the shebang `SKILL.md`'s Target shell settles.
 2. `shellcheck -x -o all <file>`, with no new warnings: run it on the file before and after your change. `-o all` turns on the optional checks, such as `set -e`'s blind spots, which are off by default. The step passes when your change adds no warning.
 3. `sh -n <file>` when the shebang names `sh`, `bash -n <file>` when it names Bash: the syntax check.
@@ -39,7 +41,7 @@ Run it on every shell file written or changed, before reporting done. Its tools 
 3. Every expansion that splits is quoted, and every built command is an array.
 4. No untrusted value reaches `eval`, `sh -c` or arithmetic before validation.
 5. Every temp file comes from `mktemp`, with an `EXIT` trap removing it.
-6. Each gate step ran, step 4 only where step 4 allows it.
+6. Each gate step ran, step 2 only when shellcheck is installed, step 4 only where step 4 allows it.
 7. Each item `## Reporting` names is in the report.
 
 A failed item: fix it, then run the check again.

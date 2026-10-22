@@ -9,11 +9,11 @@
 # into the dispatch. A plugin that fails
 # prepare-agent-prompt.sh's plugin test (name, disable-model-invocation, closed
 # frontmatter) or lacks a label or description is reported on stderr instead of
-# listed (a `standard-*` or `procedure-*` folder whose closed frontmatter lacks
-# `disable-model-invocation: true` is not a plugin: skipped, never reported as
-# invalid), as is one whose path holds a comma or control character (a tab or a
-# line break would split a plugin line); the hook's file checks still run at
-# dispatch.
+# listed (a `standard-*` or `procedure-*` folder is a plugin only when its
+# readable SKILL.md has a closed frontmatter with `disable-model-invocation:
+# true`; any other is skipped, never reported as invalid), as is one whose path
+# holds a comma or control character (a tab or a line break would split a
+# plugin line); the hook's file checks still run at dispatch.
 set -eu
 
 readonly PROG='list-plugins.sh'
@@ -148,17 +148,21 @@ usage() {
 Usage: ${PROG} [--skills-dir DIR] [--max-lines N] [--help|-h]
 
 Lists the installed plugins under DIR. DIR defaults to \$CLAUDE_CONFIG_DIR/skills
-when CLAUDE_CONFIG_DIR is set, else \$HOME/.claude/skills.
+when CLAUDE_CONFIG_DIR is set, else \$HOME/.claude/skills. A relative DIR is
+taken from the current folder, and its trailing slashes are dropped; every
+printed path is absolute.
   tech plugin:     DIR/tech-<stack>/ holding SKILL.md and references/development.md;
                    metadata.base may name one other tech plugin by its <stack>
                    (e.g. typescript for tech-typescript), loaded first.
   standard plugin: DIR/standard-<area>/ whose SKILL.md frontmatter has
                    disable-model-invocation: true, plus references/development.md;
-                   it takes no metadata.base. A standard-* folder whose closed
-                   frontmatter lacks that line is not a plugin and is skipped.
+                   it takes no metadata.base. A standard-* folder without a
+                   readable SKILL.md, without a frontmatter closed by ---, or
+                   whose frontmatter lacks that line is not a plugin: it is
+                   skipped, never reported.
   procedure plugin: DIR/procedure-<name>/, held to the same rules as a
-                   standard plugin; a procedure-* folder without
-                   disable-model-invocation: true is an ordinary skill, skipped.
+                   standard plugin; a procedure-* folder that fails the same
+                   opt-in test is an ordinary skill, skipped.
 A plugin (and a tech plugin's base) is valid only when its SKILL.md frontmatter
 is closed by ---, has name: <its folder name> and disable-model-invocation: true,
 the test prepare-agent-prompt.sh applies, plus a metadata.label and a description,
@@ -187,7 +191,7 @@ Exit codes (a cut listing keeps its code):
   1  no plugin of any kind under DIR
   2  usage error, or DIR missing or unreadable
   3  one or more invalid plugins (valid ones are still printed)
-  5  a required tool is missing from PATH
+  5  a required tool is missing from PATH; one stderr line names it
 
 Dependencies: POSIX sh, awk, sort; checked at start, a missing one exits 5.
 Runtime: about 64 ms for 9 plugins, measured on macOS (average of 5 runs).
@@ -332,27 +336,20 @@ build_tech_line() {
 }
 
 # Sets is_plugin=true for a plugin $1-$2 of kind $1 (standard or procedure),
-# then plugin_line, or line_error when it is invalid. Without a SKILL.md or a
-# closed frontmatter the opt-in line can't be read, so the folder counts as an
-# invalid plugin; a closed frontmatter without the opt-in line is not a plugin.
+# then plugin_line, or line_error when it is invalid. Only the opt-in line
+# makes such a folder a plugin, so one without a readable SKILL.md, a closed
+# frontmatter or that line is not a plugin: an ordinary skill's folder must
+# never stop the listing.
 build_opt_in_line() {
 	plugin_dir="${skills_dir}/$1-$2"
-	is_plugin=true
+	is_plugin=false
 	plugin_line=''
 	line_error=''
-	if [ ! -f "${plugin_dir}/SKILL.md" ]; then
-		line_error=$(missing_file_error "${plugin_dir}" SKILL.md)
-		return 0
-	fi
-	if ! frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md"); then
-		line_error=${NO_FRONTMATTER_ERROR}
-		return 0
-	fi
+	[ -f "${plugin_dir}/SKILL.md" ] && [ -r "${plugin_dir}/SKILL.md" ] || return 0
+	frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md") || return 0
 	split_frontmatter
-	if [ "${fm_disabled}" != true ]; then
-		is_plugin=false
-		return 0
-	fi
+	[ "${fm_disabled}" = true ] || return 0
+	is_plugin=true
 	line_error=$(unsafe_path_error "$1-$2")
 	[ -z "${line_error}" ] || return 0
 	line_error=$(plugin_test_error "$1-$2")

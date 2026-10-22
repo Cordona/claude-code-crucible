@@ -37,7 +37,8 @@ Usage: sh ${PROG} --plan-path
 
 The session's gate folder is
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session id>/
-(mode 700, files 600; a folder that is a symbolic link is refused).
+(mode 700, files 600; cache/approval-gate/ or a gate folder that is a
+symbolic link is refused, exit 1).
   --plan-path  creates the gate folder, sets its modification time to now,
                and prints the absolute path <gate folder>/plan.json, where the
                caller writes the renderer's input. Reads no stdin, writes no
@@ -58,12 +59,16 @@ The session's gate folder is
   --show-only  as the default, state "shown": a plan shown with no question;
                the Stop hook lets the stop through and the question hook
                clears it.
-Every run but --help also sets this session's gate folder's modification
-time to now, and removes other sessions' gate folders in cache/approval-gate/
-that are stale: no gate opened in the last ${STALE_SECONDS}s, and nothing in
-the folder (the folder itself, plan.json, the gate state) changed in that time.
-A folder it cannot judge stays. It never follows a symbolic link and touches
-nothing outside cache/approval-gate/.
+Every run that passes the checks (arguments, tools, session id, input, date,
+a linked cache/approval-gate/, gate folder or (--plan-path) plan.json) also
+sets this session's gate folder's modification time to now, and removes other
+sessions' gate folders in cache/approval-gate/ that are stale: no gate opened
+in the last ${STALE_SECONDS}s, and nothing in the folder (the folder itself,
+plan.json, the gate state) changed in that time. A run stopped by a check
+touches and removes nothing. A folder it cannot judge stays. It never
+follows a symbolic link in cache/approval-gate/ and touches nothing outside
+it; when a stale folder can't be removed, a note goes to stderr and the run
+goes on.
 The session id comes from CLAUDE_CODE_SESSION_ID, which Claude Code sets in the
 Bash tool; it must hold only letters, digits, ".", "_" and "-".
 Input is checked before anything is written.
@@ -71,10 +76,15 @@ Input is checked before anything is written.
 Exit codes:
   0              the gate opened and its text is on stdout, or (--plan-path)
                  the plan path is on stdout
-  1              the plan could not be processed (awk or date failed), or the
-                 gate folder or its state could not be written
+  1              the plan could not be processed (awk or date failed), the
+                 gate folder or its state could not be written, or
+                 cache/approval-gate/, the gate folder or (--plan-path)
+                 plan.json is a symbolic link
   2              usage error: an unknown argument, CLAUDE_CODE_SESSION_ID
-                 missing or unsafe, or empty input
+                 missing or unsafe, or empty input. Empty input is also what a
+                 renderer that failed leaves: its own stderr is above this
+                 script's, and a plain pipe's exit is this script's 2, not
+                 the renderer's
   5              a required tool missing from PATH
   129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
 
@@ -114,17 +124,27 @@ check_session_id() {
 	esac
 }
 
-# Creates the session's state folder with mode 700 and marks it in use (its
-# modification time is now, which keeps other sessions' sweeps off it while
-# the plan is written); sets gate_root (absolute) and gate_dir.
-make_gate_dir() {
+# Sets gate_root (absolute), gate_dir and plan_path, and refuses a symbolic link at
+# either, or (--plan-path) at plan.json. Runs before anything is touched: a
+# linked root would put this session's gate outside it.
+check_gate_paths() {
 	gate_root="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate"
 	case ${gate_root} in
 		/*) ;;
 		*) gate_root="$(pwd)/${gate_root}" ;;
 	esac
 	gate_dir="${gate_root}/$1"
+	plan_path="${gate_dir}/plan.json"
+	[ ! -L "${gate_root}" ] || die 1 "${gate_root} is a symbolic link; expected a plain folder; try removing the link, then rerun"
 	[ ! -L "${gate_dir}" ] || die 1 "state folder is a symbolic link: ${gate_dir}; expected a plain folder; try removing the link, then rerun"
+	[ "${action}" != plan-path ] || [ ! -L "${plan_path}" ] ||
+		die 1 "plan file is a symbolic link: ${plan_path}; expected a plain file or none; try removing the link, then rerun"
+}
+
+# Creates the session's state folder with mode 700 and marks it in use (its
+# modification time is now, which keeps other sessions' sweeps off it while
+# the plan is written), at the gate_dir check_gate_paths set.
+make_gate_dir() {
 	mkdir -p "${gate_dir}" || die 1 "cannot create the state folder ${gate_dir}; expected a writable \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache; try checking its owner and free space, then rerun"
 	chmod 700 "${gate_dir}" || die 1 "cannot set mode 700 on ${gate_dir}; expected a folder your user owns; try checking its owner, then rerun"
 	touch "${gate_dir}" || die 1 "cannot set the modification time of ${gate_dir}; expected a folder your user owns; try checking its owner, then rerun"
@@ -162,13 +182,10 @@ is_live_gate_dir() {
 	[ -n "${recent}" ]
 }
 
-# Removes other sessions' stale gate folders in gate_root. Plain folders only:
-# a symbolic link, at the root or as an entry, is never followed or removed.
+# Removes other sessions' stale gate folders in gate_root, which make_gate_dir
+# has checked is no link. Plain folders only: a linked entry is never followed
+# or removed.
 sweep_other_gates() {
-	[ ! -L "${gate_root}" ] || {
-		warn "${gate_root} is a symbolic link; expected a plain folder; stale gates of other sessions left in place; check where the link points"
-		return 0
-	}
 	for entry in "${gate_root}"/*; do
 		[ ! -L "${entry}" ] && [ -d "${entry}" ] || continue
 		[ "${entry##*/}" != "${session_id}" ] || continue
@@ -191,13 +208,6 @@ carried_tries() {
 	else
 		echo 0
 	fi
-}
-
-# Prints the absolute path of the session's plan file, refusing a link there.
-print_plan_path() {
-	plan_path="${gate_dir}/plan.json"
-	[ ! -L "${plan_path}" ] || die 1 "plan file is a symbolic link: ${plan_path}; expected a plain file or none; try removing the link, then rerun"
-	printf '%s\n' "${plan_path}"
 }
 
 # Stores the marked text $1 as gate.md and state line "$2 <tries> now", then
@@ -258,16 +268,17 @@ if [ "${action}" = open ]; then
 	fi
 	case ${mark_status} in
 		0) ;;
-		3) usage_error 'empty input; expected the rendered gate plan on stdin; try piping the renderer into this script' ;;
+		3) usage_error 'empty input; expected the rendered gate plan on stdin; if a renderer was piped in, it printed nothing: check its stderr above; otherwise try piping the renderer into this script' ;;
 		*) die 1 "awk failed (exit ${mark_status}) reading the plan; expected a POSIX awk; try checking awk on PATH, then rerun" ;;
 	esac
 fi
 now=$(date +%s) || die 1 'date +%s failed; expected a date that supports %s; try a POSIX date on PATH'
 
-make_gate_dir "${session_id}"
+check_gate_paths "${session_id}"
+make_gate_dir
 sweep_other_gates
 if [ "${action}" = plan-path ]; then
-	print_plan_path
+	printf '%s\n' "${plan_path}"
 else
 	store_gate "${gate_text}" "${gate_state}"
 fi

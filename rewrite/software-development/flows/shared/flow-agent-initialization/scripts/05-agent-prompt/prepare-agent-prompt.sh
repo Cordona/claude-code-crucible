@@ -11,12 +11,8 @@
 # Once every check passes, both write the dispatch's baseline file (the repo's
 # git status before any code changes) when it is still empty, and keep it on a
 # resend. Each checked file is read once, into a private temp copy that the checks and
-# the message all read, so the checked bytes are the sent bytes. One window
-# stays open, since POSIX sh can't test an open file: the path checks (not a
-# symlink or resolving inside its plugin folder, regular, readable) run on the
-# path just before the copy, so a path swapped in between, such as for a
-# symlink or a FIFO, is copied unchecked or blocks until the hook times out.
-# Swapping it takes write access to the plugin folder or the Crucible space.
+# the message all read, so the checked bytes are the sent bytes.
+# One window stays open between check and copy: see "Known gap" in --help.
 # The message embeds only trusted text (the human's notes and request, the whys,
 # paths and links written from them, and the text of the template and plugins
 # the human installed), so no crucible-context or crucible-plugin marker is
@@ -334,6 +330,7 @@ run_direct() {
 	command -v jq >/dev/null 2>&1 || fault 'jq is missing from PATH; the script needs jq 1.6+.'
 	dispatch_path=${direct_dispatch}
 	load_dependencies
+	find_crucible_script
 	prepare_message "${DIRECT_AGENT}"
 	fill_baseline
 	write_direct_prompt
@@ -361,7 +358,11 @@ of it, the flow's context-handling template references/handling-your-context.md
 (the flow folder is two folders above this script) must be a readable regular
 file inside the flow folder once symlinks are followed, holding more than
 whitespace; else every dispatch gets a fault naming the template's path.
-Checks, every problem named in one deny reason:
+A prompt that is not that one line is denied at once with one DISPATCH
+problem that names no path (DISPATCH <problem>; expected <x>). A problem
+with the dispatch path or file below also denies at once, alone, since the
+later checks read that file. Past those, the checks, every problem named in
+one deny reason:
   - the dispatch path: the path checks of
     scripts/02-agent-context/agent-context-file-checks.sh (absolute, no
     control character, double quote or .. segment, no sensitive name), a
@@ -408,7 +409,8 @@ A file that already holds a baseline (a resend of the same dispatch, or a new
 dispatch generate-agent-dispatch.sh --baseline-from filled from the one it
 replaces) is kept byte for byte, so the baseline is always the tree before
 the first call, never one taken after the agent or the main thread may have
-changed it. report.sh reads it through the dispatch's baseline key.
+changed it. The developer's report.sh reads it through the dispatch's
+baseline key.
 
 The message (one per dispatch; no absolute path in a tag):
   # Your plugins
@@ -444,7 +446,7 @@ Output (stdout, one JSON line):
          the message; every other field unchanged
   deny   permissionDecisionReason =
          "${REASON_PREFIX} <KIND> <problem>: <path>[; <KIND> ...][; and <M>
-         more problems]. <hint>", at most ${REASON_MAX_BYTES} bytes: the first
+         more problems]. <hint>" (a prompt problem has no ": <path>"), at most ${REASON_MAX_BYTES} bytes: the first
          problem of each KIND, then the rest in order while they fit, each
          cut to a share of the cap and marked " (cut)" when longer;
          KIND one of DISPATCH, AGENT, CONTEXT, PLUGIN, REPORT, BASELINE (a
@@ -470,8 +472,10 @@ subagent_type text names a listed agent or holds an escape.
 ${help_direct_agent}, then writes the message to a new file made by
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
   new --kind prompts --label ${DIRECT_PROMPT_LABEL} [--session <id>]
-(the session of the dispatch's index line, when it has one), through a temp
-file in its folder moved onto its path, and prints two lines
+(the session of the dispatch's index line, when it has one; crucible.sh new
+also appends the prompt's own index line, which stays if the file is removed
+on a failure), through a temp file in its folder moved onto its path, and
+prints two lines
   PROMPT: <absolute path of the message file, ending .md>
   REPORT: <the dispatch's report path>
 
@@ -482,14 +486,24 @@ the call).
 baseline could not be written (one stderr line, "${PROG}: BASELINE-WRITE
 <cause>; expected <x>; the dispatch can be sent again once <what must hold>:
 <path>"), or crucible.sh new or the message write failed (the file it made
-is removed); 2 usage error; 3 a check failed (one stderr line per problem);
-5 an install or host fault.
+is removed and named, "${PROG}: removed <path>, made by this run"; the
+baseline written just before stays, and a rerun keeps it, as a resend);
+2 usage error; 3 a check failed (one stderr line per problem); 5 an install
+or host fault, crucible.sh missing included, found before any write.
 Each checked file is read once into a private temp folder, removed on exit;
 the checks and the message all come from that copy. The baseline file is the
 one file the hook writes.
-Dependencies: POSIX sh, jq 1.6+ (--rawfile), awk, cat, date (+%z), dd, git
-(to write a baseline), grep, mktemp, mv, readlink, rm, tr, wc, and sha256sum
-or shasum (macOS: shasum -a 256);
+Known gap: the path checks (not a symlink or resolving inside its plugin
+folder, regular, readable) run on the path just before the copy, since POSIX
+sh can't test an open file, so a path swapped in between (such as for a
+symlink or a FIFO) is copied unchecked, or blocks until the hook times out.
+Swapping it takes write access to the plugin folder or the Crucible space.
+Dependencies: POSIX sh, jq 1.6+ (--rawfile; macOS: brew install jq; Linux:
+the distro's jq package), git (to write a baseline; macOS: xcode-select
+--install; Linux: the distro's git package), awk, cat, date (+%z), dd, grep,
+mktemp, mv, readlink, rm, tr, wc, in every macOS and Linux base system, and
+sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
+shasum -a 256);
 references/handling-your-context.md;
 scripts/02-agent-context/agent-context-file-checks.sh and
 agent-context-validator.jq; scripts/04-agent-dispatch/agent-dispatch-validator.jq
@@ -503,9 +517,10 @@ EOF
 # Succeeds when stdin (fd 0) is open. On a closed stdin, $(cat) reads the
 # command substitution's own pipe, which lands on the free fd 0, and blocks
 # forever. stderr is closed rather than sent to /dev/null for the probe, since
-# opening a file would take fd 0 and hide the closed stdin.
+# opening a file would take fd 0 and hide the closed stdin; the subshell keeps
+# the shell's own "Bad file descriptor" line on that closed stderr too.
 stdin_is_open() {
-	true 2>&- 3<&0 && return 0
+	(exec 3<&0) 2>&- && return 0
 	printf '%s: stdin is closed; expected the PreToolUse hook JSON on stdin\n' "${PROG}" >&2
 	return 1
 }
@@ -861,7 +876,7 @@ check_baseline() {
 		fault "jq could not run the baseline check of ${names_module}; the hook needs jq 1.6+; the cause is on stderr."
 	if [ -n "${baseline_report}" ]; then
 		baseline_problems=$(join_lines "${baseline_report}")
-		add_problem BASELINE "file holds no baseline of this dispatch (${baseline_problems}); expected the git status this hook writes at the first call; the flow's step 8 writes a new dispatch" "${dispatch_baseline}"
+		add_problem BASELINE "file holds no baseline of this dispatch (${baseline_problems}); expected the git status this hook writes at the first call; the flow stops this dispatch until the human fixes this file" "${dispatch_baseline}"
 		return 0
 	fi
 	baseline_filled=true
@@ -1230,12 +1245,16 @@ EOF
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
 }
 
-# Writes the message to a new Crucible prompts file (Markdown, .md); sets
-# prompt_path. On a failure after crucible.sh made the file, removes it and exits 1.
-write_direct_prompt() {
+# Sets crucible_script for --direct, or faults; checked before any write.
+find_crucible_script() {
 	crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 		fault "crucible.sh missing; expected ${crucible_script}; install the crucible skill."
+}
+
+# Writes the message to a new Crucible prompts file (Markdown, .md); sets
+# prompt_path. On a failure after crucible.sh made the file, removes it and exits 1.
+write_direct_prompt() {
 	dispatch_session=$(dispatch_index_session)
 	if [ -n "${dispatch_session}" ]; then
 		prompt_path=$(sh "${crucible_script}" new --kind prompts --label "${DIRECT_PROMPT_LABEL}" --session "${dispatch_session}" </dev/null) ||
