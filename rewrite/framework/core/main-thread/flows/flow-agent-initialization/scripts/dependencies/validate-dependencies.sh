@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Prints the install checklist for flow-agent-initialization: its six
-# scripts, procedure-context's context.sh, the four context checks the
+# scripts, procedure-context's context.sh, procedure-effort's effort.sh, the
+# crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module,
@@ -26,6 +27,8 @@ readonly PROG='validate-dependencies.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly GATE_PROCEDURE='procedure-approval-gate'
 readonly CONTEXT_PROCEDURE='procedure-context'
+readonly EFFORT_PROCEDURE='procedure-effort'
+readonly EFFORT_SCRIPT='effort.sh'
 readonly SELF_SCRIPT='dependencies/validate-dependencies.sh'
 readonly LIST_SCRIPT='dispatch-plan/list-plugins.sh'
 readonly PLAN_RENDER_SCRIPT='dispatch-plan/render-dispatch-plan.sh'
@@ -54,6 +57,8 @@ readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
+# Relative to DIR/crucible/scripts/.
+readonly CRUCIBLE_SPACE_LIB='lib/crucible-space.sh'
 # The inject hook reads every plugin file of the dispatch, so its bound is
 # generous; with "onFailure": "block" a timeout blocks the dispatch.
 readonly HOOK_TIMEOUT=30
@@ -106,11 +111,14 @@ readonly HOOK_FINGERPRINT_JQ='.hooks?[$event]?[]?
 	| select(type == "object" and (.command? | type == "string" and contains($needle)))
 	| [.command, .onFailure?]'
 
-# Emits each permissions.additionalDirectories entry, trailing slashes dropped;
-# a missing or mistyped level emits nothing.
-readonly ALLOWED_DIRS_JQ='.permissions?.additionalDirectories?[]? | strings | sub("/+$"; "")'
+# Emits each non-empty permissions.additionalDirectories entry, trailing
+# slashes dropped (so "/" becomes ""); a missing or mistyped level emits nothing.
+readonly ALLOWED_DIRS_JQ='.permissions?.additionalDirectories?[]? | strings | select(length > 0) | sub("/+$"; "")'
+# Counts the entries that equal $dir or are a parent of it, whole path
+# components only: an entry /a/b allows /a/b and /a/b/c, never /a/bc. Claude
+# Code grants an entry and everything under it.
 # shellcheck disable=SC2016 # $dir is jq's
-readonly SPACE_COUNT_JQ="[${ALLOWED_DIRS_JQ} | select(. == \$dir)] | length"
+readonly SPACE_COUNT_JQ="(\$dir | sub(\"/+\$\"; \"\")) as \$space | [${ALLOWED_DIRS_JQ} | select(. as \$entry | \$space == \$entry or (\$space | startswith(\$entry + \"/\")))] | length"
 # shellcheck disable=SC2016 # $dir is jq's
 readonly SPACE_FRAGMENT_JQ='{permissions: {additionalDirectories: [$dir]}}'
 # The C locale keeps pattern matching and sort byte-wise; the UTF-8 marks are
@@ -138,11 +146,14 @@ then one line per check:
   ✓ ${PLAN_GENERATOR_SCRIPT}
   ✓ ${DISPATCH_GENERATOR_SCRIPT}
   ✓ ${CONTEXT_SCRIPT}                 the same, in DIR/${CONTEXT_PROCEDURE}/scripts/
+  ✓ ${EFFORT_SCRIPT}                  the same, in DIR/${EFFORT_PROCEDURE}/scripts/
   ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
   ✓ gate-stop-hook.sh
   ✓ gate-question-hook.sh
   ✓ ${CRUCIBLE_SCRIPT}                the script is in DIR/${CRUCIBLE_SKILL}/scripts/ and
                                its --help exits 0
+  ✓ ${CRUCIBLE_SPACE_LIB}
+                               a readable file in DIR/${CRUCIBLE_SKILL}/scripts/
   ✓ ${PLAN_VALIDATOR_LIB}
                                a readable file in DIR/${PROCEDURE}/scripts/
   ✓ ${INSTALLED_PLUGINS_LIB}
@@ -186,9 +197,16 @@ then one line per check:
                                whose command runs ${GATE_QUESTION_SCRIPT}
   ✓ Crucible space allowed (...)
                                FILE's permissions.additionalDirectories holds
-                               \${CRUCIBLE_HOME:-\$HOME/.crucible}, expanded and
-                               without trailing slashes (one may follow an entry);
-                               when it doesn't, the fix names the JSON to add
+                               the space DIR/${CRUCIBLE_SKILL}/scripts/${CRUCIBLE_SCRIPT} root
+                               prints (\${CRUCIBLE_HOME:-\$HOME/.crucible}), or a
+                               folder it lies inside, by whole path components
+                               (an entry /a/b allows /a/b and /a/b/c, never
+                               /a/bc); trailing slashes are dropped on both, and
+                               the paths are compared as written: no symlink,
+                               ~, . or .. is resolved, and an empty entry is
+                               skipped;
+                               when it doesn't, the fix names the JSON to add;
+                               when root fails, the line names its stderr
   ✓ <N> plugins installed: <t> tech, <s> standards, <p> procedures
                                from list-plugins.sh --max-lines 0
 A failed check prints "✗ <item>: <reason>. Fix: <action>" instead (invalid
@@ -210,8 +228,9 @@ Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
 fingerprint of ${PROCEDURE}'s six scripts, ${PLAN_VALIDATOR_LIB}, ${INSTALLED_PLUGINS_LIB},
 ${DISPATCH_VALIDATOR_LIB}, ${PLUGIN_FILES_LIB}, ${DISPATCH_NAMES_LIB},
 ${CONTEXT_PROCEDURE}'s ${CONTEXT_SCRIPT}, ${CONTEXT_VALIDATOR_LIB}, ${CONTEXT_URL_LIB},
-${CONTEXT_FILE_LIB}, ${CONTEXT_VERSIONS_LIB} and ${TEMPLATE_FILE}, ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three
-(open-gate.sh and both gate hook scripts), ${CRUCIBLE_SCRIPT}, the three hook
+${CONTEXT_FILE_LIB}, ${CONTEXT_VERSIONS_LIB} and ${TEMPLATE_FILE}, ${EFFORT_PROCEDURE}'s ${EFFORT_SCRIPT},
+${PATHS_MODULE}, ${GATE_PROCEDURE}'s three
+(open-gate.sh and both gate hook scripts), ${CRUCIBLE_SCRIPT} and ${CRUCIBLE_SPACE_LIB}, the three hook
 entries' commands (hashed), the Crucible space and the additionalDirectories
 entries, the jq version, where date, git, cmp, sha256sum and shasum are on
 PATH, and each tech-*/standard-*/procedure-* folder's name,
@@ -251,7 +270,9 @@ fails that script's line, as above. No other tool a checked script needs
 (such as awk or dd for the inject hook, or find, chmod or touch for
 open-gate.sh) is checked here: that script stops naming it when it runs.
 Runtime: about 0.26 s for a full pass, 0.04 s cached; measured on macOS (average of 10 runs).
-Runs: sh <script> --help for each script check (stdin /dev/null), and
+Runs: sh <script> --help for each script check (stdin /dev/null; a
+"usage:" line counts as a "Usage:" line, letter case aside),
+DIR/${CRUCIBLE_SKILL}/scripts/${CRUCIBLE_SCRIPT} root for the space, and
 DIR/${PROCEDURE}/scripts/${LIST_SCRIPT} --max-lines 0 --skills-dir DIR.
 Reads: the checked files and each plugin folder's SKILL.md and references/
 (hashed for the fingerprint, the template searched for a non-space
@@ -304,8 +325,7 @@ parse_args() {
 	scripts_dir="${procedure_dir}/scripts"
 	context_procedure_dir="${skills_dir}/${CONTEXT_PROCEDURE}"
 	context_scripts_dir="${context_procedure_dir}/scripts"
-	crucible_home="${CRUCIBLE_HOME:-${HOME}/.crucible}"
-	while [ "${crucible_home}" != "${crucible_home%/}" ]; do crucible_home=${crucible_home%/}; done
+	crucible_scripts_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts"
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
 }
@@ -351,7 +371,8 @@ fingerprint_input() {
 		"${skills_dir}/${PATHS_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
-		"${skills_dir}/${CRUCIBLE_SKILL}/scripts/${CRUCIBLE_SCRIPT}" 2>/dev/null ||
+		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
+		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
@@ -455,7 +476,7 @@ check_script() {
 	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
 	read_help "$1" "$2" || return 0
 	case ${NL}${help_text} in
-		*"${NL}Usage:"*) pass "$2" ;;
+		*"${NL}Usage:"* | *"${NL}usage:"*) pass "$2" ;;
 		*) fail "$2" "--help printed no Usage: line" "${reinstall}" ;;
 	esac
 }
@@ -724,11 +745,14 @@ check_on_failure() {
 	esac
 }
 
-# Checks that permissions.additionalDirectories holds the Crucible space, so
+# Checks that permissions.additionalDirectories holds the Crucible space or a
+# folder it lies inside, so
 # the main thread and agents read and write there without a prompt.
 check_space_allowed() {
-	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
-	is_space_absolute || return 0
+	if [ -n "${crucible_home_problem}" ]; then
+		fail 'Crucible space not checked' "${crucible_home_problem}" 'fix what it names (CRUCIBLE_HOME, or the crucible skill), then rerun'
+		return 0
+	fi
 	if space_count=$(jq --arg dir "${crucible_home}" "${SPACE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
 		:
 	else
@@ -738,26 +762,26 @@ check_space_allowed() {
 	case ${space_count} in
 		'' | *[!0-9]* | 0)
 			set_space_fix
-			fail 'Crucible space not allowed' "permissions.additionalDirectories in ${settings_file} has no ${crucible_home} entry" "${space_fix}, then restart Claude Code"
+			fail 'Crucible space not allowed' "permissions.additionalDirectories in ${settings_file} has no entry that is ${crucible_home} or a folder it lies inside" "${space_fix}, then restart Claude Code"
 			;;
 		*) pass "Crucible space allowed (${crucible_home} in permissions.additionalDirectories)" ;;
 	esac
 }
 
-# True when crucible_home is an absolute folder other than /, as crucible.sh
-# needs; fails the space check otherwise.
-is_space_absolute() {
-	case ${crucible_home} in
-		'')
-			fail 'Crucible space not checked' 'CRUCIBLE_HOME is /' 'point CRUCIBLE_HOME at a folder of its own, then rerun'
-			return 1
-			;;
-		/*) return 0 ;;
-		*)
-			fail 'Crucible space not checked' 'CRUCIBLE_HOME is not an absolute path' "set CRUCIBLE_HOME to an absolute path, or unset it for \$HOME/.crucible, then rerun"
-			return 1
-			;;
-	esac
+# Sets crucible_home to the space crucible.sh root prints, by the crucible
+# skill's space rules, or crucible_home_problem to why it can't be had.
+resolve_crucible_home() {
+	crucible_home='' crucible_home_problem=''
+	crucible_script="${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}"
+	if [ ! -f "${crucible_script}" ]; then
+		crucible_home_problem="${CRUCIBLE_SCRIPT} is missing from ${crucible_scripts_dir}"
+		return 0
+	fi
+	if crucible_home=$(sh "${crucible_script}" root </dev/null 2>&1); then
+		return 0
+	fi
+	crucible_home_problem="${CRUCIBLE_SCRIPT} root failed: $(printf '%s' "${crucible_home%%"${NL}"*}" | tr -d '\001-\037\177')"
+	crucible_home=''
 }
 
 # Sets space_fix to the fix that adds the Crucible space: the JSON to merge
@@ -920,6 +944,7 @@ trap 'exit 143' TERM
 parse_args "$@"
 printf 'Agent initialization: install check\n'
 check_base_tools
+resolve_crucible_home
 compute_fingerprint
 # shellcheck disable=SC2310 # a pure test of the marker; its status is the answer
 if [ "${force}" -eq 0 ] && cached_pass_holds; then
@@ -932,10 +957,12 @@ check_script "${PROCEDURE}" "${PLAN_RENDER_SCRIPT}"
 check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
+check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
+check_lib_file "${CRUCIBLE_SPACE_LIB}" "${crucible_scripts_dir}" "${CRUCIBLE_SKILL}"
 check_lib_file "${PLAN_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${INSTALLED_PLUGINS_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"

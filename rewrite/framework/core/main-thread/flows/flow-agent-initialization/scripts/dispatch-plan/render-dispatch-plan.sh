@@ -7,7 +7,7 @@
 # writes the plan; this script only
 # refuses a plan it can't render. The path display helpers are lib-render's
 # paths.jq. Pipe its stdout into procedure-approval-gate's open-gate.sh.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
@@ -165,7 +165,7 @@ readonly NO_FIT_QUESTION_JQ='
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh
+Usage: sh ${PROG} --plan-file PATH [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label dispatch-plan --effort '<effort folder>'
        sh ${PROG} --plan-file PATH --question --plans N
        sh ${PROG} --no-plugin-fits --plan-file PATH --context-file CTX
        sh ${PROG} --no-plugin-fits --plan-file PATH --question
@@ -232,9 +232,11 @@ DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq, DIR being the defau
 skills folder). Before it is opened, CTX must pass those path checks:
 absolute, no control character, double or single quote or .. segment, no
 sensitive name, no file of instructions for Claude, no Claude settings
-file. It must
-be a readable regular file, not a symlink, no bigger than the size cap of
-agent-context-file-checks.sh,
+file. It must then pass the read checks of agent-context-file-checks.sh
+(context_read_problem, the one copy every script that reads a context file
+applies): a readable regular file, not a symlink, no bigger than the size
+cap, still its effort's latest version when it is a version file in an
+effort's context/ (DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh), and
 holding exactly one JSON object
   {"paths": null | [{"path": str, "why": str}, ...],
    "links": null | [{"url": str, "why": str}, ...],
@@ -244,9 +246,11 @@ http:// or https:// (in any letter case) with a host of letters, digits, dots
 and hyphens and an optional :port, then optionally a path, query or fragment
 of letters, digits and . _ ~ / ? # = % : + , @ - only (no space, quote,
 ; $ \` ( ) & | < or >),
-why one non-empty line, notes may be []. Each problem prints as
-"context file: <what>; expected <x>" (the shape problems at most 20, then a
-count; a position in them, such as paths[0].why, counts from 0), exit 2;
+why one non-empty line, notes may be []. The first problem found prints as
+one line "context file: <CTX>: <what>; expected <x>" (the path checks'
+"context file: <what>: <CTX>; expected <x>"; the shape problems joined in
+it, at most 20, then a count; a position in them, such as paths[0].why,
+counts from 0), exit 2;
 every line about a problem of CTX itself starts "context file:", and no
 other line does. The plan shows only its path and
 digest.
@@ -293,8 +297,11 @@ Exit codes:
   3  jq failed while checking or rendering valid JSON, or wc or the sha256
      tool failed (its stderr is printed)
   4  list-plugins.sh missing from DIR, when printing a dispatch plan
-  5  DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh or
-     agent-context-validator.jq missing, when printing a --no-plugin-fits plan,
+  5  DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh,
+     context-versions.sh, agent-context-validator.jq or
+     agent-context-url.jq, or
+     DIR/crucible/scripts/lib/crucible-space.sh, missing, when printing a
+     --no-plugin-fits plan,
      DIR/${RENDER_LIB}/paths.jq missing, when printing a plan, or
      scripts/agent-dispatch/${NAMES_MODULE}.jq missing, for a dispatch plan
      or its question
@@ -307,8 +314,10 @@ paths.jq; for a dispatch plan list-plugins.sh, and for it or its question
 scripts/agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
 wc, sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
 shasum -a 256),
-the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh and
-agent-context-validator.jq in DIR/${CONTEXT_PROCEDURE}/scripts/.
+the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
+context-versions.sh, agent-context-validator.jq and agent-context-url.jq in
+DIR/${CONTEXT_PROCEDURE}/scripts/, and the crucible skill's
+DIR/crucible/scripts/lib/crucible-space.sh.
 Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
 30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
 EOF
@@ -435,42 +444,28 @@ read_context() {
 	load_context_checks
 	path_problem=$(context_path_problem "${context_file}")
 	[ -z "${path_problem}" ] || context_error "${path_problem}: ${context_file}; expected ${context_path_expected}"
-	[ ! -L "${context_file}" ] ||
-		context_error "file is a symlink: ${context_file}; expected the regular file the main thread wrote"
-	[ -f "${context_file}" ] && [ -r "${context_file}" ] ||
-		context_error "file is missing, unreadable or not a regular file: ${context_file}; expected a readable regular JSON file"
-	context_size=$(wc -c <"${context_file}") || install_fault 3 "wc could not count the bytes of ${context_file}; expected a byte count; check wc, then rerun"
-	context_size=${context_size##* }
-	[ "${context_size}" -le "${context_max_bytes}" ] ||
-		context_error "file is ${context_size} bytes: ${context_file}; expected at most ${context_max_bytes} bytes, references and short notes rather than copied text"
-	jq empty "${context_file}" </dev/null >/dev/null 2>&1 ||
-		context_error "file is not valid JSON: ${context_file}; expected one JSON object; try checking its quotes, commas and brackets, then rerun"
-	shape_report=$(jq -rs --arg context_path "${context_file}" -f "${shape_program}" "${context_file}" </dev/null) || {
-		install_fault 3 'jq failed on the shape check; expected jq 1.6+; try jq --version, then rerun'
-	}
-	if [ -n "${shape_report}" ]; then
-		printf '%s\n' "${shape_report}" | while IFS= read -r problem; do warn "context file: ${problem}"; done
-		exit 2
-	fi
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${context_file}" ||
+		install_fault 3 'jq or wc failed on the context read checks (its stderr is above); expected jq 1.6+; try jq --version, then rerun'
+	[ -z "${context_read_fault}" ] || context_error "${context_file}: ${context_read_text}"
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
 	compute_context_digest "${context_file}" ||
 		install_fault 3 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
 }
 
-# Sources the shared path checks, finds the shape check and the sha256 tool;
-# exits 5 when a shared check is missing, 1 when no sha256 tool is on PATH.
+# Sources the shared path checks and loads the read checks; exits 5 when a
+# shared check is missing, 1 when no sha256 tool is on PATH.
 load_context_checks() {
 	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
-	shape_program="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq"
 	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
-		install_fault 5 "shared path check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
-	[ -f "${shape_program}" ] && [ -r "${shape_program}" ] ||
-		install_fault 5 "shape check missing; expected ${shape_program}; install the ${CONTEXT_PROCEDURE} skill"
+		install_fault 5 "shared context check missing; expected ${context_lib}; install the skill it is in"
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
-	find_context_digest_tool ||
-		install_fault 1 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+	# shellcheck disable=SC2310 # its status says whether the checks loaded; the fault is read here
+	if ! context_load_checks "${skills_dir}"; then
+		[ "${context_load_fault}" != host ] || install_fault 1 "${context_load_problem}"
+		install_fault 5 "${context_load_problem}"
+	fi
 }
 
 # Prints "context file: $1" on stderr and exits 2.

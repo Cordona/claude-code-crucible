@@ -4,15 +4,24 @@
 # path relative to the including file, such as {search: "./"} or
 # {search: "../agent-dispatch"}; a bare "." misses the module (jq 1.6 to 1.8).
 # A shell script reads a value with
-#   jq -nr -L <this folder> 'include "dispatch-names"; direct_agent'
+#   jq -nr -L <this folder> --arg agent <name> 'include "dispatch-names"; $agent | report_kind'
 
 # Direct implementation: the main thread writes the code itself.
 def direct_agent: "main thread";
-# The agents prepare-agent-prompt.sh acts on as a PreToolUse hook.
-def listed_agents: ["code-developer", "code-reviewer"];
+# Each agent a dispatch file is written for, with the Crucible kind of its
+# report: the one list of dispatched agents. A new agent goes here, with its kind.
+def report_kinds: {"code-developer": "reports/development", "code-reviewer": "reports/review", (direct_agent): "reports/development"};
+# The agents a dispatch file is written for, in report_kinds' order.
+def dispatched_agents: report_kinds | keys_unsorted;
+# The agents prepare-agent-prompt.sh acts on as a PreToolUse hook: every
+# dispatched agent but direct implementation.
+def listed_agents: dispatched_agents - [direct_agent];
+# The report kind of agent ., "" for an agent no dispatch file is written for.
+def report_kind: report_kinds[.] // "";
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
 def sha256_pattern: "\\A[0-9a-f]{64}\\z";
-# A Crucible ID, as crucible.sh new makes it: <YYYYMMDDTHHMMSS>-<4 lowercase hex>.
+# A Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>, the shape crucible_is_id
+# of the crucible skill's scripts/lib/crucible-space.sh checks.
 def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
 # A local time with its offset, YYYY-MM-DDTHH:MM:SS+HH:MM.
 def local_time_pattern: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\z";

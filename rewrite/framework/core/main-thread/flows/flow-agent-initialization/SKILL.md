@@ -25,7 +25,7 @@ Not for: the task split, the Agent call, the reply check and resends, and all wo
 - **No plan without the context version the calling flow handed in** (step 3).
 - **The agent's message embeds only trusted text:** the context version, `procedure-context`'s `agent-context-rules.md` (injected as `# Handling your context`), the task, and the text of plugins the human installed.
 - **Writes only through its scripts:** the gate's plan file, the dispatch, baseline and report files, the prompt file (step 11) and step 1's cache marker; the hand-back lives in the conversation, and the gate records are `procedure-approval-gate`'s.
-- **The dispatched agent writes only its `REPORT` file and the files under `REPO ROOT` its mode allows:** every other file in the Crucible space is this flow's scripts'.
+- **The dispatched agent writes only its `REPORT` file and the files under `REPO ROOT` its mode allows:** every other file in the Crucible space is written only by the main thread's scripts (`crucible`'s Rules).
 - **Agents run none of these scripts;** only the main thread does.
 
 ## Always
@@ -39,7 +39,7 @@ Not for: the task split, the Agent call, the reply check and resends, and all wo
 
 - **Part:** as `flow-code-development` defines it.
 - **`<scripts>`:** `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts`.
-- **Session ID:** this Claude Code session's ID, the UUID in this session's transcript or scratchpad path. Pass the same one to every script that takes `--session`, so the gate record and the files match.
+- **`<effort folder>`:** the absolute path of the effort folder the calling flow handed in (`procedure-effort`).
 
 ## Steps
 
@@ -47,9 +47,9 @@ Run each script's `--help` once, before its first use in a session, and not agai
 
 Follow them in order for every hand-in from the calling flow. Copy steps 1–9 into the todo list and tick each as it completes; on step 11, copy 11.1–11.6 into the todo list instead. Note each retry in its step's todo item (`retry 1 of 2`): no count lives in memory alone. Steps 10 and 11 are branches: step 10 on a hook denial, step 11 for direct implementation.
 
-The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`, stack, repository root and starting points; and, once per effort, the latest context version's path, as `procedure-context` hands it over.
+The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`, stack, repository root and starting points; and, once per effort, the effort folder's absolute path and the latest context version's path, as `procedure-context` hands it over. For a task re-planned after a break, it also hands in the task's earlier dispatch file (step 8).
 
-1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dependencies/validate-dependencies.sh"`. Copy its stdout as is into your message text, before going on: it is the human's checklist, so never summarise it. Act on the exit code only:
+1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dependencies/validate-dependencies.sh"`. Show its result in your message text before going on: on a pass with no `✗` or `⚠` line, its pass line alone (`All checks passed.`, or the cached `✓ Install unchanged since …` line); otherwise copy its stdout as is: it is the human's checklist, so never summarise it. Act on the exit code only:
    - 0, a `⚠` line included: go on.
    - 1: stop.
    - 3: dispatch nothing; only step 11 may go on.
@@ -63,7 +63,7 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    - Exit 3: an invalid plugin, named on stderr as `list-plugins.sh: <name>: <reason>`. Show the output and stop until it is fixed; step 10 sets the one exception.
    - Exit 2 or 5: show the stderr and stop.
    - 127 or any other result: a broken install. Show the output, tell the human to reinstall `flow-agent-initialization`, and stop.
-3. **Take the context version** the calling flow handed in, the latest one `procedure-context` wrote for the effort, for step 7; after a new version (step 7.4), the new one. None handed in: plan nothing, and hand every part back as `stopped: no context`.
+3. **Take the context version** the calling flow handed in, the latest one `procedure-context` wrote for the effort, for step 7; after a new version (step 7.4), the new one. None handed in: plan nothing, and hand every part back as `stopped: no context`. Take the `<effort folder>` too, for step 7.2; none handed in: plan nothing, and hand every part back as `stopped: no effort`.
 4. **Reason about each task, briefly:** what it changes (code in a stack, config, docs) and what that code touches, from the task and the context as `procedure-context` read it. A few lines, not a review.
 5. **Pick the plugins of each part** from the plugin lines, matching each description against the task and what the context holds, as `procedure-context` read it, never against the request alone:
    - The tech plugin of the stack the code is in, when one is installed; at most one per part.
@@ -79,10 +79,10 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    **7.1 Write it:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --plan-path` (the gate's step 1.1) for the plan file, then `sh "<scripts>/dispatch-plan/generate-dispatch-plan.sh" --plan-file <that path>` with the options `references/dispatch-plan-rules.md` sets, in place of the gate's Write (its step 1.2); fill only its options, never the JSON, the Markdown or the dialog.
    - `open-gate.sh` exits non-zero, or prints anything but one absolute path: show the human its output and exit code, and hand this part back as `stopped: plan not shown`.
    - Generator exit 0 with its `PLAN_FILE:` line, then a `PLAN_SHA256:` line: keep the `PLAN_SHA256:` value for this plan; without the `PLAN_SHA256:` line, as any other exit.
-   - Generator exit 2 or 3: fix the options stderr names and run it again, at most twice; then show the human the stderr, and hand this part back as `stopped: plan not shown`.
+   - Generator exit 2 or 3: fix the options stderr names and run it again, at most twice (a problem led by the token `CONTEXT-STALE`: the context handed in is no longer the effort's latest version; rerun with the latest as `--context-file`); then show the human the stderr, and hand this part back as `stopped: plan not shown`.
    - Any other generator exit: show the human the stdout, stderr and exit code, and hand this part back as `stopped: plan not shown`.
 
-   **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/dispatch-plan/render-dispatch-plan.sh" --plan-file <the plan file>`, which prints the plan's Markdown, then relay it as the gate's step 2 sets: the message is the gate text and nothing else, no lead-in line above it. A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once. The plan not shown, for this or any reason the gate gives: ask nothing, and hand this part back as `stopped: plan not shown`.
+   **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/dispatch-plan/render-dispatch-plan.sh" --plan-file <the plan file>`, which prints the plan's Markdown, its label `dispatch-plan` and its effort `'<effort folder>'` (`open-gate.sh --label dispatch-plan --effort '<effort folder>'`), since step 8 finds the plan's gate record only under that label in that effort; then relay it as the gate's step 2 sets: the message is the gate text and nothing else, no lead-in line above it. A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once. The plan not shown, for this or any reason the gate gives: ask nothing, and hand this part back as `stopped: plan not shown`.
 
    **7.3 Ask it** on the gate's "now ask": run the renderer with `--plan-file <the plan file> --question --plans <n>`, `<n>` the plan count in step 7's todo item (`1` for a step-10 re-plan and for step 11), and copy its `header`, `question` and `options` into one AskUserQuestion as they are. A non-zero exit, or stdout that isn't one JSON object with those three fields: show the human the stdout, stderr and exit code, ask nothing, and hand this part back as `stopped: question not rendered`.
 
@@ -91,10 +91,12 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    - A typed answer: run 7.1 again first, since the question removed the gate's folder with the plan file: `open-gate.sh --plan-path` for a fresh plan file, then the generator with the options the answer changes (a change to the context: a new version through `procedure-context` first, then step 3 with it). Then show and ask again from 7.2; the new `PLAN_SHA256` replaces the old one. Never edit the plan file.
    - Skip: drop this plan; go to the next.
    - Stop, or Stop all: approve nothing more, and hand back every part as `stopped`, approved ones included. A Stop reached from step 10 or step 11 stops that dispatch only.
-8. **Generate the dispatches,** once every plan is answered: for each task of each approved plan, `sh "<scripts>/agent-dispatch/generate-agent-dispatch.sh" --session <session ID> --plan-sha256 <the plan's PLAN_SHA256> --task <N> --repo-root '<the task's repository root>'`, plus one `--starting-point '<repo-relative path>'` per starting point the calling flow gave (where the agent begins, not a limit). `<N>` is the task's place in its plan, from 1.
+8. **Generate the dispatches,** once every plan is answered: for each task of each approved plan, `sh "<scripts>/agent-dispatch/generate-agent-dispatch.sh" --effort '<effort folder>' --plan-sha256 <the plan's PLAN_SHA256> --task <N> --repo-root '<the task's repository root>'`, plus one `--starting-point '<repo-relative path>'` per starting point the calling flow gave (where the agent begins, not a limit), and `--baseline-from '<that file>'` when the calling flow handed in an earlier dispatch file for the task, so the new dispatch keeps the tree from before the first call. `<N>` is the task's place in its plan, from 1.
    - Exit 0 with both stdout lines, `DISPATCH: <path>` and `LABELS: …`: keep them as printed; without both, as any other exit.
-   - Exit 3 naming the context file as changed since the plan was shown, or as not the effort's latest version: the human approved another file; take that plan back to step 7 with the latest version, then run this step for it again.
-   - Any other exit: show the human the stdout, stderr and exit code, and hand the dispatch back as `stopped: dispatch not generated`.
+   - Exit 3: route by the token a stderr problem leads with, right after its `generate-agent-dispatch.sh: <option> <value>: `, never by the text after it. A problem led by `CONTEXT-CHANGED` or `CONTEXT-STALE`: the human approved another file; take that plan back to step 7 with the latest version, then run this step for it again.
+   - Exit 3, a problem led by `NO-GATE-RECORD`: the approval is lost (its gate record expired or is gone); take that plan back to step 7 to ask it again, then run this step for it again.
+   - Exit 3, a problem led by `BASELINE-EMPTY`: that dispatch never reached the tree; run this step once more without `--baseline-from`.
+   - Any other exit, an exit 3 with none of these tokens included: show the human the stdout, stderr and exit code, and hand the dispatch back as `stopped: dispatch not generated`.
 9. **Hand back** to the calling flow one entry per part, in task order, numbered 1, 2, 3 (a task in two stacks or repositories is two parts). Per approved dispatch, three lines, the last two copied whole from step 8 (the `Procedures:` segment only when a procedure plugin is loaded):
 
    ```
@@ -104,9 +106,10 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    ```
 
    Per other part, one line: `<n>. skipped`, `<n>. stopped`, `<n>. stopped: <reason>` or `<n>. no plugin fits (<stack>)`, with no file lines: the calling flow already holds the part's starting points. The calling flow calls Agent with the `DISPATCH:` line alone as the prompt: the hook denies any other prompt.
-10. **On a hook denial** (branch): the Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-agent-initialization:`. Show the human the reason. Each problem in it reads `<KIND> <problem>; expected <x>`, most followed by `: <path>`, so never split the reason on `; `. Route by the KIND word that starts each problem, `DISPATCH`, `AGENT`, `CONTEXT`, `PLUGIN`, `REPORT`, `BASELINE` or `BASELINE-WRITE`:
-    - `PLUGIN`, with no `CONTEXT`: an approved plugin uninstalled, invalid or with faulty files. Run step 2 again (here an exit 3 naming only that plugin goes on), then re-plan at step 7 with that plugin moved to `--skip`, as `references/dispatch-plan-rules.md` sets for a step-10 re-plan; on Approve, steps 8–9 for it.
-    - `CONTEXT`, alone or with `PLUGIN`: re-plan nothing and hand the dispatch back as `stopped`, the reason already shown; the human decides whether to extend the context through `procedure-context`.
+10. **On a hook denial** (branch): the Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-agent-initialization:`. Show the human the reason. Each problem in it reads `<KIND> <problem>; expected <x>`, most followed by `: <path>`, so never split the reason on `; `. Route by the KIND word that starts each problem, `DISPATCH`, `AGENT`, `CONTEXT`, `CONTEXT-STALE`, `PLUGIN`, `REPORT`, `BASELINE` or `BASELINE-WRITE`, never by the text after it:
+    - `PLUGIN`, with no `CONTEXT` or `CONTEXT-STALE`: an approved plugin uninstalled, invalid or with faulty files. Run step 2 again (here an exit 3 naming only that plugin goes on), then re-plan at step 7 with that plugin moved to `--skip`, as `references/dispatch-plan-rules.md` sets for a step-10 re-plan; on Approve, steps 8–9 for it.
+    - `CONTEXT-STALE`, with no `CONTEXT`: the context got a new version after the dispatch was written; take its plan back to step 7 with the latest version, as step 8's exit 3 does, with any `PLUGIN` problem handled in the same re-plan as the bullet above sets; on Approve, steps 8–9 for it.
+    - `CONTEXT`, alone or with `CONTEXT-STALE` or `PLUGIN`: re-plan nothing and hand the dispatch back as `stopped`, the reason already shown; the human decides whether to extend the context through `procedure-context`.
     - `BASELINE-WRITE`, a baseline the hook could not write, or `BASELINE`, a baseline file that holds no valid baseline: hand the dispatch back as `stopped: hook failed`, with the reason, since the human must fix what it names first.
     - Only `DISPATCH`, `AGENT` or `REPORT`: run step 8 once more for that dispatch, and hand back its new `DISPATCH:` line.
     - A reason with no KIND (a fault of the hook, its install or the host, such as a missing or empty `agent-context-rules.md` in `procedure-context`'s references, which the reason names): hand the dispatch back as `stopped: hook failed`, with the reason.
@@ -138,11 +141,11 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 
 ## Resume
 
-After a compaction, or when this flow is loaded again mid-run: the calling flow finds the effort first (`procedure-effort`); then load this skill again, then re-run steps 1–2. Take as approved only the plans whose AskUserQuestion answer is still visible in the conversation, and ask every other plan again before any dispatch.
+After a compaction, or when this flow is loaded again mid-run: the calling flow finds the effort first (`procedure-effort`); then load this skill again, then re-run steps 1–2. Take as approved only the plans whose AskUserQuestion answer is still visible in the conversation; ask every other plan again before any dispatch. A visible answer whose gate record has expired, as `crucible.sh --help` sets, is lost all the same: step 8's `NO-GATE-RECORD` sends its plan back to step 7.
 
 ## Dependencies
 
-`procedure-effort` (the effort the calling flow runs inside, which this flow never starts; Resume), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
+`procedure-effort` (the effort the calling flow runs inside, which this flow never starts; Resume), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7), `crucible` (its `crucible.sh` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`, which steps 7, 8 and 11 and the hook need; step 1 checks them); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
 
 ## Gotchas
 

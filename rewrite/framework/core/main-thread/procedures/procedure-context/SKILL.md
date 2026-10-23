@@ -9,13 +9,13 @@ user-invocable: false
 Run by the main thread. An effort's **context** is what its work starts from: the human's own words, as short notes or a file of their long verbatim text, and references to what exists elsewhere (paths, links), each reference with a one-line why.
 
 - **Versions:** it lives in `<effort folder>/context/` as versions, `v1` first; each extension writes the next version as a complete copy (the previous entries, minus any retired, plus the new ones), so an agent reads one file, never a chain.
-- **Shape:** `agent-context-validator.jq` is its one definition; `agent-context-url.jq` holds the link rule the validator includes; `agent-context-file-checks.sh` holds its size cap and path rules; `context-versions.sh` holds the version-file and effort-folder names and how the latest version is found. All four sit beside `context.sh`.
+- **Shape:** `agent-context-validator.jq` is its one definition; `agent-context-url.jq` holds the link rule the validator includes; `agent-context-file-checks.sh` holds its size cap and path rules; `context-versions.sh` holds the version-file names and how the latest version is found. All four sit beside `context.sh`. The effort folder's name rule is `crucible`'s, in its `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`.
 - **Readers:** you, while building it; every agent dispatched in the effort, each reading the one version its dispatch pinned, as `references/agent-context-rules.md` sets. The inject hook puts that file word for word into the agent's first message, under `# Handling your context`.
 
 ## When to use it
 
 - **Build v1** once per effort, when the work's own flow calls this skill right after `procedure-effort` starts the effort, before any plan. Every effort has a context; a small one holds just the human's request as one note.
-- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a review record becomes the input of a fix; a contradiction found after v1 is settled; a plan answer that changes the context. A `CONTEXT` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
+- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a review record becomes the input of a fix; a contradiction found after v1 is settled; a plan answer that changes the context. A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
 - **Find the latest version** on Resume (Resume below); nothing is gathered again.
 - **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), or a plan's plugins.
 
@@ -100,6 +100,7 @@ After a compaction, an interruption or a new session, load this skill again with
 - **Scripts,** in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/`: `context.sh`, with `context-versions.sh`, `agent-context-validator.jq`, `agent-context-url.jq` and `agent-context-file-checks.sh` beside it (Shape above), which it and the dispatch scripts source. Their own tools are in `context.sh --help`.
 - **Skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
   - `procedure-effort`, for the effort folder (Resume); missing: tell the human to install it, and stop as step 7 sets (`stopped: procedure-effort not installed`).
+  - `crucible`, for its `crucible.sh` (every `context.sh` command but `latest`) and its `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh` (every command); missing, `context.sh` exits 5: tell the human to install it, and stop as step 7 sets.
   - `procedure-read-trackers`, for its `read-link.sh` (step 4); missing: a tracker link is not read, as `references/conflicting-human-instructions.md`'s "Tracker links" sets.
   - `procedure-jira-auth`, for a Jira link (step 1); missing: as step 1 sets.
 - **Tools:** Read, Write, WebFetch, Bash, Skill and AskUserQuestion.

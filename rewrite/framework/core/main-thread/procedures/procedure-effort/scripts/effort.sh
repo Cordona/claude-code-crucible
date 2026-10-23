@@ -3,13 +3,11 @@
 # folder per effort, <space>/efforts/<id>-<name>/. It never deletes, renames
 # or writes inside one, except that start removes its own just-created empty
 # folder on an ID clash or when it cannot set its mode.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='effort.sh'
-# The effort name rule: words of a-z and 0-9 joined by single dashes, 1 to 40
-# characters, so a name never looks like a flag.
-readonly MAX_NAME_CHARS=40
 # The default list keeps the newest efforts on one screen; --all lifts it.
 readonly LIST_LIMIT=20
 # A clash needs the same second and the same 4 random hex digits; a handful of
@@ -33,23 +31,25 @@ help_text() {
 	print_block <<'EOF'
 
 Owns the effort folders of the Crucible space. An effort is one piece of work
-with one ID and one folder. The effort's context is written under its folder;
-its other artifacts still go to the Crucible space's day folders until they
-move in. No record file is written in the folder.
+with one ID and one folder. Every file of the effort (its context, gate
+records, dispatches, baselines, reports and prompts) goes in its folder, in
+the layout crucible.sh --help sets; this script writes none of them. No
+record file is written in the folder.
 
 The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path, trailing
-slashes removed. Efforts live in <space>/efforts/<id>-<name>/, flat. The
+slashes removed, as the crucible skill's scripts/lib/crucible-space.sh
+resolves it (the one copy of the space's rules: the root, the effort folder
+name and the ID). Efforts live in <space>/efforts/<id>-<name>/, flat. The
 space and efforts/ must be real folders: a symbolic link at either is
 refused (exit 4) by every command. Folders it creates are mode 700.
 
 ID:   <YYYYMMDDTHHMMSS>-<hex>, the local time of the start and 4 random
       lowercase hex digits. Unique across names; never reused.
-NAME: words of a-z and 0-9 joined by single dashes, 1 to 40 characters: no
-      leading, trailing or double dash, so '--all', '-x' and 'a--b' are
-      refused.
+NAME: the NAME of the effort folder name rule crucible.sh --help states,
+      which the space rules check; it holds no leading, trailing or double
+      dash, so '--all', '-x' and 'a--b' are refused.
 An entry of efforts/ counts as an effort only when it is a real folder (not
-a symbolic link) named <id>-<name> with a NAME that keeps the rule above;
-every other entry is ignored.
+a symbolic link) named by that rule; every other entry is ignored.
 
 Commands:
   start --name NAME
@@ -100,13 +100,16 @@ Exit codes:
      folder, including mkdir, chmod, rmdir or ls failing on it; a symbolic
      link at either; neither CRUCIBLE_HOME nor HOME set; or no free ID
      after 5 attempts
-  5  install fault: a tool below missing, or date, od or sort failing.
-     Checked after the command word and before its arguments, so a missing
-     tool exits 5 for every command, ahead of a usage error in them
+  5  install fault: a tool below missing, or date, od or sort failing, or
+     the space rules (lib/crucible-space.sh) missing. Checked after the
+     command word and before its arguments, so a missing tool exits 5 for
+     every command, ahead of a usage error in them
 
 Dependencies: POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir,
 ls and sort, all in the macOS and Linux base systems (on Linux, the
-coreutils package). No jq.
+coreutils package); the crucible skill's space rules,
+${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
+sourced. No jq.
 
 Runtime: about 0.02 s a command: start, and list, list --all and path over
 26 efforts; --help about 0.01 s (mean wall time of 20 runs, sh startup
@@ -163,6 +166,7 @@ main() {
 			;;
 	esac
 	check_tools
+	load_space_lib
 	resolve_root
 	efforts_dir="${root}/efforts"
 	case ${command} in
@@ -195,24 +199,23 @@ check_tools() {
 	done
 }
 
-# Sets root from CRUCIBLE_HOME or the home folder, without trailing slashes.
+# Sources the crucible skill's space rules, or exits 5.
+load_space_lib() {
+	space_lib="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/crucible/scripts/lib/crucible-space.sh"
+	[ -f "${space_lib}" ] && [ -r "${space_lib}" ] ||
+		install_fault "space rules missing; expected ${space_lib}; try installing the crucible skill"
+	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
+	. "${space_lib}"
+}
+
+# Sets root from the space rules, or exits 2 or 4 with their problem.
 resolve_root() {
-	if [ -n "${CRUCIBLE_HOME:-}" ]; then
-		root=${CRUCIBLE_HOME}
-		root_source=CRUCIBLE_HOME
-	elif [ -n "${HOME:-}" ]; then
-		root="${HOME}/.crucible"
-		root_source=HOME
-	else
-		space_fault 'neither CRUCIBLE_HOME nor HOME is set; expected one of them to name the space; try setting CRUCIBLE_HOME'
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the fault is read below
+	if ! crucible_resolve_root; then
+		[ "${crucible_root_fault}" != usage ] || usage_error "${crucible_root_problem}"
+		space_fault "${crucible_root_problem}"
 	fi
-	case ${root} in
-		/*) ;;
-		*) usage_error "${root_source} is not absolute; expected an absolute path; try a path that starts with /" ;;
-	esac
-	while [ "${root}" != "${root%/}" ]; do root=${root%/}; done
-	[ -n "${root}" ] || usage_error 'CRUCIBLE_HOME is /; expected a folder of its own; try unsetting it for the default'
-	refuse_link "${root}"
+	root=${crucible_root}
 }
 
 refuse_link() {
@@ -243,7 +246,11 @@ run_start() {
 	start_effort
 }
 
+# Exits 2 unless name keeps the space rules' effort NAME rule; the checks
+# after the rule's own test only say why it failed.
 check_name() {
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_effort_words "${name}" && return 0
 	case ${name} in
 		*[!abcdefghijklmnopqrstuvwxyz0123456789-]*)
 			describe_first_bad_char
@@ -251,12 +258,13 @@ check_name() {
 			;;
 		*) ;;
 	esac
-	if [ "${#name}" -lt 1 ] || [ "${#name}" -gt "${MAX_NAME_CHARS}" ]; then
-		bad_value "bad name: it is ${#name} characters; expected 1 to ${MAX_NAME_CHARS} (the effort name rule); try a slug of up to 3 words"
+	if [ "${#name}" -lt 1 ] || [ "${#name}" -gt "${crucible_effort_name_max_chars}" ]; then
+		bad_value "bad name: it is ${#name} characters; expected 1 to ${crucible_effort_name_max_chars} (the effort name rule); try a slug of up to 3 words"
 	fi
 	describe_dash_fault "${name}"
 	[ -z "${dash_fault}" ] ||
 		bad_value "bad name: ${dash_fault}; expected words of a-z and 0-9 joined by single - (the effort name rule); try a slug such as prune-dry-run"
+	bad_value "bad name: it breaks the effort name rule; expected the NAME of ${crucible_effort_name_rule}; try a slug such as prune-dry-run"
 }
 
 # Sets dash_fault to why the dashes of $1 break the word rule (words joined by
@@ -300,7 +308,9 @@ create_space_folder() {
 start_effort() {
 	attempt=1
 	while :; do
-		mint_id
+		# shellcheck disable=SC2310 # its status says whether an ID was minted; the problem is read below
+		crucible_mint_id || install_fault "${crucible_id_problem}"
+		id=${crucible_id}
 		folder="${efforts_dir}/${id}-${name}"
 		if mkdir "${folder}" 2>/dev/null; then
 			chmod 700 "${folder}" || {
@@ -319,32 +329,6 @@ start_effort() {
 		attempt=$((attempt + 1))
 	done
 	printf 'EFFORT: %s\n' "${folder}"
-}
-
-# Sets id to a fresh <YYYYMMDDTHHMMSS>-<hex> in local time.
-mint_id() {
-	stamp=$(date +%Y%m%dT%H%M%S 2>/dev/null) || install_fault 'date failed; expected the local time; try a POSIX date on PATH'
-	case ${stamp} in
-		[0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789]T[0123456789][0123456789][0123456789][0123456789][0123456789][0123456789]) ;;
-		*) install_fault 'date printed no YYYYMMDDTHHMMSS time; expected a POSIX date; try a POSIX date on PATH' ;;
-	esac
-	random_hex
-	id="${stamp}-${hex}"
-}
-
-# Sets hex to 4 random lowercase hex digits.
-random_hex() {
-	bytes=$(od -An -N2 -tx1 /dev/urandom 2>/dev/null) ||
-		install_fault 'reading /dev/urandom failed; expected a random source; try od and /dev/urandom'
-	high='' low=''
-	read -r high low <<EOF || true
-${bytes}
-EOF
-	hex="${high}${low}"
-	case ${hex} in
-		[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
-		*) install_fault 'od printed no 2 hex bytes; expected 4 lowercase hex digits; try a POSIX od' ;;
-	esac
 }
 
 # Sets id_holders to the number of entries in efforts/ that carry the ID. Each
@@ -467,21 +451,11 @@ EOF
 # <id>-<name>; all empty when the entry is not shaped like one.
 split_entry() {
 	entry_id='' entry_hex='' entry_name=''
-	case $1 in
-		[0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789][0123456789]T[0123456789][0123456789][0123456789][0123456789][0123456789][0123456789]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]-?*) ;;
-		*) return 0 ;;
-	esac
-	after_id=${1#????????????????????-}
-	case ${after_id} in
-		*[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 0 ;;
-		*) ;;
-	esac
-	[ "${#after_id}" -le "${MAX_NAME_CHARS}" ] || return 0
-	describe_dash_fault "${after_id}"
-	[ -z "${dash_fault}" ] || return 0
-	entry_id=${1%-"${after_id}"}
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_effort_name "$1" || return 0
+	entry_id=${crucible_name_id}
 	entry_hex=${entry_id##*-}
-	entry_name=${after_id}
+	entry_name=${crucible_name_rest}
 }
 
 main "$@"

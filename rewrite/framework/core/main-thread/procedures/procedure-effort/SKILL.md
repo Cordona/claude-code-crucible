@@ -1,6 +1,6 @@
 ---
 name: procedure-effort
-description: "Offers the main thread's bigger work (such as a build that needs a review) as an effort through a gate, then starts or finds it with `effort.sh`: one ID and one folder, which holds its context. Use when work may need that tracking, or to find earlier work. Writes only the offer's plan file and, after a yes, one new empty effort folder (with the Crucible space and its `efforts/` when missing). Not for small work (CLAUDE.md's short path) or files in the folder (`crucible`)."
+description: "Offers the main thread's bigger work (such as a build that needs a review) as an effort through a gate, then starts or finds it with `effort.sh`: one ID and one folder, which holds all its files. Use when work may need that tracking, or to find earlier work. Writes only the offer's plan file and, after a yes, one new empty effort folder (with the Crucible space and its `efforts/` when missing). Not for small work (CLAUDE.md's short path) or files in the folder (`crucible`)."
 user-invocable: false
 ---
 
@@ -9,7 +9,7 @@ user-invocable: false
 Run by the main thread. An **effort** is how one piece of work is tracked: its folder, its context (`procedure-context`), approval gates, agent dispatches and their reports. Each effort has:
 - an **ID**, `<YYYYMMDDTHHMMSS>-<hex>`, in the Crucible ID format;
 - a **name**, a short slug such as `prune-dry-run`;
-- **one folder**, `efforts/<id>-<name>/` in the Crucible space (as `crucible`'s "The space" sets it), where its context is written (Always); the layout inside an effort folder is `crucible`'s.
+- **one folder**, `efforts/<id>-<name>/` in the Crucible space (`crucible`), which holds every file of the work (Always); the layout inside it is `crucible.sh --help`'s.
 
 The ID is the correlation ID; the folder's absolute path is what every later step and flow is handed.
 
@@ -40,7 +40,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 ## Always
 
 - **Hand over the folder's absolute path, never the ID alone:** scripts take the effort from that path, or from a path inside it, never from the session, since a session can hold several efforts and an effort can span sessions and days.
-- **The effort's context is written under its folder;** its other artifacts (gate records, dispatches, reports) still go to the space's day folders until they move in.
+- **Every file of the effort is written in its folder:** its context, gate records, dispatches, baselines, reports and prompts, each by the script that owns it, never by this skill.
 - **Pass every value to `effort.sh` in single quotes, and only a value of `a-z`, `0-9`, `-` and `T`:** that is every name and ID, so a value holding any other character is neither; ask the human instead of running it, so their words never run as shell.
 
 ## Steps
@@ -52,6 +52,7 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
 1. **Offer** the effort. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** the reasons, written from your judgment, in the shape `render-effort-offer.sh --help` sets.
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file <the plan file>`.
+   - **The gate's label:** `effort-offer`, with no `--effort`, since no effort exists yet: the gate's record stays in the session's gate folder, outside the Crucible space.
    - **The pipe exits non-zero** (the exit is `open-gate.sh`'s, so read the stderr): a `render-effort-offer.sh: install:` line is an install fault: tell the human, and start no effort. Any other `render-effort-offer.sh:` line is a refused input: fix what it names and run `procedure-approval-gate`'s step 1 again, once. A second refusal, or no renderer line: show the human the stderr and exit code, and start no effort.
    - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, tell the human, and start no effort.
    - **The Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown:** tell the human, and start no effort.
@@ -83,5 +84,5 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
 
 ## Dependencies
 
-- **Companion skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `procedure-approval-gate`, which shows the offer (step 1), so no effort starts without it; `crucible`, for the files inside the folder, not needed to offer, start or find an effort.
+- **Companion skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `procedure-approval-gate`, which shows the offer (step 1), so no effort starts without it; `crucible`, which owns the files inside the folder, and whose `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh` is needed to offer, start or find an effort: without it `effort.sh` exits 5 and the offer's question is denied.
 - **Tools:** Skill, Read, Write, Bash and AskUserQuestion.

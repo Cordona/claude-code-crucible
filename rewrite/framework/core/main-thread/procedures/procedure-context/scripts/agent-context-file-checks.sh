@@ -1,6 +1,8 @@
-# The context file's path checks and its digest, the one definition context.sh
-# and every script that reads a context file share.
+# The context file's path checks, read checks and digest, and the loader of
+# what the read checks need: the one definition context.sh and every script
+# that reads a context file share.
 # Sourced, so it sets no shell option; its variables start with context_.
+# shellcheck shell=sh source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 
 # The context file's size cap, the one prepare-agent-prompt.sh applies:
 # references and a few notes fit far below it.
@@ -136,6 +138,109 @@ context_config_path_problem() {
 			;;
 		*) ;;
 	esac
+}
+
+# Sets context_read_text to the first problem a reader finds in context file
+# $1 as one "<what>; expected <x>" line, and context_read_fault to its kind,
+# both empty when the file may be used: the read checks of every script that
+# reads a context file, the one copy. It must be a readable regular file, not
+# a symlink (fault unusable), at most context_max_bytes (size), valid JSON
+# (json), one object passing agent-context-validator.jq (shape), and, when it
+# is a version file in an effort's context/, that effort's latest version
+# (stale). Callers branch on the fault, never on the text. The caller applies
+# context_path_problem first where it needs it (a writer checks its own path)
+# and runs context_load_checks first. With a copy path $2, the file is read
+# once into $2 (at most one byte over the cap) and the later checks read the
+# copy, so what the caller hashes and sends is what passed. Fails, its cause
+# on stderr, only when a tool fails.
+context_read_problem() {
+	context_read_fault='' context_read_text=''
+	context_read_unusable='file is missing, unreadable, a symlink or not a regular file; expected a readable regular file'
+	if [ -L "$1" ] || [ ! -f "$1" ] || [ ! -r "$1" ]; then
+		context_read_found unusable "${context_read_unusable}"
+		return 0
+	fi
+	context_read_file=$1
+	if [ -n "${2:-}" ]; then
+		dd if="$1" of="$2" bs="$((context_max_bytes + 1))" count=1 2>/dev/null || {
+			context_read_found unusable "${context_read_unusable}"
+			return 0
+		}
+		context_read_file=$2
+	fi
+	context_read_bytes=$(wc -c <"${context_read_file}") || return 1
+	context_read_bytes=${context_read_bytes##* }
+	case ${context_read_bytes} in
+		'' | *[!0-9]*) return 1 ;;
+		*) ;;
+	esac
+	if [ "${context_read_bytes}" -gt "${context_max_bytes}" ]; then
+		context_read_found size "file is larger than ${context_max_bytes} bytes; expected at most ${context_max_bytes} bytes"
+		return 0
+	fi
+	if ! jq empty "${context_read_file}" </dev/null >/dev/null 2>&1; then
+		context_read_found json 'file is not valid JSON; expected one JSON object'
+		return 0
+	fi
+	context_read_shape=$(jq -rs --arg context_path "$1" -f "${context_validator}" "${context_read_file}" </dev/null) || return 1
+	if [ -n "${context_read_shape}" ]; then
+		context_read_joined=''
+		while IFS= read -r context_read_line; do
+			context_read_joined="${context_read_joined}${context_read_joined:+; }${context_read_line}"
+		done <<EOF
+${context_read_shape}
+EOF
+		context_read_found shape "file does not have the context shape (${context_read_joined}); expected the shape agent-context-validator.jq checks"
+		return 0
+	fi
+	context_read_stale=$(context_stale_version_problem "$1")
+	[ -z "${context_read_stale}" ] || context_read_found stale "${context_read_stale}; expected the latest version"
+}
+
+# Sets context_read_fault to $1 and context_read_text to $2.
+context_read_found() {
+	context_read_fault=$1
+	context_read_text=$2
+}
+
+# Sources the crucible skill's space rules and context-versions.sh, sets
+# context_validator and context_link_rule, and finds the sha256 tool: what
+# context_read_problem and the digest need. The space rules come from the
+# skills folder $1 (<$1>/crucible/scripts/lib/crucible-space.sh), and
+# procedure-context's own files from folder $2, by default
+# <$1>/procedure-context/scripts: a caller that is this procedure's own script
+# passes the folder it runs from, so it loads every file of the procedure from
+# one copy. Fails with context_load_fault install (a file missing) or host (no
+# sha256 tool) and context_load_problem "<what>; expected <x>; <the fix>".
+context_load_checks() {
+	context_load_fault=install context_load_problem=''
+	context_scripts_dir=${2:-$1/procedure-context/scripts}
+	context_validator="${context_scripts_dir}/agent-context-validator.jq"
+	# The validator includes it; a missing copy would read as a jq fault.
+	context_link_rule="${context_scripts_dir}/agent-context-url.jq"
+	context_versions_lib="${context_scripts_dir}/context-versions.sh"
+	context_space_lib="$1/crucible/scripts/lib/crucible-space.sh"
+	for context_needed in "${context_validator}" "${context_link_rule}" "${context_versions_lib}"; do
+		[ -f "${context_needed}" ] && [ -r "${context_needed}" ] || {
+			context_load_problem="context check missing; expected ${context_needed}; install the procedure-context skill"
+			return 1
+		}
+	done
+	[ -f "${context_space_lib}" ] && [ -r "${context_space_lib}" ] || {
+		context_load_problem="space rules missing; expected ${context_space_lib}; install the crucible skill"
+		return 1
+	}
+	# Each sourcing script's source-path names the folders of these two.
+	# shellcheck source=crucible-space.sh
+	. "${context_space_lib}"
+	# shellcheck source=context-versions.sh
+	. "${context_versions_lib}"
+	if ! find_context_digest_tool; then
+		context_load_fault=host
+		context_load_problem='sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+		return 1
+	fi
+	context_load_fault=''
 }
 
 # Sets context_digest_tool to the sha256 command on PATH (sha256sum on Linux and

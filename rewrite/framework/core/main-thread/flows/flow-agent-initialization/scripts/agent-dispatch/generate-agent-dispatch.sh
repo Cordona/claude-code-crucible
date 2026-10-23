@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
-# Writes one agent dispatch file from the plan the human approved at this
-# session's gate, so a dispatch is never assembled by hand. The plan is found
-# by its digest among the session's gates records, the plan the human was
-# shown; it is checked again by dispatch-plan-validator.jq, its context file by
-# procedure-context's agent-context-file-checks.sh, agent-context-validator.jq
-# and context-versions.sh and by its digest,
+# Writes one agent dispatch file from the plan the human approved at its
+# effort's gate, so a dispatch is never assembled by hand. The plan is found
+# by its digest among the effort's gate records, the plan the human was
+# shown, and the plan's context version must be in that effort; it is checked again by dispatch-plan-validator.jq, its
+# context file by procedure-context's agent-context-file-checks.sh,
+# agent-context-validator.jq and context-versions.sh and by its digest,
 # its plugins resolved to files by plugin-files.sh, and the dispatch checked by
 # agent-dispatch-validator.jq before and after it is written. Every problem is
 # named by the option behind it; no file is left behind on a problem.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 umask 077
 
@@ -23,8 +23,24 @@ readonly DIRECT_LABEL='main-thread'
 # is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
 readonly PLACEHOLDER_STARTED='0000-00-00T00:00:00+00:00'
-readonly PLACEHOLDER_REPORT_ITEM='0000/00/00/reports/00000000T000000-0000'
-readonly PLACEHOLDER_DAY='0000/00/00'
+# Stands for the effort folder while no plan is found, so the dispatch is
+# still checked.
+readonly PLACEHOLDER_EFFORT='00000000T000000-0000-effort'
+readonly PLAN_RECORD_KIND='cache/gates'
+readonly DISPATCH_KIND='dispatches'
+# Stands for the report kind of an agent the shared names give none: such an
+# agent is no dispatched agent, so the dispatch check refuses it and no file
+# is made.
+readonly PLACEHOLDER_REPORT_KIND='reports/no-report-kind'
+# Lead the problems a caller acts on, so it matches the token exactly, never
+# the sentence after it: a plan no gate record of the effort holds, a context
+# file changed since the plan was shown or no longer its effort's latest
+# version (the Agent hook's KIND word for it), and an earlier dispatch whose
+# baseline was never filled.
+readonly NO_GATE_RECORD_TOKEN='NO-GATE-RECORD'
+readonly CONTEXT_CHANGED_TOKEN='CONTEXT-CHANGED'
+readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
+readonly BASELINE_EMPTY_TOKEN='BASELINE-EMPTY'
 readonly TASK_STAND_IN='(no task chosen)'
 NL='
 '
@@ -46,7 +62,7 @@ def plugins: $plugin_paths | split("\n") | map(select(. != ""))
 def dispatch: {
 	id: $id, started: $started, agent: $agent, mode: $mode, tech: $tech,
 	plugins: plugins,
-	plan: {path: $plan_path, sha256: $plan_sha256},
+	plan: {sha256: $plan_sha256},
 	context: {path: $context_path, sha256: $context_sha256},
 	task: $task, repo_root: $repo_root, starting_points: $ARGS.positional, report: $report, baseline: $baseline};
 
@@ -77,23 +93,28 @@ if $mode_of_run == "report" then report else dispatch end
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --session ID --plan-sha256 HEX --task N --repo-root PATH
+Usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --repo-root PATH
            [--starting-point REL]... [--skills-dir DIR] [--baseline-from DISPATCH]
        sh ${PROG} --help
 
 Writes one agent dispatch file for task N of the plan the human approved, and
-allocates the agent's report file and the dispatch's baseline file. Every
-input is checked first; on a problem no file is left behind, though the
-index lines crucible.sh new appended stay (see the writes below).
+allocates the agent's report file and the dispatch's baseline file, all in
+the effort folder FOLDER. Every input is checked first; on a problem no file
+is left behind.
 
-  --session ID       the Claude Code session whose gates records are searched,
-                     and the session of the files made.
+  --effort FOLDER    the effort the plan was approved in, the folder its gate
+                     was opened with: a real effort folder of the Crucible
+                     space, as crucible.sh new takes --effort (crucible.sh
+                     --help states the rule; trailing slashes dropped).
   --plan-sha256 HEX  the PLAN_SHA256 generate-dispatch-plan.sh printed: 64
-                     lowercase hex. The gate record is the session's gates
-                     item labelled ${PLAN_RECORD_LABEL} (crucible.sh find,
-                     newest first) whose content without its top-level "v"
-                     hashes to HEX in canonical form (the one line
-                     jq -cS 'del(.v)' prints, its newline included).
+                     lowercase hex. The gate record is the ${PLAN_RECORD_KIND} item
+                     labelled ${PLAN_RECORD_LABEL} of FOLDER (crucible.sh find
+                     --effort FOLDER, newest first) whose content without its
+                     top-level "v" hashes to HEX in canonical form (the one
+                     line jq -cS 'del(.v)' prints, its newline included); the
+                     first found wins. No other effort is read. The plan's
+                     context file must be a file directly in FOLDER's
+                     context/.
   --task N           which of the plan's tasks: a decimal integer from 1, no
                      leading zero.
   --repo-root PATH   the repository's git work-tree root: absolute, an existing
@@ -115,28 +136,33 @@ index lines crucible.sh new appended stay (see the writes below).
                      new dispatch's baseline file gets a
                      byte-for-byte copy of DISPATCH's filled baseline, so the
                      baseline stays the tree before the first call. DISPATCH
-                     must be absolute, a regular file, not a symlink, pass
+                     must be absolute, a file directly in FOLDER's
+                     ${DISPATCH_KIND}/ (no folder of that path a symbolic
+                     link), a regular file, not a symlink, pass
                      agent-dispatch-validator.jq and have repo_root PATH; its
-                     baseline file must lie inside the Crucible space, be a
+                     baseline file must be a file directly in FOLDER's
+                     baselines/ (no folder of that path a symbolic link), a
                      regular file, not a symlink, not empty, and hold a
                      baseline of PATH (baseline_problems in ${NAMES_MODULE}.jq).
+                     Both are checked before the baseline is read.
 
 Checks, all before any file is made:
   - the plan: scripts/dispatch-plan/dispatch-plan-validator.jq against the
     installed plugins, as generate-dispatch-plan.sh checks it
-  - its context file: the path checks of
-    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh, a readable
-    regular file that is not a symlink, at most the size cap, and
-    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq; a version file
-    in an effort's context/ folder (<...>/efforts/<effort>/context/<id>-v<N>.json)
-    must still be that effort's latest version, as
-    DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it (any other
-    context file is not checked for a version); and its sha256 must still be
-    the plan's context.sha256
+  - its context file: directly in the effort's context/; the path checks of
+    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh; then its
+    read checks, context_read_problem, the one copy every script that reads
+    a context file applies: a readable regular file that is not a symlink,
+    at most the size cap, valid JSON passing
+    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq, and still
+    its effort's latest version, as
+    DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it; and its
+    sha256 must still be the plan's context.sha256
   - the dispatch: scripts/agent-dispatch/agent-dispatch-validator.jq, which
-    among its rules dispatches only agents code-developer, code-reviewer and
-    "main thread" (direct implementation, with no tech plugin), in mode BUILD
-    (TEST is refused for now)
+    among its rules dispatches only the agents of report_kinds in
+    ${NAMES_MODULE}.jq (direct implementation, "main thread", with no tech
+    plugin), in mode BUILD (TEST is refused for now); an agent with no
+    report kind there is refused with it, the plan's agent problem
 A gate record that no longer passes dispatch-plan-validator.jq's current
 rules is refused; regenerate the plan at the flow's step 7. Its "v" is not
 read.
@@ -149,16 +175,13 @@ plugins in plugin-line order. A based tech plugin's base files form their
 own plugins entry, named after the base's folder (tech-<base>), before the
 tech plugin's entry, even though the plan lists that base as not loaded.
 
-Then the report file is made by crucible.sh new --kind reports --label
-<agent>-report --session ID (<agent> being main-thread for "main thread"),
-the baseline file by crucible.sh new --kind baselines --label
-<agent>-baseline --session ID (each must be empty, inside the Crucible space
-\${CRUCIBLE_HOME:-\$HOME/.crucible}, and not under PATH), and the dispatch file
-by crucible.sh new --kind dispatches --label <agent>-dispatch --session ID,
-written to a temp file in its folder, moved onto its path and checked again.
-Each crucible.sh new also appends the item's line to the day's index.jsonl
-in the Crucible space; a file this run removes on a failure keeps its index
-line.
+Then, each with crucible.sh new --effort <the effort folder>, the report
+file is made with --kind <the agent's report_kind in ${NAMES_MODULE}.jq> and
+--label <agent>-report (<agent> being main-thread for "main thread"), the
+baseline file with --kind baselines --label <agent>-baseline (each must be
+empty, inside its kind folder of the effort, and not under PATH), and the
+dispatch file with --kind ${DISPATCH_KIND} --label <agent>-dispatch, written
+to a temp file in its folder, moved onto its path and checked again.
 The baseline file is left empty: this script writes no git status, since a
 dispatch may be sent long after it is written. prepare-agent-prompt.sh
 writes it at the Agent call (or at --direct), before the agent or the main
@@ -176,8 +199,9 @@ The dispatch file (one JSON object, exactly these keys):
    "mode": str, (*)
    "tech": <the loaded tech plugin's name, or "none">, (*)
    "plugins": [{"name": <the plugin folder>, "paths": [absolute path, ...]}, ...], (*)
-   "plan": {"path": <the gate record>, "sha256": HEX},
-     (kept for audit: the gate record the dispatch came from)
+   "plan": {"sha256": HEX},
+     (the approved plan the dispatch came from, by its digest: the gate
+     record itself is a cache item and expires, so no path to it is kept)
    "context": {"path": str, "sha256": str},
    "task": <the N-th task, exact>, "repo_root": PATH,
    "starting_points": [REL, ...], "report": <the report file>,
@@ -199,13 +223,24 @@ the plugins' labels, as plugin-files.sh builds the line; the
 loaded (never "Procedures: none")
 Problems (stderr, one line each; every problem is listed):
   ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters>: <problem>; expected <x>
-A problem of the plan or its context file names --plan-sha256; one of the
-report or baseline file's place names CRUCIBLE_HOME. A context file whose
-sha256 is no longer the plan's context.sha256 gives this line (sha256s cut to
-12 digits):
-  ${PROG}: --plan-sha256 "<HEX>": the plan's context file <path>: changed since the plan was shown (sha256 <shown> shown, <now> now); expected it as shown; show the plan again for the changed file
-and a version that is no longer its effort's latest gives this one:
-  ${PROG}: --plan-sha256 "<HEX>": the plan's context file <path>: is version v<N> of its effort, not the latest (v<M>: <latest path>); expected the latest version; show the plan again at its gate with it
+A problem of the plan or its context file names --plan-sha256; one of FOLDER
+names --effort; one of the report or baseline file's place, or of the
+Crucible space itself (a CRUCIBLE_HOME the crucible skill's space rules
+refuse), names CRUCIBLE_HOME.
+Four problems lead with a token, which no other line holds, so a caller
+matches the token, never the text after it:
+  ${NO_GATE_RECORD_TOKEN}   a plan no gate record of FOLDER holds (its record
+                   expired or gone, or never shown at FOLDER's gate):
+  ${PROG}: --plan-sha256 "<HEX>": ${NO_GATE_RECORD_TOKEN} no gate record of the effort holds that plan; expected the PLAN_SHA256 of a plan shown and asked about at the gate of --effort
+  ${CONTEXT_CHANGED_TOKEN}  a context file whose sha256 is no longer the plan's
+                   context.sha256 (sha256s cut to 12 digits):
+  ${PROG}: --plan-sha256 "<HEX>": ${CONTEXT_CHANGED_TOKEN} the plan's context file <path>: changed since the plan was shown (sha256 <shown> shown, <now> now); expected it as shown; show the plan again for the changed file
+  ${CONTEXT_STALE_TOKEN}    a context version no longer its effort's latest (the
+                   Agent hook's KIND word for the same problem):
+  ${PROG}: --plan-sha256 "<HEX>": ${CONTEXT_STALE_TOKEN} the plan's context file <path>: is version v<N> of its effort, not the latest (v<M>: <latest path>); expected the latest version; show the plan again at its gate with it
+  ${BASELINE_EMPTY_TOKEN}   a --baseline-from DISPATCH whose baseline file is
+                   empty (that dispatch never reached the tree):
+  ${PROG}: --baseline-from "<DISPATCH>": ${BASELINE_EMPTY_TOKEN} its baseline file <path> is empty: that dispatch never went through the Agent hook or --direct; expected its filled baseline
 Other stderr lines:
   - ${PROG}: <message>; expected <x>...: a usage error (then a
     "Try ..." line), a dependency fault, a failure after the checks, or
@@ -221,37 +256,46 @@ Exit codes:
   0  the dispatch file written; its path and the LABELS line printed
   1  making, writing or checking a file failed after the inputs passed; the
      files this run made (report, baseline, dispatch) are removed (stderr
-     names them); their index lines stay
-  2  usage error: an unknown option, an option without its value or with an
-     empty one, a second --session, --plan-sha256, --task, --repo-root,
+     names them)
+  2  usage error: an unknown option (--session among them: the record is
+     found by its digest alone), an option without its value or with an
+     empty one, a second --effort, --plan-sha256, --task, --repo-root,
      --skills-dir or --baseline-from, or one of the first four missing.
      --help and usage errors are handled before the tool check below, so
      they need only cat (for --help) and tr (to show an unknown option)
-  3  invalid input, one stderr line per problem, a --baseline-from DISPATCH
-     that is not a valid dispatch of PATH or whose baseline is empty or not
-     a baseline of PATH among them; no file made
+  3  invalid input, one stderr line per problem (a FOLDER that breaks its
+     rule, missing or a symbolic link included), a --baseline-from DISPATCH
+     that is not a valid dispatch of PATH, or it or its baseline file not in
+     FOLDER, or whose baseline is empty or not a baseline of PATH among
+     them; no file made
   5  a dependency missing or failing, with the fix named: jq 1.6+, git,
-     sha256sum or shasum, crucible.sh, list-plugins.sh, the checks and helpers
-     named above, a base tool below, or mktemp failing while --baseline-from
-     is checked; no file made
+     sha256sum or shasum, crucible.sh, the crucible skill's
+     scripts/lib/crucible-space.sh, list-plugins.sh, the checks and helpers
+     named above (${NAMES_MODULE}.jq giving no report kind for an agent
+     its dispatch check passed among them), a base tool below,
+     crucible.sh find failing on FOLDER
+     (such as for a FOLDER/cache/ that is a symbolic link), or mktemp
+     failing while --baseline-from is checked; no file made
   129, 130, 143  stopped by HUP, INT or TERM; the temp files and the files
-     this run made are removed (stderr names them); their index lines stay.
-     A crucible.sh new still running when the signal lands is not stopped:
-     it may still make its empty file and index line after this exit
+     this run made are removed (stderr names them). A crucible.sh new still
+     running when the signal lands is not stopped: it may still make its
+     empty file after this exit
 
 Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS; macOS: brew install jq;
 Linux: the distro's jq package); git (macOS: xcode-select --install; Linux:
 the distro's git package); awk, cat, date (+%z), mktemp, mv, rm, tr, wc, in
 every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
-(macOS: built in, run as shasum -a 256); crucible.sh; list-plugins.sh; the
+(macOS: built in, run as shasum -a 256); crucible.sh and the crucible
+skill's space rules, \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh;
+list-plugins.sh; the
 ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
-agent-context-validator.jq and context-versions.sh in
+agent-context-validator.jq, agent-context-url.jq and context-versions.sh in
 DIR/${CONTEXT_PROCEDURE}/scripts/; scripts/dispatch-plan/dispatch-plan-validator.jq
 and installed-plugins.jq; plugin-files.sh, agent-dispatch-validator.jq and
 ${NAMES_MODULE}.jq beside this script.
-Reads only: the session's gates records and, through crucible.sh find, the
-Crucible space's index.jsonl files; the plan's context file and, when it is
-a version file in an effort's context/, the names in that folder; git's view of
+Reads only: FOLDER's gate records (through crucible.sh find) until the
+plan's is found; the plan's
+context file and the names in its context/ folder; git's view of
 PATH; what list-plugins.sh reads; the loaded plugins' folders (whether
 references/review.md is readable, and the references/*-template.md files);
 and with --baseline-from that dispatch and its baseline file.
@@ -297,10 +341,10 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--session | --plan-sha256 | --task | --repo-root | --starting-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
+		--effort | --plan-sha256 | --task | --repo-root | --starting-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --session, --plan-sha256, --task, --repo-root, --starting-point, --skills-dir, --baseline-from or --help"
+			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --repo-root, --starting-point, --skills-dir, --baseline-from or --help"
 			;;
 	esac
 }
@@ -313,7 +357,7 @@ take_value() {
 	esac
 	[ -n "$2" ] || usage_error "$1 is empty; expected $1 VALUE"
 	case $1 in
-		--session) session=$2 ;;
+		--effort) given_effort=$2 ;;
 		--plan-sha256) plan_sha256=$2 ;;
 		--task) task_number=$2 ;;
 		--repo-root) repo_root=$2 ;;
@@ -325,7 +369,7 @@ take_value() {
 # Exits 2 on an option left without its value or a required option missing.
 finish_parse() {
 	[ -z "${awaited_option}" ] || usage_error "${awaited_option} needs a value; expected ${awaited_option} VALUE"
-	for required in --session --plan-sha256 --task --repo-root; do
+	for required in --effort --plan-sha256 --task --repo-root; do
 		case " ${seen_options} " in
 			*" ${required} "*) ;;
 			*) usage_error "${required} missing; expected ${required} VALUE" ;;
@@ -359,14 +403,9 @@ trim_trailing_slashes() {
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
-	context_dir="${skills_dir}/${CONTEXT_PROCEDURE}/scripts"
-	context_lib="${context_dir}/agent-context-file-checks.sh"
-	context_validator="${context_dir}/agent-context-validator.jq"
-	versions_lib="${context_dir}/context-versions.sh"
-	for context_file_needed in "${context_lib}" "${context_validator}" "${versions_lib}"; do
-		[ -f "${context_file_needed}" ] && [ -r "${context_file_needed}" ] ||
-			die 5 "context check missing; expected ${context_file_needed}; install the ${CONTEXT_PROCEDURE} skill"
-	done
+	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		die 5 "context check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
 	dispatch_dir=$(script_dir)
 	plan_validator="${dispatch_dir}/../dispatch-plan/dispatch-plan-validator.jq"
 	installed_program="${dispatch_dir}/../dispatch-plan/installed-plugins.jq"
@@ -378,29 +417,34 @@ load_dependencies() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
-	DIRECT_AGENT=$(jq -nr -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; direct_agent" </dev/null) &&
+	# shellcheck disable=SC2310 # its status is jq's; a failure exits
+	DIRECT_AGENT=$(read_shared_name direct_agent) &&
 		[ -n "${DIRECT_AGENT}" ] ||
 		die 5 "jq could not read direct_agent from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	readonly DIRECT_AGENT
-	BASELINE_KIND=$(jq -nr -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; baseline_kind" </dev/null) &&
+	# shellcheck disable=SC2310 # its status is jq's; a failure exits
+	BASELINE_KIND=$(read_shared_name baseline_kind) &&
 		[ -n "${BASELINE_KIND}" ] ||
 		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	readonly BASELINE_KIND
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck source=../../../../procedures/procedure-context/scripts/context-versions.sh
-	. "${versions_lib}"
+	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
+	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"
 	# shellcheck source=plugin-files.sh
 	. "${plugin_lib}"
-	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
-	find_context_digest_tool ||
-		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
 	crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill"
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
+}
+
+# Prints the value of jq expression $1 over the shared names module, with
+# $agent set to $2 (empty when not given).
+read_shared_name() {
+	jq -nr -L "${dispatch_dir}" --arg agent "${2-}" "include \"${NAMES_MODULE}\"; $1" </dev/null
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -463,12 +507,34 @@ check_repo_root() {
 	fi
 }
 
-# Sets record_path to the session's gates record whose plan hashes to
+# Sets effort_dir to --effort without trailing slashes when it names a real
+# effort folder of the space, or adds its problem and leaves effort_dir empty.
+check_effort_option() {
+	effort_dir=''
+	[ "${space_ok}" = true ] || return 0
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is read below
+	if crucible_check_effort_folder "${given_effort}"; then
+		effort_dir=${crucible_effort}
+		return 0
+	fi
+	add_problem --effort "${given_effort}" "${crucible_effort_problem}"
+}
+
+# Sets record_path to the gate record of the effort whose plan hashes to
 # plan_sha256, or adds a problem.
 find_plan_record() {
 	record_path=''
-	if ! record_candidates=$(sh "${crucible_script}" find --kind gates --session "${session}" --label "${PLAN_RECORD_LABEL}" </dev/null); then
-		die 5 'crucible.sh find failed; its stderr is above; fix what it names, then rerun'
+	[ -n "${effort_dir}" ] || return 0
+	# shellcheck disable=SC2310 # its status says whether the record is in the effort
+	find_record_in "${effort_dir}" && return 0
+	add_problem --plan-sha256 "${plan_sha256}" "${NO_GATE_RECORD_TOKEN} no gate record of the effort holds that plan; expected the PLAN_SHA256 of a plan shown and asked about at the gate of --effort"
+}
+
+# Sets record_path to the gate record of effort folder $1 whose plan hashes
+# to plan_sha256; fails when it holds none.
+find_record_in() {
+	if ! record_candidates=$(sh "${crucible_script}" find --effort "$1" --kind "${PLAN_RECORD_KIND}" --label "${PLAN_RECORD_LABEL}" </dev/null); then
+		die 5 'crucible.sh find failed on --effort; its stderr is above; fix what it names, then rerun'
 	fi
 	while IFS= read -r candidate; do
 		[ -n "${candidate}" ] || continue
@@ -484,7 +550,7 @@ EOF
 	done <<EOF
 ${record_candidates}
 EOF
-	add_problem --plan-sha256 "${plan_sha256}" 'no gate record of this session holds that plan; expected the PLAN_SHA256 of a plan shown and asked about at this session'\''s gate'
+	return 1
 }
 
 # Sets installed to the installed plugins as JSON and listing to their lines;
@@ -547,52 +613,45 @@ pick_task() {
 		die 5 'jq failed reading the task; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Adds a problem for each finding of the context file's checks, and when it
-# changed since the plan was shown.
+# Adds a problem when the context file is not in the effort's context/, fails
+# its path or read checks, or changed since the plan was shown.
 check_context() {
+	# shellcheck disable=SC2310 # its status is the test result; the problem is read below
+	if ! crucible_check_effort_item "${context_path}" context; then
+		add_context_problem "is ${crucible_item_problem}"
+		return 0
+	fi
+	if [ "${crucible_effort}" != "${effort_dir}" ]; then
+		add_context_problem "is in effort ${crucible_effort}; expected a context version in ${effort_dir}/context/, the effort whose gate the plan was approved at"
+		return 0
+	fi
 	path_problem=$(context_path_problem "${context_path}")
 	if [ -n "${path_problem}" ]; then
 		add_context_problem "${path_problem}; expected ${context_path_expected}"
 		return 0
 	fi
-	if [ -L "${context_path}" ] || [ ! -f "${context_path}" ] || [ ! -r "${context_path}" ]; then
-		add_context_problem 'is missing, unreadable, a symlink or not a regular file; expected the context file the plan was shown with'
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${context_path}" ||
+		die 5 'a tool failed on the context read checks (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	if [ "${context_read_fault}" = stale ]; then
+		add_context_problem "${context_read_text}; show the plan again at its gate with it" "${CONTEXT_STALE_TOKEN} "
 		return 0
 	fi
-	context_size=$(wc -c <"${context_path}") || die 5 "wc could not count the bytes of ${context_path}; expected a byte count; check wc, then rerun"
-	context_size=${context_size##* }
-	if [ "${context_size}" -gt "${context_max_bytes}" ]; then
-		add_context_problem "is ${context_size} bytes; expected at most ${context_max_bytes} bytes"
-		return 0
-	fi
-	if ! jq empty "${context_path}" </dev/null >/dev/null 2>&1; then
-		add_context_problem 'is not valid JSON; expected one JSON object'
-		return 0
-	fi
-	shape_report=$(jq -rs --arg context_path "${context_path}" -f "${context_validator}" "${context_path}" </dev/null) ||
-		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
-	if [ -n "${shape_report}" ]; then
-		while IFS= read -r shape_line; do
-			add_context_problem "${shape_line}"
-		done <<EOF
-${shape_report}
-EOF
-		return 0
-	fi
-	stale_problem=$(context_stale_version_problem "${context_path}")
-	if [ -n "${stale_problem}" ]; then
-		add_context_problem "${stale_problem}; expected the latest version; show the plan again at its gate with it"
+	if [ -n "${context_read_fault}" ]; then
+		add_context_problem "${context_read_text}"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
 	compute_context_digest "${context_path}" ||
 		die 5 "${context_digest_tool} could not hash ${context_path}; check the tool, then rerun"
 	[ "${context_digest}" = "${plan_context_sha256}" ] ||
-		add_context_problem "changed since the plan was shown (sha256 $(printf '%.12s' "${plan_context_sha256}") shown, $(printf '%.12s' "${context_digest}") now); expected it as shown; show the plan again for the changed file"
+		add_context_problem "changed since the plan was shown (sha256 $(printf '%.12s' "${plan_context_sha256}") shown, $(printf '%.12s' "${context_digest}") now); expected it as shown; show the plan again for the changed file" "${CONTEXT_CHANGED_TOKEN} "
 }
 
+# Adds problem $1 of the plan's context file, led by token $2 and its space
+# when given.
 add_context_problem() {
-	add_problem --plan-sha256 "${plan_sha256}" "the plan's context file ${context_path}: $1"
+	add_problem --plan-sha256 "${plan_sha256}" "${2-}the plan's context file ${context_path}: $1"
 }
 
 # Sets plugin_paths, tech and labels_line for the plan's loaded plugins,
@@ -631,18 +690,34 @@ EOF
 		die 5 'awk failed building the LABELS line; expected a POSIX awk; check the awk on PATH'
 }
 
-# Sets space_root, agent_label (the agent as it goes into a Crucible label:
-# main-thread for "main thread"), and placeholder_report and
-# placeholder_baseline, the stand-ins for the two paths crucible.sh new makes.
-plan_space_paths() {
+# Sets space_root by the space rules and space_ok=true, or adds the
+# CRUCIBLE_HOME problem they name and sets space_ok=false.
+resolve_space_root() {
+	space_ok=true
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read below
+	if crucible_resolve_root; then
+		space_root=${crucible_root}
+		return 0
+	fi
+	space_ok=false
 	space_root="${CRUCIBLE_HOME:-${HOME:-}/.crucible}"
-	while [ "${space_root}" != '/' ] && [ "${space_root%/}" != "${space_root}" ]; do
-		space_root=${space_root%/}
-	done
+	add_problem CRUCIBLE_HOME "${space_root}" "${crucible_root_problem}"
+}
+
+# Sets agent_label (the agent as it goes into a Crucible label: main-thread
+# for "main thread"), report_kind (the agent's reports folder, empty for an
+# agent the shared names give none), and placeholder_report and
+# placeholder_baseline, the stand-ins for the two paths crucible.sh new makes
+# in the effort.
+plan_space_paths() {
 	agent_label=${agent}
 	[ "${agent}" != "${DIRECT_AGENT}" ] || agent_label=${DIRECT_LABEL}
-	placeholder_report="${space_root}/${PLACEHOLDER_REPORT_ITEM}-${agent_label}-report.json"
-	placeholder_baseline="${space_root}/${PLACEHOLDER_DAY}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent_label}-baseline.json"
+	# shellcheck disable=SC2016,SC2310 # $agent is jq's; a failure exits
+	report_kind=$(read_shared_name '$agent | report_kind' "${agent}") ||
+		die 5 "jq could not read report_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
+	planned_effort=${effort_dir:-${space_root}/efforts/${PLACEHOLDER_EFFORT}}
+	placeholder_report="${planned_effort}/${report_kind:-${PLACEHOLDER_REPORT_KIND}}/${PLACEHOLDER_ID}-${agent_label}-report.json"
+	placeholder_baseline="${planned_effort}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent_label}-baseline.json"
 }
 
 # Adds a problem unless the --baseline-from dispatch is a valid dispatch of
@@ -657,6 +732,8 @@ check_baseline_from() {
 			return 0
 			;;
 	esac
+	# shellcheck disable=SC2310 # its status says whether the path is the effort's; the problem is added inside
+	in_effort_folder "${baseline_from}" "${DISPATCH_KIND}" 'is' 'the earlier dispatch' || return 0
 	if [ -L "${baseline_from}" ] || [ ! -f "${baseline_from}" ] || [ ! -r "${baseline_from}" ]; then
 		add_baseline_from_problem 'missing, unreadable, a symlink or not a regular file; expected the earlier dispatch file generate-agent-dispatch.sh wrote'
 		return 0
@@ -689,6 +766,25 @@ add_baseline_from_problem() {
 	add_problem --baseline-from "${baseline_from}" "$1"
 }
 
+# Succeeds when path $1 is a file directly in kind folder $2 of the --effort
+# folder; otherwise adds a --baseline-from problem, its subject $3 ("is", or
+# "its baseline file <path> is") and the expected file $4, and fails, so
+# nothing outside that folder is read. With the space refused nothing is
+# checked, and with --effort refused only the space rules' layout: their
+# problem is reported already, and it fails all the same.
+in_effort_folder() {
+	[ "${space_ok}" = true ] || return 1
+	# shellcheck disable=SC2310 # its status is the test result; the problem is read below
+	if ! crucible_check_effort_item "$1" "$2"; then
+		add_baseline_from_problem "$3 ${crucible_item_problem}"
+		return 1
+	fi
+	[ -n "${effort_dir}" ] || return 1
+	[ "${crucible_effort}" != "${effort_dir}" ] || return 0
+	add_baseline_from_problem "$3 in effort ${crucible_effort}; expected $4 in ${effort_dir}/$2/, the folder of --effort"
+	return 1
+}
+
 # Prints the lines of $1 joined by "; ".
 joined_lines() {
 	joined=''
@@ -703,13 +799,8 @@ EOF
 # Copies the earlier dispatch's baseline file once into earlier_baseline_copy
 # and adds a problem unless that copy is a baseline of repo_root.
 read_earlier_baseline() {
-	case ${earlier_baseline} in
-		"${space_root}"/*) ;;
-		*)
-			add_baseline_from_problem "its baseline file ${earlier_baseline} is not inside the Crucible space ${space_root}; expected the baseline file generate-agent-dispatch.sh made"
-			return 0
-			;;
-	esac
+	# shellcheck disable=SC2310 # its status says whether the path is the effort's; the problem is added inside
+	in_effort_folder "${earlier_baseline}" "${BASELINE_KIND}" "its baseline file ${earlier_baseline} is" 'the baseline file generate-agent-dispatch.sh made' || return 0
 	if [ -L "${earlier_baseline}" ] || [ ! -f "${earlier_baseline}" ] || [ ! -r "${earlier_baseline}" ]; then
 		add_baseline_from_problem "its baseline file ${earlier_baseline} is missing, unreadable, a symlink or not a regular file; expected the regular file the Agent hook or --direct filled"
 		return 0
@@ -721,7 +812,7 @@ read_earlier_baseline() {
 		return 0
 	fi
 	if [ ! -s "${earlier_baseline_copy}" ]; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook or --direct; expected its filled baseline"
+		add_baseline_from_problem "${BASELINE_EMPTY_TOKEN} its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook or --direct; expected its filled baseline"
 		return 0
 	fi
 	if ! jq empty "${earlier_baseline_copy}" </dev/null >/dev/null 2>&1; then
@@ -745,7 +836,7 @@ run_dispatch_jq() {
 	jq -n --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
 		--arg agent "${agent}" --arg mode "${mode}" --arg tech "${tech}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
-		--arg plan_path "${record_path}" --arg plan_sha256 "${plan_sha256}" \
+		--arg plan_sha256 "${plan_sha256}" \
 		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
 		--arg task "${task}" --arg task_number "${task_number}" --arg repo_root "${repo_root}" \
 		--arg report "${run_report}" --arg baseline "${run_baseline}" --arg space_root "${space_root}" \
@@ -768,10 +859,11 @@ check_planned_dispatch() {
 	[ -z "${named_problems}" ] || problems="${problems}${named_problems}${NL}"
 }
 
-# Sets created_path to a new empty file crucible.sh made of kind $1 with label $2, or fails the run.
+# Sets created_path to a new empty file crucible.sh made of kind $1 with
+# label $2 in the effort, or fails the run.
 create_item() {
-	created_path=$(sh "${crucible_script}" new --kind "$1" --label "$2" --session "${session}" </dev/null) ||
-		fail_run "crucible.sh new --kind $1 --label $2 failed; expected it to make an empty file in the Crucible space and print its path; try the crucible.sh error above, check that CRUCIBLE_HOME is writable, then rerun"
+	created_path=$(sh "${crucible_script}" new --kind "$1" --label "$2" --effort "${effort_dir}" </dev/null) ||
+		fail_run "crucible.sh new --kind $1 --label $2 failed; expected it to make an empty file in ${effort_dir}/$1/ and print its path; try the crucible.sh error above, check that the effort folder is writable, then rerun"
 	case ${created_path} in
 		/*.json) ;;
 		*) fail_run "crucible.sh new --kind $1 printed no file path; expected one absolute path ending in .json; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun" ;;
@@ -787,7 +879,7 @@ fail_run() {
 	die 1 "$1"
 }
 
-# Removes and names the files this run made; their index lines stay.
+# Removes and names the files this run made.
 remove_created_files() {
 	[ -n "${created_files}" ] || return 0
 	while IFS= read -r created_file; do
@@ -798,14 +890,13 @@ EOF
 	created_files=''
 }
 
-# Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies in
-# the Crucible space; sets created_path.
+# Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies
+# directly in that kind folder of the effort; sets created_path.
 make_space_file() {
 	create_item "$1" "${agent_label}-$2"
-	case ${created_path} in
-		"${space_root}"/*) ;;
-		*) fail_run "the $2 file ${created_path} is not inside the Crucible space ${space_root}; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun" ;;
-	esac
+	# shellcheck disable=SC2310 # its status is the test result; a failure fails the run
+	crucible_check_effort_item "${created_path}" "$1" && [ "${crucible_effort}" = "${effort_dir}" ] ||
+		fail_run "the $2 file ${created_path} is not in ${effort_dir}/$1/; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun"
 }
 
 # Writes the earlier baseline's checked bytes into the new baseline file,
@@ -822,10 +913,13 @@ copy_earlier_baseline() {
 
 # Makes, writes and checks the dispatch file; sets dispatch_path.
 write_dispatch() {
-	create_item dispatches "${agent_label}-dispatch"
+	create_item "${DISPATCH_KIND}" "${agent_label}-dispatch"
 	dispatch_path=${created_path}
 	dispatch_name=${dispatch_path##*/}
-	dispatch_id=$(printf '%.20s' "${dispatch_name}")
+	# shellcheck disable=SC2310 # a pure test; a failure fails the run
+	crucible_split_id "${dispatch_name}" ||
+		fail_run "crucible.sh new printed ${dispatch_path}, whose name holds no Crucible ID; expected <ID>-<label>.json; try reinstalling the crucible skill, then rerun"
+	dispatch_id=${crucible_name_id}
 	started_raw=$(date +%Y-%m-%dT%H:%M:%S%z) || fail_run 'date failed; expected it to print the local time as +%Y-%m-%dT%H:%M:%S%z; try date +%Y-%m-%dT%H:%M:%S%z by hand, fix your system date tool, then rerun'
 	started="${started_raw%??}:${started_raw#"${started_raw%??}"}"
 	# shellcheck disable=SC2310 # its status is jq's; a failure fails the run
@@ -859,7 +953,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-session='' plan_sha256='' task_number='' repo_root='' skills_dir='' given_skills_dir='' baseline_from='' seen_options='' awaited_option=''
+given_effort='' plan_sha256='' task_number='' repo_root='' skills_dir='' given_skills_dir='' baseline_from='' seen_options='' awaited_option=''
 # Each --starting-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
@@ -888,6 +982,7 @@ done
 
 problems='' validator_problems='' plan_sha256_ok=true task_number_ok=true plan_ok=false
 load_dependencies
+resolve_space_root
 check_skills_dir
 check_plan_sha256
 check_task_number
@@ -897,6 +992,7 @@ check_repo_root
 agent=code-developer mode=BUILD tech=none plugin_paths='' labels_line='' context_path=/ plan_context_sha256=''
 task=${TASK_STAND_IN} task_known=false
 record_path=''
+check_effort_option
 [ "${plan_sha256_ok}" = false ] || find_plan_record
 if [ -n "${record_path}" ]; then
 	read_installed
@@ -915,7 +1011,11 @@ if [ -n "${problems}" ]; then
 	exit 3
 fi
 
-make_space_file reports report
+# The dispatch check refuses an agent with no report kind; this guards a
+# drift between it and the shared names.
+[ -n "${report_kind}" ] ||
+	die 5 "${NAMES_MODULE}.jq names no report kind for agent \"${agent}\", which its dispatch check passed; expected one for every dispatched agent; reinstall the ${PROCEDURE} skill"
+make_space_file "${report_kind}" report
 report_path=${created_path}
 # Left empty without --baseline-from: prepare-agent-prompt.sh writes git
 # status into it at the Agent call, which for a dispatch waiting on another's

@@ -44,5 +44,5 @@ A re-plan from SKILL.md's step 10 for a `PLUGIN` denial moves the dropped plugin
 
 - **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with "fix it, then rerun" above it. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
 - **`uninstalled after approval` or `faulty files`, while the dropped plugin's description still matches the task** (as SKILL.md's step 5 sets): add `--replan stop-recommended`.
-- **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; SKILL.md's step 10 stops that dispatch.
+- **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; SKILL.md's step 10 stops that dispatch. A `CONTEXT-STALE` denial with no `CONTEXT` is re-planned with the latest version, as step 10 sets.
 - **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

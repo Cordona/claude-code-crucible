@@ -8,7 +8,7 @@
 # agent-context-file-checks.sh, each problem named by the option behind it.
 # Only then is each file written atomically into the file crucible.sh new
 # --effort hands out, and checked again as prepare-agent-prompt.sh checks it.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
 
@@ -172,12 +172,11 @@ Commands:
          when that latest file fails the read checks (below), as --from
          applies them.
 
-  --effort FOLDER the effort folder, as effort.sh start printed it:
-                  absolute (trailing slashes dropped), a real folder (not a
-                  symlink) named <YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>
-                  (NAME words of a-z and 0-9 joined by single dashes, 1 to 40
-                  characters) directly in \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/,
-                  whose context/, when present, is a real folder.
+  --effort FOLDER the effort folder, as effort.sh start printed it: a real
+                  effort folder of the Crucible space, as crucible.sh new
+                  takes --effort (crucible.sh --help states the rule;
+                  trailing slashes dropped), whose context/, when present,
+                  is a real folder.
   --from VERSION  a version file: an absolute path
                   <effort folder>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json
                   (N from 1, no leading zero), the effort folder as --effort
@@ -271,16 +270,20 @@ written; extend writes a new file.
 
 Read and write checks: --from and latest apply only the read checks to a
 version: its name and place as --from sets them, a path without control
-characters or quotes, a readable regular file that is not a symlink, valid
-JSON, and agent-context-validator.jq. The write rules, the --path and
---text-file rules of agent-context-file-checks.sh and the size cap, apply
-only when a file is written: the path rules to each new entry, the size cap
-and the validator to the whole new version. A rule added later goes into the
-write rules, never into the validator, so every version written before it
-stays readable by --from and latest; the rule holds from the next version
-on, for its new entries; entries extend keeps from VERSION are not checked
-by the path rules again (retire one to drop it), and a version extend would
-write over the size cap is refused until entries are retired.
+characters or quotes, then context_read_problem of
+agent-context-file-checks.sh, the one read check every script that reads a
+context file applies: a readable regular file that is not a symlink, at
+most the size cap, valid JSON passing agent-context-validator.jq, and the
+effort's latest version. The write rules, the --path and --text-file rules
+of agent-context-file-checks.sh, apply only when a file is written, to each
+new entry; the size cap and the validator also hold for the whole new
+version, before it is written and after (the read checks again). A rule
+added later goes into the write rules, never into the validator, so every
+version written before it stays readable by --from and latest; the rule
+holds from the next version on, for its new entries; entries extend keeps
+from VERSION are not checked by the path rules again (retire one to drop
+it), and a version extend would write over the size cap is refused until
+entries are retired.
 
 Output (stdout, on exit 0; nothing on stdout otherwise):
   new, extend, latest: exactly two lines
@@ -329,11 +332,14 @@ Exit codes:
      is not the work-tree root, and a diff that is empty, not UTF-8 or over
      the cap
   4  the Crucible space path is unusable (a CRUCIBLE_HOME line, printed with
-     every other problem); no file created; fixing the inputs does not help:
+     every other problem, or alone when the crucible skill's space rules
+     refuse the root itself: relative, /, or a symbolic link); no file
+     created; fixing the inputs does not help:
      set CRUCIBLE_HOME to a folder that passes the rule the line names, or,
      when the line says CRUCIBLE_HOME is unset or empty, fix HOME
   5  a dependency missing, with the fix named: jq 1.6+, sha256sum or shasum,
-     crucible.sh (not for latest), git (diff), agent-context-file-checks.sh,
+     crucible.sh (not for latest), the crucible skill's
+     scripts/lib/crucible-space.sh, git (diff), agent-context-file-checks.sh,
      agent-context-validator.jq, agent-context-url.jq or context-versions.sh
      beside this script,
      or a base tool below; or jq, wc or the sha256 tool failing as it runs
@@ -344,10 +350,14 @@ Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --rawfile; macOS: brew
 install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
 every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
 (macOS: built in, run as shasum -a 256); crucible.sh, except for latest;
+the crucible skill's space rules,
+\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
+sourced;
 git for diff (macOS: xcode-select --install; Linux: the distro's git package);
 agent-context-file-checks.sh, agent-context-validator.jq,
 agent-context-url.jq (the link rule the validator includes) and
-context-versions.sh beside this script.
+context-versions.sh, all four beside this script, so a copy of the
+${PROCEDURE} skill run from anywhere loads only its own files.
 Reads only: the --text-file content; VERSION; the names in the effort's
 context/; for --path, only whether it exists and its type; for diff, git's
 view of ROOT and the effort's diff files of the same short sha; for latest,
@@ -564,13 +574,12 @@ require_option() {
 	esac
 }
 
-# Exits 5 unless jq, a sha256 tool, crucible.sh and the four files beside it
-# are in place; sources agent-context-file-checks.sh and context-versions.sh and
-# sets crucible_script and validator.
+# Exits 5 unless jq, a sha256 tool, crucible.sh, agent-context-file-checks.sh
+# beside this script and the read checks' files are in place; sources the
+# checks and sets crucible_script and validator.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
-	validator=$(script_dir)/agent-context-validator.jq
 	# shellcheck disable=SC2310 # its status says whether the lib was found; errexit adds nothing
 	load_context_lib ||
 		die 5 "context path check missing; expected ${context_lib}; reinstall the ${PROCEDURE} skill"
@@ -580,19 +589,10 @@ load_dependencies() {
 	esac
 	[ -n "${context_sensitive_names:-}" ] ||
 		die 5 "sensitive names unset in ${context_lib}; expected context_sensitive_names; reinstall the ${PROCEDURE} skill"
-	[ -f "${validator}" ] && [ -r "${validator}" ] ||
-		die 5 "context validator missing; expected ${validator}; reinstall the ${PROCEDURE} skill"
-	link_rule=$(script_dir)/agent-context-url.jq
-	[ -f "${link_rule}" ] && [ -r "${link_rule}" ] ||
-		die 5 "context link rule missing; expected ${link_rule}; reinstall the ${PROCEDURE} skill"
-	versions_lib=$(script_dir)/context-versions.sh
-	[ -f "${versions_lib}" ] && [ -r "${versions_lib}" ] ||
-		die 5 "context version helper missing; expected ${versions_lib}; reinstall the ${PROCEDURE} skill"
-	# shellcheck source=context-versions.sh
-	. "${versions_lib}"
-	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
-	find_context_digest_tool ||
-		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+	own_scripts_dir=$(script_dir)
+	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
+	context_load_checks "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills" "${own_scripts_dir}" || die 5 "${context_load_problem}"
+	validator=${context_validator}
 	if [ "${command}" != latest ]; then
 		crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
 		[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
@@ -620,17 +620,19 @@ script_dir() {
 	esac
 }
 
-# Sets space_root, from CRUCIBLE_HOME or $HOME/.crucible, and space_source,
-# which a space problem line ends with: when the space comes from HOME, HOME
-# is the part to fix, not CRUCIBLE_HOME.
+# Sets space_root by the space rules, and space_source, which a space problem
+# line ends with: when the space comes from HOME, HOME is the part to fix, not
+# CRUCIBLE_HOME. A space the rules refuse exits 4 with its CRUCIBLE_HOME line.
 resolve_space_root() {
-	if [ -n "${CRUCIBLE_HOME:-}" ]; then
-		space_root=$(without_trailing_slashes "${CRUCIBLE_HOME}")
-		space_source=''
-	else
-		space_root="${HOME:-}/.crucible"
+	space_source=''
+	[ -n "${CRUCIBLE_HOME:-}" ] ||
 		space_source="; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix HOME, or set CRUCIBLE_HOME to a folder that passes"
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read below
+	if ! crucible_resolve_root; then
+		add_problem CRUCIBLE_HOME "${CRUCIBLE_HOME:-${HOME:-}/.crucible}" "${crucible_root_problem}${space_source}"
+		exit_on_problems "${rule_problems}"
 	fi
+	space_root=${crucible_root}
 }
 
 # Appends a problem line for option $1, value $2 and problem $3 to rule_problems.
@@ -642,26 +644,12 @@ add_problem() {
 	rule_problems="${rule_problems}${problem_line}${NL}"
 }
 
-# Prints the problem of effort folder $1 (no trailing slash), or nothing.
+# Prints the problem of effort folder $1 (no trailing slash), or nothing:
+# the space rules' effort folder check, then a context/ that is a symlink.
 effort_folder_problem() {
-	case $1 in
-		/*) ;;
-		*)
-			printf 'not an absolute path; expected the effort folder effort.sh start printed'
-			return 0
-			;;
-	esac
-	if [ "${1%/*}" != "${space_root}/efforts" ]; then
-		printf 'not directly in %s/efforts; expected an effort folder of this Crucible space' "${space_root}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is the name check; errexit adds nothing
-	if ! context_is_effort_name "${1##*/}"; then
-		printf 'not named <YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>; expected an effort folder effort.sh start created'
-		return 0
-	fi
-	if [ -L "$1" ] || [ ! -d "$1" ]; then
-		printf 'missing, a symlink or not a folder; expected the real effort folder effort.sh start created'
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is printed
+	if ! crucible_check_effort_folder "$1"; then
+		printf '%s' "${crucible_effort_problem}"
 		return 0
 	fi
 	[ ! -L "$1/context" ] || printf 'its context/ is a symlink; expected a real folder'
@@ -726,22 +714,15 @@ version_file_problem() {
 		printf 'not <effort folder>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json; expected a version file context.sh wrote'
 		return 0
 	fi
-	version_number=${context_version_number}
 	folder_problem=$(effort_folder_problem "${version_dir%/*}")
 	if [ -n "${folder_problem}" ]; then
-		printf 'its effort folder is %s' "${folder_problem}"
+		printf 'its effort folder: %s' "${folder_problem}"
 		return 0
 	fi
-	shape_problems=$(version_shape_problems "$1")
-	if [ -n "${shape_problems}" ]; then
-		joined_problems=$(join_lines "${shape_problems}")
-		printf 'fails the context checks (%s); expected a version context.sh wrote' "${joined_problems}"
-		return 0
-	fi
-	context_find_latest_version "${version_dir}"
-	[ "${context_version_latest##*/}" != "${1##*/}" ] || return 0
-	printf 'not the effort'\''s latest version (v%s; the latest is v%s: %s); expected the latest version; extend --from it' \
-		"${version_number}" "${context_version_latest_number}" "${context_version_latest}"
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "$1" ||
+		die 5 'a tool failed reading the version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	printf '%s' "${context_read_text}"
 }
 
 # Sets base_json to VERSION without the retired entries, and adds RETIRE_JQ's
@@ -1015,32 +996,13 @@ fail_validation() {
 	fail_run "context file ${context_path} $1: ${joined_problems}; expected a context that passes the checks it passed before writing; try rerunning, and on a second failure reinstall the ${PROCEDURE} skill"
 }
 
-# Prints the problems of the context file $1 just written, checked as
-# prepare-agent-prompt.sh checks it: the read checks' shape and the size cap.
+# Prints the problem of the context file $1 just written, checked by the read
+# checks every reader applies (context_read_problem), the size cap included.
 written_file_problems() {
-	version_shape_problems "$1"
-	[ ! -L "$1" ] && [ -f "$1" ] && [ -r "$1" ] || return 0
-	written_bytes=$(wc -c <"$1") ||
-		die 5 "wc could not count the bytes of $1; expected a byte count; try wc -c on it, then rerun"
-	written_bytes=${written_bytes##* }
-	[ "${written_bytes}" -le "${context_max_bytes}" ] ||
-		printf 'file is larger than %s bytes\n' "${context_max_bytes}"
-}
-
-# Prints the shape problems of context file $1, the read checks every version
-# passes for good: a readable regular file that is not a symlink, valid JSON,
-# and agent-context-validator.jq.
-version_shape_problems() {
-	[ ! -L "$1" ] && [ -f "$1" ] && [ -r "$1" ] || {
-		printf 'file is missing, unreadable, a symlink or not a regular file\n'
-		return 0
-	}
-	jq empty "$1" </dev/null >/dev/null 2>&1 || {
-		printf 'file is not valid JSON\n'
-		return 0
-	}
-	jq -rs --arg context_path "$1" -f "${validator}" "$1" </dev/null ||
-		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "$1" ||
+		die 5 'a tool failed reading the written version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	printf '%s' "${context_read_text}"
 }
 
 # Prints the lines of $1 joined by "; ".
@@ -1245,8 +1207,11 @@ run_diff() {
 # exactly the diff in diff_temp, or to empty, so a rerun writes no second file.
 find_same_diff() {
 	same_diff=''
-	for diff_candidate in "${effort_dir}/context/"????????T??????-????-"${DIFF_LABEL_PREFIX}${short_sha}.json"; do
+	diff_name_rest="${DIFF_LABEL_PREFIX}${short_sha}.json"
+	for diff_candidate in "${effort_dir}/context/"*-"${diff_name_rest}"; do
 		[ -f "${diff_candidate}" ] && [ ! -L "${diff_candidate}" ] || continue
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		crucible_split_id "${diff_candidate##*/}" && [ "${crucible_name_rest}" = "${diff_name_rest}" ] || continue
 		# shellcheck disable=SC2016 # $text is jq's
 		jq -e --rawfile text "${diff_temp}" '.text == $text' "${diff_candidate}" </dev/null >/dev/null 2>&1 || continue
 		same_diff=${diff_candidate}

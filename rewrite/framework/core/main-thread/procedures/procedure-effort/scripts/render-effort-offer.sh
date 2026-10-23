@@ -54,7 +54,7 @@ def one_bullet:
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh
+Usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
        sh ${PROG} --help | -h
 
 Reads the effort offer's reasons as one JSON object from PATH and prints the

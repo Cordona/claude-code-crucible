@@ -17,7 +17,7 @@
 # because everything it embeds is trusted: the human's request, the notes and
 # whys, as procedure-context sets what notes and whys may hold, and the template
 # and plugins the human installed.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 
 readonly PROG='prepare-agent-prompt.sh'
@@ -40,9 +40,10 @@ readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <abso
 # many bytes stays under the cap.
 readonly REASON_MAX_BYTES=9999
 # The words that start a problem; the flow's step 10 routes on them.
-# BASELINE is a baseline file holding no valid baseline; BASELINE-WRITE is a
-# baseline the hook could not write.
-readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT PLUGIN REPORT BASELINE BASELINE-WRITE'
+# CONTEXT-STALE is a context version no longer its effort's latest, every
+# other context problem CONTEXT; BASELINE is a baseline file holding no valid
+# baseline; BASELINE-WRITE is a baseline the hook could not write.
+readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN REPORT BASELINE BASELINE-WRITE'
 # The deny when jq is missing, printed as is: a fixed text, built without jq.
 readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-agent-initialization: jq is missing from PATH, so this dispatch is denied; the hook needs jq 1.6+."}}'
 # The reasons of the deny when stdin can't be read and of the deny when the hook
@@ -369,15 +370,20 @@ one deny reason:
     scripts/agent-context-file-checks.sh (absolute, no control character,
     double or single quote or .. segment, no sensitive name, no file of
     instructions for Claude, no Claude settings file), a
-    regular file that is not a symlink, directly in a Crucible dispatches
-    folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/YYYY/MM/DD/dispatches/ (no
-    folder of that path a symlink), valid JSON passing
-    scripts/agent-dispatch/agent-dispatch-validator.jq
+    regular file that is not a symlink, directly in an effort's dispatches
+    folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/<effort>/dispatches/
+    (no folder of that path a symlink; the space and the effort folder name
+    as the crucible skill's scripts/lib/crucible-space.sh sets them), valid
+    JSON passing scripts/agent-dispatch/agent-dispatch-validator.jq
   - its agent: subagent_type (${help_direct_agent} with --direct)
-  - its context file: the same path checks, a readable regular file that is
-    not a symlink, at most the size cap of agent-context-file-checks.sh, its
-    sha256 equal to the dispatch's context.sha256, valid JSON passing the
-    ${CONTEXT_PROCEDURE} skill's scripts/agent-context-validator.jq
+  - its context file: the same path checks, then the read checks of
+    agent-context-file-checks.sh (context_read_problem, the one copy every
+    script that reads a context file applies): a readable regular file that
+    is not a symlink, at most the size cap, valid JSON passing the
+    ${CONTEXT_PROCEDURE} skill's scripts/agent-context-validator.jq, and,
+    for a version file in an effort's context/, still that effort's latest
+    version (scripts/context-versions.sh; KIND CONTEXT-STALE when it is
+    not); then its sha256 equal to the dispatch's context.sha256
   - each plugin path: absolute, no .. segment, under
     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/ (compared as text), in the
     folder of the plugin it is listed under; that folder a plugin (named
@@ -388,11 +394,14 @@ one deny reason:
     a folder's paths one run, its SKILL.md first; no file holding an expansion token
     (\$ARGUMENTS, \$<digit>, \${CLAUDE_SKILL_DIR}, \${CLAUDE_PROJECT_DIR},
     \${CLAUDE_SESSION_ID}, \${CLAUDE_EFFORT}, !\`, \`\`\`!)
-  - its report: the same path checks, an empty regular file, not a symlink,
-    inside the Crucible space
-  - its baseline: the same path checks, directly in a Crucible baselines
-    folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/YYYY/MM/DD/baselines/ (no folder
-    of that path a symlink), not a symlink, absent or a readable regular
+  - its report: the same path checks, directly in the reports folder of
+    the dispatch's agent in the dispatch's own effort, <effort>/<kind>/,
+    <kind> the agent's report_kind in
+    scripts/agent-dispatch/${NAMES_MODULE}.jq (no folder of that path a
+    symlink), an empty regular file, not a symlink
+  - its baseline: the same path checks, directly in the baselines folder
+    of the dispatch's own effort, <effort>/baselines/ (no folder of that
+    path a symlink), not a symlink, absent or a readable regular
     file; one holding text must be a baseline of the dispatch's repo_root, in
     the shape below
 
@@ -452,13 +461,18 @@ Output (stdout, one JSON line):
          more problems]. <hint>" (a prompt problem has no ": <path>"), at most ${REASON_MAX_BYTES} bytes: the first
          problem of each KIND, then the rest in order while they fit, each
          cut to a share of the cap and marked " (cut)" when longer;
-         KIND one of DISPATCH, AGENT, CONTEXT, PLUGIN, REPORT, BASELINE (a
-         baseline file holding no baseline of this dispatch), each problem
+         KIND one of DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (a context
+         version no longer its effort's latest:
+           CONTEXT-STALE is version v<N> of its effort, not the latest
+           (v<M>: <latest path>); expected the latest version: <path>
+         every other context problem is CONTEXT), PLUGIN, REPORT, BASELINE
+         (a baseline file holding no baseline of this dispatch), each problem
          naming its expected value ("<problem>; expected <x>"); or a fault of this
          script, its install or the host (jq, awk, cat, date, dd,
          grep, mktemp, mv, readlink, rm, tr, wc, a sha256 tool, the shared
          checks and names, the context-handling template), which names no
-         KIND. A baseline that can't be written (git missing from PATH, git
+         KIND (a Crucible space the space rules refuse is one). A baseline
+         that can't be written (git missing from PATH, git
          status failing in repo_root, or the temp file or the move failing)
          denies with the one problem
          "${REASON_PREFIX} BASELINE-WRITE <cause>; expected <x>; the dispatch
@@ -474,11 +488,9 @@ subagent_type text names a listed agent or holds an escape.
 --direct --dispatch PATH runs every check above for a dispatch of agent
 ${help_direct_agent}, then writes the message to a new file made by
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-  new --kind prompts --label ${DIRECT_PROMPT_LABEL} [--session <id>]
-(the session of the dispatch's index line, when it has one; crucible.sh new
-also appends the prompt's own index line, which stays if the file is removed
-on a failure), through a temp file in its folder moved onto its path, and
-prints two lines
+  new --kind cache/prompts --label ${DIRECT_PROMPT_LABEL} --effort <the dispatch's effort>
+(in the effort's cache/prompts/, which expires as crucible.sh --help sets), through a
+temp file in its folder moved onto its path, and prints two lines
   PROMPT: <absolute path of the message file, ending .md>
   REPORT: <the dispatch's report path>
 
@@ -508,11 +520,13 @@ mktemp, mv, readlink, rm, tr, wc, in every macOS and Linux base system, and
 sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
 shasum -a 256);
 the ${CONTEXT_PROCEDURE} skill's ${TEMPLATE_FILE},
-scripts/agent-context-file-checks.sh, scripts/agent-context-validator.jq and
-scripts/agent-context-url.jq, which the validator includes;
+scripts/agent-context-file-checks.sh, scripts/context-versions.sh,
+scripts/agent-context-validator.jq and scripts/agent-context-url.jq, which
+the validator includes; the crucible skill's scripts/lib/crucible-space.sh;
 scripts/agent-dispatch/agent-dispatch-validator.jq
 and ${NAMES_MODULE}.jq (the direct agent, the listed agents, which must
-match the list above, and the baseline shape); crucible.sh for --direct.
+match the list above, the report kinds and the baseline shape); crucible.sh
+for --direct.
 Runtime: about 185 ms for a hook allow with 3 plugins, 175 ms for a deny
 after every check, 205 ms for --direct; measured on macOS (average of 5 runs).
 EOF
@@ -609,28 +623,24 @@ check_base_tools() {
 	done
 }
 
-# Sources the shared path checks and finds the sha256 tool and the validators.
+# Sources the shared path checks, loads the read checks (the space rules and
+# the sha256 tool among them) and finds the validators.
 load_shared_checks() {
 	shared_dir=$(script_dir)/..
 	context_lib="${context_skill_dir}/scripts/agent-context-file-checks.sh"
-	context_validator="${context_skill_dir}/scripts/agent-context-validator.jq"
-	# The validator includes it; a missing copy would read as a jq fault.
-	context_link_rule="${context_skill_dir}/scripts/agent-context-url.jq"
 	dispatch_validator="${shared_dir}/agent-dispatch/agent-dispatch-validator.jq"
 	names_module="${shared_dir}/agent-dispatch/${NAMES_MODULE}.jq"
-	for shared_file in "${context_lib}" "${context_validator}" "${context_link_rule}"; do
-		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
-			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${CONTEXT_PROCEDURE} install, not in the dispatch."
-	done
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		fault "the shared check ${context_lib} is missing or unreadable; ${PROG} needs it; the fault is in the ${CONTEXT_PROCEDURE} install, not in the dispatch."
 	for shared_file in "${dispatch_validator}" "${names_module}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${REASON_PREFIX%:} install, not in the dispatch."
 	done
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
-	find_context_digest_tool ||
-		fault "neither sha256sum nor shasum is on PATH, so the context digest can't be checked; the fault is in the host, not in the dispatch; coreutils provides sha256sum on Linux, and macOS ships shasum."
+	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
+	context_load_checks "${context_skill_dir%/*}" ||
+		fault "${context_load_problem}; ${PROG} needs it; the fault is in the install or the host, not in the dispatch."
 }
 
 # Sets DIRECT_AGENT and BASELINE_KIND from the shared names module, and faults
@@ -651,10 +661,11 @@ load_shared_names() {
 	readonly BASELINE_KIND
 }
 
-# Prints the value of jq expression $1 over the shared names module.
+# Prints the value of jq expression $1 over the shared names module, with
+# $agent set to $2 (empty when not given).
 read_shared_name() {
 	names_dir=$(script_dir)/../agent-dispatch
-	jq -nr -L "${names_dir}" "include \"${NAMES_MODULE}\"; $1" </dev/null
+	jq -nr -L "${names_dir}" --arg agent "${2-}" "include \"${NAMES_MODULE}\"; $1" </dev/null
 }
 
 # Creates the private temp folder that holds every checked file's copy.
@@ -699,22 +710,24 @@ is_template_usable() {
 	grep -q '[^[:space:]]' "${template_copy}" 2>/dev/null
 }
 
-# Sets space_root to the Crucible space, without trailing slashes.
+# Resolves the Crucible space by the space rules, for the path checks, or
+# faults: a space they refuse is the install's or the host's, not the dispatch's.
 resolve_space_root() {
-	space_root="${CRUCIBLE_HOME:-${HOME:-}/.crucible}"
-	while [ "${space_root}" != '/' ] && [ "${space_root%/}" != "${space_root}" ]; do
-		space_root=${space_root%/}
-	done
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read below
+	crucible_resolve_root ||
+		fault "the Crucible space is unusable (${crucible_root_problem}); the fault is in CRUCIBLE_HOME or HOME, not in the dispatch."
 }
 
-# Refuses unless dispatch_path is a regular file directly in a Crucible
-# dispatches folder holding a valid dispatch; sets dispatch_copy.
+# Refuses unless dispatch_path is a regular file directly in an effort's
+# dispatches folder holding a valid dispatch; sets dispatch_copy and
+# dispatch_effort.
 check_dispatch_file() {
 	path_problem=$(context_path_problem "${dispatch_path}")
 	[ -z "${path_problem}" ] || refuse_now "DISPATCH ${path_problem}; expected ${context_path_expected}: ${dispatch_path}"
 	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	in_space_kind_folder "${dispatch_path}" dispatches ||
-		refuse_now "DISPATCH path is not a file in a Crucible dispatches folder; expected a file directly in ${space_root}/YYYY/MM/DD/dispatches/, no folder of it a symlink: ${dispatch_path}"
+	crucible_check_effort_item "${dispatch_path}" dispatches ||
+		refuse_now "DISPATCH path is ${crucible_item_problem}: ${dispatch_path}"
+	dispatch_effort=${crucible_effort}
 	[ ! -L "${dispatch_path}" ] || refuse_now "DISPATCH file is a symlink; expected a regular file: ${dispatch_path}"
 	[ -f "${dispatch_path}" ] && [ -r "${dispatch_path}" ] ||
 		refuse_now "DISPATCH file is missing, unreadable or not a regular file; expected a readable regular file: ${dispatch_path}"
@@ -727,27 +740,6 @@ check_dispatch_file() {
 	[ -n "${shape_report}" ] || return 0
 	shape_problems=$(join_lines "${shape_report}")
 	refuse_now "DISPATCH file does not have the dispatch shape (${shape_problems}); expected the shape agent-dispatch-validator.jq checks; the flow's step 8 writes a new dispatch file: ${dispatch_path}"
-}
-
-# Succeeds when path $1 is <space_root>/YYYY/MM/DD/<kind $2>/<name>, none of
-# those folders a symlink.
-in_space_kind_folder() {
-	case $1 in
-		"${space_root}"/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/"$2"/?*) ;;
-		*) return 1 ;;
-	esac
-	item_name=${1#"${space_root}"/????/??/??/"$2"/}
-	case ${item_name} in
-		*/*) return 1 ;;
-		*) ;;
-	esac
-	kind_dir=${1%/*}
-	day_dir=${kind_dir%/*}
-	month_dir=${day_dir%/*}
-	year_dir=${month_dir%/*}
-	for layout_dir in "${space_root}" "${year_dir}" "${month_dir}" "${day_dir}" "${kind_dir}"; do
-		[ -d "${layout_dir}" ] && [ ! -L "${layout_dir}" ] || return 1
-	done
 }
 
 # Sets dispatch_agent, dispatch_context, dispatch_context_sha256,
@@ -772,7 +764,9 @@ EOF
 }
 
 # Adds a problem for the first failing check of the context file, and sets
-# context_pretty to its pretty-printed copy when every check passes.
+# context_pretty to its pretty-printed copy when every check passes. The
+# read checks copy the file once (one byte over the cap at most, so an
+# oversized file is never read whole); the digest and the message read that copy.
 check_context() {
 	context_path=${dispatch_context}
 	path_problem=$(context_path_problem "${context_path}")
@@ -780,29 +774,16 @@ check_context() {
 		add_problem CONTEXT "${path_problem}; expected ${context_path_expected}" "${context_path}"
 		return 0
 	fi
-	if [ -L "${context_path}" ]; then
-		add_problem CONTEXT 'file is a symlink; expected a regular file' "${context_path}"
-		return 0
-	fi
-	if [ ! -f "${context_path}" ] || [ ! -r "${context_path}" ]; then
-		add_problem CONTEXT 'file is missing, unreadable or not a regular file; expected a readable regular file' "${context_path}"
-		return 0
-	fi
-	# One byte over the cap is copied, so an oversized file is never read whole.
 	context_copy="${snapshot_dir}/context"
-	if ! dd if="${context_path}" of="${context_copy}" bs="$((context_max_bytes + 1))" count=1 2>/dev/null; then
-		add_problem CONTEXT 'file is missing, unreadable or not a regular file; expected a readable regular file' "${context_path}"
+	# shellcheck disable=SC2310 # its status is a tool's; a failure faults
+	context_read_problem "${context_path}" "${context_copy}" ||
+		fault "a tool failed on the context read checks (jq or wc); the fault is in the host, not in the dispatch; the cause is on stderr."
+	if [ "${context_read_fault}" = stale ]; then
+		add_problem CONTEXT-STALE "${context_read_text}" "${context_path}"
 		return 0
 	fi
-	context_size=$(wc -c <"${context_copy}") ||
-		fault "wc could not count the bytes of the temp copy; the fault is in the host, not in the dispatch; the cause is on stderr."
-	context_size=${context_size##* }
-	case ${context_size} in
-		'' | *[!0-9]*) fault "wc printed no byte count for the temp copy; the fault is in the host's wc, not in the dispatch." ;;
-		*) ;;
-	esac
-	if [ "${context_size}" -gt "${context_max_bytes}" ]; then
-		add_problem CONTEXT "file is larger than ${context_max_bytes} bytes; expected at most ${context_max_bytes} bytes" "${context_path}"
+	if [ -n "${context_read_fault}" ]; then
+		add_problem CONTEXT "${context_read_text}" "${context_path}"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure faults
@@ -812,37 +793,36 @@ check_context() {
 		add_problem CONTEXT "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds; ${CONTEXT_PROCEDURE}'s context.sh extend writes a new version" "${context_path}"
 		return 0
 	fi
-	if ! jq empty "${context_copy}" </dev/null >/dev/null 2>&1; then
-		add_problem CONTEXT 'file is not valid JSON; expected one JSON object' "${context_path}"
-		return 0
-	fi
-	context_report=$(jq -rs --arg context_path "${context_path}" -f "${context_validator}" "${context_copy}" </dev/null) ||
-		fault "jq could not run the context check ${context_validator}; the hook needs jq 1.6+; the cause is on stderr."
-	if [ -n "${context_report}" ]; then
-		context_problems=$(join_lines "${context_report}")
-		add_problem CONTEXT "file does not have the context shape (${context_problems}); expected the shape agent-context-validator.jq checks; ${CONTEXT_PROCEDURE}'s context.sh extend writes a new version" "${context_path}"
-		return 0
-	fi
 	context_pretty="${snapshot_dir}/context.pretty"
 	jq . "${context_copy}" </dev/null >"${context_pretty}" ||
 		fault "jq could not print the context copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
-# Adds a problem when the report path fails the context path checks, or is not
-# an empty regular file inside the Crucible space.
+# Adds a problem when the report path fails the context path checks, is not
+# in the reports folder of the dispatch's agent in the dispatch's effort, or
+# is not an empty regular file.
 check_report() {
 	path_problem=$(context_path_problem "${dispatch_report}")
 	if [ -n "${path_problem}" ]; then
 		add_problem REPORT "${path_problem}; expected ${context_path_expected}" "${dispatch_report}"
 		return 0
 	fi
-	case ${dispatch_report} in
-		"${space_root}"/*) ;;
-		*)
-			add_problem REPORT "file is not inside the Crucible space; expected a path under ${space_root}/" "${dispatch_report}"
-			return 0
-			;;
-	esac
+	# shellcheck disable=SC2310 # its status is jq's; a failure faults
+	# shellcheck disable=SC2016 # $agent is jq's
+	report_kind=$(read_shared_name '$agent | report_kind' "${dispatch_agent}") ||
+		fault "jq could not read report_kind from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
+	# The validator admits only the agents of report_kinds; this guards a drift between them.
+	[ -n "${report_kind}" ] ||
+		fault "${NAMES_MODULE}.jq names no report kind for agent \"${dispatch_agent}\"; expected one for every dispatched agent; the fault is in the flow-agent-initialization install, not in the dispatch."
+	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
+	if ! crucible_check_effort_item "${dispatch_report}" "${report_kind}"; then
+		add_problem REPORT "path is ${crucible_item_problem}" "${dispatch_report}"
+		return 0
+	fi
+	if [ "${crucible_effort}" != "${dispatch_effort}" ]; then
+		add_problem REPORT "file is in effort ${crucible_effort}, not the dispatch's; expected a file directly in ${dispatch_effort}/${report_kind}/" "${dispatch_report}"
+		return 0
+	fi
 	if [ -L "${dispatch_report}" ] || [ ! -f "${dispatch_report}" ]; then
 		add_problem REPORT 'file is missing, a symlink or not a regular file; expected the empty regular file made for this dispatch' "${dispatch_report}"
 	elif [ -s "${dispatch_report}" ]; then
@@ -851,7 +831,7 @@ check_report() {
 }
 
 # Adds a problem when the baseline path fails the context path checks, is not
-# in a Crucible baselines folder, or is not an absent or regular file; one that
+# in the dispatch's effort's baselines folder, or is not an absent or regular file; one that
 # already holds text must hold a baseline of the dispatch's repo_root. Sets
 # baseline_filled to true for a baseline already written (a resend), which is
 # then kept as it is.
@@ -863,8 +843,12 @@ check_baseline() {
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	if ! in_space_kind_folder "${dispatch_baseline}" "${BASELINE_KIND}"; then
-		add_problem BASELINE "path is not a file in a Crucible ${BASELINE_KIND} folder; expected a file directly in ${space_root}/YYYY/MM/DD/${BASELINE_KIND}/, no folder of it a symlink" "${dispatch_baseline}"
+	if ! crucible_check_effort_item "${dispatch_baseline}" "${BASELINE_KIND}"; then
+		add_problem BASELINE "path is ${crucible_item_problem}" "${dispatch_baseline}"
+		return 0
+	fi
+	if [ "${crucible_effort}" != "${dispatch_effort}" ]; then
+		add_problem BASELINE "file is in effort ${crucible_effort}, not the dispatch's; expected a file directly in ${dispatch_effort}/${BASELINE_KIND}/" "${dispatch_baseline}"
 		return 0
 	fi
 	if [ -L "${dispatch_baseline}" ]; then
@@ -1263,17 +1247,12 @@ find_crucible_script() {
 		fault "crucible.sh missing; expected ${crucible_script}; install the crucible skill."
 }
 
-# Writes the message to a new Crucible prompts file (Markdown, .md); sets
-# prompt_path. On a failure after crucible.sh made the file, removes it and exits 1.
+# Writes the message to a new prompt file (Markdown, .md) in the dispatch's
+# effort's cache/prompts/; sets prompt_path. On a failure after crucible.sh
+# made the file, removes it and exits 1.
 write_direct_prompt() {
-	dispatch_session=$(dispatch_index_session)
-	if [ -n "${dispatch_session}" ]; then
-		prompt_path=$(sh "${crucible_script}" new --kind prompts --label "${DIRECT_PROMPT_LABEL}" --session "${dispatch_session}" </dev/null) ||
-			write_failed 'crucible.sh new failed; its stderr is above'
-	else
-		prompt_path=$(sh "${crucible_script}" new --kind prompts --label "${DIRECT_PROMPT_LABEL}" </dev/null) ||
-			write_failed 'crucible.sh new failed; its stderr is above'
-	fi
+	prompt_path=$(sh "${crucible_script}" new --kind cache/prompts --label "${DIRECT_PROMPT_LABEL}" --effort "${dispatch_effort}" </dev/null) ||
+		write_failed 'crucible.sh new failed; its stderr is above'
 	case ${prompt_path} in
 		/*.md) ;;
 		*) write_failed "crucible.sh new printed no file path; expected one absolute path ending in .md; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun" ;;
@@ -1282,16 +1261,6 @@ write_direct_prompt() {
 	cat -- "${message_file}" >"${temp_file}" || write_failed "could not write the temp file ${temp_file}; expected a writable folder ${prompt_path%/*}; try checking its free space, then rerun"
 	mv -f "${temp_file}" "${prompt_path}" || write_failed "mv could not move the temp file onto ${prompt_path}; expected a writable folder ${prompt_path%/*}; try checking its permissions and free space, then rerun"
 	temp_file=''
-}
-
-# Prints the session of the dispatch's index line in its day's index.jsonl, or nothing.
-dispatch_index_session() {
-	day_index="${dispatch_path%/dispatches/*}/index.jsonl"
-	[ -f "${day_index}" ] && [ ! -L "${day_index}" ] || return 0
-	dispatch_id=$(printf '%.20s' "${dispatch_path##*/}")
-	jq -rRn --arg id "${dispatch_id}" \
-		'first(inputs | fromjson? | select(type == "object" and .id == $id and .kind == "dispatches") | .session | strings) // empty' \
-		"${day_index}" 2>/dev/null || true
 }
 
 # Exits 1 with $1, removing the file crucible.sh made for this run.

@@ -1,157 +1,102 @@
 #!/usr/bin/env sh
-# Hands out paths in the durable Crucible space, finds items through its
-# day indexes, renders and opens them, and prunes old day folders.
+# Hands out paths in the effort folders of the durable Crucible space, finds
+# items by ID or kind, renders and opens them, expires an effort's cache and
+# prunes efforts no file changed in for long.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='crucible.sh'
-readonly KINDS='context, gates, reports, dispatches, baselines, prompts'
-readonly MAX_LABEL_CHARS=60
-# The NAME part of an effort folder's name, as effort.sh sets it.
-readonly MAX_EFFORT_NAME_CHARS=40
-# A clash needs the same second, label and 4 random hex digits; a handful of
-# fresh draws makes a repeat practically impossible.
-readonly MAX_CREATE_ATTEMPTS=5
-# Bounds the --older-than value so the date arithmetic stays well inside jq's range.
+# Every kind is a folder of an effort folder; a nested kind is one folder per level.
+readonly KIND_LIST='context dispatches baselines reports/development reports/review cache/gates cache/prompts'
+readonly CACHE_KINDS='cache/gates cache/prompts'
+# A cache item is read in the session that wrote it; a week covers a session
+# resumed days later. One fixed age until the hub has settings.
+readonly CACHE_MAX_DAYS=7
+# Bounds the --older-than value handed to find -mtime, far past any real age.
 readonly MAX_PRUNE_DAYS_DIGITS=5
-# An index append holds its lock for one write, so a lock this old was left
-# by a holder that stopped; waiting longer than the wait bound gives up.
-readonly INDEX_LOCK_STALE_SECONDS=5
-readonly INDEX_LOCK_WAIT_SECONDS=10
-readonly INDEX_LOCK_POLL_SECONDS=0.05
-# Spins between two checks of the clock and of the lock's staleness.
-readonly INDEX_LOCK_SPINS_PER_CHECK=20
 readonly REPORT_RENDERER='skills/standard-code-development-report/scripts/report.sh'
-
-# One index line is trusted only when every field has the shape `new` writes
-# and its ID's date matches the day folder it sits in; anything else is skipped.
-# The programs are single-quoted on purpose: their $ signs are jq's.
-# shellcheck disable=SC2016
-readonly INDEX_ENTRY_JQ='
-def kinds: ["context", "gates", "reports", "dispatches", "baselines", "prompts"];
-# Every kind is JSON but prompts, the Markdown message the main thread reads.
-def extension($kind): if $kind == "prompts" then "md" else "json" end;
-def day_of_file: capture("/(?<y>[0-9]{4})/(?<m>[0-9]{2})/(?<d>[0-9]{2})/index\\.jsonl$") | .y + .m + .d;
-def valid_entry($index):
-	type == "object" and .v == 1
-	# The ID rule of the Crucible space itself; crucible_id_pattern in dispatch-names.jq must match it.
-	and (.id | type) == "string" and (.id | test("^[0-9]{8}T[0-9]{6}-[0-9a-f]{4}$"))
-	and (.kind | type) == "string" and (.kind as $kind | kinds | index([$kind]) != null)
-	and (.label | type) == "string" and (.label | test("^[a-z0-9-]{1,60}$"))
-	and .file == "\(.kind)/\(.id)-\(.label).\(extension(.kind))"
-	and ($index | day_of_file? // "") == .id[0:8];
-'
-# Prints id, path, kind and label of each item the ID $want names.
-# shellcheck disable=SC2016
-readonly LOOKUP_JQ="${INDEX_ENTRY_JQ}"'
-def wanted: if ($want | length) == 4 then .id | endswith("-" + $want) else .id == $want end;
-[inputs | input_filename as $index | (fromjson? // empty)
-	| select(valid_entry($index) and wanted)
-	| {dir: ($index | rtrimstr("/index.jsonl")), id, file, kind, label}]
-| unique_by([.id, .file])[]
-| [.id, .dir + "/" + .file, .kind, .label] | @tsv
-'
-# Prints the path of each item of kind $kind, session $session and, when
-# $label is not empty, label $label, newest first.
-# shellcheck disable=SC2016
-readonly FIND_JQ="${INDEX_ENTRY_JQ}"'
-[inputs | input_filename as $index | (fromjson? // empty)
-	| select(valid_entry($index) and .kind == $kind and .session == $session and ($label == "" or .label == $label))
-	| {id, path: (($index | rtrimstr("/index.jsonl")) + "/" + .file)}]
-| unique_by(.path) | sort_by(.id) | reverse[] | .path
-'
+readonly RENDERED_REPORT_KIND='reports/development'
+# The C locale keeps the shell's patterns and sort byte-wise on macOS and Linux.
+LC_ALL=C
+export LC_ALL
 
 usage() {
-	cat <<'EOF'
-usage: crucible.sh new --kind KIND --label LABEL [--repo PATH] [--session ID]
-       crucible.sh new --kind KIND --label LABEL --effort FOLDER
+	load_help_rules
+	cat <<EOF
+usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
        crucible.sh path ID
-       crucible.sh find --kind KIND --session ID [--label LABEL]
+       crucible.sh find --effort FOLDER --kind KIND [--label LABEL]
        crucible.sh open ID [--format md|html] [--editor CMD]
        crucible.sh prune --older-than Nd [--apply]
+       crucible.sh root
        crucible.sh --help | -h
 
-Hands out and finds the files of the durable Crucible space, where every
-context file, gate record, dispatch, dispatch baseline (the repository's git
-status when the dispatch was sent) and agent report lives as one JSON file,
-and a prompt (the Markdown message the main thread reads) as one .md file.
+Hands out and finds the files of the durable Crucible space. Every file
+lives in an effort folder: a context file, a dispatch, a dispatch baseline
+(the repository's git status when the dispatch was sent), an agent report
+and a gate record are one JSON file each, a prompt (the Markdown message the
+main thread reads) one .md file.
 
-The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path. The space
-and every folder in it is a real folder: a root that is a symbolic link is
-refused by every command (exit 4); a year, month, day or kind folder that is
-one is refused by new (exit 4) and skipped by path, find and open (an item
-under it is not found: exit 1 for path and open). Prune skips a year, month
-or day folder that is a link; a kind folder that is a link inside an old day
-is removed with that day (the link only, never its target). new --effort
-refuses efforts/, the effort folder or its kind folder as a link (exit 4),
-and prune never looks inside efforts/. So nothing is
-ever read, written or removed outside the root. Folders the script creates are
-mode 700, files mode 600.
+The space: \${CRUCIBLE_HOME:-\$HOME/.crucible}, an absolute path, trailing
+slashes dropped. Its rules (where it is, the effort folder name, the ID,
+the item label and name) are lib/crucible-space.sh beside this script, which
+the other Crucible scripts source too. A root that is a symbolic link is refused by every command but
+--help (exit 4). efforts/, an effort folder and every kind folder level must
+be real folders, not symbolic links: new and find refuse one (exit 4); path,
+open and prune skip it. Nothing outside the root is written or removed,
+except open's temp folder (below). Folders the script creates are mode 700,
+files mode 600.
 
 Layout (local time):
-  <root>/YYYY/MM/DD/index.jsonl
-  <root>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
-  kind: context, gates, reports, dispatches, baselines or prompts; hex: 4 random
-  lowercase hex digits; ext: md for prompts (a Markdown message), json for
-  every other kind.
-  The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
-  With new --effort, an item lives in an effort folder instead, unindexed:
   <root>/efforts/<effort>/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
-
-Index line, one per item, appended by new (built by jq, written whole
-under the day's index lock):
-  {"v":1,"id":"<ts>-<hex>","time":"<ts>","kind":"<kind>",
-   "file":"<kind>/<name>","label":"<label>","repo":"<path>","session":"<id>"}
-  file is relative to the day folder, so the tree can move as a whole.
+  effort: the effort folder effort.sh start made,
+    ${help_name_rule}
+  kind, the folder under the effort (durable unless marked cache):
+    context               the effort's context versions and their text files
+    dispatches            agent dispatch files
+    baselines             dispatch baselines
+    reports/development   development reports
+    reports/review        review reports
+    cache/gates           gate records; expire after ${CACHE_MAX_DAYS} days
+    cache/prompts         the main thread's prompts; expire after ${CACHE_MAX_DAYS} days
+  hex: 4 random lowercase hex digits; ext: md for cache/prompts, json for
+  every other kind. The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
+Day folders (<root>/YYYY/MM/DD/) of earlier versions are no longer read,
+written or removed.
 
 Commands:
-  new    creates an empty file (mode 600) for the caller to write, appends
-         its index line and prints its absolute path (ending .md for
-         prompts, .json for every other kind). LABEL: lowercase a-z,
-         0-9 and -, 1 to 60 characters. --repo (absolute, or empty for none)
-         defaults to the git root of the current folder, or empty outside a
-         repository; --session defaults to empty. A repeated option keeps
-         its last value. The file is created without overwriting
-         (noclobber) and its ID is claimed across the day's kind folders; a
-         clash of either retries with fresh hex, up to 5 times. The index
-         line is appended while new holds <day>/.index.lock, a folder only
-         one new at a time can create, so a line of any length lands whole.
-         A lock older than 5 seconds, or whose owner process is gone, is
-         broken (stderr says so); after 10 seconds of waiting new exits 4
-         and removes the file it created. The content is the caller's to
-         write, as one JSON object in its writer's shape ("v": 1 is only in
-         index lines and gate records), or for prompts as Markdown.
-         --effort FOLDER makes the item in the effort folder FOLDER instead
-         of the day folder: it creates FOLDER/<kind>/ when missing and the
-         file in it, with the same name, noclobber and retry rules, the ID
-         claimed across FOLDER's kind folders, and prints its absolute
-         path. FOLDER: an absolute path (trailing slashes allowed) to a
-         folder directly inside <root>/efforts/, named as effort.sh --help
-         sets: <YYYYMMDDTHHMMSS>-<hex>-<NAME>, NAME words of a-z and 0-9
-         joined by single dashes, 1 to 40 characters. efforts/, FOLDER and
-         FOLDER/<kind>/ must be real folders, not symbolic links, and FOLDER
-         must exist (new never creates it). No index line is written and no
-         lock taken (an effort folder holds no record file), so path, find,
-         open and prune do not see these items. --repo and --session only
-         feed the index line, so either one with --effort is a usage error.
-  path   prints the absolute path of an item. ID: the full ID, which reads
-         only the index of the day in its date; or its 4 hex digits, which
-         searches the day folders newest first and stops at the first day
-         holding an item with them: several items there sharing them is an
-         error, and an item in an older day with the same hex is not seen,
-         so it needs its full ID. Items are found through the index files
-         only; an index line of the wrong shape is skipped.
-  find   prints the absolute path of every item of KIND whose index line has
-         session ID and, with --label, that label, one per line, newest ID
-         first; nothing when there is none (exit 0). It reads only the index
-         files of the day folders that exist, as path does, and prints only
-         items whose file is a regular file, not a symlink, in a kind folder
-         that is not a symlink. Read-only.
-  open   renders an item to a new temp folder in ${TMPDIR:-/tmp} (never
+  new    creates an empty file (mode 600) for the caller to write in
+         FOLDER/KIND/ and prints its absolute path. FOLDER: an absolute
+         path (trailing slashes allowed) to an effort folder directly in
+         <root>/efforts/; it must exist (new never creates it). KIND's
+         folders are created when missing. LABEL: ${help_label_rule}.
+         A repeated option keeps its last value. The file is created
+         without overwriting (noclobber) and its ID is claimed across
+         FOLDER's kind folders; a clash of either retries with a fresh ID,
+         up to ${help_create_attempts} tries. The content is the caller's to
+         write, as one JSON object in its writer's shape, or Markdown for
+         cache/prompts.
+         Every new also expires FOLDER's cache: it removes each regular
+         file directly in FOLDER/cache/gates/ and FOLDER/cache/prompts/
+         last modified ${CACHE_MAX_DAYS} or more days ago, never following a symbolic link
+         and never entering a subfolder. An expiry that fails puts a note
+         on stderr and new goes on.
+  path   prints the absolute path of an item. ID: the full ID, or its 4 hex
+         digits, searched in every kind folder of every effort folder. An
+         item is a regular file, not a symbolic link, named as the layout
+         sets; anything else is skipped. Several items with the ID is an
+         error (stderr lists them): give the full ID.
+  find   prints the absolute path of every item of KIND in FOLDER (FOLDER
+         as new takes it) and, with --label, with that label, one per line,
+         newest ID first; nothing when there is none (exit 0), FOLDER/KIND/
+         missing included. Read-only.
+  open   renders an item to a new temp folder in \${TMPDIR:-/tmp} (never
          inside the space: a TMPDIR inside the space is replaced by /tmp; the
-         folder is left for the editor and not removed) and opens it. The ID
-         comes first. A report is rendered by
-         ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/standard-code-development-report/scripts/report.sh
+         folder is left for the editor and not removed, unless open fails
+         or is stopped, which removes it) and opens it. The ID
+         comes first. A reports/development item is rendered by
+         \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/standard-code-development-report/scripts/report.sh
          render --full when that script's --help names --full and the render
          succeeds. Anything else gets a title line "# <kind>: <label>", then:
          a prompt its Markdown as stored; JSON pretty-printed in a json
@@ -159,75 +104,74 @@ Commands:
          item."; a file that is not valid JSON "Not valid JSON; the file as
          stored:" and the file in a text fence. It opens with the OS
          opener, open (macOS) or xdg-open (Linux), which hands the file to
-         the desktop and never blocks; $VISUAL and $EDITOR are not consulted.
+         the desktop and never blocks; \$VISUAL and \$EDITOR are not consulted.
          --editor CMD opens it with CMD instead: CMD is run by sh with the
-         file as its last argument, the way git runs $EDITOR. CMD must hand
+         file as its last argument, the way git runs \$EDITOR. CMD must hand
          the file to a GUI app and return (e.g. code, idea); never a terminal
          editor or a waiting form such as 'code -w': open waits for CMD to
          exit, so a CMD that waits for a terminal or for the file to close
          hangs a caller with no terminal, such as the Bash tool. The opener's or
          editor's output goes to stderr. Prints exactly one line: opened
          <file>. --format html is not available yet.
-  prune  lists the day folders whose date is more than N days before today
-         (with 7d on the 18th, the 10th and earlier). Without --apply it
-         prints "would remove <folder>" for each and changes nothing; with
-         --apply it removes them, and any month or year folder left empty,
-         and prints "removed <folder>" for each day folder.
-         A session may still write to a recent day, so these are never
-         removed, in either mode, and print "kept <folder> (<reason>)":
-         today, yesterday, and a day holding a file modified in the last
-         24 hours (or one find cannot fully read). It closes with one line:
-           would remove <N> day folders dated before YYYY-MM-DD[ (kept <K>,
+  prune  lists the effort folders in which nothing (the folder itself, a
+         subfolder or a file) was modified in the last N days. Without
+         --apply it prints "would remove <folder>" for each and changes
+         nothing; with --apply it removes each whole effort folder and
+         prints "removed <folder>". A session may still write to an effort,
+         so one holding anything modified in the last 24 hours (or one find
+         cannot fully read) is never removed, in either mode, and prints
+         "kept <folder> (<reason>)". It closes with one line:
+           would remove <N> effort folders unchanged for N days[ (kept <K>,
            listed above)]; nothing changed, add --apply to remove them
          or, with --apply:
-           removed <N> day folders dated before YYYY-MM-DD[ (kept <K>,
+           removed <N> effort folders unchanged for N days[ (kept <K>,
            listed above)]
-         Only folders matching <root>/YYYY/MM/DD are ever touched.
+         Only real folders directly in <root>/efforts/ named as an effort
+         folder are ever touched; rm -rf never follows a symbolic link in
+         them.
+  root   prints the space root, resolved and checked as above, without
+         creating it. Takes no argument.
   --help, -h
          prints this contract on stdout; any argument after it is ignored.
 
 Exit codes:
   0  ok (prune: also when nothing is old enough)
-  1  path or open: no indexed item has that ID, the ID's hex is shared by
-     several items (stderr lists them), or the indexed file is gone, not a
-     regular file, or in a kind folder that is a symlink
+  1  path or open: no item has that ID, or the ID's hex is shared by
+     several items (stderr lists them)
   2  usage error: no command (this help is printed on stderr), unknown
      command or option, a missing option value, bad kind, bad label, a
-     relative --repo, a CRUCIBLE_HOME that is relative or /, a relative HOME
-     when CRUCIBLE_HOME is unset or empty, a malformed ID or Nd, open with
-     an option before the ID, --format html, find without --kind or
-     --session; for new --effort, a FOLDER that is relative, not directly
-     inside <root>/efforts/ or not named <id>-<name>, or --effort with
-     --repo or --session. Its stderr is one "crucible.sh: <what failed>;
-     expected <x>" line, then "Try 'crucible.sh --help'."
+     CRUCIBLE_HOME that is relative or /, a relative HOME when CRUCIBLE_HOME
+     is unset or empty, a malformed ID or Nd, open with an option before
+     the ID, --format html, root with an argument, new or find without
+     --kind or --effort, or a FOLDER that is relative, not directly inside
+     <root>/efforts/ or not named <id>-<name>. Its stderr is one
+     "crucible.sh: <what failed>; expected <x>" line, then "Try
+     'crucible.sh --help'."
   4  space fault, its stderr line starting "crucible.sh: space:": neither
-     CRUCIBLE_HOME nor HOME set; the root is a symlink; the space cannot be
-     created or written (new cannot create a folder, the file or the index
-     line; prune cannot remove a day folder); a folder in it is a symlink
-     (new); new --effort's efforts/ or FOLDER missing, not a folder or a
-     symlink; new's 5 attempts all found the name or its ID taken; new waited
-     10 seconds for a busy index lock (with no working stat, a lock whose
-     owner process is alive is never judged stale by age, so it waits this
-     out); or open's mktemp -d fails in its temp base
+     CRUCIBLE_HOME nor HOME set; the root a symbolic link; efforts/,
+     FOLDER or a kind folder level missing (new, find: FOLDER and
+     efforts/), not a folder or a symbolic link; a folder or the file new
+     cannot create; new's ${help_create_attempts} tries all found the name or its ID taken;
+     prune --apply unable to remove an effort folder; or open's mktemp -d
+     failing in its temp base
   5  install fault, its stderr line starting "crucible.sh: install:": a
-     dependency below missing, too old or failing: jq, od or tr (no random
-     source), date, sleep, sort, grep, find (prune), uname, the opener or
-     the editor. jq is checked once the space is resolved, before the
-     command's arguments; the others when the command first needs them.
+     dependency below missing or failing: lib/crucible-space.sh beside this
+     script (every command but --help); date, od or the random source
+     (new); jq (open); find (prune); uname, the opener or the editor
+     (open). Each is checked when the command first needs it.
 
-Dependencies: POSIX sh; jq 1.6+; cat, cut, find, grep, mkdir, mktemp, mv,
-od, rm, rmdir, sort, tr and uname; a date that knows +%s; a stat that knows
--c %Y (GNU) or -f %m (BSD); a sleep that takes fractions; git only to
-default --repo; open (macOS) or xdg-open (Linux) only for open without
---editor. Install jq on macOS with brew install jq, on Linux with the
-distro's jq package.
+Dependencies: POSIX sh; lib/crucible-space.sh beside this script; cat, find,
+mkdir, mktemp, od (with /dev/urandom), rm, sort and uname, in every macOS and
+Linux base system; a date that knows +%Y%m%dT%H%M%S; jq 1.6+ only for open
+(macOS: brew install jq; Linux: the distro's jq package); open (macOS) or
+xdg-open (Linux) only for open without --editor.
 
-Runtime: under 0.05 s a command: new about 0.04 s; path by full ID about
-0.02 s; path by hex, find and prune about 0.03 s; open with the JSON
-fallback render about 0.04 s; --help about 0.01 s (mean wall time of 20
-runs, sh startup included, one day folder of about 90 items; macOS 26.7 on
-an Apple M1 Max). path by hex, find and prune grow with the number of day
-folders; open adds the report renderer's and the opener's own time.
+Runtime: new about 0.03 s; path by full ID or hex and find about 0.01 s,
+prune about 0.04 s, over 10 efforts; open with the JSON fallback render
+about 0.03 s; root and --help about 0.01 s (mean wall time of 20 runs, sh
+startup included; macOS 26.7 on an Apple M1 Max). path and prune grow with
+the number of efforts; open adds the report renderer's and the opener's own
+time.
 EOF
 }
 
@@ -268,38 +212,60 @@ main() {
 			usage
 			exit 0
 			;;
-		new | path | find | open | prune) ;;
-		*) usage_error "unknown command: ${command}; expected new, path, find, open, prune or --help" ;;
+		new | path | find | open | prune | root) ;;
+		*) usage_error "unknown command: ${command}; expected new, path, find, open, prune, root or --help" ;;
 	esac
+	load_space_lib
 	resolve_root
-	check_jq
 	case ${command} in
 		new) run_new "$@" ;;
 		path) run_path "$@" ;;
 		find) run_find "$@" ;;
 		open) run_open "$@" ;;
-		*) run_prune "$@" ;;
+		prune) run_prune "$@" ;;
+		*) run_root "$@" ;;
 	esac
 }
 
-# Sets root from CRUCIBLE_HOME or the home folder, without trailing slashes.
-resolve_root() {
-	if [ -n "${CRUCIBLE_HOME:-}" ]; then
-		root=${CRUCIBLE_HOME}
-		root_source=CRUCIBLE_HOME
-	elif [ -n "${HOME:-}" ]; then
-		root="${HOME}/.crucible"
-		root_source=HOME
-	else
-		space_fault 'neither CRUCIBLE_HOME nor HOME is set; expected one of them to name the space'
-	fi
-	case ${root} in
-		/*) ;;
-		*) usage_error "${root_source} gives ${root}, which is not absolute; expected an absolute path" ;;
+# Sources the space rules from lib/ beside this script, or exits 5.
+load_space_lib() {
+	# shellcheck disable=SC2310 # its status says whether the rules were found; the fault is named here
+	source_space_lib || install_fault "space rules missing; expected ${space_lib}; try reinstalling the crucible skill"
+}
+
+# Sources lib/crucible-space.sh beside this script; fails, space_lib naming
+# where it was looked for, when it is not a readable file.
+source_space_lib() {
+	case $0 in
+		*/*) space_lib="${0%/*}/lib/crucible-space.sh" ;;
+		*) space_lib='./lib/crucible-space.sh' ;;
 	esac
-	while [ "${root}" != "${root%/}" ]; do root=${root%/}; done
-	[ -n "${root}" ] || usage_error 'CRUCIBLE_HOME is /; expected a folder of its own'
-	[ ! -L "${root}" ] || space_fault "${root} is a symbolic link; expected a real folder (point CRUCIBLE_HOME at the target instead)"
+	[ -f "${space_lib}" ] && [ -r "${space_lib}" ] || return 1
+	# shellcheck source=lib/crucible-space.sh
+	. "${space_lib}"
+}
+
+# Sets the rule texts the help prints from the space rules; when they are
+# missing, --help still prints, naming where the rule lives instead.
+load_help_rules() {
+	help_name_rule='<YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>, NAME as lib/crucible-space.sh (missing) sets it'
+	help_label_rule='as lib/crucible-space.sh (missing) sets it'
+	help_create_attempts='N (lib/crucible-space.sh, missing, sets it)'
+	# shellcheck disable=SC2310 # its status picks the fallback texts above; errexit adds nothing
+	source_space_lib || return 0
+	help_name_rule=${crucible_effort_name_rule}
+	help_label_rule=${crucible_label_rule}
+	help_create_attempts=${crucible_max_create_attempts}
+}
+
+# Sets root from the space rules, or exits 2 or 4 with their problem.
+resolve_root() {
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the fault is read below
+	if ! crucible_resolve_root; then
+		[ "${crucible_root_fault}" != usage ] || usage_error "${crucible_root_problem}"
+		space_fault "${crucible_root_problem}"
+	fi
+	root=${crucible_root}
 }
 
 check_jq() {
@@ -311,206 +277,86 @@ check_jq() {
 	esac
 }
 
-# Option values arrive as the next argument; a missing one is a usage error,
-# an empty one is accepted (new --repo '' means no repository).
+# Option values arrive as the next argument; a missing one is a usage error.
 require_value() {
 	[ "$2" -ge 2 ] || usage_error "$1 needs a value; expected $1 VALUE"
 }
 
+run_root() {
+	[ "$#" -eq 0 ] || usage_error "root takes no argument, not $1; expected crucible.sh root"
+	printf '%s\n' "${root}"
+}
+
 run_new() {
-	kind='' label='' session='' repo='' effort=''
-	repo_given=false session_given=false effort_given=false
+	kind='' label='' effort=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--kind | --label | --repo | --session | --effort) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for new: $1; expected --kind, --label, --repo, --session or --effort" ;;
+			--kind | --label | --effort) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for new: $1; expected --kind, --effort or --label" ;;
 		esac
 		case $1 in
 			--kind) kind=$2 ;;
 			--label) label=$2 ;;
-			--session) session=$2 session_given=true ;;
-			--effort) effort=$2 effort_given=true ;;
-			*) repo=$2 repo_given=true ;;
+			*) effort=$2 ;;
 		esac
 		shift 2
 	done
 	check_kind
 	check_label
-	if [ "${effort_given}" = true ]; then
-		check_effort
-	elif [ "${repo_given}" = true ]; then
-		check_repo
-	else
-		repo=$(default_repo)
-	fi
+	check_effort
 	create_item
-}
-
-check_kind() {
-	case ${kind} in
-		context | gates | reports | dispatches | baselines | prompts) ;;
-		'') usage_error "--kind missing; expected one of ${KINDS}" ;;
-		*) usage_error "unknown kind: ${kind}; expected one of ${KINDS}" ;;
-	esac
-}
-
-check_label() {
-	case ${label} in
-		'') usage_error '--label missing; expected lowercase a-z, 0-9 and -, 1 to 60 characters' ;;
-		*[!abcdefghijklmnopqrstuvwxyz0123456789-]*)
-			usage_error "bad label: ${label}; expected lowercase a-z, 0-9 and - only"
-			;;
-		*) ;;
-	esac
-	[ "${#label}" -le "${MAX_LABEL_CHARS}" ] ||
-		usage_error "label is ${#label} characters; expected at most ${MAX_LABEL_CHARS}"
-}
-
-check_repo() {
-	case ${repo} in
-		'' | /*) ;;
-		*) usage_error "--repo ${repo} is not absolute; expected the absolute path of the git root" ;;
-	esac
-}
-
-# Sets effort to FOLDER without trailing slashes and efforts_dir to the
-# space's efforts folder, once FOLDER names an effort folder directly in it.
-check_effort() {
-	[ "${repo_given}" = false ] && [ "${session_given}" = false ] ||
-		usage_error '--effort takes no --repo or --session; expected new --kind KIND --label LABEL --effort FOLDER'
-	case ${effort} in
-		/*) ;;
-		*) usage_error "--effort ${effort} is not absolute; expected the absolute path of an effort folder" ;;
-	esac
-	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
-	efforts_dir="${root}/efforts"
-	effort_name=${effort#"${efforts_dir}/"}
-	case ${effort_name} in
-		"${effort}" | '' | */*)
-			usage_error "--effort ${effort} is not directly inside ${efforts_dir}; expected ${efforts_dir}/<id>-<name>"
-			;;
-		*) ;;
-	esac
-	check_effort_name
-}
-
-# Refuses an effort folder name that is not <YYYYMMDDTHHMMSS>-<hex>-<NAME>.
-check_effort_name() {
-	expected_name="<YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>, NAME words of a-z and 0-9 joined by single dashes, 1 to ${MAX_EFFORT_NAME_CHARS} characters"
-	case ${effort_name} in
-		[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]-?*) ;;
-		*) usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}" ;;
-	esac
-	words=${effort_name#????????????????????-}
-	case ${words} in
-		*[!abcdefghijklmnopqrstuvwxyz0123456789-]* | -* | *- | *--*)
-			usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}"
-			;;
-		*) ;;
-	esac
-	[ "${#words}" -le "${MAX_EFFORT_NAME_CHARS}" ] ||
-		usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}"
-}
-
-# Prints the git root of the current folder, or nothing outside a repository.
-default_repo() {
-	command -v git >/dev/null 2>&1 || return 0
-	git rev-parse --show-toplevel 2>/dev/null || true
-}
-
-create_item() {
-	stamp=$(date +%Y%m%dT%H%M%S) || install_fault 'date failed; expected the local time'
-	if [ "${effort_given}" = true ]; then
-		ensure_effort_folder
-		item_home=${effort}
-	else
-		ensure_day_folder
-		item_home=${day_dir}
-	fi
-	kind_dir="${item_home}/${kind}"
-	ensure_dir "${kind_dir}"
-	claim_item_file
-	item_file="${kind_dir}/${name}"
-	[ "${effort_given}" = true ] || index_item
+	expire_cache
 	printf '%s\n' "${item_file}"
 }
 
-# The effort folder is effort.sh's to create, so it must already be there.
-ensure_effort_folder() {
-	[ ! -L "${efforts_dir}" ] || space_fault "${efforts_dir} is a symbolic link; expected a real folder inside the space"
-	[ -d "${efforts_dir}" ] || space_fault "${efforts_dir} is missing or not a folder; expected the efforts folder effort.sh start creates"
-	[ ! -L "${effort}" ] || space_fault "${effort} is a symbolic link; expected a real effort folder"
-	[ -d "${effort}" ] || space_fault "${effort} is missing or not a folder; expected an effort folder effort.sh start created"
-}
-
-ensure_day_folder() {
-	split_date "${stamp%T*}"
-	day_dir="${root}/${year}/${month}/${day}"
-	ensure_root
-	ensure_dir "${root}/${year}"
-	ensure_dir "${root}/${year}/${month}"
-	ensure_dir "${day_dir}"
-}
-
-# Sets hex and name for a file created in kind_dir whose ID no other item of
-# item_home holds.
-claim_item_file() {
-	attempt=1
-	while :; do
-		hex=$(random_hex)
-		name="${stamp}-${hex}-${label}.$(kind_extension)"
-		# shellcheck disable=SC2310 # its status is the create result; errexit adds nothing
-		if create_exclusive "${kind_dir}/${name}"; then
-			# shellcheck disable=SC2310 # its status is the count result; errexit adds nothing
-			if id_is_unique "${stamp}-${hex}"; then break; fi
-			rm -f "${kind_dir}/${name}"
-		elif [ ! -L "${kind_dir}/${name}" ] && [ ! -e "${kind_dir}/${name}" ]; then
-			space_fault "cannot create a file in ${kind_dir}; expected a writable folder"
-		fi
-		[ "${attempt}" -lt "${MAX_CREATE_ATTEMPTS}" ] ||
-			space_fault "${MAX_CREATE_ATTEMPTS} tries in ${kind_dir} found the name or its ID taken; expected a free one, try again"
-		attempt=$((attempt + 1))
+check_kind() {
+	set_kinds_text
+	[ -n "${kind}" ] || usage_error "--kind missing; expected one of ${kinds_text}"
+	for known_kind in ${KIND_LIST}; do
+		[ "${kind}" != "${known_kind}" ] || return 0
 	done
+	usage_error "unknown kind: ${kind}; expected one of ${kinds_text}"
 }
 
-# Appends the item's line to the day index, removing the file when that fails.
-index_item() {
-	index_line "${stamp}-${hex}" "${stamp}" "${kind}/${name}"
-	# shellcheck disable=SC2310 # its status is the wait result; errexit adds nothing
-	acquire_index_lock "${stamp}-${hex}" || {
-		rm -f "${item_file}"
-		space_fault "${index_lock} stayed busy for ${INDEX_LOCK_WAIT_SECONDS} seconds; expected it free, try again (the new file was removed)"
-	}
-	# shellcheck disable=SC2310 # every step in it returns on failure
-	append_index || {
-		release_index_lock
-		rm -f "${item_file}"
-		space_fault "cannot append to ${day_dir}/index.jsonl; expected a writable index (the new file was removed)"
-	}
-	release_index_lock
+# Sets kinds_text to KIND_LIST as text: "a, b or c".
+set_kinds_text() {
+	kinds_text=''
+	for known_kind in ${KIND_LIST}; do
+		kinds_text="${kinds_text:+${kinds_text}, }${known_kind}"
+	done
+	kinds_text="${kinds_text%, *} or ${kinds_text##*, }"
 }
 
-# Prints the file extension of kind: md for prompts, json for every other kind.
-kind_extension() {
-	if [ "${kind}" = prompts ]; then
-		printf 'md'
-	else
-		printf 'json'
+check_label() {
+	[ -n "${label}" ] || usage_error "--label missing; expected --label LABEL, ${crucible_label_rule}"
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_label "${label}" || usage_error "${crucible_label_refusal}"
+}
+
+# Sets effort to FOLDER without trailing slashes once it names a real effort
+# folder of the space; exits 2 when FOLDER itself breaks the rule, 4 when the
+# folder or efforts/ is missing or a symbolic link. The effort folder is
+# effort.sh's to create, so it must already be there.
+check_effort() {
+	[ -n "${effort}" ] || usage_error "--effort missing; expected --effort FOLDER, an effort folder in ${root}/efforts/"
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the fault is read below
+	if ! crucible_check_effort_folder "${effort}"; then
+		[ "${crucible_effort_fault}" = space ] || usage_error "${crucible_effort_refusal}"
+		space_fault "${crucible_effort_refusal}"
 	fi
+	effort=${crucible_effort}
 }
 
-# Sets year, month and day from a YYYYMMDD date.
-split_date() {
-	year=${1%????}
-	month_and_day=${1#????}
-	month=${month_and_day%??}
-	day=${month_and_day#??}
-}
-
-ensure_root() {
-	[ -d "${root}" ] || mkdir -p "${root}" 2>/dev/null || [ -d "${root}" ] ||
-		space_fault "cannot create ${root}; expected a writable parent folder"
-	[ ! -L "${root}" ] || space_fault "${root} is a symbolic link; expected a real folder"
+# Sets item_file to a new empty file in effort/kind/.
+create_item() {
+	kind_dir="${effort}/${kind}"
+	case ${kind} in
+		*/*) ensure_dir "${effort}/${kind%%/*}" ;;
+		*) ;;
+	esac
+	ensure_dir "${kind_dir}"
+	claim_item_file
+	item_file="${kind_dir}/${name}"
 }
 
 # Creates one folder of the layout; an existing folder is reused unless it is a symlink.
@@ -520,162 +366,50 @@ ensure_dir() {
 	[ ! -L "$1" ] || space_fault "$1 is a symbolic link; expected a real folder inside the space"
 }
 
-random_hex() {
-	value=$(od -An -N2 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n') ||
-		install_fault 'reading /dev/urandom failed; expected a random source'
-	case ${value} in
-		[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) printf '%s' "${value}" ;;
-		*) install_fault "od printed '${value}' for 2 random bytes; expected 4 lowercase hex digits" ;;
-	esac
+# Sets name for a file created in kind_dir whose ID no other item of the
+# effort holds; exits 5 when no ID can be minted, 4 when no file can be made.
+claim_item_file() {
+	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
+	if crucible_claim_item_file "${kind_dir}" "${label}" "${kind}" id_is_unique; then
+		name=${crucible_claimed_file##*/}
+		return 0
+	fi
+	[ "${crucible_claim_fault}" != id ] || install_fault "${crucible_claim_problem}"
+	space_fault "${crucible_claim_problem}"
 }
 
 # True when the file just created is the only one with this ID in any kind
-# folder of item_home (the day or effort folder). Each caller counts after its
+# folder of the effort, one or two levels down. Each caller counts after its
 # own create, so of two racing for one ID at most one sees itself alone.
 id_is_unique() {
 	holders=0
-	for holder in "${item_home}"/*/"$1"-*.json "${item_home}"/*/"$1"-*.md; do
+	for holder in "${effort}"/*/"$1"-* "${effort}"/*/*/"$1"-*; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
 	done
 	[ "${holders}" -eq 1 ]
 }
 
-# Fails when the name exists, as a file or a symlink: noclobber opens with O_EXCL.
-create_exclusive() {
-	(
-		set -C
-		: >"$1"
-	) 2>/dev/null
-}
-
-# Sets line, built before the lock is taken so the lock is held for the write alone.
-index_line() {
-	line=$(jq -cn --arg id "$1" --arg time "$2" --arg kind "${kind}" --arg file "$3" \
-		--arg label "${label}" --arg repo "${repo}" --arg session "${session}" \
-		'{v: 1, id: $id, time: $time, kind: $kind, file: $file, label: $label, repo: $repo, session: $session}') ||
-		install_fault 'jq failed to build the index line; expected jq 1.6+'
-}
-
-# Takes <day>/.index.lock, whose owner file names this process and the item.
-# Fails when the lock stays busy past the wait bound.
-acquire_index_lock() {
-	index_lock="${day_dir}/.index.lock"
-	lock_owner="$$ $1"
-	index_lock_held=false
-	trap release_index_lock EXIT
-	trap 'exit 129' HUP
-	trap 'exit 130' INT
-	trap 'exit 143' TERM
-	spins=0 deadline=''
-	while :; do
-		if mkdir "${index_lock}" 2>/dev/null; then
-			# A breaker may move the folder away before the owner file lands; the
-			# exclusive create then fails, and the lock is not this holder's.
-			# shellcheck disable=SC2310 # its status is the create result; errexit adds nothing
-			if write_lock_owner; then
-				index_lock_held=true
-				return 0
-			fi
-		fi
-		if [ $((spins % INDEX_LOCK_SPINS_PER_CHECK)) -eq 0 ]; then
-			# Called as a condition, so errexit is off here: a fault exits by hand.
-			# shellcheck disable=SC2310 # its every fault exits through install_fault
-			now=$(epoch_seconds) || exit "$?"
-			[ -n "${deadline}" ] || deadline=$((now + INDEX_LOCK_WAIT_SECONDS))
-			[ "${now}" -lt "${deadline}" ] || return 1
-			break_stale_index_lock "${now}"
-		fi
-		spins=$((spins + 1))
-		sleep "${INDEX_LOCK_POLL_SECONDS}" 2>/dev/null ||
-			install_fault "sleep ${INDEX_LOCK_POLL_SECONDS} failed; expected a sleep that takes fractions of a second"
+# Removes the regular files directly in the effort's cache kind folders last
+# modified CACHE_MAX_DAYS or more days ago. find -mtime +N counts whole days
+# of age, so +(days - 1) is an age of at least that many days. Each folder is
+# entered with cd -P and checked to be the effort's own, so a folder swapped
+# for a link is never cleaned; find never follows a link or enters a folder.
+expire_cache() {
+	physical_effort=$(cd -P "${effort}" 2>/dev/null && pwd -P) || {
+		warn "cache not expired: cannot enter ${effort}"
+		return 0
+	}
+	for cache_kind in ${CACHE_KINDS}; do
+		cache_dir="${effort}/${cache_kind}"
+		[ ! -L "${effort}/cache" ] && [ ! -L "${cache_dir}" ] && [ -d "${cache_dir}" ] || continue
+		(
+			cd -P "${cache_dir}" 2>/dev/null || exit 1
+			entered=$(pwd -P) || exit 1
+			[ "${entered}" = "${physical_effort}/${cache_kind}" ] || exit 1
+			find . ! -name . -prune -type f -mtime "+$((CACHE_MAX_DAYS - 1))" -exec rm -f -- {} +
+		) || warn "cache not fully expired in ${cache_dir}; expected its old files removed; the next new tries again"
 	done
-}
-
-# Creates the owner file without overwriting one, in this shell, so holding
-# the lock costs no extra process.
-write_lock_owner() {
-	set -C
-	if { printf '%s\n' "${lock_owner}" >"${index_lock}/owner"; } 2>/dev/null; then
-		set +C
-		return 0
-	fi
-	set +C
-	return 1
-}
-
-# Sets lock_file_owner from a lock folder's owner file, or empties it.
-read_lock_owner() {
-	lock_file_owner=''
-	{ IFS= read -r lock_file_owner <"$1/owner"; } 2>/dev/null || true
-}
-
-epoch_seconds() {
-	seconds=$(date +%s) || install_fault 'date +%s failed; expected the seconds since the epoch'
-	case ${seconds} in
-		'' | *[!0123456789]*) install_fault "date +%s printed '${seconds}'; expected the seconds since the epoch" ;;
-		*) printf '%s' "${seconds}" ;;
-	esac
-}
-
-# Moves a stale lock aside, then removes it. When the folder moved turns out
-# to be a fresh lock another waiter took after breaking the same stale one,
-# it is put back if the name is still free.
-break_stale_index_lock() {
-	read_lock_owner "${index_lock}"
-	judged_owner=${lock_file_owner}
-	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	index_lock_is_stale "${judged_owner}" "$1" || return 0
-	aside="${index_lock}.stale.$$"
-	rm -rf "${aside}"
-	mv "${index_lock}" "${aside}" 2>/dev/null || return 0
-	read_lock_owner "${aside}"
-	if [ "${lock_file_owner}" != "${judged_owner}" ] && [ ! -e "${index_lock}" ] &&
-		mv "${aside}" "${index_lock}" 2>/dev/null; then
-		return 0
-	fi
-	rm -rf "${aside}"
-	warn "broke the stale index lock ${index_lock} (owner: ${judged_owner:-none written})"
-}
-
-# True when the lock's owner process is gone while the lock still names it,
-# or the lock folder is older than the stale bound (this also covers a holder
-# that never wrote its owner).
-index_lock_is_stale() {
-	owner_pid=${1%% *}
-	case ${owner_pid} in
-		'' | *[!0123456789]*) ;;
-		*)
-			if ! kill -0 "${owner_pid}" 2>/dev/null; then
-				# The holder may have released and exited since its owner was read.
-				read_lock_owner "${index_lock}"
-				[ "${lock_file_owner}" = "$1" ]
-				return
-			fi
-			;;
-	esac
-	modified=$(stat -c %Y "${index_lock}" 2>/dev/null) ||
-		modified=$(stat -f %m "${index_lock}" 2>/dev/null) || return 1
-	case ${modified} in
-		'' | *[!0123456789]*) return 1 ;;
-		*) ;;
-	esac
-	[ $(($2 - modified)) -gt "${INDEX_LOCK_STALE_SECONDS}" ]
-}
-
-# Removes the lock only while its owner file still names this holder.
-release_index_lock() {
-	[ "${index_lock_held:-false}" = true ] || return 0
-	index_lock_held=false
-	read_lock_owner "${index_lock}"
-	[ "${lock_file_owner}" = "${lock_owner}" ] || return 0
-	rm -rf "${index_lock}" || warn "cannot remove ${index_lock}; the next new breaks it as stale"
-}
-
-append_index() {
-	index="${day_dir}/index.jsonl"
-	[ ! -L "${index}" ] || return 1
-	{ printf '%s\n' "${line}" >>"${index}"; } 2>/dev/null
 }
 
 run_path() {
@@ -710,163 +444,118 @@ run_open() {
 		*) usage_error "unknown format: ${format}; expected md or html" ;;
 	esac
 	find_item "${wanted_id}"
+	check_jq
 	render_to_temp
 	open_in_editor
 	printf 'opened %s\n' "${rendered}"
 }
 
 run_find() {
-	kind='' session='' label=''
+	kind='' label='' effort=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--kind | --session | --label) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for find: $1; expected --kind, --session or --label" ;;
+			--kind | --label | --effort) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for find: $1; expected --effort, --kind or --label" ;;
 		esac
 		case $1 in
 			--kind) kind=$2 ;;
-			--session) session=$2 ;;
-			*) label=$2 ;;
+			--label) label=$2 ;;
+			*) effort=$2 ;;
 		esac
 		shift 2
 	done
 	check_kind
-	[ -n "${session}" ] || usage_error '--session missing; expected --session ID'
 	[ -z "${label}" ] || check_label
-	list_day_indexes
-	[ -n "${newest_first}" ] || return 0
-	set --
-	while IFS= read -r day_index; do
-		set -- "$@" "${root}/${day_index}"
+	check_effort
+	kind_dir="${effort}/${kind}"
+	[ ! -L "${effort}/${kind%%/*}" ] && [ ! -L "${kind_dir}" ] ||
+		space_fault "${kind_dir} or a folder above it in the effort is a symbolic link; expected real folders"
+	[ -d "${kind_dir}" ] || return 0
+	found_names=''
+	for found_item in "${kind_dir}"/*; do
+		[ -f "${found_item}" ] && [ ! -L "${found_item}" ] || continue
+		# shellcheck disable=SC2310 # its status says whether the name is an item's
+		parse_item_name "${found_item##*/}" "${kind}" || continue
+		[ -z "${label}" ] || [ "${parsed_label}" = "${label}" ] || continue
+		found_names="${found_names}${found_item##*/}
+"
+	done
+	[ -n "${found_names}" ] || return 0
+	# Item names lead with their ID and hold no newline, so a byte-order sort,
+	# reversed, is newest first.
+	sorted_names=$(printf '%s' "${found_names}" | sort -r) || install_fault 'sort failed; expected a POSIX sort'
+	while IFS= read -r found_name; do
+		printf '%s/%s\n' "${kind_dir}" "${found_name}"
 	done <<EOF
-${newest_first}
+${sorted_names}
 EOF
-	found_paths=$(jq -nrR --arg kind "${kind}" --arg session "${session}" --arg label "${label}" "${FIND_JQ}" "$@") ||
-		install_fault 'jq failed reading the index files; expected jq 1.6+'
-	while IFS= read -r found_path; do
-		[ -n "${found_path}" ] && [ -f "${found_path}" ] && [ ! -L "${found_path}" ] && [ ! -L "${found_path%/*}" ] || continue
-		printf '%s\n' "${found_path}"
-	done <<EOF
-${found_paths}
-EOF
+}
+
+# Sets parsed_id and parsed_label when file name $1 is an item name of kind
+# $2, as crucible_name_item names one; fails otherwise.
+parse_item_name() {
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_split_id "$1" || return 1
+	crucible_kind_extension "$2"
+	parsed_id=${crucible_name_id}
+	parsed_label=${crucible_name_rest%".${crucible_extension}"}
+	[ "${parsed_label}" != "${crucible_name_rest}" ] || return 1
+	crucible_is_label "${parsed_label}"
 }
 
 # Sets item_id, item_path, item_kind and item_label for the one item an ID names.
 find_item() {
-	case $1 in
-		[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
-		[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) ;;
-		*) usage_error "bad ID: $1; expected <YYYYMMDDTHHMMSS>-<hex> or the 4 lowercase hex digits" ;;
-	esac
-	matches=$(lookup "$1")
-	[ -n "${matches}" ] || not_found "no item with ID $1 in ${root}"
-	tab=$(printf '\t')
-	newline='
-'
-	case ${matches} in
-		*"${newline}"*)
-			warn "ID $1 is shared by several items; expected a unique ID; use the full one:"
-			printf '%s\n' "${matches}" | cut -f1,2 | tr '\t' ' ' >&2
-			exit 1
-			;;
-		*) ;;
-	esac
-	IFS=${tab} read -r item_id item_path item_kind item_label <<EOF
-${matches}
-EOF
-	# The kind folder is checked too: a link there would lead outside the space.
-	[ -f "${item_path}" ] && [ ! -L "${item_path}" ] && [ ! -L "${item_path%/*}" ] ||
-		not_found "item ${item_id} is indexed but ${item_path} is missing, not a regular file, or in a kind folder that is a symbolic link"
+	# shellcheck disable=SC2310 # pure tests; their status is the answer
+	crucible_is_id "$1" || crucible_is_id_hex "$1" ||
+		usage_error "bad ID: $1; expected <YYYYMMDDTHHMMSS>-<hex> or the 4 lowercase hex digits"
+	collect_matches "$1"
+	[ "${match_count}" -gt 0 ] || not_found "no item with ID $1 in ${root}/efforts"
+	if [ "${match_count}" -gt 1 ]; then
+		warn "ID $1 is shared by ${match_count} items; expected a unique ID; use the full one:"
+		printf '%s' "${matches}" >&2
+		exit 1
+	fi
 }
 
-# Prints one tab-separated line (id, path, kind, label) per indexed item matching the ID.
-lookup() {
-	want=$1
-	case ${want} in
-		????) lookup_hex ;;
-		*) lookup_full_id ;;
-	esac
-}
-
-# A full ID carries its date, so only that day's index is read.
-lookup_full_id() {
-	split_date "${want%T*}"
-	day_folder="${root}/${year}/${month}/${day}"
-	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	is_real_day "${day_folder}" || return 0
-	read_index "${day_folder}/index.jsonl"
-}
-
-# Reads the days newest first and stops at the first one with a match. The
-# days are searched in batches of 1, 2, 4, ... so a recent item costs one
-# small read and an old one at most twice the data before it.
-lookup_hex() {
-	list_day_indexes
-	[ -n "${newest_first}" ] || return 0
-	batch_size=1
-	set --
-	while IFS= read -r day_index; do
-		set -- "$@" "${day_index}"
-		[ "$#" -ge "${batch_size}" ] || continue
-		# shellcheck disable=SC2310 # its status is the match result; its faults exit
-		search_days "$@" && return 0
-		set --
-		batch_size=$((batch_size * 2))
-	done <<EOF
-${newest_first}
-EOF
-	# shellcheck disable=SC2310 # its status is the match result; its faults exit
-	[ "$#" -eq 0 ] || search_days "$@" || true
-}
-
-# Sets newest_first to the index files of the real day folders, relative to
-# the root, newest day first, one per line; empty when there is none.
-list_day_indexes() {
-	newline='
-'
-	days=''
-	for day_folder in "${root}"/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]; do
-		# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-		is_real_day "${day_folder}" || continue
-		index="${day_folder}/index.jsonl"
-		[ -f "${index}" ] && [ ! -L "${index}" ] || continue
-		days="${days}${index#"${root}/"}${newline}"
+# Sets matches to one "<id> <path>" line per item whose ID is $1 (a full ID
+# or its 4 hex), match_count to their number, and the item_* values of the
+# last one. Skips anything under a symbolic link.
+collect_matches() {
+	matches='' match_count=0
+	efforts_dir="${root}/efforts"
+	[ -d "${efforts_dir}" ] && [ ! -L "${efforts_dir}" ] || return 0
+	for effort_dir in "${efforts_dir}"/*; do
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		crucible_is_effort_name "${effort_dir##*/}" || continue
+		[ -d "${effort_dir}" ] && [ ! -L "${effort_dir}" ] || continue
+		for kind in ${KIND_LIST}; do
+			match_in_kind "${effort_dir}" "$1"
+		done
 	done
-	newest_first=''
-	[ -n "${days}" ] || return 0
-	# Paths relative to the root are digits and slashes, so they split safely by line.
-	newest_first=$(printf '%s' "${days}" | sort -r) || install_fault 'sort failed; expected a POSIX sort'
 }
 
-# Prints the matches of the first of the given days (newest first) that has any.
-# grep only narrows the days to read; jq still judges every line of them.
-search_days() {
-	candidates=$(cd "${root}" && grep -lF -e "-${want}\"" "$@" 2>/dev/null) || [ "$?" -eq 1 ] ||
-		install_fault 'grep failed reading the index files; expected readable index files'
-	while IFS= read -r candidate; do
-		[ -n "${candidate}" ] || continue
-		# Called as a condition, so errexit is off here: a fault exits by hand.
-		# shellcheck disable=SC2310 # its every fault exits through install_fault
-		found=$(read_index "${root}/${candidate}") || exit "$?"
-		[ -z "${found}" ] || {
-			printf '%s\n' "${found}"
-			return 0
-		}
-	done <<EOF
-${candidates}
-EOF
-	return 1
-}
-
-read_index() {
-	[ -f "$1" ] && [ ! -L "$1" ] || return 0
-	jq -nrR --arg want "${want}" "${LOOKUP_JQ}" "$1" ||
-		install_fault 'jq failed reading the index files; expected jq 1.6+'
-}
-
-# True for a day folder whose day, month and year levels are real folders, not symlinks.
-is_real_day() {
-	month_dir=${1%/*}
-	[ -d "$1" ] && [ ! -L "$1" ] && [ ! -L "${month_dir}" ] && [ ! -L "${month_dir%/*}" ]
+# Adds the items of kind folder kind of effort folder $1 whose ID, or the
+# ID's hex, is $2.
+match_in_kind() {
+	kind_dir="$1/${kind}"
+	[ ! -L "$1/${kind%%/*}" ] && [ ! -L "${kind_dir}" ] && [ -d "${kind_dir}" ] || return 0
+	wanted=$2
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	if crucible_is_id_hex "${wanted}"; then
+		set -- "${kind_dir}"/*-"${wanted}"-*
+	else
+		set -- "${kind_dir}/${wanted}"-*
+	fi
+	for candidate do
+		[ -f "${candidate}" ] && [ ! -L "${candidate}" ] || continue
+		# shellcheck disable=SC2310 # its status says whether the name is an item's
+		parse_item_name "${candidate##*/}" "${kind}" || continue
+		[ "${parsed_id}" = "${wanted}" ] || [ "${parsed_id##*-}" = "${wanted}" ] || continue
+		item_id=${parsed_id} item_path=${candidate} item_kind=${kind} item_label=${parsed_label}
+		matches="${matches}${item_id} ${item_path}
+"
+		match_count=$((match_count + 1))
+	done
 }
 
 # Writes the render of the found item to a new temp folder and sets rendered.
@@ -879,10 +568,22 @@ render_to_temp() {
 	esac
 	temp_dir=$(mktemp -d "${temp_base}/crucible-open.XXXXXX") ||
 		space_fault "mktemp -d in ${temp_base} failed; expected a writable TMPDIR"
+	trap remove_failed_render EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
 	rendered="${temp_dir}/${item_id}-${item_label}.md"
 	# shellcheck disable=SC2310 # every step in it is checked; a failure falls back to the generic render
-	if [ "${item_kind}" = reports ] && render_full_report >"${rendered}"; then return 0; fi
+	if [ "${item_kind}" = "${RENDERED_REPORT_KIND}" ] && render_full_report >"${rendered}"; then return 0; fi
 	render_generic >"${rendered}"
+}
+
+# Removes open's temp folder when open fails or is stopped; on success it is
+# the editor's, so it stays.
+# shellcheck disable=SC2329 # invoked by the EXIT trap
+remove_failed_render() {
+	exit_status=$?
+	[ "${exit_status}" -eq 0 ] || rm -rf "${temp_dir}"
 }
 
 # Succeeds only when the report renderer supports --full and renders the item.
@@ -895,9 +596,10 @@ render_full_report() {
 
 render_generic() {
 	printf '# %s: %s\n\n' "${item_kind}" "${item_label}"
+	crucible_kind_extension "${item_kind}"
 	if [ ! -s "${item_path}" ]; then
 		printf 'Empty: nothing has been written to this item.\n'
-	elif [ "${item_kind}" = prompts ]; then
+	elif [ "${crucible_extension}" = md ]; then
 		cat "${item_path}"
 	elif jq -e . "${item_path}" >/dev/null 2>&1; then
 		printf '```json\n'
@@ -948,26 +650,16 @@ run_prune() {
 	done
 	check_days
 	command -v find >/dev/null 2>&1 || install_fault 'find missing; expected find on PATH to see recent files'
-	today=$(date +%Y%m%d) || install_fault 'date failed; expected the local time'
-	# shellcheck disable=SC2310 # its status is its jq's; a failure exits
-	cutoff=$(days_before "${count}") || install_fault 'jq failed on the date arithmetic; expected jq 1.6+'
-	# shellcheck disable=SC2310 # its status is its jq's; a failure exits
-	yesterday=$(days_before 1) || install_fault 'jq failed on the date arithmetic; expected jq 1.6+'
 	removed=0 kept=0
-	for day_folder in "${root}"/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]; do
-		# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-		is_real_day "${day_folder}" || continue
-		day_date=$(date_of_day "${day_folder}")
-		[ "${day_date}" -lt "${cutoff}" ] || continue
-		judge_keep "${day_folder}" "${day_date}"
-		if [ -n "${keep_reason}" ]; then
-			printf 'kept %s (%s)\n' "${day_folder}" "${keep_reason}"
-			kept=$((kept + 1))
-			continue
-		fi
-		prune_day "${day_folder}"
-		removed=$((removed + 1))
-	done
+	efforts_dir="${root}/efforts"
+	if [ -d "${efforts_dir}" ] && [ ! -L "${efforts_dir}" ]; then
+		for effort_dir in "${efforts_dir}"/*; do
+			# shellcheck disable=SC2310 # a pure test; its status is the answer
+			crucible_is_effort_name "${effort_dir##*/}" || continue
+			[ -d "${effort_dir}" ] && [ ! -L "${effort_dir}" ] || continue
+			prune_effort "${effort_dir}"
+		done
+	fi
 	report_prune
 }
 
@@ -984,56 +676,54 @@ check_days() {
 	esac
 	[ "${#count}" -le "${MAX_PRUNE_DAYS_DIGITS}" ] ||
 		usage_error "bad --older-than: ${days}; expected at most ${MAX_PRUNE_DAYS_DIGITS} digits"
+	# A leading zero would read as octal in the shell's arithmetic.
+	while [ "${count}" != "${count#0}" ] && [ "${#count}" -gt 1 ]; do count=${count#0}; done
 }
 
-# Prints YYYYMMDD for today minus N days, by calendar date in local time.
-days_before() {
-	jq -nr --arg today "${today}" --arg count "$1" \
-		'$today | strptime("%Y%m%d") | mktime - (($count | tonumber) * 86400) | strftime("%Y%m%d")'
-}
-
-# Sets keep_reason when a session may still write to the day folder, else empties it.
-judge_keep() {
-	keep_reason=''
-	if [ "$2" -ge "${yesterday}" ]; then
-		keep_reason='today or yesterday'
-		return 0
-	fi
-	recent=$(find "$1" -type f -mtime -1 -print 2>/dev/null) || {
-		keep_reason='find cannot read all of it'
+# Lists, keeps or removes effort folder $1 by the age of the newest thing in it.
+prune_effort() {
+	# shellcheck disable=SC2310 # its status is the answer; a failure to read keeps the folder
+	recent_in "$1" "${count}" || {
+		print_kept "$1" 'find cannot read all of it'
 		return 0
 	}
-	[ -z "${recent}" ] || keep_reason='a file in it was modified in the last 24 hours'
-}
-
-date_of_day() {
-	day_part=${1##*/}
-	month_dir=${1%/*}
-	month_part=${month_dir##*/}
-	year_dir=${month_dir%/*}
-	printf '%s%s%s' "${year_dir##*/}" "${month_part}" "${day_part}"
-}
-
-prune_day() {
-	if [ "${apply}" = false ]; then
-		printf 'would remove %s\n' "$1"
+	[ -z "${recent}" ] || return 0
+	# shellcheck disable=SC2310 # its status is the answer; a failure to read keeps the folder
+	recent_in "$1" 1 || {
+		print_kept "$1" 'find cannot read all of it'
+		return 0
+	}
+	if [ -n "${recent}" ]; then
+		print_kept "$1" 'something in it was modified in the last 24 hours'
 		return 0
 	fi
-	rm -rf "$1" || space_fault "cannot remove $1; expected a writable folder"
-	month_dir=${1%/*}
-	if rmdir "${month_dir}" 2>/dev/null; then rmdir "${month_dir%/*}" 2>/dev/null || true; fi
-	printf 'removed %s\n' "$1"
+	if [ "${apply}" = false ]; then
+		printf 'would remove %s\n' "$1"
+	else
+		rm -rf "$1" || space_fault "cannot remove $1; expected a writable folder"
+		printf 'removed %s\n' "$1"
+	fi
+	removed=$((removed + 1))
+}
+
+# Sets recent to what in folder $1 (the folder included) was modified less
+# than $2 days ago; fails when find cannot read all of it.
+recent_in() {
+	recent=$(find "$1" -mtime "-$2" -print 2>/dev/null)
+}
+
+print_kept() {
+	printf 'kept %s (%s)\n' "$1" "$2"
+	kept=$((kept + 1))
 }
 
 report_prune() {
-	split_date "${cutoff}"
-	shown_cutoff="${year}-${month}-${day}"
 	kept_note=''
 	[ "${kept}" -eq 0 ] || kept_note=" (kept ${kept}, listed above)"
 	if [ "${apply}" = true ]; then
-		printf 'removed %s day folders dated before %s%s\n' "${removed}" "${shown_cutoff}" "${kept_note}"
+		printf 'removed %s effort folders unchanged for %s days%s\n' "${removed}" "${count}" "${kept_note}"
 	else
-		printf 'would remove %s day folders dated before %s%s; nothing changed, add --apply to remove them\n' "${removed}" "${shown_cutoff}" "${kept_note}"
+		printf 'would remove %s effort folders unchanged for %s days%s; nothing changed, add --apply to remove them\n' "${removed}" "${count}" "${kept_note}"
 	fi
 }
 

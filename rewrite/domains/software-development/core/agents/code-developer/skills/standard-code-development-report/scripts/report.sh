@@ -598,8 +598,8 @@ usage: report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUIL
        report.sh --help
 
 Checks the developer's report, one JSON object in the file PATH (absolute;
-normally in the Crucible space, ${CRUCIBLE_HOME:-$HOME/.crucible}, which is
-not enforced), stamps what the dispatch file knows into it on a pass, and
+normally in its effort's reports/development/ in the Crucible space,
+${CRUCIBLE_HOME:-$HOME/.crucible}/efforts/<effort>/, which is not enforced), stamps what the dispatch file knows into it on a pass, and
 renders it. stdin is never read. With no arguments it prints this help on
 stderr and exits 2.
 The validator in this script owns the shape; there is no schema file. This
@@ -661,8 +661,9 @@ Rules the validator enforces (check, and render before it prints):
         --baseline is refused
       render --repo DIR without --baseline or --dispatch: the baseline key
         of the dispatch the report's dispatch stamp names (found with
-        crucible.sh path <ID>); a report with no dispatch stamp has no
-        baseline
+        crucible.sh path <ID>, which searches every effort folder, and
+        taken only when it is a file in an effort's dispatches/); a report
+        with no dispatch stamp has no baseline
       render --repo DIR --dispatch FILE: the baseline key of FILE, for a
         report check --dispatch could not stamp (exit 3 at the resend cap,
         or exit 6). FILE is checked as check --dispatch checks it (absolute,
@@ -840,7 +841,8 @@ Exit codes:
      a git work tree or not the root of one; its baseline
      file missing, a symlink, unreadable, still empty, not JSON or not a
      baseline of its repo_root (each problem named), or, for render, the
-     report's dispatch stamp naming no dispatch crucible.sh path finds
+     report's dispatch stamp naming no dispatch crucible.sh path finds, or
+     an item that is not in an effort's dispatches/
   3  check: invalid (stderr names each problem); nothing written
   4  not a report: PATH missing, unreadable, not JSON, or not one object;
      with --dispatch also a symlink
@@ -1316,6 +1318,10 @@ find_stamped_dispatch() {
 			lookup_message=$(sed -n '1p' "${work_dir}/crucible.err")
 			install_fault "crucible.sh path ${stamped_id} failed (exit ${lookup_status}: ${lookup_message}); expected it to print the stamped dispatch's path; fix what it names"
 			;;
+	esac
+	case ${stamped_dispatch} in
+		*/efforts/*/dispatches/"${stamped_id}"-*.json) ;;
+		*) dispatch_fault "the report's dispatch stamp ${stamped_id} names ${stamped_dispatch}, which is not a dispatch file; expected a file in an effort's dispatches/; give --baseline FILE, or leave out --repo" ;;
 	esac
 }
 

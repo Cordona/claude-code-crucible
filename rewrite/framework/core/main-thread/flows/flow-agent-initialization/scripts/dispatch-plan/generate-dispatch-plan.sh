@@ -6,7 +6,7 @@
 # checked by dispatch-plan-validator.jq against the installed plugins; every
 # problem is named by the option behind it, and nothing is written until there
 # is none. technology is computed from the loaded tech plugin.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 umask 077
 
@@ -14,6 +14,9 @@ readonly PROG='generate-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
+# Leads the problem of a context version no longer its effort's latest, so a
+# caller matches it exactly: the Agent hook's KIND word for the same problem.
+readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -86,12 +89,14 @@ Every option is checked first; on any problem nothing is written.
   --mode MODE       BUILD or TEST.
   --context-file CTX  the effort's context file, checked as prepare-agent-prompt.sh
                     checks it, apart from the digest: the path checks of
-                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh, a
+                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh,
+                    then its read checks (context_read_problem, the one copy
+                    every script that reads a context file applies): a
                     readable regular file that is not a symlink, at most the
-                    size cap of agent-context-file-checks.sh, and
-                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq.
-                    A version file in an effort's context/ folder
-                    (<...>/efforts/<effort>/context/<id>-v<N>.json) must be that
+                    size cap, valid JSON passing
+                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq,
+                    and, for a version file in an effort's context/ folder
+                    (<...>/efforts/<effort>/context/<id>-v<N>.json), that
                     effort's latest version, as
                     DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it; the
                     problem names the latest. Any other context file is not
@@ -140,6 +145,10 @@ with "v": 1 added, so jq -cS 'del(.v)' of the record hashes the same.
 Problems (stderr, one line each; every problem is listed):
   ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters, or (not given)>: <problem>; expected <x>
 An installed plugin the plan leaves out is named as "--load or --skip <name>".
+A context version no longer its effort's latest gives this line, its problem
+led by the token ${CONTEXT_STALE_TOKEN} (the Agent hook's KIND word for the
+same problem), which no other line holds:
+  ${PROG}: --context-file "<CTX>": ${CONTEXT_STALE_TOKEN} is version v<N> of its effort, not the latest (v<M>: <latest path>); expected the latest version; plan with it
 
 Exit codes:
   0  the plan written; its PLAN_FILE and PLAN_SHA256 lines printed
@@ -154,8 +163,10 @@ Exit codes:
   3  invalid input, one stderr line per problem; nothing written
   5  a dependency missing or failing, with the fix named: jq 1.6+, sha256sum
      or shasum, list-plugins.sh, DIR/${CONTEXT_PROCEDURE}/scripts/'s
-     agent-context-file-checks.sh, agent-context-validator.jq or
-     context-versions.sh, dispatch-plan-validator.jq,
+     agent-context-file-checks.sh, agent-context-validator.jq,
+     agent-context-url.jq or context-versions.sh,
+     DIR/crucible/scripts/lib/crucible-space.sh,
+     dispatch-plan-validator.jq,
      installed-plugins.jq or scripts/agent-dispatch/dispatch-names.jq,
      or a base tool below
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
@@ -165,7 +176,9 @@ install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
 every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
 (macOS: built in, run as shasum -a 256); list-plugins.sh; the
 ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
-agent-context-validator.jq and context-versions.sh in DIR/${CONTEXT_PROCEDURE}/scripts/;
+agent-context-validator.jq, agent-context-url.jq (which the validator
+includes) and context-versions.sh in DIR/${CONTEXT_PROCEDURE}/scripts/;
+the crucible skill's DIR/crucible/scripts/lib/crucible-space.sh;
 dispatch-plan-validator.jq and installed-plugins.jq beside this script, and
 scripts/agent-dispatch/dispatch-names.jq, which the validator includes.
 Reads only: the context file, the names in its folder when it is a version
@@ -301,20 +314,14 @@ finish_parse() {
 }
 
 # Exits 5 unless jq, a sha256 tool, list-plugins.sh, the context checks, the
-# plan checks and the validator's names module are in place; sources
-# agent-context-file-checks.sh and context-versions.sh and sets the checks'
-# paths and list_script.
+# plan checks and the validator's names module are in place; loads the
+# context read checks and sets the plan checks' paths and list_script.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
-	context_dir="${skills_dir}/${CONTEXT_PROCEDURE}/scripts"
-	context_lib="${context_dir}/agent-context-file-checks.sh"
-	context_validator="${context_dir}/agent-context-validator.jq"
-	versions_lib="${context_dir}/context-versions.sh"
-	for context_file_needed in "${context_lib}" "${context_validator}" "${versions_lib}"; do
-		[ -f "${context_file_needed}" ] && [ -r "${context_file_needed}" ] ||
-			die 5 "context check missing; expected ${context_file_needed}; install the ${CONTEXT_PROCEDURE} skill or pass the right --skills-dir"
-	done
+	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
+	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
+		die 5 "context check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill or pass the right --skills-dir"
 	plan_dir=$(script_dir)
 	plan_validator="${plan_dir}/dispatch-plan-validator.jq"
 	installed_program="${plan_dir}/installed-plugins.jq"
@@ -326,11 +333,8 @@ load_dependencies() {
 	done
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck source=../../../../procedures/procedure-context/scripts/context-versions.sh
-	. "${versions_lib}"
-	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
-	find_context_digest_tool ||
-		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
+	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
+	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
@@ -370,37 +374,15 @@ check_context_file() {
 		add_context_problem "${path_problem}; expected ${context_path_expected}"
 		return 0
 	fi
-	if [ -L "${context_file}" ]; then
-		add_context_problem 'file is a symlink; expected the regular file the main thread wrote'
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${context_file}" ||
+		die 5 'a tool failed on the context read checks (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	if [ "${context_read_fault}" = stale ]; then
+		add_context_problem "${CONTEXT_STALE_TOKEN} ${context_read_text}; plan with it"
 		return 0
 	fi
-	if [ ! -f "${context_file}" ] || [ ! -r "${context_file}" ]; then
-		add_context_problem 'file is missing, unreadable or not a regular file; expected the readable context file'
-		return 0
-	fi
-	context_size=$(wc -c <"${context_file}") || die 5 "wc could not count the bytes of ${context_file}; expected a byte count; check wc, then rerun"
-	context_size=${context_size##* }
-	if [ "${context_size}" -gt "${context_max_bytes}" ]; then
-		add_context_problem "file is ${context_size} bytes; expected at most ${context_max_bytes} bytes"
-		return 0
-	fi
-	if ! jq empty "${context_file}" </dev/null >/dev/null 2>&1; then
-		add_context_problem 'file is not valid JSON; expected one JSON object'
-		return 0
-	fi
-	shape_report=$(jq -rs --arg context_path "${context_file}" -f "${context_validator}" "${context_file}" </dev/null) ||
-		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
-	if [ -n "${shape_report}" ]; then
-		while IFS= read -r shape_line; do
-			add_context_problem "${shape_line}"
-		done <<EOF
-${shape_report}
-EOF
-		return 0
-	fi
-	stale_problem=$(context_stale_version_problem "${context_file}")
-	if [ -n "${stale_problem}" ]; then
-		add_context_problem "${stale_problem}; expected the latest version; plan with it"
+	if [ -n "${context_read_fault}" ]; then
+		add_context_problem "${context_read_text}"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits

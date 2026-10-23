@@ -2,15 +2,18 @@
 # Claude Code PreToolUse hook (matcher AskUserQuestion) for approval gates. It
 # denies the question while this session's gate is pending, so the plan is
 # relayed before it is asked about, and clears any other gate as its question
-# goes out, saving a relayed gate's plan as a gates record in the Crucible
-# space first: the record is the plan the human was shown, which a dispatch is
-# later matched against, so a relayed gate whose record can't be saved denies
-# the question and stays open. A fault allows the question, except once a
+# goes out, saving a relayed gate's plan as a gate record first, in its
+# effort's cache/gates/ or, before any effort, in the session's gate folder:
+# the record is the plan the human was shown, which a dispatch is later
+# matched against, so a relayed gate whose record can't be saved denies the
+# question and stays open. A fault allows the question, except once a
 # pending gate is loaded, or when jq is missing and any session has a live
 # pending gate: then it fails closed, since that block is confined to an open
 # gate and ends when the gate goes stale.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 trap 'exit 0' EXIT
+umask 077
 
 readonly PROG='gate-question-hook.sh'
 readonly REASON_PREFIX='procedure-approval-gate:'
@@ -23,6 +26,7 @@ readonly DENY_REASON="${REASON_PREFIX} this session's gate is pending: its plan 
 # gate without its record never lets the question through.
 readonly RECORD_DENY_FALLBACK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-approval-gate: the gate record could not be saved, so the question is denied; the cause is on the hook'\''s stderr; fix it, then ask again."}}'
 readonly CRUCIBLE_HELPER="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
+readonly SPACE_LIB="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/lib/crucible-space.sh"
 
 usage() {
 	cat <<EOF
@@ -42,24 +46,36 @@ open-gate.sh wrote in
   - pending: prints a PreToolUse deny decision, exit 0:
     {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
      "permissionDecisionReason":"${DENY_REASON}"}}
-  - shown or failed: removes the gate folder, plan.json included, allows the
-    question.
-  - relayed: first saves plan.json, with "v": 1 set, as a gates record
-    through
-      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-      new --kind gates --label <label> --session <session_id>
-    its label set by the plan's top-level fields, the first that matches:
-      no-plugin-fits  the plan has a "stack" field
-      effort-offer    the plan has a "reasons" field
-      dispatch-plan   any other plan
-    written to a temp file in the record's folder and moved onto the path
-    crucible.sh prints;
-    then removes the gate folder and allows the question. When the record
-    can't be saved (crucible.sh missing; plan.json missing, a symbolic link
-    or not one JSON object; jq unable to read plan.json; crucible.sh new
-    failing, its stderr passed through, or printing no .json file path; or
-    the temp file or move failing) it prints a PreToolUse deny,
-    exit 0, its reason
+  - shown or failed: clears the gate (below), allows the question.
+  - relayed: first saves plan.json, with "v": 1 set, as a gate record, its
+    label and effort read from the gate's target file, which open-gate.sh
+    --label LABEL [--effort FOLDER] wrote (its --help states the format),
+    the label checked by the crucible skill's space rules,
+    scripts/lib/crucible-space.sh:
+      with an effort, the file
+        \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
+        new --kind cache/gates --label <LABEL> --effort <FOLDER>
+      prints, in the effort's cache/gates/ (it expires as crucible.sh
+      --help sets);
+      with none (a gate before any effort, such as the effort offer), a new
+      file in <gate folder>/records/, named as a cache/gates item of label
+      <LABEL> and created without overwriting, its ID minted afresh on a
+      clash up to the space rules' number of tries, as crucible.sh new
+      does (crucible_claim_item_file of the space rules), never in the
+      Crucible space;
+    written to a temp file in the record's folder and moved onto it;
+    then clears the gate and allows the question. Clearing a gate removes
+    its gate.md, state, target file and plan.json, and the gate folder
+    itself once nothing else is left in it: records/ stays until the
+    folder is removed whole (open-gate.sh's sweep of a stale folder, or a
+    hook removing a malformed, stale or idle gate with its folder, as
+    above). When the record can't be saved (the target file
+    missing, malformed or naming a bad label; crucible.sh or the space
+    rules missing; plan.json missing, a symbolic link or not one JSON
+    object; jq unable to read plan.json; crucible.sh new failing, its
+    stderr passed through, or printing no .json file path; the records/
+    file not creatable; or the temp file or move failing) it prints a
+    PreToolUse deny, exit 0, its reason
       "${REASON_PREFIX} the gate record could not be saved (<cause>), so
        the question is denied; <fix>, then ask again."
     and keeps the gate, so the next question tries again; a gate left so
@@ -88,8 +104,10 @@ gate; question allowed".
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
 jq package), cat, date, find (with -mmin, as on macOS and
-Linux), rm; for the gates record of a relayed gate also crucible.sh, mktemp
-and mv (without them a relayed gate's question is denied).
+Linux), rm, rmdir; for the record of a relayed gate also mktemp and mv, the
+crucible skill's scripts/lib/crucible-space.sh, and crucible.sh (with an
+effort) or od and mkdir (without one); without them a relayed gate's
+question is denied.
 Runtime: about 13 ms with no gate, 20 ms denying, 80 ms clearing a relayed gate
 with its record; measured on macOS (average of 5 runs).
 EOF
@@ -152,36 +170,101 @@ handle_jq_missing() {
 	exit 0
 }
 
-# Saves the relayed gate's plan.json as a gates record in the Crucible space,
-# or denies the question (deny_record exits) naming the cause and the fix.
+# Saves the relayed gate's plan.json as a gate record where the gate's target
+# file says, or denies the question (deny_record exits) naming the cause and
+# the fix.
 save_gate_record() {
+	load_space_lib
+	read_target
 	plan_file="${gate_dir}/plan.json"
 	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] ||
 		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer'
-	[ -f "${CRUCIBLE_HELPER}" ] ||
-		deny_record "crucible.sh missing at ${CRUCIBLE_HELPER}" 'install the crucible skill'
-	# The label is the plan's kind, told apart by a field only that kind has.
-	record_label=$(jq -sr 'if length == 1 and (.[0] | type) == "object" then (.[0] | if has("stack") then "no-plugin-fits" elif has("reasons") then "effort-offer" else "dispatch-plan" end) else error("not one object") end' "${plan_file}" 2>/dev/null) ||
+	jq -se 'length == 1 and (.[0] | type) == "object"' "${plan_file}" >/dev/null 2>&1 ||
 		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
 	# del(.v) so a plan's own v never overrides the record version; v stays first.
 	record=$(jq -c '{v: 1} + del(.v)' "${plan_file}" 2>/dev/null) ||
 		deny_record "jq could not read ${plan_file}" 'check jq 1.6+ and the plan file'
-	if record_path=$(sh "${CRUCIBLE_HELPER}" new --kind gates --label "${record_label}" --session "${session_id}" </dev/null); then
-		new_status=0
+	if [ -n "${record_effort}" ]; then
+		make_effort_record
 	else
-		new_status=$?
+		make_session_record
 	fi
-	[ "${new_status}" -eq 0 ] ||
-		deny_record "crucible.sh new failed (exit ${new_status}; its stderr is above)" 'fix what crucible.sh names, such as the Crucible space'\''s folder or CRUCIBLE_HOME'
-	case ${record_path} in
-		/*.json) ;;
-		*) deny_record 'crucible.sh new printed no file path' 'reinstall the crucible skill' ;;
-	esac
 	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) ||
 		deny_record "cannot create a temp file beside ${record_path}, which stays empty" 'make the Crucible space writable'
 	if printf '%s\n' "${record}" >"${record_temp}" && mv -f "${record_temp}" "${record_path}"; then return 0; fi
 	rm -f "${record_temp}"
 	deny_record "the write to ${record_path} failed, and it stays empty" 'make the Crucible space writable'
+}
+
+# Sources the crucible skill's space rules, or denies.
+load_space_lib() {
+	[ -f "${SPACE_LIB}" ] && [ -r "${SPACE_LIB}" ] ||
+		deny_record "the space rules are missing at ${SPACE_LIB}" 'install the crucible skill'
+	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
+	. "${SPACE_LIB}"
+}
+
+# Sets record_label and record_effort from the gate's target file, in the
+# format open-gate.sh --help states, or denies.
+read_target() {
+	target_file="${gate_dir}/target"
+	open_again='open the gate again through open-gate.sh --label LABEL [--effort FOLDER]'
+	[ -f "${target_file}" ] && [ ! -L "${target_file}" ] ||
+		deny_record "no target file at ${target_file}" "${open_again}"
+	label_line='' effort_line=''
+	{
+		IFS= read -r label_line || true
+		IFS= read -r effort_line || true
+	} <"${target_file}"
+	record_label=${label_line#label }
+	record_effort=${effort_line#effort }
+	if [ "${record_label}" = "${label_line}" ] || [ "${record_effort}" = "${effort_line}" ]; then
+		deny_record "${target_file} is not a label line then an effort line" "${open_again}"
+	fi
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_label "${record_label}" ||
+		deny_record "${target_file} names a bad label (${crucible_label_problem})" "${open_again}"
+}
+
+# Sets record_path to a new empty file crucible.sh new made in the effort's
+# cache/gates/, or denies.
+make_effort_record() {
+	[ -f "${CRUCIBLE_HELPER}" ] ||
+		deny_record "crucible.sh missing at ${CRUCIBLE_HELPER}" 'install the crucible skill'
+	if record_path=$(sh "${CRUCIBLE_HELPER}" new --kind cache/gates --label "${record_label}" --effort "${record_effort}" </dev/null); then
+		new_status=0
+	else
+		new_status=$?
+	fi
+	[ "${new_status}" -eq 0 ] ||
+		deny_record "crucible.sh new failed (exit ${new_status}; its stderr is above)" 'fix what crucible.sh names, such as the effort folder or CRUCIBLE_HOME'
+	case ${record_path} in
+		/*.json) ;;
+		*) deny_record 'crucible.sh new printed no file path' 'reinstall the crucible skill' ;;
+	esac
+}
+
+# Sets record_path to a new empty file in the session's gate folder,
+# records/, named as a Crucible item, or denies.
+make_session_record() {
+	records_dir="${gate_dir}/records"
+	[ ! -L "${records_dir}" ] || deny_record "${records_dir} is a symbolic link" 'remove the link'
+	mkdir -p "${records_dir}" 2>/dev/null && [ ! -L "${records_dir}" ] ||
+		deny_record "cannot create ${records_dir}" 'make the gate folder writable'
+	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
+	if crucible_claim_item_file "${records_dir}" "${record_label}" cache/gates; then
+		record_path=${crucible_claimed_file}
+		return 0
+	fi
+	[ "${crucible_claim_fault}" != id ] || deny_record "no record ID: ${crucible_claim_problem}" 'fix the tool it names'
+	deny_record "no record file: ${crucible_claim_problem}" 'make the gate folder writable'
+}
+
+# Removes the gate's own files, and its folder once nothing else is left in
+# it; records/ stays.
+clear_gate() {
+	rm -f "${gate_dir}/state" "${gate_dir}/gate.md" "${gate_dir}/target" "${gate_dir}/plan.json"
+	rmdir "${gate_dir}" 2>/dev/null || true
 }
 
 # Denies the question because the record could not be saved (cause $1, fix $2);
@@ -243,7 +326,7 @@ esac
 load_gate "${session_id}"
 if [ "${gate_status}" != pending ]; then
 	if [ "${gate_status}" = relayed ]; then save_gate_record; fi
-	rm -rf "${gate_dir}"
+	clear_gate
 	exit 0
 fi
 

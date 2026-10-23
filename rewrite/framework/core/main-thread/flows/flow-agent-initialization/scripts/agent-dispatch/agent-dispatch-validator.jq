@@ -10,9 +10,8 @@
 
 include "dispatch-names" {search: "./"};
 
-# The agents a dispatch file is written for, direct implementation among them;
-# mode TEST is not dispatched through this file yet.
-def dispatched_agents: listed_agents + [direct_agent];
+# The agents are dispatch-names.jq's dispatched_agents, each with a report
+# kind; mode TEST is not dispatched through this file yet.
 def dispatched_modes: ["BUILD"];
 def top_keys: ["id", "started", "agent", "mode", "tech", "plugins", "plan", "context", "task", "repo_root", "starting_points", "report", "baseline"];
 
@@ -46,6 +45,15 @@ def field_problems:
 	 else problem(["mode"]; " "; "\(.mode | tojson) is not dispatched through a dispatch file; expected \"BUILD\" (TEST dispatches are held in the flow)") end),
 	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end),
 	(if .repo_root | absolute_path then empty else problem(["repo_root"]; " "; "is not an absolute path; expected the repository's git work-tree root") end);
+
+# The plan a dispatch came from, by its digest alone: its gate record expires,
+# so the dispatch keeps no path to it.
+def plan_problems:
+	if (.plan | type) != "object" then problem(["plan"]; " "; "is not an object; expected {\"sha256\": 64 lowercase hex}")
+	else .plan
+		| ((keys - ["sha256"])[] | problem(["plan", .]; ": "; "unknown field; expected only sha256")),
+		  (if .sha256 | sha256_hex then empty else problem(["plan", "sha256"]; " "; "is not 64 lowercase hex digits; expected the plan's PLAN_SHA256") end)
+	end;
 
 def pinned_file_problems($key; $what):
 	if (.[$key] | type) != "object" then problem([$key]; " "; "is not an object; expected {\"path\": absolute path, \"sha256\": 64 lowercase hex}")
@@ -99,7 +107,7 @@ def baseline_path_problems:
 
 (if length != 1 then problem([]; " "; "is \(length) JSON values; expected exactly one object")
  elif (.[0] | type) != "object" then problem([]; " "; "is a JSON \(.[0] | type); expected an object")
- else .[0] | keys_problems, field_problems, pinned_file_problems("plan"; "gate record"),
+ else .[0] | keys_problems, field_problems, plan_problems,
 	pinned_file_problems("context"; "context file"), plugins_problems, tech_problems,
 	starting_points_problems, space_file_problems("report"; "report file"), baseline_path_problems
  end)
