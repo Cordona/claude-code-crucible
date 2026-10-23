@@ -95,6 +95,7 @@ def labels_item($title; $labels):
 .[0]
 | installed as $installed
 | "## Dispatch Plan\n\n"
+	+ "- Agent: \(.agent | clean)\n"
 	+ "- Tech: \(.technology | clean)\n"
 	+ "- Mode: \(.mode | clean)\(if .agent == direct_agent then " (direct implementation)" else "" end)\n\n"
 	+ task_section
@@ -200,9 +201,10 @@ empty list, and its exit 3 (invalid plugins) leaves them out of the list.
   DIR  the skills folder, as list-plugins.sh's --skills-dir; defaults to
        \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. A printed plan of either
        kind also loads DIR/${RENDER_LIB}/paths.jq, the path display helpers.
-Layout, every item on its own line (agent, reasons, loaded_reason and the
-context file's content stay in the JSON files and are not printed):
+Layout, every item on its own line (reasons, loaded_reason and the context
+file's content stay in the JSON files and are not printed):
   ## Dispatch Plan
+  - Agent: <agent>
   - Tech: <technology>
   - Mode: <mode>, with " (direct implementation)" for the direct agent,
                    ${NAMES_MODULE}.jq's direct_agent
