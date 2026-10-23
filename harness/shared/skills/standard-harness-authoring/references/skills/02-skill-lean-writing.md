@@ -5,7 +5,7 @@ Judges what is said and how; emphasis density, time-sensitive phrases and senten
 
 **Applies when:** every skill, command and agent body, and their reference files.
 **MUST lint:** none. SHOULD lint used here: LNT-23, LNT-24, LNT-70.
-**Protection rule:** the lean-pass invariant in `SKILL.md` (Invariants) applies; after the lean pass, re-run 04, 05 and 09.
+**Protection rule:** the lean-pass rule in `SKILL.md` (Never) applies; after the lean pass, re-run 04, 05 and 09.
 
 - **LEAN-01** · SHOULD · Would the agent get each paragraph wrong without it? · Check: strike only paragraphs that define a term found in standard language/tool docs, restate basics, or give generic advice; protected text (above) is never struck. · Fix: delete the struck paragraph; keep protective rationale as one sentence or a code comment.
 - **LEAN-02** · SHOULD · Is each rule grounded — it names a project path, contract or decision, or corrects a model failure that the skill names? · Check: yes if every rule meets one of the two; an unnamed failure counts as generic. · Fix: replace the generic rule with the concrete fact, name the failure it corrects, or cut it.

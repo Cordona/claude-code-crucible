@@ -32,7 +32,7 @@ Terms: **the source** is the spec, explanation or change request the owner appro
 - **REFACTOR: the old artifact is evidence, not a template.** Old wording carries old problems; don't keep text because it's there.
 - **Explain the why in one line beside the rule.** Cut longer rationale.
   Good: `- **Cap at 3 rounds:** a fourth rarely changes the verdict.` Bad: the same rule followed by a paragraph on how the cap was chosen.
-- **Lean,** within the rulebook `SKILL.md`'s Invariants (its lean-pass rule; read them before you cut): every line costs tokens on every run.
+- **Lean,** within the rulebook `SKILL.md`'s Never (its lean-pass rule; read it before you cut): every line costs tokens on every run.
 - **What you write stands alone.** Inline what you cite; never point to run files (the explanation, spec, `decisions.md`, review reports, runs).
   Good: `Stop after round 3 and show the owner the last report.` Bad: `Stop as the review report says.`
 

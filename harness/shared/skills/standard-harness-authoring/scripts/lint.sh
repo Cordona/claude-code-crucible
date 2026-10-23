@@ -1933,7 +1933,7 @@ function md_begin_run(   n, a, i) {
 function md_file_begin() {
 	cur = FILENAME; isk = (cur == SKMD); rel = substr(cur, length(SKD) + 2); reldir = dirname_(rel)
 	bchars = 0; blines = 0; nonhead = 0; words = 0; caps = 0; words_all = 0
-	inv_found = 0; inv_lvl = 0; inv_end = -1; inv_line = 0
+	inv_found = 0; inv_line = 0; inv_open = 0; inv_lvl = 0; inv_end = 0; inv_name = ""
 	exempt_lvl = 0; nhead = 0; nbul = 0; contents_head = 0; capturing = 0; bang_fence = 0; prev_nb = ""
 	delete hd_line; delete hd_text; delete bul_line; delete bul_text
 	sent_reset(); nest_reset()
@@ -1971,8 +1971,13 @@ function md_heading(l, lvl,   t) {
 	if (exempt_lvl && lvl <= exempt_lvl) exempt_lvl = 0
 	if (t ~ /old patterns|version|ledger|changelog/) exempt_lvl = lvl
 	if (!isk) return
-	if (inv_found && inv_end < 0 && lvl <= inv_lvl) inv_end = line_off
-	if (!inv_found && t ~ /^([0-9]+\.[ \t]*)?(invariants|constraints)([^a-z0-9_]|$)/) { inv_found = 1; inv_lvl = lvl; inv_line = FNR }
+	# LNT-25: every must-survive section counts; one nested inside another ends no later than it.
+	if (inv_open && lvl <= inv_lvl) { inv_open = 0; inv_end = line_off }
+	if (!inv_open && t ~ /^([0-9]+\.[ \t]*)?(never|always|invariants|constraints)([^a-z0-9_]|$)/) {
+		if (!inv_found) inv_line = FNR
+		inv_found = 1; inv_open = 1; inv_lvl = lvl
+		inv_name = l; sub(/^#+[ \t]*/, "", inv_name); inv_name = trim(inv_name)
+	}
 }
 function md_fence(   tag) {
 	if (fence == "") {
@@ -2009,10 +2014,10 @@ function md_file_end(   i, j, hits, tok) {
 		rec("LNT-16", blines <= 500 ? "PASS" : "FAIL", disp(cur), 0, sprintf("body %d lines (limit 500)", blines))
 		if (nonhead < 1) rec("LNT-49", "FAIL", disp(cur), 0, "body has no non-heading text line")
 		rec("LNT-23", (words && caps * 100 / words > 1) ? "FAIL" : "PASS", disp(cur), 0, sprintf("%d emphasis caps in %d words = %.2f per 100 (limit 1)", caps, words, words ? caps * 100 / words : 0))
-		if (inv_found && inv_end < 0) inv_end = bchars
+		if (inv_open) inv_end = bchars
 		if (bchars <= 20000) rec("LNT-25", "PASS", disp(cur), inv_line, sprintf("body %d chars (<= 20,000)", bchars))
-		else if (!inv_found) rec("LNT-25", "FAIL", disp(cur), 0, sprintf("body %d chars (> 20,000) with no Invariants/Constraints heading", bchars))
-		else rec("LNT-25", inv_end <= 20000 ? "PASS" : "FAIL", disp(cur), inv_line, sprintf("Invariants/Constraints section ends at char %d (limit 20,000)", inv_end))
+		else if (!inv_found) rec("LNT-25", "FAIL", disp(cur), 0, sprintf("body %d chars (> 20,000) with no Never, Always, Invariants or Constraints heading", bchars))
+		else rec("LNT-25", inv_end <= 20000 ? "PASS" : "FAIL", disp(cur), inv_line, sprintf("last must-survive section \"%s\" ends at char %d (limit 20,000)", clip(inv_name, 60), inv_end))
 		return
 	}
 	if (flines > 100 && !contents_head) {
