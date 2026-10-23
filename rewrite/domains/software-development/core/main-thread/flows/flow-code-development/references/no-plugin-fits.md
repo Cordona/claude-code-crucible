@@ -1,6 +1,6 @@
 # No plugin fits
 
-Read in full when `flow-code-development` step 2 routes a `<n>. no plugin fits (<stack>)` hand-back entry, and follow it for that part. "Step N", Terms, Invariants and Checking the reply are those of `flow-code-development`'s `SKILL.md`; "direct step N" is one of the Direct steps below.
+Read in full when `flow-code-development` step 2 routes a `<n>. no plugin fits (<stack>)` hand-back entry, and follow it for that part. "Step N", Terms, Never, Always and Checking the reply are those of `flow-code-development`'s `SKILL.md`; "direct step N" is one of the Direct steps below.
 
 For a `BUILD` part handed back as `<n>. no plugin fits (<stack>)`, no installed tech plugin fits its stack. Ask the human whether the main thread writes that part's code itself, as its own approval gate, never bundled into another choice.
 

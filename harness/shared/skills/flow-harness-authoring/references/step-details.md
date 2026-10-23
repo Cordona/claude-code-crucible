@@ -69,7 +69,7 @@ Output lines that go to G3:
 
 ## Script builds
 
-1. Each script spec in `skill-author`'s report (§3) must name its live-validation targets, the real files to run it against. One that names none goes back to `skill-author` (FIX); when that reply returns, repeat this check on the new report before step 2. A spec that still names none stops the loop (`SKILL.md` Invariants: a loop with no progress).
+1. Each script spec in `skill-author`'s report (§3) must name its live-validation targets, the real files to run it against. One that names none goes back to `skill-author` (FIX); when that reply returns, repeat this check on the new report before step 2. A spec that still names none stops the loop (`SKILL.md` Always: a loop with no progress).
 2. Dispatch `shell-script-developer` once per script spec, all in one message; each builds its script and live-validates it against real files, with no tests and no review. Save each reply as `scripts/<script>-r<n>.md`.
 3. A Validation field showing a failed or skipped live run: copy the script and that report to `pre-fix/script-<script>-r<n>/`, then send it back to `shell-script-developer` in a fix round with that report.
 4. A fix round whose Validation field shows the same failing command and output as the round before stops early and goes to the owner with both reports. After the script's round 3, stop and show the owner the last report.
