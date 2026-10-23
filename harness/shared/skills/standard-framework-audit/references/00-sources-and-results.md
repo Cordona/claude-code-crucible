@@ -14,13 +14,14 @@ The auditor reads another session's files after it ended. It never edits them, n
 
 Paths are under `rewrite/`:
 
-- **CL:** `CLAUDE.md`.
-- **FCD:** `software-development/flows/flow-code-development/SKILL.md`; **NPF:** its `references/no-plugin-fits.md`.
-- **FAI:** `software-development/flows/shared/flow-agent-initialization/SKILL.md`; **DPR:** its `references/dispatch-plan-rules.md`; **CHI:** its `references/conflicting-human-instructions.md`; **HYC:** its `references/handling-your-context.md`, the text the hook injects into every first message under `# Handling your context`.
-- **PAG:** `software-development/procedures/procedure-approval-gate/SKILL.md`.
-- **RT:** `software-development/shared/plugins/procedures/read-trackers/SKILL.md` (`procedure-read-trackers`).
-- **CDA:** `software-development/agents/code-developer/code-developer.md`; **SCDR:** its `skills/standard-code-development-report/SKILL.md`.
-- **A plugin:** `software-development/shared/plugins/<kind>/<name>/SKILL.md` and its `references/` (the shell gate is in `tech/shell/references/development.md`, SHD).
+- **CL:** `framework/core/CLAUDE.md`.
+- **FCD:** `domains/software-development/core/main-thread/flows/flow-code-development/SKILL.md`; **NPF:** its `references/no-plugin-fits.md`.
+- **FAI:** `framework/core/main-thread/flows/flow-agent-initialization/SKILL.md`; **DPR:** its `references/dispatch-plan-rules.md`.
+- **CHI:** `framework/core/main-thread/procedures/procedure-context/references/conflicting-human-instructions.md`; **HYC:** the same folder's `agent-context-rules.md`, the text the hook injects into every first message under `# Handling your context`.
+- **PAG:** `framework/core/main-thread/procedures/procedure-approval-gate/SKILL.md`.
+- **RT:** `domains/software-development/core/plugins/procedures/read-trackers/SKILL.md` (`procedure-read-trackers`).
+- **CDA:** `domains/software-development/core/agents/code-developer/code-developer.md`; **SCDR:** its `skills/standard-code-development-report/SKILL.md`.
+- **A plugin:** a standard is `domains/software-development/core/plugins/standards/<name>/SKILL.md`, a tech plugin `domains/software-development/plugins/tech/<name>/SKILL.md`, each with its `references/` (the shell gate is in `tech/shell/references/development.md`, SHD).
 
 A script's `--help` is its full contract. When an item names a script's output, read the `--help` of the copy the audited session ran, under its config dir.
 

@@ -626,7 +626,7 @@ load_shared_checks() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${REASON_PREFIX%:} install, not in the dispatch."
 	done
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||

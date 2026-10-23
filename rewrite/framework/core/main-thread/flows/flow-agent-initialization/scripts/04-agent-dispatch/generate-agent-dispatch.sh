@@ -386,9 +386,9 @@ load_dependencies() {
 		[ -n "${BASELINE_KIND}" ] ||
 		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	readonly BASELINE_KIND
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/context-versions.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/context-versions.sh
 	. "${versions_lib}"
 	# shellcheck source=plugin-files.sh
 	. "${plugin_lib}"

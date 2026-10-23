@@ -324,9 +324,9 @@ load_dependencies() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/context-versions.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/context-versions.sh
 	. "${versions_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||

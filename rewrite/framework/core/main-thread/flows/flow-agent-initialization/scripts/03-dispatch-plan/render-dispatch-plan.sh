@@ -466,7 +466,7 @@ load_context_checks() {
 		install_fault 5 "shared path check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
 	[ -f "${shape_program}" ] && [ -r "${shape_program}" ] ||
 		install_fault 5 "shape check missing; expected ${shape_program}; install the ${CONTEXT_PROCEDURE} skill"
-	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||
