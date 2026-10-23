@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Testing
 
-What a good test suite holds, in any language. A test that can't fail is worse than no test: a suite that passes whether or not the behaviour works earns trust it hasn't got. Volume is a cost: every test is code to read, run and maintain, so a suite larger than the behaviours it guards slows every change. Tests are executable documentation: a reader learns from them what the system does. The developer builds tests to these rules, then follows `references/development.md`; a reviewer (once `code-reviewer` exists) judges tests by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What a good test suite holds, in any language. A test that can't fail is worse than no test: a suite that passes whether or not the behaviour works earns trust it hasn't got. Volume is a cost: every test is code to read, run and maintain, so a suite larger than the behaviours it guards slows every change. Tests are executable documentation: a reader learns from them what the system does. The developer builds tests to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges tests by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 ## Scope
 

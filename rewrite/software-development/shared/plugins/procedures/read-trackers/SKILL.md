@@ -1,6 +1,6 @@
 ---
 name: procedure-read-trackers
-description: Read-only tracker reading for a dispatch's approved context (GitHub and GitLab issues, and Jira issues on hosts procedure-jira-auth allows) through one script, `read-link.sh`, with an action per exit code. Use when a dispatch's context holds a tracker link; injected into the agent's first message when loaded. Writes only a temp dir it removes. Not for other links (WebFetch), tracker writes, or how the context is read and reported (the first message's Handling your context).
+description: Read-only tracker reading for a dispatch's context (GitHub and GitLab issues, and Jira issues on hosts procedure-jira-auth allows) through one script, `read-link.sh`, with an action per exit code. Use when a dispatch's context holds a tracker link; injected into the agent's first message when loaded. Writes only a temp dir it removes. Not for other links (WebFetch), tracker writes, or how the context is read and reported (the first message's Handling your context).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Procedure plugin: Read trackers
 
-How to read a tracker link in the context the human approved: a GitHub, GitLab or Jira issue. Every role receives this file in its prompt; a developer then receives `references/development.md` right after it. When the context is read, and how it is weighed and reported, is the first message's `# Handling your context`; this plugin sets only how a tracker link is read.
+How to read a tracker link in the context: a GitHub, GitLab or Jira issue. Every role receives this file in its prompt; a developer then receives `references/development.md` right after it. When the context is read, and how it is weighed and reported, is the first message's `# Handling your context`; this plugin sets only how a tracker link is read.
 
 ## Scope
 
@@ -43,3 +43,7 @@ Act on the exit code only:
 - **Any other exit, the script missing, or no Bash in your tools:** skip the link as `link not read (<the exit code, or no Bash>)`.
 
 A skipped link never stops the work: go on to the next one.
+
+## Dependencies
+
+- **`procedure-context`,** a companion skill installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `read-link.sh` loads `procedure-context`'s `agent-context-url.jq`, the link rule. The script's other tools are in its `--help`.

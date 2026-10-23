@@ -7,6 +7,8 @@ umask 077
 readonly PROG='crucible.sh'
 readonly KINDS='context, gates, reports, dispatches, baselines, prompts'
 readonly MAX_LABEL_CHARS=60
+# The NAME part of an effort folder's name, as effort.sh sets it.
+readonly MAX_EFFORT_NAME_CHARS=40
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
 readonly MAX_CREATE_ATTEMPTS=5
@@ -62,6 +64,7 @@ readonly FIND_JQ="${INDEX_ENTRY_JQ}"'
 usage() {
 	cat <<'EOF'
 usage: crucible.sh new --kind KIND --label LABEL [--repo PATH] [--session ID]
+       crucible.sh new --kind KIND --label LABEL --effort FOLDER
        crucible.sh path ID
        crucible.sh find --kind KIND --session ID [--label LABEL]
        crucible.sh open ID [--format md|html] [--editor CMD]
@@ -79,7 +82,9 @@ refused by every command (exit 4); a year, month, day or kind folder that is
 one is refused by new (exit 4) and skipped by path, find and open (an item
 under it is not found: exit 1 for path and open). Prune skips a year, month
 or day folder that is a link; a kind folder that is a link inside an old day
-is removed with that day (the link only, never its target). So nothing is
+is removed with that day (the link only, never its target). new --effort
+refuses efforts/, the effort folder or its kind folder as a link (exit 4),
+and prune never looks inside efforts/. So nothing is
 ever read, written or removed outside the root. Folders the script creates are
 mode 700, files mode 600.
 
@@ -90,6 +95,8 @@ Layout (local time):
   lowercase hex digits; ext: md for prompts (a Markdown message), json for
   every other kind.
   The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
+  With new --effort, an item lives in an effort folder instead, unindexed:
+  <root>/efforts/<effort>/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
 
 Index line, one per item, appended by new (built by jq, written whole
 under the day's index lock):
@@ -114,6 +121,19 @@ Commands:
          and removes the file it created. The content is the caller's to
          write, as one JSON object in its writer's shape ("v": 1 is only in
          index lines and gate records), or for prompts as Markdown.
+         --effort FOLDER makes the item in the effort folder FOLDER instead
+         of the day folder: it creates FOLDER/<kind>/ when missing and the
+         file in it, with the same name, noclobber and retry rules, the ID
+         claimed across FOLDER's kind folders, and prints its absolute
+         path. FOLDER: an absolute path (trailing slashes allowed) to a
+         folder directly inside <root>/efforts/, named as effort.sh --help
+         sets: <YYYYMMDDTHHMMSS>-<hex>-<NAME>, NAME words of a-z and 0-9
+         joined by single dashes, 1 to 40 characters. efforts/, FOLDER and
+         FOLDER/<kind>/ must be real folders, not symbolic links, and FOLDER
+         must exist (new never creates it). No index line is written and no
+         lock taken (an effort folder holds no record file), so path, find,
+         open and prune do not see these items. --repo and --session only
+         feed the index line, so either one with --effort is a usage error.
   path   prints the absolute path of an item. ID: the full ID, which reads
          only the index of the day in its date; or its 4 hex digits, which
          searches the day folders newest first and stops at the first day
@@ -176,13 +196,16 @@ Exit codes:
      relative --repo, a CRUCIBLE_HOME that is relative or /, a relative HOME
      when CRUCIBLE_HOME is unset or empty, a malformed ID or Nd, open with
      an option before the ID, --format html, find without --kind or
-     --session. Its stderr is one "crucible.sh: <what failed>; expected
-     <x>" line, then "Try 'crucible.sh --help'."
+     --session; for new --effort, a FOLDER that is relative, not directly
+     inside <root>/efforts/ or not named <id>-<name>, or --effort with
+     --repo or --session. Its stderr is one "crucible.sh: <what failed>;
+     expected <x>" line, then "Try 'crucible.sh --help'."
   4  space fault, its stderr line starting "crucible.sh: space:": neither
      CRUCIBLE_HOME nor HOME set; the root is a symlink; the space cannot be
      created or written (new cannot create a folder, the file or the index
      line; prune cannot remove a day folder); a folder in it is a symlink
-     (new); new's 5 attempts all found the name or its ID taken; new waited
+     (new); new --effort's efforts/ or FOLDER missing, not a folder or a
+     symlink; new's 5 attempts all found the name or its ID taken; new waited
      10 seconds for a busy index lock (with no working stat, a lock whose
      owner process is alive is never judged stale by age, so it waits this
      out); or open's mktemp -d fails in its temp base
@@ -295,23 +318,27 @@ require_value() {
 }
 
 run_new() {
-	kind='' label='' session='' repo='' repo_given=false
+	kind='' label='' session='' repo='' effort=''
+	repo_given=false session_given=false effort_given=false
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--kind | --label | --repo | --session) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for new: $1; expected --kind, --label, --repo or --session" ;;
+			--kind | --label | --repo | --session | --effort) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for new: $1; expected --kind, --label, --repo, --session or --effort" ;;
 		esac
 		case $1 in
 			--kind) kind=$2 ;;
 			--label) label=$2 ;;
-			--session) session=$2 ;;
+			--session) session=$2 session_given=true ;;
+			--effort) effort=$2 effort_given=true ;;
 			*) repo=$2 repo_given=true ;;
 		esac
 		shift 2
 	done
 	check_kind
 	check_label
-	if [ "${repo_given}" = true ]; then
+	if [ "${effort_given}" = true ]; then
+		check_effort
+	elif [ "${repo_given}" = true ]; then
 		check_repo
 	else
 		repo=$(default_repo)
@@ -346,6 +373,45 @@ check_repo() {
 	esac
 }
 
+# Sets effort to FOLDER without trailing slashes and efforts_dir to the
+# space's efforts folder, once FOLDER names an effort folder directly in it.
+check_effort() {
+	[ "${repo_given}" = false ] && [ "${session_given}" = false ] ||
+		usage_error '--effort takes no --repo or --session; expected new --kind KIND --label LABEL --effort FOLDER'
+	case ${effort} in
+		/*) ;;
+		*) usage_error "--effort ${effort} is not absolute; expected the absolute path of an effort folder" ;;
+	esac
+	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
+	efforts_dir="${root}/efforts"
+	effort_name=${effort#"${efforts_dir}/"}
+	case ${effort_name} in
+		"${effort}" | '' | */*)
+			usage_error "--effort ${effort} is not directly inside ${efforts_dir}; expected ${efforts_dir}/<id>-<name>"
+			;;
+		*) ;;
+	esac
+	check_effort_name
+}
+
+# Refuses an effort folder name that is not <YYYYMMDDTHHMMSS>-<hex>-<NAME>.
+check_effort_name() {
+	expected_name="<YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>, NAME words of a-z and 0-9 joined by single dashes, 1 to ${MAX_EFFORT_NAME_CHARS} characters"
+	case ${effort_name} in
+		[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]-[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]-?*) ;;
+		*) usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}" ;;
+	esac
+	words=${effort_name#????????????????????-}
+	case ${words} in
+		*[!abcdefghijklmnopqrstuvwxyz0123456789-]* | -* | *- | *--*)
+			usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}"
+			;;
+		*) ;;
+	esac
+	[ "${#words}" -le "${MAX_EFFORT_NAME_CHARS}" ] ||
+		usage_error "bad effort folder name: ${effort_name}; expected ${expected_name}"
+}
+
 # Prints the git root of the current folder, or nothing outside a repository.
 default_repo() {
 	command -v git >/dev/null 2>&1 || return 0
@@ -354,14 +420,41 @@ default_repo() {
 
 create_item() {
 	stamp=$(date +%Y%m%dT%H%M%S) || install_fault 'date failed; expected the local time'
+	if [ "${effort_given}" = true ]; then
+		ensure_effort_folder
+		item_home=${effort}
+	else
+		ensure_day_folder
+		item_home=${day_dir}
+	fi
+	kind_dir="${item_home}/${kind}"
+	ensure_dir "${kind_dir}"
+	claim_item_file
+	item_file="${kind_dir}/${name}"
+	[ "${effort_given}" = true ] || index_item
+	printf '%s\n' "${item_file}"
+}
+
+# The effort folder is effort.sh's to create, so it must already be there.
+ensure_effort_folder() {
+	[ ! -L "${efforts_dir}" ] || space_fault "${efforts_dir} is a symbolic link; expected a real folder inside the space"
+	[ -d "${efforts_dir}" ] || space_fault "${efforts_dir} is missing or not a folder; expected the efforts folder effort.sh start creates"
+	[ ! -L "${effort}" ] || space_fault "${effort} is a symbolic link; expected a real effort folder"
+	[ -d "${effort}" ] || space_fault "${effort} is missing or not a folder; expected an effort folder effort.sh start created"
+}
+
+ensure_day_folder() {
 	split_date "${stamp%T*}"
 	day_dir="${root}/${year}/${month}/${day}"
-	kind_dir="${day_dir}/${kind}"
 	ensure_root
 	ensure_dir "${root}/${year}"
 	ensure_dir "${root}/${year}/${month}"
 	ensure_dir "${day_dir}"
-	ensure_dir "${kind_dir}"
+}
+
+# Sets hex and name for a file created in kind_dir whose ID no other item of
+# item_home holds.
+claim_item_file() {
 	attempt=1
 	while :; do
 		hex=$(random_hex)
@@ -378,7 +471,10 @@ create_item() {
 			space_fault "${MAX_CREATE_ATTEMPTS} tries in ${kind_dir} found the name or its ID taken; expected a free one, try again"
 		attempt=$((attempt + 1))
 	done
-	item_file="${kind_dir}/${name}"
+}
+
+# Appends the item's line to the day index, removing the file when that fails.
+index_item() {
 	index_line "${stamp}-${hex}" "${stamp}" "${kind}/${name}"
 	# shellcheck disable=SC2310 # its status is the wait result; errexit adds nothing
 	acquire_index_lock "${stamp}-${hex}" || {
@@ -392,7 +488,6 @@ create_item() {
 		space_fault "cannot append to ${day_dir}/index.jsonl; expected a writable index (the new file was removed)"
 	}
 	release_index_lock
-	printf '%s\n' "${item_file}"
 }
 
 # Prints the file extension of kind: md for prompts, json for every other kind.
@@ -434,12 +529,12 @@ random_hex() {
 	esac
 }
 
-# True when the file just created is the day's only one with this ID, in any
-# kind folder. Each caller counts after its own create, so of two racing for
-# one ID at most one sees itself alone.
+# True when the file just created is the only one with this ID in any kind
+# folder of item_home (the day or effort folder). Each caller counts after its
+# own create, so of two racing for one ID at most one sees itself alone.
 id_is_unique() {
 	holders=0
-	for holder in "${day_dir}"/*/"$1"-*.json "${day_dir}"/*/"$1"-*.md; do
+	for holder in "${item_home}"/*/"$1"-*.json "${item_home}"/*/"$1"-*.md; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
 	done

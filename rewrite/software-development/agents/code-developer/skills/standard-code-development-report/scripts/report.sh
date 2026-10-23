@@ -131,7 +131,8 @@ def chain_operators:
 	gsub("\\\\.|\u0027[^\u0027]*\u0027|\"(\\\\.|[^\"\\\\])*\""; "") as $bare
 	| [("&&", "||", ";") | select(. as $operator | $bare | contains($operator))
 		| if . == ";" then "a semicolon" else . end];
-def location_expected: "a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or its URL) or commit <sha>";
+def context_positions: "paths[<n>], links[<n>] or notes[<n>], counted from 1";
+def location_expected: "a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (\(context_positions), or its URL) or commit <sha>";
 
 def expected($name):
 	if enums[$name] then "one of \(enums[$name] | names)"
@@ -282,7 +283,7 @@ def context_problems:
 	else context_refs as $refs
 		| .open | to_entries[] | .key as $index | .value
 		| select(type == "object" and .kind == "could_not" and (.ref | type) == "string" and (.ref | among($refs) | not))
-		| "open[\($index)].ref: \(.ref | shown) names no context entry; expected a paths[].path or links[].url of the context file, or paths[<n>], links[<n>] or notes[<n>], counted from 1"
+		| "open[\($index)].ref: \(.ref | shown) names no context entry; expected a paths[].path or links[].url of the context file, or \(context_positions)"
 	end;
 
 def count_line:
@@ -565,7 +566,7 @@ def urgent_lines($problems):
 	+ [open_of("instruction_found")[] | at_line("Instruction found, not followed"; .at; .text)]
 	+ [objects_of("deviations")[] | "- Deviation: \(.what | bare)" + (if (.why | txt) == "" then "" else " (\(.why | bare))" end)];
 def capped_lines:
-	capped_group([open_of("could_not")[] | could_not_line]; "item not read"; "items not read")
+	capped_group([open_of("could_not")[] | could_not_line]; "item not read or skipped"; "items not read or skipped")
 	+ capped_group(text_lines("assumption"; "Assumption"); "assumption"; "assumptions")
 	+ capped_group(text_lines("missing_plugin"; "Missing plugin"); "missing plugin"; "missing plugins")
 	+ capped_group([open_of("contract_break")[] | at_line("Contract break"; .at; .text)]; "contract break"; "contract breaks")
@@ -629,8 +630,8 @@ Rules the validator enforces (check, and render before it prints):
     field table states; a path or loc is never absolute (/, ~ or a drive
     letter); a files path has no .. segment and is listed once
   - loc: a repo-relative path:line, message: <FIELD>, a plugin name and file, a
-    context entry (paths[<n>], links[<n>] or its URL) or commit <sha>; only
-    "never absolute" is enforced
+    context entry (paths[<n>], links[<n>] or notes[<n>], counted from 1, or
+    its URL) or commit <sha>; only "never absolute" is enforced
   - verification: a pass has its command; any other result has its note.
     Only that the note is there is checked: a narrowed note's quote of the
     first message is not verified

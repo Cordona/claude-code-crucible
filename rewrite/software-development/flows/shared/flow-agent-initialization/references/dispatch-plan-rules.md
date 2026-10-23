@@ -1,13 +1,13 @@
 # Dispatch plan: rules
 
-What the main thread decides for each plan at SKILL.md's step 7, as `generate-dispatch-plan.sh`'s options. The generator checks every rule a script can check and writes the plan JSON; the renderer owns its layout and its question. You fill the options, never the JSON, the Markdown or the dialog. Every free-text value (a task, a reason) goes in single quotes, each `'` inside written as `'\''`, as SKILL.md's Invariants set. `generate-dispatch-plan.sh --help` is the full option list and every rule it checks.
+What the main thread decides for each plan at SKILL.md's step 7, as `generate-dispatch-plan.sh`'s options. The generator checks every rule a script can check and writes the plan JSON; the renderer owns its layout and its question. You fill the options, never the JSON, the Markdown or the dialog. Every free-text value (a task, a reason) is quoted as CLAUDE.md sets. `generate-dispatch-plan.sh --help` is the full option list and every rule it checks.
 
 ## Options
 
 - **`--plan-file`:** the gate's plan file, the path `open-gate.sh --plan-path` prints.
 - **`--agent`:** the part's agent, such as `code-developer`; `main thread` for direct implementation (SKILL.md's step 11).
 - **`--mode`:** `BUILD`.
-- **`--context-file`:** the effort's context file from SKILL.md's step 3.
+- **`--context-file`:** the effort's latest context version, as SKILL.md's step 3 takes it.
 - **`--task`:** one per task, in order; two or more make a group (SKILL.md's step 6).
 - **`--load <name> --reason <line>`:** each plugin to load, its name as `list-plugins.sh` prints it.
 - **`--skip <name> --reason <line>`:** every other installed plugin.
@@ -17,7 +17,7 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 
 ## Reasons
 
-- **Each reason cites its plugin's description,** in a few words: what in it matched the task or what the context holds as SKILL.md's step 3 read it (`--load`), or what didn't match, or which "Not for …" excludes it (`--skip`).
+- **Each reason cites its plugin's description,** in a few words: what in it matched the task or what the context holds as `procedure-context` read it (`--load`), or what didn't match, or which "Not for …" excludes it (`--skip`).
 - **A boundary-map drop** (SKILL.md's step 5): `<concern>: owned by <owner>`.
 - **A step-10 drop:** `invalid`, `uninstalled after approval` or `faulty files`, as Step-10 re-plans below sets.
 - **No plugins at all** (a config value, a doc): `--loaded-reason` says why, such as `a config value change, no code`.
@@ -44,5 +44,5 @@ A re-plan from SKILL.md's step 10 for a `PLUGIN` denial moves the dropped plugin
 
 - **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with "fix it, then rerun" above it. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
 - **`uninstalled after approval` or `faulty files`, while the dropped plugin's description still matches the task** (as SKILL.md's step 5 sets): add `--replan stop-recommended`.
-- **A denial naming both `PLUGIN` and `CONTEXT`:** one re-plan, the plugin moved to `--skip` with the reason and any `--replan` the bullets above set, and `--context-file` set to step 3's new file.
-- **Any other re-plan,** a `CONTEXT` one included: no `--replan`; the one-plan question, `--plans 1`.
+- **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; SKILL.md's step 10 stops that dispatch.
+- **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

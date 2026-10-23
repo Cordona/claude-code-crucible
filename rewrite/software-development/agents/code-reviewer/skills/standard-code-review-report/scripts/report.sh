@@ -290,7 +290,7 @@ def not_reviewed_problems($loc):
 	end;
 
 def found_location_expected:
-	"a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or its URL), a URL, or commit <sha>, \(one_line_expected)";
+	"a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or notes[<n>], counted from 1, or its URL), a URL, or commit <sha>, \(one_line_expected)";
 def found_problems($loc):
 	if type != "object" then "\($loc): a JSON \(type); expected an object with \(found_keys | names)"
 	else . as $item
@@ -438,7 +438,7 @@ characters):
   - found: exactly kind (instruction or secret), location and text; the
     location's form is not checked: a repo-relative path:line, message:
     <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>]
-    or its URL), a URL, or commit <sha>
+    or notes[<n>], counted from 1, or its URL), a URL, or commit <sha>
   - at most 200 findings, 100 flags, 100 not_reviewed and 100 found items,
     and 20 locations on a finding or an OPEN entry; previous_findings is
     bounded by the prior IDs; an empty list is accepted. A list over its

@@ -13,6 +13,7 @@ set -eu
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly RENDER_LIB='lib-render'
+readonly CONTEXT_PROCEDURE='procedure-context'
 readonly NAMES_MODULE='dispatch-names'
 
 # Definitions every program below starts with. The programs are single-quoted
@@ -224,11 +225,12 @@ a code span as '.
 
 With --no-plugin-fits, the context file CTX, checked as prepare-agent-prompt.sh
 checks it, apart from the digest the hook compares (the path checks are
-scripts/02-agent-context/agent-context-file-checks.sh and the shape check
-scripts/02-agent-context/agent-context-validator.jq). Before it is opened, CTX
-must be absolute and hold no control character, no double
-quote and no .. segment, and must not name a sensitive file in any letter
-case (a basename .env*, *.pem, *.key or id_*, or a .git component). It must
+DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh and the shape check
+DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq, DIR being the default
+skills folder). Before it is opened, CTX must pass those path checks:
+absolute, no control character, double or single quote or .. segment, no
+sensitive name, no file of instructions for Claude, no Claude settings
+file. It must
 be a readable regular file, not a symlink, no bigger than the size cap of
 agent-context-file-checks.sh,
 holding exactly one JSON object
@@ -242,8 +244,9 @@ of letters, digits and . _ ~ / ? # = % : + , @ - only (no space, quote,
 ; $ \` ( ) & | < or >),
 why one non-empty line, notes may be []. Each problem prints as
 "context file: <what>; expected <x>" (the shape problems at most 20, then a
-count), exit 2; every line about a problem of CTX itself starts
-"context file:", and no other line does. The plan shows only its path and
+count; a position in them, such as paths[0].why, counts from 0), exit 2;
+every line about a problem of CTX itself starts "context file:", and no
+other line does. The plan shows only its path and
 digest.
 
 --question --plans N prints the plan's AskUserQuestion fields instead, as one
@@ -288,8 +291,8 @@ Exit codes:
   3  jq failed while checking or rendering valid JSON, or wc or the sha256
      tool failed (its stderr is printed)
   4  list-plugins.sh missing from DIR, when printing a dispatch plan
-  5  scripts/02-agent-context/agent-context-file-checks.sh or agent-context-validator.jq
-     missing, when printing a --no-plugin-fits plan,
+  5  DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh or
+     agent-context-validator.jq missing, when printing a --no-plugin-fits plan,
      DIR/${RENDER_LIB}/paths.jq missing, when printing a plan, or
      scripts/04-agent-dispatch/${NAMES_MODULE}.jq missing, for a dispatch plan
      or its question
@@ -302,7 +305,8 @@ paths.jq; for a dispatch plan list-plugins.sh, and for it or its question
 scripts/04-agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
 wc, sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
 shasum -a 256),
-scripts/02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq.
+the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh and
+agent-context-validator.jq in DIR/${CONTEXT_PROCEDURE}/scripts/.
 Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
 30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
 EOF
@@ -454,13 +458,13 @@ read_context() {
 # Sources the shared path checks, finds the shape check and the sha256 tool;
 # exits 5 when a shared check is missing, 1 when no sha256 tool is on PATH.
 load_context_checks() {
-	context_lib=$(script_dir)/../02-agent-context/agent-context-file-checks.sh
-	shape_program=$(script_dir)/../02-agent-context/agent-context-validator.jq
+	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
+	shape_program="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq"
 	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
-		install_fault 5 "shared path check missing; expected ${context_lib}; reinstall the ${PROCEDURE} skill"
+		install_fault 5 "shared path check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
 	[ -f "${shape_program}" ] && [ -r "${shape_program}" ] ||
-		install_fault 5 "shape check missing; expected ${shape_program}; reinstall the ${PROCEDURE} skill"
-	# shellcheck source=../02-agent-context/agent-context-file-checks.sh
+		install_fault 5 "shape check missing; expected ${shape_program}; install the ${CONTEXT_PROCEDURE} skill"
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||

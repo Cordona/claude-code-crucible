@@ -12,11 +12,11 @@ One folder, outside every repository, for the files Crucible keeps. The main thr
 
 - **JSON, but prompts:** every kind is one JSON object in its writer's shape, except `prompts`, the Markdown message the main thread reads on the direct path, stored as `.md`; other Markdown is rendered on demand by `open`, never stored, so the JSON stays the one source.
 - **`"v": 1` is in index lines and gate records only:** a report's or context file's shape is its validator's, which refuses any other key.
-- **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `flow-agent-initialization`'s for the context, dispatch, baseline, report and prompt files, `procedure-approval-gate`'s question hook for gate records. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` and write nothing in the space but that `REPORT` file.
-- **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. Two exceptions: a report fixed on a rejection, before it passes its check, and the stamps `report.sh check --dispatch` writes into a report when it passes. A changed context is a new context file, approved again at the gate through its digest.
+- **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `procedure-context`'s for the context, `flow-agent-initialization`'s for the dispatch, baseline, report and prompt files, `procedure-approval-gate`'s question hook for gate records. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` and write nothing in the space but that `REPORT` file.
+- **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. Two exceptions: a report fixed on a rejection, before it passes its check, and the stamps `report.sh check --dispatch` writes into a report when it passes. A changed context is a new version, as `procedure-context` sets.
 - **Throwaway files stay in the session scratchpad:** labels files, temp files.
 - **Never write a secret into an item;** a found secret is reported masked, by location.
-- **Never edit `settings.json`:** `flow-agent-initialization`'s install check prints the entry that allows the space, and the human adds it.
+- **The `settings.json` entry that allows the space is the human's,** as `flow-agent-initialization`'s install check sets.
 
 ## The space
 
@@ -27,8 +27,9 @@ One folder, outside every repository, for the files Crucible keeps. The main thr
 <space>/YYYY/MM/DD/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<json, or md for prompts>
 ```
 
-- **Kinds:** `context`, `gates`, `reports`, `dispatches`, `baselines` (a dispatch's `git status` as one JSON object, written once by `flow-agent-initialization`'s Agent hook or its `--direct` run, or copied by its `generate-agent-dispatch.sh --baseline-from` for a resend), `prompts` (`.md`); any other is refused.
+- **Kinds:** `context` (made only with `--effort`, as `procedure-context` sets), `gates`, `reports`, `dispatches`, `baselines` (a dispatch's `git status` as one JSON object, written once by `flow-agent-initialization`'s Agent hook or its `--direct` run, or copied by its `generate-agent-dispatch.sh --baseline-from` for a resend), `prompts` (`.md`); any other is refused.
 - **ID:** `<YYYYMMDDTHHMMSS>-<hex>`, read from the file name. Its 4 hex alone find the newest day holding them; an older item with the same hex needs its full ID.
+- **Effort items:** `crucible.sh new --effort <effort folder>` makes the item in that effort folder instead of a day folder, as `crucible.sh --help` sets; it has no index line, so `path`, `find`, `open` and `prune` don't see it.
 - **Private:** folders 700, files 600; symbolic links: as `crucible.sh --help` sets; nothing outside the space is read, written or removed.
 
 ## The script

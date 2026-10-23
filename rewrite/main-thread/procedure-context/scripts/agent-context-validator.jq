@@ -1,23 +1,23 @@
-# The context file's shape, the one definition prepare-agent-prompt.sh and
-# render-dispatch-plan.sh both check. Input: the file slurped (jq -s), so an
+# The context file's shape, the one definition context.sh and every script
+# that reads a context file check. Input: the file slurped (jq -s), so an
 # empty file or several values show as a count.
-# Output: one "<what>; expected <x>" line per problem, nothing when the file fits.
+# Output: one "<what>; expected <x>" line per problem, nothing when the file fits;
+# positions in a line, such as paths[0].why, are counted (from 0).
 # With --arg format json: one {"at": <the field's path, such as ["paths", 2,
 # "why"]; [] for the file>, "problem": "<problem>;
 # expected <x>"} object per problem, every problem, none counted away.
 
+include "agent-context-url" {search: "./"};
+
 # Bounds the report so a deny reason stays short; the rest is counted.
 def max_problems: 20;
-# A field name from the file is quoted as JSON and cut, so it prints on one line.
+# A field name from the file is quoted as JSON and cut, so it prints on one
+# line; 60 characters show any real field name whole and keep a line naming an
+# unknown one short.
 def quoted_name: tojson | if length > 60 then .[:60] + "…" else . end;
 def has_control: test("[[:cntrl:]]");
 def one_line_text: type == "string" and (has_control | not) and test("[^[:space:]]");
 def absolute_path: type == "string" and startswith("/") and (has_control | not);
-# The whole link can go into a shell command line: a host of letters, digits,
-# dots and hyphens with an optional port, then a path, query and fragment of
-# only these characters, none of which quotes, substitutes, redirects, splits
-# or chains in a shell (any other character goes in percent-encoded).
-def http_url: type == "string" and test("^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#][A-Za-z0-9._~/?#=%:+,@-]*)?$"; "i");
 def entry_shape($field): "{\"\($field)\": ..., \"why\": ...}";
 # One problem: the field's path, and its line, the field's location then the problem.
 def problem($at; $location; $separator; $problem): {at: $at, problem: $problem, line: "\($location)\($separator)\($problem)"};

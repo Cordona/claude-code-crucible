@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Writes one dispatch plan from the main thread's choices, so the plan JSON is
 # never typed by hand. The plan is built, its context file checked by
-# 02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq,
-# and the plan
+# procedure-context's agent-context-file-checks.sh, agent-context-validator.jq
+# and context-versions.sh, and the plan
 # checked by dispatch-plan-validator.jq against the installed plugins; every
 # problem is named by the option behind it, and nothing is written until there
 # is none. technology is computed from the loaded tech plugin.
@@ -12,6 +12,7 @@ umask 077
 
 readonly PROG='generate-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
+readonly CONTEXT_PROCEDURE='procedure-context'
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
 LC_ALL=C
@@ -85,11 +86,17 @@ Every option is checked first; on any problem nothing is written.
   --mode MODE       BUILD or TEST.
   --context-file CTX  the effort's context file, checked as prepare-agent-prompt.sh
                     checks it, apart from the digest: the path checks of
-                    scripts/02-agent-context/agent-context-file-checks.sh, a readable regular
-                    file that is not a symlink, at most the size cap of
-                    agent-context-file-checks.sh, and
-                    scripts/02-agent-context/agent-context-validator.jq. Its path
-                    and sha256 go into the plan's context.
+                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh, a
+                    readable regular file that is not a symlink, at most the
+                    size cap of agent-context-file-checks.sh, and
+                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq.
+                    A version file in an effort's context/ folder
+                    (<...>/efforts/<effort>/context/<id>-v<N>.json) must be that
+                    effort's latest version, as
+                    DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it; the
+                    problem names the latest. Any other context file is not
+                    checked for a version. Its path and sha256 go into the
+                    plan's context.
   --task TEXT       one task, kept in order; one task is one dispatch, two or
                     more a group.
   --load NAME       a plugin to load, by its list-plugins.sh name, kept in order.
@@ -146,8 +153,9 @@ Exit codes:
      --mode, --context-file or --task missing
   3  invalid input, one stderr line per problem; nothing written
   5  a dependency missing or failing, with the fix named: jq 1.6+, sha256sum
-     or shasum, list-plugins.sh, scripts/02-agent-context/agent-context-file-checks.sh,
-     agent-context-validator.jq, dispatch-plan-validator.jq,
+     or shasum, list-plugins.sh, DIR/${CONTEXT_PROCEDURE}/scripts/'s
+     agent-context-file-checks.sh, agent-context-validator.jq or
+     context-versions.sh, dispatch-plan-validator.jq,
      installed-plugins.jq or scripts/04-agent-dispatch/dispatch-names.jq,
      or a base tool below
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
@@ -155,11 +163,13 @@ Exit codes:
 Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --argjson; macOS: brew
 install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
 every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
-(macOS: built in, run as shasum -a 256); list-plugins.sh;
-scripts/02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq,
+(macOS: built in, run as shasum -a 256); list-plugins.sh; the
+${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
+agent-context-validator.jq and context-versions.sh in DIR/${CONTEXT_PROCEDURE}/scripts/;
 dispatch-plan-validator.jq and installed-plugins.jq beside this script, and
 scripts/04-agent-dispatch/dispatch-names.jq, which the validator includes.
-Reads only: the context file, and what list-plugins.sh reads.
+Reads only: the context file, the names in its folder when it is a version
+file in an effort's context/, and what list-plugins.sh reads.
 Runtime: about 300 ms for a plan with 8 plugins installed; measured on macOS
 (average of 5 runs).
 EOF
@@ -290,25 +300,34 @@ finish_parse() {
 	[ -n "${skills_dir}" ] || skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 }
 
-# Exits 5 unless jq, a sha256 tool, list-plugins.sh, the three checks and the
-# validator's names module are in place; sources agent-context-file-checks.sh
-# and sets the checks' paths and list_script.
+# Exits 5 unless jq, a sha256 tool, list-plugins.sh, the context checks, the
+# plan checks and the validator's names module are in place; sources
+# agent-context-file-checks.sh and context-versions.sh and sets the checks'
+# paths and list_script.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
+	context_dir="${skills_dir}/${CONTEXT_PROCEDURE}/scripts"
+	context_lib="${context_dir}/agent-context-file-checks.sh"
+	context_validator="${context_dir}/agent-context-validator.jq"
+	versions_lib="${context_dir}/context-versions.sh"
+	for context_file_needed in "${context_lib}" "${context_validator}" "${versions_lib}"; do
+		[ -f "${context_file_needed}" ] && [ -r "${context_file_needed}" ] ||
+			die 5 "context check missing; expected ${context_file_needed}; install the ${CONTEXT_PROCEDURE} skill or pass the right --skills-dir"
+	done
 	plan_dir=$(script_dir)
-	context_lib="${plan_dir}/../02-agent-context/agent-context-file-checks.sh"
-	context_validator="${plan_dir}/../02-agent-context/agent-context-validator.jq"
 	plan_validator="${plan_dir}/dispatch-plan-validator.jq"
 	installed_program="${plan_dir}/installed-plugins.jq"
 	# dispatch-plan-validator.jq includes it; a missing copy would read as a jq fault.
 	dispatch_names="${plan_dir}/../04-agent-dispatch/dispatch-names.jq"
-	for shared_file in "${context_lib}" "${context_validator}" "${plan_validator}" "${installed_program}" "${dispatch_names}"; do
+	for shared_file in "${plan_validator}" "${installed_program}" "${dispatch_names}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
-	# shellcheck source=../02-agent-context/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/context-versions.sh
+	. "${versions_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||
 		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
@@ -377,6 +396,11 @@ check_context_file() {
 		done <<EOF
 ${shape_report}
 EOF
+		return 0
+	fi
+	stale_problem=$(context_stale_version_problem "${context_file}")
+	if [ -n "${stale_problem}" ]; then
+		add_context_problem "${stale_problem}; expected the latest version; plan with it"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits

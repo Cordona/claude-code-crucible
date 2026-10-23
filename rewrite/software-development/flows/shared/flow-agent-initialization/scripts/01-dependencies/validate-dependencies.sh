@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Prints the install checklist for flow-agent-initialization: its six
-# scripts, the two context checks they share, the dispatch plan check and its
-# plugin list reader, the dispatch check, the plugin file helper and the
-# dispatch names module, the context-handling template the inject hook sends,
+# scripts, procedure-context's context.sh, the four context checks the
+# scripts share and the context-handling template the inject hook sends, the
+# dispatch plan check and its plugin list reader, the dispatch check, the
+# plugin file helper and the dispatch names module,
 # lib-render's path helpers, which a printed plan loads, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
 # date, git, cmp and sha256sum or shasum, the three hook
@@ -24,12 +25,13 @@ set -eu
 readonly PROG='validate-dependencies.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly GATE_PROCEDURE='procedure-approval-gate'
+readonly CONTEXT_PROCEDURE='procedure-context'
 readonly SELF_SCRIPT='01-dependencies/validate-dependencies.sh'
 readonly LIST_SCRIPT='03-dispatch-plan/list-plugins.sh'
 readonly PLAN_RENDER_SCRIPT='03-dispatch-plan/render-dispatch-plan.sh'
 readonly INJECT_SCRIPT='05-agent-prompt/prepare-agent-prompt.sh'
 readonly HOOK_SCRIPT="${PROCEDURE}/scripts/${INJECT_SCRIPT}"
-readonly CONTEXT_GENERATOR_SCRIPT='02-agent-context/generate-agent-context.sh'
+readonly CONTEXT_SCRIPT='context.sh'
 readonly PLAN_GENERATOR_SCRIPT='03-dispatch-plan/generate-dispatch-plan.sh'
 readonly PLAN_VALIDATOR_LIB='03-dispatch-plan/dispatch-plan-validator.jq'
 readonly INSTALLED_PLUGINS_LIB='03-dispatch-plan/installed-plugins.jq'
@@ -37,10 +39,13 @@ readonly DISPATCH_GENERATOR_SCRIPT='04-agent-dispatch/generate-agent-dispatch.sh
 readonly DISPATCH_VALIDATOR_LIB='04-agent-dispatch/agent-dispatch-validator.jq'
 readonly PLUGIN_FILES_LIB='04-agent-dispatch/plugin-files.sh'
 readonly DISPATCH_NAMES_LIB='04-agent-dispatch/dispatch-names.jq'
-readonly CONTEXT_VALIDATOR_LIB='02-agent-context/agent-context-validator.jq'
-readonly CONTEXT_FILE_LIB='02-agent-context/agent-context-file-checks.sh'
-# Relative to DIR/flow-agent-initialization/, not to its scripts/.
-readonly TEMPLATE_FILE='references/handling-your-context.md'
+# These four are in DIR/procedure-context/scripts/.
+readonly CONTEXT_VALIDATOR_LIB='agent-context-validator.jq'
+readonly CONTEXT_URL_LIB='agent-context-url.jq'
+readonly CONTEXT_FILE_LIB='agent-context-file-checks.sh'
+readonly CONTEXT_VERSIONS_LIB='context-versions.sh'
+# Relative to DIR/procedure-context/, not to its scripts/.
+readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # More symlink hops than any install chain needs; a longer chain is a loop.
 readonly MAX_LINK_HOPS=40
 readonly RENDER_LIB='lib-render'
@@ -130,20 +135,16 @@ then one line per check:
                                and its --help exits 0 with a Usage: line
   ✓ ${INJECT_SCRIPT}
   ✓ ${PLAN_RENDER_SCRIPT}
-  ✓ ${CONTEXT_GENERATOR_SCRIPT}
   ✓ ${PLAN_GENERATOR_SCRIPT}
   ✓ ${DISPATCH_GENERATOR_SCRIPT}
+  ✓ ${CONTEXT_SCRIPT}                 the same, in DIR/${CONTEXT_PROCEDURE}/scripts/
   ✓ open-gate.sh               the same, in DIR/${GATE_PROCEDURE}/scripts/
   ✓ gate-stop-hook.sh
   ✓ gate-question-hook.sh
   ✓ ${CRUCIBLE_SCRIPT}                the script is in DIR/${CRUCIBLE_SKILL}/scripts/ and
                                its --help exits 0
-  ✓ ${CONTEXT_VALIDATOR_LIB}
-                               a readable file in DIR/${PROCEDURE}/scripts/
-  ✓ ${CONTEXT_FILE_LIB}
-                               the same
   ✓ ${PLAN_VALIDATOR_LIB}
-                               the same
+                               a readable file in DIR/${PROCEDURE}/scripts/
   ✓ ${INSTALLED_PLUGINS_LIB}
                                the same
   ✓ ${DISPATCH_VALIDATOR_LIB}
@@ -152,9 +153,17 @@ then one line per check:
                                the same
   ✓ ${DISPATCH_NAMES_LIB}
                                the same
+  ✓ ${CONTEXT_VALIDATOR_LIB}
+                               a readable file in DIR/${CONTEXT_PROCEDURE}/scripts/
+  ✓ ${CONTEXT_URL_LIB}
+                               the same
+  ✓ ${CONTEXT_FILE_LIB}
+                               the same
+  ✓ ${CONTEXT_VERSIONS_LIB}
+                               the same
   ✓ ${TEMPLATE_FILE}
-                               a readable regular file in DIR/${PROCEDURE}/references/,
-                               inside DIR/${PROCEDURE}/ once symlinks are followed,
+                               a readable regular file in DIR/${CONTEXT_PROCEDURE}/references/,
+                               inside DIR/${CONTEXT_PROCEDURE}/ once symlinks are followed,
                                holding more than whitespace
   ✓ ${PATHS_MODULE}        a readable file in DIR/${RENDER_LIB}/
   ✓ jq <version>               jq on PATH, version ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR} or newer
@@ -198,10 +207,10 @@ When jq is missing or FILE is missing, unreadable or not JSON, one line covers
 all three hook checks and the Crucible space check.
 
 Cache: a full pass with no warning writes CACHE/${MARKER_NAME}, holding a
-fingerprint of ${PROCEDURE}'s seven scripts, ${CONTEXT_VALIDATOR_LIB},
-${CONTEXT_FILE_LIB}, ${PLAN_VALIDATOR_LIB}, ${INSTALLED_PLUGINS_LIB},
+fingerprint of ${PROCEDURE}'s six scripts, ${PLAN_VALIDATOR_LIB}, ${INSTALLED_PLUGINS_LIB},
 ${DISPATCH_VALIDATOR_LIB}, ${PLUGIN_FILES_LIB}, ${DISPATCH_NAMES_LIB},
-${TEMPLATE_FILE}, ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three
+${CONTEXT_PROCEDURE}'s ${CONTEXT_SCRIPT}, ${CONTEXT_VALIDATOR_LIB}, ${CONTEXT_URL_LIB},
+${CONTEXT_FILE_LIB}, ${CONTEXT_VERSIONS_LIB} and ${TEMPLATE_FILE}, ${PATHS_MODULE}, ${GATE_PROCEDURE}'s three
 (open-gate.sh and both gate hook scripts), ${CRUCIBLE_SCRIPT}, the three hook
 entries' commands (hashed), the Crucible space and the additionalDirectories
 entries, the jq version, where date, git, cmp, sha256sum and shasum are on
@@ -236,7 +245,7 @@ and rm for the cache (a missing one leaves the result not cached), and date
 to stamp it; jq, date, git, cmp and sha256sum or shasum are checks, not
 requirements: each has its own line, as above. Of the checked scripts' --help,
 only list-plugins.sh's
-tests tools (awk and sort), and generate-agent-context.sh's and
+tests tools (awk and sort), and ${CONTEXT_SCRIPT}'s and
 generate-dispatch-plan.sh's (cat, mktemp, mv, rm, tr and wc); a missing one
 fails that script's line, as above. No other tool a checked script needs
 (such as awk or dd for the inject hook, or find, chmod or touch for
@@ -293,6 +302,8 @@ parse_args() {
 	done
 	procedure_dir="${skills_dir}/${PROCEDURE}"
 	scripts_dir="${procedure_dir}/scripts"
+	context_procedure_dir="${skills_dir}/${CONTEXT_PROCEDURE}"
+	context_scripts_dir="${context_procedure_dir}/scripts"
 	crucible_home="${CRUCIBLE_HOME:-${HOME}/.crucible}"
 	while [ "${crucible_home}" != "${crucible_home%/}" ]; do crucible_home=${crucible_home%/}; done
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
@@ -328,13 +339,15 @@ fingerprint_input() {
 	printf 'scripts\n'
 	cksum "${scripts_dir}/${LIST_SCRIPT}" \
 		"${scripts_dir}/${INJECT_SCRIPT}" "${scripts_dir}/${SELF_SCRIPT}" \
-		"${scripts_dir}/${PLAN_RENDER_SCRIPT}" "${scripts_dir}/${CONTEXT_GENERATOR_SCRIPT}" \
+		"${scripts_dir}/${PLAN_RENDER_SCRIPT}" \
 		"${scripts_dir}/${PLAN_GENERATOR_SCRIPT}" "${scripts_dir}/${PLAN_VALIDATOR_LIB}" \
 		"${scripts_dir}/${INSTALLED_PLUGINS_LIB}" "${scripts_dir}/${DISPATCH_GENERATOR_SCRIPT}" \
 		"${scripts_dir}/${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}/${PLUGIN_FILES_LIB}" \
 		"${scripts_dir}/${DISPATCH_NAMES_LIB}" \
-		"${scripts_dir}/${CONTEXT_VALIDATOR_LIB}" "${scripts_dir}/${CONTEXT_FILE_LIB}" \
-		"${procedure_dir}/${TEMPLATE_FILE}" \
+		"${context_scripts_dir}/${CONTEXT_SCRIPT}" \
+		"${context_scripts_dir}/${CONTEXT_VALIDATOR_LIB}" "${context_scripts_dir}/${CONTEXT_URL_LIB}" \
+		"${context_scripts_dir}/${CONTEXT_FILE_LIB}" \
+		"${context_scripts_dir}/${CONTEXT_VERSIONS_LIB}" "${context_procedure_dir}/${TEMPLATE_FILE}" \
 		"${skills_dir}/${PATHS_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
@@ -493,31 +506,32 @@ check_lib_file() {
 }
 
 # Checks the template the inject hook sends word for word, by the hook's own
-# test: a readable regular file inside the procedure folder after symlinks,
-# holding more than whitespace. Both the hook and --direct refuse without it.
+# test: a readable regular file inside the procedure-context folder after
+# symlinks, holding more than whitespace. Both the hook and --direct refuse
+# without it.
 check_template() {
-	template="${procedure_dir}/${TEMPLATE_FILE}"
+	template="${context_procedure_dir}/${TEMPLATE_FILE}"
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	if is_template_usable; then
 		pass "${TEMPLATE_FILE}"
 	else
-		fail "${TEMPLATE_FILE}" "missing or empty in ${template%/*}" "reinstall ${PROCEDURE} under ${skills_dir}"
+		fail "${TEMPLATE_FILE}" "missing or empty in ${template%/*}" "reinstall ${CONTEXT_PROCEDURE} under ${skills_dir}"
 	fi
 }
 
-# True when template is a readable regular file, resolves inside procedure_dir
-# and holds a character other than whitespace.
+# True when template is a readable regular file, resolves inside
+# context_procedure_dir and holds a character other than whitespace.
 is_template_usable() {
 	[ -f "${template}" ] && [ -r "${template}" ] || return 1
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
-	is_inside_procedure "${template}" || return 1
+	is_inside_context_procedure "${template}" || return 1
 	grep -q '[^[:space:]]' "${template}" 2>/dev/null
 }
 
-# True when file $1, its symlinks followed, lies under procedure_dir's physical
-# path, so a link can't make the hook send a file from elsewhere.
-is_inside_procedure() {
-	procedure_real=$(cd -P "${procedure_dir}" 2>/dev/null && pwd -P) || return 1
+# True when file $1, its symlinks followed, lies under context_procedure_dir's
+# physical path, so a link can't make the hook send a file from elsewhere.
+is_inside_context_procedure() {
+	procedure_real=$(cd -P "${context_procedure_dir}" 2>/dev/null && pwd -P) || return 1
 	link_path=$1
 	link_hops=0
 	while [ -h "${link_path}" ]; do
@@ -915,20 +929,22 @@ fi
 check_script "${PROCEDURE}" "${LIST_SCRIPT}"
 check_script "${PROCEDURE}" "${INJECT_SCRIPT}"
 check_script "${PROCEDURE}" "${PLAN_RENDER_SCRIPT}"
-check_script "${PROCEDURE}" "${CONTEXT_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
+check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
-check_lib_file "${CONTEXT_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
-check_lib_file "${CONTEXT_FILE_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${PLAN_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${INSTALLED_PLUGINS_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${PLUGIN_FILES_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${DISPATCH_NAMES_LIB}" "${scripts_dir}" "${PROCEDURE}"
+check_lib_file "${CONTEXT_VALIDATOR_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
+check_lib_file "${CONTEXT_URL_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
+check_lib_file "${CONTEXT_FILE_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
+check_lib_file "${CONTEXT_VERSIONS_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
 check_template
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq

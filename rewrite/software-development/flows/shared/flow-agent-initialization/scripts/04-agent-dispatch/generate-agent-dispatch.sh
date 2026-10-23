@@ -3,8 +3,8 @@
 # session's gate, so a dispatch is never assembled by hand. The plan is found
 # by its digest among the session's gates records, the plan the human was
 # shown; it is checked again by dispatch-plan-validator.jq, its context file by
-# 02-agent-context/agent-context-file-checks.sh and agent-context-validator.jq
-# and its digest,
+# procedure-context's agent-context-file-checks.sh, agent-context-validator.jq
+# and context-versions.sh and by its digest,
 # its plugins resolved to files by plugin-files.sh, and the dispatch checked by
 # agent-dispatch-validator.jq before and after it is written. Every problem is
 # named by the option behind it; no file is left behind on a problem.
@@ -14,6 +14,7 @@ umask 077
 
 readonly PROG='generate-agent-dispatch.sh'
 readonly PROCEDURE='flow-agent-initialization'
+readonly CONTEXT_PROCEDURE='procedure-context'
 readonly REQUIRED_TOOLS='awk cat date git mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
@@ -123,10 +124,15 @@ index lines crucible.sh new appended stay (see the writes below).
 Checks, all before any file is made:
   - the plan: scripts/03-dispatch-plan/dispatch-plan-validator.jq against the
     installed plugins, as generate-dispatch-plan.sh checks it
-  - its context file: the path checks of scripts/02-agent-context/agent-context-file-checks.sh,
-    a readable regular file that is not a symlink, at most the size cap, and
-    scripts/02-agent-context/agent-context-validator.jq; and its sha256 must still
-    be the plan's context.sha256
+  - its context file: the path checks of
+    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh, a readable
+    regular file that is not a symlink, at most the size cap, and
+    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq; a version file
+    in an effort's context/ folder (<...>/efforts/<effort>/context/<id>-v<N>.json)
+    must still be that effort's latest version, as
+    DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it (any other
+    context file is not checked for a version); and its sha256 must still be
+    the plan's context.sha256
   - the dispatch: scripts/04-agent-dispatch/agent-dispatch-validator.jq, which
     among its rules dispatches only agents code-developer, code-reviewer and
     "main thread" (direct implementation, with no tech plugin), in mode BUILD
@@ -198,6 +204,8 @@ report or baseline file's place names CRUCIBLE_HOME. A context file whose
 sha256 is no longer the plan's context.sha256 gives this line (sha256s cut to
 12 digits):
   ${PROG}: --plan-sha256 "<HEX>": the plan's context file <path>: changed since the plan was shown (sha256 <shown> shown, <now> now); expected it as shown; show the plan again for the changed file
+and a version that is no longer its effort's latest gives this one:
+  ${PROG}: --plan-sha256 "<HEX>": the plan's context file <path>: is version v<N> of its effort, not the latest (v<M>: <latest path>); expected the latest version; show the plan again at its gate with it
 Other stderr lines:
   - ${PROG}: <message>; expected <x>...: a usage error (then a
     "Try ..." line), a dependency fault, a failure after the checks, or
@@ -235,13 +243,15 @@ Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS; macOS: brew install jq;
 Linux: the distro's jq package); git (macOS: xcode-select --install; Linux:
 the distro's git package); awk, cat, date (+%z), mktemp, mv, rm, tr, wc, in
 every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
-(macOS: built in, run as shasum -a 256); crucible.sh; list-plugins.sh;
-scripts/02-agent-context/agent-context-file-checks.sh and
-agent-context-validator.jq; scripts/03-dispatch-plan/dispatch-plan-validator.jq
+(macOS: built in, run as shasum -a 256); crucible.sh; list-plugins.sh; the
+${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
+agent-context-validator.jq and context-versions.sh in
+DIR/${CONTEXT_PROCEDURE}/scripts/; scripts/03-dispatch-plan/dispatch-plan-validator.jq
 and installed-plugins.jq; plugin-files.sh, agent-dispatch-validator.jq and
 ${NAMES_MODULE}.jq beside this script.
 Reads only: the session's gates records and, through crucible.sh find, the
-Crucible space's index.jsonl files; the plan's context file; git's view of
+Crucible space's index.jsonl files; the plan's context file and, when it is
+a version file in an effort's context/, the names in that folder; git's view of
 PATH; what list-plugins.sh reads; the loaded plugins' folders (whether
 references/review.md is readable, and the references/*-template.md files);
 and with --baseline-from that dispatch and its baseline file.
@@ -349,15 +359,21 @@ trim_trailing_slashes() {
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
+	context_dir="${skills_dir}/${CONTEXT_PROCEDURE}/scripts"
+	context_lib="${context_dir}/agent-context-file-checks.sh"
+	context_validator="${context_dir}/agent-context-validator.jq"
+	versions_lib="${context_dir}/context-versions.sh"
+	for context_file_needed in "${context_lib}" "${context_validator}" "${versions_lib}"; do
+		[ -f "${context_file_needed}" ] && [ -r "${context_file_needed}" ] ||
+			die 5 "context check missing; expected ${context_file_needed}; install the ${CONTEXT_PROCEDURE} skill"
+	done
 	dispatch_dir=$(script_dir)
-	context_lib="${dispatch_dir}/../02-agent-context/agent-context-file-checks.sh"
-	context_validator="${dispatch_dir}/../02-agent-context/agent-context-validator.jq"
 	plan_validator="${dispatch_dir}/../03-dispatch-plan/dispatch-plan-validator.jq"
 	installed_program="${dispatch_dir}/../03-dispatch-plan/installed-plugins.jq"
 	plugin_lib="${dispatch_dir}/plugin-files.sh"
 	dispatch_validator="${dispatch_dir}/agent-dispatch-validator.jq"
 	names_module="${dispatch_dir}/${NAMES_MODULE}.jq"
-	for shared_file in "${context_lib}" "${context_validator}" "${plan_validator}" "${installed_program}" \
+	for shared_file in "${plan_validator}" "${installed_program}" \
 		"${plugin_lib}" "${dispatch_validator}" "${names_module}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
@@ -370,8 +386,10 @@ load_dependencies() {
 		[ -n "${BASELINE_KIND}" ] ||
 		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	readonly BASELINE_KIND
-	# shellcheck source=../02-agent-context/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/context-versions.sh
+	. "${versions_lib}"
 	# shellcheck source=plugin-files.sh
 	. "${plugin_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
@@ -559,6 +577,11 @@ check_context() {
 		done <<EOF
 ${shape_report}
 EOF
+		return 0
+	fi
+	stale_problem=$(context_stale_version_problem "${context_path}")
+	if [ -n "${stale_problem}" ]; then
+		add_context_problem "${stale_problem}; expected the latest version; show the plan again at its gate with it"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits

@@ -15,6 +15,9 @@ readonly MAX_ERROR_LINES=20
 readonly SKILLS_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 readonly JIRA_SCRIPT="${SKILLS_DIR}/procedure-jira/scripts/jira.sh"
 readonly JIRA_CONFIG_SCRIPT="${SKILLS_DIR}/procedure-jira-auth/scripts/jira-curl-config.sh"
+# The link rule lives once, beside the context validator that applies it too.
+readonly LINK_RULE_DIR="${SKILLS_DIR}/procedure-context/scripts"
+readonly LINK_RULE_MODULE="${LINK_RULE_DIR}/agent-context-url.jq"
 readonly TAB='	'
 
 # Checks the file and link n, then names the tracker. Input: the file slurped
@@ -23,10 +26,7 @@ readonly TAB='	'
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly CLASSIFY_JQ='
-# Copy of http_url in flow-agent-initialization scripts/02-agent-context/agent-context-validator.jq;
-# keep both in step. It admits no character that quotes, substitutes, redirects,
-# splits or chains in a shell.
-def http_url: type == "string" and test("^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#][A-Za-z0-9._~/?#=%:+,@-]*)?$"; "i");
+include "agent-context-url";
 def url_parts: capture("^https?://(?<authority>[^/?#]+)(?<path>[^?#]*)"; "i") | .authority |= ascii_downcase;
 def bad($message): "bad\t" + $message;
 
@@ -55,6 +55,7 @@ main() {
 	parse_args "$@"
 	command -v jq >/dev/null 2>&1 || fail 5 'jq missing; expected jq 1.6 or later on PATH; try brew install jq'
 	require_base_tools
+	require_link_rule
 	classify_link
 	case ${link_kind} in
 		github) read_github ;;
@@ -80,6 +81,8 @@ Input:
                   leading zero
   The url must be http or https and use only letters, digits and
   . _ ~ / ? # = % : + , @ - (no &, quotes, spaces); any other is exit 4.
+  This is procedure-context's link rule (its scripts/agent-context-url.jq),
+  the one the context validator applies, read from there on every run.
 
 Tracker links, by host and URL shape (http or https, host in any case):
   GitHub  the host github.com exactly, the path /<owner>/<repo>/issues/<n>
@@ -112,7 +115,8 @@ Exit codes:
   3    not a tracker link, a Jira host outside the allow-list included
   4    context file unreadable, not one JSON object, no links, no link <n>,
        or a URL not of the accepted form
-  5    internal error, mktemp failed, or jq or a base tool missing
+  5    internal error, mktemp failed, or jq, a base tool or
+       procedure-context's link rule missing
   130  interrupted (INT)
   143  terminated (TERM)
 
@@ -121,6 +125,10 @@ Dependencies (runs under POSIX sh):
                 its presence is checked; an older jq exits 5.
   base tools    awk, cat, env, head, mktemp, rm and sleep; macOS ships them,
                 on Linux coreutils and awk
+  procedure-context
+                its scripts/agent-context-url.jq under
+                ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ (install the
+                procedure-context skill)
   ps            optional (procps on Linux): used to stop a timed-out read's
                 child processes; without it only the read's own process is
                 stopped and its children may run on
@@ -130,7 +138,8 @@ Dependencies (runs under POSIX sh):
                 ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, with a credential
                 stored through procedure-jira-auth, and curl, which
                 procedure-jira needs
-jq and the base tools are checked at start, after the arguments; the tool a
+jq, the base tools and the link rule are checked at start, after the
+arguments; the tool a
 read needs is checked just before that read.
 
 Runtime: network bound. The whole read, the Jira credential lookup included,
@@ -196,6 +205,11 @@ require_base_tools() {
 	done
 }
 
+require_link_rule() {
+	[ -f "${LINK_RULE_MODULE}" ] && [ -r "${LINK_RULE_MODULE}" ] \
+		|| fail 5 "procedure-context's link rule missing; expected ${LINK_RULE_MODULE}; try installing the procedure-context skill"
+}
+
 # Sets link_kind and, by kind, link_url, link_host and link_key.
 classify_link() {
 	[ -f "${context_file}" ] && [ -r "${context_file}" ] \
@@ -203,7 +217,7 @@ classify_link() {
 	# A separate parse, as jq versions differ in the exit code of a parse error.
 	jq -s 'length' <"${context_file}" >/dev/null 2>&1 \
 		|| fail 4 'context file is not valid JSON; expected one JSON object; try the file the human approved'
-	classified=$(jq -r -s --arg n "${link_index}" "${CLASSIFY_JQ}" <"${context_file}" 2>/dev/null) \
+	classified=$(jq -r -s -L "${LINK_RULE_DIR}" --arg n "${link_index}" "${CLASSIFY_JQ}" <"${context_file}" 2>/dev/null) \
 		|| fail 5 'jq failed checking the context file; expected jq 1.6 or later; try upgrading jq'
 	link_kind=${classified%%"${TAB}"*}
 	classified_fields=${classified#*"${TAB}"}

@@ -3,7 +3,7 @@
 # whole prompt, the one line "DISPATCH: <path>" naming a dispatch file that
 # generate-agent-dispatch.sh wrote; the hook checks that file, the context file
 # and the plugin files it names, and replaces the prompt with the agent's
-# message built from them and the flow's context-handling template, sent word
+# message built from them and procedure-context's context-handling template, sent word
 # for word. Any problem denies the dispatch. Every other Agent
 # call passes untouched. The decision is the only output, so a listed agent is
 # denied on any unexpected exit (fail closed). --direct builds the same message
@@ -13,11 +13,10 @@
 # resend. Each checked file is read once, into a private temp copy that the checks and
 # the message all read, so the checked bytes are the sent bytes.
 # One window stays open between check and copy: see "Known gap" in --help.
-# The message embeds only trusted text (the human's notes and request, the whys,
-# paths and links written from them, and the text of the template and plugins
-# the human installed), so no crucible-context or crucible-plugin marker is
-# stripped from it; repository text, web pages and seat output go in only as a
-# path or link.
+# No crucible-context or crucible-plugin marker is stripped from the message,
+# because everything it embeds is trusted: the human's request, the notes and
+# whys, as procedure-context sets what notes and whys may hold, and the template
+# and plugins the human installed.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 
@@ -29,8 +28,10 @@ readonly REASON_PREFIX='flow-agent-initialization:'
 readonly LISTED_AGENTS='code-developer code-reviewer'
 readonly NAMES_MODULE='dispatch-names'
 readonly DIRECT_PROMPT_LABEL='main-thread-prompt'
-# The flow folder's file sent under "# Handling your context", relative to it.
-readonly TEMPLATE_FILE='references/handling-your-context.md'
+# The skill that owns the context: its validator, its path checks and the file
+# sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
+readonly CONTEXT_PROCEDURE='procedure-context'
+readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # Bounds the symlink chain followed for one file, so a link loop ends in a deny.
 readonly MAX_LINK_HOPS=40
 readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <absolute path>", the DISPATCH line generate-agent-dispatch.sh printed for this dispatch (flow-agent-initialization).'
@@ -354,18 +355,20 @@ For a listed agent, tool_input.prompt must be exactly one line (one trailing
 newline allowed)
   DISPATCH: <absolute path>
 naming a dispatch file generate-agent-dispatch.sh wrote. Before any check
-of it, the flow's context-handling template references/handling-your-context.md
-(the flow folder is two folders above this script) must be a readable regular
-file inside the flow folder once symlinks are followed, holding more than
+of it, the context-handling template ${TEMPLATE_FILE} of the
+${CONTEXT_PROCEDURE} skill (its folder
+\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CONTEXT_PROCEDURE}) must be a readable
+regular file inside that folder once symlinks are followed, holding more than
 whitespace; else every dispatch gets a fault naming the template's path.
 A prompt that is not that one line is denied at once with one DISPATCH
 problem that names no path (DISPATCH <problem>; expected <x>). A problem
 with the dispatch path or file below also denies at once, alone, since the
 later checks read that file. Past those, the checks, every problem named in
 one deny reason:
-  - the dispatch path: the path checks of
-    scripts/02-agent-context/agent-context-file-checks.sh (absolute, no
-    control character, double quote or .. segment, no sensitive name), a
+  - the dispatch path: the path checks of the ${CONTEXT_PROCEDURE} skill's
+    scripts/agent-context-file-checks.sh (absolute, no control character,
+    double or single quote or .. segment, no sensitive name, no file of
+    instructions for Claude, no Claude settings file), a
     regular file that is not a symlink, directly in a Crucible dispatches
     folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/YYYY/MM/DD/dispatches/ (no
     folder of that path a symlink), valid JSON passing
@@ -373,8 +376,8 @@ one deny reason:
   - its agent: subagent_type (${help_direct_agent} with --direct)
   - its context file: the same path checks, a readable regular file that is
     not a symlink, at most the size cap of agent-context-file-checks.sh, its
-    sha256 equal to the dispatch's context.sha256, valid JSON passing
-    scripts/02-agent-context/agent-context-validator.jq
+    sha256 equal to the dispatch's context.sha256, valid JSON passing the
+    ${CONTEXT_PROCEDURE} skill's scripts/agent-context-validator.jq
   - each plugin path: absolute, no .. segment, under
     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/ (compared as text), in the
     folder of the plugin it is listed under; that folder a plugin (named
@@ -424,7 +427,7 @@ The message (one per dispatch; no absolute path in a tag):
   <crucible-context>, then a json fence holding the context file
   pretty-printed by jq ., then </crucible-context>
   # Handling your context
-  <the bytes of the flow's references/handling-your-context.md, given a
+  <the bytes of ${CONTEXT_PROCEDURE}'s ${TEMPLATE_FILE}, given a
   final newline when it has none>
   # Your work
   - **MODE:** <mode>
@@ -504,9 +507,10 @@ the distro's jq package), git (to write a baseline; macOS: xcode-select
 mktemp, mv, readlink, rm, tr, wc, in every macOS and Linux base system, and
 sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
 shasum -a 256);
-references/handling-your-context.md;
-scripts/02-agent-context/agent-context-file-checks.sh and
-agent-context-validator.jq; scripts/04-agent-dispatch/agent-dispatch-validator.jq
+the ${CONTEXT_PROCEDURE} skill's ${TEMPLATE_FILE},
+scripts/agent-context-file-checks.sh, scripts/agent-context-validator.jq and
+scripts/agent-context-url.jq, which the validator includes;
+scripts/04-agent-dispatch/agent-dispatch-validator.jq
 and ${NAMES_MODULE}.jq (the direct agent, the listed agents, which must
 match the list above, and the baseline shape); crucible.sh for --direct.
 Runtime: about 185 ms for a hook allow with 3 plugins, 175 ms for a deny
@@ -589,6 +593,7 @@ prepare_message() {
 # once jq is known present, or faults: any missing is an install or host
 # fault, not the dispatch's. Creates the temp folder the template copy goes in.
 load_dependencies() {
+	context_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CONTEXT_PROCEDURE}"
 	check_base_tools
 	load_shared_checks
 	load_shared_names
@@ -607,15 +612,21 @@ check_base_tools() {
 # Sources the shared path checks and finds the sha256 tool and the validators.
 load_shared_checks() {
 	shared_dir=$(script_dir)/..
-	context_lib="${shared_dir}/02-agent-context/agent-context-file-checks.sh"
-	context_validator="${shared_dir}/02-agent-context/agent-context-validator.jq"
+	context_lib="${context_skill_dir}/scripts/agent-context-file-checks.sh"
+	context_validator="${context_skill_dir}/scripts/agent-context-validator.jq"
+	# The validator includes it; a missing copy would read as a jq fault.
+	context_link_rule="${context_skill_dir}/scripts/agent-context-url.jq"
 	dispatch_validator="${shared_dir}/04-agent-dispatch/agent-dispatch-validator.jq"
 	names_module="${shared_dir}/04-agent-dispatch/${NAMES_MODULE}.jq"
-	for shared_file in "${context_lib}" "${context_validator}" "${dispatch_validator}" "${names_module}"; do
+	for shared_file in "${context_lib}" "${context_validator}" "${context_link_rule}"; do
+		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
+			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${CONTEXT_PROCEDURE} install, not in the dispatch."
+	done
+	for shared_file in "${dispatch_validator}" "${names_module}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${REASON_PREFIX%:} install, not in the dispatch."
 	done
-	# shellcheck source=../02-agent-context/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../main-thread/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||
@@ -658,30 +669,30 @@ make_snapshot_dir() {
 
 # Copies the template into the temp folder as template_copy, or faults: an
 # unusable template is an install fault, so every dispatch is denied until
-# the flow is reinstalled.
+# procedure-context is reinstalled.
 load_template() {
-	flow_dir="$(script_dir)/../.."
-	real_flow_dir=''
+	template_dir=${context_skill_dir}
+	real_template_dir=''
 	# shellcheck disable=SC2310 # its status is the resolve result; a failure faults below
-	resolve_dir "${flow_dir}" && real_flow_dir=${resolved_dir%/} && flow_dir=${real_flow_dir}
-	template_path="${flow_dir}/${TEMPLATE_FILE}"
+	resolve_dir "${template_dir}" && real_template_dir=${resolved_dir%/} && template_dir=${real_template_dir}
+	template_path="${template_dir}/${TEMPLATE_FILE}"
 	template_copy="${snapshot_dir}/template"
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	is_template_usable ||
-		fault "the context-handling template ${template_path} is missing or empty; expected a readable regular file inside ${flow_dir}/ once symlinks are followed, holding more than whitespace; the fault is in the ${REASON_PREFIX%:} install, not in the dispatch."
+		fault "the context-handling template ${template_path} is missing or empty; expected a readable regular file inside ${template_dir}/ once symlinks are followed, holding more than whitespace; the fault is in the ${CONTEXT_PROCEDURE} install, not in the dispatch."
 }
 
 # True when template_path is a readable regular file that, its symlinks
-# followed, lies inside real_flow_dir, and its copy holds a character other
-# than whitespace: validate-dependencies.sh's test, so the install check and
-# the hook agree. The copy is what the message sends.
+# followed, lies inside real_template_dir, and its copy holds a character
+# other than whitespace: validate-dependencies.sh's test, so the install check
+# and the hook agree. The copy is what the message sends.
 is_template_usable() {
-	[ -n "${real_flow_dir}" ] || return 1
+	[ -n "${real_template_dir}" ] || return 1
 	[ -f "${template_path}" ] && [ -r "${template_path}" ] || return 1
 	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
 	resolve_file "${template_path}" || return 1
 	case ${resolved_file} in
-		"${real_flow_dir}"/*) ;;
+		"${real_template_dir}"/*) ;;
 		*) return 1 ;;
 	esac
 	cat -- "${template_path}" >"${template_copy}" 2>/dev/null || return 1
@@ -798,7 +809,7 @@ check_context() {
 	compute_context_digest "${context_copy}" ||
 		fault "${context_digest_tool} could not hash the temp copy; the fault is in the host, not in the dispatch; the cause is on stderr."
 	if [ "${context_digest}" != "${dispatch_context_sha256}" ]; then
-		add_problem CONTEXT "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds; the flow's step 3 writes a new context file" "${context_path}"
+		add_problem CONTEXT "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds; ${CONTEXT_PROCEDURE}'s context.sh extend writes a new version" "${context_path}"
 		return 0
 	fi
 	if ! jq empty "${context_copy}" </dev/null >/dev/null 2>&1; then
@@ -809,7 +820,7 @@ check_context() {
 		fault "jq could not run the context check ${context_validator}; the hook needs jq 1.6+; the cause is on stderr."
 	if [ -n "${context_report}" ]; then
 		context_problems=$(join_lines "${context_report}")
-		add_problem CONTEXT "file does not have the context shape (${context_problems}); expected the shape agent-context-validator.jq checks; the flow's step 3 writes a new context file" "${context_path}"
+		add_problem CONTEXT "file does not have the context shape (${context_problems}); expected the shape agent-context-validator.jq checks; ${CONTEXT_PROCEDURE}'s context.sh extend writes a new version" "${context_path}"
 		return 0
 	fi
 	context_pretty="${snapshot_dir}/context.pretty"

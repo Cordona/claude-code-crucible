@@ -33,8 +33,9 @@ help_text() {
 	print_block <<'EOF'
 
 Owns the effort folders of the Crucible space. An effort is one piece of work
-with one ID and one folder that holds every artifact it produces. The folder
-is the effort's whole record: no record file is written in it.
+with one ID and one folder. The effort's context is written under its folder;
+its other artifacts still go to the Crucible space's day folders until they
+move in. No record file is written in the folder.
 
 The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path, trailing
 slashes removed. Efforts live in <space>/efforts/<id>-<name>/, flat. The

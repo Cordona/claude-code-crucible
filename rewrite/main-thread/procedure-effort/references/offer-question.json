@@ -7,11 +7,11 @@
       "options": [
         {
           "label": "Yes, start an effort",
-          "description": "Tracked work: one folder holds everything it produces. I ask a few questions to pin down what matters, then show you a plan to approve before any agent runs."
+          "description": "Tracked work with its own ID and a folder that keeps its context. I ask a few questions to pin down what matters, then show you a plan to approve before any agent runs."
         },
         {
           "label": "No, do it without one",
-          "description": "I make the change myself with the matching technology and standards plugins, run their checks, and show you the diff. Nothing is tracked."
+          "description": "I make the change myself with the matching technology and standards plugins, run their checks, and show you the result. No tests are written, since test writing isn't built yet. Nothing is tracked."
         }
       ]
     }
