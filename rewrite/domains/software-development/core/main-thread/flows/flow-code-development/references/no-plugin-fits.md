@@ -8,10 +8,10 @@ For a `BUILD` part handed back as `<n>. no plugin fits (<stack>)`, no installed 
 
 Show it through `procedure-approval-gate`: load it with the Skill tool first, and follow its steps with these inputs.
 
-- **The renderer's contract:** run `sh "<init scripts>/03-dispatch-plan/render-dispatch-plan.sh" --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names.
+- **The renderer's contract:** run `sh "<init scripts>/dispatch-plan/render-dispatch-plan.sh" --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names.
 - **The plan file:** the `--no-plugin-fits` input that `render-dispatch-plan.sh --help` sets, written as the gate's step 1.2 sets: the stack from the hand-back line; as files, the part's starting points, or the repository root when it has none; as the one task, the part's task as handed in at step 2.
-- **The renderer:** `sh "<init scripts>/03-dispatch-plan/render-dispatch-plan.sh" --no-plugin-fits --plan-file <the plan file> --context-file <the context file>`, the context file being the effort's latest context version, as `procedure-context` hands it over (step 1).
-- **On the gate's "now ask":** run `sh "<init scripts>/03-dispatch-plan/render-dispatch-plan.sh" --no-plugin-fits --question --plan-file <the plan file>`, which prints the question as one JSON object, and copy its `header`, `question` and `options` into one AskUserQuestion as they are.
+- **The renderer:** `sh "<init scripts>/dispatch-plan/render-dispatch-plan.sh" --no-plugin-fits --plan-file <the plan file> --context-file <the context file>`, the context file being the effort's latest context version, as `procedure-context` hands it over (step 1).
+- **On the gate's "now ask":** run `sh "<init scripts>/dispatch-plan/render-dispatch-plan.sh" --no-plugin-fits --question --plan-file <the plan file>`, which prints the question as one JSON object, and copy its `header`, `question` and `options` into one AskUserQuestion as they are.
 - **The gate can't be loaded, the plan isn't shown, or the question run exits non-zero or prints anything but one JSON object with `header`, `question` and `options`:** ask nothing, write nothing for that part, and record it, with what was shown, for step 6.
 
 The options:

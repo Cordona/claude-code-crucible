@@ -108,7 +108,7 @@ index lines crucible.sh new appended stay (see the writes below).
                      hook, prepare-agent-prompt.sh, takes plugin paths only
                      under that folder, so any other DIR is refused (exit 3).
                      The installed plugins are the plugin lines of
-                     DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0.
+                     DIR/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh --max-lines 0.
   --baseline-from DISPATCH  an earlier dispatch file of this task, the one a
                      resend replaces (that it is of this task is the
                      caller's to hold: only the checks below are made): the
@@ -122,7 +122,7 @@ index lines crucible.sh new appended stay (see the writes below).
                      baseline of PATH (baseline_problems in ${NAMES_MODULE}.jq).
 
 Checks, all before any file is made:
-  - the plan: scripts/03-dispatch-plan/dispatch-plan-validator.jq against the
+  - the plan: scripts/dispatch-plan/dispatch-plan-validator.jq against the
     installed plugins, as generate-dispatch-plan.sh checks it
   - its context file: the path checks of
     DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh, a readable
@@ -133,14 +133,14 @@ Checks, all before any file is made:
     DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it (any other
     context file is not checked for a version); and its sha256 must still be
     the plan's context.sha256
-  - the dispatch: scripts/04-agent-dispatch/agent-dispatch-validator.jq, which
+  - the dispatch: scripts/agent-dispatch/agent-dispatch-validator.jq, which
     among its rules dispatches only agents code-developer, code-reviewer and
     "main thread" (direct implementation, with no tech plugin), in mode BUILD
     (TEST is refused for now)
 A gate record that no longer passes dispatch-plan-validator.jq's current
 rules is refused; regenerate the plan at the flow's step 7. Its "v" is not
 read.
-The loaded plugins' files are scripts/04-agent-dispatch/plugin-files.sh's:
+The loaded plugins' files are scripts/agent-dispatch/plugin-files.sh's:
 role developer for code-developer and "main thread" (SKILL.md,
 references/development.md, each references/*-template.md), role reviewer for
 code-reviewer (SKILL.md, references/review.md when readable), the tech
@@ -246,7 +246,7 @@ every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
 (macOS: built in, run as shasum -a 256); crucible.sh; list-plugins.sh; the
 ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
 agent-context-validator.jq and context-versions.sh in
-DIR/${CONTEXT_PROCEDURE}/scripts/; scripts/03-dispatch-plan/dispatch-plan-validator.jq
+DIR/${CONTEXT_PROCEDURE}/scripts/; scripts/dispatch-plan/dispatch-plan-validator.jq
 and installed-plugins.jq; plugin-files.sh, agent-dispatch-validator.jq and
 ${NAMES_MODULE}.jq beside this script.
 Reads only: the session's gates records and, through crucible.sh find, the
@@ -368,8 +368,8 @@ load_dependencies() {
 			die 5 "context check missing; expected ${context_file_needed}; install the ${CONTEXT_PROCEDURE} skill"
 	done
 	dispatch_dir=$(script_dir)
-	plan_validator="${dispatch_dir}/../03-dispatch-plan/dispatch-plan-validator.jq"
-	installed_program="${dispatch_dir}/../03-dispatch-plan/installed-plugins.jq"
+	plan_validator="${dispatch_dir}/../dispatch-plan/dispatch-plan-validator.jq"
+	installed_program="${dispatch_dir}/../dispatch-plan/installed-plugins.jq"
 	plugin_lib="${dispatch_dir}/plugin-files.sh"
 	dispatch_validator="${dispatch_dir}/agent-dispatch-validator.jq"
 	names_module="${dispatch_dir}/${NAMES_MODULE}.jq"
@@ -398,7 +398,7 @@ load_dependencies() {
 	crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill"
-	list_script="${skills_dir}/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh"
+	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
 }

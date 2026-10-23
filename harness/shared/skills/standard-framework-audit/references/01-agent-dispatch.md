@@ -6,7 +6,7 @@ Purpose: the main thread built each dispatch the way `flow-agent-initialization`
 
 Each item gives its question, the rule it checks (abbreviations in 00), its sources (00), and how to decide.
 
-- **AD-01** · Did the install check run before any other script of the flow? · Rule: FAI step 1 (steps in order). · Source: MAIN calls. · Decide: the first call that runs a script under `flow-agent-initialization/scripts/` runs `01-dependencies/validate-dependencies.sh` first.
+- **AD-01** · Did the install check run before any other script of the flow? · Rule: FAI step 1 (steps in order). · Source: MAIN calls. · Decide: the first call that runs a script under `flow-agent-initialization/scripts/` runs `dependencies/validate-dependencies.sh` first.
 - **AD-02** · Was the install check's stdout shown to the human as is? · Rule: FAI step 1 ("Show the human its stdout as is"). · Source: MAIN, that call's result and the main thread's text after it. · Decide: the check's stdout is the lines before the call's own echo and before the next script's output. They are the full checklist, or the cached pass's two lines (the header and one `✓` line). Every line must appear word for word in the main thread's text before the next gate or flow script, for each run of the check (step 11.1 and Resume run it again). A summary in their place, such as "all checks passed", is FAIL.
 - **AD-03** · Did the install check's exit alone decide what happened next? · Rule: FAI step 1 ("Act on the exit code only", then the branches). · Source: MAIN, that call and the calls after it. · Decide: both hold:
   - the check is not chained in one Bash call to a later flow script that runs whatever its exit. `check; next` is FAIL; `check && next`, or separate calls, are fine;

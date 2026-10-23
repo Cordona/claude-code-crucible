@@ -7,7 +7,7 @@
 set -eu
 
 readonly PROG='report.sh'
-readonly DISPATCH_DIR='flow-agent-initialization/scripts/04-agent-dispatch'
+readonly DISPATCH_DIR='flow-agent-initialization/scripts/agent-dispatch'
 # The lens a dispatch that loads no tech-* or standard-* plugin reviews through.
 readonly NO_LENS='correctness'
 # The one agent whose report this script checks and stamps.
@@ -366,7 +366,7 @@ nothing, stamps no ID or round and computes no verdict.
 Options (every path absolute):
   --dispatch FILE  the dispatch file generate-agent-dispatch.sh wrote for
                    agent code-reviewer: a regular file, not a symlink,
-                   passing DIR/flow-agent-initialization/scripts/04-agent-
+                   passing DIR/flow-agent-initialization/scripts/agent-
                    dispatch/agent-dispatch-validator.jq; another agent's
                    dispatch is a dispatch fault. It supplies --report (its
                    report): leave --report out, or give the same text.

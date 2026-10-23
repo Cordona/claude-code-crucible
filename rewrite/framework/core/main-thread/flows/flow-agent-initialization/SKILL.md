@@ -46,14 +46,14 @@ Follow them in order for every hand-in from the calling flow. Copy steps 1–9 i
 
 The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`, stack, repository root and starting points; and, once per effort, the latest context version's path, as `procedure-context` hands it over.
 
-1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/01-dependencies/validate-dependencies.sh"`. Copy its stdout as is into your message text, before going on: it is the human's checklist, so never summarise it. Act on the exit code only:
+1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dependencies/validate-dependencies.sh"`. Copy its stdout as is into your message text, before going on: it is the human's checklist, so never summarise it. Act on the exit code only:
    - 0, a `⚠` line included: go on.
    - 1: stop.
    - 3: dispatch nothing; only step 11 may go on.
    - 2, any other exit, or 127 (the script missing): tell the human to reinstall `flow-agent-initialization` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop.
    - AskUserQuestion not in your tool list: tell the human, dispatch nothing, and stop: no plan can be approved without it.
    - After the human adds or changes the inject hook entry, have them confirm under `/hooks` that the `PreToolUse` › `Agent` entry running `prepare-agent-prompt.sh` is loaded; dispatch nothing until they do: step 1 checks only what `settings.json` holds, not what is loaded.
-2. **List the plugins:** `sh "<scripts>/03-dispatch-plan/list-plugins.sh" --max-lines 0`, so no plan is built from a cut list. Check stderr first, then the exit; a plugin line is as `list-plugins.sh --help` sets:
+2. **List the plugins:** `sh "<scripts>/dispatch-plan/list-plugins.sh" --max-lines 0`, so no plan is built from a cut list. Check stderr first, then the exit; a plugin line is as `list-plugins.sh --help` sets:
    - A `TRUNCATED:` line on stderr, whatever the exit: show the output and stop.
    - Exit 0 or 1, every stdout line a plugin line: go on. Exit 1: every code part goes back as `no plugin fits` (step 5).
    - Exit 0 or 1 with a stdout line that isn't a plugin line: show the output and stop.
@@ -73,13 +73,13 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 6. **Group the parts** that have the same agent, mode, stack and plugins and differ only in task: one plan, with `--task` once per task. Every other part is its own plan. Write the plan count into step 7's todo item, such as `3 plans`.
 7. **Write, show and ask each plan, one at a time,** through `procedure-approval-gate`: load it with the Skill tool first; it can't be loaded: ask nothing, and hand every part back as `stopped: plan not shown`. Read `references/dispatch-plan-rules.md` before the first plan: it sets each generator option you decide and how each reason reads. Per plan, 7.1 to 7.4:
 
-   **7.1 Write it:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --plan-path` (the gate's step 1.1) for the plan file, then `sh "<scripts>/03-dispatch-plan/generate-dispatch-plan.sh" --plan-file <that path>` with the options `references/dispatch-plan-rules.md` sets, in place of the gate's Write (its step 1.2); fill only its options, never the JSON, the Markdown or the dialog.
+   **7.1 Write it:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --plan-path` (the gate's step 1.1) for the plan file, then `sh "<scripts>/dispatch-plan/generate-dispatch-plan.sh" --plan-file <that path>` with the options `references/dispatch-plan-rules.md` sets, in place of the gate's Write (its step 1.2); fill only its options, never the JSON, the Markdown or the dialog.
    - `open-gate.sh` exits non-zero, or prints anything but one absolute path: show the human its output and exit code, and hand this part back as `stopped: plan not shown`.
    - Generator exit 0 with its `PLAN_FILE:` line, then a `PLAN_SHA256:` line: keep the `PLAN_SHA256:` value for this plan; without the `PLAN_SHA256:` line, as any other exit.
    - Generator exit 2 or 3: fix the options stderr names and run it again, at most twice; then show the human the stderr, and hand this part back as `stopped: plan not shown`.
    - Any other generator exit: show the human the stdout, stderr and exit code, and hand this part back as `stopped: plan not shown`.
 
-   **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/03-dispatch-plan/render-dispatch-plan.sh" --plan-file <the plan file>`, which prints the plan's Markdown, then relay it as the gate's step 2 sets: the message is the gate text and nothing else, no lead-in line above it. A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once. The plan not shown, for this or any reason the gate gives: ask nothing, and hand this part back as `stopped: plan not shown`.
+   **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/dispatch-plan/render-dispatch-plan.sh" --plan-file <the plan file>`, which prints the plan's Markdown, then relay it as the gate's step 2 sets: the message is the gate text and nothing else, no lead-in line above it. A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once. The plan not shown, for this or any reason the gate gives: ask nothing, and hand this part back as `stopped: plan not shown`.
 
    **7.3 Ask it** on the gate's "now ask": run the renderer with `--plan-file <the plan file> --question --plans <n>`, `<n>` the plan count in step 7's todo item (`1` for a step-10 re-plan and for step 11), and copy its `header`, `question` and `options` into one AskUserQuestion as they are. A non-zero exit, or stdout that isn't one JSON object with those three fields: show the human the stdout, stderr and exit code, ask nothing, and hand this part back as `stopped: question not rendered`.
 
@@ -88,7 +88,7 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    - A typed answer: run 7.1 again first, since the question removed the gate's folder with the plan file: `open-gate.sh --plan-path` for a fresh plan file, then the generator with the options the answer changes (a change to the context: a new version through `procedure-context` first, then step 3 with it). Then show and ask again from 7.2; the new `PLAN_SHA256` replaces the old one. Never edit the plan file.
    - Skip: drop this plan; go to the next.
    - Stop, or Stop all: approve nothing more, and hand back every part as `stopped`, approved ones included. A Stop reached from step 10 or step 11 stops that dispatch only.
-8. **Generate the dispatches,** once every plan is answered: for each task of each approved plan, `sh "<scripts>/04-agent-dispatch/generate-agent-dispatch.sh" --session <session ID> --plan-sha256 <the plan's PLAN_SHA256> --task <N> --repo-root '<the task's repository root>'`, plus one `--starting-point '<repo-relative path>'` per starting point the calling flow gave (where the agent begins, not a limit). `<N>` is the task's place in its plan, from 1.
+8. **Generate the dispatches,** once every plan is answered: for each task of each approved plan, `sh "<scripts>/agent-dispatch/generate-agent-dispatch.sh" --session <session ID> --plan-sha256 <the plan's PLAN_SHA256> --task <N> --repo-root '<the task's repository root>'`, plus one `--starting-point '<repo-relative path>'` per starting point the calling flow gave (where the agent begins, not a limit). `<N>` is the task's place in its plan, from 1.
    - Exit 0 with both stdout lines, `DISPATCH: <path>` and `LABELS: …`: keep them as printed; without both, as any other exit.
    - Exit 3 naming the context file as changed since the plan was shown, or as not the effort's latest version: the human approved another file; take that plan back to step 7 with the latest version, then run this step for it again.
    - Any other exit: show the human the stdout, stderr and exit code, and hand the dispatch back as `stopped: dispatch not generated`.
@@ -121,7 +121,7 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 
     **11.4** Run step 8 for it (`--task 1`).
 
-    **11.5** Run `sh "<scripts>/05-agent-prompt/prepare-agent-prompt.sh" --direct --dispatch <the DISPATCH path>` before any code is written. Exit 0 with both stdout lines, `PROMPT: <path>` and `REPORT: <path>`: keep them as printed; without both, as any other exit. Any other exit: show the human the stdout, stderr and exit code, and stop.
+    **11.5** Run `sh "<scripts>/agent-prompt/prepare-agent-prompt.sh" --direct --dispatch <the DISPATCH path>` before any code is written. Exit 0 with both stdout lines, `PROMPT: <path>` and `REPORT: <path>`: keep them as printed; without both, as any other exit. Any other exit: show the human the stdout, stderr and exit code, and stop.
 
     **11.6 Hand back** to the calling flow five lines, the `PROMPT:` and `REPORT:` lines copied whole from 11.5 and the `DISPATCH:` and `LABELS:` lines copied whole from step 8 (the `Procedures:` segment only when a procedure plugin is loaded):
 

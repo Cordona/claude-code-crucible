@@ -680,7 +680,7 @@ Rules the validator enforces (check, and render before it prints):
 check --dispatch FILE: FILE (absolute, a regular file, not a symlink) is the
 dispatch file generate-agent-dispatch.sh wrote, for the agent or for direct
 implementation alike; it must pass DIR/flow-agent-initialization/scripts/
-04-agent-dispatch/agent-dispatch-validator.jq (DIR: --skills-dir), its
+agent-dispatch/agent-dispatch-validator.jq (DIR: --skills-dir), its
 problems listed one per line. It also supplies --report (its report),
 --repo (its repo_root), --context (its context.path) and --mode (its mode):
 leave them out, or give the same text; a different value is refused. The
@@ -846,7 +846,7 @@ Exit codes:
      with --dispatch also a symlink
   5  install fault, its stderr line starting "report.sh: install:": jq
      missing or older than 1.6, a base tool missing, git missing, git status
-     failing in DIR, DIR/flow-agent-initialization/scripts/04-agent-dispatch/
+     failing in DIR, DIR/flow-agent-initialization/scripts/agent-dispatch/
      dispatch-names.jq missing (every command), DIR/lib-render/paths.jq
      missing (render only), the dispatch validator or both sha256sum and
      shasum missing (check --dispatch only), the dispatch validator or
@@ -1015,7 +1015,7 @@ validate_dispatch_file() {
 		dispatch_fault "$1 is missing, unreadable or not a regular file; ${dispatch_expected}"
 	jq -s 'length' "$1" </dev/null >/dev/null 2>&1 ||
 		dispatch_fault "$1 is not JSON; ${dispatch_expected}"
-	dispatch_scripts="${skills_dir}/flow-agent-initialization/scripts/04-agent-dispatch"
+	dispatch_scripts="${skills_dir}/flow-agent-initialization/scripts/agent-dispatch"
 	validator="${dispatch_scripts}/agent-dispatch-validator.jq"
 	[ -f "${validator}" ] && [ -r "${validator}" ] ||
 		install_fault "dispatch validator missing; expected ${validator}; install the flow-agent-initialization skill in ${skills_dir}"
@@ -1281,7 +1281,7 @@ read_stamped_id() {
 # Sets names_module to the shared names of flow-agent-initialization, the
 # baseline shape and the stamp patterns; exits 5 when it is missing.
 locate_names_module() {
-	names_module="${skills_dir}/flow-agent-initialization/scripts/04-agent-dispatch/dispatch-names.jq"
+	names_module="${skills_dir}/flow-agent-initialization/scripts/agent-dispatch/dispatch-names.jq"
 	[ -f "${names_module}" ] && [ -r "${names_module}" ] ||
 		install_fault "the shared dispatch names are missing; expected ${names_module}; install the flow-agent-initialization skill in ${skills_dir}"
 }

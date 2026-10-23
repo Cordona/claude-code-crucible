@@ -195,7 +195,7 @@ loaded and not_loaded arrays of objects with a string plugin, and context an
 object with string path and sha256.
 The installed plugins, which a printed plan reads to leave the tech plugin out
 of the Loaded and Not loaded lists, are the plugin lines of
-DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0, run with
+DIR/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh --max-lines 0, run with
 --skills-dir DIR; its stderr is passed through. Its exit 1 (no plugin) is an
 empty list, and its exit 3 (invalid plugins) leaves them out of the list.
   DIR  the skills folder, as list-plugins.sh's --skills-dir; defaults to
@@ -296,7 +296,7 @@ Exit codes:
   5  DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh or
      agent-context-validator.jq missing, when printing a --no-plugin-fits plan,
      DIR/${RENDER_LIB}/paths.jq missing, when printing a plan, or
-     scripts/04-agent-dispatch/${NAMES_MODULE}.jq missing, for a dispatch plan
+     scripts/agent-dispatch/${NAMES_MODULE}.jq missing, for a dispatch plan
      or its question
   6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
      (skills folder missing or unreadable); its stderr and exit are printed
@@ -304,7 +304,7 @@ Exit codes:
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
 jq package); for a printed plan the ${RENDER_LIB} skill's
 paths.jq; for a dispatch plan list-plugins.sh, and for it or its question
-scripts/04-agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
+scripts/agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
 wc, sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
 shasum -a 256),
 the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh and
@@ -506,7 +506,7 @@ check_names_module() {
 # Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
 # exits 4 when the script is missing and 6 when it fails.
 read_listing() {
-	list_script="${skills_dir}/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh"
+	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		install_fault 4 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
 	if listing=$(sh "${list_script}" --max-lines 0 --skills-dir "${skills_dir}" </dev/null); then
@@ -538,7 +538,7 @@ command -v jq >/dev/null 2>&1 ||
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
 render_lib_dir="${skills_dir}/${RENDER_LIB}"
-names_dir=$(script_dir)/../04-agent-dispatch
+names_dir=$(script_dir)/../agent-dispatch
 want=plan
 [ "${want_question}" -eq 0 ] || want=question
 [ "${want}" = question ] || check_render_lib

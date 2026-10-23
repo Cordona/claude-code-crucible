@@ -108,7 +108,7 @@ Every option is checked first; on any problem nothing is written.
   --skills-dir DIR  the skills folder; defaults to
                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. The installed
                     plugins are the plugin lines of
-                    DIR/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh --max-lines 0,
+                    DIR/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh --max-lines 0,
                     of kind tech, standard or procedure (its stderr is passed
                     through; its exit 1, no plugin, is an empty list, and its
                     exit 3 leaves invalid plugins out).
@@ -123,7 +123,7 @@ The plan (one JSON object):
    "context": {"path": <CTX>, "sha256": <64 lowercase hex of CTX>}}
 technology is computed: the list-plugins.sh label of the loaded tech plugin,
 or "none" when none is loaded.
-The plan's rules are scripts/03-dispatch-plan/dispatch-plan-validator.jq's: among
+The plan's rules are scripts/dispatch-plan/dispatch-plan-validator.jq's: among
 them, every installed plugin is loaded or skipped (the main thread gives each
 skip its reason; nothing is filled in), none twice, none unknown (a skip whose
 reason is exactly "invalid", "uninstalled after approval" or "faulty files"
@@ -156,7 +156,7 @@ Exit codes:
      or shasum, list-plugins.sh, DIR/${CONTEXT_PROCEDURE}/scripts/'s
      agent-context-file-checks.sh, agent-context-validator.jq or
      context-versions.sh, dispatch-plan-validator.jq,
-     installed-plugins.jq or scripts/04-agent-dispatch/dispatch-names.jq,
+     installed-plugins.jq or scripts/agent-dispatch/dispatch-names.jq,
      or a base tool below
   129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
 
@@ -167,7 +167,7 @@ every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
 ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
 agent-context-validator.jq and context-versions.sh in DIR/${CONTEXT_PROCEDURE}/scripts/;
 dispatch-plan-validator.jq and installed-plugins.jq beside this script, and
-scripts/04-agent-dispatch/dispatch-names.jq, which the validator includes.
+scripts/agent-dispatch/dispatch-names.jq, which the validator includes.
 Reads only: the context file, the names in its folder when it is a version
 file in an effort's context/, and what list-plugins.sh reads.
 Runtime: about 300 ms for a plan with 8 plugins installed; measured on macOS
@@ -319,7 +319,7 @@ load_dependencies() {
 	plan_validator="${plan_dir}/dispatch-plan-validator.jq"
 	installed_program="${plan_dir}/installed-plugins.jq"
 	# dispatch-plan-validator.jq includes it; a missing copy would read as a jq fault.
-	dispatch_names="${plan_dir}/../04-agent-dispatch/dispatch-names.jq"
+	dispatch_names="${plan_dir}/../agent-dispatch/dispatch-names.jq"
 	for shared_file in "${plan_validator}" "${installed_program}" "${dispatch_names}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
@@ -331,7 +331,7 @@ load_dependencies() {
 	# shellcheck disable=SC2310 # its status is the lookup result; errexit adds nothing
 	find_context_digest_tool ||
 		die 5 'sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
-	list_script="${skills_dir}/${PROCEDURE}/scripts/03-dispatch-plan/list-plugins.sh"
+	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
 }

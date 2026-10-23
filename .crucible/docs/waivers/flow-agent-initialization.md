@@ -14,3 +14,4 @@ LNT-15: the body holds the steps the human asked for (quoting rule, KIND routing
 - STR-02: step 11 (direct implementation) stays in the body for now; moving it to references/ is a follow-up after the trim experiment (owner, D29) (owner)
 SCR-04: the hook's allow carries the whole first message by design; truncating it would change what the agent receives (owner)
 SCR-03: the remaining error texts without expected/try are listed in dispatch-pipeline/status.md follow-ups and fixed in one sweep of every script (owner)
+LNT-17: ORDER.txt is a human-facing guide to the script folders' order (owner)

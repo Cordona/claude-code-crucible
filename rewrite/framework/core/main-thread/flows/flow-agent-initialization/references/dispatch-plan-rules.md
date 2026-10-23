@@ -27,7 +27,7 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 How the options and reasons read for one shell `BUILD` part whose context holds no tracker link. Illustrative: it assumes `tech-shell`, `standard-clean-code`, `standard-observability`, `standard-testing` and `procedure-read-trackers` are installed; `generate-dispatch-plan.sh --help` wins over it.
 
 ```
-sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/03-dispatch-plan/generate-dispatch-plan.sh" \
+sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dispatch-plan/generate-dispatch-plan.sh" \
   --plan-file '<the gate plan file>' --agent code-developer --mode BUILD \
   --context-file '<the CONTEXT_FILE path>' \
   --task 'derive the diagnostic keys from field_keys in review-add-round.sh' \

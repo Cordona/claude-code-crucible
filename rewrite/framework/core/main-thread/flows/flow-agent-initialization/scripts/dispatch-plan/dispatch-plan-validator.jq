@@ -14,7 +14,7 @@
 # again (generate-agent-dispatch.sh); regenerate it at the flow's step 7; plans
 # are never migrated.
 
-include "dispatch-names" {search: "../04-agent-dispatch"};
+include "dispatch-names" {search: "../agent-dispatch"};
 
 def testing_plugin: "standard-testing";
 # A step-10 re-plan may list, under not_loaded, a plugin list-plugins.sh no longer prints.

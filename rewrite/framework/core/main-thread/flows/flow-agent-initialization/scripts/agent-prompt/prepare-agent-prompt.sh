@@ -342,7 +342,7 @@ run_direct() {
 usage() {
 	# shellcheck disable=SC2310 # its status picks the fallback text; errexit adds nothing
 	help_direct_agent=$(read_shared_name 'direct_agent | tojson' 2>/dev/null) && [ -n "${help_direct_agent}" ] ||
-		help_direct_agent="the direct_agent of scripts/04-agent-dispatch/${NAMES_MODULE}.jq"
+		help_direct_agent="the direct_agent of scripts/agent-dispatch/${NAMES_MODULE}.jq"
 	cat <<EOF
 Usage: sh ${PROG} [--help|-h] < PreToolUse-JSON
        sh ${PROG} --direct --dispatch PATH
@@ -372,7 +372,7 @@ one deny reason:
     regular file that is not a symlink, directly in a Crucible dispatches
     folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/YYYY/MM/DD/dispatches/ (no
     folder of that path a symlink), valid JSON passing
-    scripts/04-agent-dispatch/agent-dispatch-validator.jq
+    scripts/agent-dispatch/agent-dispatch-validator.jq
   - its agent: subagent_type (${help_direct_agent} with --direct)
   - its context file: the same path checks, a readable regular file that is
     not a symlink, at most the size cap of agent-context-file-checks.sh, its
@@ -406,7 +406,7 @@ object through a temp file in its folder moved onto its path:
    "taken": <local time, YYYY-MM-DDTHH:MM:SS+HH:MM>,
    "entries": [<each NUL-ended entry of that output, "XY <path>">, ...]}
 (entries [] for a clean tree; the shape is baseline_problems in
-scripts/04-agent-dispatch/${NAMES_MODULE}.jq; repo_root binds it to its
+scripts/agent-dispatch/${NAMES_MODULE}.jq; repo_root binds it to its
 dispatch and only the checks read it; taken is kept for audit and not read).
 A file that already holds a baseline (a resend of the same dispatch, or a new
 dispatch generate-agent-dispatch.sh --baseline-from filled from the one it
@@ -510,7 +510,7 @@ shasum -a 256);
 the ${CONTEXT_PROCEDURE} skill's ${TEMPLATE_FILE},
 scripts/agent-context-file-checks.sh, scripts/agent-context-validator.jq and
 scripts/agent-context-url.jq, which the validator includes;
-scripts/04-agent-dispatch/agent-dispatch-validator.jq
+scripts/agent-dispatch/agent-dispatch-validator.jq
 and ${NAMES_MODULE}.jq (the direct agent, the listed agents, which must
 match the list above, and the baseline shape); crucible.sh for --direct.
 Runtime: about 185 ms for a hook allow with 3 plugins, 175 ms for a deny
@@ -616,8 +616,8 @@ load_shared_checks() {
 	context_validator="${context_skill_dir}/scripts/agent-context-validator.jq"
 	# The validator includes it; a missing copy would read as a jq fault.
 	context_link_rule="${context_skill_dir}/scripts/agent-context-url.jq"
-	dispatch_validator="${shared_dir}/04-agent-dispatch/agent-dispatch-validator.jq"
-	names_module="${shared_dir}/04-agent-dispatch/${NAMES_MODULE}.jq"
+	dispatch_validator="${shared_dir}/agent-dispatch/agent-dispatch-validator.jq"
+	names_module="${shared_dir}/agent-dispatch/${NAMES_MODULE}.jq"
 	for shared_file in "${context_lib}" "${context_validator}" "${context_link_rule}"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${CONTEXT_PROCEDURE} install, not in the dispatch."
@@ -653,7 +653,7 @@ load_shared_names() {
 
 # Prints the value of jq expression $1 over the shared names module.
 read_shared_name() {
-	names_dir=$(script_dir)/../04-agent-dispatch
+	names_dir=$(script_dir)/../agent-dispatch
 	jq -nr -L "${names_dir}" "include \"${NAMES_MODULE}\"; $1" </dev/null
 }
 
