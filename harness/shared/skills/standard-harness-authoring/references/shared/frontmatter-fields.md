@@ -62,7 +62,7 @@ Every version- or model-dependent fact the rulebook relies on, in one place. Re-
 
 | Fact | Value | Source | Last verified |
 |---|---|---|---|
-| House model, the full ID every agent pins (ATOOL-22) | `claude-opus-5-5` (Opus 5.5) | owner; the documented Opus 5.5 model ID | 2026-10-13 |
+| House model, the full ID every agent pins (ATOOL-22) | `claude-opus-5-5` (Opus 5.5) | docs (the documented Opus 5.5 model ID) | 2026-10-13 |
 | House model's default effort (ATOOL-23) | `medium` | docs (model configuration) | 2026-10-13 |
 | House model's context window, which sets LNT-42's budget | 1,000,000 tokens (its default 1M window) | docs, inferred: the 1M window is the default for Opus 4.7 and later (model configuration, context window) | 2026-10-13 |
 | Skill `background` field | Claude Code 2.1.218+, default `true` | docs (skills) | 2026-10-13 |
@@ -71,5 +71,5 @@ Every version- or model-dependent fact the rulebook relies on, in one place. Re-
 | Read tool limit per call (ALOAD-10) | about 25,000 tokens | docs (tools) | not verified |
 | Agent memory load (`memory`) | first 200 lines / 25 KB of `MEMORY.md` | docs (subagents) | not verified |
 | `!` injected command timeout (DET-10) | 2 minutes | docs (skills) | not verified |
-| Hook `onFailure: block` blocks on crash and timeout (HK-04) | Claude Code 2.1.303, observed | live run | 2026-10-19 |
-| `updatedInput` exempt from the 10,000-char cap (HK-06) | Claude Code 2.1.303, observed with a 17,514-byte updatedInput prompt (over the 10,000-char cap) | live run | 2026-10-19 |
+| Hook `onFailure: block` blocks on crash and timeout (HK-04) | Claude Code 2.1.303 | Claude Code behavior, 2.1.303 | 2026-10-19 |
+| `updatedInput` exempt from the 10,000-char cap (HK-06) | Claude Code 2.1.303+ | Claude Code behavior, 2.1.303 | 2026-10-19 |

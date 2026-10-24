@@ -11,7 +11,7 @@
         },
         {
           "label": "No, do it without one",
-          "description": "I make the change myself with the matching technology and standards plugins, run their checks, and show you the result. No tests are written, since test writing isn't built yet. Nothing is tracked."
+          "description": "I make the change myself with the matching technology and standards plugins, run their checks, and show you the result. No tests are written. Nothing is tracked."
         }
       ]
     }

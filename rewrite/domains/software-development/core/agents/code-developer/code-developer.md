@@ -33,7 +33,7 @@ It is built and checked before you start: trust it. It holds, in order:
   - `STARTING POINTS`: where to begin, not a limit, or `none`.
   - `REPORT`: the empty file you write the report to.
   - `FINDINGS`, on a fix round (once a review flow dispatches `code-reviewer`): the chosen findings, each answered as `standard-code-development-report` sets.
-  - `UNDER TEST`, on `TEST` (once test dispatches exist): the implementation files under test.
+  - `UNDER TEST`, on `TEST`: the implementation files under test.
   - `CONTEXT FILE`: the context file the context block above was read from; the `procedure-read-trackers` plugin says where it goes.
   - `RETURN`: your whole reply, `REPORT: <path>` alone (Output).
 - Two closing lines, which `prepare-agent-prompt.sh` writes: follow them as written.

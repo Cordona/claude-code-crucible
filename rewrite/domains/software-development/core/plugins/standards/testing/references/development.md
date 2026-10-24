@@ -6,7 +6,7 @@ Apply after `SKILL.md`'s rules, before writing tests.
 
 `standard-code-development-report` sets each item's shape.
 
-- **On a TEST dispatch, each untested line (in standard-testing's untested-template form), the mutation results and each repaired test** -> the report's TEST keys `untested`, `mutation` and `repaired` once the testing flow builds them; until then the keys are reserved and never written, and a TEST dispatch doesn't run yet, because they are the reviewer's only evidence that each gap is proven and each test can fail.
+- **On a TEST dispatch, each untested line (in standard-testing's untested-template form), the mutation results and each repaired test** -> the report's TEST keys `untested`, `mutation` and `repaired`, the reviewer's only evidence that each gap is proven and each test can fail. The keys are reserved: never write them (a TEST dispatch does not run).
 
 ## Self-check before reporting
 

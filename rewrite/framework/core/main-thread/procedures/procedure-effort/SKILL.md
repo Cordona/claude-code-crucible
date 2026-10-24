@@ -22,7 +22,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **Offer an effort when you judge the work needs what an effort gives.** The judgment is yours, with no checklist: weigh what the work needs against what an effort costs. A file change alone doesn't make an effort; a small change that reaches other services or needs a review may.
 - **Listen first:** until you can tell an effort from small work, only ask what you need to tell them apart.
 - **Find an effort** on Resume (after a compaction, an interruption or a new session), or when the human names earlier work ("continue the prune work").
-- **No offer and no effort** for a question, a lookup, a code review alone (no review flow exists yet; CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go where `crucible`'s Rules put them (the session scratchpad).
+- **No offer and no effort** for a question, a lookup, a code review alone (CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go where `crucible`'s Rules put them (the session scratchpad).
 
 ## Never
 
