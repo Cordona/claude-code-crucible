@@ -22,22 +22,6 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 - **A step-10 drop:** `invalid`, `uninstalled after approval` or `faulty files`, as Step-10 re-plans below sets.
 - **No plugins at all** (a config value, a doc): `--loaded-reason` says why, such as `a config value change, no code`.
 
-## Example
-
-How the options and reasons read for one shell `BUILD` part whose context holds no tracker link. Illustrative: it assumes `tech-shell`, `standard-clean-code`, `standard-observability`, `standard-testing` and `procedure-read-trackers` are installed; `generate-dispatch-plan.sh --help` wins over it.
-
-```
-sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dispatch-plan/generate-dispatch-plan.sh" \
-  --plan-file '<the gate plan file>' --agent code-developer --mode BUILD \
-  --context-file '<the CONTEXT_FILE path>' \
-  --task 'derive the diagnostic keys from field_keys in review-add-round.sh' \
-  --load tech-shell --reason '"rules for writing scripts": the change is a shell script' \
-  --load standard-clean-code --reason '"small flat functions": it restructures a function' \
-  --skip standard-observability --reason '"log levels … metrics and traces": none is added or changed' \
-  --skip standard-testing --reason '"Not for production code": a BUILD part; tests are a separate dispatch' \
-  --skip procedure-read-trackers --reason '"a dispatch'\''s context holds a tracker link": its links hold no GitHub, GitLab or Jira issue'
-```
-
 ## Step-10 re-plans
 
 A re-plan from SKILL.md's step 10 for a `PLUGIN` denial moves the dropped plugin to `--skip`, its reason the step-10 drop step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it, `faulty files` when it still lists it (a fault only the hook finds).

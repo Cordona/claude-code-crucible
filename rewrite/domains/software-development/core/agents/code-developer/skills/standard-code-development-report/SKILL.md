@@ -1,6 +1,6 @@
 ---
 name: standard-code-development-report
-description: The developer's report as one JSON file — its fields, caps, honesty rule and an example. Bind when `code-developer` finishes a dispatch, or the main thread finishes implementing directly. Writes the report file at the REPORT path its first message gives. Not for how to develop (`code-developer`), when to check or render it (`flow-code-development`) or a reviewer's report.
+description: The developer's report as one JSON file — its fields, caps and honesty rule. Bind when `code-developer` finishes a dispatch, or the main thread finishes implementing directly. Writes the report file at the REPORT path its first message gives. Not for how to develop (`code-developer`), when to check or render it (`flow-code-development`) or a reviewer's report.
 user-invocable: false
 ---
 
@@ -49,25 +49,6 @@ A location takes one of six forms: a repo-relative `path:line`; `message: <FIELD
 **Stamped keys,** never written by you: `tech`, `plugins`, `mode`, `dispatch`, `started`, `finished` (the time the check passed).
 
 The keys `untested`, `repaired` and `mutation` are reserved for the TEST mode; never write them.
-
-## Example
-
-Illustrative, a BUILD dispatch:
-
-```json
-{
-  "summary": "Note titles with a backslash now save and list unchanged instead of being cut at the backslash.",
-  "toolchain": "POSIX sh, jq 1.8.1",
-  "files": {"created": [], "modified": ["lib/notes.sh"], "deleted": []},
-  "deviations": [],
-  "behavior": [{"what": "notes add 'a\\b' -> notes list prints a\\b, exit 0", "at": "lib/notes.sh:42", "checked": true, "fix": true}],
-  "verification": [
-    {"gate": "lint", "command": "shellcheck -x -o all lib/notes.sh", "result": "pass"},
-    {"gate": "test", "command": "sh tests/run.sh", "result": "pass", "note": "14 passed"}
-  ],
-  "decisions": [{"choice": "Read titles with read -r", "why": "a plain read drops the backslash", "commit": "notes: keep backslashes in titles"}]
-}
-```
 
 ## Self-check before replying
 
