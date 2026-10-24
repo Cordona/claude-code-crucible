@@ -23,13 +23,14 @@ In a flow or procedure, the human sees only: script output you relay, copied fro
 - **Full context:** a subagent has no conversation history; every first message carries everything it needs.
 - **Reports:** show each subagent report, and keep full reports out of your context, as its flow sets.
 - **Quote values for scripts:** pass every free-text value in single quotes, with each `'` inside it written `'\''`, unless the skill sets a stricter rule.
-- **Resume** (after a compaction, an interruption or a new session, mid-effort): load `procedure-effort` to find the effort, then the work's flow.
+- **Resume** (after a compaction, an interruption or a new session, mid-effort): load `procedure-effort` to find the effort, then the work's flow, or `procedure-grill` for a grill in progress.
 
 ## 4. Routing
 
 In this order; the first line that fits wins.
 
 - **A code review:** no review flow is installed. Tell the human, and do no review.
+- **A grill ask** ("grill me"), **or work whose goal the human doesn't seem to know:** load `procedure-grill`; it decides whether to offer.
 - **Work that may need tracking, or grows into it:** load `procedure-effort` first; it decides whether an effort is offered and starts it.
 - **Code inside an effort** (build, fix, refactor or test; dispatched or written yourself): load `flow-code-development`.
 - **Anything else — the short path, code or not:** do it yourself with the matching technology and standards plugins, and show the human the result. List them with `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dispatch-plan/list-plugins.sh" --max-lines 0` (run its `--help` once, before its first use in a session, and not again in that session unless its contract is no longer in context, after a compaction), pick each by its description, Read the files it lists, apply each plugin's rules and run its checks; its dispatch, first-message and report parts don't apply outside an agent. An exit 3 still prints the valid plugins: use those (unlike a dispatch, which stops). When no plugin fits, or the listing prints none, do it without plugins and say so. Tests are never written on the short path: tell the human this path writes no tests, and write none.

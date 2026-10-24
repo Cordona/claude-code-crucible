@@ -21,12 +21,13 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 
 - **Offer an effort when you judge the work needs what an effort gives.** The judgment is yours, with no checklist: weigh what the work needs against what an effort costs. A file change alone doesn't make an effort; a small change that reaches other services or needs a review may.
 - **Listen first:** until you can tell an effort from small work, only ask what you need to tell them apart.
+- **A grill** (`procedure-grill`): the human's grill ask, or their yes to its offer, is the effort yes; it runs steps 3–4 with no offer, then goes on with its own steps, not step 8.
 - **Find an effort** on Resume (after a compaction, an interruption or a new session), or when the human names earlier work ("continue the prune work").
 - **No offer and no effort** for a question, a lookup, a code review alone (CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go where `crucible`'s Rules put them (the session scratchpad).
 
 ## Never
 
-- **Never start an effort silently:** it starts only on the human's "Yes, start an effort" at the offer; before that answer nothing of it is created.
+- **Never start an effort silently:** it starts only on the human's "Yes, start an effort" at the offer, or on a grill ask or a yes to `procedure-grill`'s offer, which counts as that yes; before it nothing of the effort is created.
 - **No dispatch runs outside an effort.**
 - **After a No, never offer again without new evidence:** the work grew, or the human asks for an effort; a typed answer is offered again at the human's next message (step 2).
 - **One ID per effort,** minted once by `effort.sh start`: never type, reuse or change one.

@@ -50,7 +50,7 @@ Before step 1:
 - **Run `sh <report.sh> --help` once, before its first use in a session, and `sh <report.sh> check --help`, `sh <report.sh> render --help` and `sh <report.sh> summary --help` once each, before that command's first use; none again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names.** The top `--help` is the install check; on a non-zero exit, or no `usage:` line, show the install line (Terms) for `standard-code-development-report`, and stop.
 
 1. **Build the context,** once per effort, right after the effort starts: load `procedure-context` with the Skill tool and follow it, with the effort folder's absolute path. Keep the `CONTEXT_FILE:` path it hands over, shared by every dispatch of the effort.
-   - It hands back a `stopped:` line, such as `stopped: context not settled`, or stops with no version: dispatch nothing, record it for step 6, and go to step 6.
+   - It hands back a `stopped:` line, such as `stopped: context not settled` or `stopped: stopped after the context`, or stops with no version: dispatch nothing, record it for step 6, and go to step 6.
    - The Skill tool can't load it: show the install line for `procedure-context`, dispatch nothing, and stop.
 2. **Get the dispatches.**
    - Split the request into parts (Terms) and write each part's task. A doc update for the code in a part (a README section, a usage line) goes in that part's `BUILD` task, which names the file; writing tests is its own `TEST` part. While a `TEST` part is held (Tests), each `BUILD` task says tests are a separate part, not this task.
@@ -86,7 +86,7 @@ Before step 1:
    - **The reports:** every report step 5 showed (its render exited 0), direct-path, at-cap and Resume reports included.
    - **The parts not done:** every part recorded for step 6, except one recorded `incomplete`, which is a report only.
    - **Exactly one report and no part not done:** its developer summary is the run's summary; step 6 shows nothing more.
-   - **No report and no part not done** (step 1 stopped before any part was split): show the line `Nothing was dispatched: the context was not built (<reason>).`, `<reason>` being the reason in `procedure-context`'s `stopped:` line, or `no version` when it handed back none.
+   - **No report and no part not done** (step 1 stopped before any part was split): for `stopped: stopped after the context`, show the line `Nothing was dispatched: you stopped after the context.`; otherwise show the line `Nothing was dispatched: the context was not built (<reason>).`, `<reason>` being the reason in `procedure-context`'s `stopped:` line, or `no version` when it handed back none.
    - **Otherwise,** when there is any report or part not done: run `sh <report.sh> summary`, with one `--report <REPORT>` per report, in the order step 5 showed them; `--context` with the effort's latest context version's path, as `procedure-context` hands it over (step 1); and one `--not-done '<task>: <why>'` per part not done. `<task>` is the part's task: its dispatch file's (`jq -r '.task' <dispatch file>`), or as step 2 wrote it when it has none. `<why>` is copied from this set, by the part's record:
      - a `TEST` part held at step 2 (Tests): `this flow writes no tests`;
      - `skipped`: `skipped`;

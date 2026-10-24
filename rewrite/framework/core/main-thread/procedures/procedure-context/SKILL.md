@@ -1,6 +1,6 @@
 ---
 name: procedure-context
-description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use right after an effort starts, when a link, note, file or settled answer enters a running effort, or on Resume. Asks the human about contradictions; writes in the effort's `context/` and the session scratchpad. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`) or work outside an effort."
+description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use right after an effort starts, when a link, note, file, settled answer or ended grill enters a running effort, or on Resume. Asks the human about contradictions and what next; writes in the effort's `context/` and the session scratchpad. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`) or work outside an effort."
 user-invocable: false
 ---
 
@@ -14,9 +14,9 @@ Run by the main thread. An effort's **context** is what its work starts from: th
 
 ## When to use it
 
-- **Build v1** once per effort, when the work's own flow calls this skill right after `procedure-effort` starts the effort, before any plan. Every effort has a context; a small one holds just the human's request as one note.
-- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a review record becomes the input of a fix; a contradiction found after v1 is settled; a plan answer that changes the context. A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
-- **Find the latest version** on Resume (Resume below); nothing is gathered again.
+- **Build v1** once per effort, when the work's own flow calls this skill right after `procedure-effort` starts the effort, or when a grill ends (`procedure-grill`), before any plan; then ask the human what next (step 7). Every effort has a context; a small one holds just the human's request as one note.
+- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a review record becomes the input of a fix; a contradiction found after v1 is settled; a plan answer that changes the context; a grill ends (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
+- **Find the latest version** on Resume, or when a flow loads this skill for an effort that already holds a version and nothing new enters (after a grill's v1, say): run Resume below; nothing is gathered again.
 - **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), or a plan's plugins.
 
 ## Never
@@ -43,21 +43,21 @@ Run by the main thread. An effort's **context** is what its work starts from: th
 - **Every contradiction is settled with the human before a version is written,** one question each.
 - **Each settled answer becomes a note.**
 - **A retired entry leaves the next version with a note saying why;** it stays in the versions that had it.
-- **A Write, auth check or AskUserQuestion that fails or is unavailable, or step 2's `git grep` with an exit other than 0 or 1:** show the human its error word for word, write no new version, and stop as step 7 sets. Its exit 1 only means no doc names the file.
+- **A Write, auth check or AskUserQuestion that fails or is unavailable, or step 2's `git grep` with an exit other than 0 or 1:** show the human its error word for word, write no new version, and stop as step 8 sets. Its exit 1 only means no doc names the file. Step 7's question is the exception: as step 7 sets.
 
 ## Invariants
 
 - **A position** (`paths[<n>]`, `links[<n>]`, `notes[<n>]`, from 1) means the entry at that place in the version its dispatch pinned.
-- **What an extension does to a plan is `flow-agent-initialization`'s;** this skill only tells the calling flow the version changed (step 7).
+- **What an extension does to a plan is `flow-agent-initialization`'s;** this skill only tells the calling flow the version changed (step 8).
 - **This skill is the one source of the context concept:** other skills cite it and never restate it.
 
 ## Steps
 
-Steps 1–4 build v1, step 5 extends the context, step 6 writes a local commit as a file for step 1 or 5, and step 7 hands the version over or reports the stop. Copy the steps this run uses into the todo list and tick each as it completes; note each rerun and each re-ask in its step's todo item (`rerun 1 of 2`, `re-ask 1 of 2: <contradiction>`): no count lives in memory alone.
+Steps 1–4 build v1, step 5 extends the context, step 6 writes a local commit as a file for step 1 or 5, step 7 asks the human what next once v1 is written, and step 8 hands the version over or reports the stop. Copy the steps this run uses into the todo list and tick each as it completes; note each rerun and each re-ask in its step's todo item (`rerun 1 of 2`, `re-ask 1 of 2: <contradiction>`): no count lives in memory alone.
 
-Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction): it is the script's whole contract, and every other call runs only the command its step names. A non-zero exit, or no `usage:` line: tell the human to install `procedure-context` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop as step 7 sets (`stopped: context.sh not installed`): no version is written without it.
+Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction): it is the script's whole contract, and every other call runs only the command its step names. A non-zero exit, or no `usage:` line: tell the human to install `procedure-context` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop as step 8 sets (`stopped: context.sh not installed`): no version is written without it.
 
-1. **Understand and gather.** Build your own understanding of the request first, then ask the human free-form questions until you know what the work must achieve and what it must not break; use AskUserQuestion only where a fixed choice fits better. With your first question, tell the human they can answer `go on` (you gather with what you have) or `stop the work` (nothing is written; step 7's stop, `stopped: context not settled`) at any point. Ask nothing yet about how the entries agree: step 3 does that. Then gather the entries: notes, paths, links and at most one text file per version, each path, link and text file with a one-line why. The agent loads no CLAUDE.md, so all it must know is in the entries or in the task the human approves.
+1. **Understand and gather.** Build your own understanding of the request first, then ask the human free-form questions until you know what the work must achieve and what it must not break; use AskUserQuestion only where a fixed choice fits better. With your first question, tell the human they can answer `go on` (you gather with what you have) or `stop the work` (nothing is written; step 8's stop, `stopped: context not settled`) at any point. Ask nothing yet about how the entries agree: step 3 does that. Then gather the entries: notes, paths, links and at most one text file per version, each path, link and text file with a one-line why. The agent loads no CLAUDE.md, so all it must know is in the entries or in the task the human approves.
    - **References, not copies:** a style guide or an architecture note is a path or a link; a note holds only words that exist nowhere else, such as the request or a constraint said in conversation.
    - **The human's long verbatim text** (more than a few paragraphs, a pasted spec): Write it, exact, to a new file in the session scratchpad, and enter it as the text file, its why saying it holds the human's own words.
    - **A note names a repository file by its repo-relative path;** a file outside the repository is a path entry.
@@ -66,41 +66,53 @@ Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/co
    - **A GitHub or GitLab link** is read through the `gh` or `glab` login `read-link.sh --help` names; no skill is loaded for it.
    - **A local commit or range:** step 6 writes it as a file, entered as a path whose why names the commit and the repository. A remote commit or pull request is a link.
    - **Two of the human's statements that contradict each other:** each is its own note, in the human's words, so step 3 can settle them.
-   - **Grilling:** a grilling skill takes these questions over once it exists; until then, the questions above are the whole rule.
+   - **After a grill** (`procedure-grill`): ask nothing its settled answers decided, and enter the grill file as a path, its why `the decisions settled with the human in the grill`.
 2. **Read every entry in full.** Read `references/conflicting-human-instructions.md` first: it sets the order, how each kind of entry is read, and what to do with one that can't be read. Then the docs that name a file the work touches, since a doc the human didn't name can still contradict their words: for each file the request or the entries name, run one Bash call, `git -C '<repository root>' grep --untracked -lF -e '<file name>' -- 'README*' 'docs/'`, with the root of the repository the file is in and its file name with no directory, each quoted as CLAUDE.md sets. It searches the files, tracked or untracked but not ignored, whose path starts with `README` at the root or lies under `docs/`, for the name exactly as written, case included; a root with no README or no `docs/` just has no doc there, not an error. Exit 0: each line is a match's path, relative to that root; exit 1: no doc names the file. Add each match that is not already an entry as a path entry, its absolute path, its why `documents <the file's repo-relative path>`, and read it in full. Tracker links wait for step 4, which reads them from the written version.
 3. **Settle every contradiction** with the human in one AskUserQuestion call, one question per contradiction (more than the tool takes in one call: the rest in the next call), as `references/conflicting-human-instructions.md`'s "Weigh it" and "Asking" set. Write each answer, as it lands, to the answers file, `context-answers-<effort folder name>.md` in the session scratchpad, so a compaction keeps it; each answer becomes a note for step 4.
    - Every contradiction answered, or none found: step 4.
-   - The human stops the work, or the re-asks run out: write no version; step 7's stop, `stopped: context not settled`.
+   - The human stops the work, or the re-asks run out: write no version; step 8's stop, `stopped: context not settled`.
 4. **Write v1:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" new --effort '<effort folder>'`, then each `--path '<absolute path>'`, `--link '<url>'` or `--text-file '<file>'` followed by its `--why '<line>'`, then one `--note '<text>'` per note, step 3's answers included. Act on its exit:
    - 0 with a `CONTEXT_FILE:` line: keep that path as the latest version. Without that line: as any other exit.
    - 3 naming an `--effort` whose context already holds a version: extend that version instead (step 5).
    - Any other 3: fix the inputs its stderr names and run it again, at most twice; then show the human the stderr, and stop.
    - Any other exit: show the human the stdout, stderr and exit code, and stop.
 
-   Every stop in steps 4–6 writes no new version and ends as step 7 sets. After exit 0, read each tracker link with `read-link.sh` on the `CONTEXT_FILE` path, as `references/conflicting-human-instructions.md`'s "Tracker links" sets. A contradiction found there: settle it as step 3 sets, then extend with the answer (step 5).
-5. **Extend:** read the new entries in full and weigh them against the latest version, as steps 2 and 3 set, before anything is written. Then run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" extend --from '<the latest version>'` with the new entries, written as step 4 sets. To retire an entry, add `--retire '<list>:<n>'`, `<list>` being `paths`, `links` or `notes` and `<n>` its position, from 1, in the version extended, plus a `--note` saying why. Act on its exit as step 4 sets, with these changes:
+   Every stop in steps 4–6 writes no new version and ends as step 8 sets. After exit 0, read each tracker link with `read-link.sh` on the `CONTEXT_FILE` path, as `references/conflicting-human-instructions.md`'s "Tracker links" sets. A contradiction found there: settle it as step 3 sets, then extend with the answer (step 5). Then step 7, with the latest version.
+5. **Extend:** read the new entries in full and weigh them against the latest version, as steps 2 and 3 set, before anything is written. Then run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" extend --from '<the latest version>'` with the new entries, written as step 4 sets. To retire an entry, add `--retire '<list>:<n>'`, `<list>` being `paths`, `links` or `notes` and `<n>` its position, from 1, in the version extended, plus a `--note` saying why. After a grill, its file is the new entry, entered as step 1 sets, and each note a settled answer replaced is retired. Act on its exit as step 4 sets, with these changes:
    - 0 with a `CONTEXT_FILE:` line: that path replaces the old one as the latest version; read any new tracker link as step 4 sets.
    - 3 naming another version as the latest: weigh the new entries against that version, and extend from it, at most twice; then show the human the stderr, and stop.
 6. **A local commit or range as a file:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" diff --effort '<effort folder>' --repo '<repository root>' --ref '<sha or range>'`.
    - 0 with a `DIFF_FILE:` line: enter that path as a `--path` in step 4's or step 5's call, its why naming the commit and the repository. Without that line: as any other exit.
    - Any other exit: as step 4's last two bullets set.
-7. **Hand over, or report the stop,** to the calling flow:
+7. **Ask what next,** once step 4 has written v1, with any extension its tracker links needed, or once step 5 has extended the context with an ended grill; never after any other extension the human asked for (step 5), and never on Resume. "Show the line" means a fixed line, as CLAUDE.md §1 sets. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
+   - **The plan file:** one JSON object, `{"context": "<the latest version's absolute path>", "grill": "<the grill file's absolute path>"}`, `grill` only after a grill.
+   - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-what-next.sh" --plan-file <the plan file>`; its `--help` is its contract.
+   - **The gate's label:** `what-next`, with `--effort '<effort folder>'`, so the gate's record is saved in the effort.
+   - **On "now ask":** Read the fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/references/what-next-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, and act as the gate can't be shown (below).
+   - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Show the line `The "what next?" question could not be shown; the flow goes on to its own plan.`, and hand over as step 8 sets: the work's own plan gate still guards every dispatch.
+
+   Act on the answer:
+   - **"Dispatch agents":** hand over as step 8 sets.
+   - **"Stop here":** step 8's stop, `stopped: stopped after the context`; the context stays in the effort.
+   - **A typed answer:** a reply, not a choice: answer it as the turn's last message, and hand nothing over yet, since the question closed the gate. At the human's next message, ask again from the start of this step, unless their reply chose an option: then take that option.
+8. **Hand over, or report the stop,** to the calling flow:
    - **A version written or found:** one line, `CONTEXT_FILE: <path> · v<N> · added <n> · retired <n> · settled <n>`, `<path>` the absolute path exactly as `context.sh` printed it, never shortened with `…` or `~`; the entries this run added and retired and the contradictions it settled; never a copy of the entries. After an extension, also tell it the version changed.
-   - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; step 3's stop is `stopped: context not settled`, as it reads.
+   - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; step 3's stop is `stopped: context not settled` and step 7's is `stopped: stopped after the context`, each as it reads.
 
 ## Resume
 
 After a compaction, an interruption or a new session, load this skill again with the Skill tool first. Then take the effort folder `procedure-effort` found; gather nothing again, and never pick the latest version by hand. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" latest --effort '<effort folder>'`, and act on its exit:
-- 0 with a `CONTEXT_FILE:` line: that path is the latest version; hand it over as step 7 sets, with `added 0 · retired 0 · settled 0`. Without that line: as any other exit.
+- 0 with a `CONTEXT_FILE:` line: that path is the latest version; hand it over as step 8 sets, with `added 0 · retired 0 · settled 0`. Without that line: as any other exit.
 - 1, no version yet: build v1 from step 1. When this session's scratchpad holds `context-answers-<effort folder name>.md` (step 3), read it and keep its answers, never asking them again.
-- Any other exit: show the human the stdout, stderr and exit code, and stop as step 7 sets.
+- Any other exit: show the human the stdout, stderr and exit code, and stop as step 8 sets.
 
 ## Dependencies
 
-- **Scripts,** in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/`: `context.sh`, with `context-versions.sh`, `agent-context-validator.jq`, `agent-context-url.jq` and `agent-context-file-checks.sh` beside it (Shape above), which it and the dispatch scripts source. Their own tools are in `context.sh --help`.
+- **Scripts,** in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/`: `context.sh`, with `context-versions.sh`, `agent-context-validator.jq`, `agent-context-url.jq` and `agent-context-file-checks.sh` beside it (Shape above), which it and the dispatch scripts source; their own tools are in `context.sh --help`. `render-what-next.sh` (step 7); its `--help` is the full contract.
 - **Skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
-  - `procedure-effort`, for the effort folder (Resume); missing: tell the human to install it, and stop as step 7 sets (`stopped: procedure-effort not installed`).
-  - `crucible`, for its `crucible.sh` (every `context.sh` command but `latest`) and its `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh` (every command); missing, `context.sh` exits 5: tell the human to install it, and stop as step 7 sets.
+  - `procedure-effort`, for the effort folder (Resume); missing: tell the human to install it, and stop as step 8 sets (`stopped: procedure-effort not installed`).
+  - `crucible`, for its `crucible.sh` (every `context.sh` command but `latest`) and its `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh` (every command); missing, `context.sh` exits 5: tell the human to install it, and stop as step 8 sets.
+  - `procedure-approval-gate`, which shows the "what next?" question (step 7); missing: as step 7 sets for a gate that can't be shown.
   - `procedure-read-trackers`, for its `read-link.sh` (step 4); missing: a tracker link is not read, as `references/conflicting-human-instructions.md`'s "Tracker links" sets.
   - `procedure-jira-auth`, for a Jira link (step 1); missing: as step 1 sets.
 - **Tools:** Read, Write, WebFetch, Bash, Skill and AskUserQuestion.

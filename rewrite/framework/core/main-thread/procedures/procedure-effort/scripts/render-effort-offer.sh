@@ -1,12 +1,15 @@
 #!/usr/bin/env sh
 # Renders the effort offer, the gate that asks the human whether to start an
 # effort, from a JSON file of reasons, so the main thread never hand-formats
-# it. The title is fixed; the reasons are the only input. Pipe its stdout into
-# procedure-approval-gate's open-gate.sh.
+# it. Pipe its stdout into procedure-approval-gate's open-gate.sh.
 set -eu
 
 readonly PROG='render-effort-offer.sh'
 readonly RENDER_LIB='human-view'
+readonly DEFAULT_TITLE='start an effort for this?'
+# The title shares the first line with the light and "Decision needed · ", so
+# it stays short enough for that line to fit one terminal line.
+readonly MAX_TITLE_CHARS=60
 # The offer stays a glance: a handful of one-line reasons, each short enough
 # to fit one terminal line beside its list number.
 readonly MAX_REASONS=5
@@ -16,6 +19,12 @@ readonly MAX_REASON_CHARS=100
 # rendered. The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly CHECK_JQ='
+def title_problems:
+	$title
+	| if test("^[[:space:]]*$") then "--title is blank; expected one line of text; try the question in a few words"
+	  elif test("[[:cntrl:]\u2028\u2029]") then "--title holds a control character or a line or paragraph separator (such as a line break, tab or U+2028); expected one line of plain text; try joining it into one line"
+	  elif length > $max_title_chars then "--title is \(length) characters; expected at most \($max_title_chars); try a shorter title"
+	  else empty end;
 def expected_reasons: "expected an array of 1 to \($max_reasons) strings";
 def reason_problem:
 	"reasons[\(.key)]" as $at
@@ -30,12 +39,13 @@ def reasons_problems:
 	elif (.reasons | type) != "array" then "reasons is a JSON \(.reasons | type); \(expected_reasons)"
 	elif (.reasons | length) < 1 or (.reasons | length) > $max_reasons then "reasons holds \(.reasons | length) items; \(expected_reasons)"
 	else .reasons | to_entries[] | reason_problem end;
-if length != 1 then "expected exactly one JSON object, got \(length) values; try {\"reasons\": [\"...\"]}"
+title_problems,
+(if length != 1 then "expected exactly one JSON object, got \(length) values; try {\"reasons\": [\"...\"]}"
 elif (.[0] | type) != "object" then "input is a JSON \(.[0] | type); expected an object {\"reasons\": [...]}"
 else .[0]
 	| ((keys - ["reasons"])[] | "\(tojson) is an unknown field; expected only reasons"),
 	  reasons_problems
-end
+end)
 '
 
 # A reason that starts like a Markdown block (a heading, a quote, a rule, a
@@ -49,14 +59,15 @@ def plain_line:
 	if test(block_start) then "\\" + .
 	elif test(ordered_start) then sub("^(?<number>[0-9]{1,9})"; "\(.number)\\")
 	else . end;
-[status_line("decision"; "Decision needed · start an effort for this?"),
- section("Why"; .[0].reasons | map(sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "") | plain_line))]
+def trimmed: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
+[status_line("decision"; "Decision needed · \($title | trimmed)"),
+ section("Why"; .[0].reasons | map(trimmed | plain_line))]
 | blocks
 '
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
+usage: sh ${PROG} --plan-file PATH [--title TEXT] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
        sh ${PROG} --help | -h
 
 Prints the effort offer, the gate asking the human whether to start an effort,
@@ -69,13 +80,18 @@ Options:
                     (line break, tab) or U+2028/U+2029, at most ${MAX_REASON_CHARS} characters
                     (code points, as written); inline Markdown in a reason
                     renders, a leading block mark (#, >, -, 1.) shows as text
+  --title TEXT      the text after "Decision needed · " on the first line,
+                    default "${DEFAULT_TITLE}": not blank, one line with no
+                    control character or U+2028/U+2029, at most ${MAX_TITLE_CHARS}
+                    characters (code points, as written); inline Markdown
+                    renders
   CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout on exit 0 only: the offer's Markdown, a fixed decision line and the
+stdout on exit 0 only: the offer's Markdown, the decision line and the
   reasons in input order, with no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a reason is named
-  reasons[<i>], from 0, with its first fault only
+  reasons[<i>], from 0, and the title --title, each with its first fault only
 stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
   prints; tell the human what it names to install, and stop
 
@@ -111,9 +127,10 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file from the arguments.
+# Sets plan_file and title from the arguments.
 parse_args() {
 	plan_file=''
+	title=${DEFAULT_TITLE}
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
@@ -125,7 +142,12 @@ parse_args() {
 				plan_file=$2
 				shift 2
 				;;
-			*) usage_error 'unknown argument; expected --plan-file PATH or --help' ;;
+			--title)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error '--title needs a value; expected --title TEXT'
+				title=$2
+				shift 2
+				;;
+			*) usage_error 'unknown argument; expected --plan-file PATH, --title TEXT or --help' ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
@@ -143,7 +165,8 @@ read_input() {
 
 # Runs jq program $1 over the slurped input; a jq failure exits 3.
 run_jq() {
-	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" "$1" || {
+	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
+		--arg title "${title}" --argjson max_title_chars "${MAX_TITLE_CHARS}" "$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }
