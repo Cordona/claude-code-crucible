@@ -1,0 +1,2 @@
+- FM-03: the description names no sibling for the reviewer report; owner rule: name another skill only when it cannot work without it (D4) (owner)
+- SCH-16: render refuses only reports stamped from dispatches made before the baseline key, which exist only in the sandbox (owner)

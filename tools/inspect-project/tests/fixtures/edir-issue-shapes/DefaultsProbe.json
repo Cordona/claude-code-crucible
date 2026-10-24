@@ -1,0 +1,24 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/a.ts",
+      "line": "42",
+      "description": "line arrives as a STRING and must be coerced to a number"
+    },
+    {
+      "file": "file://$PROJECT_DIR$/src/b.ts",
+      "description": "no line at all, and no problem_class either"
+    },
+    {
+      "file": "file://$PROJECT_DIR$/src/c.ts",
+      "line": 9,
+      "language": "TypeScript",
+      "problem_class": {
+        "id": "ExplicitId",
+        "severity": "WARNING"
+      },
+      "description": "fully populated",
+      "highlighted_element": "const x"
+    }
+  ]
+}

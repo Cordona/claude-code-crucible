@@ -1,0 +1,775 @@
+{
+  "schema_version": "1.0",
+  "id": "layout-v2-lens-pass",
+  "repo": "claude-code-crucible",
+  "created": "2026-10-04",
+  "last_updated": "2026-10-04",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-10-04",
+      "reviewers": [
+        "shell-script-reviewer",
+        "lens-consistency-reviewer",
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-self-documenting-code-reviewer",
+        "execution-test"
+      ],
+      "speculative": [
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-testing/scripts/test-plan-verify.sh:192",
+          "concern": "a relative plan path starting with a dash is read as a cat option",
+          "why_speculative": "callers pass absolute plan paths; failure is closed",
+          "real_if": "a caller passes a relative path starting with a dash"
+        },
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-testing/scripts/lib/test-plan-validate.jq:414",
+          "concern": "an unapproved unit-first plan in flight fails render, challenge and approve",
+          "why_speculative": "it fails closed and names the field",
+          "real_if": "unapproved unit-first plans are in flight when this lands"
+        },
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-review/scripts/render-md.sh:355",
+          "concern": "two reviewer ids that title-case to the same name give two identical groups",
+          "why_speculative": "rosters use canonical agent ids",
+          "real_if": "an artifact mixes lens-x and lens-x-reviewer"
+        },
+        {
+          "reviewer": "lens-compatibility-reviewer",
+          "location": "contracts/review-arbiter-verdict.schema.json:8",
+          "concern": "re-checking a speculative item or a rejected test reuses a verdict that requires severity",
+          "why_speculative": "a new use, not a break for an existing consumer",
+          "real_if": "the verdict is validated and an invented severity is rejected"
+        },
+        {
+          "reviewer": "lens-security-reviewer",
+          "location": "flows/flow-testing/scripts/test-plan-verify.sh:634",
+          "concern": "a plan changed during authoring and restored before the check goes unseen",
+          "why_speculative": "the only writer then is the author, which can write anything",
+          "real_if": "someone other than tests-developer can write the plan mid-dispatch"
+        },
+        {
+          "reviewer": "lens-security-reviewer",
+          "location": "flows/flow-testing/SKILL.md:76",
+          "concern": "arbiter prose shown under a plan render could mimic plan sections",
+          "why_speculative": "the digest binds the plan bytes; the ruling is structured",
+          "real_if": "arbiter prose is pasted verbatim instead of one line per test"
+        },
+        {
+          "reviewer": "lens-security-reviewer",
+          "location": "flows/flow-review/scripts/render-md.sh:358",
+          "concern": "a whitespace-only reviewer name renders as a thematic break",
+          "why_speculative": "the orchestrator sets reviewer to an agent id",
+          "real_if": "the reviewer field ever comes from report text"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "generated": "2026-10-04",
+      "reviewers": [
+        "shell-script-reviewer",
+        "execution-test"
+      ],
+      "speculative": [
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-testing/scripts/render-md.sh:333",
+          "concern": "a builds-on folder and a file with the same segments render the same label",
+          "why_speculative": "no file path ends in a slash",
+          "real_if": "a plan lists builds-on X/ beside a file X"
+        },
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-review/scripts/render-md.sh:396",
+          "concern": "./a/f and a/f for one file get a dot label",
+          "why_speculative": "needs mixed path spellings in one artifact",
+          "real_if": "reviewers in one swarm emit ./-prefixed and bare locations"
+        },
+        {
+          "reviewer": "shell-script-reviewer",
+          "location": "flows/flow-review/scripts/render-md.sh:595",
+          "concern": "a missing id fails only the item map after the Markdown was written",
+          "why_speculative": "every writer script enforces ids",
+          "real_if": "an artifact is hand-edited outside the scripts"
+        }
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED_WITH_FOLLOWUPS",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 1,
+      "low": 11
+    },
+    "resolved": 25,
+    "new": 10,
+    "ack": 0
+  },
+  "findings": [
+    {
+      "id": "SHELL-001",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a repair entry in a file that also holds a planned test, with 2+ files listed",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:389"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "a repair or delete entry omits its file when Files lists it, so moving it between files renders the same",
+      "fix": "always show the file on repair and delete entries",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-002",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a jest plan with unit tests under __tests__/parser.js",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:365"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the unit-tests-inline marker only checks the file name for test or spec",
+      "fix": "match test directories and word-bounded test or spec tokens",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-003",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "rendering any draft plan",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:346"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "a draft says 0 rejected before any review happened",
+      "fix": "show the rejected count only once the reviewer section exists",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-004",
+      "reviewer": "shell-script-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "edge-case",
+      "trigger": "a location containing two backticks in a row",
+      "realism_reason": "locations are file paths; double backticks do not occur",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:296"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "a double backtick in a location ends its code span early",
+      "fix": "size the fence to the longest backtick run plus one",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SHELL-005",
+      "reviewer": "shell-script-reviewer",
+      "status": "OPEN",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "edge-case",
+      "trigger": "a reviewer emits file:line:col locations for two same-named files",
+      "realism_reason": "the contract allows only file:line and file:start-end",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:326"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "a line:col location is read as part of the file name",
+      "fix": "allow an optional :col in the location pattern"
+    },
+    {
+      "id": "DOC-001",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the next editor trusts the header rule that every heading carries a count",
+      "category": "redundant-comment",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:59"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the header says all headings carry counts; several do not",
+      "fix": "state exactly which headings and labels carry counts",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "DOC-002",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the next change to which values need block-marker escaping",
+      "category": "redundant-comment",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:279"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the block-marker rule is stated twice in different words",
+      "fix": "point the rules entry to the header WHY block",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "DOC-003",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the next edit to the copy or status logic",
+      "category": "redundant-comment",
+      "locations": [
+        "flows/flow-testing/scripts/test-plan-verify.sh:188"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "inline comments restate the header WHY blocks",
+      "fix": "keep the header as the single rationale",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-001",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "HIGH",
+      "realism": "realistic",
+      "trigger": "a peer plan with a unit test before an e2e test reaches render, approve or amend",
+      "category": "schema-break",
+      "locations": [
+        "flows/flow-testing/scripts/lib/test-plan-validate.jq:411"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the e2e-first rule runs on stored plans, so an in-flight plan can no longer render, approve or be reordered",
+      "fix": "enforce the order only on bodies being written, never on a stored plan",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-002",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the reviewer moves a unit test to e2e, or a rejected e2e test is restored at the end",
+      "category": "schema-break",
+      "locations": [
+        "agents/reviewers/lens/lens-test-quality-reviewer.md:64",
+        "flows/flow-testing/SKILL.md:79"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "only tests-developer was told e2e tests come first; the reviewer and orchestrator revisions fail",
+      "fix": "tell both: keep e2e tests first and renumber after a move or restore",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-003",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the human answers confirm 3 or ACK 5 at the Address question",
+      "category": "response-shape-change",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:439",
+        "flows/flow-review/SKILL.md:133"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "items are numbered without ids and no script maps a number back to its finding id",
+      "fix": "print the number-to-id map from the renderer and use it in the prose",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "COMPAT-004",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a reviewer writes a 120-character realism_reason",
+      "category": "schema-break",
+      "locations": [
+        "shared/review-core/SKILL.md:53"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the 100-character cap on the new fields is not stated where reviewers read",
+      "fix": "state at most 100 characters in review-core",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "any review governed by a spec",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-review/SKILL.md:123",
+        "flows/flow-review/scripts/render-md.sh:252"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the prose promises a Spec line but the renderer never shows spec_ref",
+      "fix": "render the Spec line after the title",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "any finding with more than one location",
+      "category": "dto-shape",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:373",
+        "shared/review-report-standards/SKILL.md:175"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "extra locations are specified three different ways across the renderer and two documents",
+      "fix": "pick one shape in review-report-standards and follow it everywhere",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the human picks a re-check option",
+      "category": "interface-convention",
+      "locations": [
+        "agents/specialists/review-arbiter.md:10",
+        "flows/flow-testing/SKILL.md:76"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "re-check sends the arbiter items its contract does not cover: non-blocking, speculative, rejected tests",
+      "fix": "widen the arbiter's mandate and verdict, or drop the plan re-check",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a flow-review re-check where the arbiter rules a finding speculative",
+      "category": "architecture-style",
+      "locations": [
+        "flows/flow-review/SKILL.md:135"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the Address question is copied into flow-review and already differs from its owner",
+      "fix": "point to flow-implementation section 5 and keep only the recording mapping",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a review whose only open findings are realistic MEDIUM or LOW",
+      "category": "architecture-style",
+      "locations": [
+        "flows/flow-implementation/SKILL.md:183"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the human can choose MEDIUMs to fix, but the loop never opens a round for them",
+      "fix": "say a chosen MEDIUM or LOW opens a fix round, and align the loop text",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-006",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the next reader of section 5b",
+      "category": "naming-convention",
+      "locations": [
+        "flows/flow-review/SKILL.md:115"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "stale references to per-finding id blocks and a 5d summary",
+      "fix": "reword to the new relay",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-007",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the orchestrator builds the fields file from section 5c",
+      "category": "dto-shape",
+      "locations": [
+        "flows/flow-review/SKILL.md:121"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the persist rule omits realism_reason and real_if",
+      "fix": "name both fields in the persist sentence",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-008",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "an edge case filed without realism_reason",
+      "category": "api-shape",
+      "locations": [
+        "shared/review-report-standards/SKILL.md:92"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the Trigger fallback for edge cases is not documented",
+      "fix": "document the fallback like the speculative one",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-009",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "rendering a report with a conflict note",
+      "category": "api-shape",
+      "locations": [
+        "shared/review-report-standards/SKILL.md:120"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the example verdict line counts a class the rule does not define",
+      "fix": "list for your decision as a counted class, or drop it",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-010",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "OPEN",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "a lens emits a conflict note in a flow-review swarm",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-review/SKILL.md:133"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "conflicts are now numbered under the relay, but a decided conflict has no recording or brief route",
+      "fix": "say how a decided conflict is recorded and briefed"
+    },
+    {
+      "id": "CONS-011",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "OPEN",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "every flow-testing test review render",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-testing/SKILL.md:112"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "Plan conformance names the reviewer as its source, but the reviewer has no such field",
+      "fix": "name both sources: tests-developer counts and the reviewer plan findings"
+    },
+    {
+      "id": "SEC-001",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "an injected plan writes a fixture into src/main/resources or .github/workflows",
+      "category": "insecure-design",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:320"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "new and deleted files show only their name, so the human cannot see where approved writes land",
+      "fix": "show the folder for new and deleted files",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "re-check of an edge-case HIGH where the arbiter, reading injected code, rules it speculative",
+      "category": "fail-open",
+      "locations": [
+        "flows/flow-implementation/SKILL.md:186",
+        "flows/flow-review/SKILL.md:135"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "re-check applies an arbiter demotion of a CRITICAL or HIGH without the human",
+      "fix": "apply only promotions; a demoted CRITICAL or HIGH stays a human decision",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "SEC-003",
+      "reviewer": "lens-security-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "a reviewer copies bidi or hidden characters from a reviewed repo into a finding",
+      "category": "input-validation",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:289"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "the review render strips only control characters; bidi, hidden and HTML text reach the human",
+      "fix": "reuse the test-plan forbidden-character set and escape HTML and links",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "EXEC-001",
+      "reviewer": "execution-test",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "an edge case marked needs your decision",
+      "category": "api-shape",
+      "locations": [
+        "shared/review-report-standards/SKILL.md:78"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "confirmation is shown by location and trigger, but edge lines now show only the reason",
+      "fix": "show the trigger on a needs-your-decision edge case",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "EXEC-002",
+      "reviewer": "execution-test",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "realism": "realistic",
+      "trigger": "the next reader of the Realism floor invariant",
+      "category": "naming-convention",
+      "locations": [
+        "CLAUDE.md:76"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "it cites review-core for the Address choice, which lives in the flows",
+      "fix": "cite flow-implementation section 5 and flow-review section 5d",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "EXEC-003",
+      "reviewer": "execution-test",
+      "status": "OPEN",
+      "tracked_status": "PENDING",
+      "severity": "MEDIUM",
+      "realism": "realistic",
+      "trigger": "the human chooses a speculative item by number",
+      "category": "dto-shape",
+      "locations": [
+        "flows/flow-review/SKILL.md:135"
+      ],
+      "first_seen": "2026-10-04",
+      "problem": "a chosen or promoted speculative item cannot be recorded, filed by the reviewer, or retired from the list",
+      "fix": "define the speculative lifecycle: elect, file as a finding, retire the entry"
+    },
+    {
+      "id": "SHELL-006",
+      "reviewer": "shell-script-reviewer",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:506"
+      ],
+      "problem": "the Approved line lists numbers in stored order, e.g. 1, 2, 4, 3",
+      "fix": "sort the numbers ascending",
+      "realism": "realistic",
+      "trigger": "an amend moves a test so its number changes",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "SHELL-007",
+      "reviewer": "shell-script-reviewer",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:362"
+      ],
+      "problem": "a prose builds-on entry keeps a slash inside a code span",
+      "fix": "show prose builds-on entries as plain text",
+      "realism": "realistic",
+      "trigger": "a builds-on entry written as prose, like helper in tests/x.sh",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "SHELL-008",
+      "reviewer": "shell-script-reviewer",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "quoting",
+      "locations": [
+        "flows/flow-testing/scripts/render-md.sh:355"
+      ],
+      "problem": "a backslash cancels the plain-text escape after it",
+      "fix": "escape the backslash first",
+      "realism": "edge-case",
+      "trigger": "a builds-on entry with a backslash before an escaped character",
+      "realism_reason": "only builds-on allows a backslash, and it needs a name collision",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "SHELL-009",
+      "reviewer": "shell-script-reviewer",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "correctness",
+      "locations": [
+        "flows/flow-review/scripts/render-md.sh:35"
+      ],
+      "problem": "the header says no value renders a link, but bare URLs still autolink",
+      "fix": "qualify the claim to inline and HTML links",
+      "realism": "realistic",
+      "trigger": "a finding cites a bare https URL and the file is viewed on GitHub",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-004",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-implementation/SKILL.md:183"
+      ],
+      "problem": "the question has no follow-ups-only option, so it can shrink to one choice",
+      "fix": "add a follow-ups-only option",
+      "realism": "realistic",
+      "trigger": "only one Address option has items",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-005",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-implementation/SKILL.md:185"
+      ],
+      "problem": "an undecided needs-your-decision item has no default",
+      "fix": "re-ask until each needs-your-decision item is answered",
+      "realism": "realistic",
+      "trigger": "the human answers 1, 4 while an edge-case HIGH awaits a decision",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-006",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-implementation/SKILL.md:186"
+      ],
+      "problem": "where rulings show, and the hold rule covering only security, are unstated",
+      "fix": "show one ruling line per item; widen the hold to data integrity and safety",
+      "realism": "realistic",
+      "trigger": "the human picks re-check first",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-007",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "interface-convention",
+      "locations": [
+        "agents/reviewers/lens/lens-test-quality-reviewer.md:56"
+      ],
+      "problem": "the reviewer has no re-check variant: input file and output use are undefined",
+      "fix": "define the re-check input and that its plan revision is not persisted",
+      "realism": "realistic",
+      "trigger": "the human picks re-check rejected first",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-008",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "flows/flow-review/SKILL.md:125"
+      ],
+      "problem": "PENDING past the re-entry reads as never briefed, but unchosen follow-ups stay PENDING",
+      "fix": "say unchosen follow-ups stay PENDING by design",
+      "realism": "realistic",
+      "trigger": "a follow-up the human did not choose",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    },
+    {
+      "id": "EXEC-009",
+      "reviewer": "execution-test",
+      "tracked_status": "PENDING",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "flows/flow-testing/SKILL.md:76"
+      ],
+      "problem": "draft test numbers in reasons clash with the renumbered render",
+      "fix": "cite tests by name in reasons",
+      "realism": "realistic",
+      "trigger": "the reviewer cites a draft test number in a rejection reason",
+      "status": "NEW",
+      "first_seen": "2026-10-04"
+    }
+  ]
+}

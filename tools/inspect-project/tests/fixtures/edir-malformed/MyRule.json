@@ -1,0 +1,15 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/main.rs",
+      "line": 1,
+      "language": "Rust",
+      "problem_class": {
+        "id": "MyRule",
+        "severity": "ERROR"
+      },
+      "description": "a finding that must survive an unparseable .descriptions.json",
+      "highlighted_element": "fn main"
+    }
+  ]
+}

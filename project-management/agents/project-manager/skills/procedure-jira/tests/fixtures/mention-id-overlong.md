@@ -1,0 +1,1 @@
+Over-long id [~accountId:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0] stays literal.

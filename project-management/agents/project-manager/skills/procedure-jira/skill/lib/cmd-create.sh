@@ -114,14 +114,41 @@ cmd_create() {
 		merge_json_field "$create_fields_acc" "$review_field_id" "$review_adf_file"
 	fi
 
+	# create_user_fields records which "who" fields this create actually sets,
+	# for the JIRA_USER_FIELDS_SET disclosure at the end of this function. Built
+	# at the write sites (the same discipline cmd_update's twin follows) so it
+	# can never name a field this verb did not send — notably --developer, which
+	# create does not read at all.
+	create_user_fields=""
+
 	if [ -n "$OPT_ASSIGNEE" ]; then
 		assignee_account_id=$(resolve_account_id "$OPT_ASSIGNEE")
 		merge_ref_field "$create_fields_acc" assignee id "$assignee_account_id"
+		create_user_fields="$create_user_fields,assignee"
+	fi
+
+	# The ONLY custom user-picker field `create` carries — its sibling
+	# --developer is update-only. A project may make its Reviewer field
+	# REQUIRED on the create screen, and such a create 400s before any
+	# follow-up update could supply it, so this one cannot be deferred.
+	# Still STRICTLY OPT-IN and unvalidated locally — the same contract as
+	# --priority below.
+	if [ -n "$OPT_REVIEWER" ]; then
+		reviewer_field_id=$(require_custom_field "$PROJECT_CONFIG_FILE" reviewer "--reviewer")
+		reviewer_account_id=$(resolve_account_id "$OPT_REVIEWER")
+		merge_ref_field "$create_fields_acc" "$reviewer_field_id" accountId "$reviewer_account_id"
+		create_user_fields="$create_user_fields,reviewer"
 	fi
 
 	[ -z "$OPT_LABELS" ]   || merge_labels_field "$create_fields_acc" "$OPT_LABELS"
 	[ -z "$OPT_DUE_DATE" ] || merge_string_field "$create_fields_acc" duedate "$OPT_DUE_DATE"
 	[ -z "$OPT_PARENT" ]   || merge_ref_field "$create_fields_acc" parent key "$OPT_PARENT"
+	# --priority is STRICTLY OPT-IN and deliberately UNVALIDATED locally: a
+	# priority scheme is per-project on Jira's side, so the site is the only
+	# source of truth for the allowed names (an unknown one 400s clearly). Same
+	# reasoning as --resolution's opt-in contract — never defaulted, because a
+	# project whose create screen has no priority field 400s if we set one unasked.
+	[ -z "$OPT_PRIORITY" ] || merge_ref_field "$create_fields_acc" priority name "$OPT_PRIORITY"
 
 	# Attach flags resolve NAME -> id against the project's live version/
 	# component lists (versions fetched once, components once) and merge
@@ -184,10 +211,15 @@ cmd_create() {
 	fi
 	printf 'JIRA_ISSUE_KEY=%s\n' "$created_key"
 	printf 'JIRA_ISSUE_URL=https://%s/browse/%s\n' "$CONFIRMED_HOST" "$created_key"
+	# Which "who" fields the new issue carries — the same disclosure cmd_update
+	# emits, so a real run states that this create put someone on the ticket and
+	# not only which key it minted. NOT added to the --json branch above, which
+	# is a deliberate PASSTHROUGH of Jira's own 201 body (see that branch).
+	[ -z "$create_user_fields" ] || printf 'JIRA_USER_FIELDS_SET=%s\n' "${create_user_fields#,}"
 }
 
 # validate_create_args() — `create`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_create_args() {
 	[ -n "$OPT_PROJECT" ] || { usage >&2; error "create requires --project"; exit 2; }

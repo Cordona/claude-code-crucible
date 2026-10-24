@@ -46,7 +46,8 @@ assert_host_allowed() {
 
 # assert_confirmed_site_given — the presence half of the site gate.
 # A plain usage error (exit 2), so it is checked early, alongside the other
-# per-command required-argument validation — before any tool/network check.
+# per-command required-argument validation — after the jq precondition, before
+# the curl/network checks.
 assert_confirmed_site_given() {
 	[ -n "$OPT_CONFIRMED_SITE" ] || {
 		usage >&2

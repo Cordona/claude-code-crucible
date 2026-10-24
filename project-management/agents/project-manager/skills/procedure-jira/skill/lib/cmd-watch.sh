@@ -51,8 +51,8 @@ cmd_watch() {
 
 	# "me"/"@me" (the default when --account is omitted) resolves via
 	# GET /myself; anything else resolves via GET /user/search — the SAME
-	# resolve_account_id() the READ path's search --assignee and the WRITE
-	# path's create/update --assignee/--developer already use.
+	# resolve_account_id() every --assignee/user-picker flag on the READ and
+	# WRITE paths already uses.
 	watch_target=${OPT_ACCOUNT:-@me}
 	watch_account_id=$(resolve_account_id "$watch_target")
 
@@ -92,7 +92,7 @@ cmd_watch() {
 }
 
 # validate_watch_args() — `watch`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_watch_args() {
 	require_ticket_positional watch

@@ -73,6 +73,31 @@ non-interactively — it stays menu-only.
 ./deploy/hub/crucible-hub
 ```
 
+### Make it available from anywhere
+
+`./deploy/hub/crucible-hub` only works while you're standing in this clone. To call it as a bare
+`crucible` from any directory, in any terminal, run this once from the repo root (macOS/Linux —
+`crucible-hub` is a POSIX shell script, so on Windows use WSL):
+
+```sh
+mkdir -p ~/.local/bin
+ln -sfn "$(pwd)/deploy/hub/crucible-hub" ~/.local/bin/crucible
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) echo "Done — try 'crucible doctor' from any directory." ;;
+  *)
+    echo "Add this line to your shell's rc file (~/.zshrc or ~/.bashrc), then open a new terminal:"
+    # shellcheck disable=SC2016  # literal text to paste into an rc file, not meant to expand now
+    echo '  export PATH="$HOME/.local/bin:$PATH"'
+    ;;
+esac
+```
+
+It's a plain symlink — safe to re-run (it just replaces the link), and `crucible-hub` resolves its
+own symlink chain before sourcing anything, so this isn't a workaround, it's the intended way to
+put it on `PATH`. Two things worth knowing: it follows whichever branch this clone has checked
+out, and it isn't yet tracked by the hub itself — `uninstall --all` removes the 83 deployed
+framework items but leaves this link in place; remove it yourself with `rm ~/.local/bin/crucible`.
+
 The Main menu opens (a TTY is required — off a terminal, use the commands below):
 
 ```
@@ -94,7 +119,12 @@ no mis-press there is destructive; each declines on anything it doesn't recogniz
 1. **Pick `6` (Install).** A checklist asks which domains you want: Software Development, Project
    Management, Getting Things Done. Type a row number or name and press Enter to select or
    deselect it; combine several with `1,3,5` or a range `1-5`; `a` selects all, `n` none. Enter on
-   an empty prompt confirms.
+   an empty prompt confirms. When a domain listed there already has a technology (or tracker) of
+   its own installed and is still missing part of the content it installs unconditionally, the
+   screen names that content under **Required install** and offers one more key: **`r`** — install
+   exactly that, for every domain listed, skipping their sub-selection screens entirely. It appears
+   only when it would do something, and it leaves alone (and says so) any domain you have already
+   answered a sub-selection for. `--baseline-only` is its flag-driven twin.
 2. **Choose each domain's sub-selection.** Software Development asks first, optionally, which VCS
    host(s) — GitHub, GitLab, or both — the git operator should talk to, then which technologies
    (each one installs its developer agent, its reviewer and its standard together). Project
@@ -129,7 +159,7 @@ and confirmation.
 > your own domains, or the flag form naming them (`install --domains=... --technologies=... --apply`)
 > — after any pull that changed which agents/skills exist (not just their content) to pick up the
 > new names; `--all --apply` also works but installs *everything*, not just what you already had, so
-> reach for it only if that's actually what you want. Then run `crucible-hub doctor` (which reports
+> reach for it only if that's actually what you want. Then run `crucible doctor` (which reports
 > the stale link as **orphaned** and
 > offers to remove it) to clear the old one. `List` also reports it, but Doctor is where cleanup
 > happens — an orphan is a dangling link, not a legitimate component, so it is no longer offered
@@ -142,29 +172,32 @@ and confirmation.
 
 ### Every screen, as a command
 
-Run any of these directly, or as `crucible-hub SUBCOMMAND`. Add `--help` to any one for its full
-option reference.
+Run any of these directly as `crucible SUBCOMMAND` (once it's on `PATH` — see above), or as
+`./deploy/hub/crucible-hub SUBCOMMAND` from the repo root if it isn't. Add `--help` to any one for
+its full option reference.
 
 | Menu screen | Command |
 |---|---|
-| *(no Main-menu row any more †)* | `crucible-hub status` |
-| List | `crucible-hub list` |
-| Doctor | `crucible-hub doctor` |
-| Accounts | `crucible-hub accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
-| Install | `crucible-hub install --domains=CSV [--technologies=CSV] [--sd-vcs=CSV] [--pm-trackers=CSV] --apply` |
-| Install all | `crucible-hub install --all --apply` |
-| Uninstall | `crucible-hub uninstall --components=CSV --apply` |
-| Uninstall all | `crucible-hub uninstall --all --apply --confirm=UNINSTALL` |
+| *(no Main-menu row †)* | `crucible status` |
+| List | `crucible list` |
+| Doctor | `crucible doctor` |
+| Accounts | `crucible accounts status\|switch-github\|reauth-github\|switch-gitlab\|reauth-gitlab\|configure-jira\|reauth-jira` (`--format=text\|env` only) |
+| Install | `crucible install --domains=CSV [--technologies=CSV] [--sd-vcs=CSV] [--pm-trackers=CSV] --apply` |
+| Install all | `crucible install --all --apply` |
+| Uninstall | `crucible uninstall --components=CSV --apply` |
+| Uninstall all | `crucible uninstall --all --apply --confirm=UNINSTALL` |
 
-† `Status` was folded into Doctor and dropped from the interactive Main menu, but it survives as
-this standalone, agent-friendly subcommand.
+† `Status` has no interactive Main-menu screen of its own — its reporting lives inside Doctor — but
+it is still available as this standalone, agent-friendly subcommand.
 
 Shared options: `--target DIR` (deployed config dir, default `$HOME/.claude`), `--source DIR`
 (framework root to scan, default this tree), `--format=text|env|json` (`accounts` accepts only
 `text|env`), `--no-color`, `--accessible` (ASCII fallback for every non-ASCII symbol). `install`,
 `uninstall`, and `doctor` add `--non-interactive`; `install`/`uninstall` alone add `--details`
 (itemize a bulk result instead of summarizing it). `doctor` also takes `--clean-orphans --apply` —
-the flag-driven equivalent of the interactive "Remove them?" orphan-cleanup prompt.
+the flag-driven equivalent of the interactive "Remove them?" orphan-cleanup prompt. `install` takes
+`--baseline-only` alongside `--domains` — the flag-driven equivalent of the domains checklist's `r`
+key, installing each named domain's required content and no sub-selection.
 
 **`--format=env` and `--format=json` are what make the hub agent-drivable.** Both emit the same
 facts the text screen shows — per-domain state, per-component rows, counts, a `HUB_STATUS` of `ok`
@@ -180,7 +213,32 @@ does.
   install, Enter accepts (`5`/Install all works this way); `[y/N]` for uninstall, Enter declines. It
   is only off a terminal that `--apply` writes with no prompt at all.
 - **A missing sub-selection blocks rather than guesses.** `install --domains=software-development`
-  with no `--technologies` exits blocked (`selection_required`), never with some default stack.
+  with no `--technologies` exits blocked (`selection_required`) on a target that holds no technology
+  of that domain yet, and installs the domain's baseline and nothing more on one that already does —
+  never a guessed default stack. "Already has one" is judged per KIND, not per domain: a present VCS
+  host does not answer for an empty technology screen, and vice versa. A *partially installed or
+  diverged* item of the kind counts as present just as a fully installed one does — it is a live
+  footprint at the target, so the domain is not empty. The same rule on the interactive screens:
+  "select none" is a valid answer once the domain already has something of that same kind, so its
+  baseline stays reachable when the only candidates left are ones you don't want. Whenever that
+  happens, `--format=env|json` names the domains it happened to in `HUB_BASELINE_ONLY` /
+  `baseline_only` (empty when it didn't) — so a caller that simply forgot the flag can tell itself
+  apart from one that meant "baseline only".
+- **`--baseline-only` says "required content only" out loud.** It asserts, for every domain in
+  `--domains`, exactly the outcome the paragraph above reaches by omission — so it installs exactly
+  what omitting the sub-selection flag would and nothing beyond it, unlocking no capability of its
+  own, and refuses instead of guessing when the intent cannot be honored: a domain that holds
+  nothing it needs a choice about yet exits blocked, saying there is no required-install gap to
+  close, where a bare omission blocks with the generic "choose at least one" text instead.
+  **That refusal reuses `HUB_BLOCKED_REASON=selection_required`** — the same code the generic
+  refusal carries, because the underlying finding is the same one (a mandatory sub-selection is
+  unanswered and the target holds none of that kind); only `HUB_MESSAGE` differs. A caller that
+  needs to tell "you forgot a flag" from "there is no gap here to close" must match the message
+  text, not the reason code. A domain with no sub-selection at all (GTD) has nothing that could be
+  unanswered, so `--baseline-only` on it always succeeds and installs its whole group. Mutually
+  exclusive with `--all` and with any non-empty sub-selection flag (a flag that could silently do
+  nothing is worse than one that refuses); requires `--domains`. Its interactive twin is the `r`
+  key on the domains checklist.
 - **`uninstall --all` is the one critical-tier flow.** On a terminal you type the word `UNINSTALL`
   in full; without one you must pass `--confirm=UNINSTALL`, or the command fails loud rather than
   assuming consent. It removes everything installed plus `CLAUDE.md` and the contract schemas, and
@@ -194,7 +252,7 @@ does.
 
 Exit codes: `0` preview shown, nothing to do, cancelled, or applied · `1` blocked, a write failure,
 or an operational error (an unresolvable `--source`, `--format=json` without `jq`) · `2` usage
-error · `3` a subcommand's own interactive screen was quit (a bare interactive `crucible-hub`
+error · `3` a subcommand's own interactive screen was quit (a bare interactive `crucible`
 translates that back to exit `0` at its own Main menu).
 
 The design rationale behind each screen lives in the script headers under
@@ -224,22 +282,23 @@ their costs differ wildly and shouldn't all be paid on every build:
    only on an open CRITICAL/HIGH). **Never a lens.** The reviewer always runs — deferred or
    immediate — before the effort is called done; this is the safety net every real build gets.
 3. **Review** ([`flow-review`](./software-development/flows/flow-review)) — *on demand only.*
-   Derives a lens roster from the confirmed scope, gates it, dispatches the swarm in parallel, and
+   Derives a lens roster from the effort's diff, gates it, dispatches the swarm in parallel, and
    persists a durable, trackable report. Runs no fix loop of its own; findings re-enter step 2.
 4. **Test** ([`flow-testing`](./software-development/flows/flow-testing)) — *on demand only, never
    before confirmation.* Fires once the human confirms the implementation is right — including a
    live-validation confirmation on a not-yet-reviewed Validate-First build, in which case tests run
-   before the `{tech}-reviewer`. `tests-developer` writes
-   the tests — never the developer that wrote the code under test — and `lens-test-quality-reviewer`
-   verifies them.
+   before the `{tech}-reviewer`. `tests-developer` drafts
+   a test plan, `lens-test-quality-reviewer` challenges it, and the human approves the
+   script-rendered plan; only then does `tests-developer` — never the developer that wrote the code
+   under test — write exactly those tests, and `lens-test-quality-reviewer` verifies them against
+   the plan.
 
-**Nothing here fires from repository state.** An earlier design keyed the full review swarm off
-`git status`, which is exactly how a misjudged cross-repo build could burn hours and millions of
-tokens polishing the wrong implementation before a human got a cheap look at it. The one surviving
-state-based check is the **commit gate**: before any commit, it asks whether step 2's correctness
-floor has actually closed for the diff — not merely that step 2 ran, since a live-validated and
-tested build can still have its reviewer pending — and won't assume either answer if unsure. A
-question, not a swarm.
+**Nothing here fires from repository state.** Keying the full review swarm off `git status` would
+let a misjudged cross-repo build get fully polished — and tested — before a human ever got a cheap
+look at it. The one state-based check is the **commit gate**: before any commit, it asks whether
+step 2's correctness floor has actually closed for the diff — not merely that step 2 ran, since a
+live-validated and tested build can still have its reviewer pending — and won't assume either
+answer if unsure. A question, not a swarm.
 
 ---
 
@@ -253,13 +312,13 @@ defined in [`CLAUDE.md`](./CLAUDE.md).
 |---|---|---|
 | **Implement** | a build/implement/refactor/fix request, or "review this" naming no lens | Developer (alone first when live-testable) → *[live-validate → tests]* → `{tech}`-reviewer → gated fix loop — reviewer deferred or immediate, never a lens |
 | **Spec** | cross-repo work, parallel tech pairs, a forked interface decision, or an explicit spec-first ask | `software-architect` drafts a contract → gate → durable artifact every pair builds against |
-| **Review** | an explicit ask for a full/lens review — never automatic | Scope confirmed → lens swarm derived from it → gate → durable, trackable report |
-| **Test** | the human's explicit confirmation an implementation is right | `tests-developer` writes tests → mandatory test-quality pass → bounded fix loop |
+| **Review** | an explicit ask for a full/lens review — never automatic | The effort's diff → lens swarm derived from it → gate → durable, trackable report |
+| **Test** | the human's explicit confirmation an implementation is right | end-to-end-first test plan → reviewer approves or rejects each test → human approval → `tests-developer` writes the plan → mandatory test-quality pass → bounded fix loop |
 | **Direct** | no subagent matches the stack | Orchestrator implements, self-checks via an execution test |
 | **Tech-pair** | "I need a new tech pair" (bare, or "...for Go") | Poll → collision check → gate → research swarm → generate the pair in order → lens review before deploy → human deploys |
 | **Decision panel** | a complex, costly-to-undo forked decision | Blind reviewers with different lenses + a neutral `decision-arbiter` |
 | **External review** | an external/automated PR (GitHub) or MR (GitLab) review to address | Advocates + the `review-arbiter` judge → fix → one response |
-| **Documentation** | "document this", "write a README" | `docs-writer` drafts → fact-checked against the code → fix loop |
+| **Documentation** | "document this", "write a README" | Audience asked → `tech-writer` drafts → fact-checked against the code → fix loop |
 | **Backlog** | "file an issue/ticket", "carve an epic" | `project-manager` recommends + drafts → consent-gated tracker write |
 | **Capture** | a leading `inbox:` / `dump:` / `park:` / `collect:` / `capture this:` | `gtd-inbox-writer` appends the thought verbatim, never executes it |
 
@@ -272,13 +331,13 @@ executes only on consent.
 
 ## What's in each domain
 
-Install any subset of the three domains. Run `crucible-hub list` for the live, exhaustive
+Install any subset of the three domains. Run `crucible list` for the live, exhaustive
 inventory — each agent and skill documents itself in its own file, so the list below is a map, not
 a catalogue.
 
 | Domain | What you get | Sub-selection |
 |---|---|---|
-| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 8 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies**, plus an OPTIONAL **VCS host** — GitHub, GitLab, or both |
+| [`software-development/`](./software-development) | A developer + reviewer pair per technology, 9 language-agnostic review lenses, the orchestration flows, the git operator, the arbiters and the architect | One or more **technologies**, plus an OPTIONAL **VCS host** — GitHub, GitLab, or both |
 | [`project-management/`](./project-management) | The `project-manager` agent: authors backlog artifacts tuned to a declared audience and operates the tracker | **GitHub**, **GitLab**, **Jira**, or any combination |
 | [`gtd/`](./gtd) | `gtd-inbox-writer` for zero-judgment capture, plus `flow-inbox` for triage and processing | none |
 
@@ -292,10 +351,13 @@ in Software Development — `shared/` (the `standard-*` rubrics developers build
 judge against) and `templates/` (never deployed).
 
 **Software Development** carries the correctness floor and the quality lenses, and the difference
-matters. A `{tech}`-reviewer owns correctness for its stack and runs on **every** build. The eight
-`lens-*` reviewers — clean-code, security, performance, observability, test-quality, consistency,
-persistence, compatibility — are language-agnostic and run **only** when a human asks for a review
-pass. Test authoring is separate again: `tests-developer` is tech-agnostic, and
+matters. A `{tech}`-reviewer owns correctness for its stack and runs on **every** build. The nine
+`lens-*` reviewers — clean-code, self-documenting-code, security, performance, observability,
+test-quality, consistency, persistence, compatibility — are language-agnostic. Eight of the nine
+run **only** when a human asks for a discretionary review pass; `lens-test-quality-reviewer` is the
+one exception — it's `flow-testing`'s own fixed, mandatory seat, not a discretionary lens, and runs
+whenever tests are authored, with no review-pass request needed. Test authoring is separate again:
+`tests-developer` is tech-agnostic, and
 [`build-core`](./software-development/shared/build-core) structurally forbids a `{tech}`-developer
 from touching a test file at all.
 
@@ -324,10 +386,10 @@ The hub's Accounts screen is the front door for GitHub, GitLab, and Jira alike �
 three states and delegates to each procedure's own script:
 
 ```sh
-crucible-hub accounts status          # who the framework will act as
-crucible-hub accounts switch-github   # switch between, or log in to, GitHub accounts
-crucible-hub accounts switch-gitlab   # switch between, or log in to, GitLab accounts
-crucible-hub accounts configure-jira  # add a Jira site
+crucible accounts status          # who the framework will act as
+crucible accounts switch-github   # switch between, or log in to, GitHub accounts
+crucible accounts switch-gitlab   # switch between, or log in to, GitLab accounts
+crucible accounts configure-jira  # add a Jira site
 ```
 
 **GitHub** uses the GitHub CLI. `gh auth login` works exactly as it always does; `gh auth switch`
@@ -358,7 +420,7 @@ $HOME/.claude/skills/procedure-jira-auth/scripts/jira-accounts.sh set-default --
 
 ## Requirements
 
-`crucible-hub doctor` checks the external tools below (`git`, `gh`, `glab`, `jq`, `curl`,
+`crucible doctor` checks the external tools below (`git`, `gh`, `glab`, `jq`, `curl`,
 `gpg`-or-`ssh-keygen`) plus GitHub/GitLab/Jira account health, and tells you which are missing. The
 first two bullets are assumed, not checked by Doctor — you need them just to run the hub at all.
 
@@ -366,7 +428,7 @@ first two bullets are assumed, not checked by Doctor — you need them just to r
 - **A POSIX shell** (`sh`) — the hub and every `procedure-*` script are POSIX `sh`.
 - **`git`** — for the VCS operations.
 - **`gh`** (GitHub CLI) — for GitHub issues and pull requests.
-- **`glab`** (GitLab CLI) — for GitLab issues and merge requests. `crucible-hub doctor` checks for both
+- **`glab`** (GitLab CLI) — for GitLab issues and merge requests. `crucible doctor` checks for both
   `gh` and `glab` — but only reports the one you don't have as a blocking problem if something you've
   already installed actually needs that host; otherwise it's a non-blocking note, since choosing GitHub
   or GitLab (or neither) is optional.

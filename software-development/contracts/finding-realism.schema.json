@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/finding-realism.schema.json",
+  "title": "Finding Realism",
+  "description": "Whether a filed finding's trigger is a realistic use of the code or a rare edge case. Orthogonal to finding-status.schema.json and tracked-status.schema.json. Extracted so every review contract shares one definition. Value domain only; classification: review-core, Realism test. Counting rule: review-report-standards, Verdict Arithmetic.",
+  "enum": ["realistic", "edge-case"]
+}

@@ -1,0 +1,57 @@
+#!/usr/bin/env expect
+#
+# drive-required-only-screens.exp — render Install's TWO checklist screens against a
+#                                   given target and echo each one back verbatim, so
+#                                   the caller can assert on what a human would see.
+#
+# WHAT THIS REACHES THAT NOTHING ELSE DOES: the `r` key's hint segment and the
+# "Required install" block are SCREEN CONTENT, and both are filtered by a target-state
+# rule (hub-install.sh's hi_baseline_only_actionable) rather than by anything that
+# reaches a machine payload. A domain that has never been touched must appear on
+# neither, on either screen, even though its whole baseline genuinely reads as
+# never-installed — and the only observable form of that verdict is the absence of
+# those lines from a rendered checklist.
+#
+# IT ONLY DUMPS, which is the deliberate opposite of every other driver beside it:
+# those drive a walk to an outcome, this one renders two screens and reports what they
+# said. The dump_screen mechanism and why a dump rather than a match is the right tool
+# for a line that may not exist are at lib/drive-baseline-only-common.exp.
+#
+# THE KEY SEQUENCE:
+#   1. dump the domains checklist        the `r` hint and the cross-domain block
+#   2. tick the domain named in argv     by KEY, never by row number
+#   3. dump its FIRST sub-selection screen   that screen's own per-domain block
+# One sub-selection screen is enough: hi_pending_baseline_block renders the identical
+# block on every screen its domain has (that function's own header says so), so a
+# second screen would re-assert one function's output rather than a second rule.
+#
+# The spawn and the screen helper are shared — see lib/drive-baseline-only-common.exp
+# for those and for the marker contract. --format=env is what that file spawns with,
+# which suits this driver too: the checklists render on stderr and this is one pty, so
+# every screen still arrives here byte-for-byte as a human would receive it.
+#
+# Usage: expect -f drive-required-only-screens.exp SRC TARGET INSTALL HOME PATH DOMAIN
+#        with SCREEN_MARKER exported (plus the markers the shared file requires).
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+set tick_domain [lindex $argv 5]
+
+expect_screen "Which domain(s)" "domains-screen"
+dump_screen domains
+
+# By KEY, never by row number — see drive-empty-technology.exp's own note: the
+# onboarding checklist offers only domains with something pending, so a row number
+# depends on the target's install state, which is the variable under test here.
+send "$tick_domain\r"
+expect_screen "1 selected" "domain-toggled"
+
+# THE SECOND PROMPT IS AWAITED BEFORE CONFIRMING, and it is not ceremony: the re-render
+# triggered by the toggle ends in its own `> `, so an Enter sent without consuming it
+# would leave that prompt in the stream and dump_screen below would match IT instead of
+# the sub-selection screen — reporting the domains screen twice under two names.
+expect_screen "> " "domains-prompt-after-toggle"
+send "\r"
+
+dump_screen subselection
+exit 0

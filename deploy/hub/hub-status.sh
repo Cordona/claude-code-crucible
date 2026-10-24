@@ -16,7 +16,9 @@
 #   order: "(GitHub; 2/9 technologies)" for Software Development, whose VCS
 #   kind is listed before its technology kind — see hub_domain_selection_kind).
 # Output (env/json): per-domain state, the installed/available selection keys as
-#   comma-lists, the four component counts, and the first-run bundle's state.
+#   comma-lists, the four component counts, the first-run bundle's state, and —
+#   on a target the bundle has bootstrapped — how many contract schemas it is
+#   missing (an install links them) or has blocked by a foreign occupant.
 #
 # Exit codes: 0 on success; 1 on an operational failure (--source doesn't
 #   resolve, or --format=json is requested without jq installed); 2 usage
@@ -83,6 +85,12 @@ hub_discovery_build "$FRAMEWORK_ROOT"
 hub_states_build "$TARGET_DIR"
 hub_state_counts
 BUNDLE_STATE=$(hub_bundle_state "$FRAMEWORK_ROOT" "$TARGET_DIR")
+BUNDLE_CONTRACTS_MISSING="$HUB_WORK/bundle-contracts-missing.txt"
+BUNDLE_CONTRACTS_BLOCKED="$HUB_WORK/bundle-contracts-blocked.txt"
+hub_bundle_contracts_pending "$FRAMEWORK_ROOT" "$TARGET_DIR" \
+	"$BUNDLE_CONTRACTS_MISSING" "$BUNDLE_CONTRACTS_BLOCKED"
+BUNDLE_MISSING_COUNT=$(hub_count_lines "$BUNDLE_CONTRACTS_MISSING")
+BUNDLE_BLOCKED_COUNT=$(hub_count_lines "$BUNDLE_CONTRACTS_BLOCKED")
 
 # hub_status_selection_keys SELKIND WANT_INSTALLED -> the comma-list of
 # selection keys of one kind whose groups are (WANT_INSTALLED=1) present in any
@@ -120,6 +128,8 @@ env)
 	hub_env_kv HUB_ACTION status
 	hub_env_kv HUB_TARGET "$TARGET_DIR"
 	hub_env_kv HUB_BUNDLE_INSTALLED "$([ "$BUNDLE_STATE" = installed ] && printf true || printf false)"
+	hub_env_kv HUB_BUNDLE_CONTRACTS_MISSING_COUNT "$BUNDLE_MISSING_COUNT"
+	hub_env_kv HUB_BUNDLE_CONTRACTS_BLOCKED_COUNT "$BUNDLE_BLOCKED_COUNT"
 	HS_N=0
 	for HS_DOMAIN in $HUB_DOMAIN_KEYS; do
 		hub_domain_exists "$FRAMEWORK_ROOT" "$HS_DOMAIN" || continue
@@ -157,6 +167,8 @@ json)
 	jq -n \
 		--arg status ok --arg action status --arg target "$TARGET_DIR" \
 		--argjson bundle_installed "$([ "$BUNDLE_STATE" = installed ] && printf true || printf false)" \
+		--argjson bundle_contracts_missing_count "$BUNDLE_MISSING_COUNT" \
+		--argjson bundle_contracts_blocked_count "$BUNDLE_BLOCKED_COUNT" \
 		--arg technologies "$TECHNOLOGIES" --arg technologies_available "$TECHNOLOGIES_AVAILABLE" \
 		--arg sd_vcs "$SD_VCS" --arg sd_vcs_available "$SD_VCS_AVAILABLE" \
 		--arg pm_trackers "$PM_TRACKERS" --arg pm_trackers_available "$PM_TRACKERS_AVAILABLE" \
@@ -166,6 +178,8 @@ json)
 		--argjson discovered_count "$HUB_COUNT_DISCOVERED" \
 		--slurpfile domains "$HS_DOMAIN_JSON" \
 		'{status:$status, action:$action, target:$target, bundle_installed:$bundle_installed,
+		  bundle_contracts_missing_count:$bundle_contracts_missing_count,
+		  bundle_contracts_blocked_count:$bundle_contracts_blocked_count,
 		  domains:$domains,
 		  technologies:($technologies | if . == "" then [] else split(",") end),
 		  technologies_available:($technologies_available | if . == "" then [] else split(",") end),
@@ -192,6 +206,18 @@ text)
 			"$(hub_plural "$HUB_COUNT_DIVERGED" item items)" \
 			"$(hub_plural "$HUB_COUNT_DIVERGED" matches match)" \
 			"$(hub_plural "$HUB_COUNT_DIVERGED" it them)"
+	fi
+	if [ "$BUNDLE_MISSING_COUNT" -gt 0 ]; then
+		printf '\n  %s %s contract %s missing from this target — run "Install" to add %s.\n' \
+			"$(hub_glyph_warn)" "$BUNDLE_MISSING_COUNT" \
+			"$(hub_plural "$BUNDLE_MISSING_COUNT" schema schemas)" \
+			"$(hub_plural "$BUNDLE_MISSING_COUNT" it them)"
+	fi
+	if [ "$BUNDLE_BLOCKED_COUNT" -gt 0 ]; then
+		printf '\n  %s %s contract %s blocked — a file that is not framework-owned occupies %s (see "Doctor").\n' \
+			"$(hub_glyph_fail)" "$BUNDLE_BLOCKED_COUNT" \
+			"$(hub_plural "$BUNDLE_BLOCKED_COUNT" schema schemas)" \
+			"$(hub_plural "$BUNDLE_BLOCKED_COUNT" 'its path' 'their paths')"
 	fi
 
 	if hub_interactive; then

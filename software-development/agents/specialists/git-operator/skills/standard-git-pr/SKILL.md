@@ -1,11 +1,18 @@
 ---
 name: standard-git-pr
-description: The single rubric for an excellent pull-request (GitHub) or merge-request (GitLab) body/title. Bind whenever a PR/MR is opened or its body/title is edited, to write or judge that content. Does NOT define PR mechanics (procedure-gh-pr), MR mechanics (procedure-glab-mr), either account gate (procedure-github-auth / procedure-gitlab-auth), or backlog-artifact craft (that's the project-manager's standard-backlog-artifacts, not this).
+description: The single rubric for an excellent pull-request (PR, GitHub) or merge-request (MR, GitLab) body/title. Bind whenever a PR/MR is opened or its body/title is edited, to write or judge that content. Does NOT define PR mechanics (procedure-gh-pr), MR mechanics (procedure-glab-mr), either account gate (procedure-github-auth / procedure-gitlab-auth), or backlog-artifact craft (that's the project-manager's standard-backlog-artifacts, not this).
 ---
 
 # Standard: Git PR/MR Bodies
 
 The **one** definition of an excellent pull-request (GitHub) or merge-request (GitLab) body. The `git-operator` builds every PR and every MR to it — the same rubric, no backend-specific variant. A PR/MR body's job is to help a reviewer *review* — not to restate the diff, and not to perform the audience-tuning a backlog artifact needs (a PR/MR's audience is fixed).
+
+## What this does NOT cover
+
+- PR mechanics (opening, updating, the actual git/API calls) → `procedure-gh-pr`.
+- MR mechanics, same shape on GitLab → `procedure-glab-mr`.
+- Either platform's account gate → `procedure-github-auth` (GitHub) / `procedure-gitlab-auth` (GitLab).
+- Backlog-artifact craft (issues, tickets, epics — a different audience-tuning problem) → the project-manager's `standard-backlog-artifacts`.
 
 ## Shape (What / Why / How-to-test / risk / link)
 
@@ -36,6 +43,4 @@ A diff-shaped body (a per-file changelog instead of an outcome) · no test/verif
 - Never omit How-to-test or the risk callout — a reviewer without either is reviewing blind.
 - Never restate the title in the body with no added information.
 - Never claim scope the PR itself doesn't actually contain.
-
----
-*Standard Version: 1.1 — split out of `standard-backlog-artifacts`' former "Pull request bodies" section when the PR lifecycle moved from the project-manager to the git-operator (PR work requires reading the diff, which is development work). Sibling to `standard-git-commit` / `standard-git-branch` / `standard-git-tag`. Mechanics live in `procedure-gh-pr` (GitHub) / `procedure-glab-mr` (GitLab). **1.1 makes the backend-agnostic scope explicit** — this rubric already applied unchanged to the GitLab MR work built alongside it; the frontmatter and body now say so rather than reading as GitHub-only by omission.*
+- **No request-sending or chained shell lines anywhere in the body** — describe such a check in prose: what to send and what comes back ("a JSON POST to `/api/banners` with a foreign `Origin` header returns 403"). Out: a `curl`/`wget` line, any command with header or data flags, a pipe. Fine: naming one plain command (`./gradlew test`). A host's firewall can block a request whose body carries such a line (a GitLab host in use does) so the PR/MR is never created and the rewording needs the human's approval again.

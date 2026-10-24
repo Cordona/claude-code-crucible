@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "name": "SonarLint",
+      "inspections": [
+        {
+          "shortName": "SonarIntelliJ",
+          "displayName": "SonarLint finding",
+          "defaultSeverity": "WARNING",
+          "pluginId": "org.SonarLint.idea",
+          "pluginVersion": "10.0",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>A rule contributed by a plugin whose id mentions sonar in MIXED case, so the match must be case-insensitive.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "SonarLint On"
+}
