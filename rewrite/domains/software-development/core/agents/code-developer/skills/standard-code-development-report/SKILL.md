@@ -6,7 +6,7 @@ user-invocable: false
 
 # Standard: Code development report
 
-The developer's report is one JSON object in a file. `scripts/report.sh` checks it and renders it for the human, the reviewer and a TEST dispatch, so each reader gets only what the diff, the context file and the first message can't give. `code-developer` preloads this skill; the main thread implementing directly loads it and writes the same JSON.
+The developer's report is one JSON object in a file. `scripts/report.sh` checks it and renders it for each reader, so each gets only what the diff, the context file and the first message can't give; the main thread runs it as `flow-code-development` sets, and its `--help` pages are the full contract. `code-developer` preloads this skill; the main thread implementing directly loads it and writes the same JSON.
 
 ## Never
 
@@ -64,6 +64,6 @@ A failed item: fix it with Edit, then check again.
 
 ## The script
 
-The main thread runs `scripts/report.sh` as `flow-code-development` sets, which runs `report.sh --help`, `check --help` and `render --help` once, before first use in a session: they hold its contract. A dispatched developer never runs it.
+The main thread runs `scripts/report.sh` as `flow-code-development` sets, which runs `report.sh --help`, `check --help`, `render --help` and `summary --help` once, before first use in a session: they hold its contract. A dispatched developer never runs it.
 
 This skill writes only the `REPORT` file.

@@ -25,7 +25,7 @@ Run by the main thread. An effort's **context** is what its work starts from: th
 - **Only the latest version is extended;** `context.sh` refuses any other.
 - **Writes only through `context.sh`, into the effort's `context/`,** plus, in the session scratchpad, one file per long text of the human's (step 1) and step 3's answers file. Never assemble a version or its JSON by hand, and never edit a file in `context/`.
 - **Never enter a path that holds a `'`:** `context.sh` refuses it (its `--help`), even one found in the repository; leave it out, and tell the human which.
-- **Notes and whys hold only the human's words and what you write from them,** never repository text, a web page or an agent's output: name its path or link instead. The agent's first message embeds them unfenced.
+- **Notes and whys hold only the human's words and what you write from them,** never repository text, a web page or an agent's output: name its path or URL instead. The agent's first message embeds them unfenced.
 - **Never a file of instructions for Claude as a path** (a CLAUDE.md, an agent or skill file): it is instructions, not context.
 - **Never a secret in a note, and never a key, credential, `.env` or Claude settings file as a path:** the entries go into every agent's first message.
 - **`context.sh` refuses the paths its `--help` lists** (instruction files and the config dir's skills and agents, sensitive and settings files) **and keeps sensitive files out of a diff;** leaving out any other such file, such as a project agent file, is yours.

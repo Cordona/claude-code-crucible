@@ -31,6 +31,8 @@ readonly REASON_PREFIX='flow-agent-initialization:'
 # agents of the shared names module, the list to edit first.
 readonly LISTED_AGENTS='code-developer code-reviewer'
 readonly NAMES_MODULE='dispatch-names'
+readonly RENDER_LIB='lib-render'
+readonly VIEW_NAME='view'
 readonly DIRECT_PROMPT_LABEL='main-thread-prompt'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
@@ -39,10 +41,13 @@ readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # Bounds the symlink chain followed for one file, so a link loop ends in a deny.
 readonly MAX_LINK_HOPS=40
 readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <absolute path>", the DISPATCH line generate-agent-dispatch.sh printed for this dispatch (flow-agent-initialization).'
-# Claude Code caps a hook's text added to the context at 10,000 characters. The
-# C locale counts bytes, never fewer than characters, so a reason within this
-# many bytes stays under the cap.
-readonly REASON_MAX_BYTES=9999
+# The cache kind and label of the file a deny's Data · Denial line names.
+readonly DENIAL_KIND='cache/denials'
+readonly DENIAL_LABEL='denial'
+# A deny shows this many problems at most, each cut to this many characters,
+# so the reason stays a short view; the details file holds them all.
+readonly DENIAL_MAX_SHOWN=8
+readonly DENIAL_LINE_CAP=200
 # The words that start a problem; the flow's step 10 routes on them.
 # CONTEXT-STALE is a context version no longer its effort's latest, every
 # other context problem CONTEXT; BASELINE is a baseline file holding no valid
@@ -168,44 +173,42 @@ is_skill && FNR > 1 && opened && !closed && is_fence($0) { closed = 1 }
 END { finish_file() }
 '
 
-# Joins the problem lines by "; " within budget bytes, the tail included. The
-# first problem of each KIND (kinds) is always kept, so the reason still names
-# every KIND found; the others follow in order until one does not fit, and the
-# rest become the tail "; and <M> more problems". Each problem is cut to an
-# equal share of the budget per KIND, so the kept firsts always fit.
-# The program is single-quoted on purpose: its $ signs are awk's.
+# Renders the deny reason from $problems (one per line, KIND first), the KIND
+# words $kinds, the reason prefix $prefix, the details file $details ("" for
+# none) and the bounds $max_shown and $line_cap, with lib-render's view module.
+# The first problem of each KIND is always shown (there are fewer KINDs than
+# $max_shown), so the reason names every KIND found; the others follow in
+# order up to $max_shown, and the rest become "+N more". Claude Code caps a
+# hook's text added to the context at 10,000 characters; the bounds keep the
+# reason far under it.
+# The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
-readonly CAP_PROBLEMS_AWK='
-function cut(text) { return length(text) <= cap ? text : substr(text, 1, cap - length(cut_mark)) cut_mark }
-function tail(dropped) { return dropped == 0 ? "" : "; and " dropped " more problem" (dropped == 1 ? "" : "s") }
-BEGIN {
-	cut_mark = " (cut)"
-	kind_count = split(kinds, kind_list, " ")
-	for (i = 1; i <= kind_count; i++) is_kind[kind_list[i]] = 1
-}
-$0 == "" { next }
-{ line[++count] = $0 }
-END {
-	room = budget - length(tail(count))
-	cap = int(room / kind_count) - 2
-	for (i = 1; i <= count; i++) {
-		line[i] = cut(line[i])
-		split(line[i], words, " ")
-		if ((words[1] in is_kind) && !(words[1] in seen_kind)) { seen_kind[words[1]] = 1; keep[i] = 1; used += length(line[i]) + 2 }
-	}
-	for (i = 1; i <= count; i++) {
-		if (keep[i]) continue
-		if (used + length(line[i]) + 2 > room) break
-		keep[i] = 1
-		used += length(line[i]) + 2
-	}
-	for (i = 1; i <= count; i++) {
-		if (keep[i]) joined = joined (joined == "" ? "" : "; ") line[i]
-		else dropped++
-	}
-	printf "%s%s", joined, tail(dropped)
-}
-'
+readonly DENIAL_JQ='
+def cut: if length > $line_cap then .[:$line_cap - 1] + "…" else . end;
+($kinds | split(" ")) as $kind_list
+| ($problems | split("\n") | map(select(length > 0))) as $all
+| ($all | length) as $count
+| (reduce range(0; $count) as $i ({seen: {}, firsts: []};
+	($all[$i] | split(" ")[0]) as $word
+	| if ($kind_list | any(. == $word)) and (.seen[$word] | not)
+	  then .seen[$word] = true | .firsts += [$i] else . end)
+	| .firsts) as $firsts
+| ($firsts + [range(0; $count) | select(. as $i | $firsts | any(. == $i) | not)])[:$max_shown] | sort as $shown
+| ($count - ($shown | length)) as $more
+| [$prefix + " " + status_line("blocked"; "Blocked · the dispatch was denied: \($count) problem" + (if $count == 1 then "" else "s" end)),
+	section("Problem"; "Problems"; $shown | map($all[.] | gsub("[\u0000-\u001f\u007f]"; "?") | cut)),
+	(if $more > 0 then "+\($more) more" else "" end),
+	data_section(if $details == "" then [] else [["Denial", $details]] end)]
+| blocks'
+# Builds the details file: every problem in full, its KIND (null for none),
+# the dispatch file and the hint.
+# shellcheck disable=SC2016
+readonly DENIAL_DETAILS_JQ='
+($kinds | split(" ")) as $kind_list
+| {dispatch: $dispatch, hint: (if $hint == "" then null else $hint end),
+	problems: ($problems | split("\n") | map(select(length > 0)
+		| (split(" ")[0]) as $word
+		| {kind: (if ($kind_list | any(. == $word)) then $word else null end), problem: .}))}'
 
 # Builds the agent's message from the dispatch copy ($dispatch), the
 # pretty-printed context copy ($context), the template copy ($template) and
@@ -261,6 +264,7 @@ readonly MESSAGE_JQ_TAIL='
 main() {
 	mode=hook
 	direct_dispatch=''
+	dispatch_effort=''
 	parse_args "$@"
 	decided=false
 	is_listed_agent=false
@@ -367,23 +371,24 @@ call: no output. A closed or unreadable stdin denies every call.
 A listed agent's call is allowed only when its prompt is exactly one line
   "DISPATCH: <absolute path>" naming a dispatch file generate-agent-dispatch.sh
   wrote for that agent, and the dispatch, its context file (its effort's latest
-  version, matching context.sha256), plugin files (each a plugin's SKILL.md or
-  references/ file, as list-plugins.sh --help sets), report file (empty) and
-  baseline file (absent, empty or of its repo_root) pass every check (a path
-  swapped between its check and its copy by someone with write access to the
-  plugin folder or the Crucible space aside: it is copied unchecked, or hangs
-  until the hook times out).
+  version, matching context.sha256), plugin files (as list-plugins.sh --help
+  sets), report file (empty) and baseline file (absent, empty or of its
+  repo_root) pass every check (a path swapped after its check by someone who
+  can write to the plugin folder or the Crucible space aside: it is copied
+  unchecked, or hangs until the hook times out).
 
 stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
          the message
-  deny   permissionDecisionReason "${REASON_PREFIX} <problem>[; ...]
-         [; and <M> more problems]. <hint>", a problem "<KIND> <problem>;
-         expected <x>", most followed by ": <path>"; KIND one of DISPATCH,
-         AGENT, CONTEXT, CONTEXT-STALE (a context version not its effort's
-         latest), PLUGIN, REPORT, BASELINE, BASELINE-WRITE (a baseline not
-         written); every KIND found is named; no KIND: a fault of the hook,
-         its install or the host
+  deny   permissionDecisionReason "${REASON_PREFIX} <text>"; no KIND: a hook,
+         install or host fault. A failed check: "<prefix> 🔴 **Blocked · the
+         dispatch was denied: <N> problem(s)**", "**Problem:** <p>" or
+         "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
+         cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, effort known,
+         "**Data · Denial:** <path>" (absolute, all as JSON). <p>:
+         "<KIND> <problem>; expected <x>", most ending ": <path>"; KIND:
+         DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
+         PLUGIN, REPORT, BASELINE, BASELINE-WRITE (not written)
 The message, built from the checked bytes: # Your plugins, # Your context,
   # Handling your context, # Your work (MODE, TASK, REPO ROOT, STARTING POINTS,
   REPORT, CONTEXT FILE, RETURN but with --direct), two closing lines
@@ -396,7 +401,8 @@ REPORT: <path>  line 2: the dispatch's report file, absolute
 Leaves only (a SIGKILL aside): once every check passes, an absent or empty
 baseline file of the dispatch, atomically (shape: see
 scripts/agent-dispatch/${NAMES_MODULE}.jq); one holding a baseline is kept.
-With --direct, the message file. The repository is only read.
+With --direct, the message file; on a deny, the Denial file.
+The repository is only read.
 
 Exit codes:
   0  hook: a decision, or none; --direct: written; read stdout
@@ -416,7 +422,8 @@ Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
-  crucible: scripts/lib/crucible-space.sh; with --direct, scripts/crucible.sh
+  crucible: scripts/lib/crucible-space.sh, scripts/crucible.sh
+  ${RENDER_LIB}: ${VIEW_NAME}.jq
   this skill: scripts/agent-dispatch/agent-dispatch-validator.jq,
     ${NAMES_MODULE}.jq
 EOF
@@ -841,7 +848,7 @@ first_line() {
 	printf '%s' "${message:-no message}"
 }
 
-# The baseline can't be written: a deny within the reason cap (hook), or
+# The baseline can't be written: a deny (hook), or
 # stderr and exit 1 (--direct), the problem $1 under KIND BASELINE-WRITE with
 # the baseline path.
 baseline_write_failed() {
@@ -852,10 +859,7 @@ baseline_write_failed() {
 		exit 1
 	fi
 	problems="${baseline_line}${NL}"
-	# shellcheck disable=SC2310 # its status is awk's; a failure faults
-	joined_problems=$(capped_problems $((REASON_MAX_BYTES - ${#REASON_PREFIX} - 2))) ||
-		fault "awk could not cut the problem; the fault is in the host, not in the dispatch; the cause is on stderr."
-	deny "${REASON_PREFIX} ${joined_problems}."
+	deny_problems ''
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -1172,8 +1176,8 @@ refuse_now() {
 	refuse_all
 }
 
-# Refuses with every problem: a deny naming them within the reason cap (hook),
-# or one stderr line each and exit 3 (--direct).
+# Refuses with every problem: a deny (hook), or one stderr line each and
+# exit 3 (--direct).
 refuse_all() {
 	if [ "${mode}" = direct ]; then
 		while IFS= read -r problem_line; do
@@ -1184,16 +1188,65 @@ EOF
 		decided=true
 		exit 3
 	fi
-	# shellcheck disable=SC2310 # its status is awk's; a failure faults
-	joined_problems=$(capped_problems $((REASON_MAX_BYTES - ${#REASON_PREFIX} - ${#DISPATCH_HINT} - 3))) ||
-		fault "awk could not join the problems; the fault is in the host, not in the dispatch; the cause is on stderr."
-	deny "${REASON_PREFIX} ${joined_problems}. ${DISPATCH_HINT}"
+	deny_problems "${DISPATCH_HINT}"
 }
 
-# Prints the problems joined within $1 bytes: the first problem of each KIND,
-# then the rest in order while they fit, each cut to a share of the cap.
-capped_problems() {
-	printf '%s' "${problems}" | awk -v budget="$1" -v kinds="${PROBLEM_KINDS}" "${CAP_PROBLEMS_AWK}"
+# Denies with every problem, the compact reason DENIAL_JQ renders, after
+# writing them in full with hint $1 ("" for none) to the details file when the
+# dispatch's effort is known.
+deny_problems() {
+	view_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${RENDER_LIB}"
+	[ -f "${view_dir}/${VIEW_NAME}.jq" ] && [ -r "${view_dir}/${VIEW_NAME}.jq" ] ||
+		fault "the view module ${view_dir}/${VIEW_NAME}.jq is missing or unreadable; ${PROG} needs it; the fault is in the ${RENDER_LIB} install, not in the dispatch."
+	write_denial_details "$1"
+	reason=$(jq -nr -L "${view_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" \
+		--arg prefix "${REASON_PREFIX}" --arg details "${details_path}" \
+		--argjson max_shown "${DENIAL_MAX_SHOWN}" --argjson line_cap "${DENIAL_LINE_CAP}" \
+		"include \"${VIEW_NAME}\"; ${DENIAL_JQ}" </dev/null) ||
+		fault "jq could not render the deny reason with ${view_dir}/${VIEW_NAME}.jq; the hook needs jq 1.6+; the cause is on stderr."
+	deny "${reason}"
+}
+
+# Sets details_path to a new file in the dispatch's effort's cache/denials
+# holding every problem in full, with hint $1; leaves it empty, a line on
+# stderr, when no effort is known or the file can't be written.
+write_denial_details() {
+	details_path=''
+	[ -n "${dispatch_effort}" ] || return 0
+	denial_crucible="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
+	if [ ! -f "${denial_crucible}" ] || [ ! -r "${denial_crucible}" ]; then
+		details_failed "crucible.sh missing; expected ${denial_crucible}"
+		return 0
+	fi
+	if ! new_path=$(sh "${denial_crucible}" new --kind "${DENIAL_KIND}" --label "${DENIAL_LABEL}" --effort "${dispatch_effort}" </dev/null); then
+		details_failed 'crucible.sh new failed; its stderr is above'
+		return 0
+	fi
+	case ${new_path} in
+		/*.json) ;;
+		*)
+			details_failed 'crucible.sh new printed no file path; expected one absolute path ending in .json'
+			return 0
+			;;
+	esac
+	if ! temp_file=$(mktemp "${new_path%/*}/.${new_path##*/}.XXXXXX"); then
+		temp_file=''
+		details_failed "mktemp could not create a temp file beside ${new_path}"
+		return 0
+	fi
+	if jq -n --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg dispatch "${dispatch_path}" \
+		--arg hint "$1" "${DENIAL_DETAILS_JQ}" </dev/null >"${temp_file}" &&
+		mv -f -- "${temp_file}" "${new_path}"; then
+		temp_file=''
+		details_path=${new_path}
+		return 0
+	fi
+	details_failed "could not write ${new_path}"
+}
+
+# Writes why the details file is missing to stderr; the deny goes on without it.
+details_failed() {
+	printf '%s: %s; the deny names no details file\n' "${PROG}" "$1" >&2
 }
 
 # A fault of this script, its install or the host: a deny (hook), or stderr and exit 5 (--direct).

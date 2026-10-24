@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Writes one dispatch plan from the main thread's choices, so the plan JSON is
-# never typed by hand. The plan is built, its context file checked by
+# never typed by hand, to the gate's plan file and as a plans item of the
+# context file's effort. The plan is built, its context file checked by
 # procedure-context's agent-context-file-checks.sh, agent-context-validator.jq
 # and context-versions.sh, and the plan
 # checked by dispatch-plan-validator.jq against the installed plugins; every
@@ -17,6 +18,8 @@ readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 # Leads the problem of a context version no longer its effort's latest, so a
 # caller matches it exactly: the Agent hook's KIND word for the same problem.
 readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
+readonly RECORD_KIND='plans'
+readonly RECORD_LABEL='dispatch-plan'
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -76,7 +79,8 @@ usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-fil
        sh ${PROG} --help | -h
 
 Writes one dispatch plan, the JSON render-dispatch-plan.sh renders, to
---plan-file, and prints its digest.
+--plan-file and to a new ${RECORD_KIND} item of the context file's effort, and
+prints its digest.
 shape and plan rules: see dispatch-plan-validator.jq beside this script
 
 Options:
@@ -85,9 +89,10 @@ Options:
   --agent AGENT       the agent the plan dispatches; "main thread" for direct
                       implementation
   --mode BUILD|TEST   the dispatch mode
-  --context-file CTX  the effort's context file, checked by procedure-context's
-                      context-file checks and for being its effort's latest
-                      version; its path and sha256 go into the plan
+  --context-file CTX  the effort's context file, in its effort folder, checked
+                      by procedure-context's context-file checks and for
+                      being its effort's latest version; its path and sha256
+                      go into the plan
   --task TEXT         one task, in order; two or more make a group
   --load NAME         a plugin to load, its list-plugins.sh name, in order
   --skip NAME         an installed plugin not loaded, in order
@@ -98,18 +103,23 @@ Options:
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; the
                       installed plugins are those its list-plugins.sh lists,
                       invalid ones left out
+  CRUCIBLE_HOME       the space, as the crucible skill's crucible.sh --help
+                      sets
 
-stdout on exit 0, two lines in this order:
+stdout on exit 0, three lines in this order:
   PLAN_FILE: <the --plan-file as given>
   PLAN_SHA256: <64 lowercase hex>, the plan's digest, which
     generate-agent-dispatch.sh --plan-sha256 takes
+  PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item holding the same plan,
+    which render-dispatch-plan.sh --data Plan= takes
 stderr on exit 3: one "${PROG}: <option> <value>: <problem>;
   expected <x>" line per problem, every problem listed
 list-plugins.sh's stderr: passed through, to relay
 
-After exit only --plan-file may have changed, to the whole plan, never on
-  exits 2, 3 and 5; its temp file, in the same folder, is removed on every
-  exit (a SIGKILL aside).
+After exit 0, --plan-file and the new ${RECORD_KIND} item hold the whole plan; on
+  exit 1 only --plan-file may have changed, stderr saying so; on any other
+  exit nothing changed. The space's other changes are crucible.sh new's.
+  Nothing else is left behind (a SIGKILL aside).
 Reads only the context file, the names in its folder when it is a version
   file, the plan it wrote, and what list-plugins.sh reads.
 
@@ -131,7 +141,7 @@ Dependencies (skills in --skills-dir):
   this skill's scripts/dispatch-plan/list-plugins.sh
   the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
     agent-context-validator.jq, agent-context-url.jq and context-versions.sh
-  the crucible skill's scripts/lib/crucible-space.sh
+  the crucible skill's scripts/crucible.sh and scripts/lib/crucible-space.sh
   beside this script: dispatch-plan-validator.jq, installed-plugins.jq and
     ../agent-dispatch/dispatch-names.jq
 EOF
@@ -176,9 +186,12 @@ printable() {
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
+# Removes the temp file, and the plan record on a failed or stopped run.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
-remove_temp_file() {
+remove_partial_files() {
+	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
+	[ "${exit_status}" -eq 0 ] || [ -z "${record_file}" ] || rm -f "${record_file}"
 }
 
 # Handles option $1 when no option value is awaited: sets awaited_option, or exits 2.
@@ -306,6 +319,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
+	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
+	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
+		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill or pass the right --skills-dir"
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -357,6 +373,20 @@ check_context_file() {
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
 	compute_context_digest "${context_file}" ||
 		die 5 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
+	find_record_effort
+}
+
+# Sets record_effort to the effort folder the context file lies in, or adds a
+# context problem; exits 5 when the space root is unusable.
+find_record_effort() {
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read here
+	crucible_resolve_root || die 5 "space: ${crucible_root_problem}"
+	# shellcheck disable=SC2310 # its status says whether the path is in an effort
+	if crucible_effort_of "${context_file}"; then
+		record_effort=${crucible_effort}
+		return 0
+	fi
+	add_context_problem "not in an effort folder; expected the context file of an effort in ${crucible_root}/efforts/"
 }
 
 # Appends problem $1 of the context file to context_problems as a stderr line,
@@ -434,6 +464,19 @@ write_plan() {
 	temp_file=''
 }
 
+# Writes plan_json to a new plans item of the context file's effort, through
+# crucible.sh new, and sets record_file to it; or exits 1, nothing written.
+write_record() {
+	new_record=$(sh "${crucible_script}" new --kind "${RECORD_KIND}" --effort "${record_effort}" --label "${RECORD_LABEL}" </dev/null) ||
+		die 1 "crucible.sh new --kind ${RECORD_KIND} failed (its stderr is above); nothing was written; expected an empty file in ${record_effort}/${RECORD_KIND}/; fix what it names, then rerun"
+	case ${new_record} in
+		"${record_effort}/${RECORD_KIND}/"*.json) record_file=${new_record} ;;
+		*) die 1 "crucible.sh new printed no file of ${record_effort}/${RECORD_KIND}/; nothing was written; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun" ;;
+	esac
+	printf '%s\n' "${plan_json}" >"${record_file}" ||
+		die 1 "could not write the plan record ${record_file}; nothing was written; expected a writable folder ${record_effort}/${RECORD_KIND}; try checking its free space, then rerun"
+}
+
 # Sets context_digest to the sha256 of the written plan in canonical form, the
 # one line jq -cS . prints for it, its newline included; or exits 1. The gate
 # record is the plan with "v": 1 added, so jq -cS 'del(.v)' of it hashes the same.
@@ -446,8 +489,8 @@ ${canonical_plan}
 EOF
 }
 
-temp_file='' tools_checked=''
-trap remove_temp_file EXIT
+temp_file='' tools_checked='' record_file='' record_effort=''
+trap remove_partial_files EXIT
 # A signal exits through the EXIT trap, so the temp file goes on every path.
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -483,6 +526,7 @@ read_installed
 check_context_file
 check_plan_file
 build_plan "$@"
+write_record
 write_plan
 digest_written_plan
-printf 'PLAN_FILE: %s\nPLAN_SHA256: %s\n' "${plan_file}" "${context_digest}"
+printf 'PLAN_FILE: %s\nPLAN_SHA256: %s\nPLAN_RECORD: %s\n' "${plan_file}" "${context_digest}" "${record_file}"

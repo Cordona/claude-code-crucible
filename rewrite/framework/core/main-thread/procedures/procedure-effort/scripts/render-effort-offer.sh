@@ -6,8 +6,9 @@
 set -eu
 
 readonly PROG='render-effort-offer.sh'
+readonly RENDER_LIB='lib-render'
 # The offer stays a glance: a handful of one-line reasons, each short enough
-# to fit one terminal line beside its bullet.
+# to fit one terminal line beside its list number.
 readonly MAX_REASONS=5
 readonly MAX_REASON_CHARS=100
 
@@ -39,17 +40,18 @@ end
 
 # A reason that starts like a Markdown block (a heading, a quote, a rule, a
 # list item or a code fence) gets that start backslash-escaped, so every reason
-# renders as one plain bullet; inline Markdown stays as written.
+# renders as one plain line or list item; inline Markdown stays as written.
 # shellcheck disable=SC2016
-readonly RENDER_JQ='
+readonly RENDER_JQ='include "view";
 def block_start: "^(#{1,6}( |$)|>|(?<rule>[-*_])( *\\k<rule>){2,} *$|[-+*]( |$)|```|~~~)";
 def ordered_start: "^[0-9]{1,9}[.)]( |$)";
-def one_bullet:
+def plain_line:
 	if test(block_start) then "\\" + .
 	elif test(ordered_start) then sub("^(?<number>[0-9]{1,9})"; "\(.number)\\")
 	else . end;
-"## 🧭 This looks like a bigger piece of work\n\n"
-	+ (.[0].reasons | map("- " + (sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "") | one_bullet)) | join("\n"))
+[status_line("decision"; "Decision needed · start an effort for this?"),
+ section("Why"; .[0].reasons | map(sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "") | plain_line))]
+| blocks
 '
 
 usage() {
@@ -67,14 +69,15 @@ Options:
                     (line break, tab) or U+2028/U+2029, at most ${MAX_REASON_CHARS} characters
                     (code points, as written); inline Markdown in a reason
                     renders, a leading block mark (#, >, -, 1.) shows as text
+  CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout on exit 0 only: the offer's Markdown, a fixed title and one bullet per
-  reason in input order, with no gate marker
+stdout on exit 0 only: the offer's Markdown, a fixed decision line and the
+  reasons in input order, with no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a reason is named
   reasons[<i>], from 0, with its first fault only
-stderr on exits 1, 3: "${PROG}: install:", a prefix no other exit
-  prints; tell the human to install jq 1.6+, and stop
+stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
+  prints; tell the human what it names to install, and stop
 
 Exit codes:
   0  the offer printed; go on
@@ -83,9 +86,11 @@ Exit codes:
   3  jq failed on valid JSON
   4  stdout closed before the offer was written, nothing on stderr; stop and
      show the exit code
+  5  the ${RENDER_LIB} skill's view.jq missing
 
 Dependencies: POSIX sh, cat, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package); the plan file is read as UTF-8 whatever the locale.
+  distro's jq package), the ${RENDER_LIB} skill's view.jq in the skills; the
+  plan file is read as UTF-8 whatever the locale.
 EOF
 }
 
@@ -138,7 +143,7 @@ read_input() {
 
 # Runs jq program $1 over the slurped input; a jq failure exits 3.
 run_jq() {
-	printf '%s' "${slurped}" | jq -r --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" "$1" || {
+	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" "$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }
@@ -146,6 +151,10 @@ run_jq() {
 parse_args "$@"
 command -v jq >/dev/null 2>&1 ||
 	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
+
+render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
+[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
+	install_fault 5 "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)

@@ -13,6 +13,7 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 - **`--skip <name> --reason <line>`:** every other installed plugin.
 - **`--loaded-reason <line>`:** only with no `--load`: why nothing is loaded.
 - **`--replan`:** only on a step-10 re-plan, as Step-10 re-plans below sets; leave it out otherwise.
+- **`--data 'Plan=<path>'`** (the renderer's, printing the plan): the generator's `PLAN_RECORD:` path, so the plan's Data section names its lasting record.
 - **`--plans <n>`** (the renderer's, with `--question`): the plan count step 6 wrote into step 7's todo item, the plans this run shows one after another; `1` for a step-10 re-plan and for step 11.
 
 ## Reasons
@@ -26,7 +27,7 @@ What the main thread decides for each plan at SKILL.md's step 7, as `generate-di
 
 A re-plan from SKILL.md's step 10 for a `PLUGIN` denial moves the dropped plugin to `--skip`, its reason the step-10 drop step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it, `faulty files` when it still lists it (a fault only the hook finds).
 
-- **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with "fix it, then rerun" above it. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
+- **`invalid`:** add `--replan invalid` and show the plan through a show-only gate (`open-gate.sh --show-only`), with no note above it: the renderer prints it as blocked, naming the invalid plugins and what to do. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
 - **`uninstalled after approval` or `faulty files`, while the dropped plugin's description still matches the task** (as SKILL.md's step 5 sets): add `--replan stop-recommended`.
 - **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; SKILL.md's step 10 stops that dispatch. A `CONTEXT-STALE` denial with no `CONTEXT` is re-planned with the latest version, as step 10 sets.
 - **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

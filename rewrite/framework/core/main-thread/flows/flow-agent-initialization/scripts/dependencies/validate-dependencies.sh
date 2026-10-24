@@ -1,17 +1,20 @@
 #!/usr/bin/env sh
-# Prints the install checklist for flow-agent-initialization: its five other
+# Runs the install check for flow-agent-initialization: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh, the
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module,
-# lib-render's path helpers, which a printed plan loads, procedure-approval-gate's
+# lib-render's path helpers, which the developer report renderer loads, and its
+# view module, which every view of the flow loads, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
 # date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the three hook
 # entries in settings.json (the inject hook, which must block on failure, and
 # both gate hooks), the Crucible
 # space in its additionalDirectories, and the installed plugins. Every check
-# runs, whatever an earlier one found, so one run names every fix. It reads
+# runs, whatever an earlier one found, so one run names every fix; the lines
+# are kept and printed at the end, as a pass line, a view or the full
+# checklist. It reads
 # settings.json only through jq, and only those hook commands and
 # permissions.additionalDirectories, which it counts or hashes and never
 # prints: the file may hold secrets in its env block.
@@ -54,6 +57,8 @@ readonly TEMPLATE_FILE='references/agent-context-rules.md'
 readonly MAX_LINK_HOPS=40
 readonly RENDER_LIB='lib-render'
 readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
+readonly VIEW_NAME='view'
+readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
@@ -132,11 +137,33 @@ export LC_ALL
 NL='
 '
 readonly NL
+# Separates the view items handed to jq; no check text holds it.
+ITEM_SEPARATOR=$(printf '\036')
+readonly ITEM_SEPARATOR
+# Builds the view of a full run from $fixes and $warnings, items separated
+# by U+001E, and the counts $failed and $total.
+# shellcheck disable=SC2016 # the $ names are jq's
+readonly RESULT_VIEW_JQ='
+def items: split("\u001e") | map(select(length > 0) | gsub("[\u0000-\u001f\u007f]"; "?") | (.[:1] | ascii_upcase) + .[1:]);
+($fixes | items) as $fix_items
+| ($warnings | items) as $warning_items
+| if ($failed | tonumber) > 0 then
+	[status_line("blocked"; "Blocked · install check: \($failed) of \($total) checks failed"),
+		section("Fix"; $fix_items)]
+  elif ($warning_items | length) > 0 then
+	[status_line("attention"; "Install check passed with \($warning_items | length) warning" + (if ($warning_items | length) == 1 then "" else "s" end)),
+		section("Warning"; "Warnings"; $warning_items)]
+  else [status_line("done"; "Install check passed"; "\($total) checks")]
+  end
+| blocks'
+# Builds the pass line of a cached run from its pass time $since.
+# shellcheck disable=SC2016 # the $ names are jq's
+readonly CACHED_VIEW_JQ='status_line("done"; "Install check passed"; "unchanged since \($since)")'
 
 usage() {
 	cat <<EOF
 usage: sh ${PROG} [--skills-dir DIR] [--settings FILE]
-                                   [--cache-dir CACHE] [--force]
+                                   [--cache-dir CACHE] [--force] [--verbose]
        sh ${PROG} --help | -h
 
 Checks the skills, tools, settings.json entries and plugins
@@ -150,18 +177,21 @@ Options:
   --cache-dir CACHE  the cache folder; default
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/agent-init
   --force            runs every check even when the cached pass holds
+  --verbose          prints the full checklist: a header line, one line per
+                     check (✓, ✗ <item>: <reason>. Fix: <action>, or
+                     ⚠ <item>: <reason>), then a summary line
 
-stdout: the checklist, to relay: a header line, one line per check, a summary
-  line, then "(result not cached: <reason>)" when a pass can't be cached
-  (never a failure). The lines a caller reads:
-  ✗ <item>: <reason>. Fix: <action>
-                     a failed check; a hook or space fix names the exact
-                     settings.json entry to add
-  ⚠ <item>: <reason>  a warning
-  All checks passed.[ (<n> warning(s))]
-                     the pass line of a full run
-  ✓ Install unchanged since <YYYY-MM-DD HH:MM>: <n> checks passed
-                     the pass line of a cached run, its only check line
+stdout, to relay as printed; its last line is "(result not cached: <reason>)"
+  when a pass can't be cached (never a failure):
+  🟢 **Install check passed** · <n> checks
+                     a pass with no ⚠
+  🟢 **Install check passed** · unchanged since <YYYY-MM-DD HH:MM>
+                     a cached pass
+  a view             any ✗: blocked, one Fix item per ✗ or ⚠ line, a hook
+                     or space fix naming the exact settings.json entry to
+                     add; only ⚠: passed, one Warnings item per ⚠ line
+  without jq or ${VIEW_MODULE}: the --verbose output instead, a pass
+                     without its header and check lines
 
 Cache: leaves only CACHE/${MARKER_NAME}, replaced atomically, after a pass with
   no ⚠, and reuses it until anything the checks read changes; a ✗ or ⚠
@@ -171,7 +201,7 @@ Reads only settings.json's hook entries and
 
 Exit codes:
   0  every check passed (a ⚠ included), or the cached pass holds; go on
-  1  a check failed, not only the inject hook; stop: each ✗ line names its fix
+  1  a check failed, not only the inject hook; stop: each Fix item names its fix
   2  usage error; reinstall ${PROCEDURE} and stop
   3  only the inject hook check failed; dispatch nothing, direct
      implementation can go on
@@ -199,6 +229,7 @@ parse_args() {
 	settings_file="${config_dir}/settings.json"
 	cache_dir="${config_dir}/cache/agent-init"
 	force=0
+	verbose=0
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
@@ -207,6 +238,10 @@ parse_args() {
 				;;
 			--force)
 				force=1
+				shift
+				;;
+			--verbose)
+				verbose=1
 				shift
 				;;
 			--skills-dir | --settings | --cache-dir)
@@ -218,7 +253,7 @@ parse_args() {
 				esac
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --skills-dir, --settings, --cache-dir, --force or --help" ;;
+			*) usage_error "unknown argument: $1; expected --skills-dir, --settings, --cache-dir, --force, --verbose or --help" ;;
 		esac
 	done
 	procedure_dir="${skills_dir}/${PROCEDURE}"
@@ -268,7 +303,7 @@ fingerprint_input() {
 		"${context_scripts_dir}/${CONTEXT_VALIDATOR_LIB}" "${context_scripts_dir}/${CONTEXT_URL_LIB}" \
 		"${context_scripts_dir}/${CONTEXT_FILE_LIB}" \
 		"${context_scripts_dir}/${CONTEXT_VERSIONS_LIB}" "${context_procedure_dir}/${TEMPLATE_FILE}" \
-		"${skills_dir}/${PATHS_MODULE}" \
+		"${skills_dir}/${PATHS_MODULE}" "${skills_dir}/${VIEW_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
@@ -343,15 +378,25 @@ EOF
 	esac
 }
 
+# Adds line $1 to the full checklist.
+add_line() {
+	checklist="${checklist}$1${NL}"
+}
+
 pass() {
-	printf '✓ %s\n' "$1"
+	add_line "✓ $1"
 	passed_count=$((passed_count + 1))
 }
 
-# Prints a failed line for item $1, reason $2 and fix $3, and counts it.
+# Records a failed line for item $1, reason $2 and fix $3 as a Fix item, and counts it.
 fail() {
-	printf '✗ %s: %s. Fix: %s\n' "$1" "$2" "$3"
+	add_line "✗ $1: $2. Fix: $3"
+	add_fix_item "$1: $2. Fix: $3"
 	failed_count=$((failed_count + 1))
+}
+
+add_fix_item() {
+	fix_items="${fix_items}${ITEM_SEPARATOR}$1"
 }
 
 # Fails a hook entry check for script $1 like fail with $2..$4, and counts a
@@ -364,9 +409,11 @@ fail_hook() {
 	[ "${hook_script}" != "${HOOK_SCRIPT}" ] || inject_failed_count=$((inject_failed_count + 1))
 }
 
-# Prints a warning line for item $1 and reason $2, and counts it.
+# Records a warning line for item $1 and reason $2 as a Fix and a Warnings item, and counts it.
 warn() {
-	printf '⚠ %s: %s\n' "$1" "$2"
+	add_line "⚠ $1: $2"
+	add_fix_item "$1: $2"
+	warning_items="${warning_items}${ITEM_SEPARATOR}$1: $2"
 	warning_count=$((warning_count + 1))
 }
 
@@ -740,12 +787,12 @@ check_plugins() {
 		0) report_counts ;;
 		1) warn 'no plugins installed' 'every code part becomes "no plugin fits"' ;;
 		3)
-			fail 'invalid plugins' 'list-plugins.sh reported the plugins below' 'fix or reinstall each one, then rerun'
-			print_reports
+			fail 'invalid plugins' 'list-plugins.sh reported invalid plugins' 'fix or reinstall each one, then rerun'
+			add_reports
 			;;
 		*)
-			fail 'plugins not listed' "list-plugins.sh exited ${list_status}" "fix what it reports below, or reinstall ${PROCEDURE}"
-			print_reports
+			fail 'plugins not listed' "list-plugins.sh exited ${list_status}" "fix what it reports, or reinstall ${PROCEDURE}"
+			add_reports
 			;;
 	esac
 }
@@ -774,20 +821,28 @@ EOF
 report_counts() {
 	plugin_count=$((tech_count + standard_count + procedure_count))
 	if [ -n "${reports}" ] || [ "${plugin_count}" -eq 0 ]; then
-		fail 'plugins not listed' 'list-plugins.sh exited 0 with an unexpected listing' "rerun it with --max-lines 0 and fix what it reports below"
-		print_reports
+		fail 'plugins not listed' 'list-plugins.sh exited 0 with an unexpected listing' "rerun it with --max-lines 0 and fix what it reports"
+		add_reports
 		return 0
 	fi
 	pass "${plugin_count} plugins installed: ${tech_count} tech, ${standard_count} standards, ${procedure_count} procedures"
 }
 
-# Prints each report line indented, its tabs as spaces and other control
-# characters dropped, so a line from list-plugins.sh can't forge a checklist line.
-print_reports() {
+# Adds each report line, its tabs as spaces and other control characters
+# dropped, so a line from list-plugins.sh can't forge a checklist line:
+# indented to the checklist, and joined by "; " to the last Fix item.
+add_reports() {
 	[ -n "${reports}" ] || return 0
-	printf '%s' "${reports}" | tr '\011' ' ' | tr -d '\001-\010\013-\037\177' | while IFS= read -r line; do
-		printf '  %s\n' "${line}"
-	done
+	clean_reports=$(printf '%s' "${reports}" | tr '\011' ' ' | tr -d '\001-\010\013-\037\177')
+	reported=''
+	while IFS= read -r line; do
+		[ -n "${line}" ] || continue
+		add_line "  ${line}"
+		reported="${reported}${reported:+; }${line}"
+	done <<EOF
+${clean_reports}
+EOF
+	[ -z "${reported}" ] || fix_items="${fix_items} (reported: ${reported})"
 }
 
 # Writes the marker after a clean pass and removes it after a failure or a
@@ -839,8 +894,59 @@ check_base_tools() {
 	done
 	[ "${failed_count}" -gt 0 ] || return 0
 	record_result
-	print_summary
+	print_result
 	exit 1
+}
+
+# Prints the result: the full checklist with --verbose, the pass line on a
+# clean pass, else the view, or the full checklist when it can't be rendered;
+# then the cache note.
+print_result() {
+	# shellcheck disable=SC2310 # render_view's status picks the fallback checklist
+	if [ "${verbose}" -eq 1 ]; then
+		print_checklist
+	elif result_view=$(render_view); then
+		printf '%s\n' "${result_view}"
+	else
+		[ "${failed_count}" -eq 0 ] && [ "${warning_count}" -eq 0 ] || verbose=1
+		print_checklist
+	fi
+	[ -z "${cache_note}" ] || printf '(result not cached: %s)\n' "${cache_note}"
+}
+
+# Prints the header and check lines with --verbose, then the summary line.
+print_checklist() {
+	[ "${verbose}" -eq 0 ] || printf '%s' "${checklist}"
+	print_summary
+}
+
+# Prints the view of a full run; fails when it can't be built.
+render_view() {
+	render_with_view "${RESULT_VIEW_JQ}" --arg fixes "${fix_items}" --arg warnings "${warning_items}" \
+		--arg failed "${failed_count}" --arg total "$((passed_count + failed_count + warning_count))"
+}
+
+# Prints the cached pass: its view, the full checklist's line with --verbose,
+# or that line when the view can't be built.
+print_cached_pass() {
+	# shellcheck disable=SC2310 # render_with_view's status picks the fallback line
+	if [ "${verbose}" -eq 0 ] && cached_view=$(render_with_view "${CACHED_VIEW_JQ}" --arg since "${cached_time}"); then
+		printf '%s\n' "${cached_view}"
+		return 0
+	fi
+	[ "${verbose}" -eq 0 ] || printf '%s' "${checklist}"
+	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
+}
+
+# Prints jq program $1, given the further jq arguments, run after lib-render's
+# view module; fails when jq or the module is missing or jq fails.
+render_with_view() {
+	command -v jq >/dev/null 2>&1 || return 1
+	render_lib_dir="${skills_dir}/${RENDER_LIB}"
+	[ -f "${render_lib_dir}/${VIEW_NAME}.jq" ] && [ -r "${render_lib_dir}/${VIEW_NAME}.jq" ] || return 1
+	view_program=$1
+	shift
+	jq -nr -L "${render_lib_dir}" "$@" "include \"${VIEW_NAME}\"; ${view_program}" </dev/null 2>/dev/null
 }
 
 print_summary() {
@@ -855,13 +961,15 @@ print_summary() {
 	else
 		printf '%s check(s) failed.\n' "${failed_count}"
 	fi
-	[ -z "${cache_note}" ] || printf '(result not cached: %s)\n' "${cache_note}"
 }
 
 passed_count=0
 failed_count=0
 inject_failed_count=0
 warning_count=0
+checklist=''
+fix_items=''
+warning_items=''
 cache_note=''
 marker_tmp=''
 trap '[ -z "${marker_tmp}" ] || rm -f "${marker_tmp}"' EXIT
@@ -869,13 +977,13 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 parse_args "$@"
-printf 'Agent initialization: install check\n'
+add_line 'Agent initialization: install check'
 check_base_tools
 resolve_crucible_home
 compute_fingerprint
 # shellcheck disable=SC2310 # a pure test of the marker; its status is the answer
 if [ "${force}" -eq 0 ] && cached_pass_holds; then
-	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
+	print_cached_pass
 	exit 0
 fi
 check_script "${PROCEDURE}" "${LIST_SCRIPT}"
@@ -901,12 +1009,13 @@ check_lib_file "${CONTEXT_FILE_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDU
 check_lib_file "${CONTEXT_VERSIONS_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
 check_template
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
+check_lib_file "${VIEW_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq
 check_run_tools
 check_settings
 check_plugins
 record_result
-print_summary
+print_result
 if [ "${failed_count}" -eq 0 ]; then exit 0; fi
 if [ "${failed_count}" -eq "${inject_failed_count}" ]; then exit 3; fi
 exit 1

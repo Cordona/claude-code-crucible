@@ -19,7 +19,7 @@ An entry that can't be read (a Read or WebFetch that fails, a tracker read that 
 
 Kept here, not left to `procedure-read-trackers`: the main thread has loaded no plugin (a plugin reaches only a first message or a prompt file), and it acts on the exits differently.
 
-`read-link.sh` reads a link from a written context version, so the tracker links are read once SKILL.md's step 4 or step 5 has written it. Run `read-link.sh --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: no tracker link is read; tell the human, and weigh the others without them, as the last bullet below sets. Per link:
+`read-link.sh` reads a link from a written context version, so the tracker links are read once SKILL.md's step 4 or step 5 has written it. Run `read-link.sh --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: no tracker link is read; show the line `Tracker links are not read: read-link.sh could not run.`, word for word without its backticks and in a message of its own, and weigh the others without them, as the last bullet below sets. Per link:
 
 `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-read-trackers/scripts/read-link.sh" --context-file <the CONTEXT_FILE path> --link <n>`
 
@@ -27,7 +27,7 @@ Kept here, not left to `procedure-read-trackers`: the main thread has loaded no 
 - **Read-only:** never write to a tracker.
 - **Exit 0:** stdout is the ticket; weigh it as the other entries.
 - **Exit 3:** not a tracker link: read it with WebFetch, as item 3 above sets.
-- **Exit 1, any other exit, or the script missing** (`procedure-read-trackers` not installed): the link is not read; tell the human which link, with the first line of stderr or the exit code, and weigh the others without it.
+- **Exit 1, any other exit, or the script missing** (`procedure-read-trackers` not installed): the link is not read; show the line `Link <n> was not read (read-link.sh exit <code>).`, as the line above is shown, and weigh the others without it.
 
 ## Weigh it
 
@@ -40,8 +40,8 @@ Compare what the human's words ask with what each source says. This is the one f
 ## Asking
 
 - **One AskUserQuestion call, one question per contradiction:** more than the tool takes in one call, the rest in the next call. Only the human's answer settles a contradiction, never the main thread's judgement.
-- **The question:** the contradiction in one line, then both sides quoted, each with where it is: the human's words (the note, or the text file's line) and the source's (its path and line, or its link).
-- **The options:** one per side, each saying what gets built on it and naming the source it overrules by its path or link, never quoting it, so the label can go into a note as it reads and tell the agent which source it settles: `Follow your request over docs/prune.md: deletes by default`, `Follow docs/prune.md over your request: dry run by default`. When both sides are the human's, each label names the statement it overrules in the human's words: `Follow "deletes by default" over "never delete unless --apply": deletes with no flag`.
+- **The question:** the contradiction in one line, then both sides quoted, each with where it is: the human's words (the note, or the text file's line) and the source's (its absolute path and line, or its URL).
+- **The options:** one per side, each saying what gets built on it and naming the source it overrules by its path or URL, never quoting it, so the label can go into a note as it reads and tell the agent which source it settles: `Follow your request over docs/prune.md: deletes by default`, `Follow docs/prune.md over your request: dry run by default`. When both sides are the human's, each label names the statement it overrules in the human's words: `Follow "deletes by default" over "never delete unless --apply": deletes with no flag`.
 - **The recommended side first:** list first the side the main thread judges right on the facts, which may be the source over the human's words; its label ends with ` (Recommended)`, and the marker goes nowhere else (no description, no question text); the question says why in one line.
 - **Last, always, `Stop the work`:** it acts as a typed answer that stops the work.
 - **A picked side, or a typed answer that settles it:** the contradiction is settled; record it as a note (below).
@@ -51,5 +51,5 @@ Compare what the human's words ask with what each source says. This is the one f
 ## The answer becomes a note
 
 - **One `--note` per settled contradiction** in the next version's call (SKILL.md step 4 or 5), in the human's own words: the option's label as it reads, without `(Recommended)`, or the typed answer as they gave it.
-- **Name the other side by its path or link, never quote it:** a note holds no repository text, web page or ticket text. A statement of the human's is named in their own words, and both statements stay as notes beside the answer.
+- **Name the other side by its path or URL, never quote it:** a note holds no repository text, web page or ticket text. A statement of the human's is named in their own words, and both statements stay as notes beside the answer.
 - **A contradiction found in a tracker link,** after its version is written: settle it the same way, then extend the context with the new note (SKILL.md step 5), and keep the new `CONTEXT_FILE` path in place of the old.

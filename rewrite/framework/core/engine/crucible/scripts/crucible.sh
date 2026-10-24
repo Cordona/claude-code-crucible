@@ -1,22 +1,21 @@
 #!/usr/bin/env sh
 # Hands out paths in the effort folders of the durable Crucible space, finds
-# items by ID or kind, renders and opens them, expires an effort's cache and
-# prunes efforts no file changed in for long.
+# items by ID or kind, opens them, expires an effort's cache and prunes
+# efforts no file changed in for long.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches baselines reports/development reports/review cache/gates cache/prompts'
-readonly CACHE_KINDS='cache/gates cache/prompts'
+readonly KIND_LIST='context dispatches baselines plans reports/development reports/review cache/gates cache/prompts cache/denials'
+readonly CACHE_KINDS='cache/gates cache/prompts cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
 readonly CACHE_MAX_DAYS=7
 # Bounds the --older-than value handed to find -mtime, far past any real age.
 readonly MAX_PRUNE_DAYS_DIGITS=5
-readonly REPORT_RENDERER='skills/standard-code-development-report/scripts/report.sh'
-readonly RENDERED_REPORT_KIND='reports/development'
+readonly RENDER_LIB='lib-render'
 # The C locale keeps the shell's patterns and sort byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -27,7 +26,7 @@ usage() {
 usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
        crucible.sh path ID
        crucible.sh find --effort FOLDER --kind KIND [--label LABEL]
-       crucible.sh open ID [--format md|html] [--editor CMD]
+       crucible.sh open ID [--editor CMD]
        crucible.sh prune --older-than Nd [--apply]
        crucible.sh root
        crucible.sh --help | -h
@@ -35,15 +34,16 @@ usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
 Hands out, finds, opens and prunes the files of the durable Crucible space.
 
 The space: \${CRUCIBLE_HOME:-\$HOME/.crucible}, absolute, not / and not a
-symbolic link. Nothing outside it is written or removed but open's temp
-folder; folders made are mode 700, files 600. A symbolic link for efforts/,
-an effort or a kind folder: new and find refuse it, the rest skip it.
+symbolic link. Nothing outside it is written or removed; folders made are
+mode 700, files 600. A symbolic link for efforts/, an effort or a kind
+folder: new and find refuse it, the rest skip it.
 
 Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
-  kind    context, dispatches, baselines, reports/development, reports/review,
-          cache/gates or cache/prompts; the cache kinds expire after ${CACHE_MAX_DAYS} days
+  kind    context, dispatches, baselines, plans, reports/development,
+          reports/review, cache/gates, cache/prompts or cache/denials; the
+          cache kinds expire after ${CACHE_MAX_DAYS} days
   ext     md for cache/prompts, json for every other kind
 
 Options:
@@ -54,7 +54,6 @@ Options:
                       ${help_label_rule}
   ID                  path, open (before its options): a full ID or its
                       4 hex digits
-  --format md|html    open: md, the default; html is not available yet
   --editor CMD        open: run by sh with the file as last argument, instead
                       of open (macOS) or xdg-open (Linux), and waited for: it
                       must hand the file to a GUI app and return (code, idea;
@@ -70,9 +69,8 @@ Commands:
   find   stdout: the absolute path of each KIND item (with --label, of that
          label) in --effort's folder, one per line, newest first; nothing
          when there is none (KIND folder missing included). Read-only.
-  open   renders the item as Markdown into a new folder in \${TMPDIR:-/tmp},
-         never in the space, kept for the editor (removed if open fails or
-         is stopped), and opens it. stdout: one line, opened <file>.
+  open   opens the item's own file. stdout: one line, "🟢 **Opened:** <its
+         absolute path>".
   prune  lists effort folders unchanged for N days, or with --apply removes
          them, never one modified in the last 24 hours or not fully
          readable; touches nothing else and follows no symbolic link.
@@ -89,10 +87,11 @@ Exit codes:
 
 Dependencies:
   POSIX sh; lib/crucible-space.sh beside this script
-  cat, date, find, mkdir, mktemp, od, rm, sort, uname, /dev/urandom (every
+  cat, date, find, mkdir, od, rm, sort, uname, /dev/urandom (every
     macOS and Linux base system)
-  open: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); without
-    --editor, open (macOS) or xdg-open (Linux)
+  open: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); the
+    ${RENDER_LIB} skill's view.jq in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
+    without --editor, open (macOS) or xdg-open (Linux)
 EOF
 }
 
@@ -338,35 +337,29 @@ run_path() {
 }
 
 run_open() {
-	[ "$#" -gt 0 ] || usage_error 'open needs an ID; expected crucible.sh open ID [--format md|html] [--editor CMD]'
+	[ "$#" -gt 0 ] || usage_error 'open needs an ID; expected crucible.sh open ID [--editor CMD]'
 	case $1 in
-		-*) usage_error "open needs an ID first, before $1; expected crucible.sh open ID [--format md|html] [--editor CMD]" ;;
+		-*) usage_error "open needs an ID first, before $1; expected crucible.sh open ID [--editor CMD]" ;;
 		*) ;;
 	esac
 	wanted_id=$1
 	shift
-	format=md editor=''
+	editor=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--format | --editor) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for open: $1; expected --format or --editor" ;;
+			--editor)
+				require_value "$1" "$#"
+				editor=$2
+				shift 2
+				;;
+			*) usage_error "unknown argument for open: $1; expected --editor CMD" ;;
 		esac
-		case $1 in
-			--format) format=$2 ;;
-			*) editor=$2 ;;
-		esac
-		shift 2
 	done
-	case ${format} in
-		md) ;;
-		html) usage_error 'html not available yet; expected --format md' ;;
-		*) usage_error "unknown format: ${format}; expected md or html" ;;
-	esac
 	find_item "${wanted_id}"
 	check_jq
-	render_to_temp
+	opened_line=$(render_opened_line)
 	open_in_editor
-	printf 'opened %s\n' "${rendered}"
+	printf '%s\n' "${opened_line}"
 }
 
 run_find() {
@@ -422,7 +415,7 @@ parse_item_name() {
 	crucible_is_label "${parsed_label}"
 }
 
-# Sets item_id, item_path, item_kind and item_label for the one item an ID names.
+# Sets item_id and item_path for the one item an ID names.
 find_item() {
 	# shellcheck disable=SC2310 # pure tests; their status is the answer
 	crucible_is_id "$1" || crucible_is_id_hex "$1" ||
@@ -470,74 +463,31 @@ match_in_kind() {
 		# shellcheck disable=SC2310 # its status says whether the name is an item's
 		parse_item_name "${candidate##*/}" "${kind}" || continue
 		[ "${parsed_id}" = "${wanted}" ] || [ "${parsed_id##*-}" = "${wanted}" ] || continue
-		item_id=${parsed_id} item_path=${candidate} item_kind=${kind} item_label=${parsed_label}
+		item_id=${parsed_id} item_path=${candidate}
 		matches="${matches}${item_id} ${item_path}
 "
 		match_count=$((match_count + 1))
 	done
 }
 
-# Writes the render of the found item to a new temp folder and sets rendered.
-render_to_temp() {
-	temp_base=${TMPDIR:-/tmp}
-	temp_base=${temp_base%/}
-	case ${temp_base} in
-		"${root}" | "${root}"/*) temp_base=/tmp ;;
-		*) ;;
-	esac
-	temp_dir=$(mktemp -d "${temp_base}/crucible-open.XXXXXX") ||
-		space_fault "mktemp -d in ${temp_base} failed; expected a writable TMPDIR"
-	trap remove_failed_render EXIT
-	trap 'exit 129' HUP
-	trap 'exit 130' INT
-	trap 'exit 143' TERM
-	rendered="${temp_dir}/${item_id}-${item_label}.md"
-	# shellcheck disable=SC2310 # every step in it is checked; a failure falls back to the generic render
-	if [ "${item_kind}" = "${RENDERED_REPORT_KIND}" ] && render_full_report >"${rendered}"; then return 0; fi
-	render_generic >"${rendered}"
-}
-
-# Removes open's temp folder when open fails or is stopped; on success it is
-# the editor's, so it stays.
-# shellcheck disable=SC2329 # invoked by the EXIT trap
-remove_failed_render() {
-	exit_status=$?
-	[ "${exit_status}" -eq 0 ] || rm -rf "${temp_dir}"
-}
-
-# Succeeds only when the report renderer supports --full and renders the item;
-# otherwise open falls back to the generic render.
-render_full_report() {
-	renderer="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/${REPORT_RENDERER}"
-	[ -f "${renderer}" ] || return 1
-	sh "${renderer}" --help 2>/dev/null | grep -q -e '--full' || return 1
-	sh "${renderer}" render --full --report "${item_path}" 2>/dev/null
-}
-
-render_generic() {
-	printf '# %s: %s\n\n' "${item_kind}" "${item_label}"
-	crucible_kind_extension "${item_kind}"
-	if [ ! -s "${item_path}" ]; then
-		printf 'Empty: nothing has been written to this item.\n'
-	elif [ "${crucible_extension}" = md ]; then
-		cat "${item_path}"
-	elif jq -e . "${item_path}" >/dev/null 2>&1; then
-		printf '```json\n'
-		jq . "${item_path}"
-		printf '```\n'
-	else
-		printf 'Not valid JSON; the file as stored:\n\n````text\n'
-		cat "${item_path}"
-		printf '\n````\n'
-	fi
+# Prints the line open reports, built from lib-render's layout module; exits 5
+# when the module is missing or jq fails on it.
+render_opened_line() {
+	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
+	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
+		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+	# shellcheck disable=SC2016 # the $ signs are jq's
+	jq -nr -L "${render_lib_dir}" --arg path "${item_path}" \
+		'include "view"; "\("done" | traffic_light) **Opened:** \($path | path_text)"' </dev/null ||
+		install_fault "jq failed on ${render_lib_dir}/view.jq; expected jq 1.6+ and the ${RENDER_LIB} skill's module; try reinstalling it"
 }
 
 open_in_editor() {
 	if [ -n "${editor}" ]; then
 		# The editor string is the human's own choice, split by sh as git does;
 		# the file path reaches it only as a separate argument.
-		sh -c "${editor} \"\$@\"" "${editor}" "${rendered}" >&2 ||
-			install_fault "the editor '${editor}' failed on ${rendered}; expected it to open the file"
+		sh -c "${editor} \"\$@\"" "${editor}" "${item_path}" >&2 ||
+			install_fault "the editor '${editor}' failed on ${item_path}; expected it to open the file"
 		return 0
 	fi
 	os=$(uname -s) || install_fault 'uname failed; expected the OS name to pick an opener'
@@ -548,8 +498,8 @@ open_in_editor() {
 	fi
 	command -v "${opener}" >/dev/null 2>&1 ||
 		install_fault "${opener} missing; expected it on PATH, or --editor CMD"
-	"${opener}" "${rendered}" >&2 ||
-		install_fault "${opener} failed on ${rendered}; expected it to open the file"
+	"${opener}" "${item_path}" >&2 ||
+		install_fault "${opener} failed on ${item_path}; expected it to open the file"
 }
 
 run_prune() {

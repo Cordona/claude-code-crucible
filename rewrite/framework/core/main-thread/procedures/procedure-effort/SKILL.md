@@ -45,17 +45,17 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 
 ## Steps
 
-Steps 1–4 offer and start an effort; steps 5–7 find one; step 8 hands it over.
+Steps 1–4 offer and start an effort; steps 5–7 find one; step 8 hands it over. "Show the line" means a fixed line: word for word without its backticks, its `<placeholders>` filled, nothing added, in a message of its own.
 
-Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/`; every command below runs them by that full path. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" --help` and `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --help` once each, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: tell the human to install `procedure-effort` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop: no effort starts without them.
+Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/`; every command below runs them by that full path. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" --help` and `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --help` once each, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: show the line `procedure-effort is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`, and stop: no effort starts without them.
 
 1. **Offer** the effort. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** the reasons, written from your judgment, in the shape `render-effort-offer.sh --help` sets.
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file <the plan file>`.
    - **The gate's label:** `effort-offer`, with no `--effort`, since no effort exists yet: the gate's record stays in the session's gate folder, outside the Crucible space.
-   - **The pipe exits non-zero** (the exit is `open-gate.sh`'s, so read the stderr): a `render-effort-offer.sh: install:` line is an install fault: tell the human, and start no effort. Any other `render-effort-offer.sh:` line is a refused input: fix what it names and run `procedure-approval-gate`'s step 1 again, once. A second refusal, or no renderer line: show the human the stderr and exit code, and start no effort.
-   - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, tell the human, and start no effort.
-   - **The Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown:** tell the human, and start no effort.
+   - **The pipe exits non-zero** (the exit is `open-gate.sh`'s, so read the stderr): a `render-effort-offer.sh: install:` line is an install fault: show the line `The effort offer could not be shown: its renderer is not installed correctly. No effort was started.`, and start no effort. Any other `render-effort-offer.sh:` line is a refused input: fix what it names and run `procedure-approval-gate`'s step 1 again, once. A second refusal, or no renderer line: show the human the stderr and exit code, and start no effort.
+   - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, show the line `The effort offer's question could not be read. No effort was started.`, and start no effort.
+   - **The Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown:** show the line `The effort offer could not be shown. No effort was started.`, and start no effort.
 2. **Act on the answer:**
    - **"Yes, start an effort":** step 3.
    - **"No, do it without one":** no effort; go on by CLAUDE.md's short path.
@@ -63,6 +63,7 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
 3. **Name** the effort from the human's request, up to 3 words, keeping NAME as `effort.sh --help` sets it. Good: `prune-dry-run`. Bad: `fix-the-prune-command-so-it-has-a-dry-run` (too many words).
 4. **Start** it: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" start --name '<name>'`, and act on its exit:
    - 0 with an `EFFORT: <absolute folder path>` line: keep that path for the rest of the work (step 8). Without that line: as any other exit.
+   - **Show the start** right after that exit 0, before step 8 loads the work's flow and before any other text or tool call: show the line `🟢 **Effort started · <name>:** <the absolute folder path>`, the path whole, since the human may open the folder.
    - 2 with an `effort.sh: bad name` stderr: name it again within step 3's rules and run this step once more. A second such 2: show the human the stderr, and stop.
    - Any other 2: show the human the stderr, and stop.
    - 4: show the human the stderr, and stop.
@@ -75,7 +76,7 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
    - Two or more candidates, or none: ask with one AskUserQuestion, and run no work step before the answer. Its options: the candidates (with none, the newest listed names), at most 2, the closest match first and marked (Recommended), each showing its `<id>-<name>` and its start date, read from the ID; then "none of these", and last "Stop".
    - On a candidate: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<its id>'` and go to step 7.
    - On the first "none of these", or when the list is empty (nothing to offer): ask what earlier work they mean, a full ID, its 4 hex digits or a name, and start step 5 again with their answer.
-   - On "Stop", or a second "none of these" or empty list: tell the human no effort is resumed, and stop.
+   - On "Stop", or a second "none of these" or empty list: show the line `No effort is resumed.`, and stop.
 7. **Act on `path`'s exit:**
    - 0 with exactly one line, an absolute path under the Crucible space's `efforts/`: keep it (step 8). Any other output: as any other exit.
    - 1 with efforts listed on stderr: ask the human as step 6 sets, those efforts as the candidates. 1 with none: run `list` as step 5 sets, then ask as step 6 sets.

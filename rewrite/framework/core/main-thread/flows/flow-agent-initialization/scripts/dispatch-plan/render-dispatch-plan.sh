@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
-# Renders one dispatch plan with its context file's path, or its approval
-# question, from JSON files, so the main thread never hand-formats either; --no-plugin-fits
-# does the same for a part no installed tech plugin fits. This script owns the
-# layout and the question wording. A dispatch plan's rules are
-# dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh
-# writes the plan; this script only
-# refuses a plan it can't render. The path display helpers are lib-render's
-# paths.jq. Pipe its stdout into procedure-approval-gate's open-gate.sh.
+# Renders one dispatch plan, or its approval question, from JSON files, so the
+# main thread never hand-formats either; --no-plugin-fits does the same for a
+# part no installed tech plugin fits. This script owns the wording; the layout
+# is lib-render's view.jq. A dispatch plan's rules are
+# dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
+# the plan; this script only refuses a plan it can't render. Pipe its stdout
+# into procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 
@@ -36,11 +35,11 @@ def installed:
 		| {key: .[1], value: {kind: .[0], label: .[2]}}) | from_entries;
 '
 
-# A printed plan of either kind starts with lib-render's path helpers, and a
+# A printed plan of either kind starts with lib-render's layout module, and a
 # dispatch plan or its question with the flow's shared names (direct_agent):
 # jq takes an include only at the start of the program, before the common
 # definitions and these.
-readonly PATHS_INCLUDE='include "paths";'
+readonly VIEW_INCLUDE='include "view";'
 readonly NAMES_INCLUDE="include \"${NAMES_MODULE}\";"
 # shellcheck disable=SC2016
 readonly PRINTED_JQ='
@@ -50,10 +49,11 @@ def task_text: gsub("\r"; "") | split("\n") | map(gsub("[[:cntrl:]]+"; " ") | su
 	| sub("\\A\n+"; "") | sub("\n+\\z"; "");
 # The later lines of a numbered item are indented under it; a blank line stays empty.
 def list_item_lines: split("\n") | .[:1] + (.[1:] | map(if . == "" then . else "   " + . end)) | join("\n");
-def task_section:
-	if (.tasks | length) == 1 then "### Task\n\n" + (.tasks[0] | task_text)
-	else "### Tasks\n\n" + ([.tasks | to_entries[] | "\(.key + 1). " + (.value | task_text | list_item_lines)] | join("\n")) end;
-def context_section($path; $digest): "### Context\n\n- \($path | clean | link_span) (sha256 \($digest[:12]))";
+def task_section: section("Task"; "Tasks"; .tasks | map(task_text | list_item_lines));
+# The --data pairs in the order given, then the context file.
+def data_pairs($context_path):
+	[$data_lines | split("\n")[] | select(. != "") | index("=") as $at | [.[:$at], .[($at + 1):]]]
+	+ [["Context", $context_path | clean]];
 '
 
 # Prints one line per field a printed plan (want "plan") or its question
@@ -80,9 +80,10 @@ checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
 # The slim plan: the plugins other than the tech plugin by label (the tech
-# plugin is the Tech line), standard-* first, then procedure-*, then any other
-# kind, each group in plan order; a plugin list-plugins.sh no longer prints
-# shows its name. Every reason stays in the plan JSON.
+# plugin is the Developer line), standard-* first, then procedure-*, then any
+# other kind, each group in plan order; a plugin list-plugins.sh no longer
+# prints shows its name. Every reason stays in the plan JSON. A replan
+# "invalid" plan shows only the plugins it dropped as invalid, and no question.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='
 def name_group: if startswith("standard-") then 0 elif startswith("procedure-") then 1 else 2 end;
@@ -90,19 +91,26 @@ def plugin_labels($list; $installed):
 	[$list[] | select($installed[.plugin].kind != "tech")]
 	| map(select(.plugin | name_group == 0)) + map(select(.plugin | name_group == 1)) + map(select(.plugin | name_group == 2))
 	| map($installed[.plugin].label // .plugin | clean);
-def labels_item($title; $labels):
-	if ($labels | length) == 0 then "- \($title): none" else "- \($title):\n" + ($labels | map("  - \(.)") | join("\n")) end;
+def developer: if .agent == direct_agent then "main thread (direct implementation)" else .technology | clean end;
 .[0]
 | installed as $installed
-| "## Dispatch Plan\n\n"
-	+ "- Agent: \(.agent | clean)\n"
-	+ "- Tech: \(.technology | clean)\n"
-	+ "- Mode: \(.mode | clean)\(if .agent == direct_agent then " (direct implementation)" else "" end)\n\n"
-	+ task_section
-	+ "\n\n"
-	+ labels_item("Loaded"; plugin_labels(.loaded; $installed)) + "\n"
-	+ labels_item("Not loaded"; plugin_labels(.not_loaded; $installed))
-	+ "\n\n### Context\n\n- \(.context.path | clean | link_span)"
+| (.agent == direct_agent) as $is_direct
+| .context.path as $plan_context
+| if .replan == "invalid" then
+	[status_line("blocked"; "Blocked · this plan names an invalid plugin: fix it, then rerun"),
+	 section("Developer"; [developer]),
+	 task_section,
+	 section("Invalid"; plugin_labels(.not_loaded | map(select(.reason == "invalid")); $installed))]
+  else
+	[status_line("decision"; if $is_direct then "Decision needed · approve implementing this directly?"
+		else "Decision needed · approve this dispatch?" end),
+	 section("Developer"; [developer]),
+	 task_section,
+	 section("Loaded"; plugin_labels(.loaded; $installed)),
+	 section("Not loaded"; plugin_labels(.not_loaded; $installed))]
+  end
+| . + [data_section(data_pairs($plan_context))]
+| blocks
 '
 
 # Prints the AskUserQuestion fields for the plan, or nothing for replan
@@ -147,11 +155,11 @@ checked_object(
 # shellcheck disable=SC2016
 readonly NO_FIT_RENDER_JQ='
 .[0]
-| "## No Plugin Fits\n\n"
-	+ "- Stack: \(.stack | clean)\n\n"
-	+ task_section
-	+ "\n\n### Files\n\n" + (.files | map("- \(clean | short_path($home) | code_span)") | join("\n"))
-	+ "\n\n" + context_section($context_file; $context_digest)
+| [status_line("decision"; "Decision needed · no plugin fits \(.stack | clean): implement it directly?"),
+   task_section,
+   section("File"; "Files"; .files | map(clean | path_text)),
+   data_section(data_pairs($context_file))]
+| blocks
 '
 
 # shellcheck disable=SC2016
@@ -165,9 +173,10 @@ readonly NO_FIT_QUESTION_JQ='
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --plan-file PATH [--skills-dir DIR]
+usage: sh ${PROG} --plan-file PATH [--data KIND=PATH]... [--skills-dir DIR]
        sh ${PROG} --plan-file PATH --question --plans N [--skills-dir DIR]
        sh ${PROG} --no-plugin-fits --plan-file PATH --context-file CTX
+           [--data KIND=PATH]...
        sh ${PROG} --no-plugin-fits --plan-file PATH --question
        sh ${PROG} --help | -h
 
@@ -181,13 +190,17 @@ Options:
                       "tasks": [str, ...]}, each array one or more strings
   --context-file CTX  only to print a --no-plugin-fits plan, then required:
                       the effort's latest context file
+  --data KIND=PATH    printing a plan only, repeatable: one line of its Data
+                      section, in the order given, before the context file;
+                      KIND letters, digits, space or -, PATH absolute
   --question          print the plan's question instead of the plan
   --plans N           with --question on a dispatch plan, then required: how
                       many plans are asked one after another, 1 or more
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; not
                       taken with --no-plugin-fits (it uses the default)
 
-stdout, a plan: its Markdown, without the gate marker
+stdout, a plan: its Markdown, without the gate marker; a dispatch plan whose
+  replan is "invalid" prints as blocked, naming its invalid plugins
 stdout, --question: one JSON object {"header": str, "question": str,
   "options": [{"label": str, "description": str}, ...]}; nothing for a
   dispatch plan whose replan is "invalid"
@@ -214,7 +227,7 @@ Exit codes:
 
 Dependencies (skills in the --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  to print a plan: the ${RENDER_LIB} skill's paths.jq
+  to print a plan: the ${RENDER_LIB} skill's view.jq
   a dispatch plan or its question: this skill's
     scripts/agent-dispatch/${NAMES_MODULE}.jq
   to print a dispatch plan: this skill's list-plugins.sh
@@ -243,10 +256,12 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file, context_file, skills_dir, want_question, no_plugin_fits and
-# plans from the arguments, and refuses a combination the modes don't take.
+# Sets plan_file, context_file, skills_dir, want_question, no_plugin_fits,
+# plans and data_lines from the arguments, and refuses a combination the modes
+# don't take.
 parse_args() {
 	plan_file=''
+	data_lines=''
 	context_file=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	skills_dir_given=0
@@ -267,16 +282,18 @@ parse_args() {
 				no_plugin_fits=1
 				shift
 				;;
-			--plan-file | --context-file | --plans | --skills-dir)
+			--plan-file | --context-file | --plans | --skills-dir | --data)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits, --context-file PATH (with --no-plugin-fits) or --help" ;;
+			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits, --context-file PATH (with --no-plugin-fits), --data KIND=PATH or --help" ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
 	check_context_arg
+	[ "${want_question}" -eq 0 ] || [ -z "${data_lines}" ] ||
+		usage_error '--data is not used with --question; expected it only when printing a plan'
 	if [ "${no_plugin_fits}" -eq 1 ]; then
 		check_no_fit_args
 	else
@@ -289,11 +306,27 @@ set_option() {
 		--plan-file) plan_file=$2 ;;
 		--context-file) context_file=$2 ;;
 		--plans) plans=$2 ;;
+		--data) add_data "$2" ;;
 		*)
 			skills_dir=$2
 			skills_dir_given=1
 			;;
 	esac
+}
+
+# Appends KIND=PATH $1 to data_lines, one per line, or exits 2.
+add_data() {
+	case $1 in
+		*[[:cntrl:]]*) usage_error '--data holds a control character; expected --data KIND=PATH on one line' ;;
+		[[:alpha:]]*=/*) ;;
+		*) usage_error "--data value '$1' is not KIND=PATH; expected a KIND such as Plan, then =, then an absolute path" ;;
+	esac
+	case ${1%%=*} in
+		*[![:alnum:]\ -]*) usage_error "--data kind '${1%%=*}' holds a character outside letters, digits, space and -; expected a KIND such as Plan" ;;
+		*) ;;
+	esac
+	data_lines="${data_lines}$1
+"
 }
 
 # A --no-plugin-fits plan shows CTX; its question does not, and a dispatch
@@ -339,10 +372,10 @@ read_input() {
 	exit 2
 }
 
-# Checks the context file as prepare-agent-prompt.sh does, apart from the digest,
-# and sets context_digest to its sha256; exits 2 with one "context file:"
-# stderr line for the first problem, or with an "install:" line 1 when no
-# sha256 tool is on PATH, 3 when jq, wc or the tool fails, 5 when a shared check is missing.
+# Checks the context file as prepare-agent-prompt.sh does, apart from the
+# digest; exits 2 with one "context file:" stderr line for the first problem,
+# or with an "install:" line 1 when no sha256 tool is on PATH, 3 when jq or wc
+# fails, 5 when a shared check is missing.
 read_context() {
 	load_context_checks
 	path_problem=$(context_path_problem "${context_file}")
@@ -351,9 +384,6 @@ read_context() {
 	context_read_problem "${context_file}" ||
 		install_fault 3 'jq or wc failed on the context read checks (its stderr is above); expected jq 1.6+; try jq --version, then rerun'
 	[ -z "${context_read_fault}" ] || context_error "${context_file}: ${context_read_text}"
-	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_context_digest "${context_file}" ||
-		install_fault 3 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
 }
 
 # Sources the shared path checks and loads the read checks; exits 5 when a
@@ -385,12 +415,12 @@ script_dir() {
 	esac
 }
 
-# Exits 5 when lib-render's path helpers, which a printed plan includes, are
+# Exits 5 when lib-render's layout module, which a printed plan includes, is
 # not a readable file in the skills folder.
 check_render_lib() {
-	paths_module="${render_lib_dir}/paths.jq"
-	[ -f "${paths_module}" ] && [ -r "${paths_module}" ] ||
-		install_fault 5 "path helpers missing; expected ${paths_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
+	view_module="${render_lib_dir}/view.jq"
+	[ -f "${view_module}" ] && [ -r "${view_module}" ] ||
+		install_fault 5 "layout module missing; expected ${view_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
 }
 
 # Exits 5 when the flow's shared names, which a dispatch plan and its question
@@ -424,7 +454,7 @@ read_listing() {
 run_jq() {
 	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" -L "${names_dir}" --arg want "${want}" \
 		--arg listing "${listing}" --argjson plans "${plans:-1}" \
-		--arg context_file "${context_file}" --arg context_digest "${context_digest}" --arg home "${HOME:-}" \
+		--arg context_file "${context_file}" --arg data_lines "${data_lines}" \
 		"$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
@@ -441,18 +471,17 @@ names_dir=$(script_dir)/../agent-dispatch
 want=plan
 [ "${want_question}" -eq 0 ] || want=question
 [ "${want}" = question ] || check_render_lib
-context_digest=''
 [ -z "${context_file}" ] || read_context
 listing=''
 if [ "${no_plugin_fits}" -eq 1 ]; then
 	check_program=${COMMON_JQ}${NO_FIT_CHECK_JQ}
-	render_program=${PATHS_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${NO_FIT_RENDER_JQ}
+	render_program=${VIEW_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${NO_FIT_RENDER_JQ}
 	question_program=${COMMON_JQ}${NO_FIT_QUESTION_JQ}
 else
 	check_names_module
 	[ "${want}" = question ] || read_listing
 	check_program=${COMMON_JQ}${RENDERABLE_JQ}
-	render_program=${PATHS_INCLUDE}${NAMES_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${RENDER_JQ}
+	render_program=${VIEW_INCLUDE}${NAMES_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${RENDER_JQ}
 	question_program=${NAMES_INCLUDE}${COMMON_JQ}${QUESTION_JQ}
 fi
 problems=$(run_jq "${check_program}")
