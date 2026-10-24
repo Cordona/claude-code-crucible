@@ -5,11 +5,11 @@
 # validator below owns the report's shape (there is no schema file): the
 # report standard's field table documents it, --help points there, the
 # validator wins where they differ, and doc-check compares the table with it.
-# The human views go through lib-render's view.jq and paths.jq.
+# The human views go through human-view's view.jq and paths.jq.
 set -eu
 
 readonly PROG='report.sh'
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 readonly newline='
 '
 # A LABELS line names one technology and a handful of standards and
@@ -439,7 +439,7 @@ readonly SLICE_MAIN_JQ='
 $report[0] | problems as $problems | slice_view($problems) | join("\n\n")
 '
 
-# The human views, laid out with lib-render's view.jq: the developer summary
+# The human views, laid out with human-view's view.jq: the developer summary
 # of one report, and the run summary of several. Needs you holds what the
 # human acts on, by kind in a fixed order; every kind is cut to its first items
 # so the view stays one screen, and the report file holds the rest.
@@ -719,7 +719,7 @@ EOF
 	help_shared view-exits
 	help_shared dependencies
 	help_shared dependencies-check-render
-	help_shared lib-render
+	help_shared human-view
 	cat <<'EOF'
   with --dispatch, or --repo on a stamped report: flow-agent-initialization's
     dispatch validator
@@ -748,7 +748,7 @@ EOF
 	help_shared view-exits
 	help_shared dependencies
 	help_shared own-skill
-	help_shared lib-render
+	help_shared human-view
 	cat <<'EOF'
   the crucible skill, for the repo of each stamped report (one it cannot
     find counts as a repo of its own)
@@ -849,7 +849,7 @@ EOF
 			printf "  with --repo: git (macOS: xcode-select --install; Linux: the distro's git)\n"
 			;;
 		own-skill) printf "  this skill's SKILL.md, beside scripts/\n" ;;
-		lib-render) printf '  the lib-render skill\n' ;;
+		human-view) printf '  the human-view skill\n' ;;
 		view-exits)
 			echo
 			help_shared writes-nothing-else
@@ -1529,7 +1529,7 @@ run_render() {
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
 }
 
-# Exits 5 unless lib-render's paths.jq and view.jq are installed.
+# Exits 5 unless human-view's paths.jq and view.jq are installed.
 locate_view_modules() {
 	for render_module in paths view; do
 		render_module_file="${skills_dir}/${RENDER_LIB}/${render_module}.jq"

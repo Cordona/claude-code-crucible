@@ -5,7 +5,7 @@
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module,
-# lib-render's path helpers, which the developer report renderer loads, and its
+# human-view's path helpers, which the developer report renderer loads, and its
 # view module, which every view of the flow loads, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
 # date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the three hook
@@ -55,7 +55,7 @@ readonly CONTEXT_VERSIONS_LIB='context-versions.sh'
 readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # More symlink hops than any install chain needs; a longer chain is a loop.
 readonly MAX_LINK_HOPS=40
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
 readonly VIEW_NAME='view'
 readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
@@ -938,7 +938,7 @@ print_cached_pass() {
 	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
 }
 
-# Prints jq program $1, given the further jq arguments, run after lib-render's
+# Prints jq program $1, given the further jq arguments, run after human-view's
 # view module; fails when jq or the module is missing or jq fails.
 render_with_view() {
 	command -v jq >/dev/null 2>&1 || return 1

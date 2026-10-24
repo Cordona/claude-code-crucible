@@ -1,7 +1,7 @@
 # 07 · Scripts and dependencies (SCR)
 
 Purpose: bundled scripts and external tools work on a fresh machine, from any directory, and say exactly what happened; what the human sees is a script's compact view, relayed as printed. A script's `--help` is the single source of truth for the caller's contract: what it is, how to call it, what comes back and what it depends on; a skill that calls it never restates it. The caller reads it once, before the first use in a session.
-Judges script interfaces, error handling, side-effect safety, dependencies and the views shown to the human (SCR-16–SCR-23, whose shared implementation is `lib-render`'s `view.jq`: a renderer builds its views from its defs, never its own list, path or Data formatting); mode bits, strict mode, prompts and paths are lint; a `--help` page's first line and size are `help-check.sh`'s (lint spec, section J).
+Judges script interfaces, error handling, side-effect safety, dependencies and the views shown to the human (SCR-16–SCR-23, whose shared implementation is `human-view`'s `view.jq`: a renderer builds its views from its defs, never its own list, path or Data formatting); mode bits, strict mode, prompts and paths are lint; a `--help` page's first line and size are `help-check.sh`'s (lint spec, section J).
 
 **Applies when:** the skill bundles or calls scripts; SCR-07 also when its body has the agent invoke an external tool (CLI, MCP server, plugin, companion agent or skill); SCR-16–SCR-23 also when the skill, or a script it bundles or calls, shows the human a view (any output the human reads: a gate, a plan, a summary, an error to act on).
 **MUST lint:** LNT-28, LNT-30, LNT-47.

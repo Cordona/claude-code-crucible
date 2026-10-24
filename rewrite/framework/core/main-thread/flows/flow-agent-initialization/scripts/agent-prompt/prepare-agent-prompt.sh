@@ -31,7 +31,7 @@ readonly REASON_PREFIX='flow-agent-initialization:'
 # agents of the shared names module, the list to edit first.
 readonly LISTED_AGENTS='code-developer code-reviewer'
 readonly NAMES_MODULE='dispatch-names'
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 readonly VIEW_NAME='view'
 readonly DIRECT_PROMPT_LABEL='main-thread-prompt'
 # The skill that owns the context: its validator, its path checks and the file
@@ -175,7 +175,7 @@ END { finish_file() }
 
 # Renders the deny reason from $problems (one per line, KIND first), the KIND
 # words $kinds, the reason prefix $prefix, the details file $details ("" for
-# none) and the bounds $max_shown and $line_cap, with lib-render's view module.
+# none) and the bounds $max_shown and $line_cap, with human-view's view module.
 # The first problem of each KIND is always shown (there are fewer KINDs than
 # $max_shown), so the reason names every KIND found; the others follow in
 # order up to $max_shown, and the rest become "+N more". Claude Code caps a

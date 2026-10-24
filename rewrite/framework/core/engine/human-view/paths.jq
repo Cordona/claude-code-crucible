@@ -1,4 +1,4 @@
-# Path display helpers; lib-render's SKILL.md (Modules) lists each def's input and output.
+# Path display helpers; human-view's SKILL.md (Modules) lists each def's input and output.
 
 def span_cap: 80;
 # 30 keeps a path's leading folders recognisable while leaving 49 characters

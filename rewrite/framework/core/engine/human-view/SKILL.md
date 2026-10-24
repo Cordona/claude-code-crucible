@@ -1,16 +1,16 @@
 ---
-name: lib-render
+name: human-view
 description: Shared jq modules for what renderer scripts print for the human — `view.jq` for a view's layout (status line, sections, lists, Data section, whole paths) and `paths.jq` for shortened paths cited for recognition. Use when a renderer prints a view. Scripts load it with `jq -L` and `include`; the model never loads it, the human never types it. Writes nothing; needs jq 1.6+. Not for checking input (each renderer validates its own) or a view's content (its renderer's).
 user-invocable: false
 ---
 
-# Library: lib-render
+# Library: human-view
 
 Shared jq modules for what renderer scripts print for the human. Scripts load them; the model never invokes this skill and the human never types it, so this file is for whoever writes or reviews a renderer. It writes nothing and runs nothing: a module only turns a value into display text.
 
 ## Rules
 
-- **Every renderer goes through lib-render:** a view's first line, sections, lists and Data section come from `view.jq`, and every path it prints from `view.jq` or `paths.jq`, never from a copy inside the renderer, so a fix lands once and every view looks alike.
+- **Every renderer goes through human-view:** a view's first line, sections, lists and Data section come from `view.jq`, and every path it prints from `view.jq` or `paths.jq`, never from a copy inside the renderer, so a fix lands once and every view looks alike.
 - **A path the human may open is shown whole** (`path_text`): absolute, never `~`, never cut. `short_path` and `code_span` only for a path cited for recognition inside a line of text, never for a path handed over.
 - **Rendering helpers only:** a module formats values for display and checks nothing; validating input stays in the renderer that reads it, so loading a module never changes what a renderer accepts.
 - **It grows by module:** a display function a second renderer needs becomes a module here, listed under Modules, and the renderers' own copies go.
@@ -36,14 +36,14 @@ Blocks of a view are joined by one blank line (`blocks`).
 A script passes the library folder to jq with `-L` and includes each module by its name, without `.jq` (illustrative: `<program>` is the renderer's own jq):
 
 ```sh
-jq -L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/lib-render" -r '
+jq -L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view" -r '
 include "view";
 include "paths";
 <program>' input.json
 ```
 
 - **The `include` lines come first,** before any `def`: jq accepts module directives only at the start of a program, so a script that prepends shared definitions puts the includes ahead of them.
-- **The skills dir is the script's:** a renderer loads lib-render from the skills dir it resolves, so a test install finds its own copy.
+- **The skills dir is the script's:** a renderer loads human-view from the skills dir it resolves, so a test install finds its own copy.
 - **Dependency:** jq 1.6+ (macOS: `brew install jq`; Linux: the distro's `jq` package).
 
 ## Modules

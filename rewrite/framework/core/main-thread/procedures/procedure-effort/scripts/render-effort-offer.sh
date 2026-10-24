@@ -6,7 +6,7 @@
 set -eu
 
 readonly PROG='render-effort-offer.sh'
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 # The offer stays a glance: a handful of one-line reasons, each short enough
 # to fit one terminal line beside its list number.
 readonly MAX_REASONS=5

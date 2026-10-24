@@ -15,7 +15,7 @@ readonly CACHE_KINDS='cache/gates cache/prompts cache/denials'
 readonly CACHE_MAX_DAYS=7
 # Bounds the --older-than value handed to find -mtime, far past any real age.
 readonly MAX_PRUNE_DAYS_DIGITS=5
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 # The C locale keeps the shell's patterns and sort byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -470,7 +470,7 @@ match_in_kind() {
 	done
 }
 
-# Prints the line open reports, built from lib-render's layout module; exits 5
+# Prints the line open reports, built from human-view's layout module; exits 5
 # when the module is missing or jq fails on it.
 render_opened_line() {
 	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"

@@ -2,7 +2,7 @@
 # Renders one dispatch plan, or its approval question, from JSON files, so the
 # main thread never hand-formats either; --no-plugin-fits does the same for a
 # part no installed tech plugin fits. This script owns the wording; the layout
-# is lib-render's view.jq. A dispatch plan's rules are
+# is human-view's view.jq. A dispatch plan's rules are
 # dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
 # the plan; this script only refuses a plan it can't render. Pipe its stdout
 # into procedure-approval-gate's open-gate.sh.
@@ -11,7 +11,7 @@ set -eu
 
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
-readonly RENDER_LIB='lib-render'
+readonly RENDER_LIB='human-view'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly NAMES_MODULE='dispatch-names'
 
@@ -35,7 +35,7 @@ def installed:
 		| {key: .[1], value: {kind: .[0], label: .[2]}}) | from_entries;
 '
 
-# A printed plan of either kind starts with lib-render's layout module, and a
+# A printed plan of either kind starts with human-view's layout module, and a
 # dispatch plan or its question with the flow's shared names (direct_agent):
 # jq takes an include only at the start of the program, before the common
 # definitions and these.
@@ -415,7 +415,7 @@ script_dir() {
 	esac
 }
 
-# Exits 5 when lib-render's layout module, which a printed plan includes, is
+# Exits 5 when human-view's layout module, which a printed plan includes, is
 # not a readable file in the skills folder.
 check_render_lib() {
 	view_module="${render_lib_dir}/view.jq"
@@ -449,7 +449,7 @@ read_listing() {
 	esac
 }
 
-# Runs jq program $1 over the slurped input, with lib-render and the shared
+# Runs jq program $1 over the slurped input, with human-view and the shared
 # names on jq's module path; a jq failure exits 3.
 run_jq() {
 	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" -L "${names_dir}" --arg want "${want}" \
