@@ -145,7 +145,7 @@ Nothing is committed or deployed without the owner's go.
 A marked gap beats ...
 ```
 
-Fix (a failed live validation; a chosen script finding, `SKILL.md` Merging step 5): as Build, with the round number and `FAILED VALIDATION: <run dir>/scripts/<script>-r<n-1>.md` (copied to `pre-fix/script-<script>-r<n>/` first), plus the failing command's output inside the fence. For a chosen finding, add `CHOSEN IDS: <each chosen LNT-74, LNT-75 or SCR-11–SCR-15 ID on this script>`, `MERGED REPORT: <run dir>/review-r<n>.md` and `HELP CHECK OUTPUT: <run dir>/lint/help-round-<n>.txt`, all in READ.
+Fix (a failed live validation; a chosen script finding, `SKILL.md` Merging step 5): as Build, with the round number and `FAILED VALIDATION: <run dir>/scripts/<script>-r<n-1>.md` (copied to `pre-fix/script-<script>-r<n>/` first), plus the failing command's output inside the fence. For a chosen finding, add `CHOSEN IDS: <each chosen LNT-74, LNT-75, SCR-11–SCR-15 or printed-view SCR-16–SCR-23 ID on this script>`, `MERGED REPORT: <run dir>/review-r<n>.md` and `HELP CHECK OUTPUT: <run dir>/lint/help-round-<n>.txt`, all in READ.
 
 ## agent-author
 

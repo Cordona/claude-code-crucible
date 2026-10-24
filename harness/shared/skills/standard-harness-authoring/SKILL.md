@@ -33,8 +33,8 @@ Following it writes only the artifact being authored; the scripts write nothing 
 |---|---|
 | Flow (dispatches subagents, gates on the human, drives scripts) | 01–07, 09; 10 if it declares hooks; 11 if it or its agents write or read a JSON contract; 08 N/A |
 | Procedure (script wrapper, incl. one preloaded by an agent) | 01–05, 07, 08, 09; 11 if its scripts write or read a JSON contract |
-| Standard / shared conduct (rubric agents bind; tech plugins included) | 01, 02, 03, 08, 09; 07 if it bundles scripts; DET-08 (N/A with no script), DET-09; WF-03, WF-05, WF-06, WF-10 |
-| Command file (`~/.claude/commands/**`) | 01, 02, 03, 05, 09 |
+| Standard / shared conduct (rubric agents bind; tech plugins included) | 01, 02, 03, 08, 09; 07 if it bundles scripts or shows the human a view; DET-08 (N/A with no script), DET-09; WF-03, WF-05, WF-06, WF-10 |
+| Command file (`~/.claude/commands/**`) | 01, 02, 03, 05, 09; 07 if it shows the human a view |
 | Agent file (`agents/**/*.md`) | agent-01–08 in `references/agents/`, through `flow-harness-authoring`'s Agent flow (`agent-author`, `agent-reviewer`) |
 | `~/.claude/CLAUDE.md` | only as a citer for LNT-46 |
 
@@ -61,7 +61,7 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 - Read `references/skills/04-skill-determinism-and-enforcement.md` when a step decides, counts, persists state or must not be skipped.
 - Read `references/skills/05-skill-workflow-clarity.md` when laying out steps, checks, loops or human gates.
 - Read `references/skills/06-skill-subagent-orchestration.md` when the skill dispatches subagents.
-- Read `references/skills/07-skill-scripts-and-dependencies.md` when the skill bundles scripts or calls an external tool.
+- Read `references/skills/07-skill-scripts-and-dependencies.md` when the skill bundles scripts or calls an external tool, or when it or its scripts show the human a view (SCR-16–SCR-23, the human-facing output rules).
 - Read `references/skills/08-skill-testing-and-evals.md` when designing or judging evals.
 - Read `references/skills/09-skill-safety-and-trust.md` when the skill ingests outside text, writes outward, or grants tools.
 - Read `references/skills/10-skill-hooks.md` when a skill or agent declares `hooks:` or ships a hook script.
@@ -147,6 +147,7 @@ One problem fails once, under its owner. Countable problems belong to lint. Othe
 | What must be scripted, state, recovery, enforcement | 04 |
 | Subagent seats, briefs, returns | 06 |
 | Script interfaces, errors, side effects, dependencies | 07 |
+| A view shown to the human: who prints it, its layout, its paths | 07 |
 | Step order, gates, loops, checks | 05 |
 | Hooks | 10 |
 | An agent file: role, frontmatter and tools, load, dispatch contract, judgment, output, safety blocks, testing | the agent checklist that owns that perspective (`references/agents/README.md`); whether its safety blocks cover its inputs and outputs stays 09 |
