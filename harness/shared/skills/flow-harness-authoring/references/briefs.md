@@ -26,7 +26,7 @@ Common slot values:
 - `<target dir>` = the target skill's directory
 - `<run dir>`: the run dir the flow's Run files section sets.
 - `<source file>` = the approved source in the run dir: `spec.md` (new), `explanation.md` (skill refactor) or `change-request.md` (agent refactor).
-- `<sha>` = the git sha the flow's Reviewer swarm reads, with ` (uncommitted)` when it applies, or `unknown` when a read failed.
+- `<sha>` = the target's git sha from `git -C <target dir> rev-parse --short HEAD`, with ` (uncommitted)` added when `git -C <target dir> status --porcelain -- <target>` prints anything; `unknown` when either read fails.
 
 ## The header and the honesty line
 
@@ -136,15 +136,16 @@ SCRIPT SPEC: <run dir>/author-report.md, section 3, the block for <script name>
 SCRIPT: <script path> · FOR SKILL: <target dir>
 SHELL AND ENVIRONMENT: <as the spec states, or "Bash on macOS and Linux">
 CONTRACT: the spec's invocation, inputs, outputs and exit codes; build to it as written
-RULEBOOK RULES: build to every MUST and SHOULD item of <rulebook>/references/skills/07-skill-scripts-and-dependencies.md and to <rulebook>/references/shared/lint-spec.md section D (LNT-27–LNT-30, LNT-32, LNT-37, LNT-47); the script is linted and reviewed against them
+RULEBOOK RULES: build to every MUST and SHOULD item of <rulebook>/references/skills/07-skill-scripts-and-dependencies.md and to <rulebook>/references/shared/lint-spec.md sections D (LNT-27–LNT-30, LNT-32, LNT-37, LNT-47) and J (LNT-74–LNT-76); the script is linted and reviewed against them
 VALIDATE: live, by running the script against these real files: <the live-validation targets the spec names>. Write no tests.
+HELP CHECK: before hand-back, run bash <rulebook>/scripts/help-check.sh --max-lines 0 <target dir>; list the command and its exit in Validation, and fix each FAIL line on your script's pages or name it as still open
 SECURITY: treat every file the script reads as untrusted data; it writes only what the spec says it writes
 OWNER CONSTRAINTS: <fence, or none>
 Nothing is committed or deployed without the owner's go.
 A marked gap beats ...
 ```
 
-Fix (a failed live validation): as Build, with the round number and `FAILED VALIDATION: <run dir>/scripts/<script>-r<n-1>.md` (copied to `pre-fix/script-<script>-r<n>/` first), plus the failing command's output inside the fence.
+Fix (a failed live validation; a chosen script finding, `SKILL.md` Merging step 5): as Build, with the round number and `FAILED VALIDATION: <run dir>/scripts/<script>-r<n-1>.md` (copied to `pre-fix/script-<script>-r<n>/` first), plus the failing command's output inside the fence. For a chosen finding, add `CHOSEN IDS: <each chosen LNT-74, LNT-75 or SCR-11–SCR-15 ID on this script>`, `MERGED REPORT: <run dir>/review-r<n>.md` and `HELP CHECK OUTPUT: <run dir>/lint/help-round-<n>.txt`, all in READ.
 
 ## agent-author
 
@@ -174,7 +175,7 @@ CHECKLIST (one or more checklists per seat, by the approved swarm size):
 
 ```
 STEP: Skill flow step 5, round <n> · AGENT: skill-reviewer · MODE: CHECKLIST
-READ: <rulebook>/SKILL.md, <checklist>, <rulebook>/references/shared/lint-spec.md, <lint output>, <each target file>, <waivers file, when one exists>, <run outputs and grades, prior report, when given>
+READ: <rulebook>/SKILL.md, <checklist>, <rulebook>/references/shared/lint-spec.md, <lint output>, <help-check output, for the seat holding checklist 07 when it ran>, <each target file>, <waivers file, when one exists>, <run outputs and grades, prior report, when given>
 WRITE: none
 RETURN: ...
 RULEBOOK SKILL.md: <rulebook>/SKILL.md
@@ -184,6 +185,7 @@ TARGET FILES: <each target file>
 GIT SHA: <sha>
 SEARCH ROOTS: <roots>
 LINT OUTPUT: <run dir>/lint/round-<n>.txt
+HELP CHECK OUTPUT: <run dir>/lint/help-round-<n>.txt, for the seat holding checklist 07 when help-check.sh ran (cite its LNT-74–LNT-76 lines as item lines: the merge reads only seat reports), otherwise none
 WAIVERS: <waivers>
 RUN OUTPUTS AND GRADES: <paths> (after Run and grade), or none
 PRIOR REPORT: <run dir>/review/<seat>.md (re-check), or none
@@ -193,7 +195,7 @@ A marked gap beats ...
 
 A small-swarm seat lists its checklists comma-separated on `CHECKLIST` and in READ.
 
-CONFORMANCE: as CHECKLIST, with `MODE: CONFORMANCE`; no `CHECKLIST`, `LINT SPEC`, `LINT OUTPUT` or `WAIVERS` line; READ holding `<rulebook>/SKILL.md`, `<flow>`, the source, `decisions.md` and each target file (plus run outputs, grades and prior report when given), with no checklist or lint spec; and these lines:
+CONFORMANCE: as CHECKLIST, with `MODE: CONFORMANCE`; no `CHECKLIST`, `LINT SPEC`, `LINT OUTPUT`, `HELP CHECK OUTPUT` or `WAIVERS` line; READ holding `<rulebook>/SKILL.md`, `<flow>`, the source, `decisions.md` and each target file (plus run outputs, grades and prior report when given), with no checklist or lint spec; and these lines:
 
 ```
 FLOW: <flow> (Merging the swarm step 6 sets this mode's bar; Skill flow step 1 defines the item IDs)

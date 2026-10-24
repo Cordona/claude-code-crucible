@@ -4,11 +4,12 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 
 ## Contents
 
-- Script exits: after every `lint.sh` or `merge-verdicts.sh` run
+- Script exits: after every script run
 - Run files: at Start step 2 and on Resume
 - Resume: after a compaction, an interruption or a new session
 - Dispatch budget: before each wave of dispatches
 - Explain: Skill flow step 1, refactor
+- Specify: Skill flow step 1, new skill
 - Script builds: Skill flow step 3
 - Deploy: G4
 - Run and grade: Skill flow step 6, Agent flow step 6
@@ -18,7 +19,7 @@ Detail the flow's `SKILL.md` needs at one step only. Read each section when that
 
 Output lines that go to G3:
 
-- `lint.sh`, whatever its exit: each `FAIL` line with a `SHOULD:` or `MAY:` prefix and each `WARN` line.
+- `lint.sh` and `help-check.sh`, whatever the exit: each `FAIL` line with a `SHOULD:` or `MAY:` prefix and each `WARN` line.
 - `merge-verdicts.sh`: every line its `--help` lists under "Output lines", except `dropped-duplicate:`.
 
 | Exit | `lint.sh` | `merge-verdicts.sh` |
@@ -31,22 +32,26 @@ Output lines that go to G3:
 | 130, 143 | Interrupted (INT, TERM): stop and tell the owner; Resume runs the step again | As `lint.sh` |
 | other | Stop; show the owner stdout and stderr verbatim | As `lint.sh` |
 
+`help-check.sh` exits as `lint.sh` does, without exit 3 (its `--help` is the contract): act on each as the `lint.sh` column, except that the fix for exit 1 goes to `shell-script-developer` (`SKILL.md`, Merging step 5).
+
+`save-reply.sh` exit 1: a cut-off reply (`SKILL.md`, Every dispatch). Exit 3: a likely secret: mask it and write the masked reply to the run file yourself; never save it unmasked.
+
 ## Run files
 
 | File | Holds | Written by |
 |---|---|---|
-| `state.md` | What `SKILL.md` (Run files) lists | orchestrator, after every step |
+| `state.md` | The run inputs, flow kind, target, current step, each loop's round counter, the dispatch count, and the last `lint.sh`, `help-check.sh` and `merge-verdicts.sh` exits | orchestrator, after every step |
 | `explanation.md`, `verify.md` | Skill refactor: the analyst's explanation and its check | orchestrator, from the replies |
 | `spec.md` | New skill or agent: the approved spec | orchestrator, with the owner |
 | `change-request.md` | Agent refactor: the approved change request | orchestrator, with the owner |
 | `decisions.md` | The owner's decisions, one entry each: `D<n> · <date> · <gate or step> · <item ID or none> · "<owner's words>"`; a CONFORMANCE `CHANGED` cites `decision D<n>` | orchestrator |
 | `snapshot/` (skill), `snapshot.md` (agent) | Refactor: the old version, the baseline for Run and grade; not taken when the old skill stays in place (its path is the baseline) | orchestrator |
 | `author-report.md` | The author's report | `skill-author` writes it; for `agent-author`, the orchestrator saves the reply |
-| `lint/round-<n>.txt` | `lint.sh` output | orchestrator |
+| `lint/round-<n>.txt`, `lint/help-round-<n>.txt` | `lint.sh` output; `help-check.sh` output | orchestrator |
 | `review/<seat>.md`, `review-r<n>.md` | Each seat's reply; each round's merged report, never overwritten | orchestrator |
 | `scripts/<script>-r<n>.md` | `shell-script-developer`'s report for each build or fix round | orchestrator, from the reply |
 | `runs/` | Run outputs and grades (transcripts are not saved: a subagent's transcript can't be read back, so the output file is the evidence) | orchestrator |
-| `pre-fix/explain-r<n>/`, `pre-fix/script-<script>-r<n>/`, `pre-fix/fix-r<n>/` | Copies taken before each loop's fix (`SKILL.md`, Run files) | orchestrator |
+| `pre-fix/explain-r<n>/`, `pre-fix/script-<script>-r<n>/`, `pre-fix/fix-r<n>/` | Copies taken before each loop's fix: an analyst correction, a script fix, an author FIX (`SKILL.md`, Run files) | orchestrator |
 
 ## Resume
 
@@ -67,11 +72,15 @@ Output lines that go to G3:
 3. On a missing card, or a `WRONG LINE` or `UNSUPPORTED` on a rule card's rule, source or enforcement: copy both files to `pre-fix/explain-r<n>/` (also before a G1 *Re-explain*), dispatch `skill-analyst` in `EXPLAIN` again with the correction brief (the old explanation and `verify.md`), save the reply as `explanation.md`, and give it its own `VERIFY` into `verify.md`. That is the loop: one `EXPLAIN`, one `VERIFY`, and at most one correction, which gets its own `VERIFY`. Any other `WRONG LINE` or `UNSUPPORTED` (a citation or claim that changes no card) goes to G1 as found, with no correction.
 4. Add one line at the top of `explanation.md` naming the last `verify.md` and its counts.
 
+## Specify
+
+Draft `spec.md` with the owner in these sections: Purpose; When it fires, and when it doesn't; Steps, in order; Rule cards (`RULE-NNN`, each with its source and what enforces it: script, hook or prose); Inputs, outputs and state; Dependencies; Open questions. `SKILL.md` (Skill flow step 1) adds two rule cards to every source and defines the item IDs.
+
 ## Script builds
 
 1. Each script spec in `skill-author`'s report (§3) must name its live-validation targets, the real files to run it against. One that names none goes back to `skill-author` (FIX); when that reply returns, repeat this check on the new report before step 2. A spec that still names none stops the loop (`SKILL.md` Always: a loop with no progress).
 2. Dispatch `shell-script-developer` once per script spec, all in one message; each builds its script and live-validates it against real files, with no tests and no review. Save each reply as `scripts/<script>-r<n>.md`.
-3. A Validation field showing a failed or skipped live run: copy the script and that report to `pre-fix/script-<script>-r<n>/`, then send it back to `shell-script-developer` in a fix round with that report.
+3. A Validation field showing a failed or skipped live run, or a chosen script finding (`SKILL.md`, Merging step 5): copy the script and its last report to `pre-fix/script-<script>-r<n>/`, then send it back to `shell-script-developer` in a fix round with that report, or with the chosen IDs and the merged report.
 4. A fix round whose Validation field shows the same failing command and output as the round before stops early and goes to the owner with both reports. After the script's round 3, stop and show the owner the last report.
 
 ## Deploy

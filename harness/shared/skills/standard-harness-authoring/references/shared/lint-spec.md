@@ -1,6 +1,6 @@
 # Lint spec — mechanical skill checks
 
-Spec for the mechanical checks on skills, agents and the collection; `scripts/lint.sh` runs the per-artifact ones (Scope, below). Every countable rule lives here, not in the checklists.
+Spec for the mechanical checks on skills, agents and the collection; `scripts/lint.sh` runs the per-artifact ones (Scope, below), except section J, which `scripts/help-check.sh` runs. Every countable rule lives here, not in the checklists.
 
 ## Contents
 
@@ -14,6 +14,7 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - G. Evals and examples (LNT-38, LNT-39, LNT-51)
 - H. Schemas and agent cards (LNT-52 – LNT-58)
 - I. Agent files (LNT-59 – LNT-62, LNT-66 – LNT-69, LNT-71, LNT-72)
+- J. Help pages, run by `help-check.sh` (LNT-74 – LNT-76)
 
 ## Terms and output
 
@@ -28,14 +29,16 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - **Tier:** where an item's threshold comes from — `official` (Anthropic's docs or the Agent Skills spec) or `ours` (an owner decision).
 - **Output:** one line per finding `LNT-NN PASS|FAIL|WARN|INFO <file>:<line> <message>`, at most `--max-lines` per target (then `TRUNCATED INFO <target> showing <N> of <M> lines`), then `SUMMARY must_fail=<n> should_fail=<n> warn=<n> skipped_must=<n> files=<n>`.
 - **SHOULD FAIL:** never fails the run; it is listed for the owner.
-- **Waiver:** a line in the target's waivers file, as `SKILL.md` Invariants define it, passed with `--waivers`; `lint.sh` honours it only for a `SHOULD` or `MAY` `LNT-NN` item.
+- **Waiver:** a line in the target's waivers file, as `SKILL.md` Invariants define it, passed with `--waivers`; `lint.sh` and `help-check.sh` honour it only for a `SHOULD` or `MAY` `LNT-NN` item.
 - **INFO:** reports a measured value and never fails.
 - **Exit codes:** 0 no MUST FAIL · 1 at least one MUST FAIL · 2 usage error · 3 no MUST FAIL, but a MUST item skipped for a missing optional tool · 4 rulebook not found · 5 internal error, or a required tool missing · 130 or 143 interrupted (INT or TERM). `lint.sh --help` carries them for callers, and `SKILL.md` points there without repeating them (SCR-01); change this line and `--help` together.
 - **Report-only run:** every item runs and prints as usual, and findings (a MUST FAIL or a skipped MUST) exit 0; exits 2, 4 and 5 are unchanged. Use it on artifacts not yet brought up to the rulebook, so the run lists their findings without failing.
 - **Scope:** `scripts/lint.sh` judges one skill or one agent (it may read the files that artifact references, e.g. its preloads); collection items — those whose Files name the collection (LNT-08, LNT-35, LNT-42, LNT-46, LNT-65) and the uniqueness clause of LNT-59 — are not run by `lint.sh`.
 - **Collection items gate nothing collection-wide.**
 - **A reviewer hand-checks the target's own part of a collection item** (`SKILL.md`, Reviewer report format).
-- **When it runs:** `flow-harness-authoring` runs `lint.sh` on the target before seating the reviewer swarm (Skill flow step 5, Agent flow step 4).
+- **When it runs:** `flow-harness-authoring` runs `lint.sh` on the target before seating the reviewer swarm (Skill flow step 5, Agent flow step 4), and `help-check.sh` beside it when the target has scripts.
+- **`help-check.sh`:** runs section J only, and only it: `lint.sh` stays static and never executes a script it lints. Its output, `--waivers` and exit codes follow the Output, Waiver and Exit codes lines above, except that it has no exit 3.
+- **Into the verdict:** `merge-verdicts.sh` never reads raw `lint.sh` or `help-check.sh` output. The seat holding checklist 07 gets the `help-check.sh` output and cites its LNT lines in its report; the merge takes section J's levels from this file, as for every item here.
 
 ## A. Gate
 
@@ -133,8 +136,22 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - **LNT-61** · MUST · Files: agent bodies · How: grep for `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `ScheduleWakeup`, `Workflow(` and for "ask the user" / "ask the human" / "ask the owner" / "confirm with the user" outside a quoted rule that forbids it · Threshold: zero.
 - **LNT-62** · SHOULD · Files: agent files · How: frontmatter lacks `omitClaudeMd: true` · Threshold: zero, or a waiver saying why the agent needs the operating contract.
 - **LNT-71** · INFO · Files: `SKILL.md` frontmatter and agent files · How: list every key of the artifact type's set (LNT-12 for skills, LNT-59 for agents) that is absent, as one INFO line `unset optional fields: <keys> (defaults apply)` · Threshold: none (reminder only) · Tier: ours (never forget an optional field exists).
-- **LNT-72** · MUST · Files: a plugin's `SKILL.md` frontmatter (a `tech-` skill, a `standard-` skill under `plugins/standards/`, or a `procedure-` skill under `plugins/procedures/`) · How: the frontmatter sets `disable-model-invocation: true`; `references/development.md` exists; `metadata.label` is set and non-empty; a standard or procedure plugin sets no `metadata.base`; a tech plugin's `metadata.base`, when set, names a sibling plugin folder (or an installed `tech-<base>`) whose own frontmatter sets no `metadata.base` · Threshold: all · Tier: ours.
+- **LNT-72** · MUST · Files: a plugin's `SKILL.md` frontmatter (a `tech-` skill, a `standard-` skill under `plugins/standards/`, or a `procedure-` skill under `plugins/procedures/`) · How: the frontmatter sets `disable-model-invocation: true`; a `development.md` exists in the plugin's own references dir; `metadata.label` is set and non-empty; a standard or procedure plugin sets no `metadata.base`; a tech plugin's `metadata.base`, when set, names a sibling plugin folder (or an installed `tech-<base>`) whose own frontmatter sets no `metadata.base` · Threshold: all · Tier: ours.
 - **LNT-66** · MUST · Files: agent files · How: every key in REQUIRED is present with a non-empty value (YAML booleans count as values; only a missing key, null or "" is empty). The lint holds the list itself. REQUIRED: `name`, `description`, `tools`, `model`, `effort`, `maxTurns` (each an implicit default that is a real choice or can shift: tools inherit everything, model and effort defaults vary by model, no turn cap). Every other key in LNT-59's set may be absent (its documented default applies); the authors' field table is where each optional field is decided · Threshold: all six REQUIRED keys present · Tier: ours (each setting is visible and can be changed per agent).
 - **LNT-67** · SHOULD · Files: agent files · How: description length (Terms) · Threshold: ≤ 400 · Tier: ours (near Anthropic's own agent descriptions; the total is LNT-65).
 - **LNT-68** · SHOULD · Files: agent bodies · How: chars · Threshold: ≤ 6,000 · Tier: ours (near Anthropic's own long agent bodies; no official limit exists).
 - **LNT-69** · SHOULD · Files: agent files · How: agent body chars plus, for each `skills:` entry that resolves (LNT-36), the chars of that skill's `SKILL.md` body, which a preload injects whole; name each unresolved entry in the message and skip it; `CLAUDE.md` is not counted (LNT-62 owns it) · Threshold: ≤ 12,000 · Tier: ours.
+
+## J. Help pages
+
+Run by `scripts/help-check.sh`, never by `lint.sh` (Terms). It runs only the `--help` pages of the target's scripts, but that executes the target's code, so it is not a sandbox: run it only on harness scripts already under review.
+
+- **Usage lines:** line 1 of the top page and each line after it, up to the first blank line, that starts with whitespace and then the script's basename. On every usage line, the per-command declaration included, the basename may follow one interpreter word, `sh` or `bash`. **Command:** the first word after the basename on a usage line, when it is a bare lowercase word matching `^[a-z][a-z0-9-]*$`.
+- **Page:** the stdout of `<script> --help` (the top page). Only when one top-page usage line is exactly `<script> <command> --help`, with a literal `<command>`, also the stdout of `<script> <cmd> --help` for each command the other usage lines name; without that line the top page is the only page. A command page byte-identical to the top page is not a second page.
+- **Fixed environment:** every page runs under `env -i` with `PATH=/usr/bin:/bin`, `LC_ALL=C` and `COLUMNS=80`, a fresh temp `HOME` and working dir, stdin `/dev/null`, stderr discarded, and a 5 s timeout: a `--help` prints fixed text and needs no work, so 5 s is far above any real page and stops a script that wrongly runs instead of printing. A page measured any other way is not comparable.
+- **Help before dependencies:** a script prints its `--help` before any dependency check, so a page prints on this `PATH` even where the script's own tools are missing.
+- **Page not checked:** a page that times out, exits non-zero or prints nothing gives one `LNT-74 WARN "not checked: <why>"` line and no other line for that page; when it is the top page, no command page runs.
+- **Files:** the entry-point scripts LNT-27 names in the target skill dir.
+- **LNT-74** · SHOULD · Files: every page · How: line 1 of the page starts with `usage:`, lowercase, at column 1; a top-page usage line holding the word `<command>` that is not exactly `<script> <command> --help` is one line `LNT-74 FAIL <script>:1 SHOULD: per-command declaration malformed: expected exactly "<script> <command> --help"; command pages not checked`, and the top page is the only page · Threshold: every page · Tier: ours (skills treat a `usage:` line as the install check, so every page passes it the same way).
+- **LNT-75** · SHOULD · Files: every page · How: count the bytes of the page's stdout · Threshold: ≤ 4,096 per page; over it, trim by SCR-12–SCR-14, then per-command pages (SCR-15), and only then an owner waiver (LNT-00) · Tier: ours (a session reads about 9 pages: 9 × 4,096 bytes ÷ 3.6 bytes per token ≈ 10k tokens).
+- **LNT-76** · INFO · Files: every page · How: print each page's byte count as one INFO line, `LNT-76 INFO <script>:1 <bytes> bytes[ (<cmd> page)]` · Threshold: none; stop trimming once SCR-12–SCR-14 pass: there is no byte target below LNT-75 · Tier: ours (keeps a small page visible, not only one under the ceiling).
