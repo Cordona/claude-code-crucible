@@ -26,94 +26,57 @@ usage: effort.sh start --name NAME
 EOF
 }
 
+# NAME's rule and its 40 mirror crucible_effort_name_max_chars and
+# crucible_effort_name_rule (lib/crucible-space.sh); --help prints before the
+# lib loads, so update this when they change.
 help_text() {
 	usage
 	print_block <<'EOF'
 
-Owns the effort folders of the Crucible space. An effort is one piece of work
-with one ID and one folder. Every file of the effort (its context, gate
-records, dispatches, baselines, reports and prompts) goes in its folder, in
-the layout crucible.sh --help sets; this script writes none of them. No
-record file is written in the folder.
+Starts, lists and finds the Crucible space's effort folders,
+<space>/efforts/<id>-<name>/, the space being ${CRUCIBLE_HOME:-$HOME/.crucible}.
 
-The space: ${CRUCIBLE_HOME:-$HOME/.crucible}, an absolute path, trailing
-slashes removed, as the crucible skill's scripts/lib/crucible-space.sh
-resolves it (the one copy of the space's rules: the root, the effort folder
-name and the ID). Efforts live in <space>/efforts/<id>-<name>/, flat. The
-space and efforts/ must be real folders: a symbolic link at either is
-refused (exit 4) by every command. Folders it creates are mode 700.
+  ID    <YYYYMMDDTHHMMSS>-<hex>: the local start time and 4 random lowercase
+        hex digits; never reused
+  NAME  words of a-z and 0-9 joined by single dashes, 1 to 40 characters
+        (the crucible skill's space rules own it)
+  --name NAME  start: the new effort's NAME
+  --all        list: every effort, not only the newest 20
+  VALUE        path: a full ID, its 4 hex digits or an exact NAME
 
-ID:   <YYYYMMDDTHHMMSS>-<hex>, the local time of the start and 4 random
-      lowercase hex digits. Unique across names; never reused.
-NAME: the NAME of the effort folder name rule crucible.sh --help states,
-      which the space rules check; it holds no leading, trailing or double
-      dash, so '--all', '-x' and 'a--b' are refused.
-An entry of efforts/ counts as an effort only when it is a real folder (not
-a symbolic link) named by that rule; every other entry is ignored.
+stdout on exit 0:
+  start: EFFORT: <folder>, the new effort's folder, absolute
+  list:  one <id>-<name> per line, newest first; no line when no effort exists
+  path:  the matching effort's folder, absolute, one line
+stderr:
+  list, more than 20 and no --all: "effort.sh: showing 20 of <N>; add --all
+    for every effort"
+  path, exit 1 with several matches: each <id>-<name>, unprefixed, on its own
+    line, newest first, then one "effort.sh:" summary line
+  else: "effort.sh:" diagnostic lines, to show the human
 
-Commands:
-  start --name NAME
-         mints a new ID and creates <space>/efforts/<id>-<name>/ (mode 700)
-         with one mkdir, never over an existing folder. A missing space is
-         created together with any missing parent folders (mkdir -p), and so
-         is a missing efforts/, each mode 700, never over a symbolic link.
-         When another folder already holds the ID, its own new folder is
-         removed and a fresh ID drawn, up to 5 attempts. When chmod fails on
-         its new folder, it removes that folder and exits 4. Prints exactly
-         one line:
-           EFFORT: <absolute folder path>
-  list [--all]
-         prints the effort folder names, one <id>-<name> per line, newest
-         first (efforts of the same second in reverse hex order); at most 20
-         unless --all; when more are cut off, stderr says
-           effort.sh: showing 20 of <N>; add --all for every effort
-         Prints nothing when there is no effort yet (no space or efforts/).
-  path VALUE
-         VALUE: a full ID, its 4 hex digits, or an exact name; words of
-         a-z, 0-9 and T joined by single dashes. Every effort whose ID, hex or name equals VALUE
-         matches. One match: prints its absolute path. None: stderr says so.
-         Several: stderr lists each <id>-<name> (no prefix), in list's order,
-         then a summary line.
-  --help, -h
-         prints this contract; with any argument after it, exits 2.
-
-Output: results on stdout; diagnostics on stderr only. Each diagnostic line
-but path's list of matches starts "effort.sh: ", then "space: " for exit 4
-or "install: " for exit 5, then "<what failed>; expected <x>; try <y>" (a
-usage error may omit the try part). A bad NAME (start, including an empty
-one) exits 2 with one stderr line starting "effort.sh: bad name: "; no
-other line starts so. A bad VALUE (path) exits 2 with one stderr line
-starting "effort.sh: VALUE is empty", "effort.sh: VALUE holds a character"
-or "effort.sh: bad VALUE: ". Neither prints the usage block; every other
-exit 2 also prints the usage block above to stderr. No temp files. Nothing
-is deleted except start's own just-created empty folder on an ID clash or
-a failed chmod.
+start creates one new empty effort folder, mode 700, never over an existing
+one, plus the space (with any missing parents) and efforts/ when missing, each
+mode 700; these stay after exit. A failed start leaves no new effort folder
+unless stderr names it. No command writes through a symbolic link at the space
+or efforts/, or deletes, renames or writes inside an existing effort
+folder; list and path write nothing.
 
 Exit codes:
-  0  ok
-  1  path: no effort matches VALUE, or several do
-  2  usage error (no command, an unknown command or argument, a missing or
-     repeated value), a bad NAME or VALUE (stderr says why), a CRUCIBLE_HOME
-     that is not absolute or is /, or, when CRUCIBLE_HOME is unset or empty,
-     a HOME that is not absolute
-  4  the space or efforts/ cannot be created, read or written, or is not a
-     folder, including mkdir, chmod, rmdir or ls failing on it; a symbolic
-     link at either; neither CRUCIBLE_HOME nor HOME set; or no free ID
-     after 5 attempts
-  5  install fault: a tool below missing, or date, od or sort failing, or
-     the space rules (lib/crucible-space.sh) missing. Checked after the
-     command word and before its arguments, so a missing tool exits 5 for
-     every command, ahead of a usage error in them
+  0  done; read stdout
+  1  path: no effort matches VALUE, or several do; with matches on stderr,
+     ask which one is meant; with none, run list
+  2  usage error, or a CRUCIBLE_HOME or HOME that is not usable as the space;
+     show the human stderr, and stop
+     effort.sh: bad name:  start: NAME breaks the rule; pick another name
+  4  the space or efforts/ is unusable; show the human stderr, and stop
+  5  install fault; show the human stderr, and stop
 
-Dependencies: POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir,
-ls and sort, all in the macOS and Linux base systems (on Linux, the
-coreutils package); the crucible skill's space rules,
-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
-sourced. No jq.
-
-Runtime: about 0.02 s a command: start, and list, list --all and path over
-26 efforts; --help about 0.01 s (mean wall time of 20 runs, sh startup
-included; macOS 26.7 on an Apple M1 Max). One mkdir, or one ls of efforts/.
+Dependencies (a missing one exits 5):
+  POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir, ls, sort (macOS
+    and Linux base systems; coreutils on Linux)
+  the crucible skill's space rules,
+    ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh
 EOF
 }
 
@@ -165,6 +128,8 @@ main() {
 			usage_error "unknown command: ${shown}; expected start, list, path or --help"
 			;;
 	esac
+	# Checked before a command's arguments, so a missing tool or space rules
+	# exit 5 ahead of any usage error in them.
 	check_tools
 	load_space_lib
 	resolve_root

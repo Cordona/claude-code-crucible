@@ -3,8 +3,9 @@
 # never typed by hand. new writes v1; extend writes the next version as a
 # complete copy of the latest one, minus the entries it retires, plus the new
 # ones; diff writes a local commit or range as a file; latest prints the
-# effort's latest version and writes nothing. Every input is checked first and every problem reported before any file is created: the JSON is
-# built with stand-in paths and checked by agent-context-validator.jq and
+# effort's latest version and writes nothing. Every input is checked first
+# and every problem reported before any file is created: the JSON is built
+# with stand-in paths and checked by agent-context-validator.jq and
 # agent-context-file-checks.sh, each problem named by the option behind it.
 # Only then is each file written atomically into the file crucible.sh new
 # --effort hands out, and checked again as prepare-agent-prompt.sh checks it.
@@ -119,269 +120,106 @@ def target: (capture("^(?<list>paths|links|notes):(?<n>[1-9][0-9]{0,8})$") | .n 
 | (.base | tojson), (.problems[] | "\($prog): --retire \(.value | shown): \(.problem)")
 '
 
+# The --help page: the caller's whole contract.
 usage() {
 	context_cap='the size cap of agent-context-file-checks.sh'
 	sensitive_names='the list in agent-context-file-checks.sh'
-	folder_excludes="                    the folder excludes of agent-context-file-checks.sh"
 	# shellcheck disable=SC2310 # its status says whether the lib was found; errexit adds nothing
 	if load_context_lib; then
 		[ -z "${context_max_bytes:-}" ] || context_cap="${context_max_bytes} bytes"
 		[ -z "${context_sensitive_names_text:-}" ] || sensitive_names=${context_sensitive_names_text}
-		# shellcheck disable=SC2310 # on a failure the fallback text above stays; errexit adds nothing
-		find_folder_excludes_text || true
 	fi
-	cat <<EOF
-Usage: sh ${PROG} new --effort FOLDER [ENTRY]... --note TEXT [--note TEXT]...
+	# Mirrors context_path_problem in agent-context-file-checks.sh; procedure-context step 1 picks paths by this list.
+	print_page <<EOF
+usage: sh ${PROG} new --effort FOLDER [ENTRY]... --note TEXT [--note TEXT]...
        sh ${PROG} extend --from VERSION [ENTRY]... [--retire LIST:N]...
        sh ${PROG} diff --effort FOLDER --repo ROOT --ref REF
        sh ${PROG} latest --effort FOLDER
-       sh ${PROG} --help|-h
+       sh ${PROG} --help | -h
   ENTRY: --path ABS --why LINE | --link URL --why LINE
          | --text-file FILE --why LINE | --note TEXT
-With no argument it prints this help on stderr and exits 2.
 
-Writes the files of an effort's context into the effort folder's context/,
-each made by \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-new --kind context --label <label> --effort <effort folder>, written to a temp
-file in its folder, then moved onto the path crucible.sh printed. Every input
-is checked first; on any problem no file is created, and on any later failure
-the files this run made are removed (the context/ folder crucible.sh made
-stays). Not safe against two runs on one effort at the same time. latest
-only reads: it writes nothing and does not run crucible.sh.
+Writes an effort's context versions and diff files into its context/, and
+leaves nothing else (a SIGKILL aside).
 
 Commands:
-  new    writes v1, the effort's first context version (label v1). Refused
-         (exit 3) when FOLDER's context/ already holds a version: use extend.
-  extend writes the next version, v<N+1> (label v<N+1>), as a complete copy:
-         VERSION's entries without the retired ones, then the new entries
-         appended in order (notes to notes, paths to paths, links to links,
-         the --text-file entry last in paths). At least one new entry or
-         --retire is required. Refused (exit 3) when VERSION is not the
-         effort's latest version (the message names the latest).
-  diff   writes a local commit or range as one diff file (label
-         ${DIFF_LABEL_PREFIX}<short sha of the commit, or of the range's end>), holding
-         {"text": "<the diff>"}, for a later --path entry. Safe to rerun:
-         when FOLDER's context/ already holds a regular file
-         <YYYYMMDDTHHMMSS>-<hex>-${DIFF_LABEL_PREFIX}<that short sha>.json whose text is
-         exactly the new diff, it prints that file's DIFF_FILE line, writes
-         nothing and does not run crucible.sh.
-  latest prints the effort's latest version: the highest N among FOLDER's
-         context/ version files, as --from defines the latest below. Exit 1
-         when FOLDER has no version yet (no context/, or no version file in
-         it), so a caller can tell "none yet" from a fault. Refused (exit 3)
-         when that latest file fails the read checks (below), as --from
-         applies them.
+  new     writes v1, the effort's first version
+  extend  writes v<N+1>: VERSION's entries minus the retired ones, then the
+      new ones in order (the --text-file entry last in paths)
+  diff    writes a commit or range of ROOT as a file for a --path; a rerun on
+      the same diff prints the same file
+  latest  prints the effort's latest version
 
-  --effort FOLDER the effort folder, as effort.sh start printed it: a real
-                  effort folder of the Crucible space, as crucible.sh new
-                  takes --effort (crucible.sh --help states the rule;
-                  trailing slashes dropped), whose context/, when present,
-                  is a real folder.
-  --from VERSION  a version file: an absolute path
-                  <effort folder>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json
-                  (N from 1, no leading zero), the effort folder as --effort
-                  sets it, passing the read checks (below), and
-                  the effort's latest: the highest N among its context/
-                  version files (regular files, not symlinks, named so; the
-                  -text and diff files are not versions; of two with the same
-                  N, the later ID).
-  --retire LIST:N leaves out entry N (from 1) of list paths, links or notes
-                  of VERSION, counted in VERSION. It must name an entry
-                  VERSION has, once; any --retire needs at least one new
-                  --note, the why of the retirement.
-  --path ABS      a file or folder the agent reads. It must be absolute and
-                  hold no control character, no quote (single or double) and
-                  no .. segment, must not name a sensitive file or folder in
-                  any letter case (a basename matching a sensitive name,
-                  below, a .git or .ssh component, or a .docker/config.json),
-                  must not name a file of instructions for Claude (a
-                  basename CLAUDE.md or SKILL.md in any letter case,
-                  or \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills or agents,
-                  that folder's name in any letter case, or anything under
-                  them, compared as text with empty and . segments dropped),
-                  must not name a Claude settings file, which can hold
-                  secrets (\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/settings.json,
-                  compared the same way, or a basename settings.local.json,
-                  both in any letter case), must not be a symlink (its
-                  folders may be), and must be an existing readable regular
-                  file or folder. Trailing slashes are dropped.
-  --link URL      http:// or https:// (in any letter case), then a host of
-                  letters, digits, dots and hyphens with an optional :port,
-                  then optionally a path, query or fragment of letters, digits and
-                  . _ ~ / ? # = % : + , @ - only (no space, quote, ; \$ \` ( ) & | < or >).
-  --text-file FILE  a readable regular file (same path rules as --path, a
-                  folder excluded) holding the human's long verbatim text, as
-                  valid UTF-8, at most ${TEXT_MAX_BYTES} bytes. Its content is copied
-                  exactly into a second file, labelled v<N>${TEXT_LABEL_SUFFIX} after the
-                  version it enters, holding {"text": "<the content>"}, made
-                  before the version; that file is the last entry of paths.
-                  At most one per call. The agent reads it with Read; it is
-                  not injected.
-  --why LINE      why the agent needs the entry before it: one non-empty line
-                  without control characters. Exactly one right after each
-                  --path, --link and --text-file, and nowhere else.
-  --note TEXT     any text, kept in order. new needs at least one: the
-                  human's request or a note.
-  --repo ROOT     the repository's git work-tree root: absolute (trailing
-                  slashes dropped), an existing folder, and what
-                  git -C ROOT rev-parse --show-toplevel prints.
-  --ref REF       a commit (sha, branch, tag, HEAD~2, ...) or a range A..B,
-                  of the characters 0-9 A-Z a-z . _ / ^ ~ - only, no part
-                  starting with -, at most one .., never ...; each part must
-                  resolve to a commit in ROOT. A commit is written as
-                    git -C ROOT show --no-color --no-ext-diff --no-textconv
-                        --no-show-signature <its sha>
-                  a range as
-                    git -C ROOT diff --no-color --no-ext-diff --no-textconv
-                        <sha of A>..<sha of B>
-                  both followed by the pathspec
-                    -- . ':(exclude,icase,glob)**/<name>' for each
-                    sensitive name (below), then
-${folder_excludes}
-                  and, when \${CLAUDE_CONFIG_DIR:-\$HOME/.claude} (trailing
-                  slashes dropped) is ROOT or, as text, a folder under it,
-                    ':(exclude,icase,literal)<that folder relative to
-                    ROOT and a />settings.json'
-                  (just settings.json when it is ROOT)
-                  so the diff leaves out every file --path refuses as
-                  sensitive or as a Claude settings file, in any letter
-                  case (a commit or range that changes only such files is
-                  an empty diff),
-                  and both read-only (no optional locks, no prompt, no pager,
-                  no fsmonitor, no system config, pathspec magic on), its
-                  output going to a temp file in \${TMPDIR:-/tmp}, removed on
-                  exit. The diff must be non-empty, valid UTF-8 and at most
-                  ${TEXT_MAX_BYTES} bytes.
-No value but a note may hold a control character.
-Sensitive names, basename globs matched in any letter case, from
-agent-context-file-checks.sh:
+Options (no value but a note may hold a control character):
+  --effort FOLDER   the effort folder, as effort.sh start printed it
+  --from VERSION    the effort's latest version, a CONTEXT_FILE path
+  --retire LIST:N   drops entry N (from 1) of VERSION's paths, links or notes;
+      needs a new --note saying why
+  --path ABS        an existing readable file or folder, absolute, not a
+      symlink, with no control character, quote or .. segment; in any letter
+      case not a sensitive name (below), a .git or .ssh component,
+      .docker/config.json, CLAUDE.md, SKILL.md, settings.local.json, or
+      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}'s settings.json, skills/ or agents/
+      or anything under them
+  --link URL        an http(s) URL; rules: see agent-context-url.jq
+  --text-file FILE  the human's long text: a file --path takes, UTF-8, at most
+      ${TEXT_MAX_BYTES} bytes, one per call
+  --why LINE        one line: why the agent needs the entry just before it
+  --note TEXT       any text; new needs one
+  --repo ROOT       the git work-tree root, absolute
+  --ref REF         a commit or a range A..B of 0-9 A-Z a-z . _ / ^ ~ - only,
+      no part starting with -; its diff non-empty, UTF-8, at most
+      ${TEXT_MAX_BYTES} bytes
+Sensitive names, basename globs:
   ${sensitive_names}
-Besides these basenames, the folder rules refuse, in any letter case, a .git
-or .ssh component and a .docker/config.json.
 
-A context version (at most ${context_cap}, checked by
-agent-context-validator.jq as prepare-agent-prompt.sh checks it, before and
-after it is written):
-  {"paths": null | [{"path": str, "why": str}, ...],
-   "links": null | [{"url": str, "why": str}, ...],
-   "notes": [str, ...]}
-null when there is no entry of that kind. A version is never changed once
-written; extend writes a new file.
+A version is at most ${context_cap}; shape: see agent-context-validator.jq.
 
-Read and write checks: --from and latest apply only the read checks to a
-version: its name and place as --from sets them, a path without control
-characters or quotes, then context_read_problem of
-agent-context-file-checks.sh, the one read check every script that reads a
-context file applies: a readable regular file that is not a symlink, at
-most the size cap, valid JSON passing agent-context-validator.jq, and the
-effort's latest version. The write rules, the --path and --text-file rules
-of agent-context-file-checks.sh, apply only when a file is written, to each
-new entry; the size cap and the validator also hold for the whole new
-version, before it is written and after (the read checks again). A rule
-added later goes into the write rules, never into the validator, so every
-version written before it stays readable by --from and latest; the rule
-holds from the next version on, for its new entries; entries extend keeps
-from VERSION are not checked by the path rules again (retire one to drop
-it), and a version extend would write over the size cap is refused until
-entries are retired.
+stdout on exit 0 (none otherwise):
+  new, extend, latest: CONTEXT_FILE: <absolute version path>
+  then CONTEXT_SHA256: <sha256 of that file>
+  diff: DIFF_FILE: <absolute diff file path>
+stderr on exit 3: one line per problem, either
+  "${PROG}: <option> <value>: <problem>; expected <x>" or, for the version
+  as a whole, "${PROG}: context file: <problem>"
 
-Output (stdout, on exit 0; nothing on stdout otherwise):
-  new, extend, latest: exactly two lines
-    CONTEXT_FILE: <absolute path of the version>
-    CONTEXT_SHA256: <64 lowercase hex sha256 of that file>
-  diff: exactly one line
-    DIFF_FILE: <absolute path of the diff file>
-Problems (stderr, one line each; every problem of the inputs is listed), a
-value shown as a JSON string, its middle cut past ${SHOWN_MAX_CHARS} characters:
-  ${PROG}: <option> <value>: <problem>; expected <x>
-  ${PROG}: context file: <problem>; expected <x>
-      the context JSON as a whole, such as over the size cap
-  ${PROG}: CRUCIBLE_HOME <the space folder>: <problem>; expected <x>
-      the path a file would get fails the path checks; when CRUCIBLE_HOME
-      is unset or empty the space is \$HOME/.crucible and the line ends
-      "; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix
-      HOME, or set CRUCIBLE_HOME to a folder that passes"; exit 4
-Other stderr lines: "${PROG}: <message>; expected <x>" for a usage error
-(then a "Try ..." line), "${PROG}: <message>; expected <x>; <the fix>" for a
-dependency fault, "${PROG}: <message>; expected <x>; try <y>" for a failure
-after the checks, "${PROG}: removed <file>, made by this run", and
-crucible.sh's own lines.
+Each file is written whole or not at all; a version never changes; a diff
+leaves out what --path refuses; ROOT is only read. Never run it twice at once
+on one effort.
+
+Environment:
+  CRUCIBLE_HOME     the Crucible space (default \$HOME/.crucible)
 
 Exit codes:
-  0  the file written (latest: the latest version found; diff: the same
-     diff file found); its lines printed
-  1  latest: FOLDER has no context version yet, one stderr line
-       ${PROG}: --effort <folder>: no context version yet; expected v1 from ${PROG} new first
-     new, extend, diff: crucible.sh new failed (its stderr is printed), git
-     or mktemp failed producing a checked diff, or writing or checking a
-     file failed after crucible.sh created it; the files this run made are
-     removed and named
-  2  usage error: no argument, an unknown command or option, an option
-     without its value or not taken by the command, a --why not right after
-     an entry, an entry without its --why, a second --effort, --from,
-     --text-file, --repo or --ref, an empty --effort, --from, --repo or
-     --ref, a missing --effort (new, diff, latest), --from (extend), --repo or
-     --ref (diff), or no --note for new
-  3  invalid input, one stderr line per problem; no file created; fix the
-     named inputs. Among them: a FOLDER or VERSION that breaks its rule
-     above, new on an effort that has a version, extend from a version that
-     is not the latest, a latest version that fails its checks (latest),
-     extend with nothing to add or retire, a --retire
-     that names no entry of VERSION or names one twice, a --retire without a
-     new --note, a REF that breaks its rule or does not resolve, a ROOT that
-     is not the work-tree root, and a diff that is empty, not UTF-8 or over
-     the cap
-  4  the Crucible space path is unusable (a CRUCIBLE_HOME line, printed with
-     every other problem, or alone when the crucible skill's space rules
-     refuse the root itself: relative, /, or a symbolic link); no file
-     created; fixing the inputs does not help:
-     set CRUCIBLE_HOME to a folder that passes the rule the line names, or,
-     when the line says CRUCIBLE_HOME is unset or empty, fix HOME
-  5  a dependency missing, with the fix named: jq 1.6+, sha256sum or shasum,
-     crucible.sh (not for latest), the crucible skill's
-     scripts/lib/crucible-space.sh, git (diff), agent-context-file-checks.sh,
-     agent-context-validator.jq, agent-context-url.jq or context-versions.sh
-     beside this script,
-     or a base tool below; or jq, wc or the sha256 tool failing as it runs
-  129, 130, 143  stopped by HUP, INT or TERM; the temp files and the files
-     this run made are removed
+  0  done; read stdout
+  1  latest: no version yet; run new. Else a write failed; show the human
+     stderr, and stop
+  2  usage error; show the human stderr, and stop
+  3  invalid input, nothing written; fix what stderr names, rerun
+     "--effort <folder>: its context already holds"  new: a version exists;
+       extend that version
+     "--from <file>: is version ... not the latest"  extend: extend the one
+       named
+  4  the Crucible space is unusable; show the human stderr, and stop
+  5  install fault; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
 
-Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --rawfile; macOS: brew
-install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
-every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
-(macOS: built in, run as shasum -a 256); crucible.sh, except for latest;
-the crucible skill's space rules,
-\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
-sourced;
-git for diff (macOS: xcode-select --install; Linux: the distro's git package);
-agent-context-file-checks.sh, agent-context-validator.jq,
-agent-context-url.jq (the link rule the validator includes) and
-context-versions.sh, all four beside this script, so a copy of the
-${PROCEDURE} skill run from anywhere loads only its own files.
-Reads only: the --text-file content; VERSION; the names in the effort's
-context/; for --path, only whether it exists and its type; for diff, git's
-view of ROOT and the effort's diff files of the same short sha; for latest,
-the latest version file.
-Runtime: about 0.21 s for new with a path, a text file and a note, 0.14 s
-for extend with a note and a --retire, 0.11 s for diff of one small commit,
-0.03 s for latest; measured on macOS (average of 5 runs).
+Dependencies:
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); cat,
+    mktemp, mv, rm, tr, wc; sha256sum or shasum (macOS: built in)
+  the crucible skill: crucible.sh (not for latest),
+    scripts/lib/crucible-space.sh
+  diff: git (macOS: xcode-select --install; Linux: the distro's git)
+  beside this script: agent-context-file-checks.sh, agent-context-validator.jq,
+    agent-context-url.jq, context-versions.sh
 EOF
 }
 
-# Sets folder_excludes to the help lines of the pathspecs context_excluded_pathspecs
-# prints besides the one per sensitive name, each quoted and indented.
-find_folder_excludes_text() {
-	# shellcheck disable=SC2310 # its status is the lib's; a failure keeps the fallback text
-	all_excludes=$(context_excluded_pathspecs) || return 1
-	folder_excludes=''
-	while IFS= read -r exclude; do
-		case " ${context_sensitive_names} " in
-			*" ${exclude#':(exclude,icase,glob)**/'} "*) ;;
-			*) folder_excludes="${folder_excludes}${folder_excludes:+${NL}}                    '${exclude}'" ;;
-		esac
-	done <<EOF
-${all_excludes}
-EOF
+# Prints stdin with builtins only, so the page prints with cat missing.
+print_page() {
+	while IFS= read -r page_line; do
+		printf '%s\n' "${page_line}"
+	done
 }
 
 warn() {
@@ -400,7 +238,9 @@ usage_error() {
 }
 
 # Prints $1 with each control character as "?", so a value can't split a stderr line.
+# A usage error can reach it before the tool check, so it checks the tools first.
 printable() {
+	require_tools
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
@@ -574,6 +414,16 @@ require_option() {
 	esac
 }
 
+# Exits 5 naming the first of REQUIRED_TOOLS missing from PATH; checks once.
+require_tools() {
+	[ -z "${tools_checked}" ] || return 0
+	for tool in ${REQUIRED_TOOLS}; do
+		command -v "${tool}" >/dev/null 2>&1 ||
+			die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
+	done
+	tools_checked=true
+}
+
 # Exits 5 unless jq, a sha256 tool, crucible.sh, agent-context-file-checks.sh
 # beside this script and the read checks' files are in place; sources the
 # checks and sets crucible_script and validator.
@@ -699,7 +549,8 @@ check_from_version() {
 
 # Prints the problem of version file $1 (--from, or the latest for latest)
 # by the read checks, or nothing. The write rules are left out, so a version
-# written before a write rule tightened stays readable.
+# written before a write rule tightened stays readable: a new rule goes into
+# the write rules, never into the validator, and holds for new entries only.
 version_file_problem() {
 	case $1 in
 		*[[:cntrl:]]* | *\'* | *'"'*)
@@ -1260,12 +1111,7 @@ check_diff_text() {
 	exit_on_problems "${rule_problems}"
 }
 
-for tool in ${REQUIRED_TOOLS}; do
-	command -v "${tool}" >/dev/null 2>&1 ||
-		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
-done
-
-temp_file='' diff_temp='' created_files=''
+temp_file='' diff_temp='' created_files='' tools_checked=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files and the files this
 # run made go on every path.
@@ -1310,6 +1156,7 @@ done
 finish_parse
 shift "${argument_count}"
 
+require_tools
 load_dependencies
 resolve_space_root
 case ${command} in

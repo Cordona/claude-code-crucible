@@ -1,6 +1,6 @@
 # Dispatch plan: rules
 
-What the main thread decides for each plan at SKILL.md's step 7, as `generate-dispatch-plan.sh`'s options. The generator checks every rule a script can check and writes the plan JSON; the renderer owns its layout and its question. You fill the options, never the JSON, the Markdown or the dialog. Every free-text value (a task, a reason) is quoted as CLAUDE.md sets. `generate-dispatch-plan.sh --help` is the full option list and every rule it checks.
+What the main thread decides for each plan at SKILL.md's step 7, as `generate-dispatch-plan.sh`'s options. The generator checks every rule a script can check and writes the plan JSON; the renderer owns its layout and its question. You fill the options, never the JSON, the Markdown or the dialog. Every free-text value (a task, a reason) is quoted as CLAUDE.md sets. `generate-dispatch-plan.sh --help` is the full option list; the plan rules are its `dispatch-plan-validator.jq`'s, and exit 3 names a broken one.
 
 ## Options
 

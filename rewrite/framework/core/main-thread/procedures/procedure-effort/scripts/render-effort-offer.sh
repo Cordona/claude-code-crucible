@@ -54,61 +54,38 @@ def one_bullet:
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
+usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
        sh ${PROG} --help | -h
 
-Reads the effort offer's reasons as one JSON object from PATH and prints the
-offer's Markdown. PATH is required; stdin is not read. It prints no gate
-marker; open-gate.sh adds it.
+Prints the effort offer, the gate asking the human whether to start an effort,
+as Markdown from a JSON file of reasons. stdin is never read; no file is
+written.
 
-Input shape, no other field:
-  {"reasons": [str, ...]}
-1 to ${MAX_REASONS} reasons, each a string that is not blank, holds no control character
-(no line break or tab) and no U+2028 or U+2029 line or paragraph separator,
-and is at most ${MAX_REASON_CHARS} characters (Unicode code points, as written).
+Options:
+  --plan-file PATH  one JSON object, {"reasons": [str, ...]}, no other field:
+                    1 to ${MAX_REASONS} reasons, each not blank, with no control character
+                    (line break, tab) or U+2028/U+2029, at most ${MAX_REASON_CHARS} characters
+                    (code points, as written); inline Markdown in a reason
+                    renders, a leading block mark (#, >, -, 1.) shows as text
 
-Layout:
-  ## 🧭 This looks like a bigger piece of work
-  (a blank line)
-  - <reason>       one line per reason, in input order
-The title is fixed. A reason prints as written, without its leading and
-trailing spaces, so each one renders as exactly one bullet item: a reason that
-starts like a Markdown block gets a backslash before that start, which shows
-it as plain text:
-  # to ######, then a space or the end   (heading)    -> \\#
-  >                                      (quote)      -> \\>
-  ---, ***, ___ (3 or more, spaces between allowed, nothing else)
-                                         (rule)       -> \\-, \\*, \\_
-  -, + or *, then a space or the end     (list item)  -> \\-, \\+, \\*
-  1 to 9 digits, then . or ), then a space or the end
-                                         (numbered)   -> 1\\. or 1\\)
-  \`\`\` or ~~~                             (code fence) -> \\\`\`\` or \\~~~
-Inline Markdown stays as written and renders as Markdown, so a \`name\` pair
-shows as code.
-
-Anything else is refused, nothing on stdout, exit 2, one stderr line per
-problem, each "${PROG}: <what>; expected <x>", most with
-"; try <y>": not exactly one JSON value, not an object, a field other than reasons (each
-named), reasons missing, not an array, or with fewer than 1 or more than ${MAX_REASONS}
-items, and per reason ("reasons[<index>]", from 0) its first fault: not a
-string, empty or blank, a control character or U+2028/U+2029, more than
-${MAX_REASON_CHARS} characters.
-Every install fault (exits 1 and 3) prints one line starting
-"${PROG}: install:"; no other line does.
+stdout on exit 0 only: the offer's Markdown, a fixed title and one bullet per
+  reason in input order, with no gate marker
+stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
+  line per problem (a usage error adds a "Try" line); a reason is named
+  reasons[<i>], from 0, with its first fault only
+stderr on exits 1, 3: "${PROG}: install:", a prefix no other exit
+  prints; tell the human to install jq 1.6+, and stop
 
 Exit codes:
-  0  the offer printed
+  0  the offer printed; go on
   1  jq missing
-  2  usage error (--plan-file missing or empty, or an unknown argument), an
-     unreadable plan file, input that is not JSON, or input refused as above
-  3  jq failed while checking or rendering valid JSON
-  4  stdout closed or not writable (such as a reader that exits before
-     reading); nothing on stderr, as with any closed pipe
+  2  refused input; fix what stderr names and rerun once, else show the human stderr
+  3  jq failed on valid JSON
+  4  stdout closed before the offer was written, nothing on stderr; stop and
+     show the exit code
 
 Dependencies: POSIX sh, cat, jq 1.6+ (macOS: brew install jq; Linux: the
-distro's jq package); jq reads and writes UTF-8 whatever the locale.
-Runtime: about 20 ms an offer, --help about 8 ms; measured on macOS (mean of
-20 runs).
+  distro's jq package); the plan file is read as UTF-8 whatever the locale.
 EOF
 }
 

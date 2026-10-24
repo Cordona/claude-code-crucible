@@ -67,84 +67,61 @@ main() {
 
 usage() {
 	cat <<'EOF'
-usage: read-link.sh --context-file <absolute path> --link <n> | -h | --help
+usage: read-link.sh --context-file <absolute path> --link <n>
+       read-link.sh --help | -h
 
-The procedure-read-trackers plugin's tracker read. Reads link <n> of the
-context file's links through its tracker's one read-only call: gh issue view,
-glab issue view, or procedure-jira's jira.sh view with JIRA_READ_ONLY=1.
--h or --help, given before any bad argument, prints this and exits 0.
+Reads link <n> of a context file through its tracker's issue view.
 
-Input:
-  --context-file  one JSON object whose links is an array of objects, each
-                  with a "url" (other keys, "why" included, are not read)
+Options:
+  --context-file <absolute path>
+                  one JSON object whose links array holds objects with a
+                  "url"; no other key is read
   --link <n>      the link's place in links: a whole number from 1, no
                   leading zero
-  The url must be http or https and use only letters, digits and
-  . _ ~ / ? # = % : + , @ - (no &, quotes, spaces); any other is exit 4.
-  This is procedure-context's link rule (its scripts/agent-context-url.jq),
-  the one the context validator applies, read from there on every run.
+  rules for each url: see procedure-context's scripts/agent-context-url.jq
 
-Tracker links, by host and URL shape (http or https, host in any case):
-  GitHub  the host github.com exactly, the path /<owner>/<repo>/issues/<n>
-  GitLab  any host without a port, a path ending in /-/issues/<n> (a
-          github.com URL of that shape is read through glab too)
-  Jira    a host procedure-jira-auth's allow-list admits (letters, digits,
-          . and - only, matching its JIRA_HOST_ALLOWLIST_PATTERN glob, default
-          *.atlassian.net), the path /browse/<KEY>-<n>, KEY in capitals
-          ([A-Z][A-Z0-9_]*); that path on any other host is exit 3, the Jira
-          skills installed or not
-Any other URL is not a tracker link (exit 3).
+Environment:
+  JIRA_HOST_ALLOWLIST_PATTERN
+                  a glob of the Jira hosts admitted (default *.atlassian.net)
 
-Output:
-  stdout  exit 0: the ticket, at most 500 lines. Empty on every other exit.
-  stderr  exit 0: nothing, or for a longer ticket the one line
-          "read-link.sh: truncated: showing 500 of <total> lines".
-          Any other exit: the first line is "read-link.sh: <reason>";
-          exit 1 from a tool that ran adds up to 20 lines of that tool's
-          own stderr, and exit 2 adds this usage text.
-  Writes  one temp dir ($TMPDIR/read-link.XXXXXX, /tmp if TMPDIR is unset
-          or empty) holding the tool's output, removed on exit; nothing
-          else.
+Tracker links (http or https, host in any case):
+  GitHub  host github.com, path /<owner>/<repo>/issues/<number>
+  GitLab  any host without a port, path ending /-/issues/<number>
+          (github.com too)
+  Jira    a host procedure-jira-auth's allow-list admits, path
+          /browse/<KEY>-<number>, KEY matching [A-Z][A-Z0-9_]*
+
+stdout  exit 0: the ticket, at most 500 lines; empty on any other exit
+stderr  on a non-zero exit, the reason on its first line; on exit 0, a
+        truncation notice when the ticket was cut
+
+Nothing else is left behind (a SIGKILL aside); the context file
+and every tracker are never changed.
 
 Exit codes:
-  0    read, the ticket on stdout
-  1    read failed (tool missing, not logged in, network, timeout after 30 s,
-       private or missing ticket, a Jira skill not installed, no stored Jira
-       credential, tool non-zero)
-  2    usage error
-  3    not a tracker link, a Jira host outside the allow-list included
-  4    context file unreadable, not one JSON object, no links, no link <n>,
-       or a URL not of the accepted form
-  5    internal error, mktemp failed, or jq, a base tool or
-       procedure-context's link rule missing
-  130  interrupted (INT)
-  143  terminated (TERM)
+  0  read; use the ticket on stdout
+  1  read failed; skip the link, giving stderr's first line
+  2  usage error; skip the link, giving stderr's first line
+  3  not a tracker link; read it as any other link
+  4  the context file or its link <n> is not usable; skip the link, giving
+     stderr's first line
+  5  setup fault; skip the link, giving stderr's first line
+  130, 143  stopped by INT or TERM; skip the link
 
-Dependencies (runs under POSIX sh):
-  jq 1.6+       macOS: brew install jq; Linux: the distro's jq package. Only
-                its presence is checked; an older jq exits 5.
-  base tools    awk, cat, env, head, mktemp, rm and sleep; macOS ships them,
-                on Linux coreutils and awk
-  procedure-context
-                its scripts/agent-context-url.jq under
-                ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/ (install the
-                procedure-context skill)
-  ps            optional (procps on Linux): used to stop a timed-out read's
-                child processes; without it only the read's own process is
-                stopped and its children may run on
-  GitHub read   gh: brew install gh, then gh auth login
-  GitLab read   glab: brew install glab, then glab auth login
-  Jira read     the procedure-jira and procedure-jira-auth skills under
-                ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, with a credential
-                stored through procedure-jira-auth, and curl, which
-                procedure-jira needs
-jq, the base tools and the link rule are checked at start, after the
-arguments; the tool a
-read needs is checked just before that read.
+Dependencies:
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  awk, cat, env, head, mktemp, rm, sleep (macOS ships them; Linux: coreutils
+    and awk)
+  the procedure-context skill (its scripts/agent-context-url.jq) under
+    ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/
+  ps, optional (procps on Linux): without it a timed-out read's child
+    processes may run on
+  GitHub: gh (brew install gh, then gh auth login)
+  GitLab: glab (brew install glab, then glab auth login)
+  Jira: the procedure-jira and procedure-jira-auth skills in the same skills
+    dir, a credential stored through procedure-jira-auth, and curl
 
-Runtime: network bound. The whole read, the Jira credential lookup included,
-is stopped after 30 s (exit 1), the tool's child processes with it; a public
-GitHub issue read takes about 1 s.
+Runtime: network bound; a read is stopped after 30 s (exit 1).
 EOF
 }
 
@@ -198,6 +175,8 @@ fail() {
 	exit "${fail_code}"
 }
 
+# jq, a base tool or the link rule missing is exit 5, checked before any read;
+# a tracker's own tool or skill missing is exit 1, checked before its read.
 require_base_tools() {
 	for base_tool in awk cat env head mktemp rm sleep; do
 		command -v "${base_tool}" >/dev/null 2>&1 \

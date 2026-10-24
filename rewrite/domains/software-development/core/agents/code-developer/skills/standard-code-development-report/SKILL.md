@@ -23,11 +23,11 @@ The developer's report is one JSON object in a file. `scripts/report.sh` checks 
 
 1. Write the JSON with Write to the `REPORT` path under `# Your work` in your first message (implementing directly: the `REPORT:` path `flow-agent-initialization` step 11 hands back), an empty file in the Crucible space: Read it first, as Write requires.
 2. *(Dispatch only)* Reply with exactly `REPORT: <path>` and nothing else. Implementing directly: go on to `flow-code-development`'s check and render.
-3. A rejection arrives as a message to you after your reply: `report.sh`'s stderr, one line per failing field, `<field>: <what>; expected <x>`. Fix each field it names with Edit (Never), and reply `REPORT: <path>` again. A fresh dispatch gets an empty `REPORT` file: write the whole report.
+3. A rejection arrives as a message to you after your reply: the fields that failed, one per line. Fix each field it names with Edit (Never), and reply `REPORT: <path>` again. A fresh dispatch gets an empty `REPORT` file: write the whole report.
 
 ## Fields
 
-Each item goes in the one field whose line fits it. A plugin's `references/development.md` may name extra items under its `## Reporting`, each in the field it names; it adds items, never fields or keys. Leave an optional key out when it is empty. Every text value is at most 200 characters, `summary` excepted; the item caps are in the Key column. report.sh's validator owns the shape; this table and `report.sh --help` document it, and on a mismatch the validator wins.
+Each item goes in the one field whose line fits it. A plugin's `references/development.md` may name extra items under its `## Reporting`, each in the field it names; it adds items, never fields or keys. Leave an optional key out when it is empty. Every text value is at most 200 characters, `summary` excepted; the item caps are in the Key column. report.sh's validator owns the shape; this table documents it, and on a mismatch the validator wins.
 
 | Key | Holds | Never holds |
 |---|---|---|
@@ -83,6 +83,6 @@ A failed item: fix it with Edit, then check again.
 
 ## The script
 
-The main thread runs `scripts/report.sh`, as `flow-code-development` sets; a dispatched developer never runs it. Its `--help` is the full contract, which that flow has the main thread run once, before the script's first use in a session.
+The main thread runs `scripts/report.sh` as `flow-code-development` sets, which runs `report.sh --help`, `check --help` and `render --help` once, before first use in a session: they hold its contract. A dispatched developer never runs it.
 
 This skill writes only the `REPORT` file.

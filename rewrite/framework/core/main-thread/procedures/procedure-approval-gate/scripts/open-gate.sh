@@ -32,93 +32,60 @@ END {
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-path
-       <renderer> --plan-file <path> | sh ${PROG} --label LABEL [--effort FOLDER]
-       <renderer> --plan-file <path> | sh ${PROG} --show-only
-  e.g. sh ${PROG} --plan-path         (prints <path>; write the plan JSON there)
-       sh render-dispatch-plan.sh --plan-file <path> | sh ${PROG} --label dispatch-plan --effort <effort folder>
+usage: sh ${PROG} --plan-path
+       <renderer> --plan-file PATH | sh ${PROG} --label LABEL [--effort FOLDER]
+       <renderer> --plan-file PATH | sh ${PROG} --show-only
+       sh ${PROG} --help | -h
 
-The session's gate folder is
-  \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session id>/
-(mode 700, files 600; cache/approval-gate/ or a gate folder that is a
-symbolic link is refused, exit 1).
-  --plan-path  creates the gate folder, sets its modification time to now,
-               and prints the absolute path <gate folder>/plan.json, where the
-               caller writes the renderer's input. Reads no stdin, writes no
-               file, opens no gate. plan.json goes with the gate: the question
-               hook removes it when it clears the gate, and a hook removes it
-               when nothing in the gate folder changed in ${STALE_SECONDS}s. A
-               hook removing a stale or malformed gate state keeps a plan.json
-               changed in the last ${STALE_SECONDS}s, the next gate's plan.
-  (default)    reads a rendered gate plan (Markdown) on stdin, drops its
-               trailing blank lines, appends "\n${MARKER}\n", and prints
-               exactly that text. It stores the text as gate.md, plus a state
-               line "<state> <tries> <opened epoch>", replacing any earlier
-               gate of this session; plan.json stays. State "pending", 0 tries:
-               the Stop hook checks the relay and the question hook denies the
-               question until it is relayed. When the text equals the
-               session's pending gate.md (opened less than ${STALE_SECONDS}s
-               ago), the gate keeps its tries. Needs --label.
-  --label LABEL  the gate record's label, the plan's kind, the label its
-               procedure sets (such as dispatch-plan): a Crucible item
-               label, by the rule crucible.sh --help states and the crucible
-               skill's space rules check.
-  --effort FOLDER  the effort the gate belongs to: its record is saved in
-               FOLDER/cache/gates/ through crucible.sh new. A real effort
-               folder of the Crucible space, as crucible.sh new takes
-               --effort (trailing slashes dropped), checked by the space
-               rules, and holding no control character.
-               Without it (a gate before any effort, such as the effort
-               offer) the record is saved in this session's gate folder,
-               under records/, never in the Crucible space.
-  --show-only  as the default, state "shown": a plan shown with no question;
-               the Stop hook lets the stop through and the question hook
-               clears it. No record is saved, so it takes no --label or
-               --effort, and an earlier gate's target file is removed.
-A pending gate stores its record's target with the gate, the file target in
-the gate folder, two lines:
-  label <LABEL>
-  effort <FOLDER, or empty>
-which the question hook reads to save the relayed plan as the gate record.
-Every run that passes the checks (arguments, --effort, tools, session id, input, date,
-a linked cache/approval-gate/, gate folder or (--plan-path) plan.json) also
-sets this session's gate folder's modification time to now, and removes other
-sessions' gate folders in cache/approval-gate/ that are stale: no gate opened
-in the last ${STALE_SECONDS}s, and nothing in the folder (the folder itself,
-plan.json, the gate state) changed in that time. A run stopped by a check
-touches and removes nothing. A folder it cannot judge stays. It never
-follows a symbolic link in cache/approval-gate/ and touches nothing outside
-it; when a stale folder can't be removed, a note goes to stderr and the run
-goes on.
-The session id comes from CLAUDE_CODE_SESSION_ID, which Claude Code sets in the
-Bash tool; it must hold only letters, digits, ".", "_" and "-".
-Input is checked before anything is written.
+Opens this session's approval gate for the rendered plan on stdin and prints
+the gate text to relay.
+
+Options:
+  --plan-path       print the session's plan file path; opens no gate; takes
+                    no other option
+  --label LABEL     open a pending gate, its record saved under LABEL, the
+                    label the gate's procedure sets (such as dispatch-plan), a
+                    Crucible item label (see crucible.sh --help); needed
+                    unless --plan-path or --show-only
+  --effort FOLDER   the absolute effort folder the gate belongs to, as
+                    effort.sh start printed, under
+                    \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/: the record
+                    is saved in its cache/gates/; without --effort, in the
+                    session's gate folder, never in the Crucible space
+  --show-only       open a gate that shows the plan and asks nothing; saves no
+                    record, so takes no --label or --effort
+
+Environment:
+  CLAUDE_CODE_SESSION_ID  the session id Claude Code sets in the Bash tool
+
+stdout with --plan-path: one absolute path, the session's plan file
+stdout otherwise: the gate text, its last line ${MARKER}, word for word
+
+Writes, under \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/ only:
+  the session's gate folder, owner-only; a gate replaces the session's earlier
+    gate and leaves its plan file in place; --plan-path writes no file
+  a pending gate's target file, read by gate-question-hook.sh: the lines
+    "label <LABEL>" and "effort <FOLDER, or empty>"
+  other sessions' gate folders idle for ${STALE_MINUTES} minutes (no gate opened, nothing
+    changed) are removed; a symbolic link is never followed or removed
+Nothing else is left behind (a SIGKILL aside). Exit 2 or 5 leaves
+everything as it was.
 
 Exit codes:
-  0              the gate opened and its text is on stdout, or (--plan-path)
-                 the plan path is on stdout
-  1              the plan could not be processed (awk or date failed), the
-                 gate folder or its state could not be written, or
-                 cache/approval-gate/, the gate folder or (--plan-path)
-                 plan.json is a symbolic link
-  2              usage error: an unknown or repeated argument, --label
-                 missing (default) or given with --show-only or --plan-path,
-                 a bad LABEL, a FOLDER that breaks its rule above (missing,
-                 a symbolic link, and a Crucible space the space rules refuse
-                 included),
-                 CLAUDE_CODE_SESSION_ID missing or unsafe, or empty input.
-                 Empty input is also what a
-                 renderer that failed leaves: its own stderr is above this
-                 script's, and a plain pipe's exit is this script's 2, not
-                 the renderer's
-  5              a required tool missing from PATH, or, for a gate with
-                 --label, the space rules missing
-  129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
+  0  done; relay the gate text, or (--plan-path) write the plan at the path
+  1  the plan or the gate folder could not be processed; show the human
+     stderr and the exit code
+  2  refused input; fix what stderr names and rerun once, else show the
+     human stderr
+  5  install fault; show the human stderr, which names what to install
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
-Dependencies: POSIX sh, ${REQUIRED_TOOLS}; checked at
-start, a missing one exits 5. find needs -mmin, as on macOS and Linux. With
---label, the crucible skill's space rules, ${SPACE_LIB_TEXT}.
-Runtime: about 29 ms, measured on macOS (average of 5 runs).
+Dependencies (a missing one exits 5, named):
+  POSIX sh; ${REQUIRED_TOOLS}
+    (every macOS and Linux base system; find with -mmin)
+  with --label: the crucible skill's space rules,
+    ${SPACE_LIB_TEXT}
+    (install the crucible skill)
 EOF
 }
 
@@ -211,9 +178,9 @@ is_live_gate_dir() {
 	[ -n "${recent}" ]
 }
 
-# Removes other sessions' stale gate folders in gate_root, which make_gate_dir
-# has checked is no link. Plain folders only: a linked entry is never followed
-# or removed.
+# Removes other sessions' stale gate folders in gate_root, which
+# check_gate_paths has checked is no link. Plain folders only: a linked entry
+# is never followed or removed.
 sweep_other_gates() {
 	for entry in "${gate_root}"/*; do
 		[ ! -L "${entry}" ] && [ -d "${entry}" ] || continue
@@ -239,8 +206,8 @@ carried_tries() {
 	fi
 }
 
-# Stores the marked text $1 as gate.md and state line "$2 <tries> now", then
-# prints gate.md.
+# Stores the marked text $1 as gate.md, the target file and state line
+# "$2 <tries> now", then prints gate.md.
 store_gate() {
 	write_fix="expected a writable ${gate_dir}; try checking its owner and free space, then rerun"
 	gate_temp=$(mktemp "${gate_dir}/gate.md.XXXXXX") || die 1 "cannot create a temp file in ${gate_dir}; ${write_fix}"

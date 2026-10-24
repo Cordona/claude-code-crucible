@@ -6,14 +6,17 @@
 # label, description and files in load order. The main thread picks plugins by
 # their descriptions and passes their names to generate-dispatch-plan.sh, which
 # computes the technology label; generate-agent-dispatch.sh copies the paths
-# into the dispatch. A plugin that fails
-# prepare-agent-prompt.sh's plugin test (name, disable-model-invocation, closed
-# frontmatter) or lacks a label or description is reported on stderr instead of
-# listed (a `standard-*` or `procedure-*` folder is a plugin only when its
-# readable SKILL.md has a closed frontmatter with `disable-model-invocation:
-# true`; any other is skipped, never reported as invalid), as is one whose path
-# holds a comma or control character (a tab or a line break would split a
-# plugin line); the hook's file checks still run at dispatch.
+# into the dispatch. A plugin is reported on stderr instead of listed when it
+# lacks SKILL.md or references/development.md, fails prepare-agent-prompt.sh's
+# plugin test (name, disable-model-invocation, closed frontmatter), lacks a
+# label or description, or has a path holding a comma or control character (a
+# tab or a line break would split a plugin line); so is a tech plugin whose
+# metadata.base is not a plugin name, has no folder, is itself invalid or has
+# its own base, and a standard or procedure plugin that sets metadata.base. A
+# `standard-*` or `procedure-*` folder is a plugin only when its readable
+# SKILL.md has a closed frontmatter with `disable-model-invocation: true`; any
+# other is skipped, never reported as invalid. The hook's file checks still run
+# at dispatch.
 set -eu
 
 readonly PROG='list-plugins.sh'
@@ -144,58 +147,63 @@ END {
 '
 
 usage() {
-	cat <<EOF
-Usage: ${PROG} [--skills-dir DIR] [--max-lines N] [--help|-h]
+	print_page <<EOF
+usage: sh ${PROG} [--skills-dir DIR] [--max-lines N]
+       sh ${PROG} --help | -h
 
-Lists the installed plugins under DIR. DIR defaults to \$CLAUDE_CONFIG_DIR/skills
-when CLAUDE_CONFIG_DIR is set, else \$HOME/.claude/skills. A relative DIR is
-taken from the current folder, and its trailing slashes are dropped; every
-printed path is absolute.
-  tech plugin:     DIR/tech-<stack>/ holding SKILL.md and references/development.md;
-                   metadata.base may name one other tech plugin by its <stack>
-                   (e.g. typescript for tech-typescript), loaded first.
-  standard plugin: DIR/standard-<area>/ whose SKILL.md frontmatter has
-                   disable-model-invocation: true, plus references/development.md;
-                   it takes no metadata.base. A standard-* folder without a
-                   readable SKILL.md, without a frontmatter closed by ---, or
-                   whose frontmatter lacks that line is not a plugin: it is
-                   skipped, never reported.
-  procedure plugin: DIR/procedure-<name>/, held to the same rules as a
-                   standard plugin; a procedure-* folder that fails the same
-                   opt-in test is an ordinary skill, skipped.
-A plugin (and a tech plugin's base) is valid only when its SKILL.md frontmatter
-is closed by ---, has name: <its folder name> and disable-model-invocation: true,
-the test prepare-agent-prompt.sh applies, plus a metadata.label and a description,
-and only when its path (DIR included) holds no comma or control character (a
-tab or line break would split a plugin line); one that fails is reported as
-invalid.
+Lists the plugins installed in the skills folder, one line each, to pick from.
 
-Output (stdout), one line per valid plugin, TAB-separated, tech lines first,
-then standard lines, then procedure lines, each sorted by NAME:
+Options:
+  --skills-dir DIR  the skills folder; default
+                    \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; a relative
+                    DIR is taken from the current folder
+  --max-lines N     print at most N plugin lines; default ${DEFAULT_MAX_LINES}, 0 prints all
+
+Plugins, by folder in DIR:
+  tech       tech-<stack>/ with SKILL.md and references/development.md;
+             metadata.base may name one other tech plugin by its <stack>
+             (typescript for tech-typescript), itself with no metadata.base,
+             whose files load first
+  standard   standard-<area>/ with SKILL.md and references/development.md,
+             opted in by disable-model-invocation: true in its frontmatter;
+             no metadata.base. A standard-* folder without a readable
+             SKILL.md, or whose SKILL.md has no closed frontmatter with that
+             line, is not a plugin: skipped, never reported
+  procedure  procedure-<name>/, as a standard plugin
+A plugin, and a tech plugin's base, is valid when its SKILL.md frontmatter is
+  closed by --- and has name: <its folder name> and disable-model-invocation:
+  true (prepare-agent-prompt.sh's plugin test), a metadata.label and a
+  readable description, and its path, DIR included, holds no comma or
+  control character; any other is invalid.
+
+stdout: one line per valid plugin, TAB-separated, tech lines first, then
+  standard, then procedure, each group sorted by NAME:
   <KIND> <NAME> <label> <description> [<base SKILL.md> <base development.md>] <SKILL.md> <development.md>
-KIND is tech, standard or procedure; NAME is the plugin's full folder name
-(tech-shell, standard-clean-code, procedure-read-trackers); the label is
-metadata.label; the description is the frontmatter description (plain,
-quoted, or a > or | block) on one field, its tabs and line breaks turned into
-single spaces. The paths start at field 5.
-A description that is missing, empty or in a form this script can't read
-makes the plugin invalid.
-Each invalid plugin gets one stderr line: ${PROG}: <NAME>: <reason>
+  KIND tech, standard or procedure; NAME the folder name (tech-shell); label
+  metadata.label; description on one field, its tabs and line breaks as
+  spaces; the paths absolute, from field 5, a tech plugin's base first
+stderr: one "${PROG}: <NAME>: <reason>" line per invalid plugin
 
---max-lines N prints at most N plugin lines, in the order above (default
-${DEFAULT_MAX_LINES}; 0 prints all). When lines are cut, one stderr line says so:
-  ${PROG}: TRUNCATED: showing N of M plugin lines; pass --max-lines 0 for all
+stderr on exits 0, 3: "${PROG}: TRUNCATED: showing N of M plugin lines; pass --max-lines 0 for all"
+  the listing was cut; show the output and stop
 
-Exit codes (a cut listing keeps its code):
-  0  at least one plugin printed, none invalid
-  1  no plugin of any kind under DIR
-  2  usage error, or DIR missing or unreadable
-  3  one or more invalid plugins (valid ones are still printed)
-  5  a required tool is missing from PATH; one stderr line names it
+Exit codes:
+  0  plugins listed, none invalid; use the lines
+  1  no plugin in DIR; go on without plugins
+  2  usage error, or DIR missing or unreadable; show stderr and stop
+  3  some plugins invalid, the valid ones still listed; fix or reinstall each
+     one stderr names
+  5  a tool missing; show stderr and stop
 
-Dependencies: POSIX sh, awk, sort; checked at start, a missing one exits 5.
-Runtime: about 64 ms for 9 plugins, measured on macOS (average of 5 runs).
+Dependencies: POSIX sh, awk, sort (every macOS and Linux base system).
 EOF
+}
+
+# Prints stdin with builtins only, so the page needs no tool.
+print_page() {
+	while IFS= read -r page_line; do
+		printf '%s\n' "${page_line}"
+	done
 }
 
 warn() {
@@ -436,11 +444,6 @@ warn_if_truncated() {
 	warn "TRUNCATED: showing ${max_lines} of ${line_count} plugin lines; pass --max-lines 0 for all"
 }
 
-for tool in ${REQUIRED_TOOLS}; do
-	command -v "${tool}" >/dev/null 2>&1 ||
-		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
-done
-
 skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 max_lines=${DEFAULT_MAX_LINES}
 while [ "$#" -gt 0 ]; do
@@ -463,6 +466,13 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 
+for tool in ${REQUIRED_TOOLS}; do
+	command -v "${tool}" >/dev/null 2>&1 ||
+		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
+done
+
+# A relative DIR is taken from the current folder, so every printed path is
+# absolute; trailing slashes are dropped from every DIR.
 case ${skills_dir} in
 	/* | [A-Za-z]:[\\/]*) ;;
 	*) skills_dir="${PWD}/${skills_dir#./}" ;;

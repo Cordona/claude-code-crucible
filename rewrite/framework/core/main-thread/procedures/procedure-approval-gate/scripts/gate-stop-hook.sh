@@ -58,50 +58,45 @@ end
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} < stop-hook-input.json
+usage: sh ${PROG} < stop-hook-input.json
+       sh ${PROG} --help | -h
 
-A Claude Code Stop hook. It reads session_id, agent_id and
-last_assistant_message from the hook JSON on stdin, and the gate state
-open-gate.sh wrote in
+A Claude Code Stop hook: while this session's approval gate is pending, it
+checks that the turn's last message relays the gate text, then has Claude
+continue, to ask or to relay again.
+
+Input: the Stop hook JSON on stdin; reads session_id, agent_id and
+  last_assistant_message.
+Gate folder (open-gate.sh writes it):
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session_id>/
-  - no gate; a relayed, shown or failed gate; or a malformed gate, one with
-    no gate.md, or one older than ${STALE_SECONDS}s (removed with its folder,
-    plan.json included, unless plan.json changed in the last ${STALE_SECONDS}s:
-    then only gate.md and the state go, and plan.json stays for the next
-    gate): prints nothing, allows the stop
-  - no gate state, and nothing in the folder (the folder itself included)
-    changed in the last ${STALE_SECONDS}s: removes the folder, allows the stop
-  - a non-empty agent_id (a subagent's or a side agent's stop, which carries
-    the main thread's session_id; the gate is the main thread's): prints
-    nothing, changes nothing, allows the stop
-  - pending, good relay: state becomes relayed; prints the "now ask" context
-  - pending, last_assistant_message missing or not a string (the relay can't
-    be verified): state becomes relayed, no try is counted; prints the same
-    "now ask" context, with a note on stderr
-  - pending, bad relay: tries + 1; up to ${MAX_RELAY_RETRIES} tries prints the "relay again" context;
-    above that the state becomes failed and the stop is allowed, no output
-Output shape: {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"..."}}
-  "now ask": ${ASK_REASON}
-  "relay again": procedure-approval-gate: relay try <n> of ${MAX_RELAY_RETRIES} failed: <cause>.
-             The gate is still pending, so its question stays denied until a
-             turn's last message is the full text open-gate.sh printed and
-             nothing else, its last line ${MARKER}.
-  A good relay equals the gate text once both are normalized: CR dropped,
-  trailing spaces per line removed, blank-line runs collapsed to one, leading
-  and trailing blank lines dropped.
-  <cause> is one of: the last message must be the gate text alone, with
-  nothing above or below it | the gate text is missing from the last message |
-  the gate text is missing and the last non-empty line is not ${MARKER}
 
-Exit codes: always 0. A hook fault allows the stop: jq missing, or the state
-or its temp file unwritable, puts a note on stderr; any other fault's stderr
-is the failing command's own, such as jq's parse error. A missing, non-string
-or unsafe session_id allows the stop silently.
+stdout (Claude Code reads it):
+  {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"<context>"}}
+  "now ask" context: ${ASK_REASON}
+  "relay again" context: procedure-approval-gate: relay try <n> of ${MAX_RELAY_RETRIES} failed:
+    <cause and what to relay>
+
+Writes, in the gate folder (its state replaced atomically):
+  - pending, good relay: state becomes relayed; prints "now ask"
+  - pending, last_assistant_message missing or not a string: state becomes
+    relayed, no try counted; prints "now ask", with a note on stderr
+  - pending, bad relay: tries + 1; up to ${MAX_RELAY_RETRIES} tries prints "relay again", then
+    the state becomes failed and nothing is printed
+  - a malformed gate, one with no gate.md, or one older than ${STALE_MINUTES} minutes: the
+    folder is removed; a plan.json changed in the last ${STALE_MINUTES} minutes is kept,
+    with only gate.md and the state removed
+  - no gate state, and nothing in the folder changed in the last ${STALE_MINUTES} minutes:
+    the folder is removed
+Never touched: any other relayed, shown or failed gate, and the folder on a
+  stop with a non-empty agent_id or a missing, non-string or unsafe session_id.
+
+Exit codes:
+  0  always, a fault included (stderr names it); the stop is allowed unless
+     stdout holds a context
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
-jq package), cat, date, find (with -mmin, as on macOS and
-Linux), mktemp, mv, rm.
-Runtime: about 12 ms with no gate, 31 ms checking a relay; measured on macOS (average of 5 runs).
+  jq package), cat, date, find (with -mmin, as on macOS and Linux), mktemp,
+  mv, rm.
 EOF
 }
 

@@ -51,7 +51,7 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 
 1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dependencies/validate-dependencies.sh"`. Show its result in your message text before going on: on a pass with no `✗` or `⚠` line, its pass line alone (`All checks passed.`, or the cached `✓ Install unchanged since …` line); otherwise copy its stdout as is: it is the human's checklist, so never summarise it. Act on the exit code only:
    - 0, a `⚠` line included: go on.
-   - 1: stop.
+   - 1, 129, 130 or 143: stop.
    - 3: dispatch nothing; only step 11 may go on.
    - 2, any other exit, or 127 (the script missing): tell the human to reinstall `flow-agent-initialization` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop.
    - AskUserQuestion not in your tool list: tell the human, dispatch nothing, and stop: no plan can be approved without it.
@@ -84,7 +84,7 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 
    **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/dispatch-plan/render-dispatch-plan.sh" --plan-file <the plan file>`, which prints the plan's Markdown, its label `dispatch-plan` and its effort `'<effort folder>'` (`open-gate.sh --label dispatch-plan --effort '<effort folder>'`), since step 8 finds the plan's gate record only under that label in that effort; then relay it as the gate's step 2 sets: the message is the gate text and nothing else, no lead-in line above it. A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once. The plan not shown, for this or any reason the gate gives: ask nothing, and hand this part back as `stopped: plan not shown`.
 
-   **7.3 Ask it** on the gate's "now ask": run the renderer with `--plan-file <the plan file> --question --plans <n>`, `<n>` the plan count in step 7's todo item (`1` for a step-10 re-plan and for step 11), and copy its `header`, `question` and `options` into one AskUserQuestion as they are. A non-zero exit, or stdout that isn't one JSON object with those three fields: show the human the stdout, stderr and exit code, ask nothing, and hand this part back as `stopped: question not rendered`.
+   **7.3 Ask it** on the gate's "now ask": run the renderer with `--plan-file <the plan file> --question --plans <n>`, `<n>` the plan count in step 7's todo item (`1` for a step-10 re-plan and for step 11), and copy its `header`, `question` and `options` into one AskUserQuestion as they are. Exit 0 with no stdout: a `--replan invalid` plan, nothing to ask; go on as step 10's `PLUGIN` re-plan sets. A non-zero exit, or other stdout that isn't one JSON object with those three fields: show the human the stdout, stderr and exit code, ask nothing, and hand this part back as `stopped: question not rendered`.
 
    **7.4 Act on the answer:**
    - Approve: the plan is approved; go to the next plan.

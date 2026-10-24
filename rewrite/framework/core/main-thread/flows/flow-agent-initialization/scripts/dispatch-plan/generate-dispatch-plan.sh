@@ -68,124 +68,80 @@ if $mode == "report" then report else plan end
 '
 
 usage() {
-	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-file CTX
+	print_page <<EOF
+usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-file CTX
            --task TEXT [--task TEXT]... [--load NAME --reason LINE]...
            [--skip NAME --reason LINE]... [--loaded-reason LINE]
-           [--replan invalid|stop-recommended] [--skills-dir DIR]
-       sh ${PROG} --help|-h
-With no argument it prints this help on stderr and exits 2.
+           [--replan KIND] [--skills-dir DIR]
+       sh ${PROG} --help | -h
 
-Writes one dispatch plan, the JSON render-dispatch-plan.sh renders, to PATH
-(the approval gate's session plan file, overwritten), then prints its path
-and its PLAN_SHA256.
-Every option is checked first; on any problem nothing is written.
+Writes one dispatch plan, the JSON render-dispatch-plan.sh renders, to
+--plan-file, and prints its digest.
+shape and plan rules: see dispatch-plan-validator.jq beside this script
 
-  --plan-file PATH  the file to write; its folder must exist and be writable.
-                    It is written to a temp file in that folder, then moved
-                    onto PATH.
-  --agent AGENT     the agent the plan dispatches; "main thread" means direct
-                    implementation.
-  --mode MODE       BUILD or TEST.
-  --context-file CTX  the effort's context file, checked as prepare-agent-prompt.sh
-                    checks it, apart from the digest: the path checks of
-                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh,
-                    then its read checks (context_read_problem, the one copy
-                    every script that reads a context file applies): a
-                    readable regular file that is not a symlink, at most the
-                    size cap, valid JSON passing
-                    DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq,
-                    and, for a version file in an effort's context/ folder
-                    (<...>/efforts/<effort>/context/<id>-v<N>.json), that
-                    effort's latest version, as
-                    DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh finds it; the
-                    problem names the latest. Any other context file is not
-                    checked for a version. Its path and sha256 go into the
-                    plan's context.
-  --task TEXT       one task, kept in order; one task is one dispatch, two or
-                    more a group.
-  --load NAME       a plugin to load, by its list-plugins.sh name, kept in order.
-  --skip NAME       an installed plugin not loaded, kept in order.
-  --reason LINE     why: exactly one right after each --load and --skip.
+Options:
+  --plan-file PATH    the approval gate's session plan file, overwritten; its
+                      folder must exist and be writable
+  --agent AGENT       the agent the plan dispatches; "main thread" for direct
+                      implementation
+  --mode BUILD|TEST   the dispatch mode
+  --context-file CTX  the effort's context file, checked by procedure-context's
+                      context-file checks and for being its effort's latest
+                      version; its path and sha256 go into the plan
+  --task TEXT         one task, in order; two or more make a group
+  --load NAME         a plugin to load, its list-plugins.sh name, in order
+  --skip NAME         an installed plugin not loaded, in order
+  --reason LINE       why; exactly one, right after each --load and --skip
   --loaded-reason LINE  why no plugin is loaded: required with no --load,
-                    refused with one.
-  --replan KIND     a step-10 re-plan: invalid or stop-recommended.
-  --skills-dir DIR  the skills folder; defaults to
-                    \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. The installed
-                    plugins are the plugin lines of
-                    DIR/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh --max-lines 0,
-                    of kind tech, standard or procedure (its stderr is passed
-                    through; its exit 1, no plugin, is an empty list, and its
-                    exit 3 leaves invalid plugins out).
+                      refused with one
+  --replan KIND       a step-10 re-plan: invalid or stop-recommended
+  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; the
+                      installed plugins are those its list-plugins.sh lists,
+                      invalid ones left out
 
-The plan (one JSON object):
-  {"agent": str, "mode": "BUILD"|"TEST", "technology": str,
-   "tasks": [str, ...],
-   "loaded": [{"plugin": str, "reason": str}, ...],
-   "loaded_reason": str,             only when given
-   "not_loaded": [{"plugin": str, "reason": str}, ...],
-   "replan": "invalid"|"stop-recommended",   only when given
-   "context": {"path": <CTX>, "sha256": <64 lowercase hex of CTX>}}
-technology is computed: the list-plugins.sh label of the loaded tech plugin,
-or "none" when none is loaded.
-The plan's rules are scripts/dispatch-plan/dispatch-plan-validator.jq's: among
-them, every installed plugin is loaded or skipped (the main thread gives each
-skip its reason; nothing is filled in), none twice, none unknown (a skip whose
-reason is exactly "invalid", "uninstalled after approval" or "faulty files"
-may name a plugin no longer installed), at most one tech plugin (standard and
-procedure plugins have no limit), mode TEST has standard-testing loaded and
-BUILD doesn't, and agent "main thread" needs mode BUILD and no tech plugin.
+stdout on exit 0, two lines in this order:
+  PLAN_FILE: <the --plan-file as given>
+  PLAN_SHA256: <64 lowercase hex>, the plan's digest, which
+    generate-agent-dispatch.sh --plan-sha256 takes
+stderr on exit 3: one "${PROG}: <option> <value>: <problem>;
+  expected <x>" line per problem, every problem listed
+list-plugins.sh's stderr: passed through, to relay
 
-Output (stdout, two lines, on exit 0):
-  PLAN_FILE: <PATH>
-  PLAN_SHA256: <64 lowercase hex>
-the sha256 of the plan in canonical form: the one line jq -cS . prints for
-the written file, its newline included. A gate record of the plan is the plan
-with "v": 1 added, so jq -cS 'del(.v)' of the record hashes the same.
-Problems (stderr, one line each; every problem is listed):
-  ${PROG}: <option> <value as a JSON string, its middle cut past 80 characters, or (not given)>: <problem>; expected <x>
-An installed plugin the plan leaves out is named as "--load or --skip <name>".
-A context version no longer its effort's latest gives this line, its problem
-led by the token ${CONTEXT_STALE_TOKEN} (the Agent hook's KIND word for the
-same problem), which no other line holds:
-  ${PROG}: --context-file "<CTX>": ${CONTEXT_STALE_TOKEN} is version v<N> of its effort, not the latest (v<M>: <latest path>); expected the latest version; plan with it
+After exit only --plan-file may have changed, to the whole plan, never on
+  exits 2, 3 and 5; its temp file, in the same folder, is removed on every
+  exit (a SIGKILL aside).
+Reads only the context file, the names in its folder when it is a version
+  file, the plan it wrote, and what list-plugins.sh reads.
 
 Exit codes:
-  0  the plan written; its PLAN_FILE and PLAN_SHA256 lines printed
-  1  writing the plan file failed after the checks passed, or its digest
-     could not be computed (the file is then written)
-  2  usage error: an unknown option, an option without its value, a --reason
-     not right after a --load or --skip, a --load or --skip without its
-     --reason, a second --plan-file, --agent, --mode, --context-file,
-     --loaded-reason, --replan or --skills-dir, an empty --plan-file,
-     --context-file or --skills-dir, no argument, or --plan-file, --agent,
-     --mode, --context-file or --task missing
-  3  invalid input, one stderr line per problem; nothing written
-  5  a dependency missing or failing, with the fix named: jq 1.6+, sha256sum
-     or shasum, list-plugins.sh, DIR/${CONTEXT_PROCEDURE}/scripts/'s
-     agent-context-file-checks.sh, agent-context-validator.jq,
-     agent-context-url.jq or context-versions.sh,
-     DIR/crucible/scripts/lib/crucible-space.sh,
-     dispatch-plan-validator.jq,
-     installed-plugins.jq or scripts/agent-dispatch/dispatch-names.jq,
-     or a base tool below
-  129, 130, 143  stopped by HUP, INT or TERM; the temp file is removed
+  0  written; keep PLAN_SHA256 and go on
+  1  the write or the digest failed, stderr saying whether the plan is
+     written; show stderr and stop
+  2  usage error: fix the command
+  3  invalid input; fix what each stderr line names, then rerun
+     ${CONTEXT_STALE_TOKEN}  leads a problem: a newer context version exists;
+       rerun with the latest as --context-file
+  5  a dependency missing or failing; show stderr and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
-Dependencies: POSIX sh; jq 1.6+ (--args, \$ARGS, --argjson; macOS: brew
-install jq; Linux: the distro's jq package); cat, mktemp, mv, rm, tr, wc, in
-every macOS and Linux base system; sha256sum (Linux: coreutils) or shasum
-(macOS: built in, run as shasum -a 256); list-plugins.sh; the
-${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
-agent-context-validator.jq, agent-context-url.jq (which the validator
-includes) and context-versions.sh in DIR/${CONTEXT_PROCEDURE}/scripts/;
-the crucible skill's DIR/crucible/scripts/lib/crucible-space.sh;
-dispatch-plan-validator.jq and installed-plugins.jq beside this script, and
-scripts/agent-dispatch/dispatch-names.jq, which the validator includes.
-Reads only: the context file, the names in its folder when it is a version
-file in an effort's context/, and what list-plugins.sh reads.
-Runtime: about 300 ms for a plan with 8 plugins installed; measured on macOS
-(average of 5 runs).
+Dependencies (skills in --skills-dir):
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  cat, mktemp, mv, rm, tr, wc (every macOS and Linux base system)
+  sha256sum (Linux: coreutils) or shasum (macOS: built in)
+  this skill's scripts/dispatch-plan/list-plugins.sh
+  the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
+    agent-context-validator.jq, agent-context-url.jq and context-versions.sh
+  the crucible skill's scripts/lib/crucible-space.sh
+  beside this script: dispatch-plan-validator.jq, installed-plugins.jq and
+    ../agent-dispatch/dispatch-names.jq
 EOF
+}
+
+# Prints stdin with builtins only, so the page prints with cat missing.
+print_page() {
+	while IFS= read -r page_line; do
+		printf '%s\n' "${page_line}"
+	done
 }
 
 warn() {
@@ -197,6 +153,16 @@ die() {
 	exit "$1"
 }
 
+# Exits 5 naming the first of REQUIRED_TOOLS missing from PATH; checks once.
+require_tools() {
+	[ -z "${tools_checked}" ] || return 0
+	for tool in ${REQUIRED_TOOLS}; do
+		command -v "${tool}" >/dev/null 2>&1 ||
+			die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
+	done
+	tools_checked=true
+}
+
 usage_error() {
 	warn "$1"
 	printf "Try '%s --help'.\n" "${PROG}" >&2
@@ -204,7 +170,9 @@ usage_error() {
 }
 
 # Prints $1 with each control character as "?", so a value can't split a stderr line.
+# A usage error can reach it before the tool check, so it checks the tools first.
 printable() {
+	require_tools
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
@@ -349,7 +317,8 @@ script_dir() {
 }
 
 # Sets installed to the installed plugins as JSON; list-plugins.sh's stderr is
-# passed through, and an exit other than 0, 1 or 3 exits 5.
+# passed through, its exit 1 (no plugin) is an empty list, its exit 3 leaves
+# the invalid plugins out, and any other exit but 0 exits 5.
 read_installed() {
 	if listing=$(sh "${list_script}" --max-lines 0 --skills-dir "${skills_dir}" </dev/null); then
 		list_status=0
@@ -466,7 +435,8 @@ write_plan() {
 }
 
 # Sets context_digest to the sha256 of the written plan in canonical form, the
-# one line jq -cS . prints for it, its newline included; or exits 1.
+# one line jq -cS . prints for it, its newline included; or exits 1. The gate
+# record is the plan with "v": 1 added, so jq -cS 'del(.v)' of it hashes the same.
 digest_written_plan() {
 	canonical_plan=$(jq -cS . "${plan_file}" </dev/null) ||
 		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed; expected the JSON this run wrote; try checking that nothing else writes to ${plan_folder}, then rerun"
@@ -476,12 +446,7 @@ ${canonical_plan}
 EOF
 }
 
-for tool in ${REQUIRED_TOOLS}; do
-	command -v "${tool}" >/dev/null 2>&1 ||
-		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
-done
-
-temp_file=''
+temp_file='' tools_checked=''
 trap remove_temp_file EXIT
 # A signal exits through the EXIT trap, so the temp file goes on every path.
 trap 'exit 129' HUP
@@ -512,6 +477,7 @@ done
 finish_parse
 shift "${argument_count}"
 
+require_tools
 load_dependencies
 read_installed
 check_context_file

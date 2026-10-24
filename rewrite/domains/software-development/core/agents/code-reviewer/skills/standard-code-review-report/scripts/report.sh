@@ -2,8 +2,8 @@
 # Checks the reviewer's per-round report JSON and, on a pass with --dispatch,
 # stamps the dispatch's lens on every finding and the dispatch keys at the top
 # level. The jq validator below owns the report's shape (there is no schema
-# file): the report standard's field table and --help document it, and the
-# validator wins where they differ.
+# file): the report standard's field table documents it, and the validator
+# wins where they differ.
 set -eu
 
 readonly PROG='report.sh'
@@ -146,7 +146,9 @@ def c_unquoted:
 # The DIFF file list: the path of every "+++ b/<path>" header and, where that
 # header is /dev/null (a deletion), of its "--- a/<path>" header. Headers are
 # read only between a "diff " line (or the file start) and the first "@@" hunk,
-# so a changed line starting with --- or +++ is never taken for one.
+# so a changed line starting with --- or +++ is never taken for one, and a diff
+# without "diff " lines gives only its first file. A pure rename, a mode-only
+# change and a binary change have no +++ header, so their files are not listed.
 def header_path:
 	sub("\t.*$"; "")
 	| if startswith("\"") then (. as $quoted | try c_unquoted catch $quoted) else . end
@@ -222,6 +224,7 @@ def finding_problems($loc; $files):
 		  locations_problems($loc; $files)
 	end;
 
+# Each ID trimmed of surrounding spaces, blank lines ignored, a repeat kept once.
 def prior_ids:
 	$prior_text | split("\n") | map(sub("\r$"; "") | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "") | select(length > 0))
 	| reduce .[] as $id ([]; if any(.[]; . == $id) then . else . + [$id] end);
@@ -349,163 +352,55 @@ then (if has("findings") then .findings |= map(. + {plugin: $lens}) else . end) 
 else error("a stamp has the wrong shape: dispatch \($stamps.dispatch | tojson), started \($stamps.started | tojson), finished \($finished | tojson)") end
 '
 
+# The one --help page.
 usage() {
 	cat <<'EOF'
 usage: report.sh check --dispatch FILE --diff FILE [--report PATH] [--prior FILE] [--skills-dir DIR]
        report.sh check --report PATH --diff FILE [--prior FILE] [--skills-dir DIR]
        report.sh --help | -h
-No arguments: this usage on stderr, exit 2.
 
-Checks the reviewer's report for one review round, one JSON object in the
-file PATH, and on a pass with --dispatch stamps the lens and the dispatch
-keys into it. stdin is never read. The validator in this script owns the
-shape; there is no schema file. This --help and the report standard's field
-table document it, and the validator wins where they differ. It renders
-nothing, stamps no ID or round and computes no verdict.
+Checks the reviewer's report for one review round, one JSON object in PATH;
+with --dispatch, stamps the lens and the dispatch keys into it on a pass.
+stdin is never read. With no arguments, prints this page on stderr and exits 2.
+shape: see this skill's SKILL.md field table; the validator here wins where
+they differ. A stamped report is refused: it is never checked again.
 
-Options (every path absolute):
-  --dispatch FILE  the dispatch file generate-agent-dispatch.sh wrote for
-                   agent code-reviewer: a regular file, not a symlink,
-                   passing DIR/flow-agent-initialization/scripts/agent-
-                   dispatch/agent-dispatch-validator.jq; another agent's
-                   dispatch is a dispatch fault. It supplies --report (its
-                   report): leave --report out, or give the same text.
-  --report PATH    the report file.
-  --diff FILE      the DIFF the reviewer was given, unified git diff output;
-                   required, since the dispatch does not carry it yet. Its
-                   file list: the path of every "+++ b/<path>" header and,
-                   for a deletion, of its "--- a/<path>" header, a/ and b/
-                   stripped, /dev/null ignored. A quoted path, such as
-                   "b/a b.sh" or "b/caf\303\251.sh", is decoded from git's
-                   C-style quoting (\NNN octal bytes read as UTF-8, \a \b
-                   \t \n \v \f \r \" \\); one that does not decode is
-                   listed as written, quotes and escapes included. Headers
-                   count only at the file start or after a "diff " line, up
-                   to the first "@@", as git writes them, so a diff without
-                   "diff " lines gives only its first file. A pure rename, a mode-only change
-                   and a binary change have no +++ header, so their files
-                   are not in the list: a location on one needs relates_to.
-                   A leading ./ on a location's file is ignored.
-  --prior FILE     a re-review's prior finding IDs, one per line, each
-                   trimmed of surrounding spaces, blank lines ignored, a
-                   repeated ID counted once. Without it, previous_findings
-                   is refused. An argument, like --diff, since the dispatch
-                   does not carry the prior IDs yet.
-  --skills-dir DIR defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills;
-                   read and held to absolute (the default included) only
-                   with --dispatch, ignored without it.
+Options (every FILE and PATH absolute):
+  --dispatch FILE     a code-reviewer dispatch file, with at most one tech-* or
+                      standard-* plugin, the lens (none: correctness); supplies
+                      --report: leave it out, or give the same text
+  --report PATH       the report file
+  --diff FILE         the unified git diff the reviewer was given; each
+                      location is checked against the files it changes
+  --prior FILE        a re-review's prior finding IDs, one per line; without
+                      it, previous_findings is refused
+  --skills-dir DIR    default ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills; read,
+                      and held to absolute, only with --dispatch
 
-The lens: the one plugin of the dispatch whose name starts tech- or
-standard-; procedure-* plugins are not lenses. None: the lens is
-correctness. More than one: a dispatch fault (one lens per dispatch).
+stdout on exits 0, 3 and 6: one count line, <kind>=<n> per kind
+stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
+  most 30, then a count of the rest.
 
-Rules the validator enforces (a value shown in a problem is cut at 60
-characters):
-  - top-level keys only findings, previous_findings, flags, not_reviewed and
-    found, each an array; verdict, count, counts, summary, round, date,
-    generated, status, ack, waiver and waived are refused by name, here and
-    on a finding. The stamp keys tech, plugins, mode, dispatch, started and
-    finished are refused by name here (a stamped report is never checked
-    again); on a finding they are refused as unknown keys
-  - findings: severity (CRITICAL, HIGH, MEDIUM or LOW), realism (realistic,
-    edge-case or hypothetical), locations (non-empty), trigger, problem and
-    fix required; proof, real_if and security optional; id and plugin refused
-    by name. edge-case needs proof, hypothetical needs real_if, realistic
-    takes neither. security is true when present; a security: true
-    hypothetical finding needs proof
-  - a location (findings, previous_findings, flags, not_reviewed) is
-    {file, line, relates_to?}: file with a non-space character and no
-    control character, repo-relative, never absolute (/, ~ or a drive
-    letter), no .. segment, at most 300 characters; line a positive
-    integer or "N-M" with 1 <= N <= M; relates_to a path:line. Each location's
-    file on a finding or an OPEN entry is in the DIFF file list, or its
-    relates_to path is
-  - one line (no newline or carriage return), a non-space character, at
-    most 200 characters: trigger, problem, fix, real_if, a flag's text, a
-    not_reviewed text, a previous_findings note, a found text and a found
-    location. proof and relates_to: <path>:<N> or <path>:<N-M>, repo-relative,
-    the path at most 300 characters
-  - with --prior: previous_findings holds each prior ID exactly once and no
-    other ID, an id non-empty, with no control character, at most 40
-    characters; keys id, status, proof, note, severity, realism, real_if and
-    locations; status RESOLVED (needs proof; refuses severity, realism,
-    real_if and locations) or OPEN (needs note; a realism given pairs with
-    proof or real_if as on a finding)
-  - flags: exactly source (code or non-code), location, severity (CRITICAL
-    or HIGH) and text; fix, trigger and proof refused by name
-  - not_reviewed: text required, location and plugin (a non-empty name
-    with no control character, at most 100 characters) optional
-  - found: exactly kind (instruction or secret), location and text; the
-    location's form is not checked: a repo-relative path:line, message:
-    <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>]
-    or notes[<n>], counted from 1, or its URL), a URL, or commit <sha>
-  - at most 200 findings, 100 flags, 100 not_reviewed and 100 found items,
-    and 20 locations on a finding or an OPEN entry; previous_findings is
-    bounded by the prior IDs; an empty list is accepted. A list over its
-    cap, a locations list included, gets one problem line, and its items
-    are not checked. Every line number, in line (an integer or N-M), proof
-    or relates_to, has 1 to 9 digits
-
-Stamping, on a passing check --dispatch only: each finding gets plugin, the
-lens; the top level gets tech, plugins (the dispatch's plugin names), mode,
-dispatch (its id), started, and finished (the local time the check passed);
-times are YYYY-MM-DDTHH:MM:SS+HH:MM. The report as checked is read once into
-a temp file, stamped, written to a temp file beside PATH (its permissions
-copied) and moved onto PATH. Any other exit leaves the file byte for byte as
-it was.
-
-stdout, one line, on exits 0, 3 and 6:
-  findings=<n> previous_findings=<n> flags=<n> not_reviewed=<n> instruction_found=<n> secret_found=<n>
-stderr, by exit (nothing on 0):
-  2  the usage, on no arguments; else "report.sh: <what>; expected <x>"
-     then "Try 'report.sh --help'."; a
-     dispatch fault is one "report.sh: dispatch: <what>" line, after one
-     "report.sh: dispatch: <problem>" line per dispatch validator problem
-  3  one line per problem, "<field>: <what>; expected <x>", at most 30,
-     then "report: <n> more problems not shown (showing 30 of <m>);
-     expected none"
-  4  "report.sh: not a report: <what>; expected <x>"
-  5  "report.sh: install: <what>; expected <x>"
-  6  "report.sh: stamps not written, the report unchanged: <what>; expected
-     <x>"
-A failing tool (mktemp, cp, mv, jq or date) may print its own line first.
-
-Writes: on a passing check --dispatch, the stamped report onto PATH through
-a temp file beside it, and nothing else; a temp folder under TMPDIR
-(default /tmp), removed on every exit, as is the temp file when it was not
-moved onto PATH.
+Writes: with --dispatch, the lens on each finding and the six top-level stamps
+into PATH on exit 0 only; any other exit leaves PATH byte for byte as it was.
+Nothing else is left behind (a SIGKILL aside).
 
 Exit codes:
-  0  valid (stamped, with --dispatch)
-  2  usage error: no arguments, an unknown command or argument, a missing
-     value, a path not absolute (DIR only with --dispatch), neither
-     --report nor --dispatch given, --diff not given, a --diff or --prior
-     that is not a readable regular file, a --prior holding no ID, a
-     --report that differs from the dispatch's; or a dispatch fault, stderr
-     starting "report.sh: dispatch:": the file missing, a symlink, not
-     JSON, failing the dispatch validator (each problem named), for an
-     agent other than code-reviewer, or loading more than one lens
-  3  invalid (stderr names each problem); nothing written
-  4  not a report: PATH missing, unreadable, not JSON or not one object;
-     with --dispatch also a symlink
-  5  install fault, stderr starting "report.sh: install:": jq missing,
-     failing --version, older than 1.6 or failing to run the check, a base
-     tool missing, no temp folder made under TMPDIR (default /tmp), or, for
-     --dispatch, the dispatch validator or dispatch-names.jq missing or the
-     validator failing to run
-  6  valid, but the stamps could not be written; the report is unchanged
-     and stderr names the step that failed
-  129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
+  0  valid (stamped, with --dispatch); go on
+  2  usage error; fix the command; stderr starting "report.sh: dispatch:":
+     a dispatch fault, stop
+  3  invalid; have the fields stderr names fixed, check again
+  4  not a report (PATH not one JSON object); write the report again
+  5  install fault; install what stderr names
+  6  --dispatch: valid, but the stamp step failed; fix the step stderr names,
+     check again
+  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
 
-Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
-jq), the base tools cat, cp, date (+%z), grep, mktemp, mv, rm and sed (in every
-macOS and Linux base system); for --dispatch, the flow-agent-
-initialization skill's agent-dispatch-validator.jq and dispatch-names.jq
-under DIR. Checked after the arguments parse; a missing one exits 5 and
-names it.
-Runtime: about 50 ms for check and 90 ms for check --dispatch on a small
-report, and about 70 ms for check on a report at every list cap, measured
-on macOS (average of 5 runs).
+Dependencies:
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  cat, cp, date, grep, mktemp, mv, rm, sed (every macOS and Linux base system)
+  with --dispatch: the flow-agent-initialization skill in --skills-dir (its
+    dispatch validator and dispatch-names.jq)
 EOF
 }
 
@@ -739,7 +634,8 @@ run_check() {
 }
 
 # Writes report_copy plus the stamps onto the report file through a temp file
-# beside it. Exits 6 when a step fails, the report unchanged.
+# beside it, its permissions copied. Exits 6 when a step fails, the report
+# unchanged; a failing tool may print its own stderr line first.
 write_stamps() {
 	date_expected='expected date +%Y-%m-%dT%H:%M:%S%z to print the local time; try it by hand'
 	raw_time=$(date +%Y-%m-%dT%H:%M:%S%z) || stamp_fault "date failed; ${date_expected}"

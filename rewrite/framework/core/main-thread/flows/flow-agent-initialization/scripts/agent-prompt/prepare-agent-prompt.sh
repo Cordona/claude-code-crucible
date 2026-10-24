@@ -12,7 +12,11 @@
 # git status before any code changes) when it is still empty, and keep it on a
 # resend. Each checked file is read once, into a private temp copy that the checks and
 # the message all read, so the checked bytes are the sent bytes.
-# One window stays open between check and copy: see "Known gap" in --help.
+# Known gap: the path checks (not a symlink or resolving inside its plugin
+# folder, regular, readable) run on the path just before the copy, since POSIX
+# sh can't test an open file, so a path swapped in between (such as for a
+# symlink or a FIFO) is copied unchecked, or blocks until the hook times out.
+# Swapping it takes write access to the plugin folder or the Crucible space.
 # No crucible-context or crucible-plugin marker is stripped from the message,
 # because everything it embeds is trusted: the human's request, the notes and
 # whys, as procedure-context sets what notes and whys may hold, and the template
@@ -345,190 +349,76 @@ usage() {
 	help_direct_agent=$(read_shared_name 'direct_agent | tojson' 2>/dev/null) && [ -n "${help_direct_agent}" ] ||
 		help_direct_agent="the direct_agent of scripts/agent-dispatch/${NAMES_MODULE}.jq"
 	cat <<EOF
-Usage: sh ${PROG} [--help|-h] < PreToolUse-JSON
+usage: sh ${PROG} < PreToolUse-JSON
        sh ${PROG} --direct --dispatch PATH
+       sh ${PROG} --help | -h
 
-A Claude Code PreToolUse hook (matcher Agent); it reads one hook input on stdin.
-Acts only when tool_name is Agent and tool_input.subagent_type is one of:
-${LISTED_AGENTS}. Every other call: no output, exit 0.
+The PreToolUse hook on Agent: replaces a listed agent's "DISPATCH: <path>"
+  prompt with its first message once the dispatch passes every check.
 
-For a listed agent, tool_input.prompt must be exactly one line (one trailing
-newline allowed)
-  DISPATCH: <absolute path>
-naming a dispatch file generate-agent-dispatch.sh wrote. Before any check
-of it, the context-handling template ${TEMPLATE_FILE} of the
-${CONTEXT_PROCEDURE} skill (its folder
-\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CONTEXT_PROCEDURE}) must be a readable
-regular file inside that folder once symlinks are followed, holding more than
-whitespace; else every dispatch gets a fault naming the template's path.
-A prompt that is not that one line is denied at once with one DISPATCH
-problem that names no path (DISPATCH <problem>; expected <x>). A problem
-with the dispatch path or file below also denies at once, alone, since the
-later checks read that file. Past those, the checks, every problem named in
-one deny reason:
-  - the dispatch path: the path checks of the ${CONTEXT_PROCEDURE} skill's
-    scripts/agent-context-file-checks.sh (absolute, no control character,
-    double or single quote or .. segment, no sensitive name, no file of
-    instructions for Claude, no Claude settings file), a
-    regular file that is not a symlink, directly in an effort's dispatches
-    folder \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/<effort>/dispatches/
-    (no folder of that path a symlink; the space and the effort folder name
-    as the crucible skill's scripts/lib/crucible-space.sh sets them), valid
-    JSON passing scripts/agent-dispatch/agent-dispatch-validator.jq
-  - its agent: subagent_type (${help_direct_agent} with --direct)
-  - its context file: the same path checks, then the read checks of
-    agent-context-file-checks.sh (context_read_problem, the one copy every
-    script that reads a context file applies): a readable regular file that
-    is not a symlink, at most the size cap, valid JSON passing the
-    ${CONTEXT_PROCEDURE} skill's scripts/agent-context-validator.jq, and,
-    for a version file in an effort's context/, still that effort's latest
-    version (scripts/context-versions.sh; KIND CONTEXT-STALE when it is
-    not); then its sha256 equal to the dispatch's context.sha256
-  - each plugin path: absolute, no .. segment, under
-    \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/ (compared as text), in the
-    folder of the plugin it is listed under; that folder a plugin (named
-    tech-*, standard-* or procedure-*, holding a SKILL.md whose frontmatter
-    has name: <the folder name> and disable-model-invocation: true); the path
-    its SKILL.md or a file under its references/, a readable regular file,
-    resolving (symlinks followed) inside the real path of its plugin folder;
-    a folder's paths one run, its SKILL.md first; no file holding an expansion token
-    (\$ARGUMENTS, \$<digit>, \${CLAUDE_SKILL_DIR}, \${CLAUDE_PROJECT_DIR},
-    \${CLAUDE_SESSION_ID}, \${CLAUDE_EFFORT}, !\`, \`\`\`!)
-  - its report: the same path checks, directly in the reports folder of
-    the dispatch's agent in the dispatch's own effort, <effort>/<kind>/,
-    <kind> the agent's report_kind in
-    scripts/agent-dispatch/${NAMES_MODULE}.jq (no folder of that path a
-    symlink), an empty regular file, not a symlink
-  - its baseline: the same path checks, directly in the baselines folder
-    of the dispatch's own effort, <effort>/baselines/ (no folder of that
-    path a symlink), not a symlink, absent or a readable regular
-    file; one holding text must be a baseline of the dispatch's repo_root, in
-    the shape below
+Options:
+  --direct            for the main thread's own implementation: check a
+                      dispatch of agent ${help_direct_agent} and write its
+                      message to a file
+  --dispatch PATH     with --direct: the dispatch file, absolute
 
-The baseline, once every check passes and before the allow (or, with
---direct, before the message file is written): when the dispatch's baseline
-file is empty or absent, the hook runs
-  git -C <repo_root> status --porcelain=v1 -z --no-renames
-(read only: no optional lock, no fsmonitor, no prompt) and writes one JSON
-object through a temp file in its folder moved onto its path:
-  {"repo_root": <the dispatch's repo_root>,
-   "taken": <local time, YYYY-MM-DDTHH:MM:SS+HH:MM>,
-   "entries": [<each NUL-ended entry of that output, "XY <path>">, ...]}
-(entries [] for a clean tree; the shape is baseline_problems in
-scripts/agent-dispatch/${NAMES_MODULE}.jq; repo_root binds it to its
-dispatch and only the checks read it; taken is kept for audit and not read).
-A file that already holds a baseline (a resend of the same dispatch, or a new
-dispatch generate-agent-dispatch.sh --baseline-from filled from the one it
-replaces) is kept byte for byte, so the baseline is always the tree before
-the first call, never one taken after the agent or the main thread may have
-changed it. The developer's report.sh reads it through the dispatch's
-baseline key.
+Hook: acts only on a listed agent (${LISTED_AGENTS}); any other
+call: no output. A closed or unreadable stdin denies every call.
+A listed agent's call is allowed only when its prompt is exactly one line
+  "DISPATCH: <absolute path>" naming a dispatch file generate-agent-dispatch.sh
+  wrote for that agent, and the dispatch, its context file (its effort's latest
+  version, matching context.sha256), plugin files (each a plugin's SKILL.md or
+  references/ file, as list-plugins.sh --help sets), report file (empty) and
+  baseline file (absent, empty or of its repo_root) pass every check (a path
+  swapped between its check and its copy by someone with write access to the
+  plugin folder or the Crucible space aside: it is copied unchecked, or hangs
+  until the hook times out).
 
-The message (one per dispatch; no absolute path in a tag):
-  # Your plugins
-  <crucible-plugin name="<name>">           one block per plugin, in the
-  (blank)                                   dispatch's order, blocks
-  <SKILL.md without its frontmatter>        separated by one empty line;
-  <each further file of the plugin>         files in a block too, each
-  (blank)                                   given a final newline; "none"
-  </crucible-plugin>                        for no plugin
-  # Your context
-  <crucible-context>, then a json fence holding the context file
-  pretty-printed by jq ., then </crucible-context>
-  # Handling your context
-  <the bytes of ${CONTEXT_PROCEDURE}'s ${TEMPLATE_FILE}, given a
-  final newline when it has none>
-  # Your work
-  - **MODE:** <mode>
-  - **TASK:** <task, verbatim>
-  - **REPO ROOT:** \`<repo_root>\`
-  - **STARTING POINTS** (where to begin, not a limit): \`<p1>\`, ... or \`none\`
-  - **REPORT:** \`<report>\`
-  - **CONTEXT FILE:** \`<the dispatch's context.path>\`
-  - **RETURN:** \`REPORT: <report>\` alone     (not with --direct)
-  (blank)
-  A marked gap beats a papered-over one: report what you could not read, run or decide.
-  Save your plan and progress as you go, in your scratchpad, so a cut-off
-  run leaves them; the REPORT file is written once, as your report skill sets.
-Headings and blocks are separated by one empty line; a backtick in a code
-span prints as '.
+stdout (one JSON line):
+  allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
+         the message
+  deny   permissionDecisionReason "${REASON_PREFIX} <problem>[; ...]
+         [; and <M> more problems]. <hint>", a problem "<KIND> <problem>;
+         expected <x>", most followed by ": <path>"; KIND one of DISPATCH,
+         AGENT, CONTEXT, CONTEXT-STALE (a context version not its effort's
+         latest), PLUGIN, REPORT, BASELINE, BASELINE-WRITE (a baseline not
+         written); every KIND found is named; no KIND: a fault of the hook,
+         its install or the host
+The message, built from the checked bytes: # Your plugins, # Your context,
+  # Handling your context, # Your work (MODE, TASK, REPO ROOT, STARTING POINTS,
+  REPORT, CONTEXT FILE, RETURN but with --direct), two closing lines
+  (# Your plugins: none when no plugin; STARTING POINTS: none when none;
+  paths absolute, in code spans).
+PROMPT: <path>  --direct, exit 0, line 1: the message file, absolute, ending
+  .md, in the effort's cache/prompts/ (it expires as crucible.sh --help sets)
+REPORT: <path>  line 2: the dispatch's report file, absolute
 
-Output (stdout, one JSON line):
-  allow  hookSpecificOutput.updatedInput = tool_input with prompt replaced by
-         the message; every other field unchanged
-  deny   permissionDecisionReason =
-         "${REASON_PREFIX} <KIND> <problem>: <path>[; <KIND> ...][; and <M>
-         more problems]. <hint>" (a prompt problem has no ": <path>"), at most ${REASON_MAX_BYTES} bytes: the first
-         problem of each KIND, then the rest in order while they fit, each
-         cut to a share of the cap and marked " (cut)" when longer;
-         KIND one of DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (a context
-         version no longer its effort's latest:
-           CONTEXT-STALE is version v<N> of its effort, not the latest
-           (v<M>: <latest path>); expected the latest version: <path>
-         every other context problem is CONTEXT), PLUGIN, REPORT, BASELINE
-         (a baseline file holding no baseline of this dispatch), each problem
-         naming its expected value ("<problem>; expected <x>"); or a fault of this
-         script, its install or the host (jq, awk, cat, date, dd,
-         grep, mktemp, mv, readlink, rm, tr, wc, a sha256 tool, the shared
-         checks and names, the context-handling template), which names no
-         KIND (a Crucible space the space rules refuse is one). A baseline
-         that can't be written (git missing from PATH, git
-         status failing in repo_root, or the temp file or the move failing)
-         denies with the one problem
-         "${REASON_PREFIX} BASELINE-WRITE <cause>; expected <x>; the dispatch
-         can be sent again once <what must hold>: <path>.", within the same
-         cap and without the hint.
-  none   not a listed agent: no output.
-A dispatch file written before a change to agent-dispatch-validator.jq's
-contract is refused (DISPATCH); the flow's step 8 writes a new one.
-A closed or unreadable stdin denies every call at once, listed agent or not,
-since the agent can't be known; so does input jq can't read whose
-subagent_type text names a listed agent or holds an escape.
+Leaves only (a SIGKILL aside): once every check passes, an absent or empty
+baseline file of the dispatch, atomically (shape: see
+scripts/agent-dispatch/${NAMES_MODULE}.jq); one holding a baseline is kept.
+With --direct, the message file. The repository is only read.
 
---direct --dispatch PATH runs every check above for a dispatch of agent
-${help_direct_agent}, then writes the message to a new file made by
-  \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/crucible.sh
-  new --kind cache/prompts --label ${DIRECT_PROMPT_LABEL} --effort <the dispatch's effort>
-(in the effort's cache/prompts/, which expires as crucible.sh --help sets), through a
-temp file in its folder moved onto its path, and prints two lines
-  PROMPT: <absolute path of the message file, ending .md>
-  REPORT: <the dispatch's report path>
+Exit codes:
+  0  hook: a decision, or none; --direct: written; read stdout
+  1  --direct: a write failed (any baseline written stays); show stderr and stop
+  2  usage error, or (hook) a deny that could not be built, so Claude Code
+     blocks the call; show stderr and stop
+  3  --direct: a check failed, nothing written; show stderr and stop
+  5  --direct: install or host fault, nothing written; show stderr and stop
+  129, 130, 143  --direct: stopped by HUP, INT or TERM; show it and stop
 
-Exit codes: hook: 0 every decision (read stdout); 2 a usage error, or jq
-present but failing to build a deny (the reason on stderr; Claude Code blocks
-the call).
---direct: 0 the baseline (when still empty) and the message written; 1 the
-baseline could not be written (one stderr line, "${PROG}: BASELINE-WRITE
-<cause>; expected <x>; the dispatch can be sent again once <what must hold>:
-<path>"), or crucible.sh new or the message write failed (the file it made
-is removed and named, "${PROG}: removed <path>, made by this run"; the
-baseline written just before stays, and a rerun keeps it, as a resend);
-2 usage error; 3 a check failed (one stderr line per problem); 5 an install
-or host fault, crucible.sh missing included, found before any write.
-Each checked file is read once into a private temp folder, removed on exit;
-the checks and the message all come from that copy. The baseline file is the
-one file the hook writes.
-Known gap: the path checks (not a symlink or resolving inside its plugin
-folder, regular, readable) run on the path just before the copy, since POSIX
-sh can't test an open file, so a path swapped in between (such as for a
-symlink or a FIFO) is copied unchecked, or blocks until the hook times out.
-Swapping it takes write access to the plugin folder or the Crucible space.
-Dependencies: POSIX sh, jq 1.6+ (--rawfile; macOS: brew install jq; Linux:
-the distro's jq package), git (to write a baseline; macOS: xcode-select
---install; Linux: the distro's git package), awk, cat, date (+%z), dd, grep,
-mktemp, mv, readlink, rm, tr, wc, in every macOS and Linux base system, and
-sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
-shasum -a 256);
-the ${CONTEXT_PROCEDURE} skill's ${TEMPLATE_FILE},
-scripts/agent-context-file-checks.sh, scripts/context-versions.sh,
-scripts/agent-context-validator.jq and scripts/agent-context-url.jq, which
-the validator includes; the crucible skill's scripts/lib/crucible-space.sh;
-scripts/agent-dispatch/agent-dispatch-validator.jq
-and ${NAMES_MODULE}.jq (the direct agent, the listed agents, which must
-match the list above, the report kinds and the baseline shape); crucible.sh
-for --direct.
-Runtime: about 185 ms for a hook allow with 3 plugins, 175 ms for a deny
-after every check, 205 ms for --direct; measured on macOS (average of 5 runs).
+Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
+  POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
+  awk, cat, date, dd, grep, mktemp, mv, readlink, rm, tr, wc, and sha256sum
+    or shasum (base system)
+  git, for the baseline (macOS: xcode-select --install; Linux: the distro's
+    git)
+  ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
+    agent-context-file-checks.sh, context-versions.sh,
+    agent-context-validator.jq, agent-context-url.jq
+  crucible: scripts/lib/crucible-space.sh; with --direct, scripts/crucible.sh
+  this skill: scripts/agent-dispatch/agent-dispatch-validator.jq,
+    ${NAMES_MODULE}.jq
 EOF
 }
 
@@ -895,6 +785,8 @@ baseline_shape_problems() {
 # tree; never after. Written through a temp file in its folder moved onto it.
 fill_baseline() {
 	[ "${baseline_filled}" = false ] || return 0
+	# Missing git: a BASELINE-WRITE deny, or --direct exit 1; any other missing
+	# dependency: a deny with no KIND, or --direct exit 5.
 	command -v git >/dev/null 2>&1 ||
 		baseline_write_failed "git missing from PATH; expected git on PATH to take the dispatch's baseline; the dispatch can be sent again once git is on PATH"
 	status_raw="${snapshot_dir}/status.raw"

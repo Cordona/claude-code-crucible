@@ -32,146 +32,67 @@ usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
        crucible.sh root
        crucible.sh --help | -h
 
-Hands out and finds the files of the durable Crucible space. Every file
-lives in an effort folder: a context file, a dispatch, a dispatch baseline
-(the repository's git status when the dispatch was sent), an agent report
-and a gate record are one JSON file each, a prompt (the Markdown message the
-main thread reads) one .md file.
+Hands out, finds, opens and prunes the files of the durable Crucible space.
 
-The space: \${CRUCIBLE_HOME:-\$HOME/.crucible}, an absolute path, trailing
-slashes dropped. Its rules (where it is, the effort folder name, the ID,
-the item label and name) are lib/crucible-space.sh beside this script, which
-the other Crucible scripts source too. A root that is a symbolic link is refused by every command but
---help (exit 4). efforts/, an effort folder and every kind folder level must
-be real folders, not symbolic links: new and find refuse one (exit 4); path,
-open and prune skip it. Nothing outside the root is written or removed,
-except open's temp folder (below). Folders the script creates are mode 700,
-files mode 600.
+The space: \${CRUCIBLE_HOME:-\$HOME/.crucible}, absolute, not / and not a
+symbolic link. Nothing outside it is written or removed but open's temp
+folder; folders made are mode 700, files 600. A symbolic link for efforts/,
+an effort or a kind folder: new and find refuse it, the rest skip it.
 
-Layout (local time):
-  <root>/efforts/<effort>/<kind>/<YYYYMMDDTHHMMSS>-<hex>-<label>.<ext>
-  effort: the effort folder effort.sh start made,
-    ${help_name_rule}
-  kind, the folder under the effort (durable unless marked cache):
-    context               the effort's context versions and their text files
-    dispatches            agent dispatch files
-    baselines             dispatch baselines
-    reports/development   development reports
-    reports/review        review reports
-    cache/gates           gate records; expire after ${CACHE_MAX_DAYS} days
-    cache/prompts         the main thread's prompts; expire after ${CACHE_MAX_DAYS} days
-  hex: 4 random lowercase hex digits; ext: md for cache/prompts, json for
-  every other kind. The ID of an item is <YYYYMMDDTHHMMSS>-<hex>.
-Day folders (<root>/YYYY/MM/DD/) of earlier versions are no longer read,
-written or removed.
+Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
+  ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
+  effort  named ${help_name_rule}
+  kind    context, dispatches, baselines, reports/development, reports/review,
+          cache/gates or cache/prompts; the cache kinds expire after ${CACHE_MAX_DAYS} days
+  ext     md for cache/prompts, json for every other kind
+
+Options:
+  --kind KIND         new, find: a kind of the layout
+  --effort FOLDER     new, find: an existing effort folder directly in
+                      <root>/efforts/, absolute (trailing slashes allowed)
+  --label LABEL       new: the item's label; find: only items with it.
+                      ${help_label_rule}
+  ID                  path, open (before its options): a full ID or its
+                      4 hex digits
+  --format md|html    open: md, the default; html is not available yet
+  --editor CMD        open: run by sh with the file as last argument, instead
+                      of open (macOS) or xdg-open (Linux), and waited for: it
+                      must hand the file to a GUI app and return (code, idea;
+                      never 'code -w' or a terminal editor)
+  --older-than Nd     prune: the age N, in whole days
+  --apply             prune: remove them; without it, nothing changes
 
 Commands:
-  new    creates an empty file (mode 600) for the caller to write in
-         FOLDER/KIND/ and prints its absolute path. FOLDER: an absolute
-         path (trailing slashes allowed) to an effort folder directly in
-         <root>/efforts/; it must exist (new never creates it). KIND's
-         folders are created when missing. LABEL: ${help_label_rule}.
-         A repeated option keeps its last value. The file is created
-         without overwriting (noclobber) and its ID is claimed across
-         FOLDER's kind folders; a clash of either retries with a fresh ID,
-         up to ${help_create_attempts} tries. The content is the caller's to
-         write, as one JSON object in its writer's shape, or Markdown for
-         cache/prompts.
-         Every new also expires FOLDER's cache: it removes each regular
-         file directly in FOLDER/cache/gates/ and FOLDER/cache/prompts/
-         last modified ${CACHE_MAX_DAYS} or more days ago, never following a symbolic link
-         and never entering a subfolder. An expiry that fails puts a note
-         on stderr and new goes on.
-  path   prints the absolute path of an item. ID: the full ID, or its 4 hex
-         digits, searched in every kind folder of every effort folder. An
-         item is a regular file, not a symbolic link, named as the layout
-         sets; anything else is skipped. Several items with the ID is an
-         error (stderr lists them): give the full ID.
-  find   prints the absolute path of every item of KIND in FOLDER (FOLDER
-         as new takes it) and, with --label, with that label, one per line,
-         newest ID first; nothing when there is none (exit 0), FOLDER/KIND/
-         missing included. Read-only.
-  open   renders an item to a new temp folder in \${TMPDIR:-/tmp} (never
-         inside the space: a TMPDIR inside the space is replaced by /tmp; the
-         folder is left for the editor and not removed, unless open fails
-         or is stopped, which removes it) and opens it. The ID
-         comes first. A reports/development item is rendered by
-         \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/standard-code-development-report/scripts/report.sh
-         render --full when that script's --help names --full and the render
-         succeeds. Anything else gets a title line "# <kind>: <label>", then:
-         a prompt its Markdown as stored; JSON pretty-printed in a json
-         fence; an empty file "Empty: nothing has been written to this
-         item."; a file that is not valid JSON "Not valid JSON; the file as
-         stored:" and the file in a text fence. It opens with the OS
-         opener, open (macOS) or xdg-open (Linux), which hands the file to
-         the desktop and never blocks; \$VISUAL and \$EDITOR are not consulted.
-         --editor CMD opens it with CMD instead: CMD is run by sh with the
-         file as its last argument, the way git runs \$EDITOR. CMD must hand
-         the file to a GUI app and return (e.g. code, idea); never a terminal
-         editor or a waiting form such as 'code -w': open waits for CMD to
-         exit, so a CMD that waits for a terminal or for the file to close
-         hangs a caller with no terminal, such as the Bash tool. The opener's or
-         editor's output goes to stderr. Prints exactly one line: opened
-         <file>. --format html is not available yet.
-  prune  lists the effort folders in which nothing (the folder itself, a
-         subfolder or a file) was modified in the last N days. Without
-         --apply it prints "would remove <folder>" for each and changes
-         nothing; with --apply it removes each whole effort folder and
-         prints "removed <folder>". A session may still write to an effort,
-         so one holding anything modified in the last 24 hours (or one find
-         cannot fully read) is never removed, in either mode, and prints
-         "kept <folder> (<reason>)". It closes with one line:
-           would remove <N> effort folders unchanged for N days[ (kept <K>,
-           listed above)]; nothing changed, add --apply to remove them
-         or, with --apply:
-           removed <N> effort folders unchanged for N days[ (kept <K>,
-           listed above)]
-         Only real folders directly in <root>/efforts/ named as an effort
-         folder are ever touched; rm -rf never follows a symbolic link in
-         them.
-  root   prints the space root, resolved and checked as above, without
-         creating it. Takes no argument.
-  --help, -h
-         prints this contract on stdout; any argument after it is ignored.
+  new    creates an empty file in --effort's KIND folder (made if missing),
+         never overwriting, with an ID no other item of the effort holds;
+         stdout: its absolute path. Also expires the effort's cache.
+  path   stdout: the absolute path of the item with ID.
+  find   stdout: the absolute path of each KIND item (with --label, of that
+         label) in --effort's folder, one per line, newest first; nothing
+         when there is none (KIND folder missing included). Read-only.
+  open   renders the item as Markdown into a new folder in \${TMPDIR:-/tmp},
+         never in the space, kept for the editor (removed if open fails or
+         is stopped), and opens it. stdout: one line, opened <file>.
+  prune  lists effort folders unchanged for N days, or with --apply removes
+         them, never one modified in the last 24 hours or not fully
+         readable; touches nothing else and follows no symbolic link.
+         stdout: a line per folder, then a summary line.
+  root   stdout: the space root, checked, not created. Takes no argument.
 
 Exit codes:
-  0  ok (prune: also when nothing is old enough)
-  1  path or open: no item has that ID, or the ID's hex is shared by
-     several items (stderr lists them)
-  2  usage error: no command (this help is printed on stderr), unknown
-     command or option, a missing option value, bad kind, bad label, a
-     CRUCIBLE_HOME that is relative or /, a relative HOME when CRUCIBLE_HOME
-     is unset or empty, a malformed ID or Nd, open with an option before
-     the ID, --format html, root with an argument, new or find without
-     --kind or --effort, or a FOLDER that is relative, not directly inside
-     <root>/efforts/ or not named <id>-<name>. Its stderr is one
-     "crucible.sh: <what failed>; expected <x>" line, then "Try
-     'crucible.sh --help'."
-  4  space fault, its stderr line starting "crucible.sh: space:": neither
-     CRUCIBLE_HOME nor HOME set; the root a symbolic link; efforts/,
-     FOLDER or a kind folder level missing (new, find: FOLDER and
-     efforts/), not a folder or a symbolic link; a folder or the file new
-     cannot create; new's ${help_create_attempts} tries all found the name or its ID taken;
-     prune --apply unable to remove an effort folder; or open's mktemp -d
-     failing in its temp base
-  5  install fault, its stderr line starting "crucible.sh: install:": a
-     dependency below missing or failing: lib/crucible-space.sh beside this
-     script (every command but --help); date, od or the random source
-     (new); jq (open); find (prune); uname, the opener or the editor
-     (open). Each is checked when the command first needs it.
+  0  done; go on
+  1  path, open: no single item has the ID; report it with stderr
+  2  usage error; show stderr
+  4  space fault; show stderr
+  5  install fault; show stderr
+  129, 130, 143  stopped by HUP, INT or TERM; show stderr
 
-Dependencies: POSIX sh; lib/crucible-space.sh beside this script; cat, find,
-mkdir, mktemp, od (with /dev/urandom), rm, sort and uname, in every macOS and
-Linux base system; a date that knows +%Y%m%dT%H%M%S; jq 1.6+ only for open
-(macOS: brew install jq; Linux: the distro's jq package); open (macOS) or
-xdg-open (Linux) only for open without --editor.
-
-Runtime: new about 0.03 s; path by full ID or hex and find about 0.01 s,
-prune about 0.04 s, over 10 efforts; open with the JSON fallback render
-about 0.03 s; root and --help about 0.01 s (mean wall time of 20 runs, sh
-startup included; macOS 26.7 on an Apple M1 Max). path and prune grow with
-the number of efforts; open adds the report renderer's and the opener's own
-time.
+Dependencies:
+  POSIX sh; lib/crucible-space.sh beside this script
+  cat, date, find, mkdir, mktemp, od, rm, sort, uname, /dev/urandom (every
+    macOS and Linux base system)
+  open: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); without
+    --editor, open (macOS) or xdg-open (Linux)
 EOF
 }
 
@@ -250,12 +171,10 @@ source_space_lib() {
 load_help_rules() {
 	help_name_rule='<YYYYMMDDTHHMMSS>-<4 lowercase hex>-<NAME>, NAME as lib/crucible-space.sh (missing) sets it'
 	help_label_rule='as lib/crucible-space.sh (missing) sets it'
-	help_create_attempts='N (lib/crucible-space.sh, missing, sets it)'
 	# shellcheck disable=SC2310 # its status picks the fallback texts above; errexit adds nothing
 	source_space_lib || return 0
 	help_name_rule=${crucible_effort_name_rule}
 	help_label_rule=${crucible_label_rule}
-	help_create_attempts=${crucible_max_create_attempts}
 }
 
 # Sets root from the space rules, or exits 2 or 4 with their problem.
@@ -586,7 +505,8 @@ remove_failed_render() {
 	[ "${exit_status}" -eq 0 ] || rm -rf "${temp_dir}"
 }
 
-# Succeeds only when the report renderer supports --full and renders the item.
+# Succeeds only when the report renderer supports --full and renders the item;
+# otherwise open falls back to the generic render.
 render_full_report() {
 	renderer="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/${REPORT_RENDERER}"
 	[ -f "${renderer}" ] || return 1
@@ -681,6 +601,8 @@ check_days() {
 }
 
 # Lists, keeps or removes effort folder $1 by the age of the newest thing in it.
+# A session may still write to an effort, so one touched in the last 24 hours
+# stays whatever N is.
 prune_effort() {
 	# shellcheck disable=SC2310 # its status is the answer; a failure to read keeps the folder
 	recent_in "$1" "${count}" || {

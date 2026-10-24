@@ -1,11 +1,10 @@
 #!/usr/bin/env sh
 # Checks the developer's report JSON, stamps what its dispatch file knows into
 # it on a pass, and renders it for the human, the reviewer and a TEST
-# dispatch. The jq validator below owns the report's
-# shape (there is no schema file): the report standard's field table and
-# --help document it, the validator wins where they differ, and doc-check
-# compares the table with it. Path display
-# goes through lib-render's paths.jq.
+# dispatch. The jq validator below owns the report's shape (there is no
+# schema file): the report standard's field table documents it, --help points
+# there, the validator wins where they differ, and doc-check compares the
+# table with it. Path display goes through lib-render's paths.jq.
 set -eu
 
 readonly PROG='report.sh'
@@ -25,7 +24,8 @@ readonly MAX_BASELINE_SHOWN=5
 # output with each NUL turned into \u0001 ($have_git false when no repo was
 # given); $baseline is the tree before the dispatch, and a path changed there
 # (or under a folder it lists, ending in /) is left out of the comparison.
-# The programs are single-quoted on purpose: their $ signs are jq's.
+# A mismatch is counted as unlisted, never a problem: parallel dispatches
+# share the tree. The programs are single-quoted on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
 readonly COMMON_JQ='
 def git_label:
@@ -307,7 +307,8 @@ $report[0] | count_line, problems[]
 # doc-check: compares the report standard's text ($doc) with the definitions
 # above, so the field table is checked against the validator, not against a
 # second list. A field-table row is a line starting "| `<key>`"; its Key cell
-# runs to the next |. Each output line is one difference.
+# runs to the next |; a value is named when it is a backticked token. Each
+# output line is one difference, so a reworded table never passes.
 # shellcheck disable=SC2016
 readonly DOC_CHECK_JQ='
 def doc_lines: $doc | split("\n") | map(sub("\r$"; ""));
@@ -396,6 +397,8 @@ readonly RENDER_JQ='
 def txt: if type == "string" then . elif . == null then "" else tojson end
 	| gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
 def bare: txt | sub("[.]+$"; "");
+# A shown path or command is cut in the middle past 80 characters, the home
+# folder as ~ (paths.jq); a cut command cannot be run; the report file holds it whole.
 def path_text: txt | short_path($home);
 def span: path_text | code_span;
 def strings_of($list): $list | if type == "array" then map(strings) else [] end;
@@ -587,302 +590,233 @@ def summary_view($problems):
 $report[0] | summary_view(all_problems) | join("\n\n")
 '
 
+# The top --help page: every usage line, the commands and what no single
+# command owns. Each command's own contract is its `<command> --help` page.
 usage() {
+	usage_prefix='usage: '
+	usage_lines check render doc-check
+	usage_line 'report.sh <command> --help'
+	usage_line 'report.sh --help | -h'
 	cat <<'EOF'
-usage: report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUILD] [--context FILE] [--findings FILE] [--skills-dir DIR]
-       report.sh check --report PATH --repo DIR --mode BUILD [--baseline FILE] [--findings FILE] [--context FILE] [--skills-dir DIR]
-       report.sh render --report PATH [--task TEXT] [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]
-       report.sh render --full --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]
-       report.sh render --report PATH --for reviewer|test [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]
-       report.sh doc-check --skill PATH [--skills-dir DIR]
-       report.sh --help
 
-Checks the developer's report, one JSON object in the file PATH (absolute;
-normally in its effort's reports/development/ in the Crucible space,
-${CRUCIBLE_HOME:-$HOME/.crucible}/efforts/<effort>/, which is not enforced), stamps what the dispatch file knows into it on a pass, and
-renders it. stdin is never read. With no arguments it prints this help on
-stderr and exits 2.
-The validator in this script owns the shape; there is no schema file. This
---help and the report standard's field table document it (the main thread
-reads this, the developer the field table), and the validator wins where
-they differ; doc-check compares the field table with it.
+Checks the developer's report, one JSON object in PATH, stamps it from its
+dispatch file on a pass, and renders it as Markdown. stdin is never read.
+With no arguments, prints this page on stderr and exits 2.
+EOF
+	help_shared shape
+	cat <<'EOF'
 
-Which keys the agent writes, which are required, the six stamp keys and the
-reserved keys are in the report standard's field table, checked against the
-validator by doc-check; the validator wins. Each key's item fields, enum
-values and caps are there too; a loc is a location, in one of the forms the
-standard lists. check --dispatch adds the stamps on a pass, after the
-agent's keys: each is taken from the dispatch file, except finished, the
-time the check passed (times are YYYY-MM-DDTHH:MM:SS+HH:MM, local time).
-Rules the validator enforces (check, and render before it prints):
-  - no key but the field table's; the reserved keys are for the TEST mode;
-    round and LABELS are never written into the file
-  - every required key is present, toolchain among them: a report written
-    before toolchain existed is refused (check exit 3; render shows it
-    Invalid)
-  - stamps: check, with or without --dispatch, refuses a report holding any
-    stamp key, each key named: a report is checked before it is stamped and
-    a stamped one is never checked again, so a stamp key at a check is one
-    the agent wrote. Only render takes a stamped report: all six keys, each
-    with the shape of a stamp (the two times as above, dispatch a Crucible
-    ID); it refuses a part set
-  - a text value holds a non-space character and fits the text caps the
-    field table states; a path or loc is never absolute (/, ~ or a drive
-    letter); a files path has no .. segment and is listed once
-  - loc: a repo-relative path:line, message: <FIELD>, a plugin name and file, a
-    context entry (paths[<n>], links[<n>] or notes[<n>], counted from 1, or
-    its URL) or commit <sha>; only "never absolute" is enforced
-  - verification: a pass has its command; any other result has its note.
-    Only that the note is there is checked: a narrowed note's quote of the
-    first message is not verified
-  - verification: a command is one command, no &&, || or ; outside quotes
-  - open: a could_not item has its ref
-  - with --findings (a fix round): review_responses holds each finding ID of
-    FILE (one per line, blank lines ignored) exactly once and no other ID; a
-    not_fixed item has its note; a blocked item's ID is named in the detail
-    of a blockers item of kind finding_blocked, as a whole word. Without
-    --findings, check refuses review_responses; render, which has no
-    findings file, refuses it only with --round initial.
-  - with --context (the context file, {"paths", "links", "notes"}): each
-    could_not ref is a paths[].path or links[].url in it, or paths[<n>],
-    links[<n>] or notes[<n>] for an entry it has, counted from 1 (render has
-    no context file and skips this)
-  - files against git status in DIR, the root of a git work tree: a changed
-    file not listed, a file in the wrong list, or a listed file git shows
-    unchanged is not a problem: it is counted as unlisted and shown in the
-    render, since parallel dispatches share the tree. The baseline is git's
-    view of DIR before the dispatch: every path in it, and every path under
-    a folder it lists, is left out of this comparison. render shows how many
-    changed files that leaves unchecked, under "Changed before this
-    dispatch, not checked:", naming at most 5; check's count line does not
-    count them. Where it comes from:
-      check --dispatch: the dispatch's baseline key, the file
-        prepare-agent-prompt.sh wrote at the Agent call (or at --direct);
-        --baseline is refused
-      render --repo DIR without --baseline or --dispatch: the baseline key
-        of the dispatch the report's dispatch stamp names (found with
-        crucible.sh path <ID>, which searches every effort folder, and
-        taken only when it is a file in an effort's dispatches/); a report
-        with no dispatch stamp has no baseline
-      render --repo DIR --dispatch FILE: the baseline key of FILE, for a
-        report check --dispatch could not stamp (exit 3 at the resend cap,
-        or exit 6). FILE is checked as check --dispatch checks it (absolute,
-        a regular file, not a symlink, passing the dispatch validator); its
-        repo_root must be DIR, its report PATH, and, for a stamped report,
-        its id the report's dispatch stamp. --dispatch takes no --baseline
-      --baseline FILE (absolute; check without --dispatch, or render): FILE
-        holds `git status --porcelain=v1 -z --no-renames` of DIR saved
-        before the dispatch, and wins over the stamp
-    A dispatch's baseline file is one JSON object, {"repo_root", "taken",
-    "entries"}, its entries that git status output's entries
-    (flow-agent-initialization's dispatch-names.jq holds the shape); its
-    repo_root must be the dispatch's
+Commands (each page holds its options, output, exit codes and dependencies):
+  check      checks the report's shape; with --dispatch, stamps it on a pass
+  render     prints the report for the human (summary or --full) or a reader
+  doc-check  compares the report standard's field table with the validator
+EOF
+}
 
-check --dispatch FILE: FILE (absolute, a regular file, not a symlink) is the
-dispatch file generate-agent-dispatch.sh wrote, for the agent or for direct
-implementation alike; it must pass DIR/flow-agent-initialization/scripts/
-agent-dispatch/agent-dispatch-validator.jq (DIR: --skills-dir), its
-problems listed one per line. It also supplies --report (its report),
---repo (its repo_root), --context (its context.path) and --mode (its mode):
-leave them out, or give the same text; a different value is refused. The
-context file is read once and its sha256 must still be the dispatch's
-context.sha256: a context changed since the dispatch was written is refused.
-A fault of that context file or of the repo_root folder is reported as the
-dispatch's (exit 2, "report.sh: dispatch:"), since no flag fixes it.
-The baseline comes from the dispatch's baseline key, never from --baseline
-(given with --dispatch, a usage error), and must be a regular file, not a
-symlink, holding a baseline of the dispatch's repo_root: a file still empty
-(the dispatch never went through the Agent hook or --direct) is refused.
-The report must then be a regular file, not a symlink. On a valid report (exit 0
-or 1) the six stamps are written: the report as checked, read once into a
-temp file, plus the stamps, written to a temp file beside PATH (its
-permissions copied) and moved onto PATH. Any other exit writes nothing, and
-the file stays byte for byte as it was.
+# The `<command> --help` page of command $1.
+command_help() {
+	usage_prefix='usage: '
+	usage_lines "$1"
+	case $1 in
+		check) check_help ;;
+		render) render_help ;;
+		*) doc_check_help ;;
+	esac
+}
 
-check stdout, one line, on exits 0, 1, 3 and 6:
-  blockers=<n> instruction_found=<n> secret_found=<n> missing_plugin=<n> could_not=<n> deviations=<n> unlisted=<n>
-check stderr: one line per problem, "<field>: <what>; expected <x>", at most
-30, then a count of the rest.
---mode TEST is refused until the testing flow exists.
+check_help() {
+	cat <<'EOF'
 
-render prints the report as Markdown on stdout. It runs the shape check
-first and still prints an invalid report, as far as its shape allows. A
-report holding a blocker of any kind, request_unclear among them, shows as
-blocked.
+Checks the report's shape; with --dispatch, stamps it on a pass. A stamped
+report is refused: it is never checked again.
+EOF
+	help_shared shape
+	help_shared options
+	cat <<'EOF'
+  --dispatch FILE     the dispatch file; supplies --report, --repo, --context
+                      and --mode: leave them out, or give the same text
+EOF
+	help_shared report-repo
+	cat <<'EOF'
+  --mode BUILD        the dispatch mode; only BUILD is taken
+  --context FILE      the context file; each could_not ref names an entry
+  --findings FILE     a fix round's finding IDs, one per line; review_responses
+                      answers each exactly once
+EOF
+	help_shared baseline
+	help_shared skills-dir
+	cat <<'EOF'
 
-render (the default) prints the summary the main thread shows the human,
-every item on its own line:
-  ## Developer Report
-  - Tech: the labels FILE's Technology label (else the stamped tech when it
-    is not none, else the report's toolchain), Dispatch: <dispatch>, <mode>,
-    <started> to <finished> (a stamped report only), Task: TEXT (the
-    report's summary without --task), Status: Done, Blocked or
-    Invalid
-  ### Result
-  - Files changed: <n>, Behaviours: <n>, all|none|<k> exercised (checked
-    true), Gates: <n> pass, <n> fail, <n> narrowed, <n> not run (zero counts
-    left out; none when there is no gate)
-  ### Check these   (left out when it has nothing)
-  - in full, never cut: every validation problem of an invalid report
-    ("Report problem: <line>", all of them, not the 30 check prints),
-    blockers, secrets found, instructions found and deviations
-  - at most 3 lines each, then "<n> more <items> in the full report": not
-    read (could_not, "Not read: <ref>, <at>: <text>", at only when present),
-    assumptions, missing plugins, contract breaks, gates refused, unlisted
-    changes (with --repo; the count covers every one, while render --full
-    lists at most 20 of them, then a count of the rest)
-  - "Not checked: <n> files changed before this dispatch" (with a baseline)
-  ### Full report
-  - the absolute PATH, whole, in a code span (lib-render's link_span)
-No standards, procedures, decisions, focus, noticed items or review
-responses show there; render --full shows them. --task TEXT is one line (a
-control character prints as a space).
+stdout on exits 0, 1, 3 and 6: one count line, <kind>=<n> per kind
+stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
+  most 30, then a count of the rest.
 
-render --full prints the full human view. Its Summary shows "Status: Done",
-"Blocked" or "Invalid" (with " · Initial implementation" or " · Fix round N"
-after it when --round is given), then "Technology: <label> (<toolchain>)",
-or "Technology: <toolchain>" alone without a labels file or when its
-Technology is none, and, for a stamped report, a "Dispatch:"
-group with all six stamps (Tech plugin, Plugins, Mode, Dispatch, Started,
-Finished). The full view of an
-invalid report shows "Status: Invalid", its problems under
-"Report problems:" at the top of Check these, which then follows Summary.
-"None: did what was asked." shows only for a valid report with no blocker and
-no deviation, otherwise "None.". A decision's commit text shows as
-"Commit: <text>". The labels FILE (absolute, at most 1000 bytes) holds the
-hand-back's LABELS line exactly as given, one line,
-"LABELS: Technology: <label|none> · Standards: <labels|none>", with
-" · Procedures: <labels>" after it when a procedure plugin was loaded, so
-label text never sits on a command line; render --full shows the standards
-and the procedures as their own groups under Summary. --round is initial or
-'fix N' with N a positive integer without leading zeros; it shows only in
-render --full's Status line, and initial makes the summary and render --full
-show a review_responses key as a report problem. With --repo, files that git
-and the report disagree on show
-under "Changed but not reported" (at most 20, then a count). Paths and
-verification commands shown as text go through DIR/lib-render/paths.jq:
-cut in the middle past 80 characters (a cut command cannot be copied and
-run; the report file holds it whole), the home folder in a path as ~.
-
-render --for reviewer|test prints a slice for that reader: the heading
-"## Implementation report: for the reviewer" (or "for the test dispatch"),
-the problems of an invalid report under "Report problems:", then behavior,
-deviations, open, decisions and focus. It takes neither --full nor --task
-and ignores --labels-file and --round (neither is checked). --repo,
---baseline and --dispatch are checked, and git status and the baseline read,
-as for the other renders, with the same exits 2 and 5, but they change
-nothing it prints: the slice shows no "Changed but not reported" or
-"Changed before this dispatch" group.
-  DIR (--skills-dir) defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills.
-
-doc-check --skill PATH [--skills-dir DIR]: PATH (absolute) is the report
-standard's SKILL.md.
-Read-only: it compares the text with the validator's own definitions, never
-with a second list, and prints one line per difference on stdout. Matching
-rule: a field-table row is a line starting "| `<key>`" and its Key cell runs
-to the next |; a value is named when it appears as a backticked token.
-  - each report key has one row, and no row names a key the validator lacks
-  - a required key's Key cell says "(required", an optional one's does not
-  - the largest number in a Key cell is that key's cap (none when uncapped);
-    open's Key cell names, in backticks, exactly the kinds its cap skips
-  - each value of every enum the validator holds is named in its key's row
-    (blockers.kind's values in the blockers row); a row names no backticked
-    identifier (lowercase, digits, _) that is not one of its enum values, its
-    item fields, a report or stamp key, true or false
-  - each row of a key with items names every item field the validator holds
-    for it, as `<field>` or `<field>: <value>`; a field is called required
-    when "(required" follows its token or "required " comes right before
-    it; an optional field is never called required, and a required one
-    always is
-  - the summary row says "<cap> words"; the text says "at most <cap>
-    characters" for the text cap
-  - the first line holding "stamped keys" (any case) names exactly the six
-    stamp keys
-A table reworded so these no longer hold shows as differences, never as a
-pass. check and render first run the same comparison on their own skill's
-SKILL.md, the one beside this script's scripts/ folder: a difference, or
-that file missing, exits 5 with "report.sh: install: the field table in
-<path> and the validator disagree: <first difference>; run doc-check
---skill <path> for all". doc-check itself still exits 0 or 1 (2 on a
-usage error, 5 on an install fault).
-
-Writes: check --dispatch writes the six stamps into the report file, on a
-pass only, and nothing else; check without --dispatch and render write
-nothing but their own temp folder, removed on exit; doc-check writes nothing.
-Only a SIGKILL leaves the temp folder, or the .report-stamps.* temp file
-beside PATH, behind. git status runs with GIT_OPTIONAL_LOCKS=0, so the repo
-and its index are never changed.
+Writes: with --dispatch, the six stamps into PATH on exit 0 or 1 only; any
+other exit leaves PATH byte for byte as it was.
+EOF
+	help_shared writes-nothing-else
+	cat <<'EOF'
 
 Exit codes:
-  0  check: valid (stamped, with --dispatch) · render: printed, an invalid
-     report included · doc-check: the text agrees with the validator
-  1  check: valid, with open blockers (stamped, with --dispatch) ·
-     doc-check: a difference, one line each on stdout
-  2  usage error (no arguments among them: this help on stderr), --mode
-     TEST, a missing or unreadable --findings, --context, --labels-file,
-     --baseline or --skill file, a --findings file holding no ID, a
-     --context file that is not one JSON object, a --labels-file over 1000
-     bytes, of more than one line or holding no LABELS line, a --round that
-     is neither initial nor 'fix N', --baseline without --repo, --baseline
-     with --dispatch, render --dispatch without --repo, a --repo that is not
-     a folder ("--repo <dir> is not a folder"), cannot be entered ("--repo
-     <dir> cannot be entered"), is not in a git work tree or is not the root
-     of one, a --report, --repo, --context
-     or --mode that differs from the dispatch's, a render --repo that
-     differs from the stamped dispatch's repo_root, or a render --dispatch
-     whose repo_root is not --repo, whose report is not --report or whose id
-     is not the report's dispatch stamp. A fault of the dispatch file itself starts stderr with
-     "report.sh: dispatch:", so a caller can tell it from a usage error: the
-     file missing, a symlink, not JSON or failing the dispatch validator
-     (each problem named); under check --dispatch its CONTEXT file missing,
-     unreadable, not a regular file or not one JSON object, or changed since
-     the dispatch was written (its sha256 is not the dispatch's
-     context.sha256), and its repo_root not a folder, not enterable, not in
-     a git work tree or not the root of one; its baseline
-     file missing, a symlink, unreadable, still empty, not JSON or not a
-     baseline of its repo_root (each problem named), or, for render, the
-     report's dispatch stamp naming no dispatch crucible.sh path finds, or
-     an item that is not in an effort's dispatches/
-  3  check: invalid (stderr names each problem); nothing written
-  4  not a report: PATH missing, unreadable, not JSON, or not one object;
-     with --dispatch also a symlink
-  5  install fault, its stderr line starting "report.sh: install:": jq
-     missing or older than 1.6, a base tool missing, git missing, git status
-     failing in DIR, DIR/flow-agent-initialization/scripts/agent-dispatch/
-     dispatch-names.jq missing (every command), DIR/lib-render/paths.jq
-     missing (render only), the dispatch validator or both sha256sum and
-     shasum missing (check --dispatch only), the dispatch validator or
-     crucible.sh missing when a dispatch's baseline is read, the dispatch
-     validator failing to run (dispatch-names.jq missing beside it),
-     crucible.sh path exiting other than 0 or 1, mktemp -d failing in
-     ${TMPDIR:-/tmp}, the sha256 tool printing no 64-digit digest, jq
-     failing at run time, or this skill's
-     SKILL.md missing or its field table disagreeing with the validator
-     (check and render)
-  6  check --dispatch: valid, but the stamps could not be written; the
-     report is unchanged and stderr names the step that failed
-  129, 130, 143  stopped by HUP, INT or TERM; temp files are removed
-
-Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
-jq), git (check, and render with --repo; macOS: xcode-select --install;
-Linux: the distro's git), the base tools cat, cp, date (+%z),
-grep, mktemp, mv, rm, sed, tr and wc (in every macOS and Linux base system;
-Linux: the distro's coreutils, grep and sed packages); the lib-render skill
-for render; this skill's own SKILL.md, beside scripts/, for check and
-render; the flow-agent-initialization skill's dispatch validator for check
---dispatch and render --dispatch, and sha256sum or shasum (macOS: shasum -a
-256) for check --dispatch; its dispatch-names.jq (the baseline shape and the
-stamp patterns crucible_id_pattern and local_time_pattern) for every
-command, and the crucible skill's crucible.sh for render --repo of a stamped
-report without --baseline or --dispatch; doc-check needs no git. jq, the
-base tools and dispatch-names.jq are checked after the arguments parse
-(dispatch-names.jq once they pass), git when --repo is given; a missing one
-exits 5 and names it.
-Runtime: about 90 ms for check, 120 ms for check --dispatch, 60 ms for
-render and 90 ms for render --repo (each including the 20 to 30 ms check of
-its own SKILL.md) and 30 ms for doc-check on a small repo, measured on
-macOS (average of 5 runs); git status grows with the repo's size.
+  0  valid (stamped, with --dispatch); go on
+  1  valid with open blockers (stamped, with --dispatch); treat as blocked
 EOF
+	cat <<'EOF'
+  2  usage error; fix the command; stderr starting "report.sh: dispatch:":
+     a dispatch fault, stop
+  3  invalid; have the fields stderr names fixed, check again
+  4  not a report (PATH not one JSON object); write the report again
+  5  install fault; show stderr as is, the report unchecked
+  6  --dispatch: valid, but the stamp step failed; render --dispatch
+  129, 130, 143  stopped by HUP, INT or TERM; the report unchecked
+EOF
+	help_shared dependencies
+	help_shared dependencies-check-render
+	cat <<'EOF'
+  with --dispatch: flow-agent-initialization's dispatch validator, and
+    sha256sum or shasum (macOS: shasum -a 256)
+EOF
+}
+
+render_help() {
+	cat <<'EOF'
+
+Prints the report as Markdown on stdout.
+EOF
+	help_shared shape
+	help_shared options
+	help_shared report-repo
+	cat <<'EOF'
+  --task TEXT         the summary's Task line, one line (default: the summary)
+  --labels-file FILE  the hand-back's LABELS line, whole, at most 1000 bytes
+  --round ROUND       initial or 'fix N'; initial shows review_responses as a
+                      report problem
+  --full              the full human view instead of the summary
+  --for READER        reviewer or test: that reader's slice
+EOF
+	help_shared baseline
+	cat <<'EOF'
+  --dispatch FILE     the dispatch of a report check could not stamp, for its
+                      baseline; a stamped report needs neither this nor
+                      --baseline. Needs --repo
+EOF
+	help_shared skills-dir
+	echo
+	help_shared writes-nothing-else
+	cat <<'EOF'
+
+Exit codes:
+  0  printed, an invalid report included; show it
+  2  usage error; treat the report as not rendered
+  4  not a report (PATH not one JSON object); treat it as not rendered
+  5  install fault; treat the report as not rendered
+  129, 130, 143  stopped by HUP, INT or TERM; treat the report as not rendered
+EOF
+	help_shared dependencies
+	help_shared dependencies-check-render
+	cat <<'EOF'
+  the lib-render skill
+  with --dispatch, or --repo on a stamped report: flow-agent-initialization's
+    dispatch validator
+  with --repo on a stamped report and neither --baseline nor --dispatch: the
+    crucible skill
+EOF
+}
+
+doc_check_help() {
+	cat <<'EOF'
+
+Compares the report standard's field table with the validator. Writes nothing.
+EOF
+	help_shared options
+	cat <<'EOF'
+  --skill PATH        the report standard's SKILL.md
+EOF
+	help_shared skills-dir
+	cat <<'EOF'
+
+stdout: one line per difference.
+
+Exit codes:
+  0  the table agrees with the validator; go on
+  1  differences; fix the table
+  2  usage error; fix the command
+  5  install fault; install what stderr names
+  129, 130, 143  stopped by HUP, INT or TERM; rerun
+EOF
+	help_shared dependencies
+}
+
+# Prints the usage lines of each command named, the first after usage_prefix.
+usage_lines() {
+	for usage_command in "$@"; do
+		case ${usage_command} in
+			check)
+				usage_line 'report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUILD] [--context FILE] [--findings FILE] [--skills-dir DIR]'
+				usage_line 'report.sh check --report PATH --repo DIR --mode BUILD [--baseline FILE] [--findings FILE] [--context FILE] [--skills-dir DIR]'
+				;;
+			render)
+				usage_line "report.sh render --report PATH [--task TEXT] [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]"
+				usage_line "report.sh render --full --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]"
+				usage_line 'report.sh render --report PATH --for reviewer|test [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]'
+				;;
+			*) usage_line 'report.sh doc-check --skill PATH [--skills-dir DIR]' ;;
+		esac
+	done
+}
+
+usage_line() {
+	printf '%s%s\n' "${usage_prefix}" "$1"
+	usage_prefix='       '
+}
+
+# The help text more than one page prints, item $1, so it is written once.
+help_shared() {
+	case $1 in
+		shape)
+			cat <<'EOF'
+shape: see this skill's SKILL.md field table; the validator here wins where
+they differ.
+EOF
+			;;
+		options) printf '\nOptions (every FILE, PATH and DIR absolute):\n' ;;
+		report-repo)
+			cat <<'EOF'
+  --report PATH       the report file
+  --repo DIR          the root of a git work tree; a changed file the report
+                      does not list is counted as unlisted
+EOF
+			;;
+		baseline)
+			cat <<'EOF'
+  --baseline FILE     git status --porcelain=v1 -z --no-renames of --repo from
+                      before the dispatch; needs --repo, never with --dispatch
+EOF
+			;;
+		skills-dir)
+			cat <<'EOF'
+  --skills-dir DIR    default ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+EOF
+			;;
+		writes-nothing-else) printf 'Nothing else is left behind (a SIGKILL aside); the repo and its index are\nnever changed.\n' ;;
+		dependencies)
+			cat <<'EOF'
+
+Dependencies (other skills in --skills-dir):
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  cat, cp, date, grep, mktemp, mv, rm, sed, tr, wc (every macOS and Linux
+    base system)
+  the flow-agent-initialization skill (its dispatch-names.jq)
+EOF
+			;;
+		dependencies-check-render)
+			cat <<'EOF'
+  this skill's SKILL.md, beside scripts/
+  with --repo: git (macOS: xcode-select --install; Linux: the distro's git)
+EOF
+			;;
+		*) ;;
+	esac
 }
 
 warn() {
@@ -891,7 +825,7 @@ warn() {
 
 usage_error() {
 	warn "$1"
-	printf "Try '%s --help'.\n" "${PROG}" >&2
+	printf "Try '%s%s --help'.\n" "${PROG}" "${command:+ ${command}}" >&2
 	exit 2
 }
 
@@ -925,7 +859,7 @@ parse_args() {
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
-				usage
+				command_help "${command}"
 				exit 0
 				;;
 			--full)
@@ -937,7 +871,7 @@ parse_args() {
 				set_option "$1" "$2"
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected the options --help lists for ${command}" ;;
+			*) usage_error "unknown argument: $1; expected the options '${PROG} ${command} --help' lists" ;;
 		esac
 	done
 	check_jq

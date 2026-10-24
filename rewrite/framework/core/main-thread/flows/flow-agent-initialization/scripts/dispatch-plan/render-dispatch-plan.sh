@@ -165,161 +165,64 @@ readonly NO_FIT_QUESTION_JQ='
 
 usage() {
 	cat <<EOF
-Usage: sh ${PROG} --plan-file PATH [--skills-dir DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label dispatch-plan --effort '<effort folder>'
-       sh ${PROG} --plan-file PATH --question --plans N
+usage: sh ${PROG} --plan-file PATH [--skills-dir DIR]
+       sh ${PROG} --plan-file PATH --question --plans N [--skills-dir DIR]
        sh ${PROG} --no-plugin-fits --plan-file PATH --context-file CTX
        sh ${PROG} --no-plugin-fits --plan-file PATH --question
+       sh ${PROG} --help | -h
 
-Reads one plan as a JSON object from PATH, and prints the plan Markdown headed
-by "## Dispatch Plan", ending in its Context section. PATH is required
-in every mode; stdin is not read. A dispatch plan names its context file in
-its context field; CTX is only for --no-plugin-fits, required when printing
-its plan and refused with --question. It prints no gate marker; open-gate.sh
-adds it.
+Renders a dispatch plan, or a part no tech plugin fits, or its question.
 
-Input shape, as generate-dispatch-plan.sh writes it:
-  {"agent": str, "mode": "BUILD"|"TEST", "technology": str,
-   "tasks": [str, ...],
-   "loaded": [{"plugin": str, "reason": str}, ...],
-   "loaded_reason": str,
-   "not_loaded": [{"plugin": str, "reason": str}, ...],
-   "replan": "invalid"|"stop-recommended",
-   "context": {"path": str, "sha256": str}}
-Its rules are dispatch-plan-validator.jq's, checked when the
-generator writes the plan; this script checks none of them. It only refuses
-input it can't render, one stderr line each, exit 2: not exactly one JSON
-object, or a field it reads that does not have the type it needs ("<field> is
-not <type>; expected the plan generate-dispatch-plan.sh writes"): tasks an
-array of strings; for a printed plan also agent, mode and technology strings,
-loaded and not_loaded arrays of objects with a string plugin, and context an
-object with string path and sha256.
-The installed plugins, which a printed plan reads to leave the tech plugin out
-of the Loaded and Not loaded lists, are the plugin lines of
-DIR/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh --max-lines 0, run with
---skills-dir DIR; its stderr is passed through. Its exit 1 (no plugin) is an
-empty list, and its exit 3 (invalid plugins) leaves them out of the list.
-  DIR  the skills folder, as list-plugins.sh's --skills-dir; defaults to
-       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills. A printed plan of either
-       kind also loads DIR/${RENDER_LIB}/paths.jq, the path display helpers.
-Layout, every item on its own line (reasons, loaded_reason and the context
-file's content stay in the JSON files and are not printed):
-  ## Dispatch Plan
-  - Agent: <agent>
-  - Tech: <technology>
-  - Mode: <mode>, with " (direct implementation)" for the direct agent,
-                   ${NAMES_MODULE}.jq's direct_agent
-  ### Task         the task as written, its own line breaks kept; a group
-                   prints "### Tasks" and a numbered list, one task each
-  - Loaded:        then one "  - <label>" line per loaded plugin, or
-                   "- Loaded: none"
-  - Not loaded:    the same for not_loaded
-                   A label is list-plugins.sh's label field, as
-                   the dispatch's LABELS line uses it; a plugin
-                   list-plugins.sh no longer prints shows its name. A plugin
-                   list-plugins.sh prints as tech is left out (the Tech line
-                   names it). Each list has the standard-* plugins first,
-                   then the procedure-* plugins, then any other kind, each
-                   group in plan order.
-  ### Context
-  - \`<path>\`     context.path, whole (lib-render's link_span)
-Any other control character in a value prints as a space, and a backtick in
-a code span as '.
+Options:
+  --plan-file PATH    the plan JSON, required (stdin is not read); dispatch
+                      plan shape: see dispatch-plan-validator.jq
+  --no-plugin-fits    the --plan-file is a part no installed tech plugin fits:
+                      exactly {"stack": str, "files": [str, ...],
+                      "tasks": [str, ...]}, each array one or more strings
+  --context-file CTX  only to print a --no-plugin-fits plan, then required:
+                      the effort's latest context file
+  --question          print the plan's question instead of the plan
+  --plans N           with --question on a dispatch plan, then required: how
+                      many plans are asked one after another, 1 or more
+  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; not
+                      taken with --no-plugin-fits (it uses the default)
 
-With --no-plugin-fits, the context file CTX, checked as prepare-agent-prompt.sh
-checks it, apart from the digest the hook compares (the path checks are
-DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh and the shape check
-DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-validator.jq, DIR being the default
-skills folder). Before it is opened, CTX must pass those path checks:
-absolute, no control character, double or single quote or .. segment, no
-sensitive name, no file of instructions for Claude, no Claude settings
-file. It must then pass the read checks of agent-context-file-checks.sh
-(context_read_problem, the one copy every script that reads a context file
-applies): a readable regular file, not a symlink, no bigger than the size
-cap, still its effort's latest version when it is a version file in an
-effort's context/ (DIR/${CONTEXT_PROCEDURE}/scripts/context-versions.sh), and
-holding exactly one JSON object
-  {"paths": null | [{"path": str, "why": str}, ...],
-   "links": null | [{"url": str, "why": str}, ...],
-   "notes": [str, ...]}
-with no other key in it or its entries; path absolute (starts with /), url
-http:// or https:// (in any letter case) with a host of letters, digits, dots
-and hyphens and an optional :port, then optionally a path, query or fragment
-of letters, digits and . _ ~ / ? # = % : + , @ - only (no space, quote,
-; $ \` ( ) & | < or >),
-why one non-empty line, notes may be []. The first problem found prints as
-one line "context file: <CTX>: <what>; expected <x>" (the path checks'
-"context file: <what>: <CTX>; expected <x>"; the shape problems joined in
-it, at most 20, then a count; a position in them, such as paths[0].why,
-counts from 0), exit 2;
-every line about a problem of CTX itself starts "context file:", and no
-other line does. The plan shows only its path and
-digest.
+stdout, a plan: its Markdown, without the gate marker
+stdout, --question: one JSON object {"header": str, "question": str,
+  "options": [{"label": str, "description": str}, ...]}; nothing for a
+  dispatch plan whose replan is "invalid"
+  option labels: Approve (Recommended) / Stop; with --plans > 1
+  Approve (Recommended) / Skip / Stop all; replan "stop-recommended"
+  Stop (Recommended) / Approve; --no-plugin-fits Stop (Recommended) /
+  Implement directly
+stderr on exits 1, 3, 4, 5 and 6: a line starting "${PROG}:
+  install:" is an install or host fault; show it to the human at once
 
---question --plans N prints the plan's AskUserQuestion fields instead, as one
-JSON object to copy as is (no context and no plugin list is read):
-  {"header": str, "question": str, "options": [{"label": str, "description": str}, ...]}
-N is how many plans this run of step 7 shows, one after another (1 or more).
-  - header "Dispatch", or "Dispatch ×<count>" for a group of <count> tasks
-  - question: direct implementation, a group, or one dispatch, each with
-    how to change the plugins ("Type something")
-  - options: one plan, Approve (Recommended) / Stop; N > 1, Approve
-    (Recommended) / Skip / Stop all; replan "stop-recommended", Stop
-    (Recommended) / Approve
-  - replan "invalid": prints nothing, exit 0 (the plan is shown, nothing asked)
-
---no-plugin-fits reads a part no installed tech plugin fits instead:
-  {"stack": str, "files": [str, ...], "tasks": [str, ...]}
-with no other field; each array holds one or more strings. It reads no
-plugin list, and takes neither --plans nor --skills-dir (its paths.jq is the
-default DIR's). It prints a plan headed by "## No Plugin Fits": "- Stack: <stack>", the
-task or tasks as above, "### Files" with one "- \`<file>\`" line each (\$HOME
-as ~, cut in the middle past 80 characters), then "### Context" with
-"- \`<CTX>\` (sha256 <hex>)": CTX whole, then the first 12 hex of its
-sha256.
-With --question it prints the question JSON instead:
-header "No plugin", options "Stop (Recommended)", then "Implement directly"
-(the main thread writes the code, with the standard and procedure plugins
-the next plan settles).
-
-Every install or host fault, a missing or failing tool or shared file (the
-exits 1, 3, 4, 5 and 6 below), prints one line starting
-"${PROG}: install:", after any stderr of the failing tool;
-no other line starts with it. A problem of the plan file or the arguments
-starts with neither "install:" nor "context file:".
+Checks no plan rule (generate-dispatch-plan.sh does); refuses only input it
+can't render. Writes no file.
 
 Exit codes:
-  0  the plan or question printed (nothing for --question with replan "invalid")
-  1  jq missing, or, when printing a --no-plugin-fits plan, both sha256sum
-     and shasum missing
-  2  usage error (--plan-file missing, or --context-file missing or given
-     where it is not taken, included), an unreadable plan or context file, or
-     input it can't render (one stderr line per problem, nothing on stdout)
-  3  jq failed while checking or rendering valid JSON, or wc or the sha256
-     tool failed (its stderr is printed)
-  4  list-plugins.sh missing from DIR, when printing a dispatch plan
-  5  DIR/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh,
-     context-versions.sh, agent-context-validator.jq or
-     agent-context-url.jq, or
-     DIR/crucible/scripts/lib/crucible-space.sh, missing, when printing a
-     --no-plugin-fits plan,
-     DIR/${RENDER_LIB}/paths.jq missing, when printing a plan, or
-     scripts/agent-dispatch/${NAMES_MODULE}.jq missing, for a dispatch plan
-     or its question
-  6  list-plugins.sh failed with an exit other than 0, 1 or 3, such as 2
-     (skills folder missing or unreadable); its stderr and exit are printed
+  0  printed; pipe a plan into open-gate.sh, copy a question into one
+     AskUserQuestion; nothing printed: ask nothing
+  1  a tool missing; install what stderr names
+  2  the call or its input is wrong; show stderr and stop
+  3  a tool failed (its stderr is above)
+  4  list-plugins.sh missing from the --skills-dir; install
+     ${PROCEDURE} there
+  5  a shared file missing; install the skill stderr names
+  6  list-plugins.sh failed (its stderr and exit are printed)
 
-Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
-jq package); for a printed plan the ${RENDER_LIB} skill's
-paths.jq; for a dispatch plan list-plugins.sh, and for it or its question
-scripts/agent-dispatch/${NAMES_MODULE}.jq; for a --no-plugin-fits plan
-wc, sha256sum (Linux: coreutils) or shasum (macOS: built in, run as
-shasum -a 256),
-the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
-context-versions.sh, agent-context-validator.jq and agent-context-url.jq in
-DIR/${CONTEXT_PROCEDURE}/scripts/, and the crucible skill's
-DIR/crucible/scripts/lib/crucible-space.sh.
-Runtime: about 80 ms for a plan with 8 plugins installed, 70 ms for its question,
-30 ms for --no-plugin-fits; measured on macOS (average of 5 runs).
+Dependencies (skills in the --skills-dir):
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  to print a plan: the ${RENDER_LIB} skill's paths.jq
+  a dispatch plan or its question: this skill's
+    scripts/agent-dispatch/${NAMES_MODULE}.jq
+  to print a dispatch plan: this skill's list-plugins.sh
+  to print a --no-plugin-fits plan: wc; sha256sum (Linux: coreutils) or
+    shasum (macOS: built in); the ${CONTEXT_PROCEDURE} skill's
+    agent-context-file-checks.sh, context-versions.sh,
+    agent-context-validator.jq and agent-context-url.jq; the crucible
+    skill's scripts/lib/crucible-space.sh
 EOF
 }
 
@@ -438,8 +341,8 @@ read_input() {
 
 # Checks the context file as prepare-agent-prompt.sh does, apart from the digest,
 # and sets context_digest to its sha256; exits 2 with one "context file:"
-# stderr line per problem, or with an "install:" line 1 when no sha256 tool is
-# on PATH, 3 when jq, wc or the tool fails, 5 when a shared check is missing.
+# stderr line for the first problem, or with an "install:" line 1 when no
+# sha256 tool is on PATH, 3 when jq, wc or the tool fails, 5 when a shared check is missing.
 read_context() {
 	load_context_checks
 	path_problem=$(context_path_problem "${context_file}")
@@ -499,7 +402,8 @@ check_names_module() {
 }
 
 # Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
-# exits 4 when the script is missing and 6 when it fails.
+# exits 4 when the script is missing and 6 when it fails. Its exit 1 (no
+# plugin) is an empty list; its exit 3 (invalid plugins) leaves them out.
 read_listing() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||

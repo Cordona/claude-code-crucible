@@ -22,7 +22,7 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 
 ## The script
 
-`<crucible.sh>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`. Its `--help` is the full contract: where the space is, its layout, the kinds, the ID form and every command. Run `sh <crucible.sh> --help` once, before its first use in a session, and not again in that session unless its contract is no longer in your context (after a compaction). Every other call runs only the command its step names.
+`<crucible.sh>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`. Its `--help` is the full contract. Run `sh <crucible.sh> --help` once, before its first use in a session, and not again in that session unless its contract is no longer in your context (after a compaction). Every other call runs only the command its step names.
 
 - **Open on the human's ask:** `sh <crucible.sh> open <ID>`, never with a terminal editor as `--editor`; show its one line, or give the path.
 - **Prune only on the human's ask, dry run first:** `sh <crucible.sh> prune --older-than <N>d`, and show its lines; add `--apply` only on their go, since it removes whole effort folders.
