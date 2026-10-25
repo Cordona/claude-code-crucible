@@ -57,7 +57,7 @@ readonly SKILL_BOOL_KEYS="disable-model-invocation user-invocable background"
 readonly SKILL_REQUIRED="name description"
 readonly AGENT_KEYS="name description tools disallowedTools model permissionMode maxTurns skills mcpServers hooks memory background omitClaudeMd effort isolation color initialPrompt experimental"
 readonly AGENT_REQUIRED="name description tools model effort maxTurns"
-readonly HOUSE_PREFIXES="flow- procedure- standard- review- build- harness- code-development- code-review- tech-"
+readonly HOUSE_PREFIXES="flow- procedure- standard- review- build- harness- code-development- code-review- language- framework-"
 readonly GENERIC_WORDS="helper utils tools documents data files"
 readonly GATE_EVENTS="PreToolUse UserPromptSubmit UserPromptExpansion Stop SubagentStop"
 readonly REQUIRED_TOOLS="awk basename cat cut dirname find grep head mkdir mktemp rm sed sort tr"
@@ -392,9 +392,10 @@ build_skill_index() {
 repo_skill_name() {
 	local dir=$1 base=${1##*/}
 	if [[ "${base}" == skill ]]; then dir=${dir%/*}; base=${dir##*/}; fi
-	# A plugin's folder has no prefix; it deploys as tech-<folder>,
-	# standard-<folder> or procedure-<folder>.
-	if [[ "${dir%/*}" == */plugins/tech ]]; then base="tech-${base}"; fi
+	# A plugin's folder has no prefix; it deploys as language-<folder>,
+	# framework-<folder>, standard-<folder> or procedure-<folder>.
+	if [[ "${dir%/*}" == */plugins/tech/languages ]]; then base="language-${base}"; fi
+	if [[ "${dir%/*}" == */plugins/tech/frameworks ]]; then base="framework-${base}"; fi
 	if [[ "${dir%/*}" == */plugins/standards ]]; then base="standard-${base}"; fi
 	if [[ "${dir%/*}" == */plugins/procedures ]]; then base="procedure-${base}"; fi
 	# The plugin loader lives at plugins/load and deploys as load-plugin.
@@ -803,13 +804,13 @@ check_skill_name() {
 		emit LNT-07 PASS "${SKILL_MD}" "${ln}" "no reserved word in name or dir"
 	fi
 	check_house_name "${name}" "${ln}"
-	check_tech_plugin "${name}"
+	check_plugin "${name}"
 }
 
-# LNT-72: a plugin carries metadata.label; a tech plugin's metadata.base names
-# a sibling plugin that has no base of its own; a standard or procedure plugin
-# has no base.
-tech_meta() {
+# LNT-72: a language, framework, standard or procedure plugin is hidden from
+# the model, has references/development.md, carries metadata.label and sets no
+# metadata.base.
+plugin_meta() {
 	awk -v key="$2" '
 		NR == 1 && $0 != "---" { exit }
 		NR > 1 && $0 == "---" { exit }
@@ -819,12 +820,15 @@ tech_meta() {
 	' "$1"
 }
 
-check_tech_plugin() {
-	local name=$1 rec label base base_md
-	local kind=tech
-	if [[ "${name}" == standard-* && "${SKILL_DIR%/*}" == */plugins/standards ]]; then kind=standard
-	elif [[ "${name}" == procedure-* && "${SKILL_DIR%/*}" == */plugins/procedures ]]; then kind=procedure
-	elif [[ "${name}" != tech-* ]]; then return 0; fi
+check_plugin() {
+	local name=$1 kind rec label
+	case "${name}" in
+		language-*)  kind=language ;;
+		framework-*) kind=framework ;;
+		standard-*)  [[ "${SKILL_DIR%/*}" == */plugins/standards ]] || return 0; kind=standard ;;
+		procedure-*) [[ "${SKILL_DIR%/*}" == */plugins/procedures ]] || return 0; kind=procedure ;;
+		*) return 0 ;;
+	esac
 	if ! awk 'NR == 1 && $0 != "---" { exit 1 } NR > 1 && $0 == "---" { exit 1 } /^disable-model-invocation:[ ]*"?true"?[ ]*$/ { f = 1; exit } END { exit !f }' "${SKILL_MD}"; then
 		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin does not set disable-model-invocation: true (list-plugins.sh would skip or reject it)"
 		return 0
@@ -833,31 +837,18 @@ check_tech_plugin() {
 		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin has no references/development.md"
 		return 0
 	fi
-	rec=$(tech_meta "${SKILL_MD}" label)
+	rec=$(plugin_meta "${SKILL_MD}" label)
 	label=${rec#*$'\t'}
 	if [[ -z "${rec}" || -z "${label}" ]]; then
 		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin has no metadata.label"
 		return 0
 	fi
-	rec=$(tech_meta "${SKILL_MD}" base)
-	if [[ "${kind}" != tech && -n "${rec}" ]]; then
-		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "a ${kind} plugin takes no metadata.base"
+	rec=$(plugin_meta "${SKILL_MD}" base)
+	if [[ -n "${rec}" ]]; then
+		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "metadata.base is not supported; remove it"
 		return 0
 	fi
-	if [[ -z "${rec}" ]]; then
-		emit LNT-72 PASS "${SKILL_MD}" 1 "metadata.label \"${label}\"; no base"
-		return 0
-	fi
-	base=${rec#*$'\t'}
-	base_md="$(dirname "${SKILL_DIR}")/${base}/SKILL.md"
-	[[ -f "${base_md}" ]] || base_md="${CLAUDE_HOME}/skills/tech-${base}/SKILL.md"
-	if [[ ! -f "${base_md}" ]]; then
-		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "metadata.base \"${base}\" names no tech plugin"
-	elif [[ -n "$(tech_meta "${base_md}" base)" ]]; then
-		emit LNT-72 FAIL "${SKILL_MD}" "${rec%%$'\t'*}" "base \"${base}\" has a base of its own (one level only)"
-	else
-		emit LNT-72 PASS "${SKILL_MD}" 1 "metadata.label \"${label}\"; base ${base}"
-	fi
+	emit LNT-72 PASS "${SKILL_MD}" 1 "${kind} plugin; metadata.label \"${label}\""
 }
 
 check_house_name() {
