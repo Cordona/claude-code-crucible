@@ -116,7 +116,7 @@ An agent is one file, so there is no analyst: `agent-author` reads the old file 
 ## Reviewer swarm
 
 - **Skill target:** read the rulebook's `SKILL.md` ("Which checklists apply") at this step. Seat `skill-reviewer` in `CHECKLIST` mode by the swarm size the owner approved at G2, plus one seat in `CONFORMANCE` mode for every rewrite and new skill:
-  - **Small** (recommended when the target's files total ≤ 300 lines and it bundles no script or JSON contract): group the applicable checklists in number order into seats of at most 30 items each, counted from the item IDs in each checklist file. 09 always gets its own seat.
+  - **Small** (recommended when the target's files total ≤ 300 lines and it bundles no script or JSON contract): group the applicable checklists in number order into seats of at most 30 items each, counted from the item IDs in each checklist file. 09 and 12 always get their own seat.
   - **Large:** one seat per applicable checklist.
   - **Checklist 08** is seated only in Run and grade, with the run outputs. A target that only runs inside an agent (standard or shared conduct) gets no 08 seat; list 08 as not seated at G3.
 - **Agent target:** count its lines with `wc -l <agent file>`. Under 150: five `agent-reviewer` seats (agent-01+03, agent-02, agent-04, agent-05, agent-06+07+08). Otherwise one seat per agent checklist. A `wc -l` that fails or prints no number: stop and show the owner its output.

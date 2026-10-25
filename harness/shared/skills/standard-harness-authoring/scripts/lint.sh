@@ -951,8 +951,8 @@ check_skill_keys() {
 }
 
 # One awk pass over SKILL.md and every other .md: LNT-15/16/18/19/20/21/23/
-# 24/25/26/37/43/49/70/73 records, plus path (P), bang (B) and code-block (C)
-# candidates consumed by later checks.
+# 24/25/26/37/43/49/70/73/77/78 records, plus path (P), bang (B) and
+# code-block (C) candidates consumed by later checks.
 check_skill_text() {
 	local md_abs=() rel argnames="" item
 	for rel in ${SK_MD[@]+"${SK_MD[@]}"}; do
@@ -1918,8 +1918,12 @@ function md_begin_run(   n, a, i) {
 	SKD = ENVIRON["LINT_SKILL_DIR"]; SKMD = ENVIRON["LINT_SKILL_MD"]; TOPDIRS = " " ENVIRON["LINT_TOPDIRS"] " "
 	PRE = ENVIRON["LINT_PRELOADED"] + 0; BLKDIR = ENVIRON["LINT_BLKDIR"]
 	n = split(ENVIRON["LINT_MDFILES"], a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") mdset[a[i]] = 1
+	nbund = 0
+	for (i = 1; i <= n; i++) if (a[i] != "" && basename(a[i]) != "SKILL.md" && a[i] !~ /^evals\//) { bund[++nbund] = a[i]; bundset[a[i]] = 1 }
 	nargs = split(ENVIRON["LINT_ARGNAMES"], argn, " ")
 	grep_lines = ""
+	f77 = 0; f78 = 0
+	DUP_SENT_WORDS = 8; DUP_FRAG_WORDS = 10
 }
 function md_file_begin() {
 	cur = FILENAME; isk = (cur == SKMD); rel = substr(cur, length(SKD) + 2); reldir = dirname_(rel)
@@ -1927,12 +1931,15 @@ function md_file_begin() {
 	inv_found = 0; inv_line = 0; inv_open = 0; inv_lvl = 0; inv_end = 0; inv_name = ""
 	exempt_lvl = 0; nhead = 0; nbul = 0; contents_head = 0; capturing = 0; bang_fence = 0; prev_nb = ""
 	delete hd_line; delete hd_text; delete bul_line; delete bul_text
-	sent_reset(); nest_reset()
+	sent_reset(); nest_reset(); dup_reset(); deps_lvl = 0
+	dup_scope = isk || (rel in bundset)
 }
 function md_line(   l, c, lvl, x, prose, lo, tk, n, i) {
 	if (FNR == 1) { if (cur != "") md_file_end(); md_file_begin() }
 	l = $0; flines = FNR; c = classify(l, FNR)
 	if (c == "fm") return
+	if (dup_scope) dup_line(l, c, FNR)
+	if (isk && c == "text") { if ((lvl = heading_level(l))) deps_heading(l, lvl); else if (!deps_lvl) lnt77(l, FNR) }
 	if (isk) { blines++; line_off = bchars; bchars += ulen(l) + 1; if (l ~ /grep/) grep_lines = grep_lines "\n" l }
 	n = split(l, tk, /[ \t]+/); for (i = 1; i <= n; i++) if (tk[i] ~ /[A-Za-z0-9]/) words_all++
 	lnt20(l); if (isk) lnt21(l); lnt30(l); lnt43(l)
@@ -1998,6 +2005,7 @@ function md_bang_inline(l,   s, c) {
 }
 function md_file_end(   i, j, hits, tok) {
 	if (capturing) { close(blkf); printf "C\t%s\t%s\t%d\t%s\n", blk_tag, cur, blk_line, blkf; capturing = 0 }
+	if (dup_scope) dup_flush()
 	sent_report(disp(cur)); nest_report(disp(cur))
 	if (isk) {
 		tok = int((bchars + 3) / 4)  # LNT-15: tokens = ceil(chars / 4) (lint-spec Terms)
@@ -2020,7 +2028,188 @@ function md_file_end(   i, j, hits, tok) {
 	if (words_all > 10000 && !md_grep_names(basename(cur))) rec("LNT-26", "FAIL", disp(cur), 0, sprintf("%d words and no grep pattern naming it in SKILL.md", words_all))
 }
 function md_grep_names(b) { return index(grep_lines, b) > 0 }
-function md_end() { if (cur != "") md_file_end() }
+function md_end(   none) {
+	if (cur != "") md_file_end()
+	none = nbund ? "" : "no bundled .md (N/A)"
+	if (!f77) rec("LNT-77", "PASS", disp(SKMD), 0, none != "" ? none : "every line naming a bundled .md holds a condition word")
+	if (!f78) rec("LNT-78", "PASS", disp(SKMD), 0, none != "" ? none : "no sentence of 8+ words or fragment of 10+ words shared with a bundled .md")
+}
+
+# ---- LNT-77 and LNT-78 read SKILL.md's body and the bundled .md files with
+# headings and fenced blocks skipped, but inline code spans and table rows
+# counted (lint-spec.md overrides its code-region default for both).
+function lnt77(l, ln,   j, names, rest, tail, p) {
+	if (!index(l, ".md")) return
+	# A file's own name never supplies the condition word.
+	rest = tolower(l); gsub(/[^ \t`"\047()\[\]|<>]*\.md/, " ", rest)
+	if (rest ~ /(^|[^a-z0-9_])(when|if|on|before|after|once|unless)([^a-z0-9_]|$)/) return
+	p = lead_colon(l); tail = p ? substr(l, p + 1) : ""
+	names = ""
+	for (j = 1; j <= nbund; j++)
+		if (names_bundled(l, j) && !(p && names_bundled(tail, j))) names = names (names == "" ? "" : ", ") bund[j]
+	if (names == "") return
+	rec("LNT-77", "FAIL", disp(cur), ln, "names " names " with no condition word")
+	f77++
+}
+function names_bundled(l, j,   b) {
+	b = basename(bund[j])
+	return names_file(l, bund[j], 1) || (b != bund[j] && names_file(l, b, 0))
+}
+# The first colon outside a code span that ends a lead clause ("<condition>:"
+# or "**<condition>:**") with text before it; 0 when there is none.
+function lead_colon(l,   off, p, nxt, lead, ticks) {
+	off = 0
+	while ((p = index(substr(l, off + 1), ":")) > 0) {
+		off += p
+		lead = substr(l, 1, off - 1)
+		ticks = gsub(/`/, "`", lead)
+		if (ticks % 2) continue
+		nxt = substr(l, off + 1); sub(/^[*_]+/, "", nxt)
+		if (nxt != "" && nxt !~ /^[ \t]/) continue
+		sub(/^[ \t]*(>[ \t]*)*(([-*+]|[0-9]+[.)])[ \t]+)?/, "", lead); gsub(/[*_`]/, "", lead)
+		if (lead ~ /[A-Za-z0-9]/) return off
+	}
+	return 0
+}
+# A heading named Dependencies opens a section LNT-77 skips, up to the next
+# heading of the same or a higher level.
+function deps_heading(l, lvl,   t) {
+	if (deps_lvl && lvl <= deps_lvl) deps_lvl = 0
+	t = tolower(l); sub(/^#+[ \t]*/, "", t); gsub(/[*_`]/, "", t); t = trim(t)
+	if (t ~ /^([0-9]+[.)]?[ \t]*)?dependencies:?$/) deps_lvl = lvl
+}
+# A basename preceded by "/" belongs to some other path, so only a full
+# relative path may follow a slash.
+function names_file(l, s, slash_ok,   off, p, before, after) {
+	off = 0
+	while ((p = index(substr(l, off + 1), s)) > 0) {
+		off += p
+		before = off > 1 ? substr(l, off - 1, 1) : ""
+		after = substr(l, off + length(s), 1)
+		if (before !~ /[A-Za-z0-9_.-]/ && (slash_ok || before != "/") && after !~ /[A-Za-z0-9_]/) return 1
+	}
+	return 0
+}
+# LNT-78 sentences end as LNT-70's do (terminal . ! ? on a token, a list
+# item, a paragraph), and each table cell is a run of its own. Inside a
+# sentence, ; : ( ) and dashes also end a fragment; both the sentence and
+# each of its fragments are compared. A bundled file's first non-heading
+# line states its purpose, echoing the trigger SKILL.md gives it, so it is
+# left out.
+function dup_reset() { dn = 0; delete dw; delete dl; dup_purpose_seen = 0 }
+function dup_line(l, c, ln,   x, n, cell, i) {
+	if (c != "text" || heading_level(l) || trim(l) == "") { dup_flush(); return }
+	if (!isk && !dup_purpose_seen) { dup_purpose_seen = 1; dup_flush(); return }
+	x = l; sub(/^[ \t]*(>[ \t]*)+/, "", x)
+	if (x ~ /^[ \t]*\|/) {
+		dup_flush(); n = split(x, cell, "|")
+		for (i = 1; i <= n; i++) { dup_add(cell[i], ln); dup_flush() }
+		return
+	}
+	if (x ~ /^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/) { dup_flush(); sub(/^[ \t]*([-*+]|[0-9]+[.)])[ \t]+/, "", x) }
+	dup_add(x, ln)
+}
+function dup_add(text, ln,   n, w, i, tok, lw) {
+	n = split(text, w, /[ \t]+/)
+	for (i = 1; i <= n; i++) {
+		tok = w[i]
+		if (tok == "") continue
+		dup_push(tok, ln)
+		if (tok ~ /[.!?][\042\047)\]*_`]*$/) {
+			lw = tolower(tok); gsub(/^[(\042\047\[*_`]+/, "", lw); sub(/[\042\047)\]*_`]+$/, "", lw)
+			if (lw !~ /^(e\.g\.|i\.e\.|etc\.|vs\.)$/) dup_flush()
+		}
+	}
+}
+# Stores a token's pieces with their line; an empty piece marks a
+# fragment break.
+function dup_push(tok, ln,   t, n, pc, i) {
+	t = tok
+	if (t ~ /^-+$/) t = "\001"
+	gsub(/[;:()]/, " \001 ", t); gsub(/—|–/, " \001 ", t)
+	n = split(t, pc, / +/)
+	for (i = 1; i <= n; i++) {
+		if (pc[i] == "") continue
+		dw[++dn] = pc[i] == "\001" ? "" : pc[i]; dl[dn] = ln
+	}
+}
+function dup_flush(   i, s, sl, f, fl, nf, sent, k, unit, unit_l, nu) {
+	if (!dn) return
+	s = ""; sl = 0; f = ""; fl = 0; nf = 0; unit[0] = ""; unit_l[0] = 0
+	for (i = 1; i <= dn; i++) {
+		if (dw[i] == "") { nf = dup_unit(f, fl, nf, unit, unit_l); f = ""; continue }
+		if (s == "") sl = dl[i]
+		if (f == "") fl = dl[i]
+		s = s " " dw[i]; f = f " " dw[i]
+	}
+	nf = dup_unit(f, fl, nf, unit, unit_l)
+	dn = 0
+	sent = dup_norm(s, DUP_SENT_WORDS)
+	if (sent == "") return
+	# Units: the sentence first, then each fragment that differs from it.
+	nu = 1; unit[0] = sent; unit_l[0] = sl
+	for (k = 1; k <= nf; k++) if (unit[k] != sent) { unit[nu] = unit[k]; unit_l[nu] = unit_l[k]; nu++ }
+	if (isk) dup_keep(nu, unit, unit_l)
+	else dup_find(nu, unit, unit_l)
+}
+function dup_unit(f, fl, nf, unit, unit_l,   ns) {
+	ns = dup_norm(f, DUP_FRAG_WORDS)
+	if (ns == "") return nf
+	unit[++nf] = ns; unit_l[nf] = fl
+	return nf
+}
+# Lowercase, drop every punctuation mark, collapse whitespace; "" when fewer
+# than min words remain.
+function dup_norm(s, min) {
+	s = tolower(s)
+	gsub(/“|”|‘|’|…|·|«|»/, "", s); gsub(/[^a-z0-9 \t\200-\377]/, "", s)
+	gsub(/[ \t]+/, " ", s); s = trim(s)
+	return split(s, dup_w, " ") < min ? "" : s
+}
+# SKILL.md keeps each sentence (indexed by every 8-word window) and each unit
+# (indexed by its first 8 words), so a bundled text finds its candidates by
+# hash and only those are compared in full.
+function dup_keep(nu, unit, unit_l,   k, n, i) {
+	ss[++nss] = unit[0]; ssl[nss] = unit_l[0]
+	n = split(unit[0], dup_w, " ")
+	for (i = 1; i + 7 <= n; i++) dup_index(dwin, dup_join(i), nss)
+	for (k = 0; k < nu; k++) {
+		su[++nsu] = unit[k]; sul[nsu] = unit_l[k]; supar[nsu] = nss
+		split(unit[k], dup_w, " "); dup_index(dfirst, dup_join(1), nsu)
+	}
+}
+function dup_index(h, key, id) { h[key] = (key in h) ? h[key] " " id : id }
+function dup_join(i,   s, j) { s = dup_w[i]; for (j = i + 1; j < i + 8; j++) s = s " " dup_w[j]; return s }
+# Reports, once per pair of sentences, a SKILL.md unit found in this sentence
+# or a unit of this sentence found in a SKILL.md sentence.
+function dup_find(nu, unit, unit_l,   n, i, m, c, j, id, k, key) {
+	dup_bseq++
+	n = split(unit[0], dup_w, " ")
+	for (i = 1; i + 7 <= n; i++) {
+		key = dup_join(i)
+		if (!(key in dfirst)) continue
+		m = split(dfirst[key], c, " ")
+		for (j = 1; j <= m; j++) {
+			id = c[j] + 0
+			if (!dup_has(unit[0], su[id])) continue
+			for (k = nu - 1; k > 0 && !dup_has(unit[k], su[id]); k--) ;
+			dup_hit(supar[id], sul[id], unit_l[k], su[id] == unit[0] && su[id] == ss[supar[id]])
+		}
+	}
+	for (k = 0; k < nu; k++) {
+		split(unit[k], dup_w, " "); key = dup_join(1)
+		if (!(key in dwin)) continue
+		m = split(dwin[key], c, " ")
+		for (j = 1; j <= m; j++) if (dup_has(ss[id = c[j] + 0], unit[k])) dup_hit(id, ssl[id], unit_l[k], 0)
+	}
+}
+function dup_has(big, small) { return index(" " big " ", " " small " ") > 0 }
+function dup_hit(sid, sline, bline, whole,   key) {
+	key = sid SUBSEP dup_bseq
+	if (key in dsk_seen) return
+	dsk_seen[key] = 1
+	rec("LNT-78", "FAIL", disp(SKMD), sline, (whole ? "sentence" : "fragment") " also in " disp(cur) ":" bline); f78++
+}
 
 function lnt20(l,   n, tk, i, t) {
 	n = split(l, tk, /[ \t`"\047(),;<>\[\]]+/)

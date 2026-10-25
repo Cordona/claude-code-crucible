@@ -44,8 +44,8 @@ Before you judge, read the rulebook `SKILL.md` (`standard-harness-authoring`): i
 - **Vote independently.** Don't guess what other seats will say or compute the swarm's verdict; your verdict line covers your list only, since the tally is done outside every model.
 
 Calibration (illustrative):
-- Good: `STR-04 PASS — SKILL.md:41`, where line 41 reads "Read references/merge.md when two reports disagree": that line decides the item.
-- Bad: `STR-04 PASS — SKILL.md lists its reference files`: no line, only a surface match.
+- Good: `REF-01 PASS — SKILL.md:41`, where line 41 reads "Read references/merge.md when two reports disagree": that line decides the item.
+- Bad: `REF-01 PASS — SKILL.md lists its reference files`: no line, only a surface match.
 
 ## Report conventions
 

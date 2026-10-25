@@ -72,7 +72,7 @@ set -Eeuo pipefail
 # file:line, the line ranked highest is kept and a lower-ranked line no more
 # severe than it is listed as dropped-duplicate; a more severe one is kept
 # too. Rank: any LNT-* ID first, then the report's checklist:
-#   --kind skill  09 11 04 06 07 05 10 03 01 08 02 (the rulebook's "Which
+#   --kind skill  09 11 04 06 07 05 10 12 03 01 08 02 (the rulebook's "Which
 #                 checklist owns a problem" table)
 #   --kind agent  agent-01 ... agent-08 in number order. references/agents/
 #                 README.md "Seating and ownership" assigns owners by topic
@@ -425,7 +425,7 @@ BEGIN {
 	HARNESS_NOTICE = "^\\[harness: .*\\]$"
 	STATUS_START = "^(PASS|FAIL|N/A|WAIVED|UNDECIDABLE|CHANGED)"
 	WAIVER_LINE = "^(- )?([A-Z][A-Z0-9]*-[0-9]+):[[:space:]]+(.*)[[:space:]][(]owner[)][[:space:]]*$"
-	nprec = split("09 11 04 06 07 05 10 03 01 08 02", order, " ")
+	nprec = split("09 11 04 06 07 05 10 12 03 01 08 02", order, " ")
 	for (i = 1; i <= nprec; i++) skill_prec[order[i]] = i
 	LEVEL_RANK["MAY"] = 1; LEVEL_RANK["SHOULD"] = 2; LEVEL_RANK["MUST"] = 3
 	nerr = 0; nlevels = 0; nreports = 0

@@ -7,7 +7,7 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - Terms and output
 - A. Gate (LNT-00)
 - B. Files and frontmatter (LNT-01 – LNT-14, LNT-49, LNT-63, LNT-64)
-- C. Body size and text (LNT-15 – LNT-26, LNT-70, LNT-73)
+- C. Body size and text (LNT-15 – LNT-26, LNT-70, LNT-73, LNT-77, LNT-78)
 - D. Scripts (LNT-27 – LNT-30, LNT-32, LNT-37, LNT-47)
 - E. Hooks (LNT-33, LNT-34)
 - F. Binding, permissions, collection (LNT-31, LNT-35, LNT-36, LNT-40 – LNT-46, LNT-48, LNT-50, LNT-65)
@@ -37,8 +37,8 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - **Collection items gate nothing collection-wide.**
 - **A reviewer hand-checks the target's own part of a collection item** (`SKILL.md`, Reviewer report format).
 - **When it runs:** `flow-harness-authoring` runs `lint.sh` on the target before seating the reviewer swarm (Skill flow step 5, Agent flow step 4), and `help-check.sh` beside it when the target has scripts.
-- **`help-check.sh`:** runs section J only, and only it: `lint.sh` stays static and never executes a script it lints. Its output, `--waivers` and exit codes follow the Output, Waiver and Exit codes lines above, except that it has no exit 3.
-- **Into the verdict:** `merge-verdicts.sh` never reads raw `lint.sh` or `help-check.sh` output. The seat holding checklist 07 gets the `help-check.sh` output and cites its LNT lines in its report; the merge takes section J's levels from this file, as for every item here.
+- **`help-check.sh`:** runs section J only, and only it; why `lint.sh` doesn't is in `SKILL.md`, Scripts. Its output, `--waivers` and exit codes follow the Output, Waiver and Exit codes lines above, except that it has no exit 3.
+- **Into the verdict:** which seat gets the `help-check.sh` output, and what the merge reads, is in `SKILL.md`, Reviewer report format; the merge takes section J's levels from this file, as for every item here.
 
 ## A. Gate
 
@@ -80,6 +80,8 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 - **LNT-26** · MAY · Files: reference `*.md` · How: word count > 10,000 needs a `grep` pattern naming that file in `SKILL.md` · Threshold: present.
 - **LNT-70** · SHOULD · Files: `SKILL.md` body, reference `*.md`, agent bodies · How: outside code regions, headings, table rows and HTML comments, split prose into sentences at `.`, `!` or `?` followed by whitespace or line end, and at the end of each list item and paragraph; never after `e.g.`, `i.e.`, `etc.`, `vs.` or a period between digits. Words are whitespace-separated tokens holding a letter or digit; take the median word count over sentences of ≥ 1 word; print it, with the sentence count, as an INFO line for every file · Threshold: median ≤ 25 · Tier: ours (near Anthropic's own files; there is no official sentence or word limit).
 - **LNT-73** · MUST · Files: `SKILL.md` body, reference `*.md`, agent bodies · How: outside code regions, a line of leading whitespace, then `\d+[.)]` and a space, that comes after an ordered-list item, either with no blank line or heading between them or with only blank lines between them, is a nested ordered item and FAILs: Markdown renders it as i, ii or a, b · Threshold: zero; write each sub-step as its own line numbered `N.1`, `N.2` (for example an indented paragraph starting `**7.1 …**`), with its cases as plain `-` bullets.
+- **LNT-77** · SHOULD · Files: `SKILL.md` body · How: skipping headings, fenced blocks and the lines under a `Dependencies` heading (up to the next heading of the same or a higher level), but counting inline code spans and table rows, every line that names a bundled `.md` file of the skill (any `.md` in the skill dir other than `SKILL.md`, outside `evals/**`; named by path or basename) passes when it holds a condition word, matched as a whole word, case-insensitive (`when`, `if`, `on`, `before`, `after`, `once` or `unless`), or names the file after a colon that closes a non-empty lead clause on the same line (`<condition>: read X`, `- **<condition>:** … X`; a list marker and `**` alone are no lead clause) · Threshold: zero lines that pass neither way.
+- **LNT-78** · SHOULD · Files: `SKILL.md` and each bundled `.md` (as LNT-77 defines it), except each bundled file's opening purpose line (its first non-blank line that is not a heading), which echoes its trigger by convention · How: skipping headings and fenced blocks, but counting inline code spans and table rows, split the text into sentences and each sentence into fragments at `;`, `:`, parentheses and dashes (`—`, `–`, or a `-` with a space on each side); normalise each (drop all punctuation, `**` and backticks included; collapse whitespace; lowercase). A unit is a whole sentence of 8 or more words or a fragment of 10 or more; report each unit of `SKILL.md` that sits, as a run of whole words, inside a sentence of a bundled file, and each unit of a bundled file that sits inside a sentence of `SKILL.md`, once per pair of sentences, with both `path:line` · Threshold: zero.
 
 ## D. Scripts
 
@@ -144,7 +146,7 @@ Spec for the mechanical checks on skills, agents and the collection; `scripts/li
 
 ## J. Help pages
 
-Run by `scripts/help-check.sh`, never by `lint.sh` (Terms). It runs only the `--help` pages of the target's scripts, but that executes the target's code, so it is not a sandbox: run it only on harness scripts already under review.
+Run by `scripts/help-check.sh`, never by `lint.sh` (Terms). It runs only the `--help` pages of the target's scripts, which executes their code; run it only as `SKILL.md` Never sets.
 
 - **Usage lines:** line 1 of the top page and each line after it, up to the first blank line, that starts with whitespace and then the script's basename. On every usage line, the per-command declaration included, the basename may follow one interpreter word, `sh` or `bash`. **Command:** the first word after the basename on a usage line, when it is a bare lowercase word matching `^[a-z][a-z0-9-]*$`.
 - **Page:** the stdout of `<script> --help` (the top page). Only when one top-page usage line is exactly `<script> <command> --help`, with a literal `<command>`, also the stdout of `<script> <cmd> --help` for each command the other usage lines name; without that line the top page is the only page. A command page byte-identical to the top page is not a second page.

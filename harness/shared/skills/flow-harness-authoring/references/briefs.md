@@ -189,6 +189,7 @@ HELP CHECK OUTPUT: <run dir>/lint/help-round-<n>.txt, for the seat holding check
 WAIVERS: <waivers>
 RUN OUTPUTS AND GRADES: <paths> (after Run and grade), or none
 PRIOR REPORT: <run dir>/review/<seat>.md (re-check), or none
+DIFF: <run dir>/diff.patch, or the pre-change files (<run dir>/snapshot/, a pre-fix copy), for the seat holding checklist 12 when the run has one; otherwise none
 NOT BUILT YET: <each dependency the target names that doesn't exist yet>, or none
 A marked gap beats ...
 ```
