@@ -15,6 +15,7 @@ umask 077
 
 readonly PROG='context.sh'
 readonly PROCEDURE='procedure-context'
+readonly CRUCIBLE_SKILL='crucible'
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 readonly TEXT_LABEL_SUFFIX='-text'
 readonly DIFF_LABEL_PREFIX='diff-'
@@ -27,7 +28,7 @@ readonly PLACEHOLDER_ID='00000000T000000-0000'
 # Stands for the effort folder when --from names none, so the entries are
 # still checked.
 readonly PLACEHOLDER_EFFORT='00000000T000000-0000-effort'
-readonly EMPTY_BASE='{"paths": null, "links": null, "notes": []}'
+readonly EMPTY_BASE='{}'
 # A problem line shows a value whole up to 80 characters, enough to tell one
 # path or URL from another by eye; a longer one keeps its first 40 and last 39
 # around a "…", as a path or URL differs most at its start and end.
@@ -52,7 +53,9 @@ export LC_ALL
 # "report": one stderr line each). The entries arrive as positional triples:
 # kind (path, link, note, text or retire), value, why ("" for a note or a
 # retire). The problems are the validator's, as JSON lines, and the file
-# checks', as "<entry index>\t<problem>" lines.
+# checks', as "<entry index>\t<problem>" lines. The context goes through
+# crucible's prune, so a list with no entry is left out; run_context_jq
+# puts the include before SHOWN_JQ, as jq takes an include only first.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly CONTEXT_JQ='
@@ -64,11 +67,11 @@ def listed($entries): {
 	paths: (base_entries("paths"; "path") + [$entries[] | select(.kind == "path")] + [$entries[] | select(.kind == "text")]),
 	links: (base_entries("links"; "url") + [$entries[] | select(.kind == "link")]),
 	notes: (base_entries("notes"; "") + [$entries[] | select(.kind == "note")])};
-def or_null: if length == 0 then null else . end;
 def context: listed(entries) as $listed | {
-	paths: ($listed.paths | map({path: (if .kind == "text" then $text_path else .value end), why}) | or_null),
-	links: ($listed.links | map({url: .value, why}) | or_null),
-	notes: ($listed.notes | map(.value))};
+	paths: ($listed.paths | map({path: (if .kind == "text" then $text_path else .value end), why})),
+	links: ($listed.links | map({url: .value, why})),
+	notes: ($listed.notes | map(.value))}
+	| prune;
 
 def option: {path: "--path", link: "--link", note: "--note", text: "--text-file"}[.];
 # Problems of the Crucible space sort after those of the entries.
@@ -207,8 +210,8 @@ Exit codes:
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); cat,
     mktemp, mv, rm, tr, wc; sha256sum or shasum (macOS: built in)
-  the crucible skill: crucible.sh (not for latest),
-    scripts/lib/crucible-space.sh
+  the ${CRUCIBLE_SKILL} skill: crucible.sh (not for latest),
+    scripts/lib/crucible-space.sh; new, extend: scripts/lib/prune.jq
   diff: git (macOS: xcode-select --install; Linux: the distro's git)
   beside this script: agent-context-file-checks.sh, agent-context-validator.jq,
     agent-context-url.jq, context-versions.sh
@@ -425,8 +428,9 @@ require_tools() {
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, agent-context-file-checks.sh
-# beside this script and the read checks' files are in place; sources the
-# checks and sets crucible_script and validator.
+# beside this script, the read checks' files and, for new and extend,
+# crucible's prune module are in place; sources the checks and sets
+# crucible_script, validator and prune_lib_dir.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -444,10 +448,18 @@ load_dependencies() {
 	context_load_checks "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills" "${own_scripts_dir}" || die 5 "${context_load_problem}"
 	validator=${context_validator}
 	if [ "${command}" != latest ]; then
-		crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
+		crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/crucible.sh"
 		[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-			die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill"
+			die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
 	fi
+	case ${command} in
+		new | extend)
+			prune_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib"
+			[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
+				die 5 "prune module missing; expected ${prune_lib_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill"
+			;;
+		*) ;;
+	esac
 	if [ "${command}" = diff ]; then
 		command -v git >/dev/null 2>&1 ||
 			die 5 "git missing; expected it on PATH; install it (macOS: xcode-select --install; Linux: the distro's git package)"
@@ -707,11 +719,11 @@ run_context_jq() {
 	run_mode=$1
 	run_text_path=$2
 	shift 2
-	jq -nr --arg prog "${PROG}" --arg mode "${run_mode}" --arg text_path "${run_text_path}" \
+	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --arg text_path "${run_text_path}" \
 		--argjson base "${base_json}" \
 		--arg file_problem_lines "${file_problems}" --arg validator_problem_lines "${validator_problems}" \
 		--arg space_root "${space_root}" --arg space_problem "${space_problem}" --arg space_source "${space_source}" \
-		"${SHOWN_JQ}${CONTEXT_JQ}" --args -- "$@" </dev/null
+		"include \"prune\";${SHOWN_JQ}${CONTEXT_JQ}" --args -- "$@" </dev/null
 }
 
 # Sets version_label, the placeholder paths of the files to write, and

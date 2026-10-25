@@ -42,8 +42,8 @@ def classify:
 
 ($n | tonumber) as $index
 | if length != 1 or (.[0] | type) != "object" then bad("the file holds no single JSON object; expected one object with paths, links and notes; try the file the human approved")
-  elif (.[0].links | type) != "array" then bad("the file has no links array; expected links as an array; try the file the human approved")
-  else .[0].links as $links
+  elif (.[0] | has("links")) and (.[0].links | type) != "array" then bad("the file has no links array; expected links as an array; try the file the human approved")
+  else (.[0].links // []) as $links
 	| if ($links | length) == 0 then bad("no link \($n); the file has 0; expected at least one link; try none, as the file lists no links")
 	  elif $index > ($links | length) then bad("no link \($n); the file has \($links | length); try a --link from 1 to \($links | length)")
 	  elif ($links[$index - 1] | type) != "object" or ($links[$index - 1].url | http_url | not) then bad("link \($n) has no URL of the accepted form; expected an object whose \"url\" is an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try the file the human approved")
@@ -75,7 +75,7 @@ Reads link <n> of a context file through its tracker's issue view.
 Options:
   --context-file <absolute path>
                   one JSON object whose links array holds objects with a
-                  "url"; no other key is read
+                  "url" (no links key: no link); no other key is read
   --link <n>      the link's place in links: a whole number from 1, no
                   leading zero
   rules for each url: see procedure-context's scripts/agent-context-url.jq

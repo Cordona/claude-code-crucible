@@ -28,3 +28,11 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 - **The full view, when the human asks for it:** the item's whole absolute path, from `sh <crucible.sh> path <ID>`.
 - **Open only when the human asks to open it:** `sh <crucible.sh> open <ID>`, never with a terminal editor as `--editor`; it opens the item's JSON itself, so relay its one stdout line as printed.
 - **Prune only on the human's ask, dry run first:** `sh <crucible.sh> prune --older-than <N>d`, and show its lines; add `--apply` only on their go, since it removes whole effort folders.
+
+## The prune module
+
+`scripts/lib/prune.jq` holds `prune`, the clean-up every script-written JSON record passes through before it is written, so a reader treats a missing key as empty.
+
+- **Input:** any JSON value. **Output:** the value with every object key whose value is null, `[]` or `{}` dropped, children pruned first; array items pruned, never dropped; `false`, `0` and `""` kept.
+- **Loaded by every script that writes a JSON record,** just before writing: jq with `-L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib"` and `include "prune";` ahead of any `def`, since jq takes module directives only at a program's start.
+- **One exception, the dispatch baseline:** it keeps `entries: []`, since an empty list means a clean tree.

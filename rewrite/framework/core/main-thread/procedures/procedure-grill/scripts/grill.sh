@@ -12,6 +12,7 @@ umask 077
 readonly PROG='grill.sh'
 readonly PROCEDURE='procedure-grill'
 readonly RENDER_LIB='human-view'
+readonly CRUCIBLE_SKILL='crucible'
 readonly KIND='grills'
 readonly REQUIRED_TOOLS='date mkdir mktemp mv rm rmdir tr'
 # The exit of a write refused because another call holds the grill's lock.
@@ -29,10 +30,13 @@ export LC_ALL
 # checks each value against the grill file read on stdin (null for new), and
 # prints {problems, file, out}: the problem lines, the file to write and the
 # stdout text. The round and acknowledgement views are built here with view.jq.
+# The file goes through crucible's prune, so a key with nothing in it is
+# left out; a missing questions or answers is read as none.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly GRILL_JQ='include "grill-validator";
 include "view";
+include "prune";
 
 def pairs: $ARGS.positional | [range(0; length / 2) as $n | {option: .[$n * 2], value: .[$n * 2 + 1]}];
 def value_of($option): [pairs[] | select(.option == $option) | .value][0];
@@ -41,7 +45,7 @@ def shown: tojson | if length > 60 then .[:60] + "…" else . end;
 def text_problem($where; $max): grill_text_problem($max) | "\($where) \(.)";
 def question_of($id): .questions[($id | grill_id_number) - 1];
 def holds($value): index([$value]) != null;
-def count_of($status): [.questions[] | select(.status == $status)] | length;
+def count_of($status): [(.questions // [])[] | select(.status == $status)] | length;
 
 # {problems} when problems yields any, else apply with its problems empty, so
 # a value is only applied once it passed every check.
@@ -137,11 +141,11 @@ def ask_id_problem($position; $ids; $file):
 def ask_result:
 	. as $file
 	| (value_of("--ids") | split(",")) as $ids
-	| (([$file.questions[].round // 0] | max // 0) + 1) as $round
+	| (([($file.questions // [])[].round // 0] | max // 0) + 1) as $round
 	| result(ended_problems,
 		(if ($ids | length) == 0 or ($ids | length) > grill_round_max then "--ids names \($ids | length) questions; expected 1 to \(grill_round_max) ids, comma-separated" else empty end),
 		($ids | to_entries[] | .key as $position | .value | ask_id_problem($position; $ids; $file));
-		{file: ($file | .questions |= map(if (.id as $id | $ids | holds($id)) then .round = $round else . end)),
+		{file: ($file | .questions |= (. // [] | map(if (.id as $id | $ids | holds($id)) then .round = $round else . end))),
 		 out: ([status_line("decision"; "Grill · round \($round)"),
 			([$file.questions[] | select(.id as $id | $ids | holds($id))] | round_list),
 			(if $round == 1 then "Say \"end the grill\" at any point to stop." else "" end)] | blocks)});
@@ -218,7 +222,7 @@ def end_result:
 # Puts every object of the file in its field order.
 def ordered_file:
 	grill_ordered(grill_file_fields)
-	| .questions |= map(grill_ordered(grill_question_fields) | .answers |= map(grill_ordered(grill_answer_fields)));
+	| .questions |= (. // [] | map(grill_ordered(grill_question_fields) | .answers |= (. // [] | map(grill_ordered(grill_answer_fields)))));
 
 if $command == "new" then new_result
 elif $command == "add" then add_result
@@ -226,7 +230,7 @@ elif $command == "ask" then ask_result
 elif $command == "answer" then answer_result
 elif $command == "status" then status_result
 else end_result end
-| if has("file") then .file |= ordered_file else . end
+| if has("file") then .file |= (ordered_file | prune) else . end
 '
 
 # Prints the problem lines of array .problems, at most $max, then a count of the rest.
@@ -247,7 +251,7 @@ readonly VALIDATE_JQ='include "grill-validator";
 # path, else one GRILL line per file, newest first (the ID leads each name).
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly LIST_JQ='include "grill-validator";
-def open_count: [.questions[] | select(.status == "open")] | length;
+def open_count: [(.questions // [])[] | select(.status == "open")] | length;
 $ARGS.named as $named
 | [range(0; $count) | {path: $named["p\(.)"], file: [$named["g\(.)"] | try fromjson]}]
 | sort_by(.path) | reverse
@@ -508,9 +512,9 @@ EOF
 
 Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package); date, mkdir, mktemp, mv, rm, rmdir, tr (every macOS and Linux
-  base system); in the skills: the crucible skill's crucible.sh and
-  scripts/lib/crucible-space.sh, the ${RENDER_LIB} skill's view.jq;
-  grill-validator.jq beside this script.
+  base system); in the skills: the ${CRUCIBLE_SKILL} skill's crucible.sh,
+  scripts/lib/crucible-space.sh and scripts/lib/prune.jq, the ${RENDER_LIB}
+  skill's view.jq; grill-validator.jq beside this script.
 EOF
 			;;
 	esac
@@ -707,7 +711,8 @@ require_skill_file() {
 		install_fault 5 "$3 missing; expected $1; install the $2 skill"
 }
 
-# Sets own_dir, render_lib_dir and crucible_script, and sources the space rules.
+# Sets own_dir, render_lib_dir (view.jq), crucible_lib_dir (prune.jq) and
+# crucible_script, and sources the space rules.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -720,10 +725,12 @@ load_dependencies() {
 	require_skill_file "${own_dir}/grill-validator.jq" "${PROCEDURE}" 'grill file shape'
 	render_lib_dir="${skills_dir}/${RENDER_LIB}"
 	require_skill_file "${render_lib_dir}/view.jq" "${RENDER_LIB}" 'layout module'
-	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
-	require_skill_file "${crucible_script}" crucible 'crucible.sh'
-	space_lib="${skills_dir}/crucible/scripts/lib/crucible-space.sh"
-	require_skill_file "${space_lib}" crucible 'space rules'
+	crucible_lib_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
+	require_skill_file "${crucible_lib_dir}/prune.jq" "${CRUCIBLE_SKILL}" 'prune module'
+	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
+	require_skill_file "${crucible_script}" "${CRUCIBLE_SKILL}" 'crucible.sh'
+	space_lib="${crucible_lib_dir}/crucible-space.sh"
+	require_skill_file "${space_lib}" "${CRUCIBLE_SKILL}" 'space rules'
 	# shellcheck source=crucible-space.sh
 	. "${space_lib}"
 }
@@ -814,7 +821,7 @@ run_grill_jq() {
 }
 
 grill_jq() {
-	jq -c -L "${own_dir}" -L "${render_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
+	jq -c -L "${own_dir}" -L "${render_lib_dir}" -L "${crucible_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
 		--arg prog "${PROG}" --argjson label_max "${LABEL_MAX_CHARS}" "${GRILL_JQ}" --args -- "$@"
 }
 

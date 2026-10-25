@@ -46,20 +46,19 @@ end
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly FIELD_JQ='.[0][$name] // "" | explode | map(if . == 0 then 1 else . end) | implode + "."'
 
-# Prints one line per problem of the slurped grill file; nothing when it holds
-# a questions array.
+# Prints one line per problem of the slurped grill file; nothing when it is one
+# object whose questions, when present, are an array (missing: no question).
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly GRILL_CHECK_JQ='
-def expected_grill: "expected one JSON object with a questions array";
+def expected_grill: "expected one JSON object whose questions, when present, are an array";
 if length != 1 then "grill holds \(length) JSON values; \(expected_grill)"
 elif (.[0] | type) != "object" then "grill holds a JSON \(.[0] | type); \(expected_grill)"
-elif (.[0] | has("questions") | not) then "grill has no questions field; \(expected_grill)"
-elif (.[0].questions | type) != "array" then "grill questions is a JSON \(.[0].questions | type); \(expected_grill)"
+elif (.[0] | has("questions")) and (.[0].questions | type) != "array" then "grill questions is a JSON \(.[0].questions | type); \(expected_grill)"
 else empty end
 '
 
 # Prints how many of the slurped grill's questions are settled.
-readonly SETTLED_JQ='[.[0].questions[] | select(type == "object" and .status == "settled")] | length'
+readonly SETTLED_JQ='[(.[0].questions // [])[] | select(type == "object" and .status == "settled")] | length'
 
 usage() {
 	print_page <<EOF
@@ -79,7 +78,8 @@ Options:
                         no control character
                       grill: the absolute path of an existing regular file,
                         not a symbolic link, with no control character,
-                        holding one JSON object with a questions array
+                        holding one JSON object whose questions, when
+                        present, are an array
   CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
 stdout on exit 0 only: the gate's Markdown, a fixed decision line, with
@@ -273,7 +273,7 @@ load_grill() {
 		return 0
 	fi
 	grill_slurped=$(jq -s '.' "${grill}" </dev/null 2>/dev/null) || {
-		add_problems "grill is not valid JSON: ${grill}; expected one JSON object with a questions array; try checking its quotes, commas and brackets"
+		add_problems "grill is not valid JSON: ${grill}; expected one JSON object whose questions, when present, are an array; try checking its quotes, commas and brackets"
 		return 0
 	}
 	grill_found=$(printf '%s' "${grill_slurped}" | jq -r "${GRILL_CHECK_JQ}") ||

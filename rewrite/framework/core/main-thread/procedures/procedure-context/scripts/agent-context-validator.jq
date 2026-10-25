@@ -22,12 +22,13 @@ def entry_shape($field): "{\"\($field)\": ..., \"why\": ...}";
 # One problem: the field's path, and its line, the field's location then the problem.
 def problem($at; $location; $separator; $problem): {at: $at, problem: $problem, line: "\($location)\($separator)\($problem)"};
 
-# Problems of the list under key $list: null, or an array of objects holding
-# exactly $field (passing field_ok: $field_kind, as $field_expected) and why.
+# Problems of the list under key $list: missing or null (no entry), or an
+# array of objects holding exactly $field (passing field_ok: $field_kind, as
+# $field_expected) and why.
 def list_problems($list; $field; field_ok; $field_kind; $field_expected):
 	.[$list] as $value
 	| if $value == null then empty
-	  elif ($value | type) != "array" then problem([$list]; $list; " "; "is a JSON \($value | type); expected null or an array of \(entry_shape($field)) objects")
+	  elif ($value | type) != "array" then problem([$list]; $list; " "; "is a JSON \($value | type); expected an array of \(entry_shape($field)) objects; leave the key out for none")
 	  else $value | to_entries[] | .key as $index | .value
 		| if type != "object" then problem([$list, $index]; "\($list)[\($index)]"; " "; "is a JSON \(type); expected an object \(entry_shape($field))")
 		  else ((keys - [$field, "why"])[] | problem([$list, $index, .]; "\($list)[\($index)].\(quoted_name)"; ": "; "unknown field; expected only \($field) and why")),
@@ -40,7 +41,7 @@ def list_problems($list; $field; field_ok; $field_kind; $field_expected):
 
 def notes_problems:
 	if has("notes") | not then empty
-	elif (.notes | type) != "array" then problem(["notes"]; "notes"; " "; "is a JSON \(.notes | type); expected an array of strings ([] for none)")
+	elif (.notes | type) != "array" then problem(["notes"]; "notes"; " "; "is a JSON \(.notes | type); expected an array of strings; leave the key out for none")
 	else .notes | to_entries[] | select(.value | type != "string") | problem(["notes", .key]; "notes[\(.key)]"; " "; "is a JSON \(.value | type); expected a string")
 	end;
 
@@ -49,7 +50,6 @@ def context_problems:
 	elif (.[0] | type) != "object" then problem([]; "the file"; " "; "holds a JSON \(.[0] | type); expected an object")
 	else .[0]
 		| ((keys - ["paths", "links", "notes"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only paths, links and notes")),
-		  (["paths", "links", "notes"][] as $key | select(has($key) | not) | problem([$key]; $key; " "; "missing; expected the keys paths, links and notes")),
 		  list_problems("paths"; "path"; absolute_path; "an absolute path"; "a string starting with /, without control characters"),
 		  list_problems("links"; "url"; http_url; "an http(s) URL"; "a string starting with http:// or https:// (in any letter case), then a host of letters, digits, dots and hyphens with an optional :port, then optionally a path, query or fragment of letters, digits and . _ ~ / ? # = % : + , @ - only"),
 		  notes_problems

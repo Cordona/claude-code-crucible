@@ -64,22 +64,24 @@ def grill_answer_problems($where; $index):
 	end;
 
 # The status rule of question . at $where: settled needs an answer; dropped
-# and deferred end with the text grill.sh writes for them.
+# and deferred end with the text grill.sh writes for them. No answers key is
+# no answer.
 def grill_status_problems($where):
 	grill_status_prefix as $prefixes
 	| .status as $status
+	| (.answers // []) as $answers
 	| if ($status | type) != "string" or (grill_statuses | index([$status]) | not) then "\($where).status is \($status | tojson); expected one of \(grill_statuses | join(", "))"
-	  elif (.answers | type) != "array" then empty
-	  elif $status == "settled" and (.answers | length) == 0 then "\($where).status is settled with no answer; expected an answer"
+	  elif ($answers | type) != "array" then empty
+	  elif $status == "settled" and ($answers | length) == 0 then "\($where).status is settled with no answer; expected an answer"
 	  elif $prefixes | has($status) | not then empty
-	  elif ((.answers[-1].text // null) | type) == "string" and (.answers[-1].text | startswith($prefixes[$status])) then empty
+	  elif (($answers[-1].text // null) | type) == "string" and ($answers[-1].text | startswith($prefixes[$status])) then empty
 	  else "\($where).status is \($status) but its last answer is not \($prefixes[$status] | tojson) and a reason; expected the answer grill.sh status writes" end;
 
 def grill_question_problems($index):
 	"questions[\($index)]" as $where
 	| "q\($index + 1)" as $id
 	| if type != "object" then "\($where) is a JSON \(type); expected an object"
-	  else grill_field_problems($where; grill_question_fields; ["id", "text", "recommendation", "status", "answers"]),
+	  else grill_field_problems($where; grill_question_fields; ["id", "text", "recommendation", "status"]),
 		(if .id == $id then empty else "\($where).id is \(.id | tojson); expected \($id | tojson): ids run q1, q2, ... in file order, never reused" end),
 		(if has("text") then .text | grill_text_problem(grill_max_chars.question) | "\($where).text \(.)" else empty end),
 		(if has("parent") | not then empty
@@ -97,16 +99,16 @@ def grill_question_problems($index):
 		 end),
 		(if has("status") then grill_status_problems($where) else empty end),
 		(if has("answers") | not then empty
-		 elif (.answers | type) != "array" then "\($where).answers is a JSON \(.answers | type); expected an array ([] for none)"
+		 elif (.answers | type) != "array" then "\($where).answers is a JSON \(.answers | type); expected an array; leave the key out for none"
 		 else .answers | to_entries[] | .key as $answer | .value | grill_answer_problems("\($where).answers[\($answer)]"; $answer) end)
 	  end;
 
 def grill_file_problems:
 	if type != "object" then "the file is a JSON \(type); expected an object"
-	else grill_field_problems("the file"; grill_file_fields; ["topic", "questions"]),
+	else grill_field_problems("the file"; grill_file_fields; ["topic"]),
 		(if has("topic") then .topic | grill_text_problem(grill_max_chars.topic) | "topic \(.)" else empty end),
 		(if has("ended") then .ended | grill_utc_problem("ended") else empty end),
 		(if has("questions") | not then empty
-		 elif (.questions | type) != "array" then "questions is a JSON \(.questions | type); expected an array ([] for none)"
+		 elif (.questions | type) != "array" then "questions is a JSON \(.questions | type); expected an array; leave the key out for none"
 		 else .questions | to_entries[] | .key as $index | .value | grill_question_problems($index) end)
 	end;
