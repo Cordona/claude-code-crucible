@@ -22,17 +22,18 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **Offer an effort when you judge the work needs what an effort gives.** The judgment is yours, with no checklist: weigh what the work needs against what an effort costs. A file change alone doesn't make an effort; a small change that reaches other services or needs a review may.
 - **Listen first:** until you can tell an effort from small work, only ask what you need to tell them apart.
 - **A grill** (`procedure-grill`): the human's grill ask, or their yes to its offer, is the effort yes; it runs steps 3–4 with no offer, then goes on with its own steps, not step 8.
-- **Find an effort** on Resume (after a compaction, an interruption or a new session), or when the human names earlier work ("continue the prune work").
+- **Find an effort** on Resume (after a compaction, an interruption or a new session), or when the human asks to continue, resume or go back to an effort or earlier work, or names an effort by its name, folder or date ("continue the prune work").
 - **No offer and no effort** for a question, a lookup, a code review alone (CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go where `crucible`'s Rules put them (the session scratchpad).
 
 ## Never
 
 - **Never start an effort silently:** it starts only on the human's "Yes, start an effort" at the offer, or on a grill ask or a yes to `procedure-grill`'s offer, which counts as that yes; before it nothing of the effort is created.
 - **No dispatch runs outside an effort.**
+- **A stop starts no work:** no dispatch, approval gate or durable file without its effort.
 - **After a No, never offer again without new evidence:** the work grew, or the human asks for an effort; a typed answer is offered again at the human's next message (step 2).
 - **One ID per effort,** minted once by `effort.sh start`: never type, reuse or change one.
 - **No record file:** no status or close step; the ID holds its start time.
-- **Never guess an effort:** two candidates or none, ask the human.
+- **Never guess an effort:** two candidates or none, ask the human, and run no work step before the answer.
 - **Writes only the offer's plan file,** at the path `procedure-approval-gate` gives, **and, through `effort.sh`, one new, empty effort folder per start,** plus the Crucible space (with any missing parent folders) and its `efforts/` when missing.
 - **Never delete, rename or write inside an existing effort folder with this skill:** its files are the work's (`crucible`).
 - **Never put a secret in a name or a reason:** the name is a folder name anyone with access to the space can read, and the reasons are shown and saved with the gate.
@@ -54,9 +55,8 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
    - **The plan file:** the reasons, written from your judgment, in the shape `render-effort-offer.sh --help` sets.
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file <the plan file>`.
    - **The gate's label:** `effort-offer`, with no `--effort`, since no effort exists yet: the gate's record stays in the session's gate folder, outside the Crucible space.
-   - **The pipe exits non-zero** (the exit is `open-gate.sh`'s, so read the stderr): a `render-effort-offer.sh: install:` line is an install fault: show the line `The effort offer could not be shown: its renderer is not installed correctly. No effort was started.`, and start no effort. Any other `render-effort-offer.sh:` line is a refused input: fix what it names and run `procedure-approval-gate`'s step 1 again, once. A second refusal, or no renderer line: show the human the stderr and exit code, and start no effort.
-   - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, show the line `The effort offer's question could not be read. No effort was started.`, and start no effort.
-   - **The Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown:** show the line `The effort offer could not be shown. No effort was started.`, and start no effort.
+   - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written.
+   - **The offer can't be shown or asked:** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-failures.md` when the pipe exits non-zero, that question file can't be read or isn't one JSON object with a `questions` array, or the Skill tool can't load `procedure-approval-gate` or it reports the plan not shown; start no effort unless it sends you back to `procedure-approval-gate`'s step 1.
 2. **Act on the answer:**
    - **"Yes, start an effort":** step 3.
    - **"No, do it without one":** no effort; go on by CLAUDE.md's short path.
@@ -69,19 +69,9 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
    - Any other 2: show the human the stderr, and stop.
    - 4: show the human the stderr, and stop.
    - Any other exit: show the human the stdout, stderr and exit code, and stop.
-
-   Stop means the work does not start: no dispatch, approval gate or durable file without its effort.
-5. **Find** the effort, on Resume or when the human names earlier work. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" list`; add `--all` when the effort may be older, or when stderr says `showing 20 of <N>`. When the human gave a full ID, its 4 hex digits or an exact name, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<that value>'` instead and go to step 7. `list` exits non-zero: show the human its stderr and exit code, and stop.
-6. **Match** the human's words to the listed names:
-   - One clear match: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<its id>'`, copying the ID from the list, and go to step 7.
-   - Two or more candidates, or none: ask with one AskUserQuestion, and run no work step before the answer. Its options: the candidates (with none, the newest listed names), at most 2, the closest match first and marked (Recommended), each showing its `<id>-<name>` and its start date, read from the ID; then "none of these", and last "Stop".
-   - On a candidate: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<its id>'` and go to step 7.
-   - On the first "none of these", or when the list is empty (nothing to offer): ask what earlier work they mean, a full ID, its 4 hex digits or a name, and start step 5 again with their answer.
-   - On "Stop", or a second "none of these" or empty list: show the line `No effort is resumed.`, and stop.
-7. **Act on `path`'s exit:**
-   - 0 with exactly one line, an absolute path under the Crucible space's `efforts/`: keep it (step 8). Any other output: as any other exit.
-   - 1 with efforts listed on stderr: ask the human as step 6 sets, those efforts as the candidates. 1 with none: run `list` as step 5 sets, then ask as step 6 sets.
-   - Any other exit: show the human the stderr and exit code, and stop.
+5. **Find** the effort: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/find-effort.md` on Resume, or when the human asks to continue, resume or go back to an effort or earlier work, or names an effort by its name, folder or date, and follow its steps 5–7; then step 8.
+6. **Match** the human's words to the listed names: in `references/find-effort.md`, read at step 5.
+7. **Act on `path`'s exit:** in `references/find-effort.md`, read at step 5.
 8. **Hand over** the folder's absolute path to every later step and flow of the work, never the ID alone; then load the work's flow (CLAUDE.md routes it), which builds the context, or finds it on Resume.
 
 ## Dependencies
