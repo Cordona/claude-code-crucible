@@ -15,10 +15,10 @@ The auditor reads another session's files after it ended. It never edits them, n
 Paths are under `rewrite/`:
 
 - **CL:** `framework/core/CLAUDE.md`.
-- **FCD:** `domains/software-development/core/main-thread/flows/flow-code-development/SKILL.md`.
-- **FAI:** `framework/core/main-thread/flows/flow-agent-initialization/SKILL.md`; **DPR:** its `references/dispatch-plan-rules.md`.
-- **PC:** `framework/core/main-thread/procedures/procedure-context/SKILL.md`; **CHI:** its `references/conflicting-human-instructions.md`; **HYC:** its `references/agent-context-rules.md`, the text the hook injects into every first message under `# Handling your context`.
-- **PAG:** `framework/core/main-thread/procedures/procedure-approval-gate/SKILL.md`.
+- **FCD:** `domains/software-development/core/main-thread/flows/flow-code-development/SKILL.md`; **RF:** its `references/reply-failures.md`; **HA:** its `references/human-asks.md`.
+- **FAI:** `framework/core/main-thread/flows/flow-agent-initialization/SKILL.md`; **DPR:** its `references/dispatch-plan-rules.md`; **DAR:** its `references/denials-and-replans.md`.
+- **PC:** `framework/core/main-thread/procedures/procedure-context/SKILL.md`; **CHI:** its `references/conflicting-human-instructions.md`; **SC:** its `references/settling-contradictions.md`; **TL:** its `references/tracker-links.md`; **EXT:** its `references/extend.md`; **HYC:** its `references/agent-context-rules.md`, the text the hook injects into every first message under `# Handling your context`.
+- **PAG:** `framework/core/main-thread/procedures/procedure-approval-gate/SKILL.md`; **GF:** its `references/gate-failures.md`.
 - **RT:** `domains/software-development/core/plugins/procedures/read-trackers/SKILL.md` (`procedure-read-trackers`).
 - **CDA:** `domains/software-development/core/agents/code-developer/code-developer.md`; **SCDR:** its `skills/standard-code-development-report/SKILL.md`.
 - **A plugin:** a standard is `domains/software-development/core/plugins/standards/<name>/SKILL.md`, a language plugin `domains/software-development/plugins/tech/languages/<name>/SKILL.md`, a framework plugin `domains/software-development/plugins/tech/frameworks/<name>/SKILL.md`, each with its `references/` (the shell gate is in `tech/languages/shell/references/development.md`, SHD).
