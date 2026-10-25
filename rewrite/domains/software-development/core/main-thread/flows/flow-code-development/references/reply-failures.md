@@ -11,21 +11,21 @@ What to do when a reply is a hook error, an agent error, no reply or any other r
 
 ## An agent error, no reply, or any other reply
 
-- **An agent error, or no reply:** a fresh resend (below), once only for this dispatch. A second agent error or no reply: record the dispatch as `not run` for step 6, and show the human the last reply.
+- **An agent error, or no reply:** a fresh resend (below). A second agent error or no reply: no resend (SKILL.md Never); record the dispatch as `not run` for step 6, and show the human the last reply.
 - **Any other reply:** record the dispatch as `not run` for step 6.
 
 ## `report.sh check` exits 3, 4, 2, 6, 5 or any other
 
 - **3, invalid:** stderr names each failing field.
-  - Before each such send, copy `<REPORT>` to a new file in the session scratchpad, named `<report file name>_previous` (`cp <REPORT> <that file>`), so the report as it was before the fix stays on disk; a failed copy: send nothing, and act as at the cap.
+  - Before each such send, copy `<REPORT>` to a new file in the session scratchpad, named `<report file name>_previous` (`cp <REPORT> <that file>`), so the report as it was before the fix stays on disk; a failed copy: act as SKILL.md's Never sets.
   - Load SendMessage with ToolSearch (it is a deferred tool), then send those lines, fenced (source `report.sh check`), to the same agent, so it keeps its context, fixes the named fields with Edit and replies `REPORT: <path>` again; then check again.
   - Each such send is one resend, inside the cap.
   - The agent can't be resumed: a fresh resend.
-  - A check whose stderr names the same failing fields as the last one made no progress: stop resending, and act as at the cap.
-  - At the cap, render anyway, with `--dispatch <dispatch file>` added to step 5.2's command, since the report is unstamped; show its stdout as step 5 sets, and record the dispatch as `incomplete` for step 6.
-- **4, not a report:** one fresh resend for this dispatch. A second exit 4: record it as `not run` for step 6.
-- **2, usage:** a stderr starting `report.sh: dispatch:`: the dispatch file failed its check, which no rerun fixes; stop for that dispatch, show the line `This dispatch stops: its dispatch file failed its check.`, then its stderr fenced (source `report.sh check`) as a message of its own, record it as `not checked` for step 6, and never rerun the check. Otherwise the command is wrong, a flag that differs from the dispatch's included: fix it and run the check again, at most twice, then record the dispatch as `not checked` for step 6; these reruns are no resend.
-- **6, valid but not stamped:** the report is unchanged. Send its stderr, which names the step that failed, fenced (source `report.sh check`) as a message of its own, then render anyway (step 5, with `--dispatch <dispatch file>` added, since the report is unstamped), and record the dispatch as `not stamped` for step 6; no resend.
+  - Same failing fields as the last check: act as at the cap (SKILL.md Never).
+  - At the cap, render and show it as step 5 sets for an unstamped report, and record the dispatch as `incomplete` for step 6.
+- **4, not a report:** a fresh resend. A second exit 4: no resend (SKILL.md Never); record it as `not run` for step 6.
+- **2, usage:** a stderr starting `report.sh: dispatch:`: the dispatch file failed its check; stop for that dispatch as SKILL.md's Never sets, show the line `This dispatch stops: its dispatch file failed its check.`, then its stderr fenced (source `report.sh check`) as a message of its own, and record it as `not checked` for step 6. Otherwise the command is wrong, a flag that differs from the dispatch's included: fix it and run the check again; at the rerun cap (SKILL.md Never), record the dispatch as `not checked` for step 6. These reruns are no resend.
+- **6, valid but not stamped:** the report is unchanged. Send its stderr, which names the step that failed, fenced (source `report.sh check`) as a message of its own, then render and show it as step 5 sets for an unstamped report, and record the dispatch as `not stamped` for step 6; no resend.
 - **5, or any other exit:** show the human its stderr as is, and the report's path marked `unchecked (report.sh could not run: <stderr's first line>)`, never its content. Only when the script itself can't run, also show the install line for `standard-code-development-report`. Record the dispatch as `not checked` for step 6; no resend.
 
 ## A fresh resend

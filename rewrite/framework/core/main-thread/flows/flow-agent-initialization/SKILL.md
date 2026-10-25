@@ -15,7 +15,7 @@ Not for: the task split, the Agent call, the reply check and resends, and all wo
 - **Never type a label:** the scripts print each from the plugins' own `metadata.label`.
 - **Never assemble a plan or a dispatch by hand, nor its JSON or Markdown:** each is its generator's output, and a plan's Markdown is its renderer's, shown through `procedure-approval-gate`.
 - **Never edit a plan file:** a changed plan is a fresh plan file and a new generator run (step 7.4).
-- **Never take a plan as approved unless its AskUserQuestion answer is still visible in the conversation:** ask every other plan again before any dispatch (Resume).
+- **Never take a plan as approved unless its AskUserQuestion answer is still visible in the conversation:** ask every other plan again before any dispatch.
 - **No AskUserQuestion, no dispatch:** with it missing from your tool list, no plan can be approved (step 1).
 - **After the human adds or changes the inject hook entry, dispatch nothing until they confirm under `/hooks` that it is loaded:** step 1 checks only what `settings.json` holds, not what is loaded.
 - **The Agent prompt is only the `DISPATCH:` line:** the hook turns it into the agent's first message and denies anything else.
@@ -115,11 +115,11 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
 
 ## Resume
 
-After a compaction, or when this flow is loaded again mid-run: the calling flow finds the effort first (`procedure-effort`); then load this skill again, then re-run steps 1–2. Take as approved only the plans whose AskUserQuestion answer is still visible in the conversation; ask every other plan again before any dispatch. A visible answer whose gate record has expired, as `crucible.sh --help` sets, is lost all the same: step 8's `NO-GATE-RECORD` sends its plan back to step 7.
+After a compaction, or when this flow is loaded again mid-run: load `procedure-resume` first, unless the calling flow loaded this skill on its own Resume; then load this skill again and re-run steps 1–2. Which plans count as approved: as Never sets. A visible answer whose gate record has expired, as `crucible.sh --help` sets, is lost all the same: step 8's `NO-GATE-RECORD` sends its plan back to step 7.
 
 ## Dependencies
 
-`procedure-effort` (the effort the calling flow runs inside, which this flow never starts; Resume), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7), `crucible` (its `crucible.sh` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`, which steps 7 and 8 and the hook need; step 1 checks them); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
+`procedure-effort` (the effort the calling flow runs inside, which this flow never starts), `procedure-resume` (finds the effort on Resume; this flow never loads it), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7), `crucible` (its `crucible.sh` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`, which steps 7 and 8 and the hook need; step 1 checks them); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
 
 ## Gotchas
 

@@ -5,7 +5,7 @@ What to do when the human asks for a dispatch's full report, to open it, or for 
 ## The full report, or opening it (step 5.3)
 
 - **When the human asks for the full report:** reply with this one line and nothing else, `<REPORT>` being that dispatch's report path, whole: `**Data · Report:** <REPORT>`. The report's JSON is its full view; nothing renders it.
-- **Only when the human asks to open it:** run `sh <crucible.sh> --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. Then run `sh <crucible.sh> open <ID>`, with the `<YYYYMMDDTHHMMSS>-<hex>` ID in the report file's name. Exit 0: relay its one line word for word. Any other exit: show the human its stderr and the report's path, and open nothing.
+- **When the human asks to open it** (SKILL.md Never): run `sh <crucible.sh> --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. Then run `sh <crucible.sh> open <ID>`, with the `<YYYYMMDDTHHMMSS>-<hex>` ID in the report file's name. Exit 0: relay its one line word for word. Any other exit: show the human its stderr and the report's path, and open nothing.
 
 ## A commit (step 6)
 

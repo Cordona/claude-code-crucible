@@ -1,6 +1,6 @@
 ---
 name: procedure-effort
-description: "Offers the main thread's bigger work (such as a build that needs a review) as an effort through a gate, then starts or finds it with `effort.sh`: one ID and one folder, which holds all its files. Use when work may need that tracking, or to find earlier work. Writes only the offer's plan file and, after a yes, one new empty effort folder (with the Crucible space and its `efforts/` when missing). Not for small work (CLAUDE.md's short path) or files in the folder (`crucible`)."
+description: "Offers the main thread's bigger work (such as a build that needs a review) as an effort through a gate, then starts or finds it with `effort.sh`: one ID and one folder, which holds all its files. Use when work may need that tracking, or when `procedure-resume` runs it. Writes only the offer's plan file and, after a yes, one new empty effort folder (with the Crucible space and its `efforts/` when missing). Not for small work (CLAUDE.md's short path) or files in the folder (`crucible`)."
 user-invocable: false
 ---
 
@@ -22,7 +22,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **Offer an effort when you judge the work needs what an effort gives.** The judgment is yours, with no checklist: weigh what the work needs against what an effort costs. A file change alone doesn't make an effort; a small change that reaches other services or needs a review may.
 - **Listen first:** until you can tell an effort from small work, only ask what you need to tell them apart.
 - **A grill** (`procedure-grill`): the human's grill ask, or their yes to its offer, is the effort yes; it runs steps 3–4 with no offer, then goes on with its own steps, not step 8.
-- **Find an effort** on Resume (after a compaction, an interruption or a new session), or when the human asks to continue, resume or go back to an effort or earlier work, or names an effort by its name, folder or date ("continue the prune work").
+- **Find an effort** only when `procedure-resume` runs it; when the human asks to continue or go back to earlier work ("continue the prune work"), load `procedure-resume` instead.
 - **No offer and no effort** for a question, a lookup, a code review alone (CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go where `crucible`'s Rules put them (the session scratchpad).
 
 ## Never
@@ -47,7 +47,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 
 ## Steps
 
-Steps 1–4 offer and start an effort; steps 5–7 find one; step 8 hands it over. "Show the line" means a fixed line: word for word without its backticks, its `<placeholders>` filled, nothing added, in a message of its own.
+Steps 1–4 offer and start an effort; steps 5–7 find one for `procedure-resume`; step 8 hands a started one over. "Show the line" means a fixed line: word for word without its backticks, its `<placeholders>` filled, nothing added, in a message of its own.
 
 Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/`; every command below runs them by that full path. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" --help` and `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --help` once each, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: show the line `procedure-effort is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`, and stop: no effort starts without them.
 
@@ -69,10 +69,10 @@ Both scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort
    - Any other 2: show the human the stderr, and stop.
    - 4: show the human the stderr, and stop.
    - Any other exit: show the human the stdout, stderr and exit code, and stop.
-5. **Find** the effort: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/find-effort.md` on Resume, or when the human asks to continue, resume or go back to an effort or earlier work, or names an effort by its name, folder or date, and follow its steps 5–7; then step 8.
+5. **Find** the effort: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/find-effort.md` when `procedure-resume` runs it, and follow its steps 5–7; then hand the folder's absolute path back to `procedure-resume`, not step 8: it picks the skill to load.
 6. **Match** the human's words to the listed names: in `references/find-effort.md`, read at step 5.
 7. **Act on `path`'s exit:** in `references/find-effort.md`, read at step 5.
-8. **Hand over** the folder's absolute path to every later step and flow of the work, never the ID alone; then load the work's flow (CLAUDE.md routes it), which builds the context, or finds it on Resume.
+8. **Hand over** the folder's absolute path to every later step and flow of the work, never the ID alone; then load the work's flow (CLAUDE.md routes it), which builds the context.
 
 ## Dependencies
 

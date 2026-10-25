@@ -25,7 +25,7 @@ In a flow or procedure, the human sees only: script output you relay, copied fro
 - **Full context:** a subagent has no conversation history; every first message carries everything it needs.
 - **Reports:** show each subagent report, and keep full reports out of your context, as its flow sets.
 - **Quote values for scripts:** pass every free-text value in single quotes, with each `'` inside it written `'\''`, unless the skill sets a stricter rule.
-- **Resume** (after a compaction, an interruption or a new session, mid-effort): load `procedure-effort` to find the effort, then the work's flow, or `procedure-grill` for a grill in progress.
+- **Resume** (an effort's work cut off by a compaction or an interruption, or the human asks to go back to an effort or to work this conversation doesn't show: an earlier session, before a /clear): load `procedure-resume`, before any §4 line. A "continue" about work this conversation still shows, with no compaction or interruption since, is no Resume.
 
 ## 4. Routing
 
