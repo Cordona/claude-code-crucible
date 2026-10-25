@@ -10,10 +10,11 @@ set -eu
 
 readonly PROG='report.sh'
 readonly RENDER_LIB='human-view'
+readonly CRUCIBLE_SKILL='crucible'
 readonly newline='
 '
-# A LABELS line names one technology and a handful of standards and
-# procedures, well under this; a bigger file is not the hand-back's line.
+# A LABELS line names one language, its frameworks and a handful of standards
+# and procedures, well under this; a bigger file is not the hand-back's line.
 readonly MAX_LABELS_BYTES=1000
 # Definitions the check and the render share: how git's changes compare with
 # the report's files lists. $git and $baseline hold `git status --porcelain -z`
@@ -90,8 +91,11 @@ def required_keys: ["summary", "toolchain", "files", "deviations", "behavior", "
 def optional_keys: ["focus", "decisions", "noticed", "open", "blockers", "review_responses"];
 def reserved_keys: ["untested", "repaired", "mutation"];
 def never_written_keys: ["round", "labels", "LABELS"];
-# The keys check --dispatch writes into the report on a pass; the agent never does.
-def stamp_keys: ["tech", "plugins", "mode", "dispatch", "started", "finished"];
+# The keys check --dispatch writes into the report on a pass; the agent never
+# does. plugins is left out when the dispatch loaded no plugin.
+def stamp_keys: ["dispatch", "started", "finished", "mode", "plugins"];
+def required_stamp_keys: stamp_keys - ["plugins"];
+def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
 def item_fields: {
 	deviations: {required: ["from", "what", "why"], optional: []},
 	behavior: {required: ["what", "at", "checked"], optional: ["guard", "fix"]},
@@ -178,11 +182,19 @@ def key_problems:
 # check ($stamp_check "check") refuses every stamp key a report holds: the flow
 # checks a report before stamping it and never checks a stamped one again, so a
 # stamp key at a check was written by the agent. render ("render") takes the
-# whole set when each key has the shape of a stamp, and refuses a part set.
-def stamp_rule: "the agent never writes \(stamp_keys | names); report.sh check --dispatch stamps all six on a pass, and a stamped report is never checked again";
+# set (plugins optional) when each key has the shape of a stamp, and refuses a
+# part set.
+def stamp_rule: "the agent never writes \(stamp_keys | names); report.sh check --dispatch stamps them on a pass, and a stamped report is never checked again";
+def plugin_names_ok($kind):
+	if $kind == "language" then text_ok
+	else type == "array" and length > 0 and all(.[]; text_ok) end;
+def plugins_stamp_ok:
+	type == "object" and length > 0
+	and all(to_entries[]; .key as $kind | ($kind | among(plugin_kinds)) and (.value | plugin_names_ok($kind)));
 def stamp_shape_problems:
-	(if .tech | text_ok then empty else "tech: \(.tech | shown) is not a stamp; expected the tech plugin name, or none" end),
-	(if (.plugins | type) == "array" and all(.plugins[]; text_ok) then empty else "plugins: \(.plugins | shown) is not a stamp; expected an array of plugin names" end),
+	(if has("plugins") | not then empty
+	 elif .plugins | plugins_stamp_ok then empty
+	 else "plugins: \(.plugins | shown) is not a stamp; expected the dispatch\u0027s plugin names by kind, {\"language\": name, \"frameworks\": [names], \"standards\": [names], \"procedures\": [names]}, empty kinds left out" end),
 	(if .mode | text_ok then empty else "mode: \(.mode | shown) is not a stamp; expected the dispatch mode" end),
 	(if .dispatch | stamp_id_ok then empty else "dispatch: \(.dispatch | shown) is not a stamp; expected the dispatch Crucible ID" end),
 	(("started", "finished") as $key | select(.[$key] | stamp_time_ok | not)
@@ -191,8 +203,15 @@ def stamp_problems:
 	. as $report
 	| [stamp_keys[] | select(. as $key | $report | has($key))] as $present
 	| if ($present | length) == 0 then empty
-	  elif $stamp_check == "render" and ($present | length) == (stamp_keys | length) then stamp_shape_problems
+	  elif $stamp_check == "render" and all(required_stamp_keys[]; among($present)) then stamp_shape_problems
 	  else $present[] | "\(.): written into the report; expected it left out: \(stamp_rule)" end;
+
+# A stamped report was written through prune, which left out a required key
+# that held only empty lists; render reads such a key as empty again.
+def as_written:
+	if $stamp_check == "render" and type == "object" and (. as $report | all(required_stamp_keys[]; . as $key | $report | has($key)))
+	then {files: {created: [], modified: [], deleted: []}, deviations: []} * .
+	else . end;
 
 def summary_problems:
 	if has("summary") | not then empty
@@ -296,6 +315,20 @@ def problems:
 # shellcheck disable=SC2016
 readonly CHECK_JQ='
 $report[0] | count_line, problems[]
+'
+
+# The stamped report check --dispatch writes: the stamps, then the report's
+# keys in key_order (a key the validator does not know, which a passing report
+# never holds, after them), every key holding nothing left out.
+# shellcheck disable=SC2016
+readonly STAMPED_REPORT_JQ='
+include "prune";
+def key_order: ["dispatch", "started", "finished", "mode", "plugins", "toolchain", "summary", "files", "behavior",
+	"verification", "deviations", "decisions", "focus", "noticed", "open", "blockers", "review_responses"];
+(. + $stamps + {finished: $finished}) as $report
+| reduce (key_order[], ($report | keys_unsorted[] | select(IN(key_order[]) | not))) as $key
+	({}; if $report | has($key) then .[$key] = $report[$key] else . end)
+| prune
 '
 
 # doc-check: compares the report standard's text ($doc) with the definitions
@@ -425,7 +458,7 @@ def gap_groups:
 def decisions_group: group("Decisions:"; [objects_of("decisions")[]
 	| "- \(.choice | bare)." + because(.why) + (if (.commit | txt) != "" then " Commit: \(.commit | txt)" else "" end)]);
 def focus_group: group("For the reviewer:"; [objects_of("focus")[] | located_span(.at; .question | txt)]);
-def missing_group: group("Missing standards:"; [open_of("missing_plugin")[] | located(.at; .text | txt)]);
+def missing_group: group("Missing plugins:"; [open_of("missing_plugin")[] | located(.at; .text | txt)]);
 
 def blocked: objects_of("blockers") | length > 0;
 def slice_view($problems):
@@ -436,7 +469,7 @@ def slice_view($problems):
 
 # shellcheck disable=SC2016
 readonly SLICE_MAIN_JQ='
-$report[0] | problems as $problems | slice_view($problems) | join("\n\n")
+$report[0] | as_written | problems as $problems | slice_view($problems) | join("\n\n")
 '
 
 # The human views, laid out with human-view's view.jq: the developer summary
@@ -464,7 +497,7 @@ def needs_groups($problems):
 	[{one: "Report problem", many: "Report problems", rest: "more",
 	  items: [$problems[] | item(null; .)]},
 	 {one: "Blocked", many: "Blocked", blocked: true,
-	  items: [objects_of("blockers")[] | item(.location; .detail)] + [open_of("could_not")[] | item(.ref // .at; .text)]},
+	  items: [objects_of("blockers")[] | item(.location; .detail)]},
 	 {one: "Instruction found", many: "Instructions found", uncapped: true,
 	  items: [open_of("instruction_found")[] | item(.at; .text)]},
 	 {one: "Secret found", many: "Secrets found", uncapped: true,
@@ -477,9 +510,12 @@ def needs_groups($problems):
 		+ [objects_of("verification")[] | select(.result == "fail") | failed_gate]},
 	 {one: "Assumption", many: "Assumptions",
 	  items: [open_of("assumption")[] | item(null; .text)]},
+	 {one: "Not read or not done", many: "Not read or not done",
+	  items: [open_of("could_not")[] | item(.ref // .at; .text)]},
+	 {one: "Missing plugin", many: "Missing plugins",
+	  items: [open_of("missing_plugin")[] | item(.at; .text)]},
 	 {one: "Noticed", many: "Noticed",
 	  items: [objects_of("noticed")[] | item(.at; .what | bare)]
-		+ [open_of("missing_plugin")[] | item(.at; noted("missing plugin"; .text))]
 		+ [file_mismatches[] | item(.path; .note // "changed, not in the report")]}];
 def item_count: map(.items | length) | add // 0;
 # $spec is the kind: an uncapped one (the report standard never caps
@@ -494,30 +530,20 @@ def need_tail($count; $blocked):
 	elif $count == 1 then (if $blocked then "needs you" else "1 item needs you" end)
 	else "\($count) items need you" end;
 
-def is_blocked: objects_of("blockers") + open_of("could_not") | length > 0;
+def is_blocked: objects_of("blockers") | length > 0;
 def file_counts:
 	listed_files as $files
 	| [["created", "Created"], ["modified", "Modified"], ["deleted", "Deleted"]]
 	| map(.[0] as $label | [.[1], ([$files[] | select(.label == $label)] | length)]);
 def changed_count: map(.[1]) | add;
 
-# The Technology of the LABELS line, else the tech plugin metadata.label
-# names, else the stamped tech plugin, else General (no tech plugin).
-def developer_label($labels; $plugin_label):
-	(if $labels == "" then "none" else ($labels | capture("^LABELS: Technology: (?<technology>.*?) · Standards: ") | .technology) // "none" end | txt) as $label
-	| (.tech | txt) as $tech
-	| if $label != "" and $label != "none" then $label
-	  elif ($plugin_label | txt) != "" then $plugin_label | txt
-	  elif $tech != "" and $tech != "none" then $tech
-	  else "General" end;
-
-def developer_view($problems; $label; $repo; $path):
+def developer_view($problems; $title; $repo; $path):
 	needs_groups($problems) as $groups
 	| ($groups | item_count) as $count
 	| is_blocked as $blocked
 	| file_counts as $counts
 	| [status_line(if $blocked then "blocked" elif $count > 0 then "attention" else "done" end;
-		"\($label) developer · \(if $blocked then "blocked" else "done" end)"; need_tail($count; $blocked)),
+		"\($title | txt) · \(if $blocked then "blocked" else "done" end)"; need_tail($count; $blocked)),
 	   (if $blocked and ($counts | changed_count) == 0 then "" else section("Achieved"; [summary_text | select(. != "")]) end),
 	   (if $count == 0 then "" else "**Needs you**" end),
 	   ($groups[] | kind_section(.one; .many; .items; .)),
@@ -526,17 +552,18 @@ def developer_view($problems; $label; $repo; $path):
 	| blocks;
 
 def repos_text($count): "\($count) repo\(if $count == 1 then "" else "s" end)";
-# Two developers of one label are told apart by their order: Shell 1, Shell 2.
-def distinct_labels:
+# Two developers of one title are told apart by their order: Shell script
+# developer 1, Shell script developer 2.
+def distinct_titles:
 	. as $runs
-	| [range(length) as $index | $runs[$index] | .label as $label
-		| ([$runs[] | select(.label == $label)] | length) as $same
-		| if $same > 1 then .label = "\($label) \([$runs[:$index][] | select(.label == $label)] | length + 1)" else . end];
+	| [range(length) as $index | $runs[$index] | .title as $title
+		| ([$runs[] | select(.title == $title)] | length) as $same
+		| if $same > 1 then .title = "\($title) \([$runs[:$index][] | select(.title == $title)] | length + 1)" else . end];
 def run_entry($meta):
-	{label: developer_label(""; $meta.plugin_label), path: $meta.path, blocked: is_blocked, summary: summary_text,
+	{title: ($meta.title | txt), path: $meta.path, blocked: is_blocked, summary: summary_text,
 	 groups: needs_groups(all_problems), counts: file_counts,
 	 repo: (if ($meta.repo // "") == "" then "report \($meta.path)" else $meta.repo end)};
-def developer_state: "\(.label) · \(if .blocked then "blocked" else "done" end)";
+def developer_state: "\(.title) · \(if .blocked then "blocked" else "done" end)";
 def developer_text:
 	if .blocked and (.counts | changed_count) == 0 then "nothing changed"
 	elif .summary == "" then "no summary in the report"
@@ -550,12 +577,12 @@ def developers_section($runs):
 def kind_blocks($runs):
 	range($runs[0].groups | length) as $kind
 	| $runs[0].groups[$kind] as $spec
-	| [$runs[] | {label, items: .groups[$kind].items} | select(.items | length > 0)] as $owners
+	| [$runs[] | {title, items: .groups[$kind].items} | select(.items | length > 0)] as $owners
 	| ($owners | map(.items | length) | add // 0) as $count
 	| if $count == 0 then empty
-	  elif $spec.blocked then $owners[] | kind_section("Blocked · \(.label)"; "Blocked · \(.label)"; .items; $spec)
+	  elif $spec.blocked then $owners[] | kind_section("Blocked · \(.title)"; "Blocked · \(.title)"; .items; $spec)
 	  else (if $count == 1 then "**\($spec.one)**" else "**\($spec.many)**" end),
-		($owners[] | kind_section(.label; .label; .items; $spec)) end;
+		($owners[] | kind_section(.title; .title; .items; $spec)) end;
 def run_files($runs):
 	[$runs[] | select(.counts | changed_count > 0) | .repo] | unique | length as $repos
 	| field_section("**Files** · \(repos_text($repos))";
@@ -575,28 +602,78 @@ def run_view($runs; $not_done; $context):
 	   kind_blocks($runs),
 	   section("Not done"; [$not_done[] | txt | select(. != "") | cut(item_cap)]),
 	   run_files($runs),
-	   data_section([$runs[] | ["Report (\(.label))", .path | txt]] + (if $context == "" then [] else [["Context", $context | txt]] end))]
+	   data_section([$runs[] | ["Report (\(.title))", .path | txt]] + (if $context == "" then [] else [["Context", $context | txt]] end))]
 	| blocks;
 '
 
 # shellcheck disable=SC2016
 readonly RENDER_MAIN_JQ='
-$report[0] | developer_view(all_problems; developer_label($labels; $plugin_label); $repo; $report_path)
+$report[0] | as_written | developer_view(all_problems; $seat | title("developer"); $repo; $report_path)
+'
+
+# The {language, frameworks} labels title() takes, from the LABELS line in
+# $labels: "LABELS:", then its parts Language, Frameworks, Standards and
+# Procedures, each at most once and in that order, joined by " · ". Prints
+# nothing for any other line.
+# shellcheck disable=SC2016
+readonly LABELS_SEAT_JQ='
+["Language", "Frameworks", "Standards", "Procedures"] as $order
+| if $labels == "LABELS:" then {}
+  elif $labels | startswith("LABELS: ") then
+	($labels | ltrimstr("LABELS: ") | split(" · ")) as $parts
+	| [$parts[] | capture("^(?<kind>[A-Za-z]+): (?<labels>.*[^ ].*)$")] as $found
+	| [$found[].kind as $kind | $order | index($kind)] as $positions
+	| if ($found | length) == ($parts | length) and all($positions[]; . != null) and $positions == ($positions | unique) then
+		($found | map({(.kind): .labels}) | add) as $by_kind
+		| {language: $by_kind.Language, frameworks: ($by_kind.Frameworks // "" | if . == "" then [] else split(", ") end)}
+	  else empty end
+  else empty end
+'
+
+# Prints a plugin SKILL.md's metadata.label by flow-agent-initialization's
+# list-plugins.sh rules: the frontmatter opens on line 1 and is closed by
+# ---; a "  label:" line under a "metadata:" line (a trailing comment
+# allowed), the last one counting; a ` # comment` after an unquoted value
+# dropped, one pair of quotes removed and tabs made spaces. Exits 2, printing
+# nothing, when the frontmatter is not closed.
+# The program is single-quoted on purpose: its $0 is awk's, not the shell's.
+# shellcheck disable=SC2016
+readonly PLUGIN_LABEL_AWK='
+function clean(value) {
+	sub(/^[ \t]+/, "", value)
+	if (value !~ /^["\047]/) sub(/[ \t]+#.*$/, "", value)
+	sub(/[ \t]+$/, "", value)
+	if (value ~ /^".*"$/ || value ~ /^\047.*\047$/) value = substr(value, 2, length(value) - 2)
+	sub(/^[ \t]+/, "", value)
+	sub(/[ \t]+$/, "", value)
+	gsub(/\t/, " ", value)
+	return value
+}
+{ sub(/\r$/, "") }
+NR == 1 { if ($0 != "---") exit; next }
+$0 == "---" { closed = 1; exit }
+/^[^ \t#]/ { in_metadata = ($0 ~ /^metadata:[ \t]*(#.*)?$/); next }
+in_metadata && /^  label:/ { label = clean(substr($0, index($0, ":") + 1)) }
+END {
+	if (!closed) exit 2
+	print label
+}
 '
 
 # One report and no --not-done prints its developer summary; no report, the
 # run that built nothing; otherwise the run summary.
 # shellcheck disable=SC2016
 readonly SUMMARY_MAIN_JQ='
-if ($reports | length) == 0 then
+($reports | map(as_written)) as $reports
+| if ($reports | length) == 0 then
 	[status_line("blocked"; "Run finished · nothing was built"),
 	 section("Not done"; [$not_done[] | txt | select(. != "") | cut(item_cap)]),
 	 data_section(if $context_path == "" then [] else [["Context", $context_path | txt]] end)]
 	| blocks
 elif ($reports | length) == 1 and ($not_done | length) == 0 then
-	$reports[0] | developer_view(all_problems; developer_label(""; $meta[0].plugin_label); $meta[0].repo; $meta[0].path)
+	$reports[0] | developer_view(all_problems; $meta[0].title; $meta[0].repo; $meta[0].path)
 else
-	[range($reports | length) as $index | $reports[$index] | run_entry($meta[$index])] | distinct_labels
+	[range($reports | length) as $index | $reports[$index] | run_entry($meta[$index])] | distinct_titles
 	| run_view(.; $not_done; $context_path)
 end
 '
@@ -665,8 +742,13 @@ stdout on exits 0, 1, 3 and 6: one count line, <kind>=<n> per kind
 stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
   most 30, then a count of the rest.
 
-Writes: with --dispatch, the six stamps into PATH on exit 0 or 1 only; any
-other exit leaves PATH byte for byte as it was.
+Writes: with --dispatch, on exit 0 or 1 only, the report into PATH with the
+stamps dispatch, started, finished, mode and plugins (the dispatch's plugin
+names by kind: language, frameworks, standards, procedures) first, then
+toolchain, summary, files, behavior, verification, deviations, decisions,
+focus, noticed, open, blockers, review_responses; a key holding nothing
+(null, [] or {}) is left out. Any other exit leaves PATH byte for byte as it
+was.
 EOF
 	help_shared writes-nothing-else
 	cat <<'EOF'
@@ -687,8 +769,9 @@ EOF
 	help_shared dependencies
 	help_shared dependencies-check-render
 	cat <<'EOF'
-  with --dispatch: flow-agent-initialization's dispatch validator, and
-    sha256sum or shasum (macOS: shasum -a 256)
+  with --dispatch: flow-agent-initialization's dispatch validator, the
+    crucible skill (its scripts/lib/prune.jq), and sha256sum or shasum
+    (macOS: shasum -a 256)
 EOF
 }
 
@@ -696,15 +779,19 @@ render_help() {
 	cat <<'EOF'
 
 Prints the report as Markdown on stdout: the developer summary, or with
---for a reader's slice.
+--for a reader's slice. The summary's title is the developer title from the
+language and frameworks ("Shell script developer", "Next.js and React
+developer with TypeScript"; "Generic developer" with no language), then done
+or blocked.
 EOF
 	help_shared shape
 	help_shared options
 	help_shared report-repo
 	cat <<'EOF'
   --labels-file FILE  the hand-back's LABELS line, whole, at most 1000 bytes;
-                      its Technology names the developer (default: the
-                      stamped tech plugin's label)
+                      its Language and Frameworks build the developer title
+                      (default: the metadata.label of the stamped language
+                      and frameworks, each plugin's name when it has none)
   --round ROUND       initial or 'fix N'; initial shows review_responses as a
                       report problem
   --for READER        reviewer or test: that reader's slice
@@ -732,7 +819,10 @@ summary_help() {
 	cat <<'EOF'
 
 Prints the run summary as Markdown on stdout; with one --report and no
---not-done, that report's developer summary as render prints it.
+--not-done, that report's developer summary as render prints it. Each
+developer is named by its title, as render builds it from the stamped
+plugins; two of the same title are numbered in run order ("Shell script
+developer 1", "Shell script developer 2").
 EOF
 	help_shared options
 	cat <<'EOF'
@@ -902,7 +992,7 @@ parse_args() {
 		*) usage_error "unknown command: $1; expected check, render, summary, doc-check or --help" ;;
 	esac
 	shift
-	report='' repo='' baseline='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' round='' for_reader='' dispatch_file='' skill_file=''
+	report='' repo='' baseline='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' for_reader='' dispatch_file='' skill_file=''
 	report_list='' not_done_list=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	while [ "$#" -gt 0 ]; do
@@ -963,8 +1053,8 @@ set_option() {
 }
 
 # Checks the --dispatch file against the dispatch validator, takes --report,
-# --repo, --context and --mode from it, sets stamps to the five stamps it
-# supplies (finished comes at the pass), dispatch_context_sha256 to the
+# --repo, --context and --mode from it, sets stamps to the stamps it supplies
+# (finished comes at the pass; plugins by kind, names only), dispatch_context_sha256 to the
 # context file's pinned sha256 and dispatch_baseline to its baseline file.
 # Exits 2 on a bad file (stderr starting "report.sh: dispatch:"), a
 # conflicting flag or --baseline, 5 when the validator is missing.
@@ -991,8 +1081,21 @@ EOF
 	same_as_dispatch --context "${context}" "${dispatch_context}" context.path
 	same_as_dispatch --mode "${mode}" "${dispatch_mode}" mode
 	report=${dispatch_report} repo=${dispatch_repo} context=${dispatch_context} mode=${dispatch_mode}
-	stamps=$(jq -c '{tech, plugins: [.plugins[].name], mode, dispatch: .id, started}' "${dispatch_file}" </dev/null) ||
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	stamps=$(jq -c '(.plugins // {}) as $plugins
+		| {dispatch: .id, started, mode,
+		   plugins: {language: $plugins.language.name, frameworks: [$plugins.frameworks[]?.name],
+			standards: [$plugins.standards[]?.name], procedures: [$plugins.procedures[]?.name]}}' "${dispatch_file}" </dev/null) ||
 		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
+	locate_prune_module
+}
+
+# Exits 5 unless crucible's prune.jq, which the stamped report is written
+# through, is installed.
+locate_prune_module() {
+	prune_module="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib/prune.jq"
+	[ -f "${prune_module}" ] && [ -r "${prune_module}" ] ||
+		install_fault "${CRUCIBLE_SKILL}'s prune.jq missing; expected ${prune_module}; install the ${CRUCIBLE_SKILL} skill in ${skills_dir}"
 }
 
 # Exits 2 unless file $1 (named by option $2 in the messages) is an absolute,
@@ -1138,8 +1241,8 @@ check_view_args() {
 	esac
 }
 
-# Sets labels to the one LABELS line in labels_file; exits 2 when the file is
-# missing, too big, or holds anything else.
+# Sets seat to {language, frameworks} of the one LABELS line in labels_file;
+# exits 2 when the file is missing, too big, or holds anything else.
 read_labels_file() {
 	labels_expected="expected a file holding the hand-back's LABELS line exactly as given"
 	case ${labels_file} in
@@ -1155,9 +1258,12 @@ read_labels_file() {
 	labels=$(cat "${labels_file}") || usage_error "--labels-file not readable: ${labels_file}; ${labels_expected}"
 	case ${labels} in
 		*"${newline}"*) usage_error "--labels-file holds more than one line: ${labels_file}; ${labels_expected}, one line" ;;
-		'LABELS: Technology: '*' · Standards: '*) ;;
-		*) usage_error "--labels-file holds no LABELS line: ${labels_file}; expected 'LABELS: Technology: <label|none> · Standards: <labels|none>[ · Procedures: <labels>]', copied whole from the hand-back" ;;
+		*) ;;
 	esac
+	seat=$(jq -nc --arg labels "${labels}" "${LABELS_SEAT_JQ}" </dev/null) ||
+		install_fault 'jq failed reading the LABELS line; expected jq 1.6+; try jq --version'
+	[ -n "${seat}" ] ||
+		usage_error "--labels-file holds no LABELS line: ${labels_file}; expected 'LABELS:[ Language: <label>][ · Frameworks: <labels>][ · Standards: <labels>][ · Procedures: <labels>]', each part only when it names a plugin, copied whole from the hand-back"
 }
 
 # summary takes one or more --report, --context, --not-done and --skills-dir;
@@ -1362,12 +1468,12 @@ EOF
 # dispatch fault when it is missing, a symlink, unreadable, still empty or not
 # a baseline of the dispatch's repo_root; 5 when the shared shape is missing.
 load_dispatch_baseline() {
-	baseline_expected='expected the git status prepare-agent-prompt.sh writes into it at the Agent call or at --direct'
+	baseline_expected='expected the git status prepare-agent-prompt.sh writes into it at the Agent call'
 	[ ! -L "${dispatch_baseline}" ] || dispatch_fault "baseline ${dispatch_baseline} is a symlink; ${baseline_expected}"
 	[ -f "${dispatch_baseline}" ] && [ -r "${dispatch_baseline}" ] ||
 		dispatch_fault "baseline ${dispatch_baseline} is missing, unreadable or not a regular file; ${baseline_expected}"
 	[ -s "${dispatch_baseline}" ] ||
-		dispatch_fault "baseline ${dispatch_baseline} is empty: the dispatch was never sent through the Agent hook or --direct; ${baseline_expected}; send the dispatch through one of them before the work starts"
+		dispatch_fault "baseline ${dispatch_baseline} is empty: the dispatch was never sent through the Agent hook; ${baseline_expected}; send the dispatch through it before the work starts"
 	baseline_copy="${work_dir}/baseline.json"
 	cat "${dispatch_baseline}" >"${baseline_copy}" ||
 		dispatch_fault "baseline ${dispatch_baseline} cannot be read; ${baseline_expected}"
@@ -1482,8 +1588,8 @@ run_check() {
 	[ "${blockers%% *}" -eq 0 ] || exit 1
 }
 
-# Writes report_copy plus the six stamps onto the report file through a temp
-# file beside it. Exits 6 when a step fails, the report unchanged.
+# Writes report_copy with the stamps onto the report file through a temp file
+# beside it, as STAMPED_REPORT_JQ lays it out. Exits 6 when a step fails, the report unchanged.
 write_stamps() {
 	date_expected='expected date +%Y-%m-%dT%H:%M:%S%z to print the local time; try it by hand'
 	raw_time=$(date +%Y-%m-%dT%H:%M:%S%z) || stamp_fault "date failed; ${date_expected}"
@@ -1497,7 +1603,8 @@ write_stamps() {
 	stamp_tmp=$(mktemp "${report_dir:-/}/.report-stamps.XXXXXX") ||
 		stamp_fault "mktemp failed in ${report_dir:-/}; expected the report's folder writable"
 	cp -p "${report}" "${stamp_tmp}" || stamp_fault "cp -p ${report} failed; expected the report's permissions copied to ${stamp_tmp}"
-	jq --argjson stamps "${stamps}" --arg finished "${finished}" '. + $stamps + {finished: $finished}' "${report_copy}" </dev/null >"${stamp_tmp}" ||
+	jq -L "${prune_module%/*}" --argjson stamps "${stamps}" --arg finished "${finished}" \
+		"${STAMPED_REPORT_JQ}" "${report_copy}" </dev/null >"${stamp_tmp}" ||
 		stamp_fault "jq failed writing ${stamp_tmp}; expected the stamped report written; try jq --version"
 	mv -f "${stamp_tmp}" "${report}" || stamp_fault "mv onto ${report} failed; expected the stamped report moved into place"
 	stamp_tmp=''
@@ -1515,55 +1622,72 @@ run_render() {
 	[ "${round}" != initial ] || [ -n "${for_reader}" ] || findings_mode=none
 	if [ -n "${for_reader}" ]; then
 		main_program=${SLICE_MAIN_JQ}
-		plugin_label=''
+		seat='{}'
 	else
 		main_program=${VIEW_JQ}${RENDER_MAIN_JQ}
-		read_plugin_label
+		[ -n "${labels_file}" ] || read_seat
 	fi
 	jq -nr -L "${skills_dir}/${RENDER_LIB}" -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" \
 		--rawfile baseline "${baseline_file}" --argjson have_git "${have_git}" \
 		--arg mode BUILD --arg findings_mode "${findings_mode}" --arg findings_text '' --arg stamp_check render \
-		--arg labels "${labels}" --arg plugin_label "${plugin_label}" --arg round "${round}" --arg for "${for_reader}" \
+		--argjson seat "${seat}" --arg round "${round}" --arg for "${for_reader}" \
 		--arg home "${HOME:-}" --arg repo "${repo}" --arg report_path "${report}" \
-		"include \"paths\"; include \"view\"; ${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${main_program}" </dev/null ||
+		"include \"paths\"; include \"view\"; include \"title\"; ${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${main_program}" </dev/null ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
 }
 
-# Exits 5 unless human-view's paths.jq and view.jq are installed.
+# Exits 5 unless human-view's paths.jq, view.jq and title.jq are installed.
 locate_view_modules() {
-	for render_module in paths view; do
+	for render_module in paths view title; do
 		render_module_file="${skills_dir}/${RENDER_LIB}/${render_module}.jq"
 		[ -f "${render_module_file}" ] && [ -r "${render_module_file}" ] ||
 			install_fault "${RENDER_LIB}'s ${render_module}.jq missing; expected ${render_module_file}; install the ${RENDER_LIB} skill in ${skills_dir}"
 	done
 }
 
-# Sets plugin_label to the metadata.label in the SKILL.md frontmatter of the
-# tech plugin report_copy is stamped with, or to nothing when the report names
-# no installed tech plugin. The name must be a plain folder name, so the
-# report cannot point the read outside the skills dir.
+# Sets seat to the {language, frameworks} labels title() takes for the plugins
+# report_copy is stamped with: each plugin's label, or its name when it has
+# none; {} for a report stamped with no language and no framework.
+read_seat() {
+	# The stamp's language, then each framework, one "<kind> <name>" per line.
+	stamped_seat=$(jq -r '.plugins | objects
+		| (.language | strings | "language \(.)"), (.frameworks | arrays | .[] | strings | "framework \(.)")
+		| gsub("[[:cntrl:]]"; "")' "${report_copy}" </dev/null) ||
+		install_fault 'jq failed reading the plugins stamp; expected jq 1.6+; try jq --version'
+	seat_language='' seat_frameworks=''
+	while IFS=' ' read -r seat_kind seat_name; do
+		[ -n "${seat_name}" ] || continue
+		read_plugin_label "${seat_name}"
+		if [ "${seat_kind}" = language ]; then
+			seat_language=${plugin_label:-${seat_name}}
+		else
+			seat_frameworks="${seat_frameworks}${seat_frameworks:+${newline}}${plugin_label:-${seat_name}}"
+		fi
+	done <<EOF
+${stamped_seat}
+EOF
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	seat=$(jq -nc --arg language "${seat_language}" --arg frameworks "${seat_frameworks}" \
+		'{language: $language, frameworks: ($frameworks | split("\n") | map(select(. != "")))}' </dev/null) ||
+		install_fault 'jq failed building the developer title; expected jq 1.6+; try jq --version'
+}
+
+# Sets plugin_label to the metadata.label in the SKILL.md frontmatter of
+# plugin $1 in the skills dir, read by flow-agent-initialization's
+# list-plugins.sh rules, or to nothing when it is not installed, has no closed
+# frontmatter or has no label. The name must be one folder name (no "/", not
+# "." or "..", no comma or control character, as list-plugins.sh accepts), so
+# the report cannot point the read outside the skills dir.
 read_plugin_label() {
 	plugin_label=''
-	stamped_tech=$(jq -r '.tech | strings' "${report_copy}" </dev/null) ||
-		install_fault 'jq failed reading the tech stamp; expected jq 1.6+; try jq --version'
-	case ${stamped_tech} in
-		'' | none | *[!a-z0-9-]*) return 0 ;;
+	case $1 in
+		'' | . | .. | */* | *,* | *[[:cntrl:]]*) return 0 ;;
 		*) ;;
 	esac
-	tech_skill="${skills_dir}/${stamped_tech}/SKILL.md"
-	[ -f "${tech_skill}" ] && [ -r "${tech_skill}" ] || return 0
-	plugin_label=$(awk '
-		NR == 1 { if ($0 != "---") exit; next }
-		$0 == "---" { exit }
-		/^metadata:[ \t]*$/ { in_metadata = 1; next }
-		/^[^ \t]/ { in_metadata = 0 }
-		in_metadata && /^[ \t]+label:/ {
-			sub(/^[ \t]+label:[ \t]*/, "")
-			sub(/[ \t\r]+$/, "")
-			if ($0 ~ /^".*"$/ || $0 ~ /^\047.*\047$/) $0 = substr($0, 2, length($0) - 2)
-			print
-			exit
-		}' "${tech_skill}") || plugin_label=''
+	plugin_skill="${skills_dir}/$1/SKILL.md"
+	[ -f "${plugin_skill}" ] && [ -r "${plugin_skill}" ] || return 0
+	# The C locale keeps awk byte-wise, as list-plugins.sh runs it.
+	plugin_label=$(LC_ALL=C awk "${PLUGIN_LABEL_AWK}" "${plugin_skill}") || plugin_label=''
 }
 
 # Sets report_repo to the repo_root of the dispatch report_copy is stamped
@@ -1584,7 +1708,7 @@ read_report_repo() {
 }
 
 # Checks each --report, then prints one developer summary or the run summary.
-# meta.json holds, per report in order, its path, tech plugin label and repo.
+# meta.json holds, per report in order, its path, developer title and repo.
 run_summary() {
 	locate_view_modules
 	report_index=0
@@ -1594,12 +1718,12 @@ run_summary() {
 		[ -n "${report}" ] || continue
 		report_index=$((report_index + 1))
 		check_report "${report_index}"
-		read_plugin_label
+		read_seat
 		read_report_repo
 		cat "${report_copy}" >>"${work_dir}/reports.json" ||
 			install_fault "cannot write in ${work_dir}; expected a writable TMPDIR"
-		jq -n --arg path "${report}" --arg plugin_label "${plugin_label}" --arg repo "${report_repo}" \
-			'{path: $path, plugin_label: $plugin_label, repo: $repo}' </dev/null >>"${work_dir}/meta.json" ||
+		jq -n -L "${skills_dir}/${RENDER_LIB}" --arg path "${report}" --argjson seat "${seat}" --arg repo "${report_repo}" \
+			'include "title"; {path: $path, title: ($seat | title("developer")), repo: $repo}' </dev/null >>"${work_dir}/meta.json" ||
 			install_fault 'jq failed writing the report list; expected jq 1.6+; try jq --version'
 	done <<EOF
 ${report_list}

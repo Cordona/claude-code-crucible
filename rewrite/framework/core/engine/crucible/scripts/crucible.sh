@@ -8,8 +8,8 @@ umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches baselines plans grills reports/development reports/review cache/gates cache/prompts cache/denials'
-readonly CACHE_KINDS='cache/gates cache/prompts cache/denials'
+readonly KIND_LIST='context dispatches baselines plans grills reports/development reports/review cache/gates cache/denials'
+readonly CACHE_KINDS='cache/gates cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
 readonly CACHE_MAX_DAYS=7
@@ -42,9 +42,9 @@ Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
   kind    context, dispatches, baselines, plans, grills, reports/development,
-          reports/review, cache/gates, cache/prompts or cache/denials; the
-          cache kinds expire after ${CACHE_MAX_DAYS} days
-  ext     md for cache/prompts, json for every other kind
+          reports/review, cache/gates or cache/denials; the cache kinds
+          expire after ${CACHE_MAX_DAYS} days
+  ext     json
 
 Options:
   --kind KIND         new, find: a kind of the layout
@@ -288,7 +288,7 @@ ensure_dir() {
 # effort holds; exits 5 when no ID can be minted, 4 when no file can be made.
 claim_item_file() {
 	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
-	if crucible_claim_item_file "${kind_dir}" "${label}" "${kind}" id_is_unique; then
+	if crucible_claim_item_file "${kind_dir}" "${label}" id_is_unique; then
 		name=${crucible_claimed_file##*/}
 		return 0
 	fi
@@ -387,7 +387,7 @@ run_find() {
 	for found_item in "${kind_dir}"/*; do
 		[ -f "${found_item}" ] && [ ! -L "${found_item}" ] || continue
 		# shellcheck disable=SC2310 # its status says whether the name is an item's
-		parse_item_name "${found_item##*/}" "${kind}" || continue
+		parse_item_name "${found_item##*/}" || continue
 		[ -z "${label}" ] || [ "${parsed_label}" = "${label}" ] || continue
 		found_names="${found_names}${found_item##*/}
 "
@@ -403,14 +403,13 @@ ${sorted_names}
 EOF
 }
 
-# Sets parsed_id and parsed_label when file name $1 is an item name of kind
-# $2, as crucible_name_item names one; fails otherwise.
+# Sets parsed_id and parsed_label when file name $1 is an item name, as
+# crucible_name_item names one; fails otherwise.
 parse_item_name() {
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_split_id "$1" || return 1
-	crucible_kind_extension "$2"
 	parsed_id=${crucible_name_id}
-	parsed_label=${crucible_name_rest%".${crucible_extension}"}
+	parsed_label=${crucible_name_rest%".${crucible_item_extension}"}
 	[ "${parsed_label}" != "${crucible_name_rest}" ] || return 1
 	crucible_is_label "${parsed_label}"
 }
@@ -461,7 +460,7 @@ match_in_kind() {
 	for candidate do
 		[ -f "${candidate}" ] && [ ! -L "${candidate}" ] || continue
 		# shellcheck disable=SC2310 # its status says whether the name is an item's
-		parse_item_name "${candidate##*/}" "${kind}" || continue
+		parse_item_name "${candidate##*/}" || continue
 		[ "${parsed_id}" = "${wanted}" ] || [ "${parsed_id##*-}" = "${wanted}" ] || continue
 		item_id=${parsed_id} item_path=${candidate}
 		matches="${matches}${item_id} ${item_path}

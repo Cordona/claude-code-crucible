@@ -1,6 +1,6 @@
 ---
 name: standard-security
-description: The security rubric for code in any language, tests included, that handles untrusted input, auth, secrets, queries, crypto, outbound calls, deserialization or sensitive data — a taint model, foundations and controls grouped by OWASP A01–A10. Injected into the agent's first message when loaded. Writes nothing. Not for logging or audit (standard-observability), store correctness (standard-persistence), test-only rules (standard-testing) or memory safety (its tech plugin).
+description: The security rubric for code in any language, tests included, that handles untrusted input, auth, secrets, queries, crypto, outbound calls, deserialization or sensitive data — a taint model, foundations and controls grouped by OWASP A01–A10. Injected into the agent's first message when loaded. Writes nothing. Not for logging or audit (standard-observability), store correctness (standard-persistence), test-only rules (standard-testing) or memory safety (its language plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Security
 
-What secure code holds, in any language. Security is non-negotiable: never trade it for convenience. Build security in from the first line: never leave it to be patched after a pentest. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What secure code holds, in any language. Security is non-negotiable: never trade it for convenience. Build security in from the first line: never leave it to be patched after a pentest. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 It is grounded in OWASP Top 10:2025, ASVS 5.0, the CWE Top 25 and, for password policy, NIST SP 800-63B-4. Reason in weakness classes, which carry across stacks, and map each to how it shows up in the stack in front of you.
 

@@ -1,6 +1,6 @@
 ---
 name: standard-clean-code
-description: The structural rubric for clean code in any language, tests included — honest contracts, one responsibility, cohesion, DRY weighed against YAGNI, low coupling, small flat functions, no dead code, top-down file layout. Injected into the agent's first message when loaded. Writes nothing. Not for naming or comments (standard-self-documenting-code), test names and test-only rules (standard-testing), performance (standard-performance) or a stack's idioms (its tech plugin).
+description: The structural rubric for clean code in any language, tests included — honest contracts, one responsibility, cohesion, DRY weighed against YAGNI, low coupling, small flat functions, no dead code, top-down file layout. Injected into the agent's first message when loaded. Writes nothing. Not for naming or comments (standard-self-documenting-code), test names and test-only rules (standard-testing), performance (standard-performance) or a language's or framework's idioms (its language or framework plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Clean Code
 
-What well-structured code looks like, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What well-structured code looks like, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 ## Scope
 

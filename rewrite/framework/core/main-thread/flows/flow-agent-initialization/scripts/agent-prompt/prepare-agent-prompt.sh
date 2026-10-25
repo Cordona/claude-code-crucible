@@ -6,12 +6,11 @@
 # message built from them and procedure-context's context-handling template, sent word
 # for word. Any problem denies the dispatch. Every other Agent
 # call passes untouched. The decision is the only output, so a listed agent is
-# denied on any unexpected exit (fail closed). --direct builds the same message
-# for the main thread's own direct implementation and writes it to a file.
-# Once every check passes, both write the dispatch's baseline file (the repo's
-# git status before any code changes) when it is still empty, and keep it on a
-# resend. Each checked file is read once, into a private temp copy that the checks and
-# the message all read, so the checked bytes are the sent bytes.
+# denied on any unexpected exit (fail closed).
+# Once every check passes, it writes the dispatch's baseline file (the repo's
+# git status before any code changes) when it is still empty, and keeps it on
+# a resend. Each checked file is read once, into a private temp copy that the
+# checks and the message all read, so the checked bytes are the sent bytes.
 # Known gap: the path checks (not a symlink or resolving inside its plugin
 # folder, regular, readable) run on the path just before the copy, since POSIX
 # sh can't test an open file, so a path swapped in between (such as for a
@@ -32,8 +31,9 @@ readonly REASON_PREFIX='flow-agent-initialization:'
 readonly LISTED_AGENTS='code-developer code-reviewer'
 readonly NAMES_MODULE='dispatch-names'
 readonly RENDER_LIB='human-view'
+readonly CRUCIBLE_SKILL='crucible'
 readonly VIEW_NAME='view'
-readonly DIRECT_PROMPT_LABEL='main-thread-prompt'
+readonly PRUNE_NAME='prune'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
 readonly CONTEXT_PROCEDURE='procedure-context'
@@ -77,8 +77,9 @@ readonly NL
 LC_ALL=C
 export LC_ALL
 
-# Prints "<name>\t<disable-model-invocation>" from a SKILL.md frontmatter, read
-# the way list-plugins.sh reads it; exits 2 when there is no closed frontmatter.
+# Prints "<name>\t<disable-model-invocation>\t<metadata.label>\t<metadata.base>"
+# from a SKILL.md frontmatter, read the way list-plugins.sh reads it; exits 2
+# when there is no closed frontmatter.
 # The program is single-quoted on purpose: its $0 is awk's, not the shell's.
 # shellcheck disable=SC2016
 readonly PLUGIN_FRONTMATTER_AWK='
@@ -97,9 +98,12 @@ NR == 1 { if ($0 != "---") exit; next }
 $0 == "---" { closed = 1; exit }
 /^name:/ { name = clean(substr($0, index($0, ":") + 1)) }
 /^disable-model-invocation:/ { model_invocation_disabled = clean(substr($0, index($0, ":") + 1)) }
+/^[^ \t#]/ { in_metadata = ($0 ~ /^metadata:[ \t]*(#.*)?$/); next }
+in_metadata && /^  label:/ { label = clean(substr($0, index($0, ":") + 1)) }
+in_metadata && /^  base:/ { base = clean(substr($0, index($0, ":") + 1)) }
 END {
 	if (!closed) exit 2
-	printf "%s\t%s\n", name, model_invocation_disabled
+	printf "%s\t%s\t%s\t%s\n", name, model_invocation_disabled, label, base
 }
 '
 
@@ -200,22 +204,22 @@ def cut: if length > $line_cap then .[:$line_cap - 1] + "…" else . end;
 	(if $more > 0 then "+\($more) more" else "" end),
 	data_section(if $details == "" then [] else [["Denial", $details]] end)]
 | blocks'
-# Builds the details file: every problem in full, its KIND (null for none),
-# the dispatch file and the hint.
+# Builds the details file: every problem in full, its KIND, the dispatch file
+# and the hint; prune leaves out a missing KIND and an empty hint.
 # shellcheck disable=SC2016
 readonly DENIAL_DETAILS_JQ='
 ($kinds | split(" ")) as $kind_list
 | {dispatch: $dispatch, hint: (if $hint == "" then null else $hint end),
 	problems: ($problems | split("\n") | map(select(length > 0)
 		| (split(" ")[0]) as $word
-		| {kind: (if ($kind_list | any(. == $word)) then $word else null end), problem: .}))}'
+		| {kind: (if ($kind_list | any(. == $word)) then $word else null end), problem: .}))}
+| prune'
 
 # Builds the agent's message from the dispatch copy ($dispatch), the
 # pretty-printed context copy ($context), the template copy ($template) and
 # the plugin files, the item list build_message puts between the two halves:
 # [plugin name, "skill"|"reference", file text] triples in the dispatch's
-# order. $run_mode is hook or direct: only
-# a dispatched agent replies with a REPORT line, so only its message asks for one.
+# order.
 # The programs are single-quoted on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
 readonly MESSAGE_JQ_HEAD='
@@ -233,16 +237,16 @@ def with_newline: if endswith("\n") then . else . + "\n" end;
 def block: "<crucible-plugin name=\"\(.name)\">\n\n" + (.bodies | map(with_newline) | join("\n")) + "\n</crucible-plugin>";
 # A backtick would end the code span, so it prints as a quote.
 def code: "`" + gsub("`"; [39] | implode) + "`";
-def work($dispatch; $run_mode):
+def work($dispatch):
 	"# Your work\n\n"
 	+ "- **MODE:** \($dispatch.mode)\n"
 	+ "- **TASK:** \($dispatch.task)\n"
 	+ "- **REPO ROOT:** \($dispatch.repo_root | code)\n"
-	+ "- **STARTING POINTS** (where to begin, not a limit): "
-	+ (if ($dispatch.starting_points | length) == 0 then "none" | code else $dispatch.starting_points | map(code) | join(", ") end) + "\n"
+	+ "- **ENTRY POINTS** (where to begin, not a limit): "
+	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($dispatch.report | code)\n"
 	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
-	+ (if $run_mode == "hook" then "- **RETURN:** \("REPORT: " + $dispatch.report | code) alone\n" else "" end)
+	+ "- **RETURN:** \("REPORT: " + $dispatch.report | code) alone\n"
 	+ "\nA marked gap beats a papered-over one: report what you could not read, run or decide.\n"
 	+ "Save your plan and progress as you go, in your scratchpad, so a cut-off run leaves them; the REPORT file is written once, as your report skill sets.\n";
 ($dispatch | fromjson) as $parsed
@@ -258,12 +262,10 @@ readonly MESSAGE_JQ_TAIL='
 	+ (if length == 0 then "none" else map(block) | join("\n\n") end)
 	+ "\n\n# Your context\n\n<crucible-context>\n\n```json\n" + ($context | with_newline) + "```\n\n</crucible-context>\n\n"
 	+ "# Handling your context\n\n" + ($template | with_newline) + "\n"
-	+ work($parsed; $run_mode)
+	+ work($parsed)
 '
 
 main() {
-	mode=hook
-	direct_dispatch=''
 	dispatch_effort=''
 	parse_args "$@"
 	decided=false
@@ -275,11 +277,7 @@ main() {
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
-	if [ "${mode}" = direct ]; then
-		run_direct
-	else
-		run_hook
-	fi
+	run_hook
 }
 
 parse_args() {
@@ -289,13 +287,7 @@ parse_args() {
 			usage
 			exit 0
 			;;
-		--direct)
-			[ "$#" -eq 3 ] && [ "$2" = --dispatch ] && [ -n "$3" ] ||
-				usage_error '--direct takes exactly --dispatch PATH; expected --direct --dispatch PATH'
-			mode=direct
-			direct_dispatch=$3
-			;;
-		*) usage_error "unknown option: $1; expected no arguments (hook input on stdin), --direct --dispatch PATH or --help" ;;
+		*) usage_error "unknown option: $1; expected no arguments (hook input on stdin) or --help" ;;
 	esac
 }
 
@@ -336,46 +328,25 @@ run_hook() {
 	emit "${decision}"
 }
 
-run_direct() {
-	command -v jq >/dev/null 2>&1 || fault 'jq is missing from PATH; the script needs jq 1.6+.'
-	dispatch_path=${direct_dispatch}
-	load_dependencies
-	find_crucible_script
-	prepare_message "${DIRECT_AGENT}"
-	fill_baseline
-	write_direct_prompt
-	decided=true
-	printf 'PROMPT: %s\nREPORT: %s\n' "${prompt_path}" "${dispatch_report}"
-}
-
 usage() {
-	# shellcheck disable=SC2310 # its status picks the fallback text; errexit adds nothing
-	help_direct_agent=$(read_shared_name 'direct_agent | tojson' 2>/dev/null) && [ -n "${help_direct_agent}" ] ||
-		help_direct_agent="the direct_agent of scripts/agent-dispatch/${NAMES_MODULE}.jq"
 	cat <<EOF
 usage: sh ${PROG} < PreToolUse-JSON
-       sh ${PROG} --direct --dispatch PATH
        sh ${PROG} --help | -h
 
 The PreToolUse hook on Agent: replaces a listed agent's "DISPATCH: <path>"
   prompt with its first message once the dispatch passes every check.
-
-Options:
-  --direct            for the main thread's own implementation: check a
-                      dispatch of agent ${help_direct_agent} and write its
-                      message to a file
-  --dispatch PATH     with --direct: the dispatch file, absolute
 
 Hook: acts only on a listed agent (${LISTED_AGENTS}); any other
 call: no output. A closed or unreadable stdin denies every call.
 A listed agent's call is allowed only when its prompt is exactly one line
   "DISPATCH: <absolute path>" naming a dispatch file generate-agent-dispatch.sh
   wrote for that agent, and the dispatch, its context file (its effort's latest
-  version, matching context.sha256), plugin files (as list-plugins.sh --help
-  sets), report file (empty) and baseline file (absent, empty or of its
-  repo_root) pass every check (a path swapped after its check by someone who
-  can write to the plugin folder or the Crucible space aside: it is copied
-  unchecked, or hangs until the hook times out).
+  version, matching context.sha256), plugin files (each SKILL.md frontmatter
+  valid as list-plugins.sh --help sets, the description aside), report file
+  (empty) and baseline file (absent, empty or of its repo_root) pass every
+  check (a path swapped after its check by someone who can write to the
+  plugin folder or the Crucible space aside: it is copied unchecked, or hangs
+  until the hook times out).
 
 stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
@@ -390,28 +361,24 @@ stdout (one JSON line):
          DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
          PLUGIN, REPORT, BASELINE, BASELINE-WRITE (not written)
 The message, built from the checked bytes: # Your plugins, # Your context,
-  # Handling your context, # Your work (MODE, TASK, REPO ROOT, STARTING POINTS,
-  REPORT, CONTEXT FILE, RETURN but with --direct), two closing lines
-  (# Your plugins: none when no plugin; STARTING POINTS: none when none;
-  paths absolute, in code spans).
-PROMPT: <path>  --direct, exit 0, line 1: the message file, absolute, ending
-  .md, in the effort's cache/prompts/ (it expires as crucible.sh --help sets)
-REPORT: <path>  line 2: the dispatch's report file, absolute
+  # Handling your context, # Your work (MODE, TASK, REPO ROOT, ENTRY POINTS,
+  REPORT, CONTEXT FILE, RETURN), two closing lines
+  (# Your plugins: one block per plugin, in the order language, frameworks,
+  standards, procedures, as the dispatch lists them; none when no plugin;
+  ENTRY POINTS: none when none; paths absolute, in code spans).
 
 Leaves only (a SIGKILL aside): once every check passes, an absent or empty
 baseline file of the dispatch, atomically (shape: see
 scripts/agent-dispatch/${NAMES_MODULE}.jq); one holding a baseline is kept.
-With --direct, the message file; on a deny, the Denial file.
+On a deny, the Denial file.
 The repository is only read.
 
 Exit codes:
-  0  hook: a decision, or none; --direct: written; read stdout
-  1  --direct: a write failed (any baseline written stays); show stderr and stop
-  2  usage error, or (hook) a deny that could not be built, so Claude Code
-     blocks the call; show stderr and stop
-  3  --direct: a check failed, nothing written; show stderr and stop
-  5  --direct: install or host fault, nothing written; show stderr and stop
-  129, 130, 143  --direct: stopped by HUP, INT or TERM; show it and stop
+  0  a decision, or none; read stdout
+  2  usage error, or a deny that could not be built, so Claude Code blocks
+     the call; show stderr and stop
+  129, 130, 143  stopped by HUP, INT or TERM before a listed agent was
+     known; no output
 
 Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
@@ -422,7 +389,8 @@ Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
-  crucible: scripts/lib/crucible-space.sh, scripts/crucible.sh
+  ${CRUCIBLE_SKILL}: scripts/lib/crucible-space.sh, scripts/lib/${PRUNE_NAME}.jq,
+    scripts/crucible.sh
   ${RENDER_LIB}: ${VIEW_NAME}.jq
   this skill: scripts/agent-dispatch/agent-dispatch-validator.jq,
     ${NAMES_MODULE}.jq
@@ -540,13 +508,9 @@ load_shared_checks() {
 		fault "${context_load_problem}; ${PROG} needs it; the fault is in the install or the host, not in the dispatch."
 }
 
-# Sets DIRECT_AGENT and BASELINE_KIND from the shared names module, and faults
-# unless its listed agents are LISTED_AGENTS.
+# Sets BASELINE_KIND from the shared names module, and faults unless its
+# listed agents are LISTED_AGENTS.
 load_shared_names() {
-	# shellcheck disable=SC2310 # its status is jq's; a failure faults
-	DIRECT_AGENT=$(read_shared_name direct_agent) && [ -n "${DIRECT_AGENT}" ] ||
-		fault "jq could not read direct_agent from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
-	readonly DIRECT_AGENT
 	# shellcheck disable=SC2310 # its status is jq's; a failure faults
 	module_listed_agents=$(read_shared_name 'listed_agents | join(" ")') ||
 		fault "jq could not read listed_agents from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
@@ -641,8 +605,9 @@ check_dispatch_file() {
 
 # Sets dispatch_agent, dispatch_context, dispatch_context_sha256,
 # dispatch_report, dispatch_baseline, dispatch_repo_root and plugin_entries
-# (one "<name>\t<path>" line per plugin file, in order) from the checked
-# dispatch copy. The validator holds each path to one line.
+# (one "<name>\t<path>" line per plugin file: the language, the frameworks,
+# the standards, then the procedures, each kind in the dispatch's order) from
+# the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
 	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .report, .baseline, .repo_root' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
@@ -656,7 +621,8 @@ read_dispatch_fields() {
 	} <<EOF
 ${dispatch_fields}
 EOF
-	plugin_entries=$(jq -r '.plugins[] | (.name | gsub("[[:cntrl:]]"; "?")) as $name | .paths[] | "\($name)\t\(.)"' "${dispatch_copy}" </dev/null) ||
+	plugin_entries=$(jq -r '.plugins // {} | (.language // empty), (.frameworks, .standards, .procedures | arrays[])
+		| (.name | gsub("[[:cntrl:]]"; "?")) as $name | .paths[] | "\($name)\t\(.)"' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
@@ -788,12 +754,12 @@ baseline_shape_problems() {
 
 # Writes the repository's git status, as the shared baseline shape, into the
 # dispatch's baseline file, unless a resend finds it written already. Runs once
-# every check has passed, before the agent or the main thread can change the
-# tree; never after. Written through a temp file in its folder moved onto it.
+# every check has passed, before the agent can change the tree; never after.
+# Written through a temp file in its folder moved onto it.
 fill_baseline() {
 	[ "${baseline_filled}" = false ] || return 0
-	# Missing git: a BASELINE-WRITE deny, or --direct exit 1; any other missing
-	# dependency: a deny with no KIND, or --direct exit 5.
+	# Missing git: a BASELINE-WRITE deny; any other missing dependency: a deny
+	# with no KIND.
 	command -v git >/dev/null 2>&1 ||
 		baseline_write_failed "git missing from PATH; expected git on PATH to take the dispatch's baseline; the dispatch can be sent again once git is on PATH"
 	status_raw="${snapshot_dir}/status.raw"
@@ -848,16 +814,10 @@ first_line() {
 	printf '%s' "${message:-no message}"
 }
 
-# The baseline can't be written: a deny (hook), or
-# stderr and exit 1 (--direct), the problem $1 under KIND BASELINE-WRITE with
-# the baseline path.
+# The baseline can't be written: a deny, the problem $1 under KIND
+# BASELINE-WRITE with the baseline path.
 baseline_write_failed() {
 	baseline_line="BASELINE-WRITE $1: ${dispatch_baseline}"
-	if [ "${mode}" = direct ]; then
-		printf '%s: %s\n' "${PROG}" "${baseline_line}" >&2
-		decided=true
-		exit 1
-	fi
 	problems="${baseline_line}${NL}"
 	deny_problems ''
 }
@@ -950,8 +910,8 @@ check_path() {
 	path_in_skills=${1#"${skills_dir}"/}
 	plugin_name=${path_in_skills%%/*}
 	case ${plugin_name} in
-		tech-?* | standard-?* | procedure-?*) ;;
-		*) path_problem="path is not in a plugin folder; expected a path in a tech-*, standard-* or procedure-* folder of ${skills_dir}/"; return 0 ;;
+		language-?* | framework-?* | standard-?* | procedure-?*) ;;
+		*) path_problem="path is not in a plugin folder; expected a path in a language-*, framework-*, standard-* or procedure-* folder of ${skills_dir}/"; return 0 ;;
 	esac
 	[ -f "${skills_dir}/${plugin_name}/SKILL.md" ] || {
 		path_problem="plugin folder ${plugin_name} has no SKILL.md; expected ${skills_dir}/${plugin_name}/SKILL.md"
@@ -1052,7 +1012,7 @@ judge_plugin() {
 }
 
 # Sets not_plugin_reason (empty for a plugin) for the folder $1 from the
-# SKILL.md frontmatter in file $2.
+# SKILL.md frontmatter in file $2, by list-plugins.sh's rules for it.
 plugin_test() {
 	not_plugin_reason=''
 	if ! frontmatter=$(awk "${PLUGIN_FRONTMATTER_AWK}" "$2"); then
@@ -1060,11 +1020,24 @@ plugin_test() {
 		return 0
 	fi
 	frontmatter_name=${frontmatter%%"${TAB}"*}
-	frontmatter_disabled=${frontmatter#*"${TAB}"}
+	frontmatter_rest=${frontmatter#*"${TAB}"}
+	frontmatter_disabled=${frontmatter_rest%%"${TAB}"*}
+	frontmatter_rest=${frontmatter_rest#*"${TAB}"}
+	frontmatter_label=${frontmatter_rest%%"${TAB}"*}
+	frontmatter_base=${frontmatter_rest#*"${TAB}"}
 	[ "${frontmatter_name}" = "$1" ] ||
-		not_plugin_reason="$1/SKILL.md has name: '${frontmatter_name}'; expected name: $1"
+		add_not_plugin_reason "$1/SKILL.md has name: '${frontmatter_name}'; expected name: $1"
 	[ "${frontmatter_disabled}" = true ] ||
-		not_plugin_reason="${not_plugin_reason}${not_plugin_reason:+, }$1/SKILL.md has disable-model-invocation: '${frontmatter_disabled}'; expected disable-model-invocation: true"
+		add_not_plugin_reason "$1/SKILL.md has disable-model-invocation: '${frontmatter_disabled}'; expected disable-model-invocation: true"
+	[ -n "${frontmatter_label}" ] ||
+		add_not_plugin_reason "$1/SKILL.md has no metadata.label; expected a \"  label:\" line under \"metadata:\""
+	[ -z "${frontmatter_base}" ] ||
+		add_not_plugin_reason "$1/SKILL.md sets metadata.base; metadata.base is not supported; remove it"
+}
+
+# Appends reason $1 to not_plugin_reason, comma-separated.
+add_not_plugin_reason() {
+	not_plugin_reason="${not_plugin_reason}${not_plugin_reason:+, }$1"
 }
 
 # Appends "<KIND $1> <problem $2>: <subject $3>" to problems, one per line.
@@ -1131,43 +1104,9 @@ ${copy_args}
 EOF
 	message_file="${snapshot_dir}/message"
 	jq -nj --rawfile dispatch "${dispatch_copy}" --rawfile context "${context_pretty}" \
-		--rawfile template "${template_copy}" --arg run_mode "${mode}" \
+		--rawfile template "${template_copy}" \
 		"$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
-}
-
-# Sets crucible_script for --direct, or faults; checked before any write.
-find_crucible_script() {
-	crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		fault "crucible.sh missing; expected ${crucible_script}; install the crucible skill."
-}
-
-# Writes the message to a new prompt file (Markdown, .md) in the dispatch's
-# effort's cache/prompts/; sets prompt_path. On a failure after crucible.sh
-# made the file, removes it and exits 1.
-write_direct_prompt() {
-	prompt_path=$(sh "${crucible_script}" new --kind cache/prompts --label "${DIRECT_PROMPT_LABEL}" --effort "${dispatch_effort}" </dev/null) ||
-		write_failed 'crucible.sh new failed; its stderr is above'
-	case ${prompt_path} in
-		/*.md) ;;
-		*) write_failed "crucible.sh new printed no file path; expected one absolute path ending in .md; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun" ;;
-	esac
-	temp_file=$(mktemp "${prompt_path%/*}/.${prompt_path##*/}.XXXXXX") || write_failed "mktemp could not create a temp file beside ${prompt_path}; expected a writable folder ${prompt_path%/*}; try checking its permissions and free space, then rerun"
-	cat -- "${message_file}" >"${temp_file}" || write_failed "could not write the temp file ${temp_file}; expected a writable folder ${prompt_path%/*}; try checking its free space, then rerun"
-	mv -f "${temp_file}" "${prompt_path}" || write_failed "mv could not move the temp file onto ${prompt_path}; expected a writable folder ${prompt_path%/*}; try checking its permissions and free space, then rerun"
-	temp_file=''
-}
-
-# Exits 1 with $1, removing the file crucible.sh made for this run.
-write_failed() {
-	case ${prompt_path:-} in
-		/*.md) rm -f "${prompt_path}" && printf '%s: removed %s, made by this run\n' "${PROG}" "${prompt_path}" >&2 ;;
-		*) ;;
-	esac
-	printf '%s: %s\n' "${PROG}" "$1" >&2
-	decided=true
-	exit 1
 }
 
 # Refuses with problem $1 alone, when the later checks can't run without it passing.
@@ -1176,18 +1115,8 @@ refuse_now() {
 	refuse_all
 }
 
-# Refuses with every problem: a deny (hook), or one stderr line each and
-# exit 3 (--direct).
+# Refuses with every problem: a deny.
 refuse_all() {
-	if [ "${mode}" = direct ]; then
-		while IFS= read -r problem_line; do
-			[ -z "${problem_line}" ] || printf '%s: %s\n' "${PROG}" "${problem_line}" >&2
-		done <<EOF
-${problems}
-EOF
-		decided=true
-		exit 3
-	fi
 	deny_problems "${DISPATCH_HINT}"
 }
 
@@ -1196,8 +1125,9 @@ EOF
 # dispatch's effort is known.
 deny_problems() {
 	view_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${RENDER_LIB}"
-	[ -f "${view_dir}/${VIEW_NAME}.jq" ] && [ -r "${view_dir}/${VIEW_NAME}.jq" ] ||
-		fault "the view module ${view_dir}/${VIEW_NAME}.jq is missing or unreadable; ${PROG} needs it; the fault is in the ${RENDER_LIB} install, not in the dispatch."
+	prune_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib"
+	require_denial_module "${view_dir}/${VIEW_NAME}.jq" "${RENDER_LIB}"
+	require_denial_module "${prune_dir}/${PRUNE_NAME}.jq" "${CRUCIBLE_SKILL}"
 	write_denial_details "$1"
 	reason=$(jq -nr -L "${view_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" \
 		--arg prefix "${REASON_PREFIX}" --arg details "${details_path}" \
@@ -1207,13 +1137,19 @@ deny_problems() {
 	deny "${reason}"
 }
 
+# Faults unless module file $1 of skill $2 is readable.
+require_denial_module() {
+	[ -f "$1" ] && [ -r "$1" ] ||
+		fault "the $2 module $1 is missing or unreadable; ${PROG} needs it; the fault is in the $2 install, not in the dispatch."
+}
+
 # Sets details_path to a new file in the dispatch's effort's cache/denials
 # holding every problem in full, with hint $1; leaves it empty, a line on
 # stderr, when no effort is known or the file can't be written.
 write_denial_details() {
 	details_path=''
 	[ -n "${dispatch_effort}" ] || return 0
-	denial_crucible="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
+	denial_crucible="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/crucible.sh"
 	if [ ! -f "${denial_crucible}" ] || [ ! -r "${denial_crucible}" ]; then
 		details_failed "crucible.sh missing; expected ${denial_crucible}"
 		return 0
@@ -1234,8 +1170,8 @@ write_denial_details() {
 		details_failed "mktemp could not create a temp file beside ${new_path}"
 		return 0
 	fi
-	if jq -n --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg dispatch "${dispatch_path}" \
-		--arg hint "$1" "${DENIAL_DETAILS_JQ}" </dev/null >"${temp_file}" &&
+	if jq -n -L "${prune_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg dispatch "${dispatch_path}" \
+		--arg hint "$1" "include \"${PRUNE_NAME}\"; ${DENIAL_DETAILS_JQ}" </dev/null >"${temp_file}" &&
 		mv -f -- "${temp_file}" "${new_path}"; then
 		temp_file=''
 		details_path=${new_path}
@@ -1249,13 +1185,8 @@ details_failed() {
 	printf '%s: %s; the deny names no details file\n' "${PROG}" "$1" >&2
 }
 
-# A fault of this script, its install or the host: a deny (hook), or stderr and exit 5 (--direct).
+# A fault of this script, its install or the host: a deny.
 fault() {
-	if [ "${mode}" = direct ]; then
-		printf '%s: %s\n' "${PROG}" "$1" >&2
-		decided=true
-		exit 5
-	fi
 	deny "${REASON_PREFIX} $1"
 }
 

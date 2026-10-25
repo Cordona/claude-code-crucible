@@ -1,18 +1,16 @@
 #!/usr/bin/env sh
 # Prints one tab-separated line per installed plugin under the skills dir: a
-# tech plugin (tech-<stack>/), a standard plugin (standard-<area>/) or a
-# procedure plugin (procedure-<name>/), the last two only when their SKILL.md
-# sets disable-model-invocation: true, with its full folder name,
-# label, description and files in load order. The main thread picks plugins by
-# their descriptions and passes their names to generate-dispatch-plan.sh, which
-# computes the technology label; generate-agent-dispatch.sh copies the paths
-# into the dispatch. A plugin is reported on stderr instead of listed when it
-# lacks SKILL.md or references/development.md, fails prepare-agent-prompt.sh's
+# language plugin (language-<name>/), a framework plugin (framework-<name>/), a
+# standard plugin (standard-<area>/) or a procedure plugin (procedure-<name>/),
+# the last two only when their SKILL.md sets disable-model-invocation: true,
+# with its full folder name, label, description and files in load order. The
+# main thread picks plugins by their descriptions and passes their names to
+# generate-dispatch-plan.sh; generate-agent-dispatch.sh copies the paths into
+# the dispatch. A plugin is reported on stderr instead of listed when it lacks
+# SKILL.md or references/development.md, fails prepare-agent-prompt.sh's
 # plugin test (name, disable-model-invocation, closed frontmatter), lacks a
-# label or description, or has a path holding a comma or control character (a
-# tab or a line break would split a plugin line); so is a tech plugin whose
-# metadata.base is not a plugin name, has no folder, is itself invalid or has
-# its own base, and a standard or procedure plugin that sets metadata.base. A
+# label or description, sets metadata.base, or has a path holding a comma or
+# control character (a tab or a line break would split a plugin line). A
 # `standard-*` or `procedure-*` folder is a plugin only when its readable
 # SKILL.md has a closed frontmatter with `disable-model-invocation: true`; any
 # other is skipped, never reported as invalid. The hook's file checks still run
@@ -30,6 +28,7 @@ readonly TAB
 readonly NO_FRONTMATTER_ERROR='SKILL.md has no frontmatter; expected a --- block opening on line 1 and closed by ---; reinstall the plugin'
 readonly NO_LABEL_ERROR='SKILL.md has no metadata.label; expected a "  label:" line under "metadata:" in the frontmatter; reinstall the plugin'
 readonly NO_DESCRIPTION_ERROR='SKILL.md has no readable description; expected a non-empty description: in the frontmatter, plain, quoted or a > or | block; fix the description or reinstall the plugin'
+readonly BASE_ERROR='metadata.base is not supported; remove it'
 # Keeps the listing a bounded read for the main thread; well above any real install.
 readonly DEFAULT_MAX_LINES=200
 
@@ -160,29 +159,28 @@ Options:
   --max-lines N     print at most N plugin lines; default ${DEFAULT_MAX_LINES}, 0 prints all
 
 Plugins, by folder in DIR:
-  tech       tech-<stack>/ with SKILL.md and references/development.md;
-             metadata.base may name one other tech plugin by its <stack>
-             (typescript for tech-typescript), itself with no metadata.base,
-             whose files load first
+  language   language-<name>/ with SKILL.md and references/development.md
+  framework  framework-<name>/, as a language plugin
   standard   standard-<area>/ with SKILL.md and references/development.md,
-             opted in by disable-model-invocation: true in its frontmatter;
-             no metadata.base. A standard-* folder without a readable
-             SKILL.md, or whose SKILL.md has no closed frontmatter with that
-             line, is not a plugin: skipped, never reported
+             opted in by disable-model-invocation: true in its frontmatter.
+             A standard-* folder without a readable SKILL.md, or whose
+             SKILL.md has no closed frontmatter with that line, is not a
+             plugin: skipped, never reported
   procedure  procedure-<name>/, as a standard plugin
-A plugin, and a tech plugin's base, is valid when its SKILL.md frontmatter is
-  closed by --- and has name: <its folder name> and disable-model-invocation:
-  true (prepare-agent-prompt.sh's plugin test), a metadata.label and a
-  readable description, and its path, DIR included, holds no comma or
-  control character; any other is invalid.
+A plugin is valid when its SKILL.md frontmatter is closed by --- and has
+  name: <its folder name> and disable-model-invocation: true
+  (prepare-agent-prompt.sh's plugin test), a metadata.label, a readable
+  description and no metadata.base, and its path, DIR included, holds no
+  comma or control character; any other is invalid.
 
-stdout: one line per valid plugin, TAB-separated, tech lines first, then
-  standard, then procedure, each group sorted by NAME:
-  <KIND> <NAME> <label> <description> [<base SKILL.md> <base development.md>] <SKILL.md> <development.md>
-  KIND tech, standard or procedure; NAME the folder name (tech-shell); label
-  metadata.label; description on one field, its tabs and line breaks as
-  spaces; the paths absolute, from field 5, a tech plugin's base first
-stderr: one "${PROG}: <NAME>: <reason>" line per invalid plugin
+stdout: one line per valid plugin, TAB-separated, language lines first, then
+  framework, then standard, then procedure, each group sorted by NAME:
+  <KIND> <NAME> <label> <description> <SKILL.md> <development.md>
+  KIND language, framework, standard or procedure; NAME the folder name
+  (language-shell); label metadata.label; description on one field, its tabs
+  and line breaks as spaces; the two paths absolute
+stderr: one "${PROG}: <NAME>: <reason>" line per invalid plugin, such as
+  "${PROG}: framework-react: ${BASE_ERROR}"
 
 stderr on exits 0, 3: "${PROG}: TRUNCATED: showing N of M plugin lines; pass --max-lines 0 for all"
   the listing was cut; show the output and stop
@@ -245,28 +243,15 @@ plugin_test_error() {
 	fi
 }
 
-# Sets plugin_label, plugin_description, plugin_base and plugin_error for
-# tech-$1 (error empty when valid).
-inspect_tech() {
-	plugin_dir="${skills_dir}/tech-$1"
-	plugin_label=''
-	plugin_description=''
-	plugin_base=''
-	plugin_error=''
-	if [ ! -f "${plugin_dir}/SKILL.md" ]; then
-		plugin_error=$(missing_file_error "${plugin_dir}" SKILL.md)
-	elif [ ! -f "${plugin_dir}/references/development.md" ]; then
-		plugin_error=$(missing_file_error "${plugin_dir}" references/development.md)
-	elif ! frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md"); then
-		plugin_error=${NO_FRONTMATTER_ERROR}
-	else
-		split_frontmatter
-		plugin_label=${fm_label}
-		plugin_description=${fm_description}
-		plugin_base=${fm_base}
-		plugin_error=$(plugin_test_error "tech-$1")
-		[ -n "${plugin_error}" ] || [ -n "${plugin_label}" ] || plugin_error=${NO_LABEL_ERROR}
-		[ -n "${plugin_error}" ] || [ -n "${plugin_description}" ] || plugin_error=${NO_DESCRIPTION_ERROR}
+# Prints the error for the frontmatter fields split_frontmatter set: no label,
+# no description or a metadata.base; prints nothing when they are as expected.
+field_error() {
+	if [ -z "${fm_label}" ]; then
+		printf '%s' "${NO_LABEL_ERROR}"
+	elif [ -z "${fm_description}" ]; then
+		printf '%s' "${NO_DESCRIPTION_ERROR}"
+	elif [ -n "${fm_base}" ]; then
+		printf '%s' "${BASE_ERROR}"
 	fi
 }
 
@@ -298,48 +283,29 @@ plugin_paths() {
 	printf '%s\t%s' "${skills_dir}/$1/SKILL.md" "${skills_dir}/$1/references/development.md"
 }
 
-# Sets plugin_line for tech-$1, or line_error when it or its base is invalid.
-build_tech_line() {
+# Sets plugin_line for the valid plugin $1-$2 of kind $1 from the split frontmatter.
+set_plugin_line() {
+	plugin_line="$1${TAB}$1-$2${TAB}${fm_label}${TAB}${fm_description}${TAB}$(plugin_paths "$1-$2")"
+}
+
+# Sets plugin_line for a plugin $1-$2 of kind $1 (language or framework), or
+# line_error when it is invalid. Every such folder is a plugin.
+build_listed_line() {
+	plugin_dir="${skills_dir}/$1-$2"
 	plugin_line=''
-	line_error=$(unsafe_path_error "tech-$1")
+	line_error=$(unsafe_path_error "$1-$2")
 	[ -z "${line_error}" ] || return 0
-	inspect_tech "$1"
-	if [ -n "${plugin_error}" ]; then
-		line_error=${plugin_error}
-		return 0
-	fi
-	label=${plugin_label}
-	description=${plugin_description}
-	base=${plugin_base}
-	own_paths=$(plugin_paths "tech-$1")
-	if [ -z "${base}" ]; then
-		plugin_line="tech${TAB}tech-$1${TAB}${label}${TAB}${description}${TAB}${own_paths}"
-		return 0
-	fi
-	case ${base} in
-		*/* | *"${TAB}"*)
-			line_error="metadata.base '${base}' is not a plugin name; expected a <stack> such as typescript; fix metadata.base or reinstall the plugin"
-			return 0
-			;;
-		*) ;;
-	esac
-	if [ ! -d "${skills_dir}/tech-${base}" ]; then
-		line_error="base '${base}' has no plugin folder; expected ${skills_dir}/tech-${base}/; install tech-${base} or reinstall the plugin"
-		return 0
-	fi
-	base_path_error=$(unsafe_path_error "tech-${base}")
-	if [ -n "${base_path_error}" ]; then
-		line_error="base '${base}' is invalid: ${base_path_error}"
-		return 0
-	fi
-	inspect_tech "${base}"
-	if [ -n "${plugin_error}" ]; then
-		line_error="base '${base}' is invalid: ${plugin_error}"
-	elif [ -n "${plugin_base}" ]; then
-		line_error="base '${base}' itself has a base ('${plugin_base}'); expected a base without metadata.base; reinstall both plugins"
+	if [ ! -f "${plugin_dir}/SKILL.md" ]; then
+		line_error=$(missing_file_error "${plugin_dir}" SKILL.md)
+	elif [ ! -f "${plugin_dir}/references/development.md" ]; then
+		line_error=$(missing_file_error "${plugin_dir}" references/development.md)
+	elif ! frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md"); then
+		line_error=${NO_FRONTMATTER_ERROR}
 	else
-		base_paths=$(plugin_paths "tech-${base}")
-		plugin_line="tech${TAB}tech-$1${TAB}${label}${TAB}${description}${TAB}${base_paths}${TAB}${own_paths}"
+		split_frontmatter
+		line_error=$(plugin_test_error "$1-$2")
+		[ -n "${line_error}" ] || line_error=$(field_error)
+		[ -n "${line_error}" ] || set_plugin_line "$1" "$2"
 	fi
 }
 
@@ -364,15 +330,10 @@ build_opt_in_line() {
 	[ -z "${line_error}" ] || return 0
 	if [ ! -f "${plugin_dir}/references/development.md" ]; then
 		line_error=$(missing_file_error "${plugin_dir}" references/development.md)
-	elif [ -z "${fm_label}" ]; then
-		line_error=${NO_LABEL_ERROR}
-	elif [ -z "${fm_description}" ]; then
-		line_error=${NO_DESCRIPTION_ERROR}
-	elif [ -n "${fm_base}" ]; then
-		line_error="a $1 plugin takes no metadata.base ('${fm_base}'); expected no base key; remove metadata.base or reinstall the plugin"
-	else
-		plugin_line="$1${TAB}$1-$2${TAB}${fm_label}${TAB}${fm_description}${TAB}$(plugin_paths "$1-$2")"
+		return 0
 	fi
+	line_error=$(field_error)
+	[ -n "${line_error}" ] || set_plugin_line "$1" "$2"
 }
 
 # Records the outcome of a build_*_line call for plugin $1-$2.
@@ -385,7 +346,9 @@ record_line() {
 	fi
 	line_count=$((line_count + 1))
 	case $1 in
-		tech) tech_lines="${tech_lines}${plugin_line}
+		language) language_lines="${language_lines}${plugin_line}
+" ;;
+		framework) framework_lines="${framework_lines}${plugin_line}
 " ;;
 		standard) standard_lines="${standard_lines}${plugin_line}
 " ;;
@@ -419,6 +382,17 @@ parse_max_lines() {
 			0?*) max_lines=${max_lines#0} ;;
 			*) break ;;
 		esac
+	done
+}
+
+# Lists every plugin folder of kind $1 (language or framework).
+scan_listed_kind() {
+	for plugin_path in "${skills_dir}/$1"-*; do
+		[ -d "${plugin_path}" ] || continue
+		found_any=true
+		name=${plugin_path##*/"$1"-}
+		build_listed_line "$1" "${name}"
+		record_line "$1" "${name}"
 	done
 }
 
@@ -487,22 +461,19 @@ done
 found_any=false
 invalid_any=false
 line_count=0
-tech_lines=''
+language_lines=''
+framework_lines=''
 standard_lines=''
 procedure_lines=''
-for plugin_path in "${skills_dir}"/tech-*; do
-	[ -d "${plugin_path}" ] || continue
-	found_any=true
-	name=${plugin_path##*/tech-}
-	build_tech_line "${name}"
-	record_line tech "${name}"
-done
+scan_listed_kind language
+scan_listed_kind framework
 scan_opt_in_kind standard
 scan_opt_in_kind procedure
 
-[ "${found_any}" = true ] || die 1 "no plugins under ${skills_dir}; expected tech-<stack>/, standard-<area>/ or procedure-<name>/ folders; install the plugins or check --skills-dir"
+[ "${found_any}" = true ] || die 1 "no plugins under ${skills_dir}; expected language-<name>/, framework-<name>/, standard-<area>/ or procedure-<name>/ folders; install the plugins or check --skills-dir"
 {
-	print_sorted "${tech_lines}"
+	print_sorted "${language_lines}"
+	print_sorted "${framework_lines}"
 	print_sorted "${standard_lines}"
 	print_sorted "${procedure_lines}"
 } | awk -v max="${max_lines}" 'max == 0 || NR <= max'

@@ -15,6 +15,7 @@ The context above is what the human gave for this work and the main thread settl
 - **A small disagreement left over** (a ticket and a note differ on a detail, such as a message's wording): follow the human's words, and report it.
 - **One that changes the outcome** (what is built, what it must do or must not break), or two notes that contradict each other with no note settling them: stop. Change no file, report it as a blocker naming both sides and where each is, and finish with your report.
 - **Skip an entry only with a reason:** it can't be read, or it plainly doesn't concern your task.
+- **An entry about work outside your task** (another part of the same effort) is not yours: never a blocker or a deviation. Skip it, with that reason.
 
 ## Report it
 

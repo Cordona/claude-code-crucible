@@ -1,46 +1,31 @@
 #!/usr/bin/env sh
-# Renders one dispatch plan, or its approval question, from JSON files, so the
-# main thread never hand-formats either; --no-plugin-fits does the same for a
-# part no installed tech plugin fits. This script owns the wording; the layout
-# is human-view's view.jq. A dispatch plan's rules are
+# Renders one dispatch plan, or its approval question, from its JSON file, so
+# the main thread never hand-formats either. This script owns the wording; the
+# layout is human-view's view.jq. A dispatch plan's rules are
 # dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
 # the plan; this script only refuses a plan it can't render. Pipe its stdout
 # into procedure-approval-gate's open-gate.sh.
-# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly RENDER_LIB='human-view'
-readonly CONTEXT_PROCEDURE='procedure-context'
-readonly NAMES_MODULE='dispatch-names'
 
 # Definitions every program below starts with. The programs are single-quoted
 # on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
 readonly COMMON_JQ='
-def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
 def clean: gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
 def option($label; $description): {label: $label, description: $description};
 def checked_object(problems):
 	if length != 1 then "expected exactly one JSON object, got \(length) values"
 	elif (.[0] | type) != "object" then "input is a JSON \(.[0] | type); expected an object"
 	else .[0] | problems end;
-def unknown_keys($allowed): (keys - $allowed)[] | "\(.): unknown field; expected one of \($allowed | join(", "))";
-def strings_problems($key):
-	if (.[$key] | type) != "array" or (.[$key] | length) == 0 then "\($key) missing or empty; expected an array of one or more strings"
-	else .[$key] | to_entries[] | select(.value | text_ok | not) | "\($key)[\(.key)] is not a non-empty string; expected a non-empty string" end;
-def installed:
-	$listing | split("\n") | map(split("\t") | select(length >= 3 and .[0] != "")
-		| {key: .[1], value: {kind: .[0], label: .[2]}}) | from_entries;
 '
 
-# A printed plan of either kind starts with human-view's layout module, and a
-# dispatch plan or its question with the flow's shared names (direct_agent):
-# jq takes an include only at the start of the program, before the common
-# definitions and these.
-readonly VIEW_INCLUDE='include "view";'
-readonly NAMES_INCLUDE="include \"${NAMES_MODULE}\";"
+# A printed plan starts with human-view's layout and title modules: jq takes an
+# include only at the start of the program, before the common definitions and these.
+readonly VIEW_INCLUDE='include "view"; include "title";'
 # shellcheck disable=SC2016
 readonly PRINTED_JQ='
 # A task keeps its own lines (a numbered list in it stays as written); any
@@ -63,7 +48,14 @@ def data_pairs($context_path):
 readonly RENDERABLE_JQ='
 def written_by: "expected the plan generate-dispatch-plan.sh writes";
 def is_strings: type == "array" and all(.[]; type == "string");
-def is_plugin_items: type == "array" and all(.[]; type == "object" and (.plugin | type) == "string");
+def is_plugin_item: type == "object" and (.plugin | type) == "string";
+def is_plugin_items: type == "array" and all(.[]; is_plugin_item);
+def is_list_or_absent: . == null or is_plugin_items;
+def is_plugins:
+	type == "object"
+	and ((.load // {}) | type == "object" and (.language == null or (.language | is_plugin_item))
+		and all(.frameworks, .standards, .procedures; is_list_or_absent))
+	and ((.skip // {}) | type == "object" and all(.standards, .procedures; is_list_or_absent));
 def field_problem($field; ok; $type): if ok then empty else "\($field) is not \($type); \(written_by)" end;
 def question_fields:
 	field_problem("tasks"; .tasks | is_strings; "an array of strings");
@@ -71,43 +63,58 @@ def plan_fields:
 	question_fields,
 	field_problem("agent"; .agent | type == "string"; "a string"),
 	field_problem("mode"; .mode | type == "string"; "a string"),
-	field_problem("technology"; .technology | type == "string"; "a string"),
-	field_problem("loaded"; .loaded | is_plugin_items; "an array of {\"plugin\": str, ...} objects"),
-	field_problem("not_loaded"; .not_loaded | is_plugin_items; "an array of {\"plugin\": str, ...} objects"),
+	field_problem("plugins"; .plugins | is_plugins;
+		"an object {\"load\": {...}, \"skip\": {...}} of {\"plugin\": str, ...} entries"),
 	field_problem("context"; (.context | type) == "object" and (.context.path | type) == "string" and (.context.sha256 | type) == "string";
 		"an object {\"path\": str, \"sha256\": str}");
 checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
-# The slim plan: the plugins other than the tech plugin by label (the tech
-# plugin is the Developer line), standard-* first, then procedure-*, then any
-# other kind, each group in plan order; a plugin list-plugins.sh no longer
-# prints shows its name. Every reason stays in the plan JSON. A replan
-# "invalid" plan shows only the plugins it dropped as invalid, and no question.
+# The slim plan, plugins by label (a plugin list-plugins.sh no longer prints
+# shows its name), every reason staying in the plan JSON. A code-developer plan:
+# the Developer title from its valid language and frameworks, then Load and Skip with
+# its standards, then procedures, in plan order. A code-reviewer plan holds one
+# lens and shows only the Reviewer line: the reviewer title for a language
+# seat, the standard's label for a standard seat. A replan "invalid" plan shows
+# only the plugins it names as invalid, and no question.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='
-def name_group: if startswith("standard-") then 0 elif startswith("procedure-") then 1 else 2 end;
-def plugin_labels($list; $installed):
-	[$list[] | select($installed[.plugin].kind != "tech")]
-	| map(select(.plugin | name_group == 0)) + map(select(.plugin | name_group == 1)) + map(select(.plugin | name_group == 2))
-	| map($installed[.plugin].label // .plugin | clean);
-def developer: if .agent == direct_agent then "main thread (direct implementation)" else .technology | clean end;
+def plugin_label: $installed[.plugin].label // .plugin | clean;
+def kind_labels($group): (($group.standards // []) + ($group.procedures // [])) | map(plugin_label);
+def installed_only: .plugin as $name | select($installed | has($name));
+# A plugin installed and not named invalid by the plan.
+def valid_only: installed_only | select(.reason != "invalid");
+# The title input, from the valid plugins only (an invalid one shows only
+# under Invalid): the language label and the framework labels in plugin-name order.
+def seat_labels: {language: (first(.language // empty | valid_only | plugin_label) // null),
+	frameworks: [.frameworks // [] | sort_by(.plugin)[] | valid_only | plugin_label]};
+def role_section:
+	(.plugins.load // {}) as $load
+	| [$load.standards // [] | .[] | installed_only | plugin_label] as $lenses
+	| if .agent == "code-reviewer" then
+		section("Reviewer"; if $load.language == null and $lenses != [] then $lenses
+			else [$load | seat_labels | title("reviewer")] end)
+	  else section("Developer"; [$load | seat_labels | title("developer")]) end;
+def invalid_labels:
+	[(.plugins.load.language // empty), (.plugins.load.frameworks // [])[], (.plugins.skip.standards // [])[], (.plugins.skip.procedures // [])[]
+	 | select(.reason == "invalid") | plugin_label];
 .[0]
-| installed as $installed
-| (.agent == direct_agent) as $is_direct
 | .context.path as $plan_context
 | if .replan == "invalid" then
 	[status_line("blocked"; "Blocked · this plan names an invalid plugin: fix it, then rerun"),
-	 section("Developer"; [developer]),
+	 role_section,
 	 task_section,
-	 section("Invalid"; plugin_labels(.not_loaded | map(select(.reason == "invalid")); $installed))]
+	 section("Invalid"; invalid_labels)]
+  elif .agent == "code-reviewer" then
+	[status_line("decision"; "Decision needed · approve this dispatch?"),
+	 role_section,
+	 task_section]
   else
-	[status_line("decision"; if $is_direct then "Decision needed · approve implementing this directly?"
-		else "Decision needed · approve this dispatch?" end),
-	 section("Developer"; [developer]),
+	[status_line("decision"; "Decision needed · approve this dispatch?"),
+	 role_section,
 	 task_section,
-	 section("Loaded"; plugin_labels(.loaded; $installed)),
-	 section("Not loaded"; plugin_labels(.not_loaded; $installed))]
+	 section("Load"; kind_labels(.plugins.load // {})),
+	 section("Skip"; kind_labels(.plugins.skip // {}))]
   end
 | . + [data_section(data_pairs($plan_context))]
 | blocks
@@ -120,15 +127,13 @@ def developer: if .agent == direct_agent then "main thread (direct implementatio
 readonly QUESTION_JQ='
 .[0]
 | (.tasks | length) as $count
-| (.agent == direct_agent) as $is_direct
 | " To change the plugins, choose \"Type something\" and write what to add or drop." as $change
-| (if $is_direct then "Implement with the plugins shown." else "Dispatch with the plugins shown." end) as $approve
-| (if $is_direct then "Nothing is implemented." else "Nothing is dispatched." end) as $stop
+| "Dispatch with the plugins shown." as $approve
+| "Nothing is dispatched." as $stop
 | if .replan == "invalid" then empty
   else {
 	header: (if $count > 1 then "Dispatch ×\($count)" else "Dispatch" end),
-	question: ((if $is_direct then "Approve implementing directly with the plugins shown?"
-		elif $count > 1 then "Approve these \($count) dispatches with the plugins shown?"
+	question: ((if $count > 1 then "Approve these \($count) dispatches with the plugins shown?"
 		else "Approve this dispatch with the plugins shown?" end) + $change),
 	options: (if .replan == "stop-recommended" then
 			[option("Stop (Recommended)"; "Nothing is dispatched; reinstall the dropped plugin (faulty files: fix it), then rerun."),
@@ -143,71 +148,41 @@ readonly QUESTION_JQ='
   } end
 '
 
-# shellcheck disable=SC2016
-readonly NO_FIT_CHECK_JQ='
-checked_object(
-	unknown_keys(["stack", "files", "tasks"]),
-	(if (.stack | text_ok) then empty else "stack missing or empty; expected a non-empty string" end),
-	strings_problems("files"),
-	strings_problems("tasks"))
-'
-
-# shellcheck disable=SC2016
-readonly NO_FIT_RENDER_JQ='
-.[0]
-| [status_line("decision"; "Decision needed · no plugin fits \(.stack | clean): implement it directly?"),
-   task_section,
-   section("File"; "Files"; .files | map(clean | path_text)),
-   data_section(data_pairs($context_file))]
-| blocks
-'
-
-# shellcheck disable=SC2016
-readonly NO_FIT_QUESTION_JQ='
-.[0]
-| {header: "No plugin",
-   question: "No installed tech plugin fits \(.stack | clean). Stop, or implement directly?",
-   options: [option("Stop (Recommended)"; "build the tech plugin first; nothing runs for this part"),
-	option("Implement directly"; "the main thread writes the code, with the standard and procedure plugins the next plan settles")]}
-'
-
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --plan-file PATH [--data KIND=PATH]... [--skills-dir DIR]
        sh ${PROG} --plan-file PATH --question --plans N [--skills-dir DIR]
-       sh ${PROG} --no-plugin-fits --plan-file PATH --context-file CTX
-           [--data KIND=PATH]...
-       sh ${PROG} --no-plugin-fits --plan-file PATH --question
        sh ${PROG} --help | -h
 
-Renders a dispatch plan, or a part no tech plugin fits, or its question.
+Renders a dispatch plan, or its question.
 
 Options:
   --plan-file PATH    the plan JSON, required (stdin is not read); dispatch
                       plan shape: see dispatch-plan-validator.jq
-  --no-plugin-fits    the --plan-file is a part no installed tech plugin fits:
-                      exactly {"stack": str, "files": [str, ...],
-                      "tasks": [str, ...]}, each array one or more strings
-  --context-file CTX  only to print a --no-plugin-fits plan, then required:
-                      the effort's latest context file
   --data KIND=PATH    printing a plan only, repeatable: one line of its Data
                       section, in the order given, before the context file;
                       KIND letters, digits, space or -, PATH absolute
   --question          print the plan's question instead of the plan
-  --plans N           with --question on a dispatch plan, then required: how
-                      many plans are asked one after another, 1 or more
-  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; not
-                      taken with --no-plugin-fits (it uses the default)
+  --plans N           with --question, then required: how many plans are
+                      asked one after another, 1 or more
+  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout, a plan: its Markdown, without the gate marker; a dispatch plan whose
-  replan is "invalid" prints as blocked, naming its invalid plugins
+stdout, a plan: its Markdown, without the gate marker:
+  a code-developer plan: Developer, the title from its language and
+    frameworks ("Generic developer" with no language), Task, Load and Skip
+    (its standards, then procedures, by label), Data
+  a code-reviewer plan: Reviewer, the reviewer title for a language seat
+    ("Generic reviewer" with no lens) or the standard's label for a
+    standard seat, Task, Data
+  a plan whose replan is "invalid" prints as blocked: the Developer or
+    Reviewer line from the installed plugins not named invalid, Task,
+    Invalid (the plugins named with reason "invalid"), Data
 stdout, --question: one JSON object {"header": str, "question": str,
   "options": [{"label": str, "description": str}, ...]}; nothing for a
   dispatch plan whose replan is "invalid"
   option labels: Approve (Recommended) / Stop; with --plans > 1
   Approve (Recommended) / Skip / Stop all; replan "stop-recommended"
-  Stop (Recommended) / Approve; --no-plugin-fits Stop (Recommended) /
-  Implement directly
+  Stop (Recommended) / Approve
 stderr on exits 1, 3, 4, 5 and 6: a line starting "${PROG}:
   install:" is an install or host fault; show it to the human at once
 
@@ -227,15 +202,8 @@ Exit codes:
 
 Dependencies (skills in the --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  to print a plan: the ${RENDER_LIB} skill's view.jq
-  a dispatch plan or its question: this skill's
-    scripts/agent-dispatch/${NAMES_MODULE}.jq
-  to print a dispatch plan: this skill's list-plugins.sh
-  to print a --no-plugin-fits plan: wc; sha256sum (Linux: coreutils) or
-    shasum (macOS: built in); the ${CONTEXT_PROCEDURE} skill's
-    agent-context-file-checks.sh, context-versions.sh,
-    agent-context-validator.jq and agent-context-url.jq; the crucible
-    skill's scripts/lib/crucible-space.sh
+  to print a plan: the ${RENDER_LIB} skill's view.jq and title.jq, and this
+    skill's list-plugins.sh and installed-plugins.jq
 EOF
 }
 
@@ -256,17 +224,13 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file, context_file, skills_dir, want_question, no_plugin_fits,
-# plans and data_lines from the arguments, and refuses a combination the modes
-# don't take.
+# Sets plan_file, skills_dir, want_question, plans and data_lines from the
+# arguments, and refuses a combination the modes don't take.
 parse_args() {
 	plan_file=''
 	data_lines=''
-	context_file=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
-	skills_dir_given=0
 	want_question=0
-	no_plugin_fits=0
 	plans=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -278,39 +242,26 @@ parse_args() {
 				want_question=1
 				shift
 				;;
-			--no-plugin-fits)
-				no_plugin_fits=1
-				shift
-				;;
-			--plan-file | --context-file | --plans | --skills-dir | --data)
+			--plan-file | --plans | --skills-dir | --data)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --no-plugin-fits, --context-file PATH (with --no-plugin-fits), --data KIND=PATH or --help" ;;
+			*) usage_error "unknown argument: $1; expected --plan-file PATH, --skills-dir DIR, --question, --plans N, --data KIND=PATH or --help" ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
-	check_context_arg
 	[ "${want_question}" -eq 0 ] || [ -z "${data_lines}" ] ||
 		usage_error '--data is not used with --question; expected it only when printing a plan'
-	if [ "${no_plugin_fits}" -eq 1 ]; then
-		check_no_fit_args
-	else
-		check_plan_args
-	fi
+	check_plan_args
 }
 
 set_option() {
 	case $1 in
 		--plan-file) plan_file=$2 ;;
-		--context-file) context_file=$2 ;;
 		--plans) plans=$2 ;;
 		--data) add_data "$2" ;;
-		*)
-			skills_dir=$2
-			skills_dir_given=1
-			;;
+		*) skills_dir=$2 ;;
 	esac
 }
 
@@ -327,27 +278,6 @@ add_data() {
 	esac
 	data_lines="${data_lines}$1
 "
-}
-
-# A --no-plugin-fits plan shows CTX; its question does not, and a dispatch
-# plan names its context file itself.
-check_context_arg() {
-	if [ "${no_plugin_fits}" -eq 0 ]; then
-		[ -z "${context_file}" ] ||
-			usage_error '--context-file is used only with --no-plugin-fits; expected a dispatch plan to name its context file in its context field'
-	elif [ "${want_question}" -eq 1 ]; then
-		[ -z "${context_file}" ] ||
-			usage_error '--context-file is not used with --question; expected it only when printing the plan'
-	else
-		[ -n "${context_file}" ] ||
-			usage_error '--context-file PATH missing; expected --context-file PATH naming the effort'\''s context file, required when printing a --no-plugin-fits plan'
-	fi
-}
-
-check_no_fit_args() {
-	[ -z "${plans}" ] || usage_error '--plans is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH --context-file CTX, or --no-plugin-fits --plan-file PATH --question'
-	[ "${skills_dir_given}" -eq 0 ] ||
-		usage_error '--skills-dir is not used with --no-plugin-fits; expected --no-plugin-fits --plan-file PATH --context-file CTX, or --no-plugin-fits --plan-file PATH --question'
 }
 
 check_plan_args() {
@@ -372,72 +302,28 @@ read_input() {
 	exit 2
 }
 
-# Checks the context file as prepare-agent-prompt.sh does, apart from the
-# digest; exits 2 with one "context file:" stderr line for the first problem,
-# or with an "install:" line 1 when no sha256 tool is on PATH, 3 when jq or wc
-# fails, 5 when a shared check is missing.
-read_context() {
-	load_context_checks
-	path_problem=$(context_path_problem "${context_file}")
-	[ -z "${path_problem}" ] || context_error "${path_problem}: ${context_file}; expected ${context_path_expected}"
-	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "${context_file}" ||
-		install_fault 3 'jq or wc failed on the context read checks (its stderr is above); expected jq 1.6+; try jq --version, then rerun'
-	[ -z "${context_read_fault}" ] || context_error "${context_file}: ${context_read_text}"
-}
-
-# Sources the shared path checks and loads the read checks; exits 5 when a
-# shared check is missing, 1 when no sha256 tool is on PATH.
-load_context_checks() {
-	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
-	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
-		install_fault 5 "shared context check missing; expected ${context_lib}; install the skill it is in"
-	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
-	. "${context_lib}"
-	# shellcheck disable=SC2310 # its status says whether the checks loaded; the fault is read here
-	if ! context_load_checks "${skills_dir}"; then
-		[ "${context_load_fault}" != host ] || install_fault 1 "${context_load_problem}"
-		install_fault 5 "${context_load_problem}"
-	fi
-}
-
-# Prints "context file: $1" on stderr and exits 2.
-context_error() {
-	warn "context file: $1"
-	exit 2
-}
-
-# Prints the folder this script was run from (".", when run by a bare name).
-script_dir() {
-	case $0 in
-		*/*) printf '%s' "${0%/*}" ;;
-		*) printf '.' ;;
-	esac
-}
-
-# Exits 5 when human-view's layout module, which a printed plan includes, is
-# not a readable file in the skills folder.
+# Exits 5 when human-view's layout or title module, which a printed plan
+# includes, is not a readable file in the skills folder.
 check_render_lib() {
-	view_module="${render_lib_dir}/view.jq"
-	[ -f "${view_module}" ] && [ -r "${view_module}" ] ||
-		install_fault 5 "layout module missing; expected ${view_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
+	for view_module in "${render_lib_dir}/view.jq" "${render_lib_dir}/title.jq"; do
+		[ -f "${view_module}" ] && [ -r "${view_module}" ] ||
+			install_fault 5 "human-view module missing; expected ${view_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
+	done
 }
 
-# Exits 5 when the flow's shared names, which a dispatch plan and its question
-# include, are not a readable file beside this script's folder.
-check_names_module() {
-	names_module="${names_dir}/${NAMES_MODULE}.jq"
-	[ -f "${names_module}" ] && [ -r "${names_module}" ] ||
-		install_fault 5 "shared names missing; expected ${names_module}; reinstall the ${PROCEDURE} skill"
-}
-
-# Sets listing to list-plugins.sh's plugin lines, its stderr passed through;
-# exits 4 when the script is missing and 6 when it fails. Its exit 1 (no
-# plugin) is an empty list; its exit 3 (invalid plugins) leaves them out.
-read_listing() {
-	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
+# Sets installed to the installed plugins, installed-plugins.jq's map of
+# list-plugins.sh's plugin lines, its stderr passed through; exits 4 when the
+# script is missing, 5 when installed-plugins.jq is, 6 when the script fails
+# and 3 when jq does. Its exit 1 (no plugin) is an empty map; its exit 3
+# (invalid plugins) leaves them out.
+read_installed() {
+	plan_scripts_dir="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan"
+	list_script="${plan_scripts_dir}/list-plugins.sh"
+	installed_program="${plan_scripts_dir}/installed-plugins.jq"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		install_fault 4 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
+	[ -f "${installed_program}" ] && [ -r "${installed_program}" ] ||
+		install_fault 5 "installed-plugins.jq missing; expected ${installed_program}; install the ${PROCEDURE} skill or pass the right --skills-dir"
 	if listing=$(sh "${list_script}" --max-lines 0 --skills-dir "${skills_dir}" </dev/null); then
 		list_status=0
 	else
@@ -447,14 +333,16 @@ read_listing() {
 		0 | 1 | 3) ;;
 		*) install_fault 6 "list-plugins.sh failed (exit ${list_status}); expected exit 0, 1 or 3; fix what its stderr above names, or reinstall ${PROCEDURE}" ;;
 	esac
+	installed=$(jq -nc --arg listing "${listing}" -f "${installed_program}" </dev/null) ||
+		install_fault 3 'jq failed reading the plugin list; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Runs jq program $1 over the slurped input, with human-view and the shared
-# names on jq's module path; a jq failure exits 3.
+# Runs jq program $1 over the slurped input, with human-view on jq's module
+# path; a jq failure exits 3.
 run_jq() {
-	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" -L "${names_dir}" --arg want "${want}" \
-		--arg listing "${listing}" --argjson plans "${plans:-1}" \
-		--arg context_file "${context_file}" --arg data_lines "${data_lines}" \
+	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --arg want "${want}" \
+		--argjson installed "${installed}" --argjson plans "${plans:-1}" \
+		--arg data_lines "${data_lines}" \
 		"$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
@@ -467,23 +355,16 @@ command -v jq >/dev/null 2>&1 ||
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
 render_lib_dir="${skills_dir}/${RENDER_LIB}"
-names_dir=$(script_dir)/../agent-dispatch
 want=plan
 [ "${want_question}" -eq 0 ] || want=question
-[ "${want}" = question ] || check_render_lib
-[ -z "${context_file}" ] || read_context
-listing=''
-if [ "${no_plugin_fits}" -eq 1 ]; then
-	check_program=${COMMON_JQ}${NO_FIT_CHECK_JQ}
-	render_program=${VIEW_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${NO_FIT_RENDER_JQ}
-	question_program=${COMMON_JQ}${NO_FIT_QUESTION_JQ}
-else
-	check_names_module
-	[ "${want}" = question ] || read_listing
-	check_program=${COMMON_JQ}${RENDERABLE_JQ}
-	render_program=${VIEW_INCLUDE}${NAMES_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${RENDER_JQ}
-	question_program=${NAMES_INCLUDE}${COMMON_JQ}${QUESTION_JQ}
+installed='{}'
+if [ "${want}" = plan ]; then
+	check_render_lib
+	read_installed
 fi
+check_program=${COMMON_JQ}${RENDERABLE_JQ}
+render_program=${VIEW_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${RENDER_JQ}
+question_program=${COMMON_JQ}${QUESTION_JQ}
 problems=$(run_jq "${check_program}")
 if [ -n "${problems}" ]; then
 	printf '%s\n' "${problems}" | while IFS= read -r problem; do warn "${problem}"; done

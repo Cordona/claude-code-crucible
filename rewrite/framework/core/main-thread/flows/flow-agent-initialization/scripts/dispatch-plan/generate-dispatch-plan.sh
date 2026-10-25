@@ -6,7 +6,7 @@
 # and context-versions.sh, and the plan
 # checked by dispatch-plan-validator.jq against the installed plugins; every
 # problem is named by the option behind it, and nothing is written until there
-# is none. technology is computed from the loaded tech plugin.
+# is none.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
 set -eu
 umask 077
@@ -14,6 +14,7 @@ umask 077
 readonly PROG='generate-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly CONTEXT_PROCEDURE='procedure-context'
+readonly CRUCIBLE_SKILL='crucible'
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 # Leads the problem of a context version no longer its effort's latest, so a
 # caller matches it exactly: the Agent hook's KIND word for the same problem.
@@ -27,24 +28,37 @@ export LC_ALL
 # Builds the plan from the options (mode "plan"), or names each validator
 # problem by its option (mode "report": one stderr line each). The options
 # arrive as positional triples in the order given: kind (agent, mode, task,
-# load, skip, loaded_reason or replan), value, reason ("" but for load and skip).
+# language, framework, load, skip, load_reason or replan), value, reason (""
+# but for language, framework, load and skip). The plan goes through
+# crucible's prune, so a key with nothing in it is left out.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly PLAN_JQ='
+include "prune";
 def entries: $ARGS.positional | [range(0; length / 3) as $n
 	| {kind: .[$n * 3], value: .[$n * 3 + 1], reason: .[$n * 3 + 2]}];
 def of_kind($kind): [entries[] | select(.kind == $kind)];
 def value_of($kind): of_kind($kind)[0].value;
-def plugins($kind): of_kind($kind) | map({plugin: .value, reason});
-def technology($loaded): first($loaded[] | $installed[.plugin] // empty | select(.kind == "tech") | .label) // "none";
+def item: {plugin: .value, reason};
+# A --load or --skip plugin installed or named as a procedure goes under
+# procedures, any other under standards, where the validator names a wrong kind.
+def slot: ($installed[.value].kind // (if .value | startswith("procedure-") then "procedure" else "standard" end))
+	| if . == "procedure" then "procedures" else "standards" end;
+def listed($kind; $key): [of_kind($kind)[] | select(slot == $key)];
+def frameworks: of_kind("framework") | sort_by(.value);
 def plan:
-	plugins("load") as $loaded
-	| {agent: value_of("agent"), mode: value_of("mode"), technology: technology($loaded),
-	   tasks: of_kind("task") | map(.value), loaded: $loaded}
-	+ (if of_kind("loaded_reason") == [] then {} else {loaded_reason: value_of("loaded_reason")} end)
-	+ {not_loaded: plugins("skip")}
-	+ (if of_kind("replan") == [] then {} else {replan: value_of("replan")} end)
-	+ {context: {path: $context_path, sha256: $context_digest}};
+	{agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
+	 plugins: {
+		load: {language: (of_kind("language") | if . == [] then null else .[0] | item end),
+			frameworks: frameworks | map(item),
+			standards: listed("load"; "standards") | map(item),
+			procedures: listed("load"; "procedures") | map(item)},
+		skip: {standards: listed("skip"; "standards") | map(item),
+			procedures: listed("skip"; "procedures") | map(item)},
+		load_reason: value_of("load_reason")},
+	 replan: value_of("replan"),
+	 context: {path: $context_path, sha256: $context_digest}}
+	| prune;
 
 # A long value keeps its start and end, where a path differs most; an option
 # not given shows as (not given).
@@ -52,17 +66,22 @@ def max_shown_chars: 80;
 def shown: if . == null then "(not given)"
 	else tojson | gsub("[[:cntrl:]]"; "?") | if length > max_shown_chars then .[:40] + "…" + .[-39:] else . end end;
 def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \($problem)";
-def option: {agent: "--agent", mode: "--mode", task: "--task", load: "--load", skip: "--skip",
-	loaded_reason: "--loaded-reason", replan: "--replan"}[.];
-def list_kind: {tasks: "task", loaded: "load", not_loaded: "skip"}[.];
+def option: {agent: "--agent", mode: "--mode", replan: "--replan"}[.];
+# The option behind a plugin entry at plugins.<list>.<slot>[<n>] (language: no
+# index), and its --reason when the problem is the reason.
+def plugin_line($at; $problem):
+	(if $at[2] == "language" then ["--language", of_kind("language")[0]]
+	 elif $at[2] == "frameworks" then ["--framework", frameworks[$at[3]]]
+	 else ["--\($at[1])", listed($at[1]; $at[2])[$at[3]]] end) as [$option, $entry]
+	| if $at[-1] == "reason" then line("--reason"; $entry.reason; $problem)
+	  else line($option; $entry.value; $problem) end;
 def named_line:
 	.at as $at | .problem as $problem
 	| if $at[0] == "installed" then line("--load or --skip"; $at[1]; $problem)
 	  elif $at[0] == "context" then line("--context-file"; $context_path; $problem)
-	  elif ($at[0] | list_kind) != null then
-		($at[0] | list_kind) as $kind | of_kind($kind)[$at[1] // -1] as $entry
-		| if $at[2] == "reason" then line("--reason"; $entry.reason; $problem)
-		  else line($kind | option; $entry.value; $problem) end
+	  elif $at[0] == "tasks" then line("--task"; of_kind("task")[$at[1] // -1].value; $problem)
+	  elif $at[:2] == ["plugins", "load_reason"] then line("--load-reason"; value_of("load_reason"); $problem)
+	  elif $at[0] == "plugins" and ($at[2] == "language" or ($at[3] | type) == "number") then plugin_line($at; $problem)
 	  elif ($at[0] | option) != null then line($at[0] | option; value_of($at[0]); $problem)
 	  else "\($prog): plan \($at | tojson): \($problem)" end;
 def report: $validator_problem_lines | split("\n")[] | select(. != "") | fromjson | named_line;
@@ -73,77 +92,77 @@ if $mode == "report" then report else plan end
 usage() {
 	print_page <<EOF
 usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-file CTX
-           --task TEXT [--task TEXT]... [--load NAME --reason LINE]...
-           [--skip NAME --reason LINE]... [--loaded-reason LINE]
+           --task TEXT [--task TEXT]... [--language NAME --reason LINE]
+           [--framework NAME --reason LINE]... [--load NAME --reason LINE]...
+           [--skip NAME --reason LINE]... [--load-reason LINE]
            [--replan KIND] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
-Writes one dispatch plan, the JSON render-dispatch-plan.sh renders, to
---plan-file and to a new ${RECORD_KIND} item of the context file's effort, and
-prints its digest.
-shape and plan rules: see dispatch-plan-validator.jq beside this script
+Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
+context file's effort.
+Keys in order: agent, mode, tasks, plugins {load {language, frameworks,
+standards, procedures}, skip {standards, procedures}, load_reason}, replan,
+context; each plugin {plugin, reason}; empty keys left out.
+Rules (dispatch-plan-validator.jq): at most one --language; --framework
+needs --language; every installed standard and procedure in --load or --skip,
+once; no language or framework in --skip; code-reviewer: one lens, the
+--language with its --framework plugins, one standard --load, or neither.
 
 Options:
-  --plan-file PATH    the approval gate's session plan file, overwritten; its
-                      folder must exist and be writable
-  --agent AGENT       the agent the plan dispatches; "main thread" for direct
-                      implementation
+  --plan-file PATH    the gate's session plan file, overwritten; folder writable
+  --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
   --mode BUILD|TEST   the dispatch mode
-  --context-file CTX  the effort's context file, in its effort folder, checked
-                      by procedure-context's context-file checks and for
-                      being its effort's latest version; its path and sha256
-                      go into the plan
+  --context-file CTX  the effort's latest context file, in its folder, passing
+                      procedure-context's checks; path + sha256 go in the plan
   --task TEXT         one task, in order; two or more make a group
-  --load NAME         a plugin to load, its list-plugins.sh name, in order
-  --skip NAME         an installed plugin not loaded, in order
-  --reason LINE       why; exactly one, right after each --load and --skip
-  --loaded-reason LINE  why no plugin is loaded: required with no --load,
-                      refused with one
+  --language NAME     the code's language plugin, a list-plugins.sh name
+  --framework NAME    a framework plugin, repeatable, needs --language;
+                      written in plugin-name order
+  --load NAME         a standard or procedure plugin to load, in order
+  --skip NAME         an installed standard or procedure not loaded, in order
+  --reason LINE       why; exactly one right after each --language,
+                      --framework, --load and --skip
+  --load-reason LINE  why nothing loads: required with no --language,
+                      --framework or --load, refused with one
   --replan KIND       a step-10 re-plan: invalid or stop-recommended
-  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills; the
-                      installed plugins are those its list-plugins.sh lists,
-                      invalid ones left out
-  CRUCIBLE_HOME       the space, as the crucible skill's crucible.sh --help
-                      sets
+  --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
+                      installed: the valid plugins its list-plugins.sh lists
+  CRUCIBLE_HOME       the space, as crucible.sh --help sets
 
-stdout on exit 0, three lines in this order:
+stdout on exit 0, in order:
   PLAN_FILE: <the --plan-file as given>
-  PLAN_SHA256: <64 lowercase hex>, the plan's digest, which
-    generate-agent-dispatch.sh --plan-sha256 takes
-  PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item holding the same plan,
-    which render-dispatch-plan.sh --data Plan= takes
-stderr on exit 3: one "${PROG}: <option> <value>: <problem>;
-  expected <x>" line per problem, every problem listed
-list-plugins.sh's stderr: passed through, to relay
+  PLAN_SHA256: <64 lowercase hex>, for generate-agent-dispatch.sh --plan-sha256
+  PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item, for
+    render-dispatch-plan.sh --data Plan=
+stderr on exit 3: one line per problem, all listed:
+  "${PROG}: <option> <value>: <problem>; expected <x>"
+list-plugins.sh's stderr passes through, to relay
 
-After exit 0, --plan-file and the new ${RECORD_KIND} item hold the whole plan; on
-  exit 1 only --plan-file may have changed, stderr saying so; on any other
-  exit nothing changed. The space's other changes are crucible.sh new's.
-  Nothing else is left behind (a SIGKILL aside).
-Reads only the context file, the names in its folder when it is a version
-  file, the plan it wrote, and what list-plugins.sh reads.
+Exit 0: --plan-file and the item hold the plan; 1: only --plan-file may have
+changed; others: nothing changed. Else only crucible.sh new changes the space;
+nothing is left behind (a SIGKILL aside). Reads only the context file, its
+folder's names for a version file, the plan it wrote, and list-plugins.sh's.
 
 Exit codes:
   0  written; keep PLAN_SHA256 and go on
-  1  the write or the digest failed, stderr saying whether the plan is
-     written; show stderr and stop
+  1  the write or digest failed, stderr saying if the plan is written;
+     show stderr and stop
   2  usage error: fix the command
   3  invalid input; fix what each stderr line names, then rerun
      ${CONTEXT_STALE_TOKEN}  leads a problem: a newer context version exists;
-       rerun with the latest as --context-file
+       rerun with it as --context-file
   5  a dependency missing or failing; show stderr and stop
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
 Dependencies (skills in --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  cat, mktemp, mv, rm, tr, wc (every macOS and Linux base system)
-  sha256sum (Linux: coreutils) or shasum (macOS: built in)
-  this skill's scripts/dispatch-plan/list-plugins.sh
-  the ${CONTEXT_PROCEDURE} skill's agent-context-file-checks.sh,
-    agent-context-validator.jq, agent-context-url.jq and context-versions.sh
-  the crucible skill's scripts/crucible.sh and scripts/lib/crucible-space.sh
-  beside this script: dispatch-plan-validator.jq, installed-plugins.jq and
-    ../agent-dispatch/dispatch-names.jq
+  cat, mktemp, mv, rm, tr, wc (base system); sha256sum (Linux: coreutils)
+    or shasum (macOS: built in)
+  this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
+    installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
+  ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh, agent-context-validator.jq,
+    agent-context-url.jq, context-versions.sh
+  ${CRUCIBLE_SKILL}: crucible.sh, lib/crucible-space.sh, lib/prune.jq
 EOF
 }
 
@@ -203,20 +222,20 @@ take_option() {
 			;;
 		--reason)
 			[ -n "${entry_kind}" ] ||
-				usage_error '--reason without a --load or --skip before it; expected each --reason right after a --load or --skip value'
+				usage_error '--reason without a --language, --framework, --load or --skip before it; expected each --reason right after one of their values'
 			;;
-		--plan-file | --agent | --mode | --context-file | --task | --load | --skip | --loaded-reason | --replan | --skills-dir)
+		--plan-file | --agent | --mode | --context-file | --task | --language | --framework | --load | --skip | --load-reason | --replan | --skills-dir)
 			[ -z "${entry_kind}" ] || missing_reason_error
 			;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --mode, --context-file, --task, --load, --skip, --reason, --loaded-reason, --replan, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --mode, --context-file, --task, --language, --framework, --load, --skip, --reason, --load-reason, --replan, --skills-dir or --help"
 			;;
 	esac
 	awaited_option=$1
 }
 
-# Exits 2 naming the pending --load or --skip, which has no --reason.
+# Exits 2 naming the pending --language, --framework, --load or --skip, which has no --reason.
 missing_reason_error() {
 	shown_entry=$(printable "${entry_value}")
 	usage_error "--${entry_kind} ${shown_entry} has no --reason; expected --reason LINE right after it"
@@ -235,10 +254,10 @@ take_value() {
 				*) skills_dir=$2 ;;
 			esac
 			;;
-		--agent | --mode | --loaded-reason | --replan)
+		--agent | --mode | --load-reason | --replan)
 			mark_seen "$1"
 			case $1 in
-				--loaded-reason) option_kind=loaded_reason ;;
+				--load-reason) option_kind=load_reason ;;
 				*) option_kind=${1#--} ;;
 			esac
 			finish_entry "${option_kind}" "$2" ''
@@ -247,11 +266,20 @@ take_value() {
 			task_count=$((task_count + 1))
 			finish_entry task "$2" ''
 			;;
-		--load | --skip)
+		--language | --framework | --load | --skip)
+			[ "$1" != --language ] || mark_language
 			entry_kind=${1#--}
 			entry_value=$2
 			;;
 		*) finish_entry "${entry_kind}" "${entry_value}" "$2" ;;
+	esac
+}
+
+# Records --language in seen_options, or exits 2 on a second one.
+mark_language() {
+	case " ${seen_options} " in
+		*' --language '*) usage_error '--language given twice; expected one --language: a plan loads at most one language, its frameworks as --framework' ;;
+		*) seen_options="${seen_options} --language" ;;
 	esac
 }
 
@@ -295,8 +323,9 @@ finish_parse() {
 }
 
 # Exits 5 unless jq, a sha256 tool, list-plugins.sh, the context checks, the
-# plan checks and the validator's names module are in place; loads the
-# context read checks and sets the plan checks' paths and list_script.
+# plan checks, the validator's names module and crucible's prune module are
+# in place; loads the context read checks and sets the plan checks' paths,
+# prune_lib_dir and list_script.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -312,6 +341,9 @@ load_dependencies() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
+	prune_lib_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
+	[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
+		die 5 "prune module missing; expected ${prune_lib_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
@@ -319,9 +351,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
-	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
+	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill or pass the right --skills-dir"
+		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -425,7 +457,7 @@ check_plan_file() {
 run_plan_jq() {
 	run_mode=$1
 	shift
-	jq -nr --arg prog "${PROG}" --arg mode "${run_mode}" --argjson installed "${installed}" \
+	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --argjson installed "${installed}" \
 		--arg context_path "${context_file}" --arg context_digest "${digest_in_plan}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		"${PLAN_JQ}" --args -- "$@" </dev/null

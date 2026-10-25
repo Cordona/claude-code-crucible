@@ -1,4 +1,4 @@
-# Shell: development
+# Shell script: development
 
 Apply after `SKILL.md`'s rules, before writing any shell.
 

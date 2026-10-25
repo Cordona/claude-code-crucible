@@ -1,13 +1,13 @@
 ---
-name: tech-shell
-description: Shell (Bash and POSIX `sh`) rules for writing scripts — the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. Injected into the agent's first message when loaded. Writes nothing; the gate needs `shellcheck`. Not for shell embedded in another file (a Dockerfile `RUN`, a CI step), or for rules every stack shares (`code-developer` and the standard plugins).
+name: language-shell
+description: Shell (Bash and POSIX `sh`) rules for writing scripts — the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. A language plugin, injected into the agent's first message when loaded. Writes nothing; the gate needs `shellcheck`. Not for shell embedded in another file (a Dockerfile `RUN`, a CI step), or for rules every language shares (`code-developer` and the standard plugins).
 disable-model-invocation: true
 user-invocable: false
 metadata:
-  label: Shell
+  label: Shell script
 ---
 
-# Tech plugin: Shell
+# Language: Shell script
 
 The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its prompt. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
 

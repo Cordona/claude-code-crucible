@@ -8,7 +8,9 @@ set -eu
 
 readonly PROG='report.sh'
 readonly DISPATCH_DIR='flow-agent-initialization/scripts/agent-dispatch'
-# The lens a dispatch that loads no tech-* or standard-* plugin reviews through.
+readonly CRUCIBLE_SKILL='crucible'
+# The lens a dispatch that loads no language, framework or standard reviews
+# through.
 readonly NO_LENS='correctness'
 # The one agent whose report this script checks and stamps.
 readonly REVIEWER_AGENT='code-reviewer'
@@ -38,7 +40,7 @@ def max_locations: 20;
 def max_problems: 30;
 def list_keys: ["findings", "previous_findings", "flags", "not_reviewed", "found"];
 def never_written_keys: ["verdict", "count", "counts", "summary", "round", "date", "generated", "status", "ack", "waiver", "waived"];
-def stamp_keys: ["tech", "plugins", "mode", "dispatch", "started", "finished"];
+def stamp_keys: ["dispatch", "started", "finished", "mode", "plugins"];
 def severities: ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 def flag_severities: ["CRITICAL", "HIGH"];
 def realisms: ["realistic", "edge-case", "hypothetical"];
@@ -341,14 +343,23 @@ def problems:
 $report[0] | count_line, problems[]
 '
 
-# The stamps, on a passing check --dispatch: the lens on every finding, then the
-# dispatch keys and finished at the top level. dispatch-names.jq (-L its folder)
-# holds the stamp shapes; a stamp of another shape stops the write.
+# The stamps, on a passing check --dispatch: the lens first on every finding,
+# and dispatch, started, finished, mode and plugins at the top level, before
+# the report's lists in list order (a key the validator does not know, which a
+# passing report never holds, after them); every key holding nothing is left
+# out. dispatch-names.jq (-L its folder) holds the stamp shapes; a stamp of
+# another shape stops the write.
 # shellcheck disable=SC2016
 readonly STAMP_JQ='
 include "dispatch-names";
+include "prune";
+def key_order: ["dispatch", "started", "finished", "mode", "plugins", "findings", "previous_findings", "flags", "not_reviewed", "found"];
 if ($stamps.dispatch | test(crucible_id_pattern)) and ($stamps.started | test(local_time_pattern)) and ($finished | test(local_time_pattern))
-then (if has("findings") then .findings |= map(. + {plugin: $lens}) else . end) + $stamps + {finished: $finished}
+then (if has("findings") then .findings |= map({plugin: $lens} + .) else . end) + $stamps + {finished: $finished}
+	| . as $report
+	| reduce (key_order[], ($report | keys_unsorted[] | select(IN(key_order[]) | not))) as $key
+		({}; if $report | has($key) then .[$key] = $report[$key] else . end)
+	| prune
 else error("a stamp has the wrong shape: dispatch \($stamps.dispatch | tojson), started \($stamps.started | tojson), finished \($finished | tojson)") end
 '
 
@@ -366,8 +377,11 @@ shape: see this skill's SKILL.md field table; the validator here wins where
 they differ. A stamped report is refused: it is never checked again.
 
 Options (every FILE and PATH absolute):
-  --dispatch FILE     a code-reviewer dispatch file, with at most one tech-* or
-                      standard-* plugin, the lens (none: correctness); supplies
+  --dispatch FILE     a code-reviewer dispatch file holding one lens: a
+                      language with zero or more frameworks and no standard
+                      (the lens is the language plugin's name), one standard
+                      and no language (the standard's name), or neither
+                      (correctness); a procedure is no lens. Supplies
                       --report: leave it out, or give the same text
   --report PATH       the report file
   --diff FILE         the unified git diff the reviewer was given; each
@@ -381,8 +395,12 @@ stdout on exits 0, 3 and 6: one count line, <kind>=<n> per kind
 stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
   most 30, then a count of the rest.
 
-Writes: with --dispatch, the lens on each finding and the six top-level stamps
-into PATH on exit 0 only; any other exit leaves PATH byte for byte as it was.
+Writes: with --dispatch, on exit 0 only, the report into PATH with the lens
+as the first key of each finding (plugin) and the top-level stamps dispatch,
+started, finished, mode and plugins (the dispatch's plugin names by kind:
+language, frameworks, standards, procedures) first, then findings,
+previous_findings, flags, not_reviewed, found; a key holding nothing (null,
+[] or {}) is left out. Any other exit leaves PATH byte for byte as it was.
 Nothing else is left behind (a SIGKILL aside).
 
 Exit codes:
@@ -400,7 +418,8 @@ Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
   cat, cp, date, grep, mktemp, mv, rm, sed (every macOS and Linux base system)
   with --dispatch: the flow-agent-initialization skill in --skills-dir (its
-    dispatch validator and dispatch-names.jq)
+    dispatch validator and dispatch-names.jq), and the crucible skill there
+    (its scripts/lib/prune.jq)
 EOF
 }
 
@@ -529,8 +548,9 @@ check_base_tools() {
 	done
 }
 
-# Sets names_dir to the folder of the dispatch validator and dispatch-names.jq;
-# exits 5 when either is missing.
+# Sets names_dir to the folder of the dispatch validator and dispatch-names.jq,
+# and prune_dir to crucible's scripts/lib, which holds prune.jq; exits 5 when
+# one is missing.
 locate_dispatch_modules() {
 	names_dir="${skills_dir}/${DISPATCH_DIR}"
 	validator="${names_dir}/agent-dispatch-validator.jq"
@@ -538,10 +558,14 @@ locate_dispatch_modules() {
 		install_fault "dispatch validator missing; expected ${validator}; install the flow-agent-initialization skill in ${skills_dir}"
 	[ -f "${names_dir}/dispatch-names.jq" ] && [ -r "${names_dir}/dispatch-names.jq" ] ||
 		install_fault "the shared dispatch names are missing; expected ${names_dir}/dispatch-names.jq; install the flow-agent-initialization skill in ${skills_dir}"
+	prune_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
+	[ -f "${prune_dir}/prune.jq" ] && [ -r "${prune_dir}/prune.jq" ] ||
+		install_fault "${CRUCIBLE_SKILL}'s prune.jq missing; expected ${prune_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill in ${skills_dir}"
 }
 
 # Checks the --dispatch file, takes --report from it and sets lens and stamps
-# (the five stamps it supplies; finished comes at the pass). Exits 2 on a bad
+# (the stamps it supplies, plugins by kind with names only; finished comes at
+# the pass). Exits 2 on a bad
 # file, another agent's dispatch or a conflicting --report, 5 when the
 # validator fails to run.
 read_dispatch() {
@@ -569,21 +593,35 @@ read_dispatch() {
 		usage_error "--report ${report} differs from the dispatch's report ${dispatch_report}; expected --report left out, or the same text"
 	report=${dispatch_report}
 	read_lens
-	stamps=$(jq -c '{tech, plugins: [.plugins[].name], mode, dispatch: .id, started}' "${dispatch_file}" </dev/null) ||
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	stamps=$(jq -c '(.plugins // {}) as $plugins
+		| {dispatch: .id, started, mode,
+		   plugins: {language: $plugins.language.name, frameworks: [$plugins.frameworks[]?.name],
+			standards: [$plugins.standards[]?.name], procedures: [$plugins.procedures[]?.name]}}' "${dispatch_file}" </dev/null) ||
 		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
 }
 
-# Sets lens to the dispatch's one tech-* or standard-* plugin, or to NO_LENS
-# when it loads none; exits 2 when it loads more than one.
+# Sets lens to the dispatch's one lens: the language plugin's name for a
+# language with zero or more frameworks and no standard, the standard's name
+# for one standard and no language, NO_LENS for neither. Exits 2 on any other
+# set, a framework without a language or two standards among them.
 read_lens() {
-	lens_names=$(jq -r '[.plugins[].name | select(startswith("tech-") or startswith("standard-"))]
-		| if length > 1 then "many \(map(tojson) | join(", "))" elif length == 1 then "one \(.[0])" else "none" end' \
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	lens_line=$(jq -r --arg no_lens "${NO_LENS}" '(.plugins // {}) as $plugins
+		| ($plugins.language.name // null) as $language
+		| [$plugins.frameworks[]?.name] as $frameworks
+		| [$plugins.standards[]?.name] as $standards
+		| if $language != null and ($standards | length) == 0 then "lens \($language)"
+		  elif $language == null and ($frameworks | length) == 0 and ($standards | length) == 1 then "lens \($standards[0])"
+		  elif $language == null and ($frameworks | length) == 0 and ($standards | length) == 0 then "lens \($no_lens)"
+		  else "fault " + ([(if $language != null then "language \($language | tojson)" else empty end),
+			(if ($frameworks | length) > 0 then "frameworks \($frameworks | map(tojson) | join(", "))" else empty end),
+			(if ($standards | length) > 0 then "standards \($standards | map(tojson) | join(", "))" else empty end)] | join("; ")) end' \
 		"${dispatch_file}" </dev/null) ||
 		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
-	case ${lens_names} in
-		none) lens=${NO_LENS} ;;
-		one\ *) lens=${lens_names#one } ;;
-		*) dispatch_fault "${dispatch_file} loads more than one lens, ${lens_names#many }; expected one tech-* or standard-* plugin per review dispatch, or none for the correctness seat" ;;
+	case ${lens_line} in
+		lens\ *) lens=${lens_line#lens } ;;
+		*) dispatch_fault "${dispatch_file} loads ${lens_line#fault }; expected one lens per review dispatch: a language with its frameworks and no standard, one standard and no language, or neither for the correctness seat" ;;
 	esac
 }
 
@@ -649,7 +687,7 @@ write_stamps() {
 	stamp_tmp=$(mktemp "${report_dir:-/}/.report-stamps.XXXXXX") ||
 		stamp_fault "mktemp failed in ${report_dir:-/}; expected the report's folder writable"
 	cp -p "${report}" "${stamp_tmp}" || stamp_fault "cp -p ${report} failed; expected the report's permissions copied to ${stamp_tmp}"
-	jq -L "${names_dir}" --argjson stamps "${stamps}" --arg lens "${lens}" --arg finished "${finished}" "${STAMP_JQ}" "${report_copy}" </dev/null >"${stamp_tmp}" ||
+	jq -L "${names_dir}" -L "${prune_dir}" --argjson stamps "${stamps}" --arg lens "${lens}" --arg finished "${finished}" "${STAMP_JQ}" "${report_copy}" </dev/null >"${stamp_tmp}" ||
 		stamp_fault "jq failed writing ${stamp_tmp}; expected the stamped report written; try jq --version"
 	mv -f "${stamp_tmp}" "${report}" || stamp_fault "mv onto ${report} failed; expected the stamped report moved into place"
 	stamp_tmp=''

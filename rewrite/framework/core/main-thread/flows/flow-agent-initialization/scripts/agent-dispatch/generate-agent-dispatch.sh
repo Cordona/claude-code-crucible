@@ -6,8 +6,10 @@
 # The plan is checked again by dispatch-plan-validator.jq; its context file by
 # procedure-context's agent-context-file-checks.sh, agent-context-validator.jq,
 # context-versions.sh and its digest; its plugins are resolved to files by
-# plugin-files.sh; and the dispatch is checked by agent-dispatch-validator.jq
-# before and after it is written. Every problem is named by the option behind
+# plugin-files.sh, and the agent's title is built by human-view's title; and the
+# dispatch is checked by agent-dispatch-validator.jq before and after it is
+# written, after crucible's prune leaves out each key with nothing in it.
+# Every problem is named by the option behind
 # it; no file is left behind on a problem (a signal may leave one, as the page
 # says).
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
@@ -20,7 +22,8 @@ readonly CONTEXT_PROCEDURE='procedure-context'
 readonly REQUIRED_TOOLS='awk cat date git mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
-readonly DIRECT_LABEL='main-thread'
+readonly VIEW_LIB='human-view'
+readonly CRUCIBLE_SKILL='crucible'
 # Stand for the parts only crucible.sh new and the clock know, so the dispatch
 # is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
@@ -37,36 +40,51 @@ readonly PLACEHOLDER_REPORT_KIND='reports/no-report-kind'
 # Lead the problems a caller acts on, so it matches the token exactly, never
 # the sentence after it: a plan no gate record of the effort holds, a context
 # file changed since the plan was shown or no longer its effort's latest
-# version (the Agent hook's KIND word for it), and an earlier dispatch whose
-# baseline was never filled.
+# version (the Agent hook's KIND word for it), an earlier dispatch whose
+# baseline was never filled, and a plugin the plan names that is no longer
+# installed or no longer valid (the Agent hook's KIND word for it).
 readonly NO_GATE_RECORD_TOKEN='NO-GATE-RECORD'
 readonly CONTEXT_CHANGED_TOKEN='CONTEXT-CHANGED'
 readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
 readonly BASELINE_EMPTY_TOKEN='BASELINE-EMPTY'
+readonly PLUGIN_TOKEN='PLUGIN'
 readonly TASK_STAND_IN='(no task chosen)'
 NL='
 '
 readonly NL
+TAB=$(printf '\t')
+readonly TAB
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
 
 # Builds the dispatch JSON (mode "dispatch") from the named values and the
-# starting points as positional arguments, or names each validator problem by
+# entry points as positional arguments, or names each validator problem by
 # its option (mode "report": one stderr line each).
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly DISPATCH_JQ='
-def plugins: $plugin_paths | split("\n") | map(select(. != ""))
+include "prune";
+# The plugin files, in load order, as one {name, paths} entry per plugin
+# folder, the folder being the plugin name.
+def plugin_entries: $plugin_paths | split("\n") | map(select(. != ""))
 	| reduce .[] as $path ([];
 		($path | ltrimstr($skills_dir + "/") | split("/")[0]) as $name
 		| if (.[-1].name // null) == $name then .[-1].paths += [$path] else . + [{name: $name, paths: [$path]}] end);
+# The entries by kind, the kind read from the name prefix list-plugins.sh
+# installs each kind under.
+def plugins: plugin_entries as $entries
+	| def of_kind($prefix): [$entries[] | select(.name | startswith($prefix))];
+	{language: (of_kind("language-") | first), frameworks: of_kind("framework-"),
+	 standards: of_kind("standard-"), procedures: of_kind("procedure-")};
 def dispatch: {
-	id: $id, started: $started, agent: $agent, mode: $mode, tech: $tech,
+	id: $id, started: $started, agent: $agent, mode: $mode, task: $task,
+	repo_root: $repo_root, entry_points: $ARGS.positional,
 	plugins: plugins,
-	plan: {sha256: $plan_sha256},
 	context: {path: $context_path, sha256: $context_sha256},
-	task: $task, repo_root: $repo_root, starting_points: $ARGS.positional, report: $report, baseline: $baseline};
+	plan: {sha256: $plan_sha256},
+	report: $report, baseline: $baseline}
+	| prune;
 
 # A long value keeps its start and end, where a path differs most.
 def max_shown_chars: 80;
@@ -75,17 +93,17 @@ def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \(
 def field_name: map(if type == "number" then "[\(.)]" else "." + . end) | join("") | ltrimstr(".");
 # Fields whose value is a stand-in (the plan not found or not valid, or no
 # task chosen) are not reported again: their problem is reported already.
-def stood_in: (.at[0] | IN("agent", "mode", "tech", "plugins", "plan", "context", "report", "baseline")) and $plan_known == "false"
+def stood_in: (.at[0] | IN("agent", "mode", "plugins", "plan", "context", "report", "baseline")) and $plan_known == "false"
 	or .at[0] == "task" and $task_known == "false";
 def named_line:
 	.at as $at | .problem as $problem
 	| if stood_in then empty
-	  elif $at[0] == "starting_points" and ($at | length) > 1 then line("--starting-point"; $ARGS.positional[$at[1]]; $problem)
+	  elif $at[0] == "entry_points" and ($at | length) > 1 then line("--entry-point"; $ARGS.positional[$at[1]]; $problem)
 	  elif $at[0] == "repo_root" then line("--repo-root"; $repo_root; $problem)
 	  elif $at[0] == "task" then line("--task"; $task_number; "the task \($problem)")
 	  elif $at[0] == "report" then line("CRUCIBLE_HOME"; $space_root; "the report file \($problem)")
 	  elif $at[0] == "baseline" then line("CRUCIBLE_HOME"; $space_root; "the baseline file \($problem)")
-	  elif ($at[0] | IN("agent", "mode", "tech", "plugins", "plan", "context")) then
+	  elif ($at[0] | IN("agent", "mode", "plugins", "plan", "context")) then
 		line("--plan-sha256"; $plan_sha256; "the plan'"'"'s \($at | field_name) \($problem)")
 	  else "\($prog): dispatch \($at | field_name): \($problem)" end;
 def report: $validator_problem_lines | split("\n")[] | select(. != "") | fromjson | named_line;
@@ -93,10 +111,56 @@ def report: $validator_problem_lines | split("\n")[] | select(. != "") | fromjso
 if $mode_of_run == "report" then report else dispatch end
 '
 
+# Prints the TITLE line from the plan record file and the installed plugins: a
+# code-reviewer standard seat (a standard and no language) is "<standard label>
+# <role>"; any other seat is human-view's title of the language label and the
+# framework labels in plugin-name order. Labels' control characters print as
+# "?", as on the LABELS line.
+# The program is single-quoted on purpose: its $ signs are jq's.
+# shellcheck disable=SC2016
+readonly TITLE_JQ='
+include "title";
+def plugin_label: $installed[.plugin].label | gsub("[[:cntrl:]]"; "?");
+(.plugins.load // {}) as $load
+| ($load.standards // []) as $standards
+| if $role == "reviewer" and $load.language == null and $standards != [] then "\($standards[0] | plugin_label) \($role)"
+  else {language: ($load.language // null | if . == null then null else plugin_label end),
+		frameworks: [$load.frameworks // [] | sort_by(.plugin)[] | plugin_label]}
+	| title($role)
+  end
+| "TITLE: \(.)"
+'
+
+# Pairs the plan validator's text lines ($lines) with its JSON problems
+# ($objects) from the same plan, one to one in order, over the plan on stdin:
+# prints "plugin<TAB><name><TAB><field>" for a plugin the plan names that the
+# install no longer holds, and "line<TAB><text line>" for any other problem.
+# Only a name in the install's name shape is taken as a plugin, so a name never
+# reaches a path unchecked; counts that differ print every text line as is.
+# The program is single-quoted on purpose: its $ signs are jq's.
+# shellcheck disable=SC2016
+readonly PLAN_PROBLEMS_JQ='
+def plugin_name_shape: "^(language|framework|standard|procedure)-[A-Za-z0-9][A-Za-z0-9._-]*$";
+def field_name: map(if type == "number" then "[\(.)]" else "." + . end) | join("") | ltrimstr(".");
+def as_line: "line\t\(.)";
+. as $plan
+| ($lines | split("\n") | map(select(. != ""))) as $texts
+| ($objects | split("\n") | map(select(. != "") | fromjson)) as $problems
+| if ($texts | length) != ($problems | length) then $texts[] | as_line
+  else range($texts | length) as $i
+	| $problems[$i] as $problem
+	| (if $problem.at[0] == "plugins" and $problem.at[-1] == "plugin" then (try ($plan | getpath($problem.at)) catch null) else null end) as $name
+	| if ($name | type) == "string" and $installed[$name] == null and ($name | test(plugin_name_shape))
+		and ($problem.problem | startswith("\($name | tojson) is not installed;"))
+	  then "plugin\t\($name)\t\($problem.at | field_name)"
+	  else $texts[$i] | as_line end
+  end
+'
+
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --repo-root PATH
-           [--starting-point REL]... [--skills-dir DIR] [--baseline-from DISPATCH]
+           [--entry-point REL]... [--skills-dir DIR] [--baseline-from DISPATCH]
        sh ${PROG} --help | -h
 
 Writes the dispatch file for task N of a plan the human approved at its gate,
@@ -108,32 +172,40 @@ Options:
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
   --repo-root PATH    the repository's git work-tree root, absolute
-  --starting-point REL  a repo-relative path the task starts from; repeatable,
-                      kept in order; it need not exist
+  --entry-point REL   a repo-relative path the task starts from; repeatable,
+                      kept in order (entry_points); it need not exist
   --skills-dir DIR    only \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills, the
                       default, is taken; any other DIR exits 3
-  --baseline-from DISPATCH  the absolute path of the earlier dispatch file in
-                      FOLDER this one replaces (that it is of this task is
-                      the caller's to hold)
+  --baseline-from DISPATCH  the earlier dispatch file in FOLDER this one
+                      replaces, absolute; the caller holds it is this task's
 
-stdout on exit 0, two lines:
+stdout on exit 0, in order:
   DISPATCH: <absolute path>  the dispatch file; the Agent call's whole prompt
-  LABELS: <labels>  the loaded plugins' labels, relayed as printed
-stderr on exit 3: one line per problem; a problem a caller routes on reads,
-<value> a JSON string:
-  "${PROG}: <option> <value>: <problem>"
+  LABELS: <labels>  the loaded plugins' labels, relayed as printed:
+    "LABELS: Language: <label> · Frameworks: <labels> · Standards: <labels>
+    · Procedures: <labels>", an empty kind left out ("LABELS:" alone if all)
+  TITLE: <title>  the agent's title, relayed as printed: "<frameworks>
+    developer with <language>" ("Next.js and React developer with
+    TypeScript"), "<language> developer", "Generic developer" with no
+    language; a code-reviewer says "reviewer", a standard seat "<standard
+    label> reviewer"; frameworks in plugin-name order; the installed labels
+stderr on exit 3: one line per problem; one a caller routes on reads
+  "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
-Leaves only three files, all in FOLDER (a SIGKILL aside): the dispatch file
-(shape: see agent-dispatch-validator.jq), whole or not at all; the report file,
-empty; the baseline file, empty (the Agent hook fills it), or with
---baseline-from the earlier baseline's bytes. Every input is checked before any
-file is made; on a non-zero exit the files this run made are removed and named
-on stderr (on a signal, one crucible.sh new was still making may remain,
-empty). No other effort is read; the --repo-root tree and its git index are
-never changed.
+Leaves only three files in FOLDER (a SIGKILL aside): the dispatch file, whole
+or not at all (shape: agent-dispatch-validator.jq; keys id, started, agent,
+mode, task, repo_root, entry_points, plugins {language, frameworks, standards,
+procedures}, context, plan, report, baseline, empty keys left out; plugins in
+load order: language, frameworks by name, standards, procedures, each with
+SKILL.md, then references/development.md and references/*-template.md, or
+references/review.md alone for code-reviewer); the report file, empty; the
+baseline file, empty (the Agent hook fills it) or the --baseline-from one's
+bytes. On a non-zero exit this run's files are removed and named on stderr
+(a signal may leave one crucible.sh new was making, empty). No other effort
+is read; the --repo-root tree and git index never change.
 
 Exit codes:
-  0  the dispatch file written; keep both stdout lines
+  0  the dispatch file written; keep the three stdout lines
   1  making a file failed after the inputs passed, none left; show stderr and
      stop
   2  usage error; show stderr and stop
@@ -143,6 +215,7 @@ Exit codes:
        ${CONTEXT_CHANGED_TOKEN}  the shown context file has changed; show the plan again
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
        ${BASELINE_EMPTY_TOKEN}  the --baseline-from baseline is empty; rerun without it
+       ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
   5  a dependency missing or failing; show stderr and stop
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
@@ -150,9 +223,9 @@ Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
   git (macOS: xcode-select --install; Linux: the distro's git)
   sha256sum (Linux: coreutils) or shasum (macOS: built in)
-  awk, cat, date, mktemp, mv, rm, tr, wc (every macOS and Linux base system)
-  the crucible and ${CONTEXT_PROCEDURE} skills in
-    \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
+  awk, cat, date, mktemp, mv, rm, tr, wc (macOS and Linux base system)
+  the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE}
+    and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
 }
@@ -194,15 +267,15 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--effort | --plan-sha256 | --task | --repo-root | --starting-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
+		--effort | --plan-sha256 | --task | --repo-root | --entry-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --repo-root, --starting-point, --skills-dir, --baseline-from or --help"
+			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --repo-root, --entry-point, --skills-dir, --baseline-from or --help"
 			;;
 	esac
 }
 
-# Takes value $2 of option $1 but --starting-point, which the caller collects.
+# Takes value $2 of option $1 but --entry-point, which the caller collects.
 take_value() {
 	case " ${seen_options} " in
 		*" $1 "*) usage_error "$1 given twice; expected at most one $1" ;;
@@ -250,15 +323,23 @@ trim_trailing_slashes() {
 	done
 }
 
-# Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh and every
-# shared check and helper are in place; sources the two shell helpers and
-# reads DIRECT_AGENT and BASELINE_KIND from the shared names.
+# Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh, crucible's
+# prune module, human-view's title module and every shared check and helper
+# are in place; sources the two shell helpers and reads BASELINE_KIND from the
+# shared names.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
 	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
 	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
 		die 5 "context check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
+	crucible_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}"
+	prune_lib_dir="${crucible_skill_dir}/scripts/lib"
+	[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
+		die 5 "prune module missing; expected ${prune_lib_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill"
+	view_lib_dir="${skills_dir}/${VIEW_LIB}"
+	[ -f "${view_lib_dir}/title.jq" ] && [ -r "${view_lib_dir}/title.jq" ] ||
+		die 5 "title module missing; expected ${view_lib_dir}/title.jq; install the ${VIEW_LIB} skill"
 	dispatch_dir=$(script_dir)
 	plan_validator="${dispatch_dir}/../dispatch-plan/dispatch-plan-validator.jq"
 	installed_program="${dispatch_dir}/../dispatch-plan/installed-plugins.jq"
@@ -271,11 +352,6 @@ load_dependencies() {
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	DIRECT_AGENT=$(read_shared_name direct_agent) &&
-		[ -n "${DIRECT_AGENT}" ] ||
-		die 5 "jq could not read direct_agent from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
-	readonly DIRECT_AGENT
-	# shellcheck disable=SC2310 # its status is jq's; a failure exits
 	BASELINE_KIND=$(read_shared_name baseline_kind) &&
 		[ -n "${BASELINE_KIND}" ] ||
 		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
@@ -286,9 +362,9 @@ load_dependencies() {
 	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"
 	# shellcheck source=plugin-files.sh
 	. "${plugin_lib}"
-	crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/crucible.sh"
+	crucible_script="${crucible_skill_dir}/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		die 5 "crucible.sh missing; expected ${crucible_script}; install the crucible skill"
+		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
@@ -425,19 +501,18 @@ read_installed() {
 }
 
 # Checks the record's plan against the validator's current rules, its "v"
-# never read; when it fits, sets agent, mode, task_count, loaded_names,
+# never read; when it fits, sets agent, mode, task_count, loaded_names (the
+# plugin names under plugins.load, one per line),
 # context_path and plan_context_sha256, and plan_ok=true.
 check_plan() {
 	plan_ok=false
-	plan_report=$(jq -c 'del(.v)' "${record_path}" </dev/null |
+	plan_record=$(jq -c 'del(.v)' "${record_path}" </dev/null) ||
+		die 5 'jq failed reading the plan; expected jq 1.6+; try jq --version, then rerun'
+	plan_report=$(printf '%s\n' "${plan_record}" |
 		jq -rs --argjson installed "${installed}" -f "${plan_validator}") ||
 		die 5 'jq failed on the plan validator; expected jq 1.6+; try jq --version, then rerun'
 	if [ -n "${plan_report}" ]; then
-		while IFS= read -r plan_line; do
-			add_problem --plan-sha256 "${plan_sha256}" "the plan's ${plan_line}"
-		done <<EOF
-${plan_report}
-EOF
+		add_plan_problems
 		return 0
 	fi
 	plan_fields=$(jq -r '.agent, .mode, (.tasks | length), .context.path, .context.sha256' "${record_path}" </dev/null) ||
@@ -451,9 +526,43 @@ EOF
 	} <<EOF
 ${plan_fields}
 EOF
-	loaded_names=$(jq -r '.loaded[].plugin' "${record_path}" </dev/null) ||
+	loaded_names=$(jq -r '.plugins.load // {} | (.language // empty), (.frameworks, .standards, .procedures | arrays[]) | .plugin' "${record_path}" </dev/null) ||
 		die 5 'jq failed reading the plan; expected jq 1.6+; try jq --version, then rerun'
 	plan_ok=true
+}
+
+# Adds a problem per plan validator line in plan_report: a plugin the plan
+# names that is no longer installed or valid leads with PLUGIN_TOKEN, any
+# other keeps the validator's line.
+add_plan_problems() {
+	plan_objects=$(printf '%s\n' "${plan_record}" |
+		jq -cs --argjson installed "${installed}" --arg format json -f "${plan_validator}") ||
+		die 5 'jq failed on the plan validator; expected jq 1.6+; try jq --version, then rerun'
+	plan_rows=$(printf '%s\n' "${plan_record}" |
+		jq -r --argjson installed "${installed}" --arg lines "${plan_report}" --arg objects "${plan_objects}" "${PLAN_PROBLEMS_JQ}") ||
+		die 5 'jq failed sorting the plan problems; expected jq 1.6+; try jq --version, then rerun'
+	while IFS= read -r plan_row; do
+		case ${plan_row} in
+			plugin"${TAB}"*) add_plugin_problem "${plan_row#plugin"${TAB}"}" ;;
+			*) add_problem --plan-sha256 "${plan_sha256}" "the plan's ${plan_row#line"${TAB}"}" ;;
+		esac
+	done <<EOF
+${plan_rows}
+EOF
+}
+
+# Adds the PLUGIN problem for "<name><TAB><field>" $1: invalid when a folder of
+# that name is still in the skills folder, which list-plugins.sh no longer
+# lists as valid, else uninstalled.
+add_plugin_problem() {
+	missing_plugin=${1%%"${TAB}"*}
+	plugin_field=${1#*"${TAB}"}
+	if [ -e "${skills_dir}/${missing_plugin}" ]; then
+		plugin_state="invalid: the plan's ${plugin_field} is in the skills folder but not a valid plugin; expected it fixed (list-plugins.sh --max-lines 0 names why), or the plan re-planned without it"
+	else
+		plugin_state="uninstalled: the plan's ${plugin_field} is no longer in the skills folder; expected it reinstalled, or the plan re-planned without it"
+	fi
+	add_problem --plan-sha256 "${plan_sha256}" "${PLUGIN_TOKEN} ${missing_plugin} ${plugin_state}"
 }
 
 # Sets task to the task_number-th task of the plan and task_known=true, or
@@ -510,13 +619,13 @@ add_context_problem() {
 	add_problem --plan-sha256 "${plan_sha256}" "${2-}the plan's context file ${context_path}: $1"
 }
 
-# Sets plugin_paths, tech and labels_line for the plan's loaded plugins,
-# resolved by plugin-files.sh for the agent's role; adds a problem when they
+# Sets plugin_paths and labels_line for the plan's loaded plugins,
+# resolved by plugin-files.sh for the agent's role, and title_line; adds a problem when they
 # can't be resolved. An agent with no role is left to the validator.
 resolve_plugins() {
-	plugin_paths='' tech=none labels_line=''
+	plugin_paths='' labels_line='' title_line=''
 	case ${agent} in
-		code-developer | "${DIRECT_AGENT}") role=developer ;;
+		code-developer) role=developer ;;
 		code-reviewer) role=reviewer ;;
 		*) return 0 ;;
 	esac
@@ -524,10 +633,6 @@ resolve_plugins() {
 	while IFS= read -r loaded_name; do
 		[ -n "${loaded_name}" ] || continue
 		set -- "$@" "${loaded_name}"
-		case ${loaded_name} in
-			tech-*) [ "${tech}" != none ] || tech=${loaded_name} ;;
-			*) ;;
-		esac
 	done <<EOF
 ${loaded_names}
 EOF
@@ -544,6 +649,8 @@ EOF
 	# shellcheck disable=SC2310 # its status is awk's; a failure exits
 	labels_line=$(select_plugin_lines labels "${PROG}" "${listing}" "$@") ||
 		die 5 'awk failed building the LABELS line; expected a POSIX awk; check the awk on PATH'
+	title_line=$(jq -r -L "${view_lib_dir}" --argjson installed "${installed}" --arg role "${role}" "${TITLE_JQ}" "${record_path}") ||
+		die 5 'jq failed building the TITLE line; expected jq 1.6+ and human-view'\''s title.jq; try jq --version, then rerun'
 }
 
 # Sets space_root by the space rules and space_ok=true, or adds the
@@ -560,20 +667,16 @@ resolve_space_root() {
 	add_problem CRUCIBLE_HOME "${space_root}" "${crucible_root_problem}"
 }
 
-# Sets agent_label (the agent as it goes into a Crucible label: main-thread
-# for "main thread"), report_kind (the agent's reports folder, empty for an
-# agent the shared names give none), and placeholder_report and
-# placeholder_baseline, the stand-ins for the two paths crucible.sh new makes
-# in the effort.
+# Sets report_kind (the agent's reports folder, empty for an agent the shared
+# names give none), and placeholder_report and placeholder_baseline, the
+# stand-ins for the two paths crucible.sh new makes in the effort.
 plan_space_paths() {
-	agent_label=${agent}
-	[ "${agent}" != "${DIRECT_AGENT}" ] || agent_label=${DIRECT_LABEL}
 	# shellcheck disable=SC2016,SC2310 # $agent is jq's; a failure exits
 	report_kind=$(read_shared_name '$agent | report_kind' "${agent}") ||
 		die 5 "jq could not read report_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
 	planned_effort=${effort_dir:-${space_root}/efforts/${PLACEHOLDER_EFFORT}}
-	placeholder_report="${planned_effort}/${report_kind:-${PLACEHOLDER_REPORT_KIND}}/${PLACEHOLDER_ID}-${agent_label}-report.json"
-	placeholder_baseline="${planned_effort}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent_label}-baseline.json"
+	placeholder_report="${planned_effort}/${report_kind:-${PLACEHOLDER_REPORT_KIND}}/${PLACEHOLDER_ID}-${agent}-report.json"
+	placeholder_baseline="${planned_effort}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent}-baseline.json"
 }
 
 # Adds a problem unless the --baseline-from dispatch is a valid dispatch of
@@ -658,17 +761,17 @@ read_earlier_baseline() {
 	# shellcheck disable=SC2310 # its status says whether the path is the effort's; the problem is added inside
 	in_effort_folder "${earlier_baseline}" "${BASELINE_KIND}" "its baseline file ${earlier_baseline} is" 'the baseline file generate-agent-dispatch.sh made' || return 0
 	if [ -L "${earlier_baseline}" ] || [ ! -f "${earlier_baseline}" ] || [ ! -r "${earlier_baseline}" ]; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} is missing, unreadable, a symlink or not a regular file; expected the regular file the Agent hook or --direct filled"
+		add_baseline_from_problem "its baseline file ${earlier_baseline} is missing, unreadable, a symlink or not a regular file; expected the regular file the Agent hook filled"
 		return 0
 	fi
 	earlier_baseline_copy=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
 		die 5 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try checking its permissions and free space, then rerun"
 	if ! cat -- "${earlier_baseline}" >"${earlier_baseline_copy}"; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} cannot be read; expected the regular file the Agent hook or --direct filled"
+		add_baseline_from_problem "its baseline file ${earlier_baseline} cannot be read; expected the regular file the Agent hook filled"
 		return 0
 	fi
 	if [ ! -s "${earlier_baseline_copy}" ]; then
-		add_baseline_from_problem "${BASELINE_EMPTY_TOKEN} its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook or --direct; expected its filled baseline"
+		add_baseline_from_problem "${BASELINE_EMPTY_TOKEN} its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook; expected its filled baseline"
 		return 0
 	fi
 	if ! jq empty "${earlier_baseline_copy}" </dev/null >/dev/null 2>&1; then
@@ -681,16 +784,16 @@ read_earlier_baseline() {
 		die 5 "jq failed on the baseline shape in ${names_module}; expected jq 1.6+; try jq --version, then rerun"
 	[ -n "${earlier_shape}" ] || return 0
 	earlier_shape=$(joined_lines "${earlier_shape}")
-	add_baseline_from_problem "its baseline file ${earlier_baseline} holds no baseline of ${repo_root} (${earlier_shape}); expected the baseline the Agent hook or --direct wrote"
+	add_baseline_from_problem "its baseline file ${earlier_baseline} holds no baseline of ${repo_root} (${earlier_shape}); expected the baseline the Agent hook wrote"
 }
 
 # Runs DISPATCH_JQ in mode $1 with id $2, started $3, report $4 and baseline
-# $5, over the starting points after them.
+# $5, over the entry points after them.
 run_dispatch_jq() {
 	run_mode=$1 run_id=$2 run_started=$3 run_report=$4 run_baseline=$5
 	shift 5
-	jq -n --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
-		--arg agent "${agent}" --arg mode "${mode}" --arg tech "${tech}" \
+	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
+		--arg agent "${agent}" --arg mode "${mode}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" \
 		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
@@ -749,7 +852,7 @@ EOF
 # Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies
 # directly in that kind folder of the effort; sets created_path.
 make_space_file() {
-	create_item "$1" "${agent_label}-$2"
+	create_item "$1" "${agent}-$2"
 	# shellcheck disable=SC2310 # its status is the test result; a failure fails the run
 	crucible_check_effort_item "${created_path}" "$1" && [ "${crucible_effort}" = "${effort_dir}" ] ||
 		fail_run "the $2 file ${created_path} is not in ${effort_dir}/$1/; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun"
@@ -769,7 +872,7 @@ copy_earlier_baseline() {
 
 # Makes, writes and checks the dispatch file; sets dispatch_path.
 write_dispatch() {
-	create_item "${DISPATCH_KIND}" "${agent_label}-dispatch"
+	create_item "${DISPATCH_KIND}" "${agent}-dispatch"
 	dispatch_path=${created_path}
 	dispatch_name=${dispatch_path##*/}
 	# shellcheck disable=SC2310 # a pure test; a failure fails the run
@@ -812,7 +915,7 @@ trap 'exit 143' TERM
 	exit 2
 }
 given_effort='' plan_sha256='' task_number='' repo_root='' skills_dir='' given_skills_dir='' baseline_from='' seen_options='' awaited_option=''
-# Each --starting-point is appended to the positional parameters; "for" walks
+# Each --entry-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
 for argument do
@@ -820,7 +923,7 @@ for argument do
 		take_option "${argument}"
 		continue
 	fi
-	if [ "${awaited_option}" = --starting-point ]; then
+	if [ "${awaited_option}" = --entry-point ]; then
 		set -- "$@" "${argument}"
 	else
 		take_value "${awaited_option}" "${argument}"
@@ -847,7 +950,7 @@ check_task_number
 check_repo_root
 # Stand-ins for what the plan gives, so the dispatch check still reports the
 # options' own problems when the plan is not found or not valid.
-agent=code-developer mode=BUILD tech=none plugin_paths='' labels_line='' context_path=/ plan_context_sha256=''
+agent=code-developer mode=BUILD plugin_paths='' labels_line='' title_line='' context_path=/ plan_context_sha256=''
 task=${TASK_STAND_IN} task_known=false
 record_path=''
 check_effort_option
@@ -882,4 +985,4 @@ make_space_file "${BASELINE_KIND}" baseline
 baseline_path=${created_path}
 [ -z "${baseline_from}" ] || copy_earlier_baseline
 write_dispatch "$@"
-printf 'DISPATCH: %s\n%s\n' "${dispatch_path}" "${labels_line}"
+printf 'DISPATCH: %s\n%s\n%s\n' "${dispatch_path}" "${labels_line}" "${title_line}"

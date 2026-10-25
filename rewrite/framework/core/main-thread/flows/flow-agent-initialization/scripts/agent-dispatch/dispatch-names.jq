@@ -6,16 +6,14 @@
 # A shell script reads a value with
 #   jq -nr -L <this folder> --arg agent <name> 'include "dispatch-names"; $agent | report_kind'
 
-# Direct implementation: the main thread writes the code itself.
-def direct_agent: "main thread";
 # Each agent a dispatch file is written for, with the Crucible kind of its
 # report: the one list of dispatched agents. A new agent goes here, with its kind.
-def report_kinds: {"code-developer": "reports/development", "code-reviewer": "reports/review", (direct_agent): "reports/development"};
+def report_kinds: {"code-developer": "reports/development", "code-reviewer": "reports/review"};
 # The agents a dispatch file is written for, in report_kinds' order.
 def dispatched_agents: report_kinds | keys_unsorted;
 # The agents prepare-agent-prompt.sh acts on as a PreToolUse hook: every
-# dispatched agent but direct implementation.
-def listed_agents: dispatched_agents - [direct_agent];
+# dispatched agent.
+def listed_agents: dispatched_agents;
 # The report kind of agent ., "" for an agent no dispatch file is written for.
 def report_kind: report_kinds[.] // "";
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
@@ -26,8 +24,8 @@ def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
 # A local time with its offset, YYYY-MM-DDTHH:MM:SS+HH:MM.
 def local_time_pattern: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\z";
 
-# A dispatch's baseline file: the repository's git status at the Agent call (or
-# at --direct), written once by prepare-agent-prompt.sh into the empty file
+# A dispatch's baseline file: the repository's git status at the Agent call,
+# written once by prepare-agent-prompt.sh into the empty file
 # generate-agent-dispatch.sh had crucible.sh make; with --baseline-from,
 # generate-agent-dispatch.sh fills it instead, byte for byte from an earlier
 # dispatch's. One JSON object:

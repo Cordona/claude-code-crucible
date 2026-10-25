@@ -1,6 +1,6 @@
 ---
 name: standard-observability
-description: The observability rubric for production code in any language — pillars by codebase shape, log privacy and safety, security and audit events, log levels, structure, errors and cost, metrics and traces. Injected into the agent's first message when loaded. Writes nothing. Not for data protection beyond logs (standard-security), store correctness (standard-persistence), scaling cost (standard-performance), test code (standard-testing) or the logging library's API (its tech plugin).
+description: The observability rubric for production code in any language — pillars by codebase shape, log privacy and safety, security and audit events, log levels, structure, errors and cost, metrics and traces. Injected into the agent's first message when loaded. Writes nothing. Not for data protection beyond logs (standard-security), store correctness (standard-persistence), scaling cost (standard-performance), test code (standard-testing) or the logging library's API (its language or framework plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Observability
 
-What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 It is grounded in OpenTelemetry, W3C Trace Context, Google SRE (RED, USE and the Four Golden Signals), OWASP Top 10:2025, GDPR and 12-factor. A library named here (SLF4J, structlog, slog or zap, pino, OpenTelemetry) is an example only: map it to the stack in front of you.
 

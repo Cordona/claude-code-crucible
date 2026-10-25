@@ -1,6 +1,6 @@
 ---
 name: standard-self-documenting-code
-description: The rubric for comments, docstrings and names as documentation in any language, tests included, test names aside — a comment earns its place by saying why, names that carry the meaning, the four comment kinds, docstrings on a public surface, and three proportionality bars. Injected into the agent's first message when loaded. Writes nothing. Not for code structure (standard-clean-code), test-only rules (standard-testing), or doc-comment syntax or a stack's idioms (its tech plugin).
+description: The rubric for comments, docstrings and names as documentation in any language, tests included, test names aside — a comment earns its place by saying why, names that carry the meaning, the four comment kinds, docstrings on a public surface, and three proportionality bars. Injected into the agent's first message when loaded. Writes nothing. Not for code structure (standard-clean-code), test-only rules (standard-testing), or doc-comment syntax or a language's idioms (its language plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Self-Documenting Code
 
-What a comment, a docstring and a name are for, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What a comment, a docstring and a name are for, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 ## Scope
 

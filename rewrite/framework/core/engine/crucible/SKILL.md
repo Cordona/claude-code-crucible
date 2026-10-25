@@ -10,12 +10,12 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 
 ## Rules
 
-- **JSON, but prompts:** every item is one JSON object in its writer's shape, except a prompt, the Markdown message the main thread reads on the direct path; no other Markdown is stored or rendered from an item, so the JSON stays the one source.
+- **JSON only:** every item is one JSON object in its writer's shape; no Markdown is stored or rendered from an item, so the JSON stays the one source.
 - **An item's full view is its JSON's whole absolute path:** never a rendered copy, and opened only on the human's ask (The script).
 - **`"v": 1` is in gate records only:** a report's or context file's shape is its validator's, which refuses any other key.
-- **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `procedure-context`'s for the context, `flow-agent-initialization`'s for the plan records, the dispatch, baseline, report and prompt files and the hook's denial files, `procedure-approval-gate`'s question hook for gate records, `procedure-grill`'s `grill.sh` for grill files (the `grills` kind). A gate before any effort, such as the effort offer, keeps its record in the session's gate folder, never in the space. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` and write nothing in the space but that `REPORT` file.
+- **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `procedure-context`'s for the context, `flow-agent-initialization`'s for the plan records, the dispatch, baseline and report files and the hook's denial files, `procedure-approval-gate`'s question hook for gate records, `procedure-grill`'s `grill.sh` for grill files (the `grills` kind). A gate before any effort, such as the effort offer, keeps its record in the session's gate folder, never in the space. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` and write nothing in the space but that `REPORT` file.
 - **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. Three exceptions: a report fixed on a rejection, before it passes its check; the stamps `report.sh check --dispatch` writes into a report when it passes; and a grill file, which `grill.sh` changes as each answer lands until the grill ends, and never after. A changed context is a new version, as `procedure-context` sets.
-- **Cache items expire:** gate records, prompts and denials expire as `crucible.sh --help` sets, and `crucible.sh new` removes expired ones; never hand one on as a lasting record.
+- **Cache items expire:** gate records and denials expire as `crucible.sh --help` sets, and `crucible.sh new` removes expired ones; never hand one on as a lasting record.
 - **Throwaway files stay in the session scratchpad:** labels files, temp files.
 - **Never write a secret into an item;** a found secret is reported masked, by location.
 - **Nothing outside the space is written or removed.**

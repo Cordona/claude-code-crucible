@@ -1,6 +1,6 @@
 ---
 name: standard-persistence
-description: The correctness rubric for code in any language, tests included, that touches a durable store or its schema — store guarantees, integrity, atomicity, concurrency, queries, migrations, durability, connections, value types. Injected into the agent's first message when loaded. Writes nothing. Not for injection or erasure policy (standard-security), scaling cost (standard-performance), telemetry (standard-observability), test-only rules (standard-testing) or ORM mechanics (its tech plugin).
+description: The correctness rubric for code in any language, tests included, that touches a durable store or its schema — store guarantees, integrity, atomicity, concurrency, queries, migrations, durability, connections, value types. Injected into the agent's first message when loaded. Writes nothing. Not for injection or erasure policy (standard-security), scaling cost (standard-performance), telemetry (standard-observability), test-only rules (standard-testing) or ORM mechanics (its language or framework plugin).
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Persistence
 
-What a correct data layer holds, for any durable store. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt (or by Read, implementing directly), with their role's reference file right after it.
+What a correct data layer holds, for any durable store. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
 
 It assumes fluent SQL and NoSQL, so it holds only the non-default priorities and the easy-to-miss correctness traps, never a store tutorial.
 

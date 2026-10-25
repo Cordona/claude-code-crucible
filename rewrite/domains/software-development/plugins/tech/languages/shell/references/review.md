@@ -1,8 +1,8 @@
-# Shell: review
+# Shell script: review
 
 Apply after `SKILL.md`'s rules when judging a shell script: judge the change by every rule there, then apply these. This file holds how to judge a finding and how to grade it; it sets no category vocabulary.
 
-- **This lens owns correctness for shell:** does the script do what it is meant to, on every path, exit code and boundary; other lenses hand their correctness concerns to it.
+- **The tech lens owns correctness for shell:** this language plugin, with any framework plugins loaded beside it, judges whether the script does what it is meant to, on every path, exit code and boundary; other lenses hand their correctness concerns to it.
 - **Judge every feature against the shell the shebang names:** a bashism in a script that claims POSIX `sh` is a finding.
 - **Judge a sourced library by the caller's inherited `set` state,** not by a strict-mode line of its own (`SKILL.md` Strict mode and errors).
 - **Cite the shellcheck code** (`SC2086`) for every lint finding; a `# shellcheck disable` with no stated reason is a finding.

@@ -41,7 +41,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 ## Always
 
 - **Hand over the folder's absolute path, never the ID alone:** scripts take the effort from that path, or from a path inside it, never from the session, since a session can hold several efforts and an effort can span sessions and days.
-- **Every file of the effort is written in its folder:** its context, gate records, dispatches, baselines, reports and prompts, each by the script that owns it, never by this skill.
+- **Every file of the effort is written in its folder:** its context, gate records, dispatches, baselines and reports, each by the script that owns it, never by this skill.
 - **Pass every value to `effort.sh` in single quotes, and only a value of `a-z`, `0-9`, `-` and `T`:** that is every name and ID, so a value holding any other character is neither; ask the human instead of running it, so their words never run as shell.
 
 ## Steps

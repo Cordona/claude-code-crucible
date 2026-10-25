@@ -1,6 +1,6 @@
 ---
 name: human-view
-description: Shared jq modules for what renderer scripts print for the human — `view.jq` for a view's layout (status line, sections, lists, Data section, whole paths) and `paths.jq` for shortened paths cited for recognition. Use when a renderer prints a view. Scripts load it with `jq -L` and `include`; the model never loads it, the human never types it. Writes nothing; needs jq 1.6+. Not for checking input (each renderer validates its own) or a view's content (its renderer's).
+description: "Shared jq modules for scripts' human views: `view.jq` (status line, sections, lists, Data section, whole paths), `paths.jq` (short paths cited for recognition), `title.jq` (developer or reviewer titles). Use when a script prints a view for the human. Loaded by scripts via `jq -L` and `include`; never by the model or the human. Writes nothing; needs jq 1.6+. Not for input checks or a view's content (each renderer's own)."
 user-invocable: false
 ---
 
@@ -12,7 +12,7 @@ Shared jq modules for what renderer scripts print for the human. Scripts load th
 
 - **Every renderer goes through human-view:** a view's first line, sections, lists and Data section come from `view.jq`, and every path it prints from `view.jq` or `paths.jq`, never from a copy inside the renderer, so a fix lands once and every view looks alike.
 - **A path the human may open is shown whole** (`path_text`): absolute, never `~`, never cut. `short_path` and `code_span` only for a path cited for recognition inside a line of text, never for a path handed over.
-- **Rendering helpers only:** a module formats values for display and checks nothing; validating input stays in the renderer that reads it, so loading a module never changes what a renderer accepts.
+- **Helpers only:** a module formats values for display and checks nothing; validating input stays in the renderer that reads it, so loading a module never changes what a renderer accepts.
 - **It grows by module:** a display function a second renderer needs becomes a module here, listed under Modules, and the renderers' own copies go.
 
 ## Layout rules
@@ -52,6 +52,7 @@ include "paths";
 |---|---|
 | `view.jq` | A view's layout, as the Layout rules set: its status line, sections, numbered lists, field lines, Data section and whole paths |
 | `paths.jq` | Path and link display for a path cited for recognition: the shortening, the `~` form for the home folder, the middle cut and the 80-character cap, which keeps a code span on one line; and `link_span`, a whole path in backticks |
+| `title.jq` | The one place a developer or reviewer title is built from a language label and framework labels; the caller passes the role word and never adds it itself |
 
 `view.jq`'s public defs. A def returning `""` means nothing to show, and `blocks` drops it. Values arrive as cleaned display text: none cleans control characters.
 
@@ -82,3 +83,10 @@ include "paths";
 | `home_form($home)` | string | the input with a leading `$home` folder written as `~`; unchanged when `$home` is empty or isn't its start |
 | `short_path($home)` | string | `home_form`, then capped, with the basename kept whole when it is at most `span_cap - 2` characters |
 | `shared_start($next)` | array | the longest start it shares with array `$next` |
+
+`title.jq`'s public defs:
+
+| Def | Input | Output |
+|---|---|---|
+| `joined_labels` | array of labels | `A`, `A and B`, or `A, B and C` for three or more, in the given order |
+| `title($role)` | `{language: label, frameworks: [labels]}`, either key absent or null; `$role` such as `developer` | `<language> <role>` with no framework; `<frameworks> <role> with <language>` with one or more; `Generic <role>` with no language |

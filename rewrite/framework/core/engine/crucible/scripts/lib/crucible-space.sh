@@ -18,6 +18,8 @@ crucible_label_rule="lowercase a-z, 0-9 and -, 1 to ${crucible_label_max_chars} 
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
 crucible_max_create_attempts=5
+# Every item file, of any kind, is JSON.
+crucible_item_extension=json
 
 # Sets crucible_root to the space, ${CRUCIBLE_HOME:-$HOME/.crucible} without
 # trailing slashes, and crucible_root_source to the variable it came from.
@@ -122,21 +124,10 @@ crucible_is_label() {
 	return 1
 }
 
-# Sets crucible_extension to the file extension of kind $1: md for
-# cache/prompts, json for every other kind.
-crucible_kind_extension() {
-	if [ "$1" = cache/prompts ]; then
-		crucible_extension=md
-	else
-		crucible_extension=json
-	fi
-}
-
-# Sets crucible_item_file_name to the file name of an item of ID $1, label $2
-# and kind $3: <ID>-<label>.<the kind's extension>.
+# Sets crucible_item_file_name to the file name of an item of ID $1 and label
+# $2: <ID>-<label>.<crucible_item_extension>.
 crucible_name_item() {
-	crucible_kind_extension "$3"
-	crucible_item_file_name="$1-$2.${crucible_extension}"
+	crucible_item_file_name="$1-$2.${crucible_item_extension}"
 }
 
 # Sets crucible_id to a fresh <YYYYMMDDTHHMMSS>-<hex>: the local time and 4
@@ -223,10 +214,10 @@ crucible_effort_check() {
 	crucible_effort_fault=''
 }
 
-# Creates a new empty file in folder $1, named as an item of label $2 and
-# kind $3 (crucible_name_item), without overwriting (noclobber), and sets
+# Creates a new empty file in folder $1, named as an item of label $2
+# (crucible_name_item), without overwriting (noclobber), and sets
 # crucible_claimed_file to its path and crucible_id to its ID. With a
-# function name $4, the file is kept only when "$4 <ID>" succeeds, and is
+# function name $3, the file is kept only when "$3 <ID>" succeeds, and is
 # otherwise removed. A clash of either retries with a fresh ID, up to
 # crucible_max_create_attempts tries. Fails with crucible_claim_fault id (no
 # ID minted), create (folder $1 takes no new file) or taken (every try
@@ -240,13 +231,13 @@ crucible_claim_item_file() {
 			crucible_claim_problem=${crucible_id_problem}
 			return 1
 		fi
-		crucible_name_item "${crucible_id}" "$2" "$3"
+		crucible_name_item "${crucible_id}" "$2"
 		crucible_claim_path="$1/${crucible_item_file_name}"
 		if (
 			set -C
 			: >"${crucible_claim_path}"
 		) 2>/dev/null; then
-			if [ -z "${4:-}" ] || "$4" "${crucible_id}"; then
+			if [ -z "${3:-}" ] || "$3" "${crucible_id}"; then
 				crucible_claimed_file=${crucible_claim_path}
 				return 0
 			fi
@@ -281,7 +272,7 @@ crucible_effort_of() {
 }
 
 # Succeeds when path $1 names a file directly in kind folder $2 (such as
-# dispatches or cache/prompts) of an effort folder of the space, and the space,
+# dispatches or cache/gates) of an effort folder of the space, and the space,
 # efforts/, the effort folder and every level of the kind folder are real
 # folders, none a symbolic link; sets crucible_effort. Fails with
 # crucible_item_problem ("<what>; expected <x>") otherwise. The file itself is

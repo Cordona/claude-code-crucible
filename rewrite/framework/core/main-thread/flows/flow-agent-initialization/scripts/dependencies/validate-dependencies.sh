@@ -4,9 +4,12 @@
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
-# plugin file helper and the dispatch names module,
-# human-view's path helpers, which the developer report renderer loads, and its
-# view module, which every view of the flow loads, procedure-approval-gate's
+# plugin file helper and the dispatch names module, the crucible skill's prune
+# module, which the plan and dispatch scripts, the inject hook and both report
+# scripts load, human-view's path helpers, which the developer report renderer
+# loads, its view module, which every view of the flow loads, and its title
+# module, which the dispatch script loads,
+# procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
 # date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the three hook
 # entries in settings.json (the inject hook, which must block on failure, and
@@ -22,9 +25,6 @@
 # depend on, and while that fingerprint is unchanged the checks are skipped.
 # The marker is the only file it leaves (its temp file is removed on exit);
 # it holds no settings content.
-# Exit 3 means only the inject hook check failed: dispatch can't inject
-# plugins, but direct implementation can go on. jq and the gate hooks are
-# exit 1 failures, since the approval gate every plan goes through needs them.
 set -eu
 
 readonly PROG='validate-dependencies.sh'
@@ -59,12 +59,14 @@ readonly RENDER_LIB='human-view'
 readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
 readonly VIEW_NAME='view'
 readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
+readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 # Relative to DIR/crucible/scripts/.
 readonly CRUCIBLE_SPACE_LIB='lib/crucible-space.sh'
+readonly PRUNE_MODULE='lib/prune.jq'
 # The inject hook reads every plugin file of the dispatch, so its bound is
 # generous; with "onFailure": "block" a timeout blocks the dispatch.
 readonly HOOK_TIMEOUT=30
@@ -201,10 +203,8 @@ Reads only settings.json's hook entries and
 
 Exit codes:
   0  every check passed (a ⚠ included), or the cached pass holds; go on
-  1  a check failed, not only the inject hook; stop: each Fix item names its fix
+  1  a check failed; stop: each Fix item names its fix
   2  usage error; reinstall ${PROCEDURE} and stop
-  3  only the inject hook check failed; dispatch nothing, direct
-     implementation can go on
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
 Dependencies:
@@ -304,10 +304,12 @@ fingerprint_input() {
 		"${context_scripts_dir}/${CONTEXT_FILE_LIB}" \
 		"${context_scripts_dir}/${CONTEXT_VERSIONS_LIB}" "${context_procedure_dir}/${TEMPLATE_FILE}" \
 		"${skills_dir}/${PATHS_MODULE}" "${skills_dir}/${VIEW_MODULE}" \
+		"${skills_dir}/${TITLE_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
-		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" 2>/dev/null ||
+		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
+		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
@@ -333,12 +335,13 @@ fingerprint_hook() {
 		printf 'hook commands unreadable\n'
 }
 
-# Prints each tech-*/standard-*/procedure-* folder name, then one cksum line per
+# Prints each language-*/framework-*/standard-*/procedure-* folder name, then one cksum line per
 # file in their SKILL.md and references/, sorted. Symlinks are followed: an
 # installed plugin is usually a link to its source folder.
 fingerprint_plugins() {
 	set --
-	for plugin_path in "${skills_dir}"/tech-* "${skills_dir}"/standard-* "${skills_dir}"/procedure-*; do
+	for plugin_path in "${skills_dir}"/language-* "${skills_dir}"/framework-* \
+		"${skills_dir}"/standard-* "${skills_dir}"/procedure-*; do
 		[ -d "${plugin_path}" ] || continue
 		printf 'plugin %s\n' "${plugin_path##*/}"
 		for part in SKILL.md references; do
@@ -400,7 +403,7 @@ add_fix_item() {
 }
 
 # Fails a hook entry check for script $1 like fail with $2..$4, and counts a
-# failed inject hook check, the one failure that blocks only dispatch.
+# failed inject hook check for the summary line.
 # shellcheck disable=SC2329 # called from check_hook_entry, which each_hook calls by name
 fail_hook() {
 	hook_script=$1
@@ -475,8 +478,7 @@ check_lib_file() {
 
 # Checks the template the inject hook sends word for word, by the hook's own
 # test: a readable regular file inside the procedure-context folder after
-# symlinks, holding more than whitespace. Both the hook and --direct refuse
-# without it.
+# symlinks, holding more than whitespace. The hook refuses without it.
 check_template() {
 	template="${context_procedure_dir}/${TEMPLATE_FILE}"
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
@@ -785,7 +787,7 @@ check_plugins() {
 	split_listing
 	case ${list_status} in
 		0) report_counts ;;
-		1) warn 'no plugins installed' 'every code part becomes "no plugin fits"' ;;
+		1) warn 'no plugins installed' 'every code part stops: it has no installed plugin' ;;
 		3)
 			fail 'invalid plugins' 'list-plugins.sh reported invalid plugins' 'fix or reinstall each one, then rerun'
 			add_reports
@@ -797,10 +799,11 @@ check_plugins() {
 	esac
 }
 
-# Sets tech_count, standard_count, procedure_count and reports (the non-plugin
-# lines) from listing.
+# Sets language_count, framework_count, standard_count, procedure_count and
+# reports (the non-plugin lines) from listing.
 split_listing() {
-	tech_count=0
+	language_count=0
+	framework_count=0
 	standard_count=0
 	procedure_count=0
 	reports=''
@@ -808,7 +811,8 @@ split_listing() {
 	while IFS= read -r line; do
 		case ${line} in
 			'') ;;
-			"tech${tab}"*) tech_count=$((tech_count + 1)) ;;
+			"language${tab}"*) language_count=$((language_count + 1)) ;;
+			"framework${tab}"*) framework_count=$((framework_count + 1)) ;;
 			"standard${tab}"*) standard_count=$((standard_count + 1)) ;;
 			"procedure${tab}"*) procedure_count=$((procedure_count + 1)) ;;
 			*) reports="${reports}${line}${NL}" ;;
@@ -819,13 +823,30 @@ EOF
 }
 
 report_counts() {
-	plugin_count=$((tech_count + standard_count + procedure_count))
+	plugin_count=$((language_count + framework_count + standard_count + procedure_count))
 	if [ -n "${reports}" ] || [ "${plugin_count}" -eq 0 ]; then
 		fail 'plugins not listed' 'list-plugins.sh exited 0 with an unexpected listing' "rerun it with --max-lines 0 and fix what it reports"
 		add_reports
 		return 0
 	fi
-	pass "${plugin_count} plugins installed: ${tech_count} tech, ${standard_count} standards, ${procedure_count} procedures"
+	kind_counts=''
+	add_kind_count "${language_count}" language
+	add_kind_count "${framework_count}" framework
+	add_kind_count "${standard_count}" standard
+	add_kind_count "${procedure_count}" procedure
+	plugins_text=$(counted "${plugin_count}" plugin)
+	pass "${plugins_text} installed: ${kind_counts}"
+}
+
+# Prints "<count> <noun>", the noun plural unless the count is 1.
+counted() {
+	if [ "$1" -eq 1 ]; then printf '%s %s' "$1" "$2"; else printf '%s %ss' "$1" "$2"; fi
+}
+
+# Appends "<count> <kind>" to kind_counts, joined by ", "; a kind with none is left out.
+add_kind_count() {
+	[ "$1" -gt 0 ] || return 0
+	kind_counts="${kind_counts:+${kind_counts}, }$(counted "$1" "$2")"
 }
 
 # Adds each report line, its tabs as spaces and other control characters
@@ -957,7 +978,7 @@ print_summary() {
 			*) printf 'All checks passed. (%s warnings)\n' "${warning_count}" ;;
 		esac
 	elif [ "${failed_count}" -eq "${inject_failed_count}" ]; then
-		printf '%s check(s) failed: dispatch needs the inject hook; direct implementation can go on.\n' "${failed_count}"
+		printf '%s check(s) failed: dispatch needs the inject hook.\n' "${failed_count}"
 	else
 		printf '%s check(s) failed.\n' "${failed_count}"
 	fi
@@ -998,6 +1019,7 @@ check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
 check_lib_file "${CRUCIBLE_SPACE_LIB}" "${crucible_scripts_dir}" "${CRUCIBLE_SKILL}"
+check_lib_file "${PRUNE_MODULE}" "${crucible_scripts_dir}" "${CRUCIBLE_SKILL}"
 check_lib_file "${PLAN_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${INSTALLED_PLUGINS_LIB}" "${scripts_dir}" "${PROCEDURE}"
 check_lib_file "${DISPATCH_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"
@@ -1010,6 +1032,7 @@ check_lib_file "${CONTEXT_VERSIONS_LIB}" "${context_scripts_dir}" "${CONTEXT_PRO
 check_template
 check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_lib_file "${VIEW_MODULE}" "${skills_dir}" "${RENDER_LIB}"
+check_lib_file "${TITLE_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq
 check_run_tools
 check_settings
@@ -1017,5 +1040,4 @@ check_plugins
 record_result
 print_result
 if [ "${failed_count}" -eq 0 ]; then exit 0; fi
-if [ "${failed_count}" -eq "${inject_failed_count}" ]; then exit 3; fi
 exit 1

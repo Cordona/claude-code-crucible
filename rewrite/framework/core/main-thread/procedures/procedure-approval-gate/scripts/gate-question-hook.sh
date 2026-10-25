@@ -233,7 +233,7 @@ make_session_record() {
 	mkdir -p "${records_dir}" 2>/dev/null && [ ! -L "${records_dir}" ] ||
 		deny_record "cannot create ${records_dir}" 'make the gate folder writable'
 	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
-	if crucible_claim_item_file "${records_dir}" "${record_label}" cache/gates; then
+	if crucible_claim_item_file "${records_dir}" "${record_label}"; then
 		record_path=${crucible_claimed_file}
 		return 0
 	fi
