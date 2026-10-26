@@ -50,7 +50,7 @@ include "paths";
 
 | Module | Holds |
 |---|---|
-| `view.jq` | A view's layout, as the Layout rules set: its status line, sections, numbered lists, field lines, Data section and whole paths |
+| `view.jq` | A view's layout, as the Layout rules set: its status line, sections, numbered and bullet lists, plain lines, field lines, Data section and whole paths |
 | `paths.jq` | Path and link display for a path cited for recognition: the shortening, the `~` form for the home folder, the middle cut and the 80-character cap, which keeps a code span on one line; and `link_span`, a whole path in backticks |
 | `title.jq` | The one place a developer or reviewer title is built from a language label and framework labels; the caller passes the role word and never adds it itself |
 
@@ -60,6 +60,8 @@ include "paths";
 |---|---|---|
 | `traffic_light` | status word: `decision`, `done`, `attention` or `blocked` | its glyph: 🔵, 🟢, 🟡 or 🔴 |
 | `numbered_list` | array of strings | one `N. item` line per item, joined by newlines |
+| `bullet_list` | array of strings | one `* item` line per item, joined by newlines |
+| `plain_line` | one line of text | the line with a leading Markdown block mark (a heading, a quote, a rule, a list item or a code fence) backslash-escaped, so it shows as plain text at the start of a line or list item; inline Markdown stays as written |
 | `path_text` | absolute path | the path whole, as plain text: no `~`, no cut, no backticks, so the terminal sees one path it can open |
 | `status_line($status; $title; $tail)`, `status_line($status; $title)` | ignored | `<light> **<title>**`, then ` · <tail>` when `$tail` is neither `""` nor null |
 | `section($name; $plural; $items)`, `section($name; $items)` | ignored | `""` for no items; `**<name>:** <item>` for one; `**<plural>**` and a numbered list for two or more (`$plural` defaults to `$name`) |

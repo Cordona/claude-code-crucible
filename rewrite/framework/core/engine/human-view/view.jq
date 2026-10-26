@@ -12,6 +12,22 @@ def traffic_light: {decision: "🔵", done: "🟢", attention: "🟡", blocked: 
 #   output: one `N. item` line per item, joined by newlines
 def numbered_list: to_entries | map("\(.key + 1). \(.value)") | join("\n");
 
+# bullet_list
+#   input:  array of strings
+#   output: one `* item` line per item, joined by newlines
+def bullet_list: map("* \(.)") | join("\n");
+
+# plain_line
+#   input:  one line of text
+#   output: the line with a leading Markdown block mark (a heading, a quote, a
+#           rule, a list item or a code fence) backslash-escaped, so it renders
+#           as plain text at the start of a line or list item; inline Markdown
+#           stays as written
+def plain_line:
+	if test("^(#{1,6}( |$)|>|(?<rule>[-*_])( *\\k<rule>){2,} *$|[-+*]( |$)|```|~~~)") then "\\" + .
+	elif test("^[0-9]{1,9}[.)]( |$)") then sub("^(?<number>[0-9]{1,9})"; "\(.number)\\")
+	else . end;
+
 # path_text
 #   input:  absolute path
 #   output: the path whole, as plain text: no `~`, no cut, no backticks, so the

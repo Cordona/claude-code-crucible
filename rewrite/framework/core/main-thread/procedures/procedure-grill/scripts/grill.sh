@@ -101,16 +101,6 @@ def add_result:
 			  + {recommendation: {text: .["--recommendation"], reason: .["--reason"]}, status: "open", answers: []}]),
 		 out: "GRILL_IDS: \($groups | map(.id) | join(","))"});
 
-# The text with a leading Markdown block mark escaped, so it renders as text.
-# Only a question text starts a line; a recommendation, reason or answer
-# follows a label on its line.
-def block_start: "^(#{1,6}( |$)|>|(?<rule>[-*_])( *\\k<rule>){2,} *$|[-+*]( |$)|```|~~~)";
-def ordered_start: "^[0-9]{1,9}[.)]( |$)";
-def plain_line:
-	if test(block_start) then "\\" + .
-	elif test(ordered_start) then sub("^(?<number>[0-9]{1,9})"; "\(.number)\\")
-	else . end;
-
 # One question of a round: its id number, then its recommendation and reason
 # on lines indented under its text, after hard breaks.
 def round_item($delimiter):
