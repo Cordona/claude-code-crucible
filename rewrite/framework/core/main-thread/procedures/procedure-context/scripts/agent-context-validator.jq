@@ -18,6 +18,9 @@ def quoted_name: tojson | if length > 60 then .[:60] + "…" else . end;
 def has_control: test("[[:cntrl:]]");
 def one_line_text: type == "string" and (has_control | not) and test("[^[:space:]]");
 def absolute_path: type == "string" and startswith("/") and (has_control | not);
+# The session that wrote the file: CLAUDE_CODE_SESSION_ID, as context.sh
+# takes it by the crucible skill's crucible_session_rule.
+def session_id_ok: type == "string" and test("\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z");
 def entry_shape($field): "{\"\($field)\": ..., \"why\": ...}";
 # One problem: the field's path, and its line, the field's location then the problem.
 def problem($at; $location; $separator; $problem): {at: $at, problem: $problem, line: "\($location)\($separator)\($problem)"};
@@ -45,11 +48,16 @@ def notes_problems:
 	else .notes | to_entries[] | select(.value | type != "string") | problem(["notes", .key]; "notes[\(.key)]"; " "; "is a JSON \(.value | type); expected a string")
 	end;
 
+def session_problems:
+	if has("claude_session_id") and (.claude_session_id | session_id_ok) then empty
+	else problem(["claude_session_id"]; "claude_session_id"; " "; "missing or not a session ID; expected a lowercase UUID, the session that wrote the file") end;
+
 def context_problems:
 	if length != 1 then problem([]; "the file"; " "; "holds \(length) JSON values; expected exactly one object")
 	elif (.[0] | type) != "object" then problem([]; "the file"; " "; "holds a JSON \(.[0] | type); expected an object")
 	else .[0]
-		| ((keys - ["paths", "links", "notes"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only paths, links and notes")),
+		| ((keys - ["claude_session_id", "paths", "links", "notes"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only claude_session_id, paths, links and notes")),
+		  session_problems,
 		  list_problems("paths"; "path"; absolute_path; "an absolute path"; "a string starting with /, without control characters"),
 		  list_problems("links"; "url"; http_url; "an http(s) URL"; "a string starting with http:// or https:// (in any letter case), then a host of letters, digits, dots and hyphens with an optional :port, then optionally a path, query or fragment of letters, digits and . _ ~ / ? # = % : + , @ - only"),
 		  notes_problems

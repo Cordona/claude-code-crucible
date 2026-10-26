@@ -74,7 +74,7 @@ def id_problem($where; $file):
 def new_result:
 	value_of("--topic") as $topic
 	| result($topic | text_problem("--topic"; grill_max_chars.topic);
-		{file: {topic: $topic, questions: []},
+		{file: {claude_session_id: $session_id, topic: $topic, questions: []},
 		 label: ($topic | ascii_downcase | gsub("[^a-z0-9]+"; "-") | sub("^-+"; "") | .[:$label_max] | sub("-+$"; "") | if . == "" then "grill" else . end),
 		 out: ""});
 
@@ -96,7 +96,7 @@ def add_result:
 			  (.["--reason"] // empty | text_problem("--reason \($in)"; grill_max_chars.reason)),
 			  (.["--parent"] // empty | parent_problem("--parent \($in)"; $group.id)));
 		{file: ($file | .questions += [$groups[]
-			| {id, text: .["--question"]}
+			| {id, claude_session_id: $session_id, text: .["--question"]}
 			  + (if has("--parent") then {parent: .["--parent"]} else {} end)
 			  + {recommendation: {text: .["--recommendation"], reason: .["--reason"]}, status: "open", answers: []}]),
 		 out: "GRILL_IDS: \($groups | map(.id) | join(","))"});
@@ -166,7 +166,7 @@ def changed_view($file):
 def answered($groups):
 	reduce $groups[] as $group (.;
 		.questions[($group["--id"] | grill_id_number) - 1] |= (
-			.answers += [{revision: ((.answers | length) + 1), at: $at}
+			.answers += [{revision: ((.answers | length) + 1), at: $at, claude_session_id: $session_id}
 				+ (if $group | has("--change-reason") then {change_reason: $group["--change-reason"]} else {} end)
 				+ {text: $group["--text"]}]
 			| .status = "settled"));
@@ -201,7 +201,7 @@ def status_result:
 			// (if ($file | question_of($id)).status == $to then "--id \($id) is \($to) already; expected a question that is not \($to)" else empty end));
 		{file: ($file | .questions[($id | grill_id_number) - 1] |= (
 			.status = $to
-			| if grill_status_prefix | has($to) then .answers += [{revision: ((.answers | length) + 1), at: $at, text: "\(grill_status_prefix[$to])\($reason)"}] else . end)),
+			| if grill_status_prefix | has($to) then .answers += [{revision: ((.answers | length) + 1), at: $at, claude_session_id: $session_id, text: "\(grill_status_prefix[$to])\($reason)"}] else . end)),
 		 out: "\(status_line("done"; "\($titles[$to]) · \($id):")) \($reason)"});
 
 def end_result:
@@ -288,7 +288,9 @@ Commands (each page holds its options, output and exit codes):
   list    prints the effort's grill files, newest first; writes nothing
 
 Ids: q1, q2, ... in the order added, never reused. Shape: see
-grill-validator.jq.
+grill-validator.jq. claude_session_id names a session: the file's, set by
+new and never changed; a question's, the session that added it; an
+answer's, a status one included, the session that gave it.
 EOF
 	help_shared environment
 	help_shared dependencies
@@ -493,6 +495,8 @@ EOF
 
 Environment:
   CRUCIBLE_HOME          the Crucible space (default $HOME/.crucible)
+  CLAUDE_CODE_SESSION_ID every command but list: required, the session ID
+                         Claude Code sets, a lowercase UUID
   CLAUDE_CONFIG_DIR      the skills are in
                          ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 EOF
@@ -532,6 +536,12 @@ Exit codes:
   1  jq missing
   2  refused input, nothing written; fix what stderr names and rerun once,
      else show the human stderr
+EOF
+	[ "$2" = read ] || print_page <<EOF
+     "${PROG}: CLAUDE_CODE_SESSION_ID ...": unset, empty or not a lowercase
+       UUID; show the human stderr, and stop
+EOF
+	print_page <<'EOF'
   3  jq failed, nothing written
 EOF
 	if [ "$2" = read ]; then
@@ -726,6 +736,14 @@ load_dependencies() {
 	. "${space_lib}"
 }
 
+# Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
+# before the lock is taken or any file made.
+require_session() {
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || exit_on_problems "${crucible_session_problem}"
+	session_id=${crucible_session_id}
+}
+
 # Prints the problem of the --grill path, or nothing when it names a grill
 # file of an effort of the space.
 grill_path_problem() {
@@ -813,7 +831,7 @@ run_grill_jq() {
 
 grill_jq() {
 	jq -c -L "${own_dir}" -L "${render_lib_dir}" -L "${crucible_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
-		--arg prog "${PROG}" --argjson label_max "${LABEL_MAX_CHARS}" "${GRILL_JQ}" --args -- "$@"
+		--arg session_id "${session_id}" --arg prog "${PROG}" --argjson label_max "${LABEL_MAX_CHARS}" "${GRILL_JQ}" --args -- "$@"
 }
 
 # Exits 2 when setup problems $1 or the problems in result hold any.
@@ -962,6 +980,7 @@ list_command() {
 # Every other command: checks its input against the grill file it reads
 # (none for new) under the grill's lock, writes the new file and prints its output.
 write_command() {
+	require_session
 	if [ "${command}" = new ]; then
 		setup_problems=$(effort_problem)
 	else
@@ -985,7 +1004,7 @@ write_command() {
 	esac
 }
 
-temp_file='' created_file='' lock_dir=''
+temp_file='' created_file='' lock_dir='' session_id=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

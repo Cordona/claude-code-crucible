@@ -78,7 +78,7 @@ def plugins: plugin_entries as $entries
 	{language: (of_kind("language-") | first), frameworks: of_kind("framework-"),
 	 standards: of_kind("standard-"), procedures: of_kind("procedure-")};
 def dispatch: {
-	id: $id, started: $started, agent: $agent, mode: $mode, task: $task,
+	id: $id, started: $started, claude_session_id: $session_id, agent: $agent, mode: $mode, task: $task,
 	repo_root: $repo_root, entry_points: $ARGS.positional,
 	plugins: plugins,
 	context: {path: $context_path, sha256: $context_sha256},
@@ -167,17 +167,17 @@ Writes the dispatch file for task N of a plan the human approved at its gate,
 with the agent's report file and the dispatch's baseline file.
 
 Options:
-  --effort FOLDER     the effort folder the plan's gate was opened with
-                      (crucible.sh --help states the rule)
+  --effort FOLDER     the effort folder the plan's gate was opened with (rule:
+      crucible.sh --help)
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
   --repo-root PATH    the repository's git work-tree root, absolute
   --entry-point REL   a repo-relative path the task starts from; repeatable,
-                      kept in order (entry_points); it need not exist
-  --skills-dir DIR    only \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills, the
-                      default, is taken; any other DIR exits 3
+      kept in order (entry_points); it need not exist
+  --skills-dir DIR    only \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
+      default) is taken; any other DIR exits 3
   --baseline-from DISPATCH  the earlier dispatch file in FOLDER this one
-                      replaces, absolute; the caller holds it is this task's
+      replaces, absolute; the caller holds it is this task's
 
 stdout on exit 0, in order:
   DISPATCH: <absolute path>  the dispatch file; the Agent call's whole prompt
@@ -193,22 +193,22 @@ stderr on exit 3: one line per problem; one a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
 Leaves only three files in FOLDER (a SIGKILL aside): the dispatch file, whole
-or not at all (shape: agent-dispatch-validator.jq; keys id, started, agent,
-mode, task, repo_root, entry_points, plugins {language, frameworks, standards,
-procedures}, context, plan, report, baseline, empty keys left out; plugins in
-load order: language, frameworks by name, standards, procedures, each with
-SKILL.md, then references/development.md and references/*-template.md, or
+or not at all (shape: agent-dispatch-validator.jq; keys id, started,
+claude_session_id (the writer's), agent, mode, task, repo_root, entry_points,
+plugins {language, frameworks, standards, procedures}, context, plan, report,
+baseline, empty keys left out; plugins in load order: language, frameworks by
+name, standards, procedures, each with SKILL.md, then
+references/development.md and references/*-template.md, or
 references/review.md alone for code-reviewer); the report file, empty; the
 baseline file, empty (the Agent hook fills it) or the --baseline-from one's
-bytes. On a non-zero exit this run's files are removed and named on stderr
-(a signal may leave one crucible.sh new was making, empty). No other effort
-is read; the --repo-root tree and git index never change.
+bytes. On a non-zero exit this run's files are removed and named on stderr (a
+signal may leave one crucible.sh new was making, empty). No other effort is
+read; the --repo-root tree and git index never change.
 
-Exit codes:
-  0  the dispatch file written; keep the three stdout lines
-  1  making a file failed after the inputs passed, none left; show stderr and
-     stop
-  2  usage error; show stderr and stop
+Exit codes (1, 2, 5: show stderr and stop):
+  0  written; keep the three stdout lines
+  1  making a file failed after the inputs passed, none left
+  2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, no file made; fix what stderr names. A problem may lead
      with a token right after "<option> <value>: ":
        ${NO_GATE_RECORD_TOKEN}  no gate record holds the plan; ask it again at its gate
@@ -216,14 +216,16 @@ Exit codes:
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
        ${BASELINE_EMPTY_TOKEN}  the --baseline-from baseline is empty; rerun without it
        ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
-  5  a dependency missing or failing; show stderr and stop
+  5  a dependency missing or failing
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
+
+Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID
 
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
   git (macOS: xcode-select --install; Linux: the distro's git)
   sha256sum (Linux: coreutils) or shasum (macOS: built in)
-  awk, cat, date, mktemp, mv, rm, tr, wc (macOS and Linux base system)
+  awk, cat, date, mktemp, mv, rm, tr, wc (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE}
     and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
@@ -368,6 +370,14 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
+}
+
+# Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
+# before any file is made.
+require_session() {
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || usage_error "${crucible_session_problem}"
+	session_id=${crucible_session_id}
 }
 
 # Prints the value of jq expression $1 over the shared names module, with
@@ -793,6 +803,7 @@ run_dispatch_jq() {
 	run_mode=$1 run_id=$2 run_started=$3 run_report=$4 run_baseline=$5
 	shift 5
 	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
+		--arg session_id "${session_id}" \
 		--arg agent "${agent}" --arg mode "${mode}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" \
@@ -941,8 +952,9 @@ for tool in ${REQUIRED_TOOLS}; do
 	esac
 done
 
-problems='' validator_problems='' plan_sha256_ok=true task_number_ok=true plan_ok=false
+problems='' validator_problems='' plan_sha256_ok=true task_number_ok=true plan_ok=false session_id=''
 load_dependencies
+require_session
 resolve_space_root
 check_skills_dir
 check_plan_sha256

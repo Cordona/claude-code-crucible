@@ -8,10 +8,11 @@
 def effort_states: ["open", "paused", "completed", "dropped"];
 # The states each state may change to; the move back to open is a reopen.
 def effort_moves: {open: ["paused", "completed", "dropped"], paused: ["open", "completed", "dropped"], completed: ["open"], dropped: ["open"]};
-def effort_item_fields: ["state", "from", "at", "session"];
-def effort_required_fields: ["state", "at"];
+# claude_session_id: the Claude Code session that wrote the item.
+def effort_item_fields: ["state", "from", "at", "claude_session_id"];
+def effort_required_fields: ["state", "at", "claude_session_id"];
 def effort_utc_pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
-def effort_session_pattern: "^[0-9a-f-]+$";
+def effort_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
 
 def effort_is_state: type == "string" and (. as $state | effort_states | index([$state]) != null);
 def effort_move_ok($from; $to): ($from | effort_is_state) and (effort_moves[$from] | index([$to]) != null);
@@ -36,17 +37,17 @@ def effort_move_problem:
 
 def effort_session_problem:
 	if type == "string" and test(effort_session_pattern) then empty
-	else "session is \(effort_shown); expected a non-empty string of 0-9, a-f and -; leave the key out for none" end;
+	else "claude_session_id is \(effort_shown); expected a lowercase UUID, the session that wrote the item" end;
 
 def effort_state_item_problems:
 	if type != "object" then "the item is a JSON \(type); expected an object"
 	else ((keys_unsorted - effort_item_fields)[] | "\(effort_shown) is an unknown field; expected only \(effort_item_fields | join(", "))"),
-		((effort_required_fields - keys_unsorted)[] | "\(.) is missing; expected the fields \(effort_required_fields | join(" and ")), from on every item but the first"),
+		((effort_required_fields - keys_unsorted)[] | "\(.) is missing; expected the fields \(effort_required_fields | join(", ")), and from on every item but the first"),
 		(if has("state") then .state | effort_state_problem("state") else empty end),
 		(if has("from") then .from | effort_state_problem("from") else empty end),
 		(if has("state") then effort_move_problem else empty end),
 		(if has("at") | not then empty
 		 elif (.at | type) == "string" and (.at | test(effort_utc_pattern)) then empty
 		 else "at is \(.at | effort_shown); expected a UTC time YYYY-MM-DDTHH:MM:SSZ" end),
-		(if has("session") then .session | effort_session_problem else empty end)
+		(if has("claude_session_id") then .claude_session_id | effort_session_problem else empty end)
 	end;

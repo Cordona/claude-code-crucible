@@ -71,14 +71,14 @@ readonly LIST_JQ="${READ_ITEMS_JQ}"'
   end'
 
 # Prints {item} for the move from $from ("" for the first item, which start
-# writes) to $to, pruned so an empty from or session is left out, its at
-# left for the write to set; or {refusal} when the moves do not allow it.
+# writes) to $to, pruned so an empty from is left out, its at left for the
+# write to set; or {refusal} when the moves do not allow it.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly MOVE_JQ='include "effort-state-validator";
 include "prune";
 {open: "reopen", paused: "pause", completed: "complete", dropped: "drop"} as $commands
 | if $from == "" or effort_move_ok($from; $to) then
-	{item: ({state: $to, from: (if $from == "" then null else $from end), at: "", session: (if $session == "" then null else $session end)} | prune)}
+	{item: ({state: $to, from: (if $from == "" then null else $from end), at: "", claude_session_id: $session_id} | prune)}
   elif $from == $to then {refusal: "bad move: \($from) -> \($to); the effort is already \($to)"}
   else {refusal: "bad move: \($from) -> \($to); a \($from) effort can only move to \(effort_moves[$from] | map("\(.) (\($commands[.]))") | join(" or "))"}
   end'
@@ -117,7 +117,9 @@ effort-state-validator.jq.
                    directly in <space>/efforts/, absolute
   --all            list: every effort, not only the newest 20
   VALUE            path: a full ID, its 4 hex digits or an exact NAME
-  CLAUDE_CODE_SESSION_ID  the session each new item names; unset or empty: none
+  CLAUDE_CODE_SESSION_ID  start and the moves: required, the session each new
+                   item names as claude_session_id: the session ID Claude
+                   Code sets, a lowercase UUID; list, path, state: not read
   CRUCIBLE_HOME    the space; default $HOME/.crucible
   CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default $HOME/.claude
 
@@ -147,8 +149,9 @@ Exit codes:
   0  done; read stdout
   1  path: no effort matches VALUE, or several do; with matches on stderr,
      ask which one is meant; with none, run list
-  2  usage error, or an unusable CRUCIBLE_HOME, HOME or CLAUDE_CODE_SESSION_ID;
-     show the human stderr, and stop
+  2  usage error, or an unusable CRUCIBLE_HOME or HOME, or (start and the
+     moves) CLAUDE_CODE_SESSION_ID unset, empty or not a lowercase UUID;
+     nothing written; show the human stderr, and stop
      effort.sh: bad name:  start: NAME breaks the rule; pick another name
   4  the space, an effort folder or a state item is unusable; show the human
      stderr, and stop
@@ -360,16 +363,12 @@ check_name() {
 	bad_value "bad name: it breaks the effort name rule; expected the NAME of ${crucible_effort_name_rule}; try a slug such as prune-dry-run"
 }
 
-# Sets session from CLAUDE_CODE_SESSION_ID, or exits 2 when it holds anything
-# but what the item's session may hold.
+# Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
+# before anything is created.
 check_session() {
-	session=${CLAUDE_CODE_SESSION_ID:-}
-	case ${session} in
-		*[!0123456789abcdef-]*)
-			bad_value 'CLAUDE_CODE_SESSION_ID holds a character outside 0-9, a-f and -; expected the session ID Claude Code sets; try unsetting it'
-			;;
-		*) ;;
-	esac
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || bad_value "${crucible_session_problem}"
+	session_id=${crucible_session_id}
 }
 
 # Sets dash_fault to why the dashes of $1 break the word rule (words joined by
@@ -590,7 +589,7 @@ EOF
 # content passes the validator. Exits 7 on a move the moves do not allow.
 write_item() {
 	move=$(jq -n -c -L "${own_dir}" -L "${crucible_lib_dir}" --arg from "$2" --arg to "$1" \
-		--arg session "${session}" "${MOVE_JQ}" </dev/null) ||
+		--arg session_id "${session_id}" "${MOVE_JQ}" </dev/null) ||
 		install_fault 'jq failed building the state item; expected jq 1.6+, prune.jq and effort-state-validator.jq; try jq --version'
 	refusal=$(printf '%s\n' "${move}" | jq -r '.refusal // empty') ||
 		install_fault 'jq failed reading the move; expected jq 1.6+; try jq --version'
@@ -947,7 +946,7 @@ clean_up() {
 	fi
 }
 
-temp_file='' allocated_item='' lock_dir='' started_folder='' session=''
+temp_file='' allocated_item='' lock_dir='' started_folder='' session_id=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

@@ -1,7 +1,7 @@
 # The Crucible space's shared rules, one copy for every script that finds or
 # checks a path in it: where the space is, what an effort folder is named, what
-# an ID and an item label are, how an ID is minted and an item named, and where
-# an effort's item lies.
+# an ID and an item label are, how an ID is minted and an item named, where
+# an effort's item lies, and which Claude Code session a written file names.
 # Sourced, so it sets no shell option; its names start with crucible_.
 # Installed at ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/;
 # crucible.sh sources it from beside itself.
@@ -20,6 +20,11 @@ crucible_label_rule="lowercase a-z, 0-9 and -, 1 to ${crucible_label_max_chars} 
 crucible_max_create_attempts=5
 # Every item file, of any kind, is JSON.
 crucible_item_extension=json
+# The session ID Claude Code sets in CLAUDE_CODE_SESSION_ID, which every file
+# a session writes into an effort names as claude_session_id.
+crucible_session_rule='a lowercase UUID (8-4-4-4-12 hex digits), the session ID Claude Code sets'
+# One lowercase hex digit, for crucible_session_is_uuid.
+crucible_hex_digit='[0123456789abcdef]'
 
 # Sets crucible_root to the space, ${CRUCIBLE_HOME:-$HOME/.crucible} without
 # trailing slashes, and crucible_root_source to the variable it came from.
@@ -58,6 +63,34 @@ crucible_resolve_root() {
 		crucible_root_problem="${crucible_root} is a symbolic link; expected a real folder; try pointing CRUCIBLE_HOME at the target instead"
 		return 1
 	fi
+}
+
+# Sets crucible_session_id to CLAUDE_CODE_SESSION_ID when it keeps
+# crucible_session_rule. Fails, crucible_session_id empty, with
+# crucible_session_problem ("<what>; expected <x>; try <y>") when it is unset,
+# empty or breaks the rule; the value itself is never echoed.
+crucible_check_session() {
+	crucible_session_id=${CLAUDE_CODE_SESSION_ID:-} crucible_session_problem=''
+	case ${crucible_session_id} in
+		'') crucible_session_problem="CLAUDE_CODE_SESSION_ID is unset or empty; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool" ;;
+		*)
+			crucible_session_is_uuid "${crucible_session_id}" && return 0
+			crucible_session_problem="CLAUDE_CODE_SESSION_ID is not a lowercase UUID; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool"
+			;;
+	esac
+	crucible_session_id=''
+	return 1
+}
+
+# Succeeds when $1 is a lowercase UUID: 8-4-4-4-12 lowercase hex digits.
+crucible_session_is_uuid() {
+	crucible_h=${crucible_hex_digit}
+	crucible_h4=${crucible_h}${crucible_h}${crucible_h}${crucible_h}
+	# shellcheck disable=SC2254 # the expansions are the pattern, unquoted on purpose
+	case $1 in
+		${crucible_h4}${crucible_h4}-${crucible_h4}-${crucible_h4}-${crucible_h4}-${crucible_h4}${crucible_h4}${crucible_h4}) ;;
+		*) return 1 ;;
+	esac
 }
 
 # Succeeds when $1 is a Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>.

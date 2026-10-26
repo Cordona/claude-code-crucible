@@ -16,13 +16,18 @@ def grill_statuses: ["open", "settled", "dropped", "deferred"];
 def grill_status_prefix: {dropped: "Dropped: ", deferred: "Deferred: "};
 def grill_id_pattern: "^q[1-9][0-9]*$";
 def grill_utc_pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
-# Each object's fields, in the order the file holds them.
-def grill_file_fields: ["topic", "ended", "questions"];
-def grill_question_fields: ["id", "text", "parent", "round", "recommendation", "status", "answers"];
+# The Claude Code session that wrote a part, as grill.sh takes
+# CLAUDE_CODE_SESSION_ID by the crucible skill's crucible_session_rule.
+def grill_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
+# Each object's fields, in the order the file holds them. claude_session_id is
+# the session that started the grill (the file), added the question, or gave
+# the answer.
+def grill_file_fields: ["claude_session_id", "topic", "ended", "questions"];
+def grill_question_fields: ["id", "claude_session_id", "text", "parent", "round", "recommendation", "status", "answers"];
 def grill_recommendation_fields: ["text", "reason"];
 # An answer's at and change_reason are kept for audit: when and why the human
 # changed an answer.
-def grill_answer_fields: ["revision", "at", "change_reason", "text"];
+def grill_answer_fields: ["revision", "at", "claude_session_id", "change_reason", "text"];
 
 # The object with the fields of $fields it holds, in that order.
 def grill_ordered($fields): . as $object | reduce ($fields[] | select(. as $field | $object | has($field))) as $field ({}; .[$field] = $object[$field]);
@@ -45,13 +50,21 @@ def grill_field_problems($where; $fields; $required):
 	  (if (keys_unsorted - ($object | grill_ordered($fields) | keys_unsorted)) == [] and keys_unsorted != ($object | grill_ordered($fields) | keys_unsorted)
 	   then "\($where) holds its fields out of order; expected the order \($fields | join(", "))" else empty end);
 
+# The problem of the claude_session_id of object . at $where, when it holds one;
+# a missing one is a required field's problem.
+def grill_session_problem($where):
+	if has("claude_session_id") | not then empty
+	elif (.claude_session_id | type) == "string" and (.claude_session_id | test(grill_session_pattern)) then empty
+	else "\($where).claude_session_id is \(.claude_session_id | tojson); expected a lowercase UUID, a session ID" end;
+
 def grill_utc_problem($where):
 	if type == "string" and test(grill_utc_pattern) then empty
 	else "\($where) is \(tojson); expected a UTC time YYYY-MM-DDTHH:MM:SSZ" end;
 
 def grill_answer_problems($where; $index):
 	if type != "object" then "\($where) is a JSON \(type); expected an object"
-	else grill_field_problems($where; grill_answer_fields; ["revision", "at", "text"]),
+	else grill_field_problems($where; grill_answer_fields; ["revision", "at", "claude_session_id", "text"]),
+		grill_session_problem($where),
 		(if .revision == $index + 1 then empty else "\($where).revision is \(.revision | tojson); expected \($index + 1): revisions count from 1 in order" end),
 		(.at | grill_utc_problem("\($where).at")),
 		(if has("change_reason") | not then empty
@@ -81,7 +94,8 @@ def grill_question_problems($index):
 	"questions[\($index)]" as $where
 	| "q\($index + 1)" as $id
 	| if type != "object" then "\($where) is a JSON \(type); expected an object"
-	  else grill_field_problems($where; grill_question_fields; ["id", "text", "recommendation", "status"]),
+	  else grill_field_problems($where; grill_question_fields; ["id", "claude_session_id", "text", "recommendation", "status"]),
+		grill_session_problem($where),
 		(if .id == $id then empty else "\($where).id is \(.id | tojson); expected \($id | tojson): ids run q1, q2, ... in file order, never reused" end),
 		(if has("text") then .text | grill_text_problem(grill_max_chars.question) | "\($where).text \(.)" else empty end),
 		(if has("parent") | not then empty
@@ -105,7 +119,8 @@ def grill_question_problems($index):
 
 def grill_file_problems:
 	if type != "object" then "the file is a JSON \(type); expected an object"
-	else grill_field_problems("the file"; grill_file_fields; ["topic"]),
+	else grill_field_problems("the file"; grill_file_fields; ["claude_session_id", "topic"]),
+		grill_session_problem("the file"),
 		(if has("topic") then .topic | grill_text_problem(grill_max_chars.topic) | "topic \(.)" else empty end),
 		(if has("ended") then .ended | grill_utc_problem("ended") else empty end),
 		(if has("questions") | not then empty

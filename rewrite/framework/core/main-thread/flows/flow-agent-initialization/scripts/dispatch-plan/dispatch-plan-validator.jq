@@ -4,9 +4,10 @@
 # count. --argjson installed: the installed plugins, installed-plugins.jq's
 # {"<name>": {"kind": "language"|"framework"|"standard"|"procedure", "label":
 # str}, ...}.
-# The plan: {agent, mode, tasks, plugins: {load: {language, frameworks,
-# standards, procedures}, skip: {standards, procedures}, load_reason}, replan,
-# context}, each plugin entry {"plugin": str, "reason": str}; a key holding
+# The plan: {claude_session_id, agent, mode, tasks, plugins: {load: {language,
+# frameworks, standards, procedures}, skip: {standards, procedures},
+# load_reason}, replan, context}, claude_session_id the session that wrote it;
+# each plugin entry {"plugin": str, "reason": str}; a key holding
 # nothing is left out, never null, [] or {}.
 # Plugin rules: at most one language; a framework only with a language; skip
 # holds standards and procedures only; every installed standard and procedure
@@ -28,7 +29,7 @@ def testing_plugin: "standard-testing";
 def lens_agent: "code-reviewer";
 # A step-10 re-plan may list, under skip, a plugin list-plugins.sh no longer prints.
 def dropped_reasons: "invalid", "uninstalled after approval", "faulty files";
-def top_keys: ["agent", "mode", "tasks", "plugins", "replan", "context"];
+def top_keys: ["claude_session_id", "agent", "mode", "tasks", "plugins", "replan", "context"];
 def plugins_keys: ["load", "skip", "load_reason"];
 def load_keys: ["language", "frameworks", "standards", "procedures"];
 def skip_keys: ["standards", "procedures"];
@@ -51,6 +52,8 @@ def empty_problem($at): problem($at; " "; "is empty; expected the key left out w
 
 def field_problems:
 	((keys - top_keys)[] | problem([.]; ": "; "unknown field; expected only \(top_keys | join(", "))")),
+	(if (.claude_session_id | type) == "string" and (.claude_session_id | test(claude_session_id_pattern)) then empty
+	 else problem(["claude_session_id"]; " "; "missing or not a session ID; expected a lowercase UUID, the session that wrote the plan") end),
 	(if .agent | text_ok | not then problem(["agent"]; " "; "missing or empty; expected a non-empty string")
 	 elif .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),

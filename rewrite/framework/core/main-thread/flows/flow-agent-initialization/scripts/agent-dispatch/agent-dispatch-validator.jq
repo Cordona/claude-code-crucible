@@ -9,7 +9,7 @@
 # the flow's step 8.
 # The shape, keys in this order; a key whose value would be null, [] or {} is
 # left out, so entry_points and plugins, and each plugins kind, may be absent:
-#   {"id", "started", "agent", "mode", "task", "repo_root",
+#   {"id", "started", "claude_session_id", "agent", "mode", "task", "repo_root",
 #    "entry_points": [repo-relative path, ...],
 #    "plugins": {"language": {"name": "language-<n>", "paths": [...]},
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
@@ -27,7 +27,7 @@ include "dispatch-names" {search: "./"};
 # kind; mode TEST is not dispatched through this file yet.
 def dispatched_modes: ["BUILD"];
 def lens_agent: "code-reviewer";
-def top_keys: ["id", "started", "agent", "mode", "task", "repo_root", "entry_points", "plugins", "context", "plan", "report", "baseline"];
+def top_keys: ["id", "started", "claude_session_id", "agent", "mode", "task", "repo_root", "entry_points", "plugins", "context", "plan", "report", "baseline"];
 # The keys left out when they hold nothing; every other key is required.
 def optional_keys: ["entry_points", "plugins"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
@@ -63,6 +63,8 @@ def field_problems:
 	 else problem(["id"]; " "; "is not a Crucible ID; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>") end),
 	(if (.started | type) == "string" and (.started | test(local_time_pattern)) then empty
 	 else problem(["started"]; " "; "is not an ISO 8601 local time with offset; expected YYYY-MM-DDTHH:MM:SS+HH:MM") end),
+	(if (.claude_session_id | type) == "string" and (.claude_session_id | test(claude_session_id_pattern)) then empty
+	 else problem(["claude_session_id"]; " "; "is not a session ID; expected a lowercase UUID, the session that wrote the dispatch") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
 	(if .mode | IN(dispatched_modes[]) then empty

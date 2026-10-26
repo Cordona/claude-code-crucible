@@ -68,6 +68,7 @@ def listed($entries): {
 	links: (base_entries("links"; "url") + [$entries[] | select(.kind == "link")]),
 	notes: (base_entries("notes"; "") + [$entries[] | select(.kind == "note")])};
 def context: listed(entries) as $listed | {
+	claude_session_id: $session_id,
 	paths: ($listed.paths | map({path: (if .kind == "text" then $text_path else .value end), why})),
 	links: ($listed.links | map({url: .value, why})),
 	notes: ($listed.notes | map(.value))}
@@ -142,8 +143,8 @@ usage: sh ${PROG} new --effort FOLDER [ENTRY]... --note TEXT [--note TEXT]...
   ENTRY: --path ABS --why LINE | --link URL --why LINE
          | --text-file FILE --why LINE | --note TEXT
 
-Writes an effort's context versions and diff files into its context/, and
-leaves nothing else (a SIGKILL aside).
+Writes an effort's context versions and diff files into its context/ only
+(a SIGKILL aside).
 
 Commands:
   new     writes v1, the effort's first version
@@ -171,12 +172,12 @@ Options (no value but a note may hold a control character):
   --note TEXT       any text; new needs one
   --repo ROOT       the git work-tree root, absolute
   --ref REF         a commit or a range A..B of 0-9 A-Z a-z . _ / ^ ~ - only,
-      no part starting with -; its diff non-empty, UTF-8, at most
-      ${TEXT_MAX_BYTES} bytes
+      no part starting with -; its diff non-empty, UTF-8, at most ${TEXT_MAX_BYTES} bytes
 Sensitive names, basename globs:
   ${sensitive_names}
 
-A version is at most ${context_cap}; shape: see agent-context-validator.jq.
+A version is at most ${context_cap}; shape: agent-context-validator.jq,
+claude_session_id (the writing session) first.
 
 stdout on exit 0 (none otherwise):
   new, extend, latest: CONTEXT_FILE: <absolute version path>
@@ -187,25 +188,23 @@ stderr on exit 3: one line per problem, either
   as a whole, "${PROG}: context file: <problem>"
 
 Each file is written whole or not at all; a version never changes; a diff
-leaves out what --path refuses; ROOT is only read. Never run it twice at once
-on one effort.
+leaves out what --path refuses; ROOT is only read. One run at a time per
+effort.
 
 Environment:
   CRUCIBLE_HOME     the Crucible space (default \$HOME/.crucible)
+  CLAUDE_CODE_SESSION_ID  required but for latest; a lowercase UUID
 
-Exit codes:
+Exit codes (a failed write, 2, 4, 5 and a signal: show the human stderr; stop):
   0  done; read stdout
-  1  latest: no version yet; run new. Else a write failed; show the human
-     stderr, and stop
-  2  usage error; show the human stderr, and stop
+  1  latest: no version yet; run new. Else a write failed
+  2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, nothing written; fix what stderr names, rerun
-     "--effort <folder>: its context already holds"  new: a version exists;
-       extend that version
-     "--from <file>: is version ... not the latest"  extend: extend the one
-       named
-  4  the Crucible space is unusable; show the human stderr, and stop
-  5  install fault; show the human stderr, and stop
-  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
+     "--effort <folder>: its context already holds"  new: extend that version
+     "--from <file>: is version ... not the latest"  extend the one named
+  4  the Crucible space is unusable
+  5  install fault
+  129, 130, 143  stopped by HUP, INT or TERM
 
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); cat,
@@ -425,6 +424,14 @@ require_tools() {
 			die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
 	done
 	tools_checked=true
+}
+
+# new, extend and diff: sets session_id from CLAUDE_CODE_SESSION_ID by the space
+# rules, or exits 2 before any file is made.
+require_session() {
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || usage_error "${crucible_session_problem}"
+	session_id=${crucible_session_id}
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, agent-context-file-checks.sh
@@ -723,6 +730,7 @@ run_context_jq() {
 		--argjson base "${base_json}" \
 		--arg file_problem_lines "${file_problems}" --arg validator_problem_lines "${validator_problems}" \
 		--arg space_root "${space_root}" --arg space_problem "${space_problem}" --arg space_source "${space_source}" \
+		--arg session_id "${session_id}" \
 		"include \"prune\";${SHOWN_JQ}${CONTEXT_JQ}" --args -- "$@" </dev/null
 }
 
@@ -1123,7 +1131,7 @@ check_diff_text() {
 	exit_on_problems "${rule_problems}"
 }
 
-temp_file='' diff_temp='' created_files='' tools_checked=''
+temp_file='' diff_temp='' created_files='' tools_checked='' session_id=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files and the files this
 # run made go on every path.
@@ -1170,6 +1178,7 @@ shift "${argument_count}"
 
 require_tools
 load_dependencies
+[ "${command}" = latest ] || require_session
 resolve_space_root
 case ${command} in
 	new)

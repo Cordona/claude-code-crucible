@@ -47,7 +47,7 @@ def slot: ($installed[.value].kind // (if .value | startswith("procedure-") then
 def listed($kind; $key): [of_kind($kind)[] | select(slot == $key)];
 def frameworks: of_kind("framework") | sort_by(.value);
 def plan:
-	{agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
+	{claude_session_id: $session_id, agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
 	 plugins: {
 		load: {language: (of_kind("language") | if . == [] then null else .[0] | item end),
 			frameworks: frameworks | map(item),
@@ -100,9 +100,10 @@ usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-fil
 
 Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
 context file's effort.
-Keys in order: agent, mode, tasks, plugins {load {language, frameworks,
-standards, procedures}, skip {standards, procedures}, load_reason}, replan,
-context; each plugin {plugin, reason}; empty keys left out.
+Keys in order: claude_session_id (the writer's), agent, mode, tasks, plugins
+{load {language, frameworks, standards, procedures}, skip {standards,
+procedures}, load_reason}, replan, context; each plugin {plugin, reason};
+empty keys left out.
 Rules (dispatch-plan-validator.jq): at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
@@ -113,51 +114,51 @@ Options:
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
   --mode BUILD|TEST   the dispatch mode
   --context-file CTX  the effort's latest context file, in its folder, passing
-                      procedure-context's checks; path + sha256 go in the plan
+      procedure-context's checks; path + sha256 go in the plan
   --task TEXT         one task, in order; two or more make a group
   --language NAME     the code's language plugin, a list-plugins.sh name
   --framework NAME    a framework plugin, repeatable, needs --language;
-                      written in plugin-name order
+      written in plugin-name order
   --load NAME         a standard or procedure plugin to load, in order
   --skip NAME         an installed standard or procedure not loaded, in order
   --reason LINE       why; exactly one right after each --language,
-                      --framework, --load and --skip
+      --framework, --load and --skip
   --load-reason LINE  why nothing loads: required with no --language,
-                      --framework or --load, refused with one
+      --framework or --load, refused with one
   --replan KIND       a step-10 re-plan: invalid or stop-recommended
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
-                      installed: the valid plugins its list-plugins.sh lists
+      installed: the valid plugins its list-plugins.sh lists
   CRUCIBLE_HOME       the space, as crucible.sh --help sets
+  CLAUDE_CODE_SESSION_ID  required; a lowercase UUID
 
 stdout on exit 0, in order:
   PLAN_FILE: <the --plan-file as given>
   PLAN_SHA256: <64 lowercase hex>, for generate-agent-dispatch.sh --plan-sha256
   PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item, for
     render-dispatch-plan.sh --data Plan=
-stderr on exit 3: one line per problem, all listed:
+stderr on exit 3: every problem, one line each:
   "${PROG}: <option> <value>: <problem>; expected <x>"
 list-plugins.sh's stderr passes through, to relay
 
-Exit 0: --plan-file and the item hold the plan; 1: only --plan-file may have
-changed; others: nothing changed. Else only crucible.sh new changes the space;
-nothing is left behind (a SIGKILL aside). Reads only the context file, its
-folder's names for a version file, the plan it wrote, and list-plugins.sh's.
+Exit 0: the plan is in --plan-file and the item; 1: only --plan-file may have
+changed; else nothing. Only crucible.sh new touches the space; nothing is left
+behind (a SIGKILL aside). Reads only the context file, its folder's
+version names, the plan it wrote and list-plugins.sh's output.
 
-Exit codes:
+Exit codes (1, 5, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
   0  written; keep PLAN_SHA256 and go on
-  1  the write or digest failed, stderr saying if the plan is written;
-     show stderr and stop
-  2  usage error: fix the command
+  1  the write or digest failed; stderr says if the plan is written
+  2  usage error: fix the command; or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input; fix what each stderr line names, then rerun
      ${CONTEXT_STALE_TOKEN}  leads a problem: a newer context version exists;
        rerun with it as --context-file
-  5  a dependency missing or failing; show stderr and stop
+  5  a dependency missing or failing
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
 Dependencies (skills in --skills-dir):
-  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  cat, mktemp, mv, rm, tr, wc (base system); sha256sum (Linux: coreutils)
-    or shasum (macOS: built in)
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); base
+    system cat, mktemp, mv, rm, tr, wc; sha256sum (Linux: coreutils) or
+    shasum (macOS: built in)
   this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
     installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
   ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh, agent-context-validator.jq,
@@ -356,6 +357,14 @@ load_dependencies() {
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
 }
 
+# Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
+# before anything is written.
+require_session() {
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || usage_error "${crucible_session_problem}"
+	session_id=${crucible_session_id}
+}
+
 # Prints the folder this script was run from (".", when run by a bare name).
 script_dir() {
 	case $0 in
@@ -458,7 +467,7 @@ run_plan_jq() {
 	run_mode=$1
 	shift
 	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --argjson installed "${installed}" \
-		--arg context_path "${context_file}" --arg context_digest "${digest_in_plan}" \
+		--arg context_path "${context_file}" --arg context_digest "${digest_in_plan}" --arg session_id "${session_id}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		"${PLAN_JQ}" --args -- "$@" </dev/null
 }
@@ -521,7 +530,7 @@ ${canonical_plan}
 EOF
 }
 
-temp_file='' tools_checked='' record_file='' record_effort=''
+temp_file='' tools_checked='' record_file='' record_effort='' session_id=''
 trap remove_partial_files EXIT
 # A signal exits through the EXIT trap, so the temp file goes on every path.
 trap 'exit 129' HUP
@@ -554,6 +563,7 @@ shift "${argument_count}"
 
 require_tools
 load_dependencies
+require_session
 read_installed
 check_context_file
 check_plan_file
