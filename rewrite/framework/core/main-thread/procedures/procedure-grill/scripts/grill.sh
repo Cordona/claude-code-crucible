@@ -400,6 +400,7 @@ EOF
 
 Prints the effort's grill files, newest first, each checked against
 grill-validator.jq. It reads them only: no file is written, no lock taken.
+A grills/ folder it cannot read exits 2, naming it.
 
 Options:
   --effort FOLDER        the effort folder, as effort.sh start printed it
@@ -909,6 +910,10 @@ list_grills() {
 	grills_dir="${effort_dir}/${KIND}"
 	if [ -L "${grills_dir}" ] || { [ -e "${grills_dir}" ] && [ ! -d "${grills_dir}" ]; }; then
 		exit_on_problems "--effort ${effort}: ${KIND}/ is a symbolic link or not a folder; expected the real folder ${PROG} new creates"
+	fi
+	# An unreadable folder globs to nothing, which would read as no grills.
+	if [ -d "${grills_dir}" ] && { [ ! -r "${grills_dir}" ] || [ ! -x "${grills_dir}" ]; }; then
+		exit_on_problems "--effort ${effort}: cannot read ${grills_dir}; expected a readable folder; try checking its permissions"
 	fi
 	set --
 	listed_count=0 listed_problems=''

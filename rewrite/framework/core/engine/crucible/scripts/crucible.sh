@@ -68,7 +68,8 @@ Commands:
   path   stdout: the absolute path of the item with ID.
   find   stdout: the absolute path of each KIND item (with --label, of that
          label) in --effort's folder, one per line, newest first; nothing
-         when there is none (KIND folder missing included). Read-only.
+         when there is none (KIND folder missing included); a KIND folder
+         it cannot read exits 4. Read-only.
   open   opens the item's own file. stdout: one line, "🟢 **Opened:** <its
          absolute path>".
   prune  lists effort folders unchanged for N days, or with --apply removes
@@ -383,6 +384,9 @@ run_find() {
 	[ ! -L "${effort}/${kind%%/*}" ] && [ ! -L "${kind_dir}" ] ||
 		space_fault "${kind_dir} or a folder above it in the effort is a symbolic link; expected real folders"
 	[ -d "${kind_dir}" ] || return 0
+	# An unreadable folder globs to nothing, which would read as no items.
+	[ -r "${kind_dir}" ] && [ -x "${kind_dir}" ] ||
+		space_fault "cannot read ${kind_dir}; expected a readable folder; try checking its permissions"
 	found_names=''
 	for found_item in "${kind_dir}"/*; do
 		[ -f "${found_item}" ] && [ ! -L "${found_item}" ] || continue
