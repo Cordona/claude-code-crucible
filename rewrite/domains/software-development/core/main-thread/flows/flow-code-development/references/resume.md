@@ -9,7 +9,7 @@ What to do with each part of the effort after a compaction, an interruption or a
 
 ## One state per part
 
-A part whose report check is still in context goes on by SKILL.md's steps. Every other part takes the first state below that fits. When `find` prints no dispatch file and no part is NOT-DISPATCHED, go to step 2, splitting the request as the latest context version's notes hold it.
+A part whose report check is still in context goes on by SKILL.md's steps. Every other part takes the first state below that fits. When `find` prints no dispatch file and no part is NOT-DISPATCHED, go to step 2, splitting the request as the latest context version's notes hold it. A report shown here ends its message; while parts remain, take the next one in the same turn, as step 5.3 sets.
 
 - **NOT-DISPATCHED** — a part the conversation still shows, or one the human names when asked, with no dispatch file among those `find` printed: take it back through step 2 with the latest context version, so each `BUILD` part goes through `flow-agent-initialization` again.
 - **MAY-RUN** — after a compaction in the same session, its Agent call shows no reply yet, so it may still be running in the background: wait for its reply as SKILL.md's Never sets, and check it as SKILL.md's Checking the reply sets. An agent error or no reply is `not run`, and a `report.sh check` exit 3 or 4 is handled as **REPORT-UNCHECKED** sets. Take only parts whose call has ended into the states below; when you can't tell, ask as SKILL.md's Never sets.

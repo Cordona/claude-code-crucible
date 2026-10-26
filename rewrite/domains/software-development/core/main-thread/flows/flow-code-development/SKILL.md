@@ -87,13 +87,13 @@ Before step 1:
    **5.2** Run `sh <report.sh> render --report <REPORT> --labels-file <that file> --round initial --repo <REPO ROOT>`. For an unstamped report, rendered anyway after a check that left it unstamped, add `--dispatch <dispatch file>` to that command.
 
    **5.3** Act on its exit:
-   - 0: its stdout is that developer's summary, and the whole message: copy it from the Bash result character for character, paths included, never retyped or rebuilt from memory; live Markdown, never in a code fence, with no line of your own above or below it.
+   - 0: its stdout is that developer's summary, and the whole message: copy it from the Bash result character for character, paths included, never retyped or rebuilt from memory; live Markdown, never in a code fence, with no line of your own above or below it. The message ends; the turn goes on only while this turn has more to take (another reply to check, a Resume part to handle, a re-plan, step 6's run summary): take it in the same turn. The run's summary ends the turn, whether it is the one report shown or `report.sh summary`'s view (step 6).
    - Any other exit: show the human its stderr and the report's path, and record the dispatch as `not rendered` for step 6.
    - **The human's asks:** read references/human-asks.md when the human asks for a dispatch's full report, to open it, or for a commit.
 6. **Close with the run summary:**
    - **The reports:** every report step 5 showed (its render exited 0), at-cap reports and those shown on Resume (references/resume.md) included.
    - **The parts not done:** every part recorded for step 6, except one recorded `incomplete`, which is a report only.
-   - **Exactly one report and no part not done:** its developer summary is the run's summary; step 6 shows nothing more.
+   - **Exactly one report and no part not done:** its developer summary is the run's summary; step 6 shows no other summary.
    - **No report and no part not done** (step 1 stopped before any part was split): for `stopped: stopped after the context`, show the line `Nothing was dispatched: you stopped after the context.`; otherwise show the line `Nothing was dispatched: the context was not built (<reason>).`, `<reason>` being the reason in `procedure-context`'s `stopped:` line, or `no version` when it handed back none.
    - **Otherwise,** when there is any report or part not done: run `sh <report.sh> summary`, with one `--report <REPORT>` per report, in the order step 5 showed them; `--context` with the effort's latest context version's path, as `procedure-context` hands it over (step 1); and one `--not-done '<task>: <why>'` per part not done. `<task>` is the part's task: its dispatch file's (`jq -r '.task' <dispatch file>`), or as step 2 wrote it when it has none. `<why>` is copied from this set, by the part's record:
      - a `TEST` part held at step 2 (Tests): `this flow writes no tests`;
@@ -102,6 +102,7 @@ Before step 1:
      - `not run`, `not checked`, `not stamped` or `not rendered`: the same words;
      - a folder outside git (step 2): `not a git repository`.
    - **Its exit:** 0, copy its stdout into the message text as step 5.3 sets for exit 0; any other exit, show the human its stderr.
+   - **Then the state offer,** at the human's next message, before anything else, since the run's summary ends the turn (step 5.3): when every part was done (no part not done and no blocked report), load `procedure-effort` with the Skill tool and follow its step 10, case `done`, with the effort folder's absolute path. Its own rules hold the offer while another gate waits.
 
    When the human asks for a commit: read references/human-asks.md.
 
@@ -135,6 +136,6 @@ After a compaction, an interruption or a new session, load `procedure-resume` fi
 Each script runs with `sh`; its `--help` is its full contract.
 
 - **Agent:** `code-developer`, checked before step 1.
-- **Skills:** `procedure-effort` (the effort this flow runs inside, which it never starts itself); `procedure-resume` (on Resume, finds the effort and loads this skill); `procedure-context` (the effort's context, step 1; Resume); `flow-agent-initialization` (step 2); `standard-code-development-report` (its `report.sh`); `crucible` (its `crucible.sh`). Each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
+- **Skills:** `procedure-effort` (the effort this flow runs inside, which it never starts itself; step 6's state offer); `procedure-resume` (on Resume, finds the effort and loads this skill); `procedure-context` (the effort's context, step 1; Resume); `flow-agent-initialization` (step 2); `standard-code-development-report` (its `report.sh`); `crucible` (its `crucible.sh`). Each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
 - **Tools:** Agent, Skill, Read, Write, Edit, Bash, AskUserQuestion, SendMessage and ToolSearch.
 - **Commands:** git (macOS: `xcode-select --install`; Linux: the distro's `git` package) and jq 1.6+ (macOS: `brew install jq`; Linux: the distro's `jq` package).
