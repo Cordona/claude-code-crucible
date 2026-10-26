@@ -15,12 +15,18 @@ readonly PROG='generate-dispatch-plan.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly CRUCIBLE_SKILL='crucible'
+readonly EFFORT_SKILL='procedure-effort'
+# The exit of a write refused because the effort is not open.
+readonly NOT_OPEN_EXIT=6
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 # Leads the problem of a context version no longer its effort's latest, so a
 # caller matches it exactly: the Agent hook's KIND word for the same problem.
 readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
 readonly RECORD_KIND='plans'
 readonly RECORD_LABEL='dispatch-plan'
+NL='
+'
+readonly NL
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -100,10 +106,10 @@ usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-fil
 
 Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
 context file's effort.
-Keys in order: claude_session_id (the writer's), agent, mode, tasks, plugins
-{load {language, frameworks, standards, procedures}, skip {standards,
-procedures}, load_reason}, replan, context; each plugin {plugin, reason};
-empty keys left out.
+Keys in order: claude_session_id, agent, mode, tasks, plugins {load
+{language, frameworks, standards, procedures}, skip {standards, procedures},
+load_reason}, replan, context; each plugin {plugin, reason}; empty keys left
+out.
 Rules (dispatch-plan-validator.jq): at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
@@ -113,7 +119,7 @@ Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
   --mode BUILD|TEST   the dispatch mode
-  --context-file CTX  the effort's latest context file, in its folder, passing
+  --context-file CTX  the effort's latest context version, passing
       procedure-context's checks; path + sha256 go in the plan
   --task TEXT         one task, in order; two or more make a group
   --language NAME     the code's language plugin, a list-plugins.sh name
@@ -140,30 +146,30 @@ stderr on exit 3: every problem, one line each:
   "${PROG}: <option> <value>: <problem>; expected <x>"
 list-plugins.sh's stderr passes through, to relay
 
-Exit 0: the plan is in --plan-file and the item; 1: only --plan-file may have
-changed; else nothing. Only crucible.sh new touches the space; nothing is left
-behind (a SIGKILL aside). Reads only the context file, its folder's
-version names, the plan it wrote and list-plugins.sh's output.
+Exit 1 may leave only --plan-file changed; other failures change nothing.
+Only crucible.sh new changes the space; nothing is left behind (a SIGKILL
+aside). Reads only the context file, its folder's version names, the effort's
+state, the plan it wrote and list-plugins.sh's.
 
-Exit codes (1, 5, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
+Exit codes (1, 5, 6, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
   0  written; keep PLAN_SHA256 and go on
   1  the write or digest failed; stderr says if the plan is written
   2  usage error: fix the command; or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input; fix what each stderr line names, then rerun
-     ${CONTEXT_STALE_TOKEN}  leads a problem: a newer context version exists;
-       rerun with it as --context-file
+     ${CONTEXT_STALE_TOKEN}  leads a problem: rerun with the newer context version
   5  a dependency missing or failing
+  ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
 Dependencies (skills in --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); base
-    system cat, mktemp, mv, rm, tr, wc; sha256sum (Linux: coreutils) or
-    shasum (macOS: built in)
+    system cat, mktemp, mv, rm, tr, wc; sha256sum (Linux: coreutils) or shasum
   this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
     installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
   ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh, agent-context-validator.jq,
     agent-context-url.jq, context-versions.sh
   ${CRUCIBLE_SKILL}: crucible.sh, lib/crucible-space.sh, lib/prune.jq
+  ${EFFORT_SKILL}: effort.sh
 EOF
 }
 
@@ -355,6 +361,9 @@ load_dependencies() {
 	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
+	effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
+	[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
+		die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill or pass the right --skills-dir"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
@@ -495,6 +504,32 @@ build_plan() {
 	exit 3
 }
 
+# Exits NOT_OPEN_EXIT unless record_effort is open, as effort.sh state, the
+# one owner of the state rule, reads it; a state it cannot read refuses too.
+require_open_effort() {
+	if effort_state_out=$(sh "${effort_script}" state --effort "${record_effort}" </dev/null); then
+		effort_state_status=0
+	else
+		effort_state_status=$?
+	fi
+	effort_name=${record_effort##*/}
+	# shellcheck disable=SC2310 # the folder passed the space rules, so its name splits
+	crucible_split_id "${effort_name}" && effort_name=${crucible_name_rest}
+	case ${effort_state_status} in
+		0) ;;
+		5) die 5 "effort.sh state names a missing dependency above; expected the ${EFFORT_SKILL} skill working; install what it names, then rerun" ;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state exited ${effort_state_status}; its stderr is above); expected an open effort; ask the human to check the effort" ;;
+	esac
+	effort_state=${effort_state_out%%"${NL}"*}
+	case ${effort_state} in
+		'STATE: open') ;;
+		'STATE: paused' | 'STATE: completed' | 'STATE: dropped')
+			die "${NOT_OPEN_EXIT}" "effort ${effort_name} is ${effort_state#STATE: }; expected an open effort; ask the human to reopen it"
+			;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
+	esac
+}
+
 # Writes plan_json to plan_file through a temp file in its folder, or exits 1.
 write_plan() {
 	temp_file=$(mktemp "${plan_folder}/.${plan_file##*/}.XXXXXX") ||
@@ -568,6 +603,7 @@ read_installed
 check_context_file
 check_plan_file
 build_plan "$@"
+require_open_effort
 write_record
 write_plan
 digest_written_plan

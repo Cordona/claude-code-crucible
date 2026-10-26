@@ -119,7 +119,7 @@ After a compaction, or when this flow is loaded again mid-run: load `procedure-r
 
 ## Dependencies
 
-`procedure-effort` (the effort the calling flow runs inside, which this flow never starts), `procedure-resume` (finds the effort on Resume; this flow never loads it), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7), `crucible` (its `crucible.sh` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`, which steps 7 and 8 and the hook need; step 1 checks them); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
+`procedure-effort` (the effort the calling flow runs inside, which this flow never starts; the generators run its `effort.sh state` and write nothing into an effort that isn't open), `procedure-resume` (finds the effort on Resume; this flow never loads it), `procedure-context` (a new context version, step 7.4), `procedure-approval-gate` (step 7), `crucible` (its `crucible.sh` and `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh`, which steps 7 and 8 and the hook need; step 1 checks them); each installs under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`.
 
 ## Gotchas
 

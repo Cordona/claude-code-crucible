@@ -77,7 +77,7 @@ After a compaction, an interruption or a new session, load `procedure-resume` fi
 - **Scripts,** in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-grill/scripts/`: `grill.sh`, with `grill-validator.jq` beside it; its own tools are on its pages.
 - **Skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
   - `procedure-approval-gate`, which shows the offer (step 1); missing: as `references/offer.md` sets for an offer that can't be shown.
-  - `procedure-effort`, for its `render-effort-offer.sh` (step 1) and the effort (step 2); missing: tell the human to install it, and stop: no grill runs outside an effort.
+  - `procedure-effort`, for its `render-effort-offer.sh` (step 1), the effort (step 2) and its `effort.sh state`, which `grill.sh` runs before every write; missing: tell the human to install it, and stop: no grill runs outside an effort.
   - `procedure-context`, for the latest version (step 3, and `references/resume.md` on Resume) and the context the grill enters (step 10); missing: tell the human to install it, and stop; an ended grill stays in the effort.
   - `procedure-resume`, which finds the effort and hands it over on Resume; missing: tell the human to install it, and stop; the grill stays as its file holds it.
 - **Tools:** Skill, Read, Write, Bash and AskUserQuestion.

@@ -13,10 +13,16 @@ readonly PROG='grill.sh'
 readonly PROCEDURE='procedure-grill'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
+readonly EFFORT_SKILL='procedure-effort'
 readonly KIND='grills'
 readonly REQUIRED_TOOLS='date mkdir mktemp mv rm rmdir tr'
 # The exit of a write refused because another call holds the grill's lock.
 readonly LOCKED_EXIT=7
+# The exit of a write refused because the grill's effort is not open.
+readonly NOT_OPEN_EXIT=8
+NL='
+'
+readonly NL
 # The label is the topic's words in the file name; 40 characters keep a
 # topic recognisable in a listing, below the space's label cap.
 readonly LABEL_MAX_CHARS=40
@@ -509,7 +515,8 @@ Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package); date, mkdir, mktemp, mv, rm, rmdir, tr (every macOS and Linux
   base system); in the skills: the ${CRUCIBLE_SKILL} skill's crucible.sh,
   scripts/lib/crucible-space.sh and scripts/lib/prune.jq, the ${RENDER_LIB}
-  skill's view.jq; grill-validator.jq beside this script.
+  skill's view.jq, the ${EFFORT_SKILL} skill's effort.sh (but for list);
+  grill-validator.jq beside this script.
 EOF
 			;;
 	esac
@@ -566,6 +573,10 @@ EOF
   ${LOCKED_EXIT}  the grill is locked: another call is writing it, or a killed run left
      the lock; nothing written; stderr names the lock. Rerun once your other
      call has ended; if it is still held, show the human stderr, and stop
+EOF
+	print_page <<EOF
+  ${NOT_OPEN_EXIT}  the grill's effort is not open, or its state is unknown; nothing
+     written; show the human stderr, and stop
 EOF
 	print_page <<'EOF'
   129, 130, 143  stopped by HUP, INT or TERM, the grill file whole, as it was
@@ -732,6 +743,10 @@ load_dependencies() {
 	require_skill_file "${crucible_script}" "${CRUCIBLE_SKILL}" 'crucible.sh'
 	space_lib="${crucible_lib_dir}/crucible-space.sh"
 	require_skill_file "${space_lib}" "${CRUCIBLE_SKILL}" 'space rules'
+	if [ "${command}" != list ]; then
+		effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
+		require_skill_file "${effort_script}" "${EFFORT_SKILL}" 'effort.sh'
+	fi
 	# shellcheck source=crucible-space.sh
 	. "${space_lib}"
 }
@@ -742,6 +757,32 @@ require_session() {
 	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
 	crucible_check_session || exit_on_problems "${crucible_session_problem}"
 	session_id=${crucible_session_id}
+}
+
+# Exits NOT_OPEN_EXIT unless effort folder $1 is open, as effort.sh state, the
+# one owner of the state rule, reads it; a state it cannot read refuses too.
+require_open_effort() {
+	if effort_state_out=$(sh "${effort_script}" state --effort "$1" </dev/null); then
+		effort_state_status=0
+	else
+		effort_state_status=$?
+	fi
+	effort_name=${1##*/}
+	# shellcheck disable=SC2310 # the folder passed the space rules, so its name splits
+	crucible_split_id "${effort_name}" && effort_name=${crucible_name_rest}
+	case ${effort_state_status} in
+		0) ;;
+		5) install_fault 5 'effort.sh state names a missing dependency above; install it, then rerun' ;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state exited ${effort_state_status}; its stderr is above); expected an open effort; ask the human to check the effort" ;;
+	esac
+	effort_state=${effort_state_out%%"${NL}"*}
+	case ${effort_state} in
+		'STATE: open') ;;
+		'STATE: paused' | 'STATE: completed' | 'STATE: dropped')
+			die "${NOT_OPEN_EXIT}" "effort ${effort_name} is ${effort_state#STATE: }; expected an open effort; ask the human to reopen it"
+			;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
+	esac
 }
 
 # Prints the problem of the --grill path, or nothing when it names a grill
@@ -986,6 +1027,8 @@ write_command() {
 	else
 		path_problem=$(grill_path_problem)
 		exit_on_problems "${path_problem}"
+		grills_folder=${grill%/*}
+		require_open_effort "${grills_folder%/*}"
 		take_lock
 		# shellcheck disable=SC2310 # its status is jq's; a failure exits
 		read_problems=$(file_problems "${grill}" "--grill ${grill}: ") ||
@@ -995,7 +1038,11 @@ write_command() {
 	fi
 	run_grill_jq "$@"
 	exit_on_result_problems "${setup_problems}"
-	[ "${command}" != new ] || create_grill_file
+	if [ "${command}" = new ]; then
+		set_effort_dir
+		require_open_effort "${effort_dir}"
+		create_grill_file
+	fi
 	write_file "${grill}"
 	created_file=''
 	case ${command} in

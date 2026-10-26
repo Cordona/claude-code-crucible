@@ -16,6 +16,9 @@ umask 077
 readonly PROG='context.sh'
 readonly PROCEDURE='procedure-context'
 readonly CRUCIBLE_SKILL='crucible'
+readonly EFFORT_SKILL='procedure-effort'
+# The exit of a write refused because the effort is not open.
+readonly NOT_OPEN_EXIT=6
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
 readonly TEXT_LABEL_SUFFIX='-text'
 readonly DIFF_LABEL_PREFIX='diff-'
@@ -165,7 +168,7 @@ Options (no value but a note may hold a control character):
       .docker/config.json, CLAUDE.md, SKILL.md, settings.local.json, or
       \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}'s settings.json, skills/ or agents/
       or anything under them
-  --link URL        an http(s) URL; rules: see agent-context-url.jq
+  --link URL        an http(s) URL; rules: agent-context-url.jq
   --text-file FILE  the human's long text: a file --path takes, UTF-8, at most
       ${TEXT_MAX_BYTES} bytes, one per call
   --why LINE        one line: why the agent needs the entry just before it
@@ -176,13 +179,12 @@ Options (no value but a note may hold a control character):
 Sensitive names, basename globs:
   ${sensitive_names}
 
-A version is at most ${context_cap}; shape: agent-context-validator.jq,
-claude_session_id (the writing session) first.
+A version is at most ${context_cap}; shape: agent-context-validator.jq
+(claude_session_id first).
 
 stdout on exit 0 (none otherwise):
-  new, extend, latest: CONTEXT_FILE: <absolute version path>
-  then CONTEXT_SHA256: <sha256 of that file>
-  diff: DIFF_FILE: <absolute diff file path>
+  new, extend, latest: CONTEXT_FILE: <absolute path>, then
+  CONTEXT_SHA256: <its sha256>; diff: DIFF_FILE: <absolute path>
 stderr on exit 3: one line per problem, either
   "${PROG}: <option> <value>: <problem>; expected <x>" or, for the version
   as a whole, "${PROG}: context file: <problem>"
@@ -195,7 +197,7 @@ Environment:
   CRUCIBLE_HOME     the Crucible space (default \$HOME/.crucible)
   CLAUDE_CODE_SESSION_ID  required but for latest; a lowercase UUID
 
-Exit codes (a failed write, 2, 4, 5 and a signal: show the human stderr; stop):
+Exit codes (1 on a failed write, 2, 4-6, a signal: show the human stderr; stop):
   0  done; read stdout
   1  latest: no version yet; run new. Else a write failed
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
@@ -204,6 +206,7 @@ Exit codes (a failed write, 2, 4, 5 and a signal: show the human stderr; stop):
      "--from <file>: is version ... not the latest"  extend the one named
   4  the Crucible space is unusable
   5  install fault
+  ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
   129, 130, 143  stopped by HUP, INT or TERM
 
 Dependencies:
@@ -211,7 +214,8 @@ Dependencies:
     mktemp, mv, rm, tr, wc; sha256sum or shasum (macOS: built in)
   the ${CRUCIBLE_SKILL} skill: crucible.sh (not for latest),
     scripts/lib/crucible-space.sh; new, extend: scripts/lib/prune.jq
-  diff: git (macOS: xcode-select --install; Linux: the distro's git)
+  ${EFFORT_SKILL}: effort.sh (not for latest)
+  diff: git (macOS: xcode-select --install; Linux: the distro's)
   beside this script: agent-context-file-checks.sh, agent-context-validator.jq,
     agent-context-url.jq, context-versions.sh
 EOF
@@ -458,6 +462,9 @@ load_dependencies() {
 		crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/crucible.sh"
 		[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 			die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
+		effort_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${EFFORT_SKILL}/scripts/effort.sh"
+		[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
+			die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill"
 	fi
 	case ${command} in
 		new | extend)
@@ -794,6 +801,32 @@ context_json_problems() {
 		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
 }
 
+# Exits NOT_OPEN_EXIT unless effort_dir is open, as effort.sh state, the one
+# owner of the state rule, reads it; a state it cannot read refuses too.
+require_open_effort() {
+	if effort_state_out=$(sh "${effort_script}" state --effort "${effort_dir}" </dev/null); then
+		effort_state_status=0
+	else
+		effort_state_status=$?
+	fi
+	effort_name=${effort_dir##*/}
+	# shellcheck disable=SC2310 # the folder passed the space rules, so its name splits
+	crucible_split_id "${effort_name}" && effort_name=${crucible_name_rest}
+	case ${effort_state_status} in
+		0) ;;
+		5) die 5 "effort.sh state names a missing dependency above; expected the ${EFFORT_SKILL} skill working; install what it names, then rerun" ;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state exited ${effort_state_status}; its stderr is above); expected an open effort; ask the human to check the effort" ;;
+	esac
+	effort_state=${effort_state_out%%"${NL}"*}
+	case ${effort_state} in
+		'STATE: open') ;;
+		'STATE: paused' | 'STATE: completed' | 'STATE: dropped')
+			die "${NOT_OPEN_EXIT}" "effort ${effort_name} is ${effort_state#STATE: }; expected an open effort; ask the human to reopen it"
+			;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
+	esac
+}
+
 # Sets created_path to a new empty file crucible.sh made in the effort's
 # context/ with label $1, or fails the run.
 create_item() {
@@ -902,6 +935,7 @@ write_version() {
 	collect_file_problems "$@"
 	plan_space_paths
 	report_input_problems "$@"
+	require_open_effort
 	text_file=$(text_file_of "$@")
 	text_path=''
 	if [ -n "${text_file}" ]; then
@@ -1053,6 +1087,7 @@ run_diff() {
 	[ -z "${space_problem}" ] ||
 		add_problem CRUCIBLE_HOME "${space_root}" "${space_problem}; expected ${context_path_expected}${space_source}"
 	exit_on_problems "${rule_problems}"
+	require_open_effort
 	diff_temp=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
 		die 1 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; no file was created; expected a writable temp folder; try setting TMPDIR to one, then rerun"
 	# shellcheck disable=SC2310 # their status is git's; a failure exits

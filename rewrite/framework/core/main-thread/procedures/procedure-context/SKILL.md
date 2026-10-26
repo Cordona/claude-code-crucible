@@ -106,7 +106,7 @@ After a compaction, an interruption or a new session, load this skill again with
 
 - **Scripts,** in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/`: `context.sh`, with `context-versions.sh`, `agent-context-validator.jq`, `agent-context-url.jq` and `agent-context-file-checks.sh` beside it (Shape above), which it and the dispatch scripts source; their own tools are in `context.sh --help`. `render-what-next.sh` (step 7); its `--help` is the full contract.
 - **Skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
-  - `procedure-effort`: the effort folder comes from the calling flow; this skill loads no effort skill.
+  - `procedure-effort`: the effort folder comes from the calling flow; this skill loads no effort skill, but `context.sh` runs its `effort.sh state` (every command but `latest`) and writes nothing into an effort that isn't open.
   - `crucible`, for its `crucible.sh` (every `context.sh` command but `latest`) and its `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh` (every command); missing, `context.sh` exits 5: tell the human to install it, and stop as step 8 sets.
   - `procedure-approval-gate`, which shows the "what next?" question (step 7); missing: as step 7 sets for a gate that can't be shown.
   - `procedure-read-trackers`, for its `read-link.sh` (step 4); missing: a tracker link is not read, as `references/tracker-links.md` sets.

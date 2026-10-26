@@ -24,6 +24,9 @@ readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
 readonly VIEW_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
+readonly EFFORT_SKILL='procedure-effort'
+# The exit of a write refused because the effort is not open.
+readonly NOT_OPEN_EXIT=6
 # Stand for the parts only crucible.sh new and the clock know, so the dispatch
 # is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
@@ -185,17 +188,17 @@ stdout on exit 0, in order:
     "LABELS: Language: <label> · Frameworks: <labels> · Standards: <labels>
     · Procedures: <labels>", an empty kind left out ("LABELS:" alone if all)
   TITLE: <title>  the agent's title, relayed as printed: "<frameworks>
-    developer with <language>" ("Next.js and React developer with
-    TypeScript"), "<language> developer", "Generic developer" with no
-    language; a code-reviewer says "reviewer", a standard seat "<standard
-    label> reviewer"; frameworks in plugin-name order; the installed labels
+    developer with <language>", "<language> developer", "Generic developer"
+    with no language; a code-reviewer says "reviewer", a standard seat
+    "<standard label> reviewer"; frameworks in plugin-name order; the
+    installed labels
 stderr on exit 3: one line per problem; one a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
 Leaves only three files in FOLDER (a SIGKILL aside): the dispatch file, whole
 or not at all (shape: agent-dispatch-validator.jq; keys id, started,
-claude_session_id (the writer's), agent, mode, task, repo_root, entry_points,
-plugins {language, frameworks, standards, procedures}, context, plan, report,
+claude_session_id, agent, mode, task, repo_root, entry_points, plugins
+{language, frameworks, standards, procedures}, context, plan, report,
 baseline, empty keys left out; plugins in load order: language, frameworks by
 name, standards, procedures, each with SKILL.md, then
 references/development.md and references/*-template.md, or
@@ -205,7 +208,7 @@ bytes. On a non-zero exit this run's files are removed and named on stderr (a
 signal may leave one crucible.sh new was making, empty). No other effort is
 read; the --repo-root tree and git index never change.
 
-Exit codes (1, 2, 5: show stderr and stop):
+Exit codes (1, 2, 5, 6: show stderr and stop):
   0  written; keep the three stdout lines
   1  making a file failed after the inputs passed, none left
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
@@ -217,17 +220,19 @@ Exit codes (1, 2, 5: show stderr and stop):
        ${BASELINE_EMPTY_TOKEN}  the --baseline-from baseline is empty; rerun without it
        ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
   5  a dependency missing or failing
+  ${NOT_OPEN_EXIT}  the effort is not open, or its state unknown
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
 Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID
 
 Dependencies:
-  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  git (macOS: xcode-select --install; Linux: the distro's git)
-  sha256sum (Linux: coreutils) or shasum (macOS: built in)
-  awk, cat, date, mktemp, mv, rm, tr, wc (base system)
-  the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE}
-    and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's)
+  git (macOS: xcode-select --install; Linux: the distro's)
+  sha256sum (Linux: coreutils) or shasum; awk, cat, date, mktemp, mv, rm, tr,
+    wc (base system)
+  the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
+    ${EFFORT_SKILL} (effort.sh) and ${VIEW_LIB} (title.jq) skills in the default
+    --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
 }
@@ -367,6 +372,9 @@ load_dependencies() {
 	crucible_script="${crucible_skill_dir}/scripts/crucible.sh"
 	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
 		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
+	effort_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${EFFORT_SKILL}/scripts/effort.sh"
+	[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
+		die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill"
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
@@ -829,6 +837,32 @@ check_planned_dispatch() {
 	[ -z "${named_problems}" ] || problems="${problems}${named_problems}${NL}"
 }
 
+# Exits NOT_OPEN_EXIT unless effort_dir is open, as effort.sh state, the one
+# owner of the state rule, reads it; a state it cannot read refuses too.
+require_open_effort() {
+	if effort_state_out=$(sh "${effort_script}" state --effort "${effort_dir}" </dev/null); then
+		effort_state_status=0
+	else
+		effort_state_status=$?
+	fi
+	effort_name=${effort_dir##*/}
+	# shellcheck disable=SC2310 # the folder passed the space rules, so its name splits
+	crucible_split_id "${effort_name}" && effort_name=${crucible_name_rest}
+	case ${effort_state_status} in
+		0) ;;
+		5) die 5 "effort.sh state names a missing dependency above; expected the ${EFFORT_SKILL} skill working; install what it names, then rerun" ;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state exited ${effort_state_status}; its stderr is above); expected an open effort; ask the human to check the effort" ;;
+	esac
+	effort_state=${effort_state_out%%"${NL}"*}
+	case ${effort_state} in
+		'STATE: open') ;;
+		'STATE: paused' | 'STATE: completed' | 'STATE: dropped')
+			die "${NOT_OPEN_EXIT}" "effort ${effort_name} is ${effort_state#STATE: }; expected an open effort; ask the human to reopen it"
+			;;
+		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
+	esac
+}
+
 # Sets created_path to a new empty file crucible.sh made of kind $1 with
 # label $2 in the effort, or fails the run.
 create_item() {
@@ -983,6 +1017,7 @@ if [ -n "${problems}" ]; then
 	printf '%s' "${problems}" >&2
 	exit 3
 fi
+require_open_effort
 
 # The dispatch check refuses an agent with no report kind; this guards a
 # drift between it and the shared names.
