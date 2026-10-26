@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Effort",
+      "question": "Start an effort for this?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Start it in a new session (Recommended)",
+          "description": "Nothing starts here. Open a new session or run /clear, then ask again; the effort starts there with a clean context."
+        },
+        {
+          "label": "Yes, start it here",
+          "description": "It starts in this session, next to the effort already here. Tracked work with its own ID and folder; a plan to approve before any agent runs."
+        },
+        {
+          "label": "No, do it without one",
+          "description": "I make the change myself with the matching plugins, run their checks, and show you the result. No tests are written. Nothing is tracked."
+        }
+      ]
+    }
+  ]
+}

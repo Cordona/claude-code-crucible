@@ -26,6 +26,7 @@ In a flow or procedure, the human sees only: script output you relay, copied fro
 - **Reports:** show each subagent report, and keep full reports out of your context, as its flow sets.
 - **Quote values for scripts:** pass every free-text value in single quotes, with each `'` inside it written `'\''`, unless the skill sets a stricter rule.
 - **Resume** (an effort's work cut off by a compaction or an interruption, or the human asks to go back to an effort or to work this conversation doesn't show: an earlier session, before a /clear): load `procedure-resume`, before any §4 line. A "continue" about work this conversation still shows, with no compaction or interruption since, is no Resume.
+- **Effort state** (the human asks to pause, complete, drop or reopen an effort, or where one stands; or the open effort's work looks done, or the human moves to work it doesn't cover): load `procedure-effort`, before any §4 line; it changes, shows or offers the state.
 
 ## 4. Routing
 
