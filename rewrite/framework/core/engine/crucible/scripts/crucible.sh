@@ -8,7 +8,7 @@ umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches baselines plans grills reports/development reports/review cache/gates cache/denials'
+readonly KIND_LIST='context dispatches baselines plans grills states reports/development reports/review cache/gates cache/denials'
 readonly CACHE_KINDS='cache/gates cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
@@ -41,9 +41,9 @@ folder: new and find refuse it, the rest skip it.
 Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
-  kind    context, dispatches, baselines, plans, grills, reports/development,
-          reports/review, cache/gates or cache/denials; the cache kinds
-          expire after ${CACHE_MAX_DAYS} days
+  kind    context, dispatches, baselines, plans, grills, states,
+          reports/development, reports/review, cache/gates or cache/denials;
+          the cache kinds expire after ${CACHE_MAX_DAYS} days
   ext     json
 
 Options:

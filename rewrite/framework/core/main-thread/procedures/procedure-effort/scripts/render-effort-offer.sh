@@ -1,11 +1,14 @@
 #!/usr/bin/env sh
 # Renders the effort offer, the gate that asks the human whether to start an
-# effort, from a JSON file of reasons, so the main thread never hand-formats
-# it. Pipe its stdout into procedure-approval-gate's open-gate.sh.
+# effort, or with --case the state offer, which suggests a new effort or
+# completing this one, from a JSON file of reasons, so the main thread never
+# hand-formats it. Pipe its stdout into procedure-approval-gate's open-gate.sh.
+# shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='render-effort-offer.sh'
 readonly RENDER_LIB='human-view'
+readonly CRUCIBLE_SKILL='crucible'
 readonly DEFAULT_TITLE='start an effort for this?'
 # The title shares the first line with the light and "Decision needed · ", so
 # it stays short enough for that line to fit one terminal line.
@@ -48,31 +51,44 @@ else .[0]
 end)
 '
 
-# A reason that starts like a Markdown block (a heading, a quote, a rule, a
-# list item or a code fence) gets that start backslash-escaped, so every reason
-# renders as one plain line or list item; inline Markdown stays as written.
+# Each reason is trimmed and its leading Markdown block mark escaped, so it
+# renders as one plain line or list item. Without $case: the effort offer,
+# with the efforts this session already works on ($open_efforts, one NAME per
+# line, a repeat shown once) before the reasons when any are given; with it:
+# the state offer, its two first lines fixed per case and the reasons as
+# bullets, new-work ending with the way out. The program is single-quoted on
+# purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='include "view";
-def block_start: "^(#{1,6}( |$)|>|(?<rule>[-*_])( *\\k<rule>){2,} *$|[-+*]( |$)|```|~~~)";
-def ordered_start: "^[0-9]{1,9}[.)]( |$)";
-def plain_line:
-	if test(block_start) then "\\" + .
-	elif test(ordered_start) then sub("^(?<number>[0-9]{1,9})"; "\(.number)\\")
-	else . end;
+include "paths";
 def trimmed: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
-[status_line("decision"; "Decision needed · \($title | trimmed)"),
- section("Why"; .[0].reasons | map(trimmed | plain_line))]
+def way_out: "A new session or /clear keeps each effort clean.";
+(.[0].reasons | map(trimmed | plain_line)) as $reasons
+| ($open_efforts | split("\n") | map(select(. != ""))
+	| reduce .[] as $effort ([]; if any(.[]; . == $effort) then . else . + [$effort] end)) as $open
+| if $case == "" then
+	[status_line("decision"; "Decision needed · \($title | trimmed)"),
+	 (if ($open | length) == 0 then "" else "**This session already works on:**\n\($open | map(code_span) | bullet_list)" end),
+	 (if ($open | length) == 0 then "" else way_out end),
+	 section("Why"; $reasons)]
+  else
+	{"new-work": {title: "It seems that you are planning something new.", suggestion: "You should consider starting a new effort:", tail: way_out},
+	 done: {title: "It looks like \($name | code_span) is done.", suggestion: "You should consider completing it:", tail: ""}}[$case] as $lines
+	| [status_line("decision"; $lines.title), "\($lines.suggestion)\n\($reasons | bullet_list)", $lines.tail]
+  end
 | blocks
 '
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --plan-file PATH [--title TEXT] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
+usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
+       sh ${PROG} --plan-file PATH --case new-work|done --name NAME | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-state-offer
        sh ${PROG} --help | -h
 
 Prints the effort offer, the gate asking the human whether to start an effort,
-as Markdown from a JSON file of reasons. stdin is never read; no file is
-written.
+or with --case the state offer, which suggests starting a new effort
+(new-work) or completing the effort NAME (done), as Markdown from a JSON file
+of reasons. stdin is never read; no file is written.
 
 Options:
   --plan-file PATH  one JSON object, {"reasons": [str, ...]}, no other field:
@@ -84,16 +100,23 @@ Options:
                     default "${DEFAULT_TITLE}": not blank, one line with no
                     control character or U+2028/U+2029, at most ${MAX_TITLE_CHARS}
                     characters (code points, as written); inline Markdown
-                    renders
-  CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
+                    renders; not with --case
+  --open-effort NAME  the effort offer: an effort this session already works
+                    on, shown before the reasons with the way out; once per
+                    effort, a repeat shown once; with --case, checked and not
+                    shown, since the state offer carries its own way out
+  --case CASE       the state offer: new-work or done; needs --name
+  --name NAME       with --case: the effort's NAME
+  NAME              as the crucible skill's lib/crucible-space.sh sets it
+  CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
 
-stdout on exit 0 only: the offer's Markdown, the decision line and the
-  reasons in input order, with no gate marker
+stdout on exit 0 only: the offer's Markdown, the reasons in input order,
+  with no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a reason is named
   reasons[<i>], from 0, and the title --title, each with its first fault only
 stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
-  prints; tell the human what it names to install, and stop
+  prints: an install fault, never a problem of the input; do not rerun; stop
 
 Exit codes:
   0  the offer printed; go on
@@ -102,11 +125,14 @@ Exit codes:
   3  jq failed on valid JSON
   4  stdout closed before the offer was written, nothing on stderr; stop and
      show the exit code
-  5  the ${RENDER_LIB} skill's view.jq missing
+  5  the ${RENDER_LIB} skill's view.jq or paths.jq, or with --case or
+     --open-effort the ${CRUCIBLE_SKILL} skill's lib/crucible-space.sh, missing
 
 Dependencies: POSIX sh, cat, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package), the ${RENDER_LIB} skill's view.jq in the skills; the
-  plan file is read as UTF-8 whatever the locale.
+  distro's jq package), the ${RENDER_LIB} skill's view.jq and paths.jq in the
+  skills, and with --case or --open-effort the ${CRUCIBLE_SKILL} skill's
+  scripts/lib/crucible-space.sh; the plan file is read as UTF-8 whatever the
+  locale.
 EOF
 }
 
@@ -127,9 +153,9 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file and title from the arguments.
+# Sets plan_file, title, offer_case and name from the arguments.
 parse_args() {
-	plan_file=''
+	plan_file='' title_given=false offer_case='' name='' open_efforts=''
 	title=${DEFAULT_TITLE}
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -144,13 +170,67 @@ parse_args() {
 				;;
 			--title)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error '--title needs a value; expected --title TEXT'
-				title=$2
+				title=$2 title_given=true
 				shift 2
 				;;
-			*) usage_error 'unknown argument; expected --plan-file PATH, --title TEXT or --help' ;;
+			--case)
+				[ "$#" -ge 2 ] || usage_error '--case needs a value; expected --case new-work or --case done'
+				case $2 in
+					new-work | done) offer_case=$2 ;;
+					*) usage_error 'bad --case; expected new-work or done' ;;
+				esac
+				shift 2
+				;;
+			--name)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error '--name needs a value; expected --name NAME'
+				name=$2
+				shift 2
+				;;
+			--open-effort)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error '--open-effort needs a value; expected --open-effort NAME'
+				# Kept one per line, so a line break inside one is refused here;
+				# check_names checks each against the NAME rule.
+				case $2 in
+					*[[:cntrl:]]*) usage_error 'bad --open-effort: it holds a control character; expected the effort NAME' ;;
+					*) ;;
+				esac
+				open_efforts="${open_efforts}$2
+"
+				shift 2
+				;;
+			*) usage_error 'unknown argument; expected --plan-file PATH, --title TEXT, --open-effort NAME, --case CASE, --name NAME or --help' ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
+	if [ -n "${offer_case}" ]; then
+		[ "${title_given}" = false ] || usage_error '--title and --case given together; expected --title for the effort offer or --case for the state offer'
+		[ -n "${name}" ] || usage_error '--name missing; expected --case CASE --name NAME'
+	else
+		[ -z "${name}" ] || usage_error '--name given without --case; expected --case new-work|done --name NAME'
+	fi
+}
+
+# With --case or --open-effort: exits 5 when the space rules are missing, 2
+# when a NAME breaks the effort NAME rule.
+check_names() {
+	[ -n "${offer_case}" ] || [ -n "${open_efforts}" ] || return 0
+	space_lib="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib/crucible-space.sh"
+	[ -f "${space_lib}" ] && [ -r "${space_lib}" ] ||
+		install_fault 5 "space rules missing; expected ${space_lib}; install the ${CRUCIBLE_SKILL} skill"
+	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
+	. "${space_lib}"
+	name_rule=${crucible_effort_name_rule#*-<NAME>, NAME }
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	[ -z "${offer_case}" ] || crucible_is_effort_words "${name}" ||
+		usage_error "bad --name; expected the effort NAME, ${name_rule}"
+	while IFS= read -r open_effort; do
+		[ -n "${open_effort}" ] || continue
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		crucible_is_effort_words "${open_effort}" ||
+			usage_error "bad --open-effort; expected the effort NAME, ${name_rule}"
+	done <<EOF
+${open_efforts}
+EOF
 }
 
 # Prints the plan file slurped into one array, or exits 2 when it is
@@ -166,7 +246,8 @@ read_input() {
 # Runs jq program $1 over the slurped input; a jq failure exits 3.
 run_jq() {
 	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
-		--arg title "${title}" --argjson max_title_chars "${MAX_TITLE_CHARS}" "$1" || {
+		--arg title "${title}" --argjson max_title_chars "${MAX_TITLE_CHARS}" --arg case "${offer_case}" --arg name "${name}" \
+		--arg open_efforts "${open_efforts}" "$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }
@@ -175,9 +256,13 @@ parse_args "$@"
 command -v jq >/dev/null 2>&1 ||
 	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
 
-render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
-[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
-	install_fault 5 "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
+render_lib_dir="${skills_dir}/${RENDER_LIB}"
+for module in view.jq paths.jq; do
+	[ -f "${render_lib_dir}/${module}" ] && [ -r "${render_lib_dir}/${module}" ] ||
+		install_fault 5 "layout module missing; expected ${render_lib_dir}/${module}; install the ${RENDER_LIB} skill"
+done
+check_names
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
