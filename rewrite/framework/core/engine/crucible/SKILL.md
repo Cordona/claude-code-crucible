@@ -15,6 +15,7 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 - **`"v": 1` is in gate records only:** a report's or context file's shape is its validator's, which refuses any other key.
 - **Every path is allocated with `crucible.sh new`, before the file is needed,** and only by scripts the main thread runs: `procedure-context`'s for the context, `flow-agent-initialization`'s for the plan records, the dispatch, baseline and report files and the hook's denial files, `procedure-approval-gate`'s question hook for gate records, `procedure-grill`'s `grill.sh` for grill files (the `grills` kind), `procedure-effort`'s `effort.sh` for state items (the `states` kind). A gate before any effort, such as the effort offer, keeps its record in the session's gate folder, never in the space. An agent gets its `REPORT` path in its first message. Agents never run `crucible.sh` and write nothing in the space but that `REPORT` file.
 - **Written once:** a file is not changed after the dispatch or gate that wrote it closes; a revision is a new file. Three exceptions: a report fixed on a rejection, before it passes its check; the stamps `report.sh check --dispatch` writes into a report when it passes; and a grill file, which `grill.sh` changes as each answer lands until the grill ends, and never after. A changed context is a new version, as `procedure-context` sets.
+- **An effort's `metrics/` is `procedure-metrics`':** its `metrics.sh` names and rewrites the files there itself, outside `crucible.sh new`, the written-once rule and the prune module; `crucible.sh` neither allocates nor finds them.
 - **Cache items expire:** gate records and denials expire as `crucible.sh --help` sets, and `crucible.sh new` removes expired ones; never hand one on as a lasting record.
 - **Throwaway files stay in the session scratchpad:** labels files, temp files.
 - **Never write a secret into an item;** a found secret is reported masked, by location.
@@ -31,8 +32,8 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 
 ## The prune module
 
-`scripts/lib/prune.jq` holds `prune`, the clean-up every script-written JSON record passes through before it is written, so a reader treats a missing key as empty.
+`scripts/lib/prune.jq` holds `prune`, the clean-up every script-written JSON record outside `metrics/` passes through before it is written, so a reader treats a missing key as empty.
 
 - **Input:** any JSON value. **Output:** the value with every object key whose value is null, `[]` or `{}` dropped, children pruned first; array items pruned, never dropped; `false`, `0` and `""` kept.
-- **Loaded by every script that writes a JSON record,** just before writing: jq with `-L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib"` and `include "prune";` ahead of any `def`, since jq takes module directives only at a program's start.
-- **One exception, the dispatch baseline:** it keeps `entries: []`, since an empty list means a clean tree.
+- **Loaded by every script that writes such a record,** just before writing: jq with `-L "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/lib"` and `include "prune";` ahead of any `def`, since jq takes module directives only at a program's start.
+- **One exception among them, the dispatch baseline:** it keeps `entries: []`, since an empty list means a clean tree.

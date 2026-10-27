@@ -11,6 +11,7 @@ umask 077
 readonly PROG='effort.sh'
 readonly KIND='states'
 readonly CRUCIBLE_SKILL='crucible'
+readonly METRICS_SKILL='procedure-metrics'
 # The default list keeps the newest efforts on one screen; --all lifts it.
 readonly LIST_LIMIT=20
 # A clash needs the same second and the same 4 random hex digits; a handful of
@@ -32,6 +33,9 @@ readonly MAX_CLOCK_WAIT_SECONDS=2
 readonly MAX_EMPTY_ITEM_WAITS=3
 # Bounds stderr so a fault stays readable; the rest is counted.
 readonly MAX_PROBLEMS=20
+# Claude Code writes the transcript line of the API call that ran this script
+# only after the call returns; the harvest waits this long so it counts it.
+readonly HARVEST_DELAY_SECONDS=10
 
 # Reads the $count items passed as $ARGS.named pairs p<n> (the path) and
 # i<n> (its text) into $items, each {path, parsed, problems}: its problems
@@ -138,6 +142,7 @@ stderr: "effort.sh:" lines to show the human, except:
   path, exit 1 with matches: each <id>-<name>, unprefixed, newest first
   list, per unknown effort: "effort.sh: space: <file>: <why>", exit 0
 
+pause, complete and drop start procedure-metrics' harvest, detached, 10 s on.
 start creates the effort folder, mode 700, and the space and efforts/ when
 missing; a failed start leaves no new folder unless stderr names it. A state
 change adds one item, whole, mode 600; refused or failed, it adds none. list,
@@ -164,8 +169,8 @@ Exit codes:
 
 Dependencies (a missing one exits 5):
   POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir, ls, sort,
-    mktemp, mv, rm, sleep (macOS and Linux base systems); jq 1.6+ but for
-    path (macOS: brew install jq; Linux: the distro's jq package)
+    mktemp, mv, rm, sleep (macOS and Linux base); jq 1.6+ but for path
+    (macOS: brew install jq; Linux: the distro's jq package)
   in the skills: the crucible skill's
     crucible.sh, lib/crucible-space.sh and lib/prune.jq;
     effort-state-validator.jq beside this script
@@ -456,6 +461,19 @@ run_move() {
 	read_newest_state
 	write_item "${target}" "${current_state}"
 	printf 'STATE: %s\nITEM: %s\n' "${target}" "${item_file}"
+	[ "${target}" = open ] || start_metrics_harvest
+}
+
+# Starts procedure-metrics' harvest of the effort detached, when it is
+# installed, so the token figures follow the state change; nothing waits for
+# it, and its output and exit never reach this call's. The harvest waits
+# HARVEST_DELAY_SECONDS first; the paths reach the inner sh as arguments.
+start_metrics_harvest() {
+	metrics_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${METRICS_SKILL}/scripts/metrics.sh"
+	[ -f "${metrics_script}" ] && [ -r "${metrics_script}" ] || return 0
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are the inner sh's
+	nohup sh -c 'sleep "$1"; exec sh "$2" harvest --effort "$3"' metrics-harvest \
+		"${HARVEST_DELAY_SECONDS}" "${metrics_script}" "${effort}" </dev/null >/dev/null 2>&1 &
 }
 
 # Sets effort from the one --effort FOLDER option once it names an effort
