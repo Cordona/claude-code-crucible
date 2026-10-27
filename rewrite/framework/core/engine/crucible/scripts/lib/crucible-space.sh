@@ -22,7 +22,7 @@ crucible_max_create_attempts=5
 crucible_item_extension=json
 # The session ID Claude Code sets in CLAUDE_CODE_SESSION_ID, which every file
 # a session writes into an effort names as claude_session_id.
-crucible_session_rule='a lowercase UUID (8-4-4-4-12 hex digits), the session ID Claude Code sets'
+crucible_session_rule='a lowercase UUID (8-4-4-4-12 hex digits) with a transcript here, the session ID Claude Code sets'
 # One lowercase hex digit, for crucible_session_is_uuid.
 crucible_hex_digit='[0123456789abcdef]'
 
@@ -68,17 +68,30 @@ crucible_resolve_root() {
 # Sets crucible_session_id to CLAUDE_CODE_SESSION_ID when it keeps
 # crucible_session_rule. Fails, crucible_session_id empty, with
 # crucible_session_problem ("<what>; expected <x>; try <y>") when it is unset,
-# empty or breaks the rule; the value itself is never echoed.
+# empty, not a UUID or names no session transcript, as a value a model set
+# itself would; the value itself is never echoed.
 crucible_check_session() {
 	crucible_session_id=${CLAUDE_CODE_SESSION_ID:-} crucible_session_problem=''
-	case ${crucible_session_id} in
-		'') crucible_session_problem="CLAUDE_CODE_SESSION_ID is unset or empty; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool" ;;
-		*)
-			crucible_session_is_uuid "${crucible_session_id}" && return 0
-			crucible_session_problem="CLAUDE_CODE_SESSION_ID is not a lowercase UUID; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool"
-			;;
-	esac
+	if [ -z "${crucible_session_id}" ]; then
+		crucible_session_problem="CLAUDE_CODE_SESSION_ID is unset or empty; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool"
+	elif ! crucible_session_is_uuid "${crucible_session_id}"; then
+		crucible_session_problem="CLAUDE_CODE_SESSION_ID is not a lowercase UUID; expected ${crucible_session_rule}; try running it from Claude Code's Bash tool"
+	elif ! crucible_session_has_transcript "${crucible_session_id}"; then
+		crucible_session_problem="CLAUDE_CODE_SESSION_ID names no Claude Code session here (no \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/projects/*/<id>.jsonl); expected ${crucible_session_rule}; try running it from Claude Code's Bash tool: never set it yourself, Claude Code sets it"
+	else
+		return 0
+	fi
 	crucible_session_id=''
+	return 1
+}
+
+# Succeeds when a transcript of session $1, a lowercase UUID, exists in any
+# project folder of ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/.
+crucible_session_has_transcript() {
+	crucible_config=${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}
+	for crucible_transcript in "${crucible_config}"/projects/*/"$1".jsonl; do
+		[ -f "${crucible_transcript}" ] && return 0
+	done
 	return 1
 }
 

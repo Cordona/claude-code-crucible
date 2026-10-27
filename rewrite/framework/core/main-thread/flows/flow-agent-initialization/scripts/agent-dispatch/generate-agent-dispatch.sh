@@ -167,14 +167,14 @@ usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --repo-root PATH
        sh ${PROG} --help | -h
 
 Writes the dispatch file for task N of a plan the human approved at its gate,
-with the agent's report file and the dispatch's baseline file.
+with the agent's report file and its baseline file.
 
 Options:
   --effort FOLDER     the effort folder the plan's gate was opened with (rule:
       crucible.sh --help)
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
-  --repo-root PATH    the repository's git work-tree root, absolute
+  --repo-root PATH    the git work-tree root, absolute
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
   --skills-dir DIR    only \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
@@ -215,7 +215,7 @@ Exit codes (1, 2, 5, 6: show stderr and stop):
   3  invalid input, no file made; fix what stderr names. A problem may lead
      with a token right after "<option> <value>: ":
        ${NO_GATE_RECORD_TOKEN}  no gate record holds the plan; ask it again at its gate
-       ${CONTEXT_CHANGED_TOKEN}  the shown context file has changed; show the plan again
+       ${CONTEXT_CHANGED_TOKEN}  the shown context file changed; show the plan again
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
        ${BASELINE_EMPTY_TOKEN}  the --baseline-from baseline is empty; rerun without it
        ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
@@ -223,7 +223,8 @@ Exit codes (1, 2, 5, 6: show stderr and stop):
   ${NOT_OPEN_EXIT}  the effort is not open, or its state unknown
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
 
-Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID
+Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID with a session
+  transcript
 
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's)

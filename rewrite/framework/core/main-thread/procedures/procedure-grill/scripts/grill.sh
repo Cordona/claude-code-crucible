@@ -545,8 +545,8 @@ Exit codes:
      else show the human stderr
 EOF
 	[ "$2" = read ] || print_page <<EOF
-     "${PROG}: CLAUDE_CODE_SESSION_ID ...": unset, empty or not a lowercase
-       UUID; show the human stderr, and stop
+     "${PROG}: CLAUDE_CODE_SESSION_ID ...": unset, empty, not a lowercase
+       UUID or naming no session transcript; show the human stderr, and stop
 EOF
 	print_page <<'EOF'
   3  jq failed, nothing written

@@ -194,17 +194,17 @@ leaves out what --path refuses; ROOT is only read. One run at a time per
 effort.
 
 Environment:
-  CRUCIBLE_HOME     the Crucible space (default \$HOME/.crucible)
+  CRUCIBLE_HOME     the space (default \$HOME/.crucible)
   CLAUDE_CODE_SESSION_ID  required but for latest; a lowercase UUID
 
 Exit codes (1 on a failed write, 2, 4-6, a signal: show the human stderr; stop):
   0  done; read stdout
   1  latest: no version yet; run new. Else a write failed
-  2  usage error, or a bad CLAUDE_CODE_SESSION_ID
+  2  usage error, or CLAUDE_CODE_SESSION_ID bad or naming no session transcript
   3  invalid input, nothing written; fix what stderr names, rerun
      "--effort <folder>: its context already holds"  new: extend that version
      "--from <file>: is version ... not the latest"  extend the one named
-  4  the Crucible space is unusable
+  4  the space is unusable
   5  install fault
   ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
   129, 130, 143  stopped by HUP, INT or TERM

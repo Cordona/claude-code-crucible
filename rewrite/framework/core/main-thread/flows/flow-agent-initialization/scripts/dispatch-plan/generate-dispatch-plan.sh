@@ -118,7 +118,7 @@ once; no language or framework in --skip; code-reviewer: one lens, the
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
-  --mode BUILD|TEST   the dispatch mode
+  --mode BUILD|TEST   the mode
   --context-file CTX  the effort's latest context version, passing
       procedure-context's checks; path + sha256 go in the plan
   --task TEXT         one task, in order; two or more make a group
@@ -135,14 +135,14 @@ Options:
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
       installed: the valid plugins its list-plugins.sh lists
   CRUCIBLE_HOME       the space, as crucible.sh --help sets
-  CLAUDE_CODE_SESSION_ID  required; a lowercase UUID
+  CLAUDE_CODE_SESSION_ID  required; a lowercase UUID with a session transcript
 
 stdout on exit 0, in order:
   PLAN_FILE: <the --plan-file as given>
   PLAN_SHA256: <64 lowercase hex>, for generate-agent-dispatch.sh --plan-sha256
   PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item, for
     render-dispatch-plan.sh --data Plan=
-stderr on exit 3: every problem, one line each:
+stderr on exit 3, one line per problem:
   "${PROG}: <option> <value>: <problem>; expected <x>"
 list-plugins.sh's stderr passes through, to relay
 
@@ -152,10 +152,10 @@ aside). Reads only the context file, its folder's version names, the effort's
 state, the plan it wrote and list-plugins.sh's.
 
 Exit codes (1, 5, 6, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
-  0  written; keep PLAN_SHA256 and go on
-  1  the write or digest failed; stderr says if the plan is written
+  0  written; keep PLAN_SHA256, go on
+  1  write or digest failed; stderr says if the plan is written
   2  usage error: fix the command; or a bad CLAUDE_CODE_SESSION_ID
-  3  invalid input; fix what each stderr line names, then rerun
+  3  invalid input; fix what each stderr line names, rerun
      ${CONTEXT_STALE_TOKEN}  leads a problem: rerun with the newer context version
   5  a dependency missing or failing
   ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written

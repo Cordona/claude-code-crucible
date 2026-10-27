@@ -117,20 +117,20 @@ effort-state-validator.jq.
                    directly in <space>/efforts/, absolute
   --all            list: every effort, not only the newest 20
   VALUE            path: a full ID, its 4 hex digits or an exact NAME
-  CLAUDE_CODE_SESSION_ID  start and the moves: required, the session each new
-                   item names as claude_session_id: the session ID Claude
-                   Code sets, a lowercase UUID; list, path, state: not read
+  CLAUDE_CODE_SESSION_ID  start and the moves: required, the session ID
+                   Claude Code sets, a lowercase UUID, each new item's
+                   claude_session_id; list, path, state: not read
   CRUCIBLE_HOME    the space; default $HOME/.crucible
-  CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default $HOME/.claude
+  CLAUDE_CONFIG_DIR  holds skills/ and projects/; default $HOME/.claude
 
-stdout on exit 0, in this order:
+stdout on exit 0, in order:
   EFFORT: <folder>  start only: the new effort folder, absolute
   STATE: <state>    start, the moves and state: the effort's state after the
                     call (start: open)
   ITEM: <path>      a state item, absolute: start and the moves print the new
                     one; state one per item, oldest first, none when none
   list:  one "<id>-<name> <state>" per line, newest first; <state> unknown
-         when the effort's state items are broken
+         when its state items are broken
   path:  the matching effort's folder, absolute, one line
 stderr: "effort.sh:" lines to show the human, except:
   list, over 20 and no --all: "effort.sh: showing 20 of <N>; add --all for
@@ -150,8 +150,9 @@ Exit codes:
   1  path: no effort matches VALUE, or several do; with matches on stderr,
      ask which one is meant; with none, run list
   2  usage error, or an unusable CRUCIBLE_HOME or HOME, or (start and the
-     moves) CLAUDE_CODE_SESSION_ID unset, empty or not a lowercase UUID;
-     nothing written; show the human stderr, and stop
+     moves) CLAUDE_CODE_SESSION_ID unset, empty, not a lowercase UUID or
+     naming no session transcript; nothing written; show the human stderr,
+     and stop
      effort.sh: bad name:  start: NAME breaks the rule; pick another name
   4  the space, an effort folder or a state item is unusable; show the human
      stderr, and stop
