@@ -23,7 +23,7 @@ The reviewer's report is one JSON object in a file, one file per review round. `
 ## Writing the report
 
 1. Read the `REPORT` path under `# Your work` in your first message, or in the resume message on a re-review: an empty file in the Crucible space, and Write requires the Read. Then write the JSON to it with Write.
-2. Reply with exactly `REPORT: <path>` and nothing else.
+2. Reply with exactly `REPORT: <path>` and nothing else, `<path>` the `REPORT` path, full and absolute.
 3. A rejection arrives as a message after your reply: `report.sh`'s stderr, one line per failing field, `<field>: <what>; expected <x>`. Fix each field it names with Edit (Never), and reply `REPORT: <path>` again.
 
 ## Fields

@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Renders the effort offer, the gate that asks the human whether to start an
-# effort, or with --case the state offer, which suggests a new effort or
-# completing this one, from a JSON file of reasons, so the main thread never
-# hand-formats it. Pipe its stdout into procedure-approval-gate's open-gate.sh.
+# effort, or with --case the state offer, which asks what should happen to the
+# open effort when new work comes or suggests completing it, from a JSON file
+# of reasons, so the main thread never hand-formats it. Pipe its stdout into
+# procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 
@@ -54,10 +55,11 @@ end)
 # Each reason is trimmed and its leading Markdown block mark escaped, so it
 # renders as one plain line or list item. Without $case: the effort offer,
 # with the efforts this session already works on ($open_efforts, one NAME per
-# line, a repeat shown once) before the reasons when any are given; with it:
-# the state offer, its two first lines fixed per case and the reasons as
-# bullets, new-work ending with the way out. The program is single-quoted on
-# purpose: its $ signs are jq's.
+# line, a repeat shown once) and the way out before the reasons when any are
+# given, the way out left out when $way_out_shown is "true"; with it: the state
+# offer, its two first lines fixed per case and the reasons as bullets,
+# new-work ending with the way out. The program is single-quoted on purpose:
+# its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='include "view";
 include "paths";
@@ -69,10 +71,10 @@ def way_out: "A new session or /clear keeps each effort clean.";
 | if $case == "" then
 	[status_line("decision"; "Decision needed · \($title | trimmed)"),
 	 (if ($open | length) == 0 then "" else "**This session already works on:**\n\($open | map(code_span) | bullet_list)" end),
-	 (if ($open | length) == 0 then "" else way_out end),
+	 (if ($open | length) == 0 or $way_out_shown == "true" then "" else way_out end),
 	 section("Why"; $reasons)]
   else
-	{"new-work": {title: "It seems that you are planning something new.", suggestion: "You should consider starting a new effort:", tail: way_out},
+	{"new-work": {title: "It seems that you are planning something new.", suggestion: "What should happen to the open effort?", tail: way_out},
 	 done: {title: "It looks like \($name | code_span) is done.", suggestion: "You should consider completing it:", tail: ""}}[$case] as $lines
 	| [status_line("decision"; $lines.title), "\($lines.suggestion)\n\($reasons | bullet_list)", $lines.tail]
   end
@@ -81,14 +83,15 @@ def way_out: "A new session or /clear keeps each effort clean.";
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
+usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... [--after-state-offer] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
        sh ${PROG} --plan-file PATH --case new-work|done --name NAME | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-state-offer
        sh ${PROG} --help | -h
 
 Prints the effort offer, the gate asking the human whether to start an effort,
-or with --case the state offer, which suggests starting a new effort
-(new-work) or completing the effort NAME (done), as Markdown from a JSON file
-of reasons. stdin is never read; no file is written.
+or with --case the state offer, which asks what should happen to the open
+effort NAME when new work comes (new-work) or suggests completing it (done),
+as Markdown from a JSON file of reasons. stdin is never read; no file is
+written.
 
 Options:
   --plan-file PATH  one JSON object, {"reasons": [str, ...]}, no other field:
@@ -105,6 +108,9 @@ Options:
                     on, shown before the reasons with the way out; once per
                     effort, a repeat shown once; with --case, checked and not
                     shown, since the state offer carries its own way out
+  --after-state-offer  the effort offer right after a new-work state offer,
+                    which already showed the way out: the way out is not
+                    shown again; not with --case
   --case CASE       the state offer: new-work or done; needs --name
   --name NAME       with --case: the effort's NAME
   NAME              as the crucible skill's lib/crucible-space.sh sets it
@@ -153,9 +159,10 @@ usage_error() {
 	exit 2
 }
 
-# Sets plan_file, title, offer_case and name from the arguments.
+# Sets plan_file, title, offer_case, name, open_efforts and way_out_shown from
+# the arguments.
 parse_args() {
-	plan_file='' title_given=false offer_case='' name='' open_efforts=''
+	plan_file='' title_given=false offer_case='' name='' open_efforts='' way_out_shown=false
 	title=${DEFAULT_TITLE}
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -198,13 +205,18 @@ parse_args() {
 "
 				shift 2
 				;;
-			*) usage_error 'unknown argument; expected --plan-file PATH, --title TEXT, --open-effort NAME, --case CASE, --name NAME or --help' ;;
+			--after-state-offer)
+				way_out_shown=true
+				shift
+				;;
+			*) usage_error 'unknown argument; expected --plan-file PATH, --title TEXT, --open-effort NAME, --after-state-offer, --case CASE, --name NAME or --help' ;;
 		esac
 	done
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
 	if [ -n "${offer_case}" ]; then
 		[ "${title_given}" = false ] || usage_error '--title and --case given together; expected --title for the effort offer or --case for the state offer'
 		[ -n "${name}" ] || usage_error '--name missing; expected --case CASE --name NAME'
+		[ "${way_out_shown}" = false ] || usage_error '--after-state-offer and --case given together; expected --after-state-offer for the effort offer only'
 	else
 		[ -z "${name}" ] || usage_error '--name given without --case; expected --case new-work|done --name NAME'
 	fi
@@ -247,7 +259,7 @@ read_input() {
 run_jq() {
 	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
 		--arg title "${title}" --argjson max_title_chars "${MAX_TITLE_CHARS}" --arg case "${offer_case}" --arg name "${name}" \
-		--arg open_efforts "${open_efforts}" "$1" || {
+		--arg open_efforts "${open_efforts}" --arg way_out_shown "${way_out_shown}" "$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
 }

@@ -9,13 +9,13 @@ SKILL.md step 9, which pauses, completes, drops or reopens an effort; read at st
 - Otherwise: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/find-effort.md`, follow its steps 5–7 and keep the path they find; its reopen question doesn't run from here. Its stop changes nothing: stop here too.
 
 9.2 **Open work,** for complete or drop only; pause and reopen go to step 9.3.
-- Look in the folder: run `<crucible.sh> find --effort '<folder>' --kind dispatches`, then `<crucible.sh> find --effort '<folder>' --kind reports/development`, then `<grill.sh> list --effort '<folder>'`, each a Bash call of its own. Read each report the dispatches point to.
+- Look in the folder: run `<crucible.sh> find --effort '<folder>' --kind dispatches`, then `<crucible.sh> find --effort '<folder>' --kind reports/development`, then `<grill.sh> list --effort '<folder>'`, each a Bash call of its own. For each dispatch file, take its report path with `jq -r '.report' '<dispatch file>'`; a path the `reports/development` list doesn't hold is a part with no report. Test each listed report for its `dispatch` key with `jq -e 'has("dispatch")' '<report>'`, one Bash call per report: exit 0 has the key, exit 1 lacks it. Never Read a whole report; an open part's task, for the question below, comes from `jq -r '.task' '<dispatch file>'`.
 - Open work is exactly: each dispatched part with no report, or whose report has no `dispatch` key (never checked); and each grill `list` shows `open`. Nothing else counts: not uncommitted edits, not a report's items for the human, not parts never dispatched. The rule is the same for complete and drop.
 - None: step 9.3.
 - Some: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/open-work-question.json`, fill `<items>` with a short list of the open items in your words, naming each task or topic, never a path, and `<move>` with "Complete" or "Drop", and pass its `questions` to one AskUserQuestion.
 - `open-work-question.json` can't be read or isn't one JSON object with a `questions` array: show the line `The open-work question could not be read. Nothing was changed.`, and stop.
 - "Keep it open" or a typed answer: nothing is written; answer a typed reply, and stop. "Complete anyway" or "Drop anyway": step 9.3.
-- A `find` or `list` that exits non-zero, or a Read of a report that fails: ask the same question, `<items>` saying which read failed, since you can't tell whether work is open.
+- A `find` or `list` that exits non-zero, a `jq -r` that exits non-zero or prints an empty value or `null`, or a `jq -e` that exits anything but 0 or 1: ask the same question, `<items>` saying which read failed, since you can't tell whether work is open.
 
 9.3 **Change it:** run `<effort.sh> <pause|complete|drop|reopen> --effort '<folder>'`, and act on its exit:
 - 0 with a `STATE:` and an `ITEM:` line: step 9.4. Without them: as any other exit.

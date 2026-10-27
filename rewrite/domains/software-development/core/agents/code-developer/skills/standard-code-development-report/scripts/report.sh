@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Checks the developer's report JSON, stamps what its dispatch file knows into
 # it on a pass, and renders it for the human (one developer's summary, or a
-# run's over several reports), the reviewer and a TEST dispatch. The jq
+# run's over several reports). The jq
 # validator below owns the report's shape (there is no schema file): the
 # report standard's field table documents it, --help points there, the
 # validator wins where they differ, and doc-check compares the table with it.
@@ -414,62 +414,30 @@ def text_differences:
 table_differences, stamp_differences, text_differences
 '
 
-# Text helpers and the --for slice. Tolerant of a broken shape, since the main
-# thread renders an invalid report once the resends run out: its problems show
-# as report problems, a value of the wrong type prints as its JSON, a list of
-# the wrong type as no items.
+# Text helpers. Tolerant of a broken shape, since the main thread renders an
+# invalid report once the resends run out: its problems show as report
+# problems, a value of the wrong type prints as its JSON, a list of the wrong
+# type as no items.
 # shellcheck disable=SC2016
 readonly RENDER_JQ='
 def txt: if type == "string" then . elif . == null then "" else tojson end
 	| gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
 def bare: txt | sub("[.]+$"; "");
-# A path or command shown inside prose is cut in the middle past 80
-# characters, the home folder as ~ (paths.jq); the report file holds it whole.
+# A command shown inside prose is cut in the middle past 80 characters, the
+# home folder as ~ (paths.jq); the report file holds it whole.
 def short_text: txt | short_path($home);
 def span: short_text | code_span;
-def group($heading; $lines): if ($lines | length) == 0 then empty else "\($heading)\n" + ($lines | join("\n")) end;
-def located($at; $rest): if ($at | txt) == "" then "- \($rest)" else "- \($at | short_text): \($rest)" end;
-def located_span($at; $rest): if ($at | txt) == "" then "- \($rest)" else "- \($at | span): \($rest)" end;
-def because($why): if ($why | txt) == "" then "" else " Why: \($why | bare)." end;
-
-def behavior_line:
-	[(if (.at | txt) != "" then .at | span else empty end),
-	 (if .checked == true then "checked" else empty end),
-	 (if .fix == true then "bug fix" else empty end),
-	 (if (.guard | txt) != "" then "guard: \(.guard | txt)" else empty end)] as $qualifiers
-	| "- \(.what | txt)" + (if ($qualifiers | length) > 0 then " (\($qualifiers | join(", ")))" else "" end);
-def deviation_line:
-	"- \(.what | bare)" + (if (.from | txt) != "" then " (\(.from | short_text))" else "" end) + "." + because(.why);
-
-def behavior_group: group("Behavior:"; [objects_of("behavior")[] | behavior_line]);
-# "did what was asked" only holds for a valid report with no blocker.
-def deviations_group($clean):
-	group("Deviations from the task:"; [objects_of("deviations")[] | deviation_line]
-		| if length > 0 then . elif $clean then ["- None: did what was asked."] else ["- None."] end);
-def problems_group($problems): group("Report problems:"; [$problems[] | "- \(txt)"]);
-def open_groups:
-	group("Instruction found in the context, not followed:"; [open_of("instruction_found")[] | located(.at; .text | txt)]),
-	group("Secret found, needs rotation:"; [open_of("secret_found")[] | located_span(.at; .text | txt)]);
-def gap_groups:
-	group("Not read or not done:"; [open_of("could_not")[] | located(.ref // .at; .text | txt)]),
-	group("Assumptions:"; [open_of("assumption")[] | "- \(.text | txt)"]),
-	group("Contract breaks:"; [open_of("contract_break")[] | located_span(.at; .text | txt)]),
-	group("Gates the first message tried to suspend:"; [open_of("gate_refused")[] | located(.at; .text | txt)]);
-def decisions_group: group("Decisions:"; [objects_of("decisions")[]
-	| "- \(.choice | bare)." + because(.why) + (if (.commit | txt) != "" then " Commit: \(.commit | txt)" else "" end)]);
-def focus_group: group("For the reviewer:"; [objects_of("focus")[] | located_span(.at; .question | txt)]);
-def missing_group: group("Missing plugins:"; [open_of("missing_plugin")[] | located(.at; .text | txt)]);
-
-def blocked: objects_of("blockers") | length > 0;
-def slice_view($problems):
-	(($problems | length) == 0 and (blocked | not)) as $clean
-	| ["## Implementation report: for the \(if $for == "test" then "test dispatch" else "reviewer" end)",
-	   problems_group($problems), behavior_group, deviations_group($clean), open_groups, gap_groups, missing_group, decisions_group, focus_group];
-'
-
-# shellcheck disable=SC2016
-readonly SLICE_MAIN_JQ='
-$report[0] | as_written | problems as $problems | slice_view($problems) | join("\n\n")
+# A location in the repo-relative path:line form; the other forms (an absolute
+# or ~ path, message:, commit, a context ref, a URL, a plugin name and file) are
+# not in the repo.
+def in_repo_form: (startswith("/") or startswith("~")
+	or test("^(message: |commit |(paths|links|notes)\\[)") or contains("://")
+	or test("^(language|framework|standard|procedure)-[a-z0-9-]+([ :/]|$)")) | not;
+# A location as the human may open it: a repo-relative one joined to repo root
+# $root, every one whole, never cut or shortened.
+def whole_location($root): txt
+	| if $root != "" and in_repo_form then ($root | rtrimstr("/")) + "/" + ltrimstr("./") else . end
+	| link_span;
 '
 
 # The human views, laid out with human-view's view.jq: the developer summary
@@ -481,10 +449,12 @@ readonly VIEW_JQ='
 def item_cap: 160;
 def kind_cap: 5;
 def cut($limit): if length > $limit then .[:($limit - 1)] + "…" else . end;
-# A location shown for recognition, then the text, cut so the item fits item_cap.
-def item($at; $text):
-	(if ($at | txt) == "" then "" else "\($at | span): " end) as $lead
-	| $lead + ($text | txt | cut(item_cap - ($lead | length)));
+# A location, whole (joined to repo root $root when repo-relative), then the
+# text, cut so the item fits item_cap; the location is never cut, and a long
+# one still leaves the text 40 characters.
+def item($at; $text; $root):
+	(if ($at | txt) == "" then "" else "\($at | whole_location($root)): " end) as $lead
+	| $lead + ($text | txt | cut([item_cap - ($lead | length), 40] | max));
 # A gate that failed without blocking: short, its command shown for recognition.
 def failed_gate: "check failed: \(.gate | txt | cut(40))" + (if (.command | txt) == "" then "" else " (\(.command | span))" end);
 # The summary as shown; "" for a report whose summary is not a string.
@@ -493,30 +463,30 @@ def noted($label; $text): if ($text | txt) == "" then $label else "\($label): \(
 
 # Each kind: its singular and plural heading, what follows its cut list,
 # whether it is uncapped, and its items.
-def needs_groups($problems):
+def needs_groups($problems; $root):
 	[{one: "Report problem", many: "Report problems", rest: "more",
-	  items: [$problems[] | item(null; .)]},
+	  items: [$problems[] | item(null; .; $root)]},
 	 {one: "Blocked", many: "Blocked", blocked: true,
-	  items: [objects_of("blockers")[] | item(.location; .detail)]},
+	  items: [objects_of("blockers")[] | item(.location; .detail; $root)]},
 	 {one: "Instruction found", many: "Instructions found", uncapped: true,
-	  items: [open_of("instruction_found")[] | item(.at; .text)]},
+	  items: [open_of("instruction_found")[] | item(.at; .text; $root)]},
 	 {one: "Secret found", many: "Secrets found", uncapped: true,
-	  items: [open_of("secret_found")[] | item(.at; .text)]},
+	  items: [open_of("secret_found")[] | item(.at; .text; $root)]},
 	 {one: "Deviation", many: "Deviations",
-	  items: [objects_of("deviations")[] | item(null; (.what | bare) + (if (.why | txt) == "" then "" else " (\(.why | bare))" end))]
-		+ [open_of("gate_refused")[] | item(.at; noted("gate kept"; .text))]
-		+ [open_of("contract_break")[] | item(.at; noted("contract break"; .text))]
-		+ [objects_of("review_responses")[] | select(.status == "not_fixed") | item(null; noted("\(.id | txt) not fixed"; .note))]
+	  items: [objects_of("deviations")[] | item(null; (.what | bare) + (if (.why | txt) == "" then "" else " (\(.why | bare))" end); $root)]
+		+ [open_of("gate_refused")[] | item(.at; noted("gate kept"; .text); $root)]
+		+ [open_of("contract_break")[] | item(.at; noted("contract break"; .text); $root)]
+		+ [objects_of("review_responses")[] | select(.status == "not_fixed") | item(null; noted("\(.id | txt) not fixed"; .note); $root)]
 		+ [objects_of("verification")[] | select(.result == "fail") | failed_gate]},
 	 {one: "Assumption", many: "Assumptions",
-	  items: [open_of("assumption")[] | item(null; .text)]},
+	  items: [open_of("assumption")[] | item(null; .text; $root)]},
 	 {one: "Not read or not done", many: "Not read or not done",
-	  items: [open_of("could_not")[] | item(.ref // .at; .text)]},
+	  items: [open_of("could_not")[] | item(.ref // .at; .text; $root)]},
 	 {one: "Missing plugin", many: "Missing plugins",
-	  items: [open_of("missing_plugin")[] | item(.at; .text)]},
+	  items: [open_of("missing_plugin")[] | item(.at; .text; $root)]},
 	 {one: "Noticed", many: "Noticed",
-	  items: [objects_of("noticed")[] | item(.at; .what | bare)]
-		+ [file_mismatches[] | item(.path; .note // "changed, not in the report")]}];
+	  items: [objects_of("noticed")[] | item(.at; .what | bare; $root)]
+		+ [file_mismatches[] | item(.path; .note // "changed, not in the report"; $root)]}];
 def item_count: map(.items | length) | add // 0;
 # $spec is the kind: an uncapped one (the report standard never caps
 # instructions or secrets found) lists every item.
@@ -538,7 +508,7 @@ def file_counts:
 def changed_count: map(.[1]) | add;
 
 def developer_view($problems; $title; $repo; $path):
-	needs_groups($problems) as $groups
+	needs_groups($problems; $repo) as $groups
 	| ($groups | item_count) as $count
 	| is_blocked as $blocked
 	| file_counts as $counts
@@ -561,7 +531,7 @@ def distinct_titles:
 		| if $same > 1 then .title = "\($title) \([$runs[:$index][] | select(.title == $title)] | length + 1)" else . end];
 def run_entry($meta):
 	{title: ($meta.title | txt), path: $meta.path, blocked: is_blocked, summary: summary_text,
-	 groups: needs_groups(all_problems), counts: file_counts,
+	 groups: needs_groups(all_problems; $meta.repo // ""), counts: file_counts,
 	 repo: (if ($meta.repo // "") == "" then "report \($meta.path)" else $meta.repo end)};
 def developer_state: "\(.title) · \(if .blocked then "blocked" else "done" end)";
 def developer_text:
@@ -608,7 +578,7 @@ def run_view($runs; $not_done; $context):
 
 # shellcheck disable=SC2016
 readonly RENDER_MAIN_JQ='
-$report[0] | as_written | developer_view(all_problems; $seat | title("developer"); $repo; $report_path)
+$report[0] | as_written | developer_view(all_problems; $seat | title("developer"); $location_root; $report_path)
 '
 
 # The {language, frameworks} labels title() takes, from the LABELS line in
@@ -696,8 +666,7 @@ EOF
 
 Commands (each page holds its options, output, exit codes and dependencies):
   check      checks the report's shape; with --dispatch, stamps it on a pass
-  render     prints the report's developer summary for the human, or a
-             reader's slice
+  render     prints the report's developer summary for the human
   summary    prints the run summary of the reports of one run for the human
   doc-check  compares the report standard's field table with the validator
 EOF
@@ -778,8 +747,7 @@ EOF
 render_help() {
 	cat <<'EOF'
 
-Prints the report as Markdown on stdout: the developer summary, or with
---for a reader's slice. The summary's title is the developer title from the
+Prints the report's developer summary as Markdown on stdout. Its title is the developer title from the
 language and frameworks ("Shell script developer", "Next.js and React
 developer with TypeScript"; "Generic developer" with no language), then done
 or blocked.
@@ -794,7 +762,6 @@ EOF
                       and frameworks, each plugin's name when it has none)
   --round ROUND       initial or 'fix N'; initial shows review_responses as a
                       report problem
-  --for READER        reviewer or test: that reader's slice
 EOF
 	help_shared baseline
 	cat <<'EOF'
@@ -879,7 +846,6 @@ usage_lines() {
 				;;
 			render)
 				usage_line "report.sh render --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]"
-				usage_line 'report.sh render --report PATH --for reviewer|test [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]'
 				;;
 			summary)
 				usage_line 'report.sh summary --report PATH [--report PATH]... [--context FILE] [--not-done TEXT]... [--skills-dir DIR]'
@@ -992,7 +958,7 @@ parse_args() {
 		*) usage_error "unknown command: $1; expected check, render, summary, doc-check or --help" ;;
 	esac
 	shift
-	report='' repo='' baseline='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' for_reader='' dispatch_file='' skill_file=''
+	report='' repo='' baseline='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' dispatch_file='' skill_file=''
 	report_list='' not_done_list=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	while [ "$#" -gt 0 ]; do
@@ -1001,7 +967,7 @@ parse_args() {
 				command_help "${command}"
 				exit 0
 				;;
-			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --for | --not-done | --skills-dir | --dispatch | --skill)
+			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --not-done | --skills-dir | --dispatch | --skill)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
@@ -1039,7 +1005,6 @@ set_option() {
 		--context) context=$2 ;;
 		--labels-file) labels_file=$2 ;;
 		--round) round=$2 ;;
-		--for) for_reader=$2 ;;
 		--not-done)
 			case $2 in
 				*"${newline}"*) usage_error '--not-done holds a line break; expected one line per --not-done' ;;
@@ -1140,7 +1105,7 @@ same_as_dispatch() {
 # doc-check takes --skill, an absolute path to a regular, readable file, and
 # --skills-dir alone.
 check_doc_check_args() {
-	for other in "${report}" "${repo}" "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${round}" "${for_reader}" "${dispatch_file}"; do
+	for other in "${report}" "${repo}" "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${round}" "${dispatch_file}"; do
 		[ -z "${other}" ] || usage_error 'doc-check takes only --skill and --skills-dir; expected doc-check --skill PATH [--skills-dir DIR]'
 	done
 	case ${skill_file} in
@@ -1176,8 +1141,8 @@ check_baseline_file() {
 }
 
 check_check_args() {
-	for render_only in "${labels_file}" "${round}" "${for_reader}"; do
-		[ -z "${render_only}" ] || usage_error 'check takes no --labels-file, --round or --for; expected them only with render'
+	for render_only in "${labels_file}" "${round}"; do
+		[ -z "${render_only}" ] || usage_error 'check takes no --labels-file or --round; expected them only with render'
 	done
 	[ -n "${repo}" ] || usage_error '--repo DIR missing; expected the absolute path of the repository root'
 	case ${mode} in
@@ -1215,11 +1180,7 @@ check_render_args() {
 		[ -z "${check_only}" ] || usage_error 'render takes no --mode, --findings or --context; expected them only with check'
 	done
 	[ -z "${dispatch_file}" ] || check_render_dispatch_args
-	case ${for_reader} in
-		'' | reviewer | test) ;;
-		*) usage_error "--for ${for_reader} is unknown; expected --for reviewer or --for test" ;;
-	esac
-	[ -n "${for_reader}" ] || check_view_args
+	check_view_args
 }
 
 # render --dispatch names the baseline through that dispatch, so it needs
@@ -1230,7 +1191,7 @@ check_render_dispatch_args() {
 	[ -n "${repo}" ] || usage_error '--dispatch needs --repo; expected --repo DIR --dispatch FILE'
 }
 
-# --labels-file and --round matter only to the human view; --for ignores them.
+# Checks --labels-file and --round, which set the title and the round.
 check_view_args() {
 	[ -z "${labels_file}" ] || read_labels_file
 	case ${round} in
@@ -1269,7 +1230,7 @@ read_labels_file() {
 # summary takes one or more --report, --context, --not-done and --skills-dir;
 # a report path is one line, since report_list holds one per line.
 check_summary_args() {
-	for other in "${repo}" "${baseline}" "${mode}" "${findings}" "${labels_file}" "${round}" "${for_reader}" "${dispatch_file}"; do
+	for other in "${repo}" "${baseline}" "${mode}" "${findings}" "${labels_file}" "${round}" "${dispatch_file}"; do
 		[ -z "${other}" ] || usage_error 'summary takes only --report, --context, --not-done and --skills-dir; expected them alone'
 	done
 	[ -n "${report_list}${not_done_list}" ] ||
@@ -1619,20 +1580,20 @@ run_render() {
 	locate_view_modules
 	# Only a first round can refuse review_responses: render gets no findings file.
 	findings_mode=unchecked
-	[ "${round}" != initial ] || [ -n "${for_reader}" ] || findings_mode=none
-	if [ -n "${for_reader}" ]; then
-		main_program=${SLICE_MAIN_JQ}
-		seat='{}'
-	else
-		main_program=${VIEW_JQ}${RENDER_MAIN_JQ}
-		[ -n "${labels_file}" ] || read_seat
+	[ "${round}" != initial ] || findings_mode=none
+	[ -n "${labels_file}" ] || read_seat
+	# Locations print joined to --repo, else to the stamped dispatch's repo_root.
+	location_root=${repo}
+	if [ -z "${location_root}" ]; then
+		read_report_repo
+		location_root=${report_repo}
 	fi
 	jq -nr -L "${skills_dir}/${RENDER_LIB}" -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" \
 		--rawfile baseline "${baseline_file}" --argjson have_git "${have_git}" \
 		--arg mode BUILD --arg findings_mode "${findings_mode}" --arg findings_text '' --arg stamp_check render \
-		--argjson seat "${seat}" --arg round "${round}" --arg for "${for_reader}" \
-		--arg home "${HOME:-}" --arg repo "${repo}" --arg report_path "${report}" \
-		"include \"paths\"; include \"view\"; include \"title\"; ${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${main_program}" </dev/null ||
+		--argjson seat "${seat}" --arg round "${round}" \
+		--arg home "${HOME:-}" --arg location_root "${location_root}" --arg report_path "${report}" \
+		"include \"paths\"; include \"view\"; include \"title\"; ${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${VIEW_JQ}${RENDER_MAIN_JQ}" </dev/null ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
 }
 

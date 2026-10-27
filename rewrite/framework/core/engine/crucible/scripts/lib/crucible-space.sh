@@ -18,8 +18,11 @@ crucible_label_rule="lowercase a-z, 0-9 and -, 1 to ${crucible_label_max_chars} 
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
 crucible_max_create_attempts=5
-# Every item file, of any kind, is JSON.
+# An item file is JSON, but for a drafts item: every Markdown artifact the main
+# thread writes inside an effort, read as written.
 crucible_item_extension=json
+crucible_draft_kind=drafts
+crucible_draft_extension=md
 # The session ID Claude Code sets in CLAUDE_CODE_SESSION_ID, which every file
 # a session writes into an effort names as claude_session_id.
 crucible_session_rule='a lowercase UUID (8-4-4-4-12 hex digits) with a transcript here, the session ID Claude Code sets'
@@ -170,10 +173,19 @@ crucible_is_label() {
 	return 1
 }
 
+# Sets crucible_kind_extension to the file extension of kind $1's items.
+crucible_extension_of_kind() {
+	if [ "$1" = "${crucible_draft_kind}" ]; then
+		crucible_kind_extension=${crucible_draft_extension}
+	else
+		crucible_kind_extension=${crucible_item_extension}
+	fi
+}
+
 # Sets crucible_item_file_name to the file name of an item of ID $1 and label
-# $2: <ID>-<label>.<crucible_item_extension>.
+# $2: <ID>-<label>.<extension $3, by default crucible_item_extension>.
 crucible_name_item() {
-	crucible_item_file_name="$1-$2.${crucible_item_extension}"
+	crucible_item_file_name="$1-$2.${3:-${crucible_item_extension}}"
 }
 
 # Sets crucible_id to a fresh <YYYYMMDDTHHMMSS>-<hex>: the local time and 4
@@ -260,8 +272,8 @@ crucible_effort_check() {
 	crucible_effort_fault=''
 }
 
-# Creates a new empty file in folder $1, named as an item of label $2
-# (crucible_name_item), without overwriting (noclobber), and sets
+# Creates a new empty file in folder $1, named as an item of label $2 with
+# extension $4 (crucible_name_item), without overwriting (noclobber), and sets
 # crucible_claimed_file to its path and crucible_id to its ID. With a
 # function name $3, the file is kept only when "$3 <ID>" succeeds, and is
 # otherwise removed. A clash of either retries with a fresh ID, up to
@@ -277,7 +289,7 @@ crucible_claim_item_file() {
 			crucible_claim_problem=${crucible_id_problem}
 			return 1
 		fi
-		crucible_name_item "${crucible_id}" "$2"
+		crucible_name_item "${crucible_id}" "$2" "${4:-}"
 		crucible_claim_path="$1/${crucible_item_file_name}"
 		if (
 			set -C

@@ -20,7 +20,7 @@ A flow keeps its own copy of a rule below only where the rule must survive compa
 
 - **Never resend or re-dispatch on an approval no longer visible in the conversation:** a lost approval is no approval.
 - **Never take a plan as approved unless its AskUserQuestion answer is still visible in the conversation.**
-- **Never relay a plan, a view, a report or a task from memory:** re-run the script that prints it, or read it from its file.
+- **Never relay a plan, a view, a report or a task from memory:** re-run the script that prints it, or hand over its full absolute path.
 - **Never gather again what is on disk:** take the latest context version through `procedure-context`, never pick one by hand, and never ask again an answer `procedure-context` saved.
 - **Never guess:** two candidates, the conversation and the disk disagreeing, or a failed read: ask the human with one AskUserQuestion, and run no step before the answer. A failed `find` stops instead (step 2).
 - **Never write a file in this procedure's steps:** a rerun after a break must be safe.

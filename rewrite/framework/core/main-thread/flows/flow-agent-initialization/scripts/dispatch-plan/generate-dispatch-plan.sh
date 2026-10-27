@@ -138,7 +138,7 @@ Options:
   CLAUDE_CODE_SESSION_ID  required; a lowercase UUID with a session transcript
 
 stdout on exit 0, in order:
-  PLAN_FILE: <the --plan-file as given>
+  PLAN_FILE: <the --plan-file, absolute>
   PLAN_SHA256: <64 lowercase hex>, for generate-agent-dispatch.sh --plan-sha256
   PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item, for
     render-dispatch-plan.sh --data Plan=
@@ -440,22 +440,25 @@ find_record_effort() {
 }
 
 # Appends problem $1 of the context file to context_problems as a stderr line,
-# the path shown as the plan problems show a value.
+# the path shown whole, control characters replaced.
 add_context_problem() {
 	shown_context=$(jq -nr --arg value "${context_file}" \
-		'$value | tojson | gsub("[[:cntrl:]]"; "?") | if length > 80 then .[:40] + "…" + .[-39:] else . end') ||
+		'$value | tojson | gsub("[[:cntrl:]]"; "?")') ||
 		die 5 'jq failed showing the context path; expected jq 1.6+; try jq --version, then rerun'
 	context_problems="${context_problems}${PROG}: --context-file ${shown_context}: $1
 "
 }
 
-# Adds a problem line when the plan file's folder is missing or not writable, or PATH is a folder.
+# Makes plan_file absolute, so PLAN_FILE prints whole; adds a problem line when
+# the plan file's folder is missing or not writable, or PATH is a folder.
 check_plan_file() {
 	plan_problem=''
+	while [ "${plan_file#./}" != "${plan_file}" ]; do plan_file=${plan_file#./}; done
 	case ${plan_file} in
-		*/*) plan_folder=${plan_file%/*} ;;
-		*) plan_folder=. ;;
+		/*) ;;
+		*) plan_file="$(pwd)/${plan_file}" ;;
 	esac
+	plan_folder=${plan_file%/*}
 	[ -n "${plan_folder}" ] || plan_folder=/
 	if [ -d "${plan_file}" ]; then
 		plan_problem='is a folder; expected the plan file'\''s path'
@@ -466,7 +469,7 @@ check_plan_file() {
 		return 0
 	fi
 	shown_plan=$(jq -nr --arg value "${plan_file}" \
-		'$value | tojson | gsub("[[:cntrl:]]"; "?") | if length > 80 then .[:40] + "…" + .[-39:] else . end') ||
+		'$value | tojson | gsub("[[:cntrl:]]"; "?")') ||
 		die 5 'jq failed showing the plan path; expected jq 1.6+; try jq --version, then rerun'
 	plan_problem="${PROG}: --plan-file ${shown_plan}: ${plan_problem}"
 }

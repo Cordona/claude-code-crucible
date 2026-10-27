@@ -8,7 +8,7 @@ umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches baselines plans grills states reports/development reports/review cache/gates cache/denials'
+readonly KIND_LIST='context dispatches baselines plans grills states reports/development reports/review drafts cache/gates cache/denials'
 readonly CACHE_KINDS='cache/gates cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
@@ -42,9 +42,10 @@ Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
   kind    context, dispatches, baselines, plans, grills, states,
-          reports/development, reports/review, cache/gates or cache/denials;
-          the cache kinds expire after ${CACHE_MAX_DAYS} days
-  ext     json
+          reports/development, reports/review, drafts, cache/gates or
+          cache/denials; the cache kinds expire after ${CACHE_MAX_DAYS} days
+  ext     md for drafts (every Markdown artifact the main thread writes
+          inside an effort), json for every other kind
 
 Options:
   --kind KIND         new, find: a kind of the layout
@@ -288,8 +289,9 @@ ensure_dir() {
 # Sets name for a file created in kind_dir whose ID no other item of the
 # effort holds; exits 5 when no ID can be minted, 4 when no file can be made.
 claim_item_file() {
+	crucible_extension_of_kind "${kind}"
 	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
-	if crucible_claim_item_file "${kind_dir}" "${label}" id_is_unique; then
+	if crucible_claim_item_file "${kind_dir}" "${label}" id_is_unique "${crucible_kind_extension}"; then
 		name=${crucible_claimed_file##*/}
 		return 0
 	fi
@@ -407,13 +409,14 @@ ${sorted_names}
 EOF
 }
 
-# Sets parsed_id and parsed_label when file name $1 is an item name, as
-# crucible_name_item names one; fails otherwise.
+# Sets parsed_id and parsed_label when file name $1 is an item name of the
+# current kind, as crucible_name_item names one; fails otherwise.
 parse_item_name() {
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_split_id "$1" || return 1
 	parsed_id=${crucible_name_id}
-	parsed_label=${crucible_name_rest%".${crucible_item_extension}"}
+	crucible_extension_of_kind "${kind}"
+	parsed_label=${crucible_name_rest%".${crucible_kind_extension}"}
 	[ "${parsed_label}" != "${crucible_name_rest}" ] || return 1
 	crucible_is_label "${parsed_label}"
 }

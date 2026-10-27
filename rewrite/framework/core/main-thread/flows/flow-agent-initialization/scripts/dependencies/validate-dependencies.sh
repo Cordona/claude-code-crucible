@@ -178,6 +178,8 @@ Options:
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/settings.json
   --cache-dir CACHE  the cache folder; default
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/agent-init
+                     (a relative DIR, FILE or CACHE is taken from the
+                     current folder; every path printed is absolute)
   --force            runs every check even when the cached pass holds
   --verbose          prints the full checklist: a header line, one line per
                      check (✓, ✗ <item>: <reason>. Fix: <action>, or
@@ -222,7 +224,8 @@ usage_error() {
 	exit 2
 }
 
-# Sets skills_dir, settings_file, cache_dir and force from the arguments.
+# Sets skills_dir, settings_file and cache_dir (each absolute, so every Fix
+# item names a whole path), force and verbose from the arguments.
 parse_args() {
 	config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 	skills_dir="${config_dir}/skills"
@@ -256,6 +259,9 @@ parse_args() {
 			*) usage_error "unknown argument: $1; expected --skills-dir, --settings, --cache-dir, --force, --verbose or --help" ;;
 		esac
 	done
+	skills_dir=$(absolute_path "${skills_dir}")
+	settings_file=$(absolute_path "${settings_file}")
+	cache_dir=$(absolute_path "${cache_dir}")
 	procedure_dir="${skills_dir}/${PROCEDURE}"
 	scripts_dir="${procedure_dir}/scripts"
 	context_procedure_dir="${skills_dir}/${CONTEXT_PROCEDURE}"
@@ -263,6 +269,14 @@ parse_args() {
 	crucible_scripts_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts"
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
+}
+
+# Prints path $1, a relative one taken from the current folder.
+absolute_path() {
+	case $1 in
+		/*) printf '%s' "$1" ;;
+		*) printf '%s' "${PWD}/${1#./}" ;;
+	esac
 }
 
 # Sets fingerprint to one cksum line over everything the checks depend on, or

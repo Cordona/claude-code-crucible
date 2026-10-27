@@ -1,8 +1,8 @@
 # Offering a state change
 
-SKILL.md step 10, which offers to pause, complete or drop the open effort; read at step 10, when its work looks done (a flow may load step 10 after its run summary: case `done`, the effort the flow runs in) or the human moves to work it doesn't cover.
+SKILL.md step 10, which offers to pause, complete or drop the open effort; read at step 10, when its work looks done (a flow may load step 10 after its run summary: case `done`, the effort the flow runs in) or the human moves to work it doesn't cover. With no open effort there is nothing to offer: new unrelated work is habit 2's stay-quiet case (`procedure-context-efficiency`).
 
-10.1 **Hold the offer** when SKILL.md Never holds it: go on with the work and offer nothing.
+10.1 **Hold the offer** only when SKILL.md Never holds it: go on with the work and offer nothing. Otherwise, when the human moved to work the effort doesn't cover, always offer (case `new-work`).
 
 10.2 **Write the reasons** to the plan file `procedure-approval-gate` gives, in the shape `render-effort-offer.sh --help` sets: what you saw, one reason per line, never a path or a secret.
 
@@ -16,4 +16,4 @@ SKILL.md step 10, which offers to pause, complete or drop the open effort; read 
 - **"Keep going":** nothing is written; go on with the work.
 - **"Pause", "Complete" or "Drop":** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/state-change.md` and follow it from step 9.2, with this effort's folder.
 - **A typed answer:** a reply: answer it, and change nothing.
-- Then, in case `new-work`: the new request goes by CLAUDE.md §4, which may offer it its own effort (SKILL.md step 1).
+- Then, in case `new-work`: the new request goes by CLAUDE.md §4, which may offer it its own effort (SKILL.md step 1); that offer's renderer adds `--after-state-offer`, since this offer already showed the way out.

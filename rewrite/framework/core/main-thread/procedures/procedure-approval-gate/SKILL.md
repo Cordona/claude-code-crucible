@@ -27,6 +27,7 @@ The gate's own procedure owns the plan's content, its renderer and the renderer'
 
 - **Relay word for word:** the final message is exactly `open-gate.sh`'s whole stdout as printed, its last line `_Crucible gate_`, with nothing above or below it: no lead-in line, such as what the human chose. A show-only gate's note (step 2) is the one exception. Never put it in a code fence or a list: the Stop hook compares the whole message with the gate text.
 - **End the turn after the relay:** make no tool call after it.
+- **A Crucible plan stays on disk:** its gate shows the summary its renderer prints and the plan's full absolute path in Data, never the whole plan.
 
 ## Steps
 

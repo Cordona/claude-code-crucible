@@ -259,11 +259,16 @@ deny_record() {
 	exit 0
 }
 
-# Sets gate_status from a live gate, or exits 0 when there is none: no state
+# Sets gate_dir (absolute, so the paths stderr names are whole) and
+# gate_status from a live gate, or exits 0 when there is none: no state
 # (an idle folder is removed), or a malformed or stale one (removed as
 # remove_gate sets).
 load_gate() {
 	gate_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate/$1"
+	case ${gate_dir} in
+		/*) ;;
+		*) gate_dir="$(pwd)/${gate_dir}" ;;
+	esac
 	[ -f "${gate_dir}/state" ] || drop_idle_folder
 	read -r gate_status tries created _ <"${gate_dir}/state" || true
 	case ${gate_status-} in

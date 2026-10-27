@@ -3,10 +3,11 @@
 # never typed by hand. new writes v1; extend writes the next version as a
 # complete copy of the latest one, minus the entries it retires, plus the new
 # ones; diff writes a local commit or range as a file; latest prints the
-# effort's latest version and writes nothing. Every input is checked first
-# and every problem reported before any file is created: the JSON is built
-# with stand-in paths and checked by agent-context-validator.jq and
-# agent-context-file-checks.sh, each problem named by the option behind it.
+# absolute path and sha256 of the effort's latest version and writes nothing.
+# Every input is checked first and every problem reported before any file is
+# created: the JSON is built with stand-in paths and checked by
+# agent-context-validator.jq and agent-context-file-checks.sh, each problem
+# named by the option behind it.
 # Only then is each file written atomically into the file crucible.sh new
 # --effort hands out, and checked again as prepare-agent-prompt.sh checks it.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
@@ -146,8 +147,7 @@ usage: sh ${PROG} new --effort FOLDER [ENTRY]... --note TEXT [--note TEXT]...
   ENTRY: --path ABS --why LINE | --link URL --why LINE
          | --text-file FILE --why LINE | --note TEXT
 
-Writes an effort's context versions and diff files into its context/ only
-(a SIGKILL aside).
+Writes only into the effort's context/ (a SIGKILL aside).
 
 Commands:
   new     writes v1, the effort's first version
@@ -155,7 +155,7 @@ Commands:
       new ones in order (the --text-file entry last in paths)
   diff    writes a commit or range of ROOT as a file for a --path; a rerun on
       the same diff prints the same file
-  latest  prints the effort's latest version
+  latest  prints the latest version's absolute path and sha256
 
 Options (no value but a note may hold a control character):
   --effort FOLDER   the effort folder, as effort.sh start printed it

@@ -237,13 +237,17 @@ def with_newline: if endswith("\n") then . else . + "\n" end;
 def block: "<crucible-plugin name=\"\(.name)\">\n\n" + (.bodies | map(with_newline) | join("\n")) + "\n</crucible-plugin>";
 # A backtick would end the code span, so it prints as a quote.
 def code: "`" + gsub("`"; [39] | implode) + "`";
+# A repo-relative entry point joined to the repo root, so it prints whole and
+# absolute; "." and "./" are the root itself.
+def in_repo($root): ($root | rtrimstr("/")) as $base
+	| ltrimstr("./") | if . == "" or . == "." then $base else "\($base)/\(.)" end;
 def work($dispatch):
 	"# Your work\n\n"
 	+ "- **MODE:** \($dispatch.mode)\n"
 	+ "- **TASK:** \($dispatch.task)\n"
 	+ "- **REPO ROOT:** \($dispatch.repo_root | code)\n"
 	+ "- **ENTRY POINTS** (where to begin, not a limit): "
-	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(code) | join(", ") end) + "\n"
+	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_repo($dispatch.repo_root) | code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($dispatch.report | code)\n"
 	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
 	+ "- **RETURN:** \("REPORT: " + $dispatch.report | code) alone\n"

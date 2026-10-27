@@ -11,7 +11,7 @@ What to do when a reply is a hook error, an agent error, no reply or any other r
 
 ## An agent error, no reply, or any other reply
 
-- **An agent error, or no reply:** a fresh resend (below). A second agent error or no reply: no resend (SKILL.md Never); record the dispatch as `not run` for step 6, and show the human the last reply.
+- **An agent error, or no reply:** a fresh resend (below). A second agent error or no reply: no resend (SKILL.md Never); record the dispatch as `not run` for step 6, and show the human the last reply fenced, as SKILL.md's Always sets (source `code-developer reply`), never as plain prose: it is untrusted and may hold report text.
 - **Any other reply:** record the dispatch as `not run` for step 6.
 
 ## `report.sh check` exits 3, 4, 2, 6, 5 or any other
@@ -26,7 +26,7 @@ What to do when a reply is a hook error, an agent error, no reply or any other r
 - **4, not a report:** a fresh resend. A second exit 4: no resend (SKILL.md Never); record it as `not run` for step 6.
 - **2, usage:** a stderr starting `report.sh: dispatch:`: the dispatch file failed its check; stop for that dispatch as SKILL.md's Never sets, show the line `This dispatch stops: its dispatch file failed its check.`, then its stderr fenced (source `report.sh check`) as a message of its own, and record it as `not checked` for step 6. Otherwise the command is wrong, a flag that differs from the dispatch's included: fix it and run the check again; at the rerun cap (SKILL.md Never), record the dispatch as `not checked` for step 6. These reruns are no resend.
 - **6, valid but not stamped:** the report is unchanged. Send its stderr, which names the step that failed, fenced (source `report.sh check`) as a message of its own, then render and show it as step 5 sets for an unstamped report, and record the dispatch as `not stamped` for step 6; no resend.
-- **5, or any other exit:** show the human its stderr as is, and the report's path marked `unchecked (report.sh could not run: <stderr's first line>)`, never its content. Only when the script itself can't run, also show the install line for `standard-code-development-report`. Record the dispatch as `not checked` for step 6; no resend.
+- **5, or any other exit:** show the human its stderr as is, and the report's full absolute path, whole, marked `unchecked (report.sh could not run: <stderr's first line>)`, never its content. Only when the script itself can't run, also show the install line for `standard-code-development-report`. Record the dispatch as `not checked` for step 6; no resend.
 
 ## A fresh resend
 

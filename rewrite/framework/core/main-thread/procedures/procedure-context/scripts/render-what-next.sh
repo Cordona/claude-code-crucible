@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Renders the "what next?" gate, asked once an effort's context is ready, so
 # the main thread never hand-formats it. The title is fixed; its input is a
-# plan file naming the context version and, after a grill, the grill file.
+# plan file naming the context version and, after a grill, the grill file;
+# both paths print whole, so the human can open either.
 # Pipe its stdout into procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
@@ -18,7 +19,7 @@ readonly RENDER_JQ='include "view";
 def decisions: if . == 1 then "1 decision" else "\(.) decisions" end;
 [status_line("decision"; "Decision needed · the context is ready: what next?"),
  (if $settled == null or $settled == 0 then "" else section("Settled"; [$settled | decisions]) end),
- data_section([["Context", $context]])]
+ data_section([["Context", $context]] + (if $grill == "" then [] else [["Grill", $grill]] end))]
 | blocks
 '
 
@@ -84,7 +85,8 @@ Options:
 
 stdout on exit 0 only: the gate's Markdown, a fixed decision line, with
   a grill that settled any question its count of settled questions, and the
-  context path, with no gate marker
+  context path (and the grill path, after a grill), whole and absolute, with
+  no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a plan field is
   named context or grill
@@ -293,7 +295,7 @@ problems=$(context_problems)
 settled=null
 [ -z "${grill}" ] || load_grill
 refuse_problems "${problems}"
-view=$(jq -n -r -L "${render_lib_dir}" --arg context "${context}" --argjson settled "${settled}" "${RENDER_JQ}" </dev/null) ||
+view=$(jq -n -r -L "${render_lib_dir}" --arg context "${context}" --arg grill "${grill}" --argjson settled "${settled}" "${RENDER_JQ}" </dev/null) ||
 	install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
 # Ignoring SIGPIPE turns a closed reader into a failed write this script can
 # tell apart from a jq fault, rather than a silent kill.

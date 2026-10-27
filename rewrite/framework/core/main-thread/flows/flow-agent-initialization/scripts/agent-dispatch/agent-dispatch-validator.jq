@@ -164,10 +164,19 @@ def baseline_path_problems:
 	space_file_problems("baseline"; "baseline file"),
 	(if (.baseline | absolute_path) and .baseline == .report then problem(["baseline"]; " "; "is the report file; expected its own file of kind \(baseline_kind)") else empty end);
 
+# Every path the agent's message prints in a code span: a backtick would end
+# the span, so a path holding one is refused rather than printed altered.
+def is_printed_path: (.[0] | IN("repo_root", "report", "baseline")) or . == ["context", "path"]
+	or .[0] == "entry_points" or (.[0] == "plugins" and index(["paths"]) != null);
+def backtick_problems:
+	paths(type == "string") as $at | select($at | is_printed_path) | select(getpath($at) | contains("`"))
+	| problem($at; " "; "holds a backtick; expected a path without one, so the agent's message prints it unchanged");
+
 (if length != 1 then problem([]; " "; "is \(length) JSON values; expected exactly one object")
  elif (.[0] | type) != "object" then problem([]; " "; "is a JSON \(.[0] | type); expected an object")
  else .[0] | keys_problems, field_problems, plan_problems,
 	pinned_file_problems("context"; "context file"), plugins_problems,
-	entry_points_problems, space_file_problems("report"; "report file"), baseline_path_problems
+	entry_points_problems, space_file_problems("report"; "report file"), baseline_path_problems,
+	backtick_problems
  end)
 | if $ARGS.named.format == "json" then {at, problem} else .line end

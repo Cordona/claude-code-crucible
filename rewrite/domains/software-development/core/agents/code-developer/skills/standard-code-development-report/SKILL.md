@@ -22,7 +22,7 @@ The developer's report is one JSON object in a file. `scripts/report.sh` checks 
 ## Writing the report
 
 1. Write the JSON with Write to the `REPORT` path under `# Your work` in your first message, an empty file in the Crucible space: Read it first, as Write requires.
-2. Reply with exactly `REPORT: <path>` and nothing else.
+2. Reply with exactly `REPORT: <path>` and nothing else, `<path>` the `REPORT` path, full and absolute.
 3. A rejection arrives as a message to you after your reply: the fields that failed, one per line. Fix each field it names with Edit (Never), and reply `REPORT: <path>` again. A fresh dispatch gets an empty `REPORT` file: write the whole report.
 
 ## Fields

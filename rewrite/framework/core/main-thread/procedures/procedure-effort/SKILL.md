@@ -25,7 +25,8 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **A grill** (`procedure-grill`): the human's grill ask, or their yes to its offer, is the effort yes; it runs steps 3–4 with no offer, then goes on with its own steps, not step 8.
 - **Find an effort** only when `procedure-resume` runs it, or to pick the effort a state change or a status is for (steps 9 and 11); when the human asks to continue or go back to earlier work ("continue the prune work"), load `procedure-resume` instead.
 - **Change an effort's state** when the human asks to pause, complete, drop or reopen it (step 9), and **show it** when they ask where it stands (step 11).
-- **Offer a state change** when the open effort's work looks done (a run summary shows every part done), or the human moves to work it doesn't cover (step 10). The judgment is yours; offering is never changing.
+- **Offer a state change** when the open effort's work looks done (a run summary shows every part done), which is your judgment, and always when the human moves to work it doesn't cover, unless Never holds it (step 10). Offering is never changing.
+- **New unrelated work with no open effort** is habit 2's stay-quiet case (`procedure-context-efficiency`): no state offer and no line; the request goes by CLAUDE.md §4 like any other.
 - **No offer and no effort** for a question, a lookup, a code review alone (CLAUDE.md routes it), or work the human chose to do without one. Throwaway files go in the session scratchpad.
 
 ## Never
@@ -37,6 +38,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **One ID per effort,** minted once by `effort.sh start`: never type, reuse or change one.
 - **Only the human changes a state:** an effort is paused, completed, dropped or reopened only on the human's ask, or their answer to an offer or a reopen question; never on your judgment alone.
 - **Never offer a state change while another gate waits or a dispatched agent may still run.**
+- **Never offer a state change in reply to a human message about the open effort's own work** (to see its report, its commit text or a file it wrote, or a question about it): answer it first; it is no sign the work is done.
 - **After "Keep going", never offer a state change again for that effort without new evidence:** more work finished, or the human moved on again.
 - **Never go on with the work of a paused, completed or dropped effort** before the human reopens it.
 - **Never guess an effort:** two candidates or none, ask the human, and run no work step before the answer.
@@ -49,7 +51,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 
 - **Relay into your text:** a view a step relays, and the stderr and exit code a step shows, go into your reply's text as printed, in a message of its own; the human never sees a Bash result.
 - **Hand over the folder's absolute path, never the ID alone:** scripts take the effort from that path, or from a path inside it, never from the session, since a session can hold several efforts and an effort can span sessions and days.
-- **Every file of the effort is written in its folder:** its context, gate records, dispatches, baselines and reports, each by the script that owns it, never by this skill.
+- **Every file of the effort is written in its folder:** its context, gate records, dispatches, baselines and reports, each by the script that owns it, and drafts, which the main thread writes as `crucible` sets; never by this skill.
 - **Pass every name and ID to `effort.sh` in single quotes, and only a value of `a-z`, `0-9`, `-` and `T`:** a value holding any other character is neither; ask the human instead of running it, so their words never run as shell. The effort folder goes by the next line.
 - **Pass the effort folder to `effort.sh` and `render-effort-state.sh` as the absolute path a script printed,** in single quotes, never one you typed.
 - **Know which efforts this conversation works on:** each one it started, found or resumed. Check that list before every offer (step 1) and every find for `procedure-resume` (`references/find-effort.md` step 7), so a second effort is caught before it enters the session; when unsure whether the work is a second effort, treat it as one and warn.
@@ -64,7 +66,7 @@ The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/
 
 1. **Offer** the effort. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** the reasons, written from your judgment, in the shape `render-effort-offer.sh --help` sets. Good: "The change touches the billing and auth services and needs a review". Bad: "This seems like a big task" (says nothing the human can weigh).
-   - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file <the plan file>`, plus one `--open-effort '<name>'` for each other effort this conversation works on (Always), which adds the mixing warning.
+   - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file <the plan file>`, plus one `--open-effort '<name>'` for each other effort this conversation works on (Always), which adds the mixing warning; plus `--after-state-offer` when this offer follows a `new-work` state offer (`references/state-offer.md` step 10.4), which already showed the way out, so it isn't shown again.
    - **The gate's label:** `effort-offer`, with no `--effort`, since no effort exists yet: the gate's record stays in the session's gate folder, outside the Crucible space.
    - **On "now ask":** Read the offer's fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-question.json`, or, when the renderer had an `--open-effort`, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/mixed-offer-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written.
    - **The offer can't be shown or asked:** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-failures.md` when the pipe exits non-zero, that question file can't be read or isn't one JSON object with a `questions` array, or the Skill tool can't load `procedure-approval-gate` or it reports the plan not shown; start no effort unless it sends you back to `procedure-approval-gate`'s step 1.
@@ -92,3 +94,4 @@ The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/
 
 - **Companion skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `procedure-approval-gate`, which shows the offer (step 1), so no effort starts without it; `crucible`, which owns the files inside the folder; its `crucible.sh find` feeds the open-work check (`references/state-change.md`); without it, the scripts stop with an install fault: show the human their stderr, and stop; `human-view`, whose `view.jq` and `paths.jq` the renderers need; without it, the renderers stop with an install fault: show the human their stderr, and stop; `procedure-grill`, whose `grill.sh list` the open-work check reads; without it that read fails, and the check asks as for any failed read; `procedure-resume`, loaded after a reopen the human asked for (step 9); without it, show the line `procedure-resume is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.` after the reopen, and stop; `procedure-metrics`, whose harvest a pause, complete or drop starts; it is optional: without it no harvest runs, and nothing fails. `crucible`, `human-view`, `procedure-grill` and `procedure-metrics` are not loaded: only their scripts run.
 - **Tools:** Skill, Read, Write, Bash and AskUserQuestion.
+- **Commands:** jq 1.6+ (macOS: `brew install jq`; Linux: the distro's `jq` package), for the open-work check (`references/state-change.md`).
