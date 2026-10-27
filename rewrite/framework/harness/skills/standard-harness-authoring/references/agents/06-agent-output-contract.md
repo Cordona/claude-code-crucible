@@ -3,7 +3,7 @@
 Purpose: the agent returns exactly what its caller parses, a cut-off or failed run never looks like a finished one, and nothing unchecked reads as clean.
 
 **Applies when:** every agent that is dispatched (N/A for an orchestrator-only agent). AOUT-15 only for an agent that writes a deliverable people read.
-**MUST lint:** none.
+**MUST lint:** none. SHOULD lint used here: LNT-79.
 **Terms.** See `README.md` (the agent's text, dispatching flow). How the caller screens and re-runs a reply is judged in 06.
 
 **Levels.** Each item takes the level of the heading above it.
@@ -30,3 +30,4 @@ Purpose: the agent returns exactly what its caller parses, a cut-off or failed r
 - **AOUT-08** · When the agent writes a long answer to a file, does it write its plan and partial results early and keep the file current, so a cut-off run leaves something usable? · Check: read the steps; N/A without a file output. · Fix: add "Write your plan to the file first, then each result as you reach it".
 - **AOUT-13** · Do contract-constrained values the agent emits (finding categories, ID prefixes, severity enums) come from that contract, cited or generated, not copied into the body? · Check: compare the body's lists with the contract. · Fix: cite the contract or generate the list from it.
 - **AOUT-15** · Does a deliverable for people stand alone, with no references to run files ("see `r3_q4.answer.md`")? · Check: read the deliverable rules. · Fix: add "Inline what you cite; never point to run files".
+- **AOUT-16** · Judged in its context, does each line telling the agent to put an artifact's text into a reply or message hand the artifact over by its full absolute path instead? An artifact is a document the agent or its caller produces for someone else, as `standard-artifact-handoff`'s Scope defines it. Not artifacts: a view a script prints, relayed as printed; an input the work starts from, or installed text a first message carries; an eval run's prompt and answer; an excerpt of at most one line, quoted with its absolute path and line; short content, a few lines for one reader, not reused or passed on. · Check: read each LNT-79 WARN line in its paragraph, and any such line the lint missed; PASS a line whose context hands over only a path or a non-artifact. · Fix: write the artifact to a file once and hand over its full absolute path; the reply carries the path alone, in the agent's own reply line (for example `REPORT: <path>`).

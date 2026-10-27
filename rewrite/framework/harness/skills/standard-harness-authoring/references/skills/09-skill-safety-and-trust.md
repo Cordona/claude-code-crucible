@@ -4,7 +4,7 @@ Purpose: the skill cannot be steered by untrusted text, acts outward only on gen
 Judges data-vs-instruction handling, consent, permissions, secrets and honest output.
 
 **Applies when:** every skill; agent files: SAFE-01, SAFE-03, SAFE-07 (via the agent checklists).
-**MUST lint:** LNT-41, LNT-47, LNT-60 (its quote-safely clause, for a skill).
+**MUST lint:** LNT-41, LNT-47, LNT-60 (its quote-safely clause, for a skill). SHOULD lint used here: LNT-79.
 
 **Levels.** Each item takes the level of the heading above it.
 
@@ -22,3 +22,4 @@ Judges data-vs-instruction handling, consent, permissions, secrets and honest ou
 - **SAFE-05** · Does the skill state its side-effect boundary — what it writes, where, and what it never touches? · Check: read. · Fix: add "Writes …; never touches …".
 - **SAFE-08** · Are permission-bypass modes confined to a disposable container, and are global settings the skill needs disclosed with how to remove them? · Check: read. · Fix: add the container warning and the settings note.
 - **SAFE-09** · Is output honest — inferences labelled with their basis, no invented metrics — and are MCP tools named `mcp__<server>__<tool>`, with no behavioral commands in a tool description the skill ships? · Check: judge beyond LNT-43. · Fix: label inferences; delete invented figures; use the full tool name.
+- **SAFE-10** · Judged in its context, does each line telling the main thread or a seat to put an artifact's text into the conversation (the chat, a brief, a reply) hand the artifact over by its full absolute path instead, with its text shown in the chat only after a one-line offer of the path that the human confirms, however the ask was worded? An artifact is a document the main thread or a seat produces for someone else, as `standard-artifact-handoff`'s Scope defines it. Not artifacts: a view a script prints for the human, relayed as printed; an input the work starts from, or installed text a first message carries; an eval run's prompt and answer; an excerpt of at most one line, quoted with its absolute path and line; short content, a few lines for one reader, not reused or passed on. · Check: read each LNT-79 WARN line in its paragraph, and any such line the lint missed; PASS a line whose context hands over only a path or a non-artifact. · Fix: write the artifact to a file once and pass its full absolute path; add the offer-then-confirm step before any text is shown.

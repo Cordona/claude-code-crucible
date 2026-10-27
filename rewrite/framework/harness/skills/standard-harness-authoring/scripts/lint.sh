@@ -1681,6 +1681,32 @@ function sent_report(f,   i, j, t, med) {
 	else rec("LNT-70", "PASS", f, 0, sprintf("median sentence %s words (<= 25)", med))
 }
 
+# ---- LNT-79 artifact-text candidates (shared by md and agent modes): a line
+# holding a show/paste verb and, after it, a text word, as whole words outside
+# code spans. Skipped: a line naming a path (code spans included), saying never
+# before the verb, or saying not an artifact, since it hands over by path or
+# is about no artifact. Candidates only: each WARN is judged by a reviewer.
+function show_reset() { show_hits = 0 }
+function show_line(l, f, ln,   s, i, p, vp, verb, word) {
+	if (!show_nv) {
+		show_nv = split("show shows expose relay paste return returns display inline", show_verbs, " ")
+		show_nw = split("text|content|contents|verbatim|full report|whole report|whole file|whole log|whole plan", show_words, "|")
+	}
+	s = " " tolower(l) " "; gsub(/[^a-z0-9]+/, " ", s)
+	if (index(s, " path ") || index(s, " paths ") || index(s, " not an artifact ")) return
+	s = " " tolower(strip_spans(l)) " "; gsub(/[^a-z0-9]+/, " ", s)
+	vp = 0
+	for (i = 1; i <= show_nv; i++) if ((p = index(s, " " show_verbs[i] " ")) && (!vp || p < vp)) { vp = p; verb = show_verbs[i] }
+	if (!vp) return
+	word = ""
+	for (i = 1; i <= show_nw; i++) if (index(substr(s, vp), " " show_words[i] " ")) { word = show_words[i]; break }
+	if (word == "") return
+	if ((p = index(s, " never ")) && p < vp) return
+	rec("LNT-79", "WARN", f, ln, "candidate: \"" verb "\" with \"" word "\"; check the line hands an artifact over by full absolute path, not its text")
+	show_hits++
+}
+function show_report(f) { if (!show_hits) rec("LNT-79", "PASS", f, 0, "no line asks to show or paste an artifact's text") }
+
 # ---- LNT-73 nested ordered-list items (shared by md and agent modes)
 # An ordered item arms a run, anchored at the shallowest ordered item's
 # indent. Blank lines, bullets and indented continuation lines keep the run;
@@ -1937,7 +1963,7 @@ function md_file_begin() {
 	inv_found = 0; inv_line = 0; inv_open = 0; inv_lvl = 0; inv_end = 0; inv_name = ""
 	exempt_lvl = 0; nhead = 0; nbul = 0; contents_head = 0; capturing = 0; bang_fence = 0; prev_nb = ""
 	delete hd_line; delete hd_text; delete bul_line; delete bul_text
-	sent_reset(); nest_reset(); dup_reset(); deps_lvl = 0
+	sent_reset(); nest_reset(); dup_reset(); show_reset(); deps_lvl = 0
 	dup_scope = isk || (rel in bundset)
 }
 function md_line(   l, c, lvl, x, prose, lo, tk, n, i) {
@@ -1954,6 +1980,7 @@ function md_line(   l, c, lvl, x, prose, lo, tk, n, i) {
 	if (c == "code") { md_code(l); prev_nb = l; return }
 	if ((x = quote_diff(l)) != "") rec("LNT-60", "FAIL", disp(cur), FNR, x)
 	lvl = heading_level(l)
+	if (dup_scope && !lvl) show_line(l, disp(cur), FNR)
 	x = l
 	if (isk && trim(l) != "" && !lvl) nonhead++
 	if (lvl) md_heading(l, lvl)
@@ -2011,7 +2038,7 @@ function md_bang_inline(l,   s, c) {
 }
 function md_file_end(   i, j, hits, tok) {
 	if (capturing) { close(blkf); printf "C\t%s\t%s\t%d\t%s\n", blk_tag, cur, blk_line, blkf; capturing = 0 }
-	if (dup_scope) dup_flush()
+	if (dup_scope) { dup_flush(); show_report(disp(cur)) }
 	sent_report(disp(cur)); nest_report(disp(cur))
 	if (isk) {
 		tok = int((bchars + 3) / 4)  # LNT-15: tokens = ceil(chars / 4) (lint-spec Terms)
@@ -2321,20 +2348,21 @@ function lnt24(x,   lo, what) {
 	if (what != "") rec("LNT-24", "FAIL", disp(cur), FNR, "time-sensitive wording: " clip(what, 40))
 }
 
-# ---- agent: LNT-60, LNT-61, LNT-70, LNT-73 and the body size (Z record).
+# ---- agent: LNT-60, LNT-61, LNT-70, LNT-73, LNT-79 and the body size (Z record).
 function ag_end(   i, fm_end, c, bchars) {
 	F = disp(FILENAME)
 	if (lines[1] ~ /^---[ \t]*$/) for (i = 2; i <= NR; i++) if (lines[i] ~ /^---[ \t]*$/) { fm_end = i; break }
 	UO = ENVIRON["LINT_UNTRUSTED_OPENING"]; SO = ENVIRON["LINT_SECRET_OPENING"]
 	ag_fm_end = fm_end + 0
-	sent_reset(); nest_reset(); bchars = 0
+	sent_reset(); nest_reset(); show_reset(); bchars = 0
 	for (i = 1; i <= NR; i++) {
 		c = classify(lines[i], i)
 		if (i > ag_fm_end) bchars += ulen(lines[i]) + 1
 		if (c != "fm" && i > ag_fm_end) { sent_line(lines[i], c); nest_line(lines[i], c, F, i) }
+		if (c == "text" && i > ag_fm_end && !heading_level(lines[i])) show_line(lines[i], F, i)
 	}
 	printf "Z\t%d\n", bchars
-	sent_report(F); nest_report(F)
+	sent_report(F); nest_report(F); show_report(F)
 	check_blocks(); check_ask()
 }
 function check_blocks() {
