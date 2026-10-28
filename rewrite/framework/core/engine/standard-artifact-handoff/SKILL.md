@@ -1,6 +1,6 @@
 ---
 name: standard-artifact-handoff
-description: How the main thread and agents hand work over as artifacts (drafts, plans, reports, reviews, briefs, specs) written once to a file and passed by full absolute path, with the text shown only on the human's confirmed ask. Bind when producing a document for someone else, handing one over, or being asked for its text; every agent preloads it. Writes nothing itself. Not for how a peer message is written (`standard-peer-messages`) or pushback on the human's habits (`procedure-context-efficiency`).
+description: How the main thread and agents hand work over as artifacts (drafts, plans, reports, reviews, briefs, specs) written once to a file and passed by full absolute path, with the text shown only on the human's confirmed ask. Bind when producing a document for someone else, handing one over, or being asked for its text; every agent preloads it. Writes nothing itself. Not for pushback on the human's habits (`procedure-context-efficiency`).
 user-invocable: false
 ---
 
@@ -17,7 +17,7 @@ Work passes between the human, the main thread and agents as artifacts, each wri
   - installed skill, plugin and rules text, and the context JSON: an agent's first message carries them inline, so the agent can't skip them;
   - an eval run's prompt and its answer;
   - an excerpt of at most one line, quoted with its absolute path and line (an instruction-shaped line, a contradiction's two sides, a validator error);
-  - short content: a few lines for one reader, not reused or passed on, may go inline. Anything document-like, or that travels to another reader, is an artifact and goes in a file.
+  - short content: a few lines for one reader, not reused or passed on, may go inline. Anything document-like is an artifact and goes in a file.
 
 ## Never
 
