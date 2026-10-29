@@ -38,7 +38,7 @@ Not for: work that doesn't need an effort (CLAUDE.md's short path); what goes in
 - **One ID per effort,** minted once by `effort.sh start`: never type, reuse or change one.
 - **Only the human changes a state:** an effort is paused, completed, dropped or reopened only on the human's ask, or their answer to an offer or a reopen question; never on your judgment alone.
 - **Never offer a state change while another gate waits or a dispatched agent may still run.**
-- **Never offer a state change in reply to a human message about the open effort's own work** (to see its report, its commit text or a file it wrote, or a question about it): answer it first; it is no sign the work is done.
+- **Never offer a state change in reply to a human message about the open effort's own work** (to see its report, its commit text or a file it wrote, or a question about it, or a change to it): answer it first; it is no sign the work is done.
 - **After "Keep going", never offer a state change again for that effort without new evidence:** more work finished, or the human moved on again.
 - **Never go on with the work of a paused, completed or dropped effort** before the human reopens it.
 - **Never guess an effort:** two candidates or none, ask the human, and run no work step before the answer.

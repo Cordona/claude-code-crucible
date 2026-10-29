@@ -1,6 +1,6 @@
 ---
 name: procedure-context
-description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use right after an effort starts, when a link, note, file, settled answer or ended grill enters a running effort, or on Resume. Asks the human about contradictions and what next; writes in the effort's `context/` and the session scratchpad. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`) or work outside an effort."
+description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use when an effort starts, when a link, note, file, settled answer or ended grill enters an open effort, or on Resume. Asks the human about contradictions and what next; writes in the effort's `context/` and the session scratchpad. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`), a fix round (`flow-code-development`) or work outside an effort."
 user-invocable: false
 ---
 
@@ -15,9 +15,9 @@ Run by the main thread. An effort's **context** is what its work starts from: th
 ## When to use it
 
 - **Build v1** once per effort, when the work's own flow calls this skill right after `procedure-effort` starts the effort, or when a grill ends (`procedure-grill`), before any plan; then ask the human what next (step 7). Every effort has a context; a small one holds just the human's request as one note.
-- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a review record becomes the input of a fix; a contradiction found after v1 is settled; a plan answer that changes the context; a grill ends (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
+- **Extend it** when something new enters a running effort: the human adds a link, a note or a file; a contradiction found after v1 is settled; a plan answer that changes the context; a grill ends (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
 - **Find the latest version** on Resume, or when a flow loads this skill for an effort that already holds a version and nothing new enters (after a grill's v1, say): run Resume below; nothing is gathered again.
-- **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), or a plan's plugins.
+- **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), a plan's plugins, or a change to a dispatched part's work, which travels in a fix round that `flow-code-development` owns (a revised spec's approval still extends it, as `flow-code-development` sets).
 
 ## Never
 
@@ -92,6 +92,7 @@ Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/co
    - **"Stop here":** step 8's stop, `stopped: stopped after the context`; the context stays in the effort.
    - **A typed answer:** a reply, not a choice: answer it as the turn's last message, and hand nothing over yet, since the question closed the gate. At the human's next message, ask again from the start of this step, unless their reply chose an option: then take that option.
 8. **Hand over, or report the stop,** to the calling flow:
+   - **Complete first:** before handing a version over, every file, link and path the human gave for the work outside a fix round is in it.
    - **A version written or found:** one line, `CONTEXT_FILE: <path> · v<N> · added <n> · retired <n> · settled <n>`, `<path>` the absolute path exactly as `context.sh` printed it, never shortened with `…` or `~`; the entries this run added and retired and the contradictions it settled; never a copy of the entries. After an extension, also tell it the version changed.
    - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; step 3's stop is `stopped: context not settled` and step 7's is `stopped: stopped after the context`, each as it reads.
 

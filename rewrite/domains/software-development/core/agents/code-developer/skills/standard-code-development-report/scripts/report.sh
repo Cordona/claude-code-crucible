@@ -42,15 +42,21 @@ def listed_files:
 	  else [("created", "modified", "deleted") as $label
 		| ($files[$label] // []) | if type == "array" then .[] else empty end
 		| strings | ltrimstr("./") | {path: ., label: $label}] end;
+# $round_created: in a fix round, the paths an earlier round created and this
+# round edited, still untracked or added (each ending in \u0001); git shows
+# them created, and the report may list them created or modified.
+def label_matches($change; $round_created):
+	.label == $change.label or ($change.label == "created" and .label == "modified" and ($change.path | IN($round_created[])));
 def file_mismatches:
 	if $have_git | not then []
 	else git_changes as $changes
 		| baseline_paths as $before
+		| ($round_created | split("\u0001") | map(select(length > 0))) as $round_created_paths
 		| [listed_files[] | select(.path | in_baseline($before) | not)] as $listed
 		| [($changes[] | . as $change
 			| [$listed[] | select(.path == $change.path)] as $matches
 			| if ($matches | length) == 0 then {path: $change.path, note: null}
-			  elif any($matches[]; .label == $change.label) then empty
+			  elif any($matches[]; label_matches($change; $round_created_paths)) then empty
 			  else {path: $change.path, note: "listed as \($matches[0].label), git shows \($change.label)"} end),
 		   ($listed[] | . as $entry | select(any($changes[]; .path == $entry.path) | not)
 			| {path: $entry.path, note: "listed as \($entry.label), git shows no change"})]
@@ -266,7 +272,7 @@ def names_token($id):
 def findings_problems:
 	if $findings_mode == "unchecked" then empty
 	elif $findings_mode == "none" then
-		(if has("review_responses") then "review_responses: given outside a fix round; expected it left out (only a check run with --findings takes it)" else empty end)
+		(if has("review_responses") then "review_responses: given with no findings; expected it left out (only a check run with --findings takes it)" else empty end)
 	elif has("review_responses") | not then
 		"review_responses: missing on a fix round; expected one item per finding ID given: \(findings_list | names)"
 	elif (.review_responses | type) != "array" then empty
@@ -329,6 +335,88 @@ def key_order: ["dispatch", "started", "finished", "mode", "plugins", "toolchain
 | reduce (key_order[], ($report | keys_unsorted[] | select(IN(key_order[]) | not))) as $key
 	({}; if $report | has($key) then .[$key] = $report[$key] else . end)
 | prune
+'
+
+# A fix round's baseline, which `baseline` writes and check and render read:
+#   {"repo_root": <the repo>, "entries": [<git status entry, "XY <path>">, ...],
+#    "fingerprints": {"<path>": <git hash-object of it>, ...}}
+# A path has a fingerprint when it was a regular file at the time; a deleted
+# one has none. Prints one "<field> <problem>; expected <x>" line per way the
+# input differs from that shape for repo root $repo_root.
+# shellcheck disable=SC2016
+readonly ROUND_BASELINE_JQ='
+def round_baseline_keys: ["repo_root", "entries", "fingerprints"];
+def round_baseline_problems($repo_root):
+	if type != "object" then "a JSON \(type); expected an object with \(round_baseline_keys | join(", "))"
+	else ((keys - round_baseline_keys)[] | "\(tojson): unknown field; expected only \(round_baseline_keys | join(", "))"),
+		(round_baseline_keys[] as $key | select(has($key) | not) | "\($key) missing; expected every one of \(round_baseline_keys | join(", "))"),
+		(select(has("repo_root")) | if .repo_root == $repo_root then empty
+		 else "repo_root \(.repo_root | tojson) is not --repo; expected \($repo_root | tojson)" end),
+		(select(has("entries")) | if (.entries | type) == "array" and all(.entries[]; type == "string" and length > 3 and (contains("\u0001") | not)) then empty
+		 else "entries is not an array of git status entries; expected [\"XY <path>\", ...] ([] for a clean tree)" end),
+		(select(has("fingerprints")) | if (.fingerprints | type) == "object" and all(.fingerprints[]; type == "string" and test("\\A[0-9a-f]{40}([0-9a-f]{24})?\\z")) then empty
+		 else "fingerprints is not an object of git object IDs; expected {\"<path>\": \"<40 or 64 hex digits>\", ...}" end)
+	end;
+'
+
+# The comparison's inputs for a fix round, from its baseline ($round), the
+# fingerprints of its paths now ($now) and the git status now ($git, entries
+# joined by \u0001). $part "unchanged" prints the baseline entries the round
+# left alone (the same status line, and the same fingerprint or none both
+# times), which COMMON_JQ leaves out like a dispatch baseline's; "reverted"
+# prints an entry for each baseline path git no longer lists, labelled as the
+# change the round made to put it back; "created" prints the paths an earlier
+# round created that git still shows created and this round changed (each
+# ending in \u0001), which the report may list as created or modified. A file
+# changed again in the round has a new fingerprint, so it is compared like
+# any other change.
+# shellcheck disable=SC2016
+readonly ROUND_COMPARE_JQ='
+def entry_path: .[3:];
+def entries_of: split("\u0001") | map(select(length > 3));
+def set_of(f): map({(f): true}) | add // {};
+def created_status: . == "??" or startswith("A");
+($git | entries_of) as $current
+| ($current | set_of(.)) as $current_lines
+| ($current | set_of(entry_path)) as $current_paths
+| $round.fingerprints as $then
+| if $part == "unchanged" then
+	[$round.entries[] | select($current_lines[.] and $then[entry_path] == $now[entry_path]) | ., "\u0001"]
+  elif $part == "reverted" then
+	[$round.entries[] | select($current_paths[entry_path] | not) | .[:2] as $status
+		| (if $status | created_status then " D "
+		   elif $status | test("D") then "?? "
+		   else " M " end) + entry_path, "\u0001"]
+  else
+	($current | map({(entry_path): .[:2]}) | add // {}) as $current_status
+	| [$round.entries[] | entry_path as $path
+		| select((.[:2] | created_status) and ($current_status[$path] // "" | created_status) and $then[$path] != $now[$path])
+		| $path, "\u0001"]
+  end
+| add // ""
+'
+
+# Turns the paths in the input, each ending in \001, into git hash-object
+# --stdin-paths lines. A path git would misread as a line (one holding a line
+# feed or carriage return, or starting with a double quote) is C-quoted, as
+# git unquotes it; every other path goes as is, byte for byte.
+# The program is single-quoted on purpose: its $0 is awk's, not the shell's.
+# shellcheck disable=SC2016
+readonly STDIN_PATHS_AWK='
+function c_quoted(path,    quoted, i, char) {
+	quoted = ""
+	for (i = 1; i <= length(path); i++) {
+		char = substr(path, i, 1)
+		if (char == "\\") char = "\\\\"
+		else if (char == "\"") char = "\\\""
+		else if (char == "\n") char = "\\n"
+		else if (char == "\r") char = "\\r"
+		quoted = quoted char
+	}
+	return "\"" quoted "\""
+}
+BEGIN { RS = "\001" }
+{ if ($0 ~ /[\n\r]/ || substr($0, 1, 1) == "\"") print c_quoted($0); else print }
 '
 
 # doc-check: compares the report standard's text ($doc) with the definitions
@@ -522,15 +610,23 @@ def developer_view($problems; $title; $repo; $path):
 	| blocks;
 
 def repos_text($count): "\($count) repo\(if $count == 1 then "" else "s" end)";
-# Two developers of one title are told apart by their order: Shell script
-# developer 1, Shell script developer 2.
+# Each dispatch is one developer, its reports in round order. Two dispatches
+# of one title are told apart by their order: Shell script developer 1, Shell
+# script developer 2. A fix round report carries the round summary was given
+# for it: Shell script developer 1 · fix 1. Its Needs-you items carry the
+# same title, so each reads with its round.
+def round_label: if .round == null then "" else " · \(.round | txt)" end;
 def distinct_titles:
 	. as $runs
-	| [range(length) as $index | $runs[$index] | .title as $title
-		| ([$runs[] | select(.title == $title)] | length) as $same
-		| if $same > 1 then .title = "\($title) \([$runs[:$index][] | select(.title == $title)] | length + 1)" else . end];
+	| [range(length) as $index | $runs[$index] | .title as $title | .dispatch as $dispatch
+		| (reduce ($runs[] | select(.title == $title) | .dispatch) as $seen ([]; if index([$seen]) == null then . + [$seen] else . end)) as $dispatches
+		| .title = $title
+			+ (if ($dispatches | length) > 1 then " \($dispatches | index([$dispatch]) + 1)" else "" end)
+			+ round_label];
+# The last report of each dispatch, which says whether its developer is done.
+def latest_rounds: group_by(.dispatch) | map(last);
 def run_entry($meta):
-	{title: ($meta.title | txt), path: $meta.path, blocked: is_blocked, summary: summary_text,
+	{title: ($meta.title | txt), path: $meta.path, dispatch: $meta.dispatch, round: $meta.round, blocked: is_blocked, summary: summary_text,
 	 groups: needs_groups(all_problems; $meta.repo // ""), counts: file_counts,
 	 repo: (if ($meta.repo // "") == "" then "report \($meta.path)" else $meta.repo end)};
 def developer_state: "\(.title) · \(if .blocked then "blocked" else "done" end)";
@@ -560,8 +656,9 @@ def run_files($runs):
 		 | [$runs[] | select(.counts[$field][1] > 0)] as $changed
 		 | [$runs[0].counts[$field][0], ($changed | map(.counts[$field][1]) | add // 0), repos_text($changed | map(.repo) | unique | length)]]);
 def run_view($runs; $not_done; $context):
-	($runs | length) as $total
-	| ([$runs[] | select(.blocked)] | length) as $blocked
+	($runs | latest_rounds) as $developers
+	| ($developers | length) as $total
+	| ([$developers[] | select(.blocked)] | length) as $blocked
 	| ([$runs[].groups | item_count] | add) as $count
 	| [status_line(if $blocked > 0 then "blocked" elif $count > 0 then "attention" else "done" end;
 		"Run finished · " + (if $total == 1 then "1 developer" else "\($total) developers" end | . as $developers
@@ -641,9 +738,11 @@ readonly SUMMARY_MAIN_JQ='
 	 data_section(if $context_path == "" then [] else [["Context", $context_path | txt]] end)]
 	| blocks
 elif ($reports | length) == 1 and ($not_done | length) == 0 then
-	$reports[0] | developer_view(all_problems; $meta[0].title; $meta[0].repo; $meta[0].path)
+	$reports[0] | developer_view(all_problems; $meta[0].title + ($meta[0] | round_label); $meta[0].repo; $meta[0].path)
 else
-	[range($reports | length) as $index | $reports[$index] | run_entry($meta[$index])] | distinct_titles
+	[range($reports | length) as $index | $reports[$index]
+		| run_entry($meta[$index] + {dispatch: (if .dispatch | stamp_id_ok then .dispatch else "report \($index + 1)" end)})]
+	| distinct_titles
 	| run_view(.; $not_done; $context_path)
 end
 '
@@ -652,7 +751,7 @@ end
 # command owns. Each command's own contract is its `<command> --help` page.
 usage() {
 	usage_prefix='usage: '
-	usage_lines check render summary doc-check
+	usage_lines check render summary baseline doc-check
 	usage_line 'report.sh <command> --help'
 	usage_line 'report.sh --help | -h'
 	cat <<'EOF'
@@ -668,6 +767,7 @@ Commands (each page holds its options, output, exit codes and dependencies):
   check      checks the report's shape; with --dispatch, stamps it on a pass
   render     prints the report's developer summary for the human
   summary    prints the run summary of the reports of one run for the human
+  baseline   writes a fix round's baseline, which check and render compare with
   doc-check  compares the report standard's field table with the validator
 EOF
 }
@@ -680,6 +780,7 @@ command_help() {
 		check) check_help ;;
 		render) render_help ;;
 		summary) summary_help ;;
+		baseline) baseline_help ;;
 		*) doc_check_help ;;
 	esac
 }
@@ -694,7 +795,8 @@ EOF
 	help_shared options
 	cat <<'EOF'
   --dispatch FILE     the dispatch file; supplies --report, --repo, --context
-                      and --mode: leave them out, or give the same text
+                      and --mode: leave them out, or give the same text (with
+                      --round, --report is the round's own report)
 EOF
 	help_shared report-repo
 	cat <<'EOF'
@@ -702,8 +804,21 @@ EOF
   --context FILE      the context file; each could_not ref names an entry
   --findings FILE     a fix round's finding IDs, one per line; review_responses
                       answers each exactly once
+  --round 'fix N'     with --dispatch, N a positive integer: the report of fix
+                      round N, which covers that round alone. --report is then
+                      required: an existing file in the folder of the
+                      dispatch's report, not that report itself. --baseline is
+                      required. The stamps still come from the dispatch.
+                      Left out on the dispatch's first report
+  --baseline FILE     without --dispatch: git status --porcelain=v1 -z
+                      --no-renames of --repo from before the dispatch; needs
+                      --repo. With --round: the round's baseline, the file
+                      report.sh baseline wrote before the round; a file then
+                      counts as changed in the round when its status line
+                      differs from the baseline's, or when the baseline lists
+                      it and its fingerprint differs now. Never with
+                      --dispatch alone
 EOF
-	help_shared baseline
 	help_shared skills-dir
 	cat <<'EOF'
 
@@ -732,7 +847,8 @@ EOF
   3  invalid; have the fields stderr names fixed, check again
   4  not a report (PATH not one JSON object); write the report again
   5  install fault; show stderr as is, the report unchecked
-  6  --dispatch: valid, but the stamp step failed; render --dispatch
+  6  --dispatch: valid, but the stamp step failed; render --dispatch; in a
+     fix round, render --round 'fix N' --baseline FILE
   129, 130, 143  stopped by HUP, INT or TERM; the report unchecked
 EOF
 	help_shared dependencies
@@ -761,9 +877,13 @@ EOF
                       (default: the metadata.label of the stamped language
                       and frameworks, each plugin's name when it has none)
   --round ROUND       initial or 'fix N'; initial shows review_responses as a
-                      report problem
+                      report problem, 'fix N' takes it or its absence
+  --baseline FILE     git status --porcelain=v1 -z --no-renames of --repo from
+                      before the dispatch; needs --repo, never with
+                      --dispatch. With --round 'fix N', it may instead be the
+                      round's baseline report.sh baseline wrote, compared as
+                      check --round compares it
 EOF
-	help_shared baseline
 	cat <<'EOF'
   --dispatch FILE     the dispatch of a report check could not stamp, for its
                       baseline; a stamped report needs neither this nor
@@ -787,15 +907,23 @@ summary_help() {
 
 Prints the run summary as Markdown on stdout; with one --report and no
 --not-done, that report's developer summary as render prints it. Each
-developer is named by its title, as render builds it from the stamped
-plugins; two of the same title are numbered in run order ("Shell script
-developer 1", "Shell script developer 2").
+dispatch is one developer, named by its title, as render builds it from the
+stamped plugins; two dispatches of the same title are numbered in run order
+("Shell script developer 1", "Shell script developer 2"). A report given a
+--round carries it ("Shell script developer 1 · fix 1"), and so does each of
+its Needs-you items; a report with no dispatch stamp is a dispatch of its
+own. The status line counts developers by dispatch, blocked when the last
+report given for the dispatch is; Files adds up each report's own lists.
 EOF
 	help_shared options
 	cat <<'EOF'
   --report PATH       a developer's report file; repeat it for each, in run
-                      order; none, with --not-done, for a run that built
-                      nothing
+                      order, each dispatch's first report, then its fix
+                      rounds' in round order; none, with --not-done, for a
+                      run that built nothing
+  --round 'fix N'     right after a --report, N a positive integer: that
+                      report is fix round N's; left out for a dispatch's
+                      first report
   --context FILE      the run's context file, listed under Data; ignored
                       by a developer summary
   --not-done TEXT     one line: a part of the run that did not run, and why;
@@ -809,6 +937,43 @@ EOF
 	cat <<'EOF'
   the crucible skill, for the repo of each stamped report (one it cannot
     find counts as a repo of its own)
+EOF
+}
+
+baseline_help() {
+	cat <<'EOF'
+
+Writes a fix round's baseline, taken just before the round is sent: the
+repo's changes and a content fingerprint of each changed file, so check and
+render --round 'fix N' can count a file changed in the round even when an
+earlier round changed it too.
+
+Options (every FILE and DIR absolute):
+  --repo DIR          the root of a git work tree
+  --out FILE          the round's baseline file: an existing, empty regular
+                      file, not a symlink; a file holding anything is refused
+
+Writes: into FILE, on exit 0 only, one JSON object:
+  {"repo_root": DIR,
+   "entries": [each entry of git status --porcelain=v1 -z --no-renames
+     --untracked-files=all, "XY <path>", its NUL taken off],
+   "fingerprints": {"<path>": git hash-object --no-filters of it, for each
+     listed path that is a regular file}}
+stdout: nothing.
+Nothing else is left behind (a SIGKILL aside); the repo, its index and its
+object store are never changed.
+
+Exit codes:
+  0  written; send the round
+  2  usage error; fix the command
+  5  install fault; show stderr as is, FILE left empty
+  129, 130, 143  stopped by HUP, INT or TERM; FILE left empty
+
+Dependencies:
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
+  awk, cat, cp, date, grep, mktemp, mv, rm, sed, tr, wc (every macOS and
+    Linux base system)
+  git (macOS: xcode-select --install; Linux: the distro's git)
 EOF
 }
 
@@ -841,16 +1006,17 @@ usage_lines() {
 	for usage_command in "$@"; do
 		case ${usage_command} in
 			check)
-				usage_line 'report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUILD] [--context FILE] [--findings FILE] [--skills-dir DIR]'
+				usage_line "report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUILD] [--context FILE] [--findings FILE] [--round 'fix N' --baseline FILE] [--skills-dir DIR]"
 				usage_line 'report.sh check --report PATH --repo DIR --mode BUILD [--baseline FILE] [--findings FILE] [--context FILE] [--skills-dir DIR]'
 				;;
 			render)
 				usage_line "report.sh render --report PATH [--labels-file FILE] [--round initial|'fix N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]"
 				;;
 			summary)
-				usage_line 'report.sh summary --report PATH [--report PATH]... [--context FILE] [--not-done TEXT]... [--skills-dir DIR]'
+				usage_line "report.sh summary --report PATH [--round 'fix N'] [--report PATH [--round 'fix N']]... [--context FILE] [--not-done TEXT]... [--skills-dir DIR]"
 				usage_line 'report.sh summary --not-done TEXT [--not-done TEXT]... [--context FILE] [--skills-dir DIR]'
 				;;
+			baseline) usage_line 'report.sh baseline --repo DIR --out FILE' ;;
 			*) usage_line 'report.sh doc-check --skill PATH [--skills-dir DIR]' ;;
 		esac
 	done
@@ -876,12 +1042,6 @@ EOF
   --report PATH       the report file
   --repo DIR          the root of a git work tree; a changed file the report
                       does not list is counted as unlisted
-EOF
-			;;
-		baseline)
-			cat <<'EOF'
-  --baseline FILE     git status --porcelain=v1 -z --no-renames of --repo from
-                      before the dispatch; needs --repo, never with --dispatch
 EOF
 			;;
 		skills-dir)
@@ -954,12 +1114,12 @@ parse_args() {
 			usage
 			exit 0
 			;;
-		check | render | summary | doc-check) command=$1 ;;
-		*) usage_error "unknown command: $1; expected check, render, summary, doc-check or --help" ;;
+		check | render | summary | baseline | doc-check) command=$1 ;;
+		*) usage_error "unknown command: $1; expected check, render, summary, baseline, doc-check or --help" ;;
 	esac
 	shift
-	report='' repo='' baseline='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' dispatch_file='' skill_file=''
-	report_list='' not_done_list=''
+	report='' repo='' baseline='' baseline_kind='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' dispatch_file='' skill_file='' out_file=''
+	report_list='' report_rounds='' not_done_list='' previous_option=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -967,9 +1127,10 @@ parse_args() {
 				command_help "${command}"
 				exit 0
 				;;
-			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --not-done | --skills-dir | --dispatch | --skill)
+			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --not-done | --skills-dir | --dispatch | --skill | --out)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
+				previous_option=$1
 				shift 2
 				;;
 			*) usage_error "unknown argument: $1; expected the options '${PROG} ${command} --help' lists" ;;
@@ -977,6 +1138,11 @@ parse_args() {
 	done
 	check_jq
 	check_base_tools
+	if [ "${command}" = baseline ]; then
+		check_baseline_args
+		return 0
+	fi
+	[ -z "${out_file}" ] || usage_error '--out is for baseline only; expected it only with baseline'
 	if [ "${command}" = doc-check ]; then
 		check_doc_check_args
 		return 0
@@ -987,6 +1153,8 @@ parse_args() {
 		check_summary_args
 		return 0
 	fi
+	[ -z "${round}" ] || check_round_value
+	[ "${command}" != check ] || check_check_round
 	[ "${command}" != check ] || [ -z "${dispatch_file}" ] || read_dispatch
 	check_common_args
 	if [ "${command}" = check ]; then check_check_args; else check_render_args; fi
@@ -997,6 +1165,7 @@ set_option() {
 		--report)
 			report=$2
 			report_list="${report_list}${report_list:+${newline}}$2"
+			report_rounds="${report_rounds}${report_rounds:+${newline}}-"
 			;;
 		--repo) repo=$2 ;;
 		--baseline) baseline=$2 ;;
@@ -1004,7 +1173,10 @@ set_option() {
 		--findings) findings=$2 ;;
 		--context) context=$2 ;;
 		--labels-file) labels_file=$2 ;;
-		--round) round=$2 ;;
+		--round)
+			round=$2
+			[ "${command}" != summary ] || set_report_round "$2"
+			;;
 		--not-done)
 			case $2 in
 				*"${newline}"*) usage_error '--not-done holds a line break; expected one line per --not-done' ;;
@@ -1013,19 +1185,38 @@ set_option() {
 			;;
 		--dispatch) dispatch_file=$2 ;;
 		--skill) skill_file=$2 ;;
+		--out) out_file=$2 ;;
 		*) skills_dir=$2 ;;
 	esac
 }
 
-# Checks the --dispatch file against the dispatch validator, takes --report,
-# --repo, --context and --mode from it, sets stamps to the stamps it supplies
-# (finished comes at the pass; plugins by kind, names only), dispatch_context_sha256 to the
-# context file's pinned sha256 and dispatch_baseline to its baseline file.
-# Exits 2 on a bad file (stderr starting "report.sh: dispatch:"), a
-# conflicting flag or --baseline, 5 when the validator is missing.
+# summary: a --round names the round of the --report right before it, so
+# report_rounds holds one line per report, "-" for a dispatch's first report.
+set_report_round() {
+	[ "${previous_option}" = --report ] ||
+		usage_error "--round $1 follows no --report; expected --report PATH --round 'fix N', the round right after its report"
+	case $1 in
+		*"${newline}"*) usage_error "--round holds a line break; expected 'fix N'" ;;
+		*) report_rounds="${report_rounds%-}$1" ;;
+	esac
+}
+
+# Checks the --dispatch file against the dispatch validator, takes --report
+# (unless a fix round's), --repo, --context and --mode from it, sets stamps to
+# the stamps it supplies (finished comes at the pass; plugins by kind, names
+# only), dispatch_context_sha256 to the context file's pinned sha256 and
+# dispatch_baseline to its baseline file (not read on a fix round, which
+# compares with its own --baseline). Exits 2 on a bad file (stderr starting
+# "report.sh: dispatch:"), a conflicting flag, a --baseline without --round or
+# a fix round without one, 5 when the validator is missing.
 read_dispatch() {
-	[ -z "${baseline}" ] ||
-		usage_error "--baseline is not taken with --dispatch: the dispatch's baseline key names the baseline the Agent hook wrote at the call; expected --baseline left out"
+	if [ -z "${round}" ]; then
+		[ -z "${baseline}" ] ||
+			usage_error "--baseline is not taken with --dispatch: the dispatch's baseline key names the baseline the Agent hook wrote at the call; expected --baseline left out"
+	else
+		[ -n "${baseline}" ] ||
+			usage_error "--round ${round} needs --baseline FILE; expected the round's baseline, the file report.sh baseline wrote before the round"
+	fi
 	validate_dispatch_file "${dispatch_file}" --dispatch
 	# The validator holds these to absolute paths without a control character,
 	# the sha256 to 64 hex digits and mode to BUILD, so each is one line.
@@ -1041,11 +1232,16 @@ read_dispatch() {
 	} <<EOF
 ${dispatch_fields}
 EOF
-	same_as_dispatch --report "${report}" "${dispatch_report}" report
+	if [ -z "${round}" ]; then
+		same_as_dispatch --report "${report}" "${dispatch_report}" report
+		report=${dispatch_report}
+	else
+		check_round_report
+	fi
 	same_as_dispatch --repo "${repo}" "${dispatch_repo}" repo_root
 	same_as_dispatch --context "${context}" "${dispatch_context}" context.path
 	same_as_dispatch --mode "${mode}" "${dispatch_mode}" mode
-	report=${dispatch_report} repo=${dispatch_repo} context=${dispatch_context} mode=${dispatch_mode}
+	repo=${dispatch_repo} context=${dispatch_context} mode=${dispatch_mode}
 	# shellcheck disable=SC2016 # jq variables, not shell ones
 	stamps=$(jq -c '(.plugins // {}) as $plugins
 		| {dispatch: .id, started, mode,
@@ -1053,6 +1249,28 @@ EOF
 			standards: [$plugins.standards[]?.name], procedures: [$plugins.procedures[]?.name]}}' "${dispatch_file}" </dev/null) ||
 		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
 	locate_prune_module
+}
+
+# A fix round's report is a new file beside the dispatch's own report, in the
+# effort's reports/development/ folder, so every round keeps its own report
+# and the dispatch's first report stays as it was stamped. Exits 2 otherwise.
+check_round_report() {
+	round_report_expected="expected the round's own report file, beside the dispatch's report ${dispatch_report}"
+	case ${report} in
+		'') usage_error "--round ${round} needs --report PATH; ${round_report_expected}" ;;
+		/*) ;;
+		*) usage_error "--report ${report} is not absolute; ${round_report_expected}, by its absolute path" ;;
+	esac
+	[ "${report}" != "${dispatch_report}" ] ||
+		usage_error "--report ${report} is the dispatch's own report; ${round_report_expected}"
+	case ${report##*/} in
+		'' | . | ..) usage_error "--report ${report} names no file; ${round_report_expected}" ;;
+		*) ;;
+	esac
+	[ "${report%/*}" = "${dispatch_report%/*}" ] ||
+		usage_error "--report ${report} is not in the folder of the dispatch's report, ${dispatch_report%/*}; ${round_report_expected}"
+	[ -f "${report}" ] ||
+		usage_error "--report ${report} is not an existing file; ${round_report_expected}, made before the round was sent"
 }
 
 # Exits 5 unless crucible's prune.jq, which the stamped report is written
@@ -1102,6 +1320,28 @@ same_as_dispatch() {
 		usage_error "$1 $2 differs from the dispatch's $4 $3; expected $1 left out, or the same text"
 }
 
+# baseline takes --repo and --out alone, each absolute; --out an existing,
+# empty regular file that is not a symlink, so a baseline is written once.
+check_baseline_args() {
+	for other in "${report}" "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${round}" "${dispatch_file}" "${skill_file}" "${not_done_list}"; do
+		[ -z "${other}" ] || usage_error 'baseline takes only --repo and --out; expected baseline --repo DIR --out FILE'
+	done
+	case ${repo} in
+		'') usage_error '--repo DIR missing; expected the absolute path of the repository root' ;;
+		/*) ;;
+		*) usage_error "--repo ${repo} is not absolute; expected the absolute path of the repository root" ;;
+	esac
+	out_expected="expected the round's baseline file, existing and empty"
+	case ${out_file} in
+		'') usage_error "--out FILE missing; ${out_expected}" ;;
+		/*) ;;
+		*) usage_error "--out ${out_file} is not absolute; ${out_expected}, by its absolute path" ;;
+	esac
+	[ ! -L "${out_file}" ] || usage_error "--out ${out_file} is a symlink; ${out_expected}, not a link to it"
+	[ -f "${out_file}" ] || usage_error "--out ${out_file} is missing or not a regular file; ${out_expected}"
+	[ ! -s "${out_file}" ] || usage_error "--out ${out_file} holds data; ${out_expected}: a baseline is never overwritten"
+}
+
 # doc-check takes --skill, an absolute path to a regular, readable file, and
 # --skills-dir alone.
 check_doc_check_args() {
@@ -1141,9 +1381,7 @@ check_baseline_file() {
 }
 
 check_check_args() {
-	for render_only in "${labels_file}" "${round}"; do
-		[ -z "${render_only}" ] || usage_error 'check takes no --labels-file or --round; expected them only with render'
-	done
+	[ -z "${labels_file}" ] || usage_error 'check takes no --labels-file; expected it only with render'
 	[ -n "${repo}" ] || usage_error '--repo DIR missing; expected the absolute path of the repository root'
 	case ${mode} in
 		BUILD) ;;
@@ -1191,15 +1429,30 @@ check_render_dispatch_args() {
 	[ -n "${repo}" ] || usage_error '--dispatch needs --repo; expected --repo DIR --dispatch FILE'
 }
 
-# Checks --labels-file and --round, which set the title and the round.
+# Checks --labels-file, which sets the title.
 check_view_args() {
 	[ -z "${labels_file}" ] || read_labels_file
+}
+
+check_round_value() {
 	case ${round} in
-		'' | initial) ;;
+		initial) ;;
 		'fix '*[!0-9]* | 'fix 0'* | 'fix ') usage_error "--round ${round} is not 'fix N' with N a positive integer; expected initial or 'fix 2'" ;;
 		'fix '*) ;;
 		*) usage_error "--round ${round} is unknown; expected initial or 'fix N'" ;;
 	esac
+}
+
+# check takes --round only as a fix round's, and only with --dispatch: the
+# dispatch's first report is checked without it.
+check_check_round() {
+	case ${round} in
+		'') return 0 ;;
+		initial) usage_error "check takes --round only as 'fix N'; expected --round left out on the dispatch's first report" ;;
+		*) ;;
+	esac
+	[ -n "${dispatch_file}" ] ||
+		usage_error "--round ${round} needs --dispatch; expected check --dispatch FILE --report PATH --round '${round}' --baseline FILE"
 }
 
 # Sets seat to {language, frameworks} of the one LABELS line in labels_file;
@@ -1227,12 +1480,23 @@ read_labels_file() {
 		usage_error "--labels-file holds no LABELS line: ${labels_file}; expected 'LABELS:[ Language: <label>][ · Frameworks: <labels>][ · Standards: <labels>][ · Procedures: <labels>]', each part only when it names a plugin, copied whole from the hand-back"
 }
 
-# summary takes one or more --report, --context, --not-done and --skills-dir;
-# a report path is one line, since report_list holds one per line.
+# summary takes one or more --report (each with an optional --round),
+# --context, --not-done and --skills-dir; a report path is one line, since
+# report_list holds one per line.
 check_summary_args() {
-	for other in "${repo}" "${baseline}" "${mode}" "${findings}" "${labels_file}" "${round}" "${dispatch_file}"; do
-		[ -z "${other}" ] || usage_error 'summary takes only --report, --context, --not-done and --skills-dir; expected them alone'
+	for other in "${repo}" "${baseline}" "${mode}" "${findings}" "${labels_file}" "${dispatch_file}"; do
+		[ -z "${other}" ] || usage_error 'summary takes only --report, --round, --context, --not-done and --skills-dir; expected them alone'
 	done
+	while IFS= read -r round; do
+		case ${round} in
+			'' | -) ;;
+			'fix '*[!0-9]* | 'fix 0'* | 'fix ') usage_error "--round ${round} is not 'fix N' with N a positive integer; expected 'fix 2'" ;;
+			'fix '*) ;;
+			*) usage_error "summary takes --round only as 'fix N'; expected it left out for a dispatch's first report" ;;
+		esac
+	done <<EOF
+${report_rounds}
+EOF
 	[ -n "${report_list}${not_done_list}" ] ||
 		usage_error '--report PATH missing; expected the absolute path of each report file, or --not-done TEXT for a run that built nothing'
 	while IFS= read -r listed_report; do
@@ -1274,11 +1538,12 @@ check_base_tools() {
 	done
 }
 
-# Makes the temp folder every run uses, removed on exit with any stamp temp file.
+# Makes the temp folder every run uses, removed on exit with any temp file
+# left beside a file being written (the stamped report, the round baseline).
 make_work_dir() {
-	stamp_tmp=''
+	partial_file=''
 	work_dir=$(mktemp -d "${TMPDIR:-/tmp}/report-sh.XXXXXX") || install_fault 'mktemp -d failed; expected a writable TMPDIR'
-	trap 'rm -rf "${work_dir}"; [ -z "${stamp_tmp}" ] || rm -f "${stamp_tmp}"' EXIT
+	trap 'rm -rf "${work_dir}"; [ -z "${partial_file}" ] || rm -f "${partial_file}"' EXIT
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
@@ -1307,33 +1572,147 @@ check_report() {
 # baseline is the --baseline file, else the dispatch's baseline file: the
 # --dispatch file's (check, and render), or the one of the dispatch the report
 # is stamped with (render); a render of an unstamped report without
-# --dispatch has none.
+# --dispatch has none. A fix round's baseline is turned into the same two
+# files by apply_round_baseline.
 read_git_status() {
 	git_file="${work_dir}/status"
 	baseline_file="${work_dir}/baseline"
+	round_created_file="${work_dir}/created-paths"
 	have_git=false
 	: >"${git_file}"
 	: >"${baseline_file}"
+	: >"${round_created_file}"
 	[ -n "${repo}" ] || return 0
 	if [ -n "${baseline}" ]; then
-		tr '\000' '\001' <"${baseline}" >"${baseline_file}" ||
-			usage_error "--baseline file not readable: ${baseline}; expected the saved git status"
+		read_given_baseline
 	else
 		[ "${command}" != render ] || find_render_baseline
 		[ -z "${dispatch_baseline}" ] || load_dispatch_baseline
 	fi
+	check_repo_root
+	write_git_status "${git_file}"
+	have_git=true
+	[ "${baseline_kind}" != round ] || apply_round_baseline
+}
+
+# Exits 2 unless repo is the root of a git work tree, 5 when git is missing.
+check_repo_root() {
 	command -v git >/dev/null 2>&1 || install_fault 'git missing; expected git on PATH; try installing git'
 	[ -d "${repo}" ] || dispatch_value_fault repo_root --repo "${repo} is not a folder; expected the repository root"
 	top=$(git -C "${repo}" rev-parse --show-toplevel 2>/dev/null) ||
 		dispatch_value_fault repo_root --repo "${repo} is not in a git work tree; expected the repository root"
 	physical=$(cd "${repo}" && pwd -P) || dispatch_value_fault repo_root --repo "${repo} cannot be entered; expected a readable folder"
 	[ "${top}" = "${physical}" ] || dispatch_value_fault repo_root --repo "${repo} is not the root of its work tree; expected ${top}"
+}
+
+# Writes the repo's git status, its NULs as \001, to file $1.
+write_git_status() {
 	# GIT_OPTIONAL_LOCKS=0: status reads only, never refreshing the index
 	# under a dispatch that is still writing to the tree.
 	GIT_OPTIONAL_LOCKS=0 git -C "${repo}" status --porcelain -z --untracked-files=all --no-renames >"${work_dir}/raw" ||
 		install_fault "git status failed in ${repo}; expected it to list the changes; fix what git printed above"
-	tr '\000' '\001' <"${work_dir}/raw" >"${git_file}"
-	have_git=true
+	tr '\000' '\001' <"${work_dir}/raw" >"$1"
+}
+
+# Reads the --baseline file once into the temp folder and sets baseline_kind:
+# round for a fix round's baseline (one JSON object, which a saved git status
+# never is), checked against the shape and --repo; else status, its NULs as
+# \001 into baseline_file. check --round takes only a round baseline, and a
+# round baseline is taken only with --round 'fix N'. Exits 2 otherwise.
+read_given_baseline() {
+	given_baseline="${work_dir}/baseline.given"
+	cat "${baseline}" >"${given_baseline}" ||
+		usage_error "--baseline file not readable: ${baseline}; expected the saved git status"
+	baseline_kind=status
+	if jq -es 'length == 1 and (.[0] | type) == "object"' "${given_baseline}" </dev/null >/dev/null 2>&1; then
+		baseline_kind=round
+	fi
+	round_baseline_expected="expected the file report.sh baseline --repo ${repo} --out FILE wrote before the round"
+	case ${baseline_kind}:${round} in
+		round:'fix '*) check_round_baseline ;;
+		round:*) usage_error "--baseline ${baseline} is a fix round's baseline; expected it only with --round 'fix N'" ;;
+		status:'fix '*)
+			[ "${command}" != check ] ||
+				usage_error "--baseline ${baseline} is not a fix round's baseline; ${round_baseline_expected}"
+			;;
+		*) ;;
+	esac
+	[ "${baseline_kind}" = round ] || tr '\000' '\001' <"${given_baseline}" >"${baseline_file}" ||
+		usage_error "--baseline file not readable: ${baseline}; expected the saved git status"
+}
+
+# Exits 2 unless the round baseline copy has the shape `baseline` writes, for
+# --repo.
+check_round_baseline() {
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	round_baseline_problem=$(jq -rs --arg repo_root "${repo}" "${ROUND_BASELINE_JQ}"'.[0] | round_baseline_problems($repo_root)' \
+		"${given_baseline}" </dev/null) ||
+		install_fault 'jq failed on the round baseline shape; expected jq 1.6+; try jq --version'
+	[ -n "${round_baseline_problem}" ] || return 0
+	round_baseline_problem=$(printf '%s\n' "${round_baseline_problem}" | sed -n '1p')
+	usage_error "--baseline ${baseline} is not a fix round's baseline: ${round_baseline_problem}; ${round_baseline_expected}"
+}
+
+# Sets baseline_file to the round baseline's entries the round left alone and
+# adds to git_file an entry for each path the round put back, and writes
+# round_created_file, the created paths the report may list as modified
+# (ROUND_COMPARE_JQ). Only a path git still lists can be left alone, so the
+# fingerprints now are taken of the paths in git_file.
+apply_round_baseline() {
+	write_fingerprints "${git_file}" "${work_dir}/fingerprints-now"
+	for round_part in unchanged reverted created; do
+		jq -nj --slurpfile round "${given_baseline}" --slurpfile now "${work_dir}/fingerprints-now" \
+			--rawfile git "${git_file}" --arg part "${round_part}" \
+			"\$round[0] as \$round | \$now[0] as \$now | ${ROUND_COMPARE_JQ}" </dev/null >"${work_dir}/round-${round_part}" ||
+			install_fault 'jq failed comparing the round baseline with git; expected jq 1.6+; try jq --version'
+	done
+	cat "${work_dir}/round-unchanged" >"${baseline_file}" ||
+		install_fault "cannot write in ${work_dir}; expected a writable TMPDIR"
+	cat "${work_dir}/round-reverted" >>"${git_file}" ||
+		install_fault "cannot write in ${work_dir}; expected a writable TMPDIR"
+	cat "${work_dir}/round-created" >"${round_created_file}" ||
+		install_fault "cannot write in ${work_dir}; expected a writable TMPDIR"
+}
+
+# Writes to file $2 one JSON object, {"<path>": "<git hash-object>"}, for each
+# path among the git status entries in file $1 (each ending in \001) that is a
+# regular file in the repo now. --no-filters hashes the bytes as they are, and
+# without -w git writes nothing to its object store.
+write_fingerprints() {
+	fingerprints_out=$2
+	fingerprint_paths="${work_dir}/fingerprint-paths"
+	fingerprint_lines="${work_dir}/fingerprint-lines"
+	fingerprint_hashes="${work_dir}/fingerprint-hashes"
+	# Each entry ends in a separator, so splitting on it gives the entries whole,
+	# a path holding spaces or line feeds included; globbing is off meanwhile.
+	# The split is on \002: Bash 3.2, the sh of macOS, mis-splits on \001, which
+	# it uses internally.
+	entries_text=$(tr '\001' '\002' <"$1") || install_fault "cannot read ${1}; expected a readable TMPDIR"
+	saved_ifs=${IFS}
+	IFS=$(printf '\002')
+	set -f
+	# shellcheck disable=SC2086 # split on \002 on purpose, globbing off
+	for fingerprint_entry in ${entries_text}; do
+		fingerprint_path=${fingerprint_entry#???}
+		[ ! -f "${repo}/${fingerprint_path}" ] || printf '%s\001' "${fingerprint_path}"
+	done >"${fingerprint_paths}"
+	set +f
+	IFS=${saved_ifs}
+	: >"${fingerprint_hashes}"
+	if [ -s "${fingerprint_paths}" ]; then
+		LC_ALL=C awk "${STDIN_PATHS_AWK}" "${fingerprint_paths}" >"${fingerprint_lines}" ||
+			install_fault 'awk failed listing the paths to fingerprint; expected a POSIX awk; try awk --version'
+		GIT_OPTIONAL_LOCKS=0 git -C "${repo}" hash-object --no-filters --stdin-paths <"${fingerprint_lines}" >"${fingerprint_hashes}" ||
+			install_fault "git hash-object failed in ${repo}; expected it to fingerprint each changed file; fix what git printed above, or run again if a file was removed meanwhile"
+	fi
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	jq -n --rawfile paths "${fingerprint_paths}" --rawfile hashes "${fingerprint_hashes}" '
+		($paths | split("\u0001") | map(select(length > 0))) as $paths
+		| ($hashes | split("\n") | map(select(length > 0))) as $hashes
+		| if ($paths | length) != ($hashes | length) then error("\($paths | length) paths, \($hashes | length) hashes")
+		  else [range($paths | length) as $index | {($paths[$index]): $hashes[$index]}] | add // {} end' \
+		</dev/null >"${fingerprints_out}" ||
+		install_fault 'jq failed pairing the paths with their fingerprints; expected one git hash-object line per path; try jq --version'
 }
 
 # Sets dispatch_baseline for render: the baseline file of the --dispatch file,
@@ -1494,7 +1873,7 @@ run_doc_check() {
 
 # Sets differences to one line per difference between file $1 and the validator.
 doc_differences() {
-	differences=$(jq -nr -L "${names_module%/*}" --rawfile doc "$1" --arg git '' --arg baseline '' --argjson have_git false \
+	differences=$(jq -nr -L "${names_module%/*}" --rawfile doc "$1" --arg git '' --arg baseline '' --arg round_created '' --argjson have_git false \
 		--arg mode BUILD --arg stamp_check check --arg findings_mode none --arg findings_text '' \
 		"${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${DOC_CHECK_JQ}" </dev/null) ||
 		install_fault "jq failed comparing ${1} with the validator; expected jq 1.6+; try jq --version"
@@ -1533,7 +1912,7 @@ run_check() {
 		set -- "$@" --argjson context_file '[]'
 		context_expr='null'
 	fi
-	output=$(jq -nr -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" --rawfile baseline "${baseline_file}" \
+	output=$(jq -nr -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" --rawfile baseline "${baseline_file}" --rawfile round_created "${round_created_file}" \
 		--argjson have_git "${have_git}" --arg mode "${mode}" --arg stamp_check check "$@" \
 		"${STAMP_JQ}${context_expr} as \$context | ${COMMON_JQ}${SHAPE_JQ}${CHECK_JQ}" </dev/null) ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
@@ -1561,14 +1940,14 @@ write_stamps() {
 	# The dispatch's started form: the offset as +HH:MM.
 	finished="${raw_time%??}:${raw_time#"${raw_time%??}"}"
 	report_dir=${report%/*}
-	stamp_tmp=$(mktemp "${report_dir:-/}/.report-stamps.XXXXXX") ||
+	partial_file=$(mktemp "${report_dir:-/}/.report-stamps.XXXXXX") ||
 		stamp_fault "mktemp failed in ${report_dir:-/}; expected the report's folder writable"
-	cp -p "${report}" "${stamp_tmp}" || stamp_fault "cp -p ${report} failed; expected the report's permissions copied to ${stamp_tmp}"
+	cp -p "${report}" "${partial_file}" || stamp_fault "cp -p ${report} failed; expected the report's permissions copied to ${partial_file}"
 	jq -L "${prune_module%/*}" --argjson stamps "${stamps}" --arg finished "${finished}" \
-		"${STAMPED_REPORT_JQ}" "${report_copy}" </dev/null >"${stamp_tmp}" ||
-		stamp_fault "jq failed writing ${stamp_tmp}; expected the stamped report written; try jq --version"
-	mv -f "${stamp_tmp}" "${report}" || stamp_fault "mv onto ${report} failed; expected the stamped report moved into place"
-	stamp_tmp=''
+		"${STAMPED_REPORT_JQ}" "${report_copy}" </dev/null >"${partial_file}" ||
+		stamp_fault "jq failed writing ${partial_file}; expected the stamped report written; try jq --version"
+	mv -f "${partial_file}" "${report}" || stamp_fault "mv onto ${report} failed; expected the stamped report moved into place"
+	partial_file=''
 }
 
 stamp_fault() {
@@ -1589,7 +1968,7 @@ run_render() {
 		location_root=${report_repo}
 	fi
 	jq -nr -L "${skills_dir}/${RENDER_LIB}" -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" \
-		--rawfile baseline "${baseline_file}" --argjson have_git "${have_git}" \
+		--rawfile baseline "${baseline_file}" --rawfile round_created "${round_created_file}" --argjson have_git "${have_git}" \
 		--arg mode BUILD --arg findings_mode "${findings_mode}" --arg findings_text '' --arg stamp_check render \
 		--argjson seat "${seat}" --arg round "${round}" \
 		--arg home "${HOME:-}" --arg location_root "${location_root}" --arg report_path "${report}" \
@@ -1668,14 +2047,41 @@ read_report_repo() {
 	report_repo=$(jq -r '.repo_root | strings | select(startswith("/"))' "${stamped_dispatch}" </dev/null 2>/dev/null) || report_repo=''
 }
 
+# Writes the round baseline of repo into out_file: built in the temp folder,
+# then moved into place through a temp file beside it that keeps out_file's
+# permissions, so out_file is either empty or whole.
+run_baseline() {
+	check_repo_root
+	write_git_status "${work_dir}/round-status"
+	write_fingerprints "${work_dir}/round-status" "${work_dir}/round-fingerprints"
+	# shellcheck disable=SC2016 # jq variables, not shell ones
+	jq -n --arg repo_root "${repo}" --rawfile status "${work_dir}/round-status" --slurpfile fingerprints "${work_dir}/round-fingerprints" \
+		'{repo_root: $repo_root, entries: ($status | split("\u0001") | map(select(length > 3))), fingerprints: $fingerprints[0]}' \
+		</dev/null >"${work_dir}/round-baseline" ||
+		install_fault 'jq failed building the round baseline; expected jq 1.6+; try jq --version'
+	out_dir=${out_file%/*}
+	partial_file=$(mktemp "${out_dir:-/}/.${out_file##*/}.XXXXXX") ||
+		install_fault "mktemp failed in ${out_dir:-/}; expected the folder of --out writable"
+	cp -p "${out_file}" "${partial_file}" ||
+		install_fault "cp -p ${out_file} failed; expected its permissions copied to ${partial_file}"
+	cat "${work_dir}/round-baseline" >"${partial_file}" ||
+		install_fault "cannot write ${partial_file}; expected the folder of --out writable, with free space"
+	# A call racing this one may have filled it since the argument check; its
+	# baseline is kept.
+	[ ! -s "${out_file}" ] || usage_error "--out ${out_file} holds data; ${out_expected}: a baseline is never overwritten"
+	mv -f "${partial_file}" "${out_file}" || install_fault "mv onto ${out_file} failed; expected the baseline moved into place"
+	partial_file=''
+}
+
 # Checks each --report, then prints one developer summary or the run summary.
-# meta.json holds, per report in order, its path, developer title and repo.
+# meta.json holds, per report in order, its path, developer title, repo and
+# round (null for a dispatch's first report).
 run_summary() {
 	locate_view_modules
 	report_index=0
 	: >"${work_dir}/reports.json"
 	: >"${work_dir}/meta.json"
-	while IFS= read -r report; do
+	while IFS= read -r report && IFS= read -r report_round <&3; do
 		[ -n "${report}" ] || continue
 		report_index=$((report_index + 1))
 		check_report "${report_index}"
@@ -1683,16 +2089,18 @@ run_summary() {
 		read_report_repo
 		cat "${report_copy}" >>"${work_dir}/reports.json" ||
 			install_fault "cannot write in ${work_dir}; expected a writable TMPDIR"
-		jq -n -L "${skills_dir}/${RENDER_LIB}" --arg path "${report}" --argjson seat "${seat}" --arg repo "${report_repo}" \
-			'include "title"; {path: $path, title: ($seat | title("developer")), repo: $repo}' </dev/null >>"${work_dir}/meta.json" ||
+		jq -n -L "${skills_dir}/${RENDER_LIB}" --arg path "${report}" --argjson seat "${seat}" --arg repo "${report_repo}" --arg round "${report_round}" \
+			'include "title"; {path: $path, title: ($seat | title("developer")), repo: $repo, round: (if $round == "-" then null else $round end)}' </dev/null >>"${work_dir}/meta.json" ||
 			install_fault 'jq failed writing the report list; expected jq 1.6+; try jq --version'
-	done <<EOF
+	done <<EOF 3<<ROUNDS
 ${report_list}
 EOF
+${report_rounds}
+ROUNDS
 	if [ -n "${not_done_list}" ]; then printf '%s\n' "${not_done_list}"; fi >"${work_dir}/not-done"
 	jq -nr -L "${skills_dir}/${RENDER_LIB}" -L "${names_module%/*}" --slurpfile reports "${work_dir}/reports.json" \
 		--slurpfile meta "${work_dir}/meta.json" --rawfile not_done_text "${work_dir}/not-done" \
-		--arg git '' --arg baseline '' --argjson have_git false \
+		--arg git '' --arg baseline '' --arg round_created '' --argjson have_git false \
 		--arg mode BUILD --arg findings_mode unchecked --arg findings_text '' --arg stamp_check render \
 		--arg home "${HOME:-}" --arg context_path "${context}" \
 		"include \"paths\"; include \"view\"; ${STAMP_JQ}null as \$context | (\$not_done_text | split(\"\\n\") | map(select(. != \"\"))) as \$not_done | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${VIEW_JQ}${SUMMARY_MAIN_JQ}" </dev/null ||
@@ -1700,6 +2108,11 @@ EOF
 }
 
 parse_args "$@"
+if [ "${command}" = baseline ]; then
+	make_work_dir
+	run_baseline
+	exit 0
+fi
 locate_names_module
 if [ "${command}" = doc-check ]; then run_doc_check; fi
 check_own_skill

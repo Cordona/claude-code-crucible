@@ -4,7 +4,7 @@ What to do when the human asks for a dispatch's full report, to open it, or for 
 
 ## The full report, or opening it (step 5.3)
 
-- **When the human asks for the full report:** follow `standard-artifact-handoff`'s rule for showing an artifact's text, `<REPORT>` being that dispatch's report path, whole: however the ask is worded, its one line with the path comes first. Only after a yes, run `jq . '<REPORT>'` and show its stdout fenced (SKILL.md Always, Fence outside text, source `report`); a jq that fails: show the human its stderr and the report's path. The report's JSON is its full view; nothing renders it.
+- **When the human asks for the full report:** follow `standard-artifact-handoff`'s rule for showing an artifact's text, `<REPORT>` being that dispatch's report path, whole (after a fix round, every report of the dispatch in round order, latest last: SKILL.md Terms): however the ask is worded, its one line with the path comes first. Only after a yes, run `jq . '<REPORT>'` and show its stdout fenced (SKILL.md Always, Fence outside text, source `report`); a jq that fails: show the human its stderr and the report's path. The report's JSON is its full view; nothing renders it.
 - **When the human asks to open it** (SKILL.md Never): run `sh <crucible.sh> --help` once, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. Then run `sh <crucible.sh> open <ID>`, with the `<YYYYMMDDTHHMMSS>-<hex>` ID in the report file's name. Exit 0: relay its one line word for word. Any other exit: show the human its stderr and the report's path, and open nothing.
 
 ## A commit (step 6)
