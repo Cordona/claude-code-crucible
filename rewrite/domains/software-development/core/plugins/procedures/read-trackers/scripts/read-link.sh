@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
-# The procedure-read-trackers plugin's script. Reads one link of a context file
-# through its tracker's single read-only call, so no model ever puts the
-# untrusted URL on a command line it composes. The URL is taken from the file,
-# checked, and passed as one quoted argument only.
+# The procedure-read-trackers plugin's script. Reads one link, from a context
+# file or given as --url, through its tracker's single read-only call, so no
+# model ever puts the untrusted URL on a command line it composes. The URL is
+# checked and passed as one quoted argument only.
 set -eu
 
 readonly PROG='read-link.sh'
@@ -20,12 +20,12 @@ readonly LINK_RULE_DIR="${SKILLS_DIR}/procedure-context/scripts"
 readonly LINK_RULE_MODULE="${LINK_RULE_DIR}/agent-context-url.jq"
 readonly TAB='	'
 
-# Checks the file and link n, then names the tracker. Input: the file slurped
-# (jq -s); --arg n. Output: one tab-separated line, the first field one of
+# Names a checked URL's tracker. Output of each program below: one
+# tab-separated line, the first field one of
 # bad <message> · github <url> · gitlab <url> · jira <host> <key> · other <host>.
-# The program is single-quoted on purpose: its $ signs are jq's.
+# The programs are single-quoted on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
-readonly CLASSIFY_JQ='
+readonly CLASSIFY_DEFS_JQ='
 include "agent-context-url";
 def url_parts: capture("^https?://(?<authority>[^/?#]+)(?<path>[^?#]*)"; "i") | .authority |= ascii_downcase;
 def bad($message): "bad\t" + $message;
@@ -39,7 +39,10 @@ def classify:
 	  elif ($parts.authority | test("^[a-z0-9.-]+(:[0-9]{1,5})?$")) and ($parts.path | test("^/browse/[A-Z][A-Z0-9_]*-[0-9]+/?$")) then
 		"jira\t" + $parts.authority + "\t" + ($parts.path | capture("^/browse/(?<key>[^/]+)").key)
 	  else "other\t" + $parts.authority end;
-
+'
+# Checks the file and link n. Input: the file slurped (jq -s); --arg n.
+# shellcheck disable=SC2016
+readonly CONTEXT_LINK_JQ='
 ($n | tonumber) as $index
 | if length != 1 or (.[0] | type) != "object" then bad("the file holds no single JSON object; expected one object with paths, links and notes; try the file the human approved")
   elif (.[0] | has("links")) and (.[0].links | type) != "array" then bad("the file has no links array; expected links as an array; try the file the human approved")
@@ -49,6 +52,12 @@ def classify:
 	  elif ($links[$index - 1] | type) != "object" or ($links[$index - 1].url | http_url | not) then bad("link \($n) has no URL of the accepted form; expected an object whose \"url\" is an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try the file the human approved")
 	  else $links[$index - 1].url | classify end
   end
+'
+# Checks the --url value. Input: none (jq -n); --arg url.
+# shellcheck disable=SC2016
+readonly GIVEN_URL_JQ='
+if $url | http_url then $url | classify
+else bad("--url is not of the accepted form; expected an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try the link as the human gave it, other characters percent-encoded") end
 '
 
 main() {
@@ -68,9 +77,11 @@ main() {
 usage() {
 	cat <<'EOF'
 usage: read-link.sh --context-file <absolute path> --link <n>
+       read-link.sh --url <link>
        read-link.sh --help | -h
 
-Reads link <n> of a context file through its tracker's issue view.
+Reads link <n> of a context file, or the one link given, through its
+tracker's issue view.
 
 Options:
   --context-file <absolute path>
@@ -78,7 +89,10 @@ Options:
                   "url" (no links key: no link); no other key is read
   --link <n>      the link's place in links: a whole number from 1, no
                   leading zero
-  rules for each url: see procedure-context's scripts/agent-context-url.jq
+  --url <link>    one link, given directly; not with --context-file or
+                  --link
+  rules for each url and for --url: see procedure-context's
+    scripts/agent-context-url.jq
 
 Environment:
   JIRA_HOST_ALLOWLIST_PATTERN
@@ -101,10 +115,11 @@ and every tracker are never changed.
 Exit codes:
   0  read; use the ticket on stdout
   1  read failed; skip the link, giving stderr's first line
-  2  usage error; skip the link, giving stderr's first line
+  2  usage error, a --url not of the accepted form included; skip the
+     link, giving stderr's first line
   3  not a tracker link; read it as any other link
-  4  the context file or its link <n> is not usable; skip the link, giving
-     stderr's first line
+  4  --context-file form only: the context file or its link <n> is not
+     usable; skip the link, giving stderr's first line
   5  setup fault; skip the link, giving stderr's first line
   130, 143  stopped by INT or TERM; skip the link
 
@@ -129,6 +144,8 @@ parse_args() {
 	[ "$#" -gt 0 ] || usage_error 'no arguments'
 	context_file=''
 	link_index=''
+	given_url=''
+	file_form_given=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -139,17 +156,30 @@ parse_args() {
 				[ "$#" -ge 2 ] || usage_error '--context-file needs a value'
 				[ -z "${context_file}" ] || usage_error '--context-file given twice'
 				context_file=$2
+				file_form_given=1
 				shift 2
 				;;
 			--link)
 				[ "$#" -ge 2 ] || usage_error '--link needs a value'
 				[ -z "${link_index}" ] || usage_error '--link given twice'
 				link_index=$2
+				file_form_given=1
+				shift 2
+				;;
+			--url)
+				[ "$#" -ge 2 ] || usage_error '--url needs a value'
+				[ -n "$2" ] || usage_error '--url is empty'
+				[ -z "${given_url}" ] || usage_error '--url given twice'
+				given_url=$2
 				shift 2
 				;;
 			*) usage_error "unknown argument: $1" ;;
 		esac
 	done
+	if [ -n "${given_url}" ]; then
+		[ -z "${file_form_given}" ] || usage_error '--url given with --context-file or --link'
+		return 0
+	fi
 	[ -n "${context_file}" ] || usage_error '--context-file missing'
 	[ -n "${link_index}" ] || usage_error '--link missing'
 	case ${context_file} in
@@ -163,7 +193,7 @@ parse_args() {
 }
 
 usage_error() {
-	printf '%s: %s; expected --context-file <absolute path> --link <n>; try --help\n' "${PROG}" "$1" >&2
+	printf '%s: %s; expected --context-file <absolute path> --link <n>, or --url <link>; try --help\n' "${PROG}" "$1" >&2
 	usage >&2
 	exit 2
 }
@@ -189,19 +219,21 @@ require_link_rule() {
 		|| fail 5 "procedure-context's link rule missing; expected ${LINK_RULE_MODULE}; try installing the procedure-context skill"
 }
 
-# Sets link_kind and, by kind, link_url, link_host and link_key.
+# Sets link_kind and, by kind, link_url, link_host and link_key. A bad link
+# is exit 4 from a context file and exit 2 from --url.
 classify_link() {
-	[ -f "${context_file}" ] && [ -r "${context_file}" ] \
-		|| fail 4 'context file unreadable; expected a readable file; try the path in the CONTEXT FILE field'
-	# A separate parse, as jq versions differ in the exit code of a parse error.
-	jq -s 'length' <"${context_file}" >/dev/null 2>&1 \
-		|| fail 4 'context file is not valid JSON; expected one JSON object; try the file the human approved'
-	classified=$(jq -r -s -L "${LINK_RULE_DIR}" --arg n "${link_index}" "${CLASSIFY_JQ}" <"${context_file}" 2>/dev/null) \
-		|| fail 5 'jq failed checking the context file; expected jq 1.6 or later; try upgrading jq'
+	if [ -n "${given_url}" ]; then
+		bad_link_status=2
+		classified=$(jq -n -r -L "${LINK_RULE_DIR}" --arg url "${given_url}" "${CLASSIFY_DEFS_JQ}${GIVEN_URL_JQ}" 2>/dev/null) \
+			|| fail 5 'jq failed checking --url; expected jq 1.6 or later; try upgrading jq'
+	else
+		bad_link_status=4
+		classify_context_link
+	fi
 	link_kind=${classified%%"${TAB}"*}
 	classified_fields=${classified#*"${TAB}"}
 	case ${link_kind} in
-		bad) fail 4 "${classified_fields}" ;;
+		bad) fail "${bad_link_status}" "${classified_fields}" ;;
 		github | gitlab) link_url=${classified_fields} ;;
 		jira)
 			link_host=${classified_fields%%"${TAB}"*}
@@ -210,6 +242,17 @@ classify_link() {
 		other) link_host=${classified_fields} ;;
 		*) fail 5 'unexpected result checking the link; expected a tracker kind; try jq 1.6 or later' ;;
 	esac
+}
+
+# Sets classified from link n of the context file.
+classify_context_link() {
+	[ -f "${context_file}" ] && [ -r "${context_file}" ] \
+		|| fail 4 'context file unreadable; expected a readable file; try the path in the CONTEXT FILE field'
+	# A separate parse, as jq versions differ in the exit code of a parse error.
+	jq -s 'length' <"${context_file}" >/dev/null 2>&1 \
+		|| fail 4 'context file is not valid JSON; expected one JSON object; try the file the human approved'
+	classified=$(jq -r -s -L "${LINK_RULE_DIR}" --arg n "${link_index}" "${CLASSIFY_DEFS_JQ}${CONTEXT_LINK_JQ}" <"${context_file}" 2>/dev/null) \
+		|| fail 5 'jq failed checking the context file; expected jq 1.6 or later; try upgrading jq'
 }
 
 read_github() {
