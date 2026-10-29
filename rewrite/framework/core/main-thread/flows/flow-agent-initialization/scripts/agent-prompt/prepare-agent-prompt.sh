@@ -145,6 +145,8 @@ END { exit !(text ~ pattern) }
 # the temp copies; the environment's PREPARE_PROMPT_SCAN_PATHS holds each
 # copy's checked path, one per line in operand order, and every line names that
 # path. A "---" line may end in a CR, as in the frontmatter read and the message.
+# A !` counts only where the ! does not close a word, so a Rust macro such as
+# `panic!` passes.
 # The program is single-quoted on purpose: its $ signs are awk's or literal text.
 # shellcheck disable=SC2016
 readonly SCAN_AWK='
@@ -164,15 +166,17 @@ FNR == 1 {
 	is_skill = (current ~ /\/SKILL\.md$/)
 	closed = 0
 	opened = is_fence($0)
-	fixed_count = split("$ARGUMENTS ${CLAUDE_SKILL_DIR} ${CLAUDE_PROJECT_DIR} ${CLAUDE_SESSION_ID} ${CLAUDE_EFFORT} !` ```!", fixed, " ")
+	fixed_count = split("$ARGUMENTS ${CLAUDE_SKILL_DIR} ${CLAUDE_PROJECT_DIR} ${CLAUDE_SESSION_ID} ${CLAUDE_EFFORT} ```!", fixed, " ")
 	for (i = 1; i <= fixed_count; i++) seen[fixed[i]] = 0
 	seen_digit = 0
+	seen_bang = 0
 }
 is_skill && FNR > 1 && opened && !closed && is_fence($0) { closed = 1 }
 {
 	for (i = 1; i <= fixed_count; i++)
 		if (!seen[fixed[i]] && index($0, fixed[i])) { seen[fixed[i]] = 1; add("file holds the expansion token " fixed[i] "; expected no expansion token", current) }
 	if (!seen_digit && match($0, /\$[0-9]/)) { seen_digit = 1; add("file holds the expansion token " substr($0, RSTART, RLENGTH) "; expected no expansion token", current) }
+	if (!seen_bang && $0 ~ /(^|[^A-Za-z0-9_])!`/) { seen_bang = 1; add("file holds the expansion token !`; expected no expansion token", current) }
 }
 END { finish_file() }
 '
