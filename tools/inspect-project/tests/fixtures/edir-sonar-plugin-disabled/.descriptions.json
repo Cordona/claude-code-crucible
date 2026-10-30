@@ -1,0 +1,37 @@
+{
+  "groups": [
+    {
+      "name": "SonarLint",
+      "inspections": [
+        {
+          "shortName": "SonarIntelliJ",
+          "displayName": "SonarLint finding",
+          "defaultSeverity": "WARNING",
+          "pluginId": "org.SonarLint.idea",
+          "pluginVersion": "10.0",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": false,
+          "description": "<html><body>Registered by an installed plugin but switched OFF in this profile.</body></html>"
+        }
+      ]
+    },
+    {
+      "name": "TOML",
+      "inspections": [
+        {
+          "shortName": "TomlUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.toml.lang",
+          "pluginVersion": "262.8665.337",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>An enabled NON-sonar rule, so the enabled set is non-empty and cannot pass the test vacuously.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "SonarLint Installed But Off"
+}

@@ -417,11 +417,20 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# Update.
+# Update. A Cloudflare error page in glab's stderr is reported without its HTML;
+# on a WAF block it names the field most likely to have triggered it: the
+# description when one was sent, otherwise the other field values (see
+# emit_glab_write_failure_detail in the output lib). No 5xx note: re-running an
+# update reapplies the same edit, so a retry is safe. Still exit 1.
 # ---------------------------------------------------------------------------
+if [ -n "$OPT_DESCRIPTION_FILE" ]; then
+	WAF_SUSPECT_CONTENT="the MR description"
+else
+	WAF_SUSPECT_CONTENT="the MR title or the other field values sent"
+fi
 if ! UPDATE_OUT=$("$@" 2>"$TMP_ERR"); then
 	error "glab mr update failed for MR !$OPT_MR"
-	emit_captured_stderr
+	emit_glab_write_failure_detail "$WAF_SUSPECT_CONTENT" ""
 	exit 1
 fi
 

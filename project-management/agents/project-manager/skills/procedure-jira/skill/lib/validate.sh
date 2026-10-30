@@ -74,10 +74,10 @@ extract_project_from_key() {
 }
 
 # validate_numeric_id VALUE -> 0 if VALUE is a non-empty run of ASCII digits
-# with NO leading zero (Jira's version/component/board/sprint ids — `^[1-9][0-9]*$`,
-# plus the bare "0"). Checked BEFORE the value becomes a REST URL path segment
-# (/version/<id>, /component/<id>) or a query value (?moveIssuesTo=<id>), the SAME
-# rule ticket/project keys follow. Uses `case` (not `grep -Eq '^...$'`) so an
+# with NO leading zero (Jira's version/component/board/sprint/comment ids —
+# `^[1-9][0-9]*$`, plus the bare "0"). Checked BEFORE the value becomes a REST
+# URL path segment (/version/<id>, /component/<id>, /comment/<id>) or a query
+# value (?moveIssuesTo=<id>), the SAME rule ticket/project keys follow. Uses `case` (not `grep -Eq '^...$'`) so an
 # EMBEDDED newline can't slip past a line-anchored match — identical reasoning to
 # validate_ticket_key.
 #
@@ -95,6 +95,24 @@ validate_numeric_id() {
 	# Reject a leading zero on a multi-digit id ("0", a single zero, still passes).
 	case "$1" in
 		0?*) return 1 ;;
+	esac
+}
+
+# validate_custom_field_id VALUE -> 0 if VALUE has the shape Jira gives EVERY
+# custom field, `customfield_<one-or-more-digits>`; 1 otherwise. Applied by
+# require_custom_field to what a project config's custom_fields map resolves to,
+# because that value becomes the JSON field KEY of a write: a typo, or a
+# built-in field name pasted in by mistake (`"reviewer": "assignee"`), would
+# otherwise silently retarget the write onto a DIFFERENT, real field — and the
+# 204 would report success. A shape this narrow cannot name a built-in field at
+# all. Uses `case` rather than a line-anchored regex for the same
+# embedded-newline reason validate_numeric_id states above.
+validate_custom_field_id() {
+	case "$1" in
+		customfield_) return 1 ;;
+		customfield_*[!0-9]*) return 1 ;;
+		customfield_*) return 0 ;;
+		*) return 1 ;;
 	esac
 }
 

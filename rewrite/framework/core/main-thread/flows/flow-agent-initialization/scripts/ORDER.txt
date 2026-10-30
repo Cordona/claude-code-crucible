@@ -1,0 +1,6 @@
+The order these folders run in, one dispatch:
+
+1. dependencies/    install check, before anything else
+2. dispatch-plan/   list the plugins, write and render the plan the human approves
+3. agent-dispatch/  write the dispatch file after the approval
+4. agent-prompt/    the Agent hook that builds the agent's first message

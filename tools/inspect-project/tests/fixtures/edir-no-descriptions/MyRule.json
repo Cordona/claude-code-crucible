@@ -1,0 +1,15 @@
+{
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/main.rs",
+      "line": 4,
+      "language": "Rust",
+      "problem_class": {
+        "id": "MyRule",
+        "severity": "ERROR"
+      },
+      "description": "a finding from a report directory with no .descriptions.json",
+      "highlighted_element": "main"
+    }
+  ]
+}

@@ -53,7 +53,7 @@ cmd_worklog() {
 }
 
 # validate_worklog_args() — `worklog`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_worklog_args() {
 	[ -n "$TICKET_KEY" ] || { usage >&2; error "worklog requires a ticket key, e.g.: worklog PROJ-1 --time-spent 2h"; exit 2; }

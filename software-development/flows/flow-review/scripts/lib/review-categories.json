@@ -1,0 +1,2236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/review-category.schema.json",
+  "title": "Review Category",
+  "description": "Every category a reviewer may give a finding or a speculative entry: the union of the reviewer vocabularies (each reviewer agent's Category Vocabulary section, listed per reviewer in x-reviewers). x-categories flags each category: security true puts an item in it under the security floor (review-core, Realism test) — set aside only with proof, never unproven; an item from lens-security-reviewer is under the floor whatever its category. The flow-review writers reject a category outside the reviewer's own list in x-reviewers, and one outside this set for a reviewer x-reviewers does not list. x-security-terms lists unambiguous names of security weaknesses, and x-security-patterns the word sets of the weakness patterns below: a finding whose problem or trigger, or a speculative entry whose concern, names a weakness is a security concern, so the writers reject it under a category that is not a security one and the reviewer re-files it under one of its own security categories or, if none fits, passes it to lens-security-reviewer as a handoff (as a reviewer with none always does). Text is read case-insensitively in sentences (split at . ; : ! ? and line breaks) of clauses (split further at , and a closing parenthesis) of whole words: text inside a backtick code span is skipped except for a ../ or ..\\ or an == or != in it, any run of characters other than a letter, a digit or an underscore separates words (sql-injection matches sql injection), and an identifier holding an underscore is one word (csrf_token never matches csrf). A word set gives words, prefixes (a word starting with one counts) and phrases. A clause names a weakness by: (1) a term, as consecutive words, its last word with an optional plural s, unless a word of x-security-mechanism-words (or its plural) follows it directly (csrf token check, sql injection prevention) and the clause holds no word of x-security-negation-words outside the term and that mechanism word (missing csrf protection, xss filter can be bypassed: then it still names the weakness); (2) the word injection within 3 words, on either side, of a word of x-injection-kinds (injection (SQL)), under the same mechanism rule, never when the word before it is one of x-dependency-injection-words (constructor injection names a design pattern); (3) a subject of x-access-subjects and a word starting with one of x-bypass-prefixes anywhere in the clause (the authorization check can easily be bypassed), under the same mechanism rule; (4) such a subject followed directly by a mechanism word, with a negation word in the clause (no authorization check); neither (3) nor (4) when the words from the clause-subordinators word before the match to the one after it hold a performance-objects word and the clause holds no access-loss word (skip the redundant permission lookup, the auth cache bypasses the LRU eviction, but a password check skipped when the cache is warm still counts); (5) an unauthenticated word with a reach word (unauthenticated callers can reach the endpoint); (6) a ../ or ..\\ with a traversal-escape word, or an unnormalized word with a path-nouns word; (7) a concatenation word followed by into and, within 3 words, an injection-sinks word, or an unescaped word with an injection-sinks word (the term is concatenated into the SQL string); (8) a secrets word with a comparison word and either an == or != or the words constant time with a not-constant-time word (the token compare uses ==); (9) a fail-open-as word followed by as, or a fail-open-to word followed by to, and within 2 words an access-grants word (the request is treated as authenticated); (10) a revocation word, then a retention word, then an access-nouns word (a revoked user keeps admin access). A sentence names one when only is followed within 2 words by a check-verbs word and later by an authentication-states word, and a negation word other than only is followed in its clause by an authorization-objects word (only checks that the user is logged in, not the admin role). An item from lens-test-quality-reviewer whose text names a subject of x-test-security-subjects or a term (matched the same way, a mechanism word after it included) is refused under a category that is not a security one too: it is filed as untested-security. The flow-testing test-plan writers refuse a not_tested entry whose what, reason or accepting names a weakness, a term or such a subject unless its category is security or authentication, which outranks every other required category. flow-review/scripts/lib/review-categories.json is a byte-identical copy of this file the scripts read, with lib/security-terms.jq, the matcher; flow-testing's scripts read both from the sibling flow-review skill.",
+  "enum": [
+    "accessibility",
+    "algorithmic-complexity",
+    "aliasing",
+    "analyzer-config",
+    "any-usage",
+    "api-break",
+    "api-shape",
+    "architecture-style",
+    "aria",
+    "array-access",
+    "aspnet-pipeline",
+    "assertion-clarity",
+    "async-correctness",
+    "async-hazard",
+    "atomicity",
+    "audit-logging",
+    "auditability",
+    "auth-boundary",
+    "auth-failure",
+    "authorization",
+    "bare-except",
+    "behavior-vs-implementation",
+    "behavioral-break",
+    "blazor-lifecycle",
+    "blazor-render-mode",
+    "blocking-io",
+    "boundary-coverage",
+    "brittle-assertion",
+    "broken-access-control",
+    "bulk-partial-failure",
+    "cancellation",
+    "chatty-io",
+    "circular-import",
+    "class-mutable-state",
+    "cli-break",
+    "clippy",
+    "closure-binding",
+    "cohesion",
+    "cold-start",
+    "colocation",
+    "command-injection",
+    "comment-placement",
+    "comment-volume",
+    "commented-out-code",
+    "concurrency",
+    "conditional-logic",
+    "config-break",
+    "config-drift",
+    "config-placement",
+    "connection-leak",
+    "constraint",
+    "construction-pattern",
+    "container-hardening",
+    "contrast",
+    "controlled-uncontrolled",
+    "coroutine",
+    "correctness",
+    "correlation",
+    "cors",
+    "coupling",
+    "crypto-failure",
+    "csrf",
+    "data-modeling",
+    "data-race",
+    "data-structure-fit",
+    "dead-code",
+    "dead-scaffolding",
+    "deadlock",
+    "deadlock-ordering",
+    "dependency-direction",
+    "deserialization",
+    "destructive-change",
+    "destructive-migration",
+    "destructive-op",
+    "di-lifetime",
+    "di-pattern",
+    "dip",
+    "dispatcher",
+    "disposal",
+    "do-storage",
+    "drift",
+    "drop-safety",
+    "dry",
+    "dto-shape",
+    "dual-write",
+    "durability",
+    "durable-object",
+    "ef-core",
+    "effect-bug",
+    "encryption",
+    "endpoint-removal",
+    "enum-break",
+    "enumeration",
+    "eq-hash-contract",
+    "equality-contract",
+    "equals-hashcode",
+    "error-handling",
+    "error-idiom",
+    "error-logging",
+    "error-modeling",
+    "error-path",
+    "error-pattern",
+    "eval",
+    "exact-value",
+    "exception-handling",
+    "execution-model",
+    "exhaustiveness",
+    "exit-code",
+    "expand-contract",
+    "facade",
+    "fail-open",
+    "false-confidence",
+    "field-removal",
+    "field-type-change",
+    "file-ordering",
+    "finally-control-flow",
+    "flakiness",
+    "flow",
+    "focus-management",
+    "framework-correctness",
+    "full-scan",
+    "function-size",
+    "generator-exhaustion",
+    "gil-concurrency",
+    "global-state",
+    "golden-assets",
+    "hibernation",
+    "hooks-rules",
+    "http-surface",
+    "hydration",
+    "iam",
+    "idempotency",
+    "idempotent-consumer",
+    "identity-vs-equality",
+    "immutability",
+    "import-order",
+    "info-leak",
+    "injection",
+    "input-validation",
+    "insecure-design",
+    "instant-representation",
+    "integer-overflow",
+    "integrity",
+    "interface-convention",
+    "interface-placement",
+    "isolation",
+    "isp",
+    "jpa",
+    "js-interop",
+    "jwt-verification",
+    "key-bug",
+    "key-exhaustion",
+    "key-immutability",
+    "keyboard-a11y",
+    "kiss",
+    "layering",
+    "lifetime",
+    "lint-discipline",
+    "lint-type-check",
+    "locking-migration",
+    "log-cost",
+    "log-injection",
+    "log-level",
+    "log-or-throw",
+    "log-performance",
+    "logging-safety",
+    "logging-shape",
+    "lost-update",
+    "lsp",
+    "lww-conflict",
+    "magic-number",
+    "mcp-contract",
+    "mcp-injection",
+    "mcp-progress",
+    "memory-leak",
+    "metric-cardinality",
+    "metrics",
+    "micro-perf",
+    "migration-safety",
+    "misconfiguration",
+    "missing-caching",
+    "missing-coverage",
+    "missing-pagination",
+    "missing-public-doc",
+    "missing-transaction",
+    "mixed-version-unsafe",
+    "mock-usage",
+    "module-organization",
+    "multiprocessing-start-method",
+    "mutability",
+    "mutable-default",
+    "n-plus-1",
+    "n-plus-one",
+    "naming",
+    "naming-clarity",
+    "naming-convention",
+    "nesting",
+    "network-exposure",
+    "non-deterministic-assertion",
+    "nondeterministic-time",
+    "not-null-assertion",
+    "null-safety",
+    "nullability",
+    "numeric-comparison",
+    "observability-consistency",
+    "ocp",
+    "open-redirect",
+    "optional-misuse",
+    "optional-to-required",
+    "orm",
+    "orphaned-state",
+    "outbound-io",
+    "over-fetch",
+    "ownership",
+    "pagination",
+    "panic-surface",
+    "parameter-design",
+    "partial-failure",
+    "path-traversal",
+    "performance-consistency",
+    "persistence-consistency",
+    "pii-gdpr",
+    "pillar-applicability",
+    "plan-item-missing",
+    "platform-type",
+    "portability",
+    "prior-state",
+    "projection",
+    "promise-lifetime",
+    "quoting",
+    "race-condition",
+    "rate-limiting",
+    "raw-type",
+    "redundant-comment",
+    "redundant-computation",
+    "render-perf",
+    "rendering",
+    "repair-weakening",
+    "replica-routing",
+    "resource-attributes",
+    "resource-exhaustion",
+    "resource-leak",
+    "resource-management",
+    "response-shape-change",
+    "retry-handling",
+    "rollout-safety",
+    "rsc-boundary",
+    "schema-break",
+    "schema-versioning",
+    "scope",
+    "scope-function",
+    "secrets",
+    "secrets-handling",
+    "security-consistency",
+    "security-headers",
+    "sensitive-data",
+    "serialized-value",
+    "session",
+    "shellcheck",
+    "side-effects",
+    "signal-quality",
+    "signature-change",
+    "sleep-wait",
+    "soft-delete",
+    "span-quality",
+    "sql-injection",
+    "srp",
+    "ssrf",
+    "stale-closure",
+    "stale-read",
+    "state-management",
+    "static-analysis",
+    "streams-collections",
+    "strict-mode",
+    "strict-types",
+    "string-comparison",
+    "structured-concurrency",
+    "structured-format",
+    "style-ruling",
+    "supply-chain",
+    "sync-over-async",
+    "technology-specific",
+    "telemetry-flush",
+    "temp-file",
+    "test-altitude",
+    "test-as-doc",
+    "test-consistency",
+    "test-dry",
+    "test-efficiency",
+    "test-granularity",
+    "test-helper",
+    "test-isolation",
+    "test-naming",
+    "test-sprawl",
+    "test-srp",
+    "thread-safety",
+    "threading-race",
+    "toctou",
+    "trace-propagation",
+    "transaction",
+    "transaction-scope",
+    "trap",
+    "ttl",
+    "type-hint-fidelity",
+    "type-juggling",
+    "type-safety",
+    "unbounded",
+    "unbounded-query",
+    "unchecked-cast",
+    "undefined-var",
+    "uniqueness-semantics",
+    "unnecessary-effect",
+    "unnecessary-test",
+    "unplanned-test",
+    "unsafe-cast",
+    "unsafe-soundness",
+    "untested-security",
+    "validation-placement",
+    "value-representation",
+    "value-semantics",
+    "visibility",
+    "wire-break",
+    "word-splitting",
+    "work-claim",
+    "work-in-loop",
+    "write-skew",
+    "xss",
+    "xxe",
+    "yagni",
+    "zod-schema"
+  ],
+  "x-reviewers": {
+    "cloudflare-workers-reviewer": [
+      "correctness",
+      "execution-model",
+      "global-state",
+      "promise-lifetime",
+      "durable-object",
+      "do-storage",
+      "sql-injection",
+      "hibernation",
+      "mcp-contract",
+      "mcp-progress",
+      "mcp-injection",
+      "auth-boundary",
+      "broken-access-control",
+      "jwt-verification",
+      "ssrf",
+      "open-redirect",
+      "rate-limiting",
+      "outbound-io",
+      "secrets-handling",
+      "config-drift",
+      "type-safety",
+      "zod-schema",
+      "error-modeling",
+      "cold-start",
+      "lint-discipline",
+      "http-surface",
+      "naming",
+      "micro-perf"
+    ],
+    "csharp-reviewer": [
+      "correctness",
+      "async-correctness",
+      "sync-over-async",
+      "cancellation",
+      "thread-safety",
+      "di-lifetime",
+      "disposal",
+      "nullability",
+      "value-semantics",
+      "equality-contract",
+      "string-comparison",
+      "enumeration",
+      "exception-handling",
+      "ef-core",
+      "aspnet-pipeline",
+      "authorization",
+      "blazor-render-mode",
+      "blazor-lifecycle",
+      "js-interop",
+      "logging-shape",
+      "micro-perf",
+      "analyzer-config",
+      "style-ruling"
+    ],
+    "devops-reviewer": [
+      "correctness",
+      "idempotency",
+      "state-management",
+      "drift",
+      "destructive-change",
+      "scope",
+      "rollout-safety",
+      "iam",
+      "network-exposure",
+      "encryption",
+      "secrets",
+      "container-hardening",
+      "supply-chain",
+      "audit-logging",
+      "misconfiguration",
+      "static-analysis",
+      "technology-specific"
+    ],
+    "java-reviewer": [
+      "correctness",
+      "equals-hashcode",
+      "exhaustiveness",
+      "null-safety",
+      "optional-misuse",
+      "exception-handling",
+      "resource-leak",
+      "concurrency",
+      "thread-safety",
+      "visibility",
+      "deadlock",
+      "type-safety",
+      "raw-type",
+      "unchecked-cast",
+      "framework-correctness",
+      "transaction",
+      "jpa",
+      "immutability",
+      "streams-collections",
+      "micro-perf",
+      "static-analysis",
+      "sql-injection",
+      "command-injection",
+      "deserialization",
+      "secrets-handling",
+      "path-traversal",
+      "ssrf"
+    ],
+    "kotlin-reviewer": [
+      "correctness",
+      "null-safety",
+      "not-null-assertion",
+      "platform-type",
+      "unsafe-cast",
+      "exhaustiveness",
+      "coroutine",
+      "structured-concurrency",
+      "cancellation",
+      "dispatcher",
+      "flow",
+      "equals-hashcode",
+      "mutability",
+      "type-safety",
+      "scope-function",
+      "micro-perf",
+      "static-analysis",
+      "sql-injection",
+      "command-injection",
+      "deserialization",
+      "secrets-handling",
+      "path-traversal",
+      "ssrf"
+    ],
+    "lens-clean-code-reviewer": [
+      "srp",
+      "dry",
+      "kiss",
+      "yagni",
+      "ocp",
+      "lsp",
+      "isp",
+      "dip",
+      "coupling",
+      "cohesion",
+      "function-size",
+      "nesting",
+      "parameter-design",
+      "dead-code",
+      "side-effects",
+      "file-ordering"
+    ],
+    "lens-compatibility-reviewer": [
+      "api-break",
+      "signature-change",
+      "optional-to-required",
+      "enum-break",
+      "wire-break",
+      "field-removal",
+      "field-type-change",
+      "endpoint-removal",
+      "response-shape-change",
+      "schema-break",
+      "destructive-migration",
+      "mixed-version-unsafe",
+      "config-break",
+      "cli-break",
+      "behavioral-break"
+    ],
+    "lens-consistency-reviewer": [
+      "architecture-style",
+      "dependency-direction",
+      "layering",
+      "module-organization",
+      "interface-convention",
+      "interface-placement",
+      "colocation",
+      "naming-convention",
+      "api-shape",
+      "dto-shape",
+      "error-pattern",
+      "import-order",
+      "di-pattern",
+      "config-placement",
+      "immutability",
+      "visibility",
+      "construction-pattern",
+      "validation-placement"
+    ],
+    "lens-observability-reviewer": [
+      "pillar-applicability",
+      "sensitive-data",
+      "pii-gdpr",
+      "log-injection",
+      "logging-safety",
+      "signal-quality",
+      "log-or-throw",
+      "log-level",
+      "structured-format",
+      "correlation",
+      "rendering",
+      "error-logging",
+      "log-performance",
+      "log-cost",
+      "facade",
+      "metrics",
+      "metric-cardinality",
+      "span-quality",
+      "trace-propagation",
+      "resource-attributes",
+      "telemetry-flush",
+      "auditability",
+      "observability-consistency"
+    ],
+    "lens-performance-reviewer": [
+      "algorithmic-complexity",
+      "n-plus-1",
+      "work-in-loop",
+      "over-fetch",
+      "unbounded",
+      "redundant-computation",
+      "data-structure-fit",
+      "chatty-io",
+      "blocking-io",
+      "missing-caching",
+      "missing-pagination",
+      "performance-consistency"
+    ],
+    "lens-persistence-reviewer": [
+      "integrity",
+      "constraint",
+      "orphaned-state",
+      "soft-delete",
+      "prior-state",
+      "atomicity",
+      "transaction-scope",
+      "missing-transaction",
+      "dual-write",
+      "bulk-partial-failure",
+      "lost-update",
+      "write-skew",
+      "lww-conflict",
+      "work-claim",
+      "deadlock-ordering",
+      "isolation",
+      "stale-read",
+      "replica-routing",
+      "data-modeling",
+      "n-plus-one",
+      "unbounded-query",
+      "pagination",
+      "projection",
+      "full-scan",
+      "migration-safety",
+      "expand-contract",
+      "schema-versioning",
+      "locking-migration",
+      "destructive-op",
+      "idempotency",
+      "idempotent-consumer",
+      "durability",
+      "partial-failure",
+      "retry-handling",
+      "ttl",
+      "connection-leak",
+      "resource-exhaustion",
+      "value-representation",
+      "uniqueness-semantics",
+      "exact-value",
+      "instant-representation",
+      "key-immutability",
+      "key-exhaustion",
+      "serialized-value",
+      "persistence-consistency"
+    ],
+    "lens-security-reviewer": [
+      "broken-access-control",
+      "ssrf",
+      "open-redirect",
+      "csrf",
+      "injection",
+      "xxe",
+      "xss",
+      "deserialization",
+      "crypto-failure",
+      "secrets",
+      "auth-failure",
+      "session",
+      "misconfiguration",
+      "cors",
+      "security-headers",
+      "supply-chain",
+      "insecure-design",
+      "rate-limiting",
+      "fail-open",
+      "info-leak",
+      "input-validation",
+      "integer-overflow",
+      "path-traversal",
+      "security-consistency"
+    ],
+    "lens-self-documenting-code-reviewer": [
+      "redundant-comment",
+      "commented-out-code",
+      "comment-volume",
+      "comment-placement",
+      "missing-public-doc",
+      "naming-clarity",
+      "magic-number"
+    ],
+    "lens-test-quality-reviewer": [
+      "behavior-vs-implementation",
+      "false-confidence",
+      "repair-weakening",
+      "test-granularity",
+      "test-altitude",
+      "unnecessary-test",
+      "test-sprawl",
+      "unplanned-test",
+      "plan-item-missing",
+      "mock-usage",
+      "dead-scaffolding",
+      "golden-assets",
+      "non-deterministic-assertion",
+      "nondeterministic-time",
+      "flakiness",
+      "sleep-wait",
+      "test-isolation",
+      "test-efficiency",
+      "brittle-assertion",
+      "assertion-clarity",
+      "conditional-logic",
+      "error-path",
+      "boundary-coverage",
+      "test-as-doc",
+      "test-naming",
+      "test-dry",
+      "test-srp",
+      "test-helper",
+      "test-consistency",
+      "missing-coverage",
+      "untested-security"
+    ],
+    "php-reviewer": [
+      "correctness",
+      "type-juggling",
+      "null-safety",
+      "array-access",
+      "exhaustiveness",
+      "exception-handling",
+      "type-safety",
+      "strict-types",
+      "framework-correctness",
+      "transaction",
+      "orm",
+      "micro-perf",
+      "static-analysis",
+      "sql-injection",
+      "command-injection",
+      "deserialization",
+      "secrets-handling",
+      "path-traversal",
+      "ssrf"
+    ],
+    "python-reviewer": [
+      "correctness",
+      "mutable-default",
+      "class-mutable-state",
+      "closure-binding",
+      "identity-vs-equality",
+      "eq-hash-contract",
+      "numeric-comparison",
+      "bare-except",
+      "finally-control-flow",
+      "resource-management",
+      "gil-concurrency",
+      "threading-race",
+      "multiprocessing-start-method",
+      "circular-import",
+      "generator-exhaustion",
+      "type-hint-fidelity",
+      "data-modeling",
+      "micro-perf",
+      "lint-type-check",
+      "sql-injection",
+      "command-injection",
+      "deserialization",
+      "secrets-handling",
+      "path-traversal",
+      "ssrf"
+    ],
+    "react-reviewer": [
+      "correctness",
+      "effect-bug",
+      "stale-closure",
+      "exhaustiveness",
+      "key-bug",
+      "controlled-uncontrolled",
+      "race-condition",
+      "hydration",
+      "accessibility",
+      "keyboard-a11y",
+      "aria",
+      "contrast",
+      "focus-management",
+      "hooks-rules",
+      "unnecessary-effect",
+      "state-management",
+      "rsc-boundary",
+      "render-perf",
+      "type-safety",
+      "any-usage",
+      "zod-schema",
+      "input-validation",
+      "xss",
+      "broken-access-control",
+      "lint-discipline",
+      "naming",
+      "micro-perf"
+    ],
+    "rust-reviewer": [
+      "correctness",
+      "unsafe-soundness",
+      "aliasing",
+      "data-race",
+      "drop-safety",
+      "memory-leak",
+      "ownership",
+      "lifetime",
+      "panic-surface",
+      "async-hazard",
+      "error-idiom",
+      "type-safety",
+      "micro-perf",
+      "clippy"
+    ],
+    "shell-script-reviewer": [
+      "correctness",
+      "quoting",
+      "word-splitting",
+      "command-injection",
+      "eval",
+      "strict-mode",
+      "error-handling",
+      "exit-code",
+      "trap",
+      "temp-file",
+      "toctou",
+      "undefined-var",
+      "portability",
+      "shellcheck"
+    ]
+  },
+  "x-categories": {
+    "accessibility": {
+      "security": false
+    },
+    "algorithmic-complexity": {
+      "security": false
+    },
+    "aliasing": {
+      "security": false
+    },
+    "analyzer-config": {
+      "security": false
+    },
+    "any-usage": {
+      "security": false
+    },
+    "api-break": {
+      "security": false
+    },
+    "api-shape": {
+      "security": false
+    },
+    "architecture-style": {
+      "security": false
+    },
+    "aria": {
+      "security": false
+    },
+    "array-access": {
+      "security": false
+    },
+    "aspnet-pipeline": {
+      "security": false
+    },
+    "assertion-clarity": {
+      "security": false
+    },
+    "async-correctness": {
+      "security": false
+    },
+    "async-hazard": {
+      "security": false
+    },
+    "atomicity": {
+      "security": false
+    },
+    "audit-logging": {
+      "security": false
+    },
+    "auditability": {
+      "security": false
+    },
+    "auth-boundary": {
+      "security": true
+    },
+    "auth-failure": {
+      "security": true
+    },
+    "authorization": {
+      "security": true
+    },
+    "bare-except": {
+      "security": false
+    },
+    "behavior-vs-implementation": {
+      "security": false
+    },
+    "behavioral-break": {
+      "security": false
+    },
+    "blazor-lifecycle": {
+      "security": false
+    },
+    "blazor-render-mode": {
+      "security": false
+    },
+    "blocking-io": {
+      "security": false
+    },
+    "boundary-coverage": {
+      "security": false
+    },
+    "brittle-assertion": {
+      "security": false
+    },
+    "broken-access-control": {
+      "security": true
+    },
+    "bulk-partial-failure": {
+      "security": false
+    },
+    "cancellation": {
+      "security": false
+    },
+    "chatty-io": {
+      "security": false
+    },
+    "circular-import": {
+      "security": false
+    },
+    "class-mutable-state": {
+      "security": false
+    },
+    "cli-break": {
+      "security": false
+    },
+    "clippy": {
+      "security": false
+    },
+    "closure-binding": {
+      "security": false
+    },
+    "cohesion": {
+      "security": false
+    },
+    "cold-start": {
+      "security": false
+    },
+    "colocation": {
+      "security": false
+    },
+    "command-injection": {
+      "security": true
+    },
+    "comment-placement": {
+      "security": false
+    },
+    "comment-volume": {
+      "security": false
+    },
+    "commented-out-code": {
+      "security": false
+    },
+    "concurrency": {
+      "security": false
+    },
+    "conditional-logic": {
+      "security": false
+    },
+    "config-break": {
+      "security": false
+    },
+    "config-drift": {
+      "security": false
+    },
+    "config-placement": {
+      "security": false
+    },
+    "connection-leak": {
+      "security": false
+    },
+    "constraint": {
+      "security": false
+    },
+    "construction-pattern": {
+      "security": false
+    },
+    "container-hardening": {
+      "security": true
+    },
+    "contrast": {
+      "security": false
+    },
+    "controlled-uncontrolled": {
+      "security": false
+    },
+    "coroutine": {
+      "security": false
+    },
+    "correctness": {
+      "security": false
+    },
+    "correlation": {
+      "security": false
+    },
+    "cors": {
+      "security": true
+    },
+    "coupling": {
+      "security": false
+    },
+    "crypto-failure": {
+      "security": true
+    },
+    "csrf": {
+      "security": true
+    },
+    "data-modeling": {
+      "security": false
+    },
+    "data-race": {
+      "security": false
+    },
+    "data-structure-fit": {
+      "security": false
+    },
+    "dead-code": {
+      "security": false
+    },
+    "dead-scaffolding": {
+      "security": false
+    },
+    "deadlock": {
+      "security": false
+    },
+    "deadlock-ordering": {
+      "security": false
+    },
+    "dependency-direction": {
+      "security": false
+    },
+    "deserialization": {
+      "security": true
+    },
+    "destructive-change": {
+      "security": false
+    },
+    "destructive-migration": {
+      "security": false
+    },
+    "destructive-op": {
+      "security": false
+    },
+    "di-lifetime": {
+      "security": false
+    },
+    "di-pattern": {
+      "security": false
+    },
+    "dip": {
+      "security": false
+    },
+    "dispatcher": {
+      "security": false
+    },
+    "disposal": {
+      "security": false
+    },
+    "do-storage": {
+      "security": false
+    },
+    "drift": {
+      "security": false
+    },
+    "drop-safety": {
+      "security": false
+    },
+    "dry": {
+      "security": false
+    },
+    "dto-shape": {
+      "security": false
+    },
+    "dual-write": {
+      "security": false
+    },
+    "durability": {
+      "security": false
+    },
+    "durable-object": {
+      "security": false
+    },
+    "ef-core": {
+      "security": false
+    },
+    "effect-bug": {
+      "security": false
+    },
+    "encryption": {
+      "security": true
+    },
+    "endpoint-removal": {
+      "security": false
+    },
+    "enum-break": {
+      "security": false
+    },
+    "enumeration": {
+      "security": false
+    },
+    "eq-hash-contract": {
+      "security": false
+    },
+    "equality-contract": {
+      "security": false
+    },
+    "equals-hashcode": {
+      "security": false
+    },
+    "error-handling": {
+      "security": false
+    },
+    "error-idiom": {
+      "security": false
+    },
+    "error-logging": {
+      "security": false
+    },
+    "error-modeling": {
+      "security": false
+    },
+    "error-path": {
+      "security": false
+    },
+    "error-pattern": {
+      "security": false
+    },
+    "eval": {
+      "security": true
+    },
+    "exact-value": {
+      "security": false
+    },
+    "exception-handling": {
+      "security": false
+    },
+    "execution-model": {
+      "security": false
+    },
+    "exhaustiveness": {
+      "security": false
+    },
+    "exit-code": {
+      "security": false
+    },
+    "expand-contract": {
+      "security": false
+    },
+    "facade": {
+      "security": false
+    },
+    "fail-open": {
+      "security": true
+    },
+    "false-confidence": {
+      "security": false
+    },
+    "field-removal": {
+      "security": false
+    },
+    "field-type-change": {
+      "security": false
+    },
+    "file-ordering": {
+      "security": false
+    },
+    "finally-control-flow": {
+      "security": false
+    },
+    "flakiness": {
+      "security": false
+    },
+    "flow": {
+      "security": false
+    },
+    "focus-management": {
+      "security": false
+    },
+    "framework-correctness": {
+      "security": false
+    },
+    "full-scan": {
+      "security": false
+    },
+    "function-size": {
+      "security": false
+    },
+    "generator-exhaustion": {
+      "security": false
+    },
+    "gil-concurrency": {
+      "security": false
+    },
+    "global-state": {
+      "security": false
+    },
+    "golden-assets": {
+      "security": false
+    },
+    "hibernation": {
+      "security": false
+    },
+    "hooks-rules": {
+      "security": false
+    },
+    "http-surface": {
+      "security": false
+    },
+    "hydration": {
+      "security": false
+    },
+    "iam": {
+      "security": true
+    },
+    "idempotency": {
+      "security": false
+    },
+    "idempotent-consumer": {
+      "security": false
+    },
+    "identity-vs-equality": {
+      "security": false
+    },
+    "immutability": {
+      "security": false
+    },
+    "import-order": {
+      "security": false
+    },
+    "info-leak": {
+      "security": true
+    },
+    "injection": {
+      "security": true
+    },
+    "input-validation": {
+      "security": true
+    },
+    "insecure-design": {
+      "security": true
+    },
+    "instant-representation": {
+      "security": false
+    },
+    "integer-overflow": {
+      "security": true
+    },
+    "integrity": {
+      "security": false
+    },
+    "interface-convention": {
+      "security": false
+    },
+    "interface-placement": {
+      "security": false
+    },
+    "isolation": {
+      "security": false
+    },
+    "isp": {
+      "security": false
+    },
+    "jpa": {
+      "security": false
+    },
+    "js-interop": {
+      "security": false
+    },
+    "jwt-verification": {
+      "security": true
+    },
+    "key-bug": {
+      "security": false
+    },
+    "key-exhaustion": {
+      "security": false
+    },
+    "key-immutability": {
+      "security": false
+    },
+    "keyboard-a11y": {
+      "security": false
+    },
+    "kiss": {
+      "security": false
+    },
+    "layering": {
+      "security": false
+    },
+    "lifetime": {
+      "security": false
+    },
+    "lint-discipline": {
+      "security": false
+    },
+    "lint-type-check": {
+      "security": false
+    },
+    "locking-migration": {
+      "security": false
+    },
+    "log-cost": {
+      "security": false
+    },
+    "log-injection": {
+      "security": true
+    },
+    "log-level": {
+      "security": false
+    },
+    "log-or-throw": {
+      "security": false
+    },
+    "log-performance": {
+      "security": false
+    },
+    "logging-safety": {
+      "security": false
+    },
+    "logging-shape": {
+      "security": false
+    },
+    "lost-update": {
+      "security": false
+    },
+    "lsp": {
+      "security": false
+    },
+    "lww-conflict": {
+      "security": false
+    },
+    "magic-number": {
+      "security": false
+    },
+    "mcp-contract": {
+      "security": false
+    },
+    "mcp-injection": {
+      "security": true
+    },
+    "mcp-progress": {
+      "security": false
+    },
+    "memory-leak": {
+      "security": false
+    },
+    "metric-cardinality": {
+      "security": false
+    },
+    "metrics": {
+      "security": false
+    },
+    "micro-perf": {
+      "security": false
+    },
+    "migration-safety": {
+      "security": false
+    },
+    "misconfiguration": {
+      "security": true
+    },
+    "missing-caching": {
+      "security": false
+    },
+    "missing-coverage": {
+      "security": false
+    },
+    "missing-pagination": {
+      "security": false
+    },
+    "missing-public-doc": {
+      "security": false
+    },
+    "missing-transaction": {
+      "security": false
+    },
+    "mixed-version-unsafe": {
+      "security": false
+    },
+    "mock-usage": {
+      "security": false
+    },
+    "module-organization": {
+      "security": false
+    },
+    "multiprocessing-start-method": {
+      "security": false
+    },
+    "mutability": {
+      "security": false
+    },
+    "mutable-default": {
+      "security": false
+    },
+    "n-plus-1": {
+      "security": false
+    },
+    "n-plus-one": {
+      "security": false
+    },
+    "naming": {
+      "security": false
+    },
+    "naming-clarity": {
+      "security": false
+    },
+    "naming-convention": {
+      "security": false
+    },
+    "nesting": {
+      "security": false
+    },
+    "network-exposure": {
+      "security": true
+    },
+    "non-deterministic-assertion": {
+      "security": false
+    },
+    "nondeterministic-time": {
+      "security": false
+    },
+    "not-null-assertion": {
+      "security": false
+    },
+    "null-safety": {
+      "security": false
+    },
+    "nullability": {
+      "security": false
+    },
+    "numeric-comparison": {
+      "security": false
+    },
+    "observability-consistency": {
+      "security": false
+    },
+    "ocp": {
+      "security": false
+    },
+    "open-redirect": {
+      "security": true
+    },
+    "optional-misuse": {
+      "security": false
+    },
+    "optional-to-required": {
+      "security": false
+    },
+    "orm": {
+      "security": false
+    },
+    "orphaned-state": {
+      "security": false
+    },
+    "outbound-io": {
+      "security": false
+    },
+    "over-fetch": {
+      "security": false
+    },
+    "ownership": {
+      "security": false
+    },
+    "pagination": {
+      "security": false
+    },
+    "panic-surface": {
+      "security": false
+    },
+    "parameter-design": {
+      "security": false
+    },
+    "partial-failure": {
+      "security": false
+    },
+    "path-traversal": {
+      "security": true
+    },
+    "performance-consistency": {
+      "security": false
+    },
+    "persistence-consistency": {
+      "security": false
+    },
+    "pii-gdpr": {
+      "security": true
+    },
+    "pillar-applicability": {
+      "security": false
+    },
+    "plan-item-missing": {
+      "security": false
+    },
+    "platform-type": {
+      "security": false
+    },
+    "portability": {
+      "security": false
+    },
+    "prior-state": {
+      "security": false
+    },
+    "projection": {
+      "security": false
+    },
+    "promise-lifetime": {
+      "security": false
+    },
+    "quoting": {
+      "security": false
+    },
+    "race-condition": {
+      "security": false
+    },
+    "rate-limiting": {
+      "security": true
+    },
+    "raw-type": {
+      "security": false
+    },
+    "redundant-comment": {
+      "security": false
+    },
+    "redundant-computation": {
+      "security": false
+    },
+    "render-perf": {
+      "security": false
+    },
+    "rendering": {
+      "security": false
+    },
+    "repair-weakening": {
+      "security": false
+    },
+    "replica-routing": {
+      "security": false
+    },
+    "resource-attributes": {
+      "security": false
+    },
+    "resource-exhaustion": {
+      "security": false
+    },
+    "resource-leak": {
+      "security": false
+    },
+    "resource-management": {
+      "security": false
+    },
+    "response-shape-change": {
+      "security": false
+    },
+    "retry-handling": {
+      "security": false
+    },
+    "rollout-safety": {
+      "security": false
+    },
+    "rsc-boundary": {
+      "security": false
+    },
+    "schema-break": {
+      "security": false
+    },
+    "schema-versioning": {
+      "security": false
+    },
+    "scope": {
+      "security": false
+    },
+    "scope-function": {
+      "security": false
+    },
+    "secrets": {
+      "security": true
+    },
+    "secrets-handling": {
+      "security": true
+    },
+    "security-consistency": {
+      "security": true
+    },
+    "security-headers": {
+      "security": true
+    },
+    "sensitive-data": {
+      "security": true
+    },
+    "serialized-value": {
+      "security": false
+    },
+    "session": {
+      "security": true
+    },
+    "shellcheck": {
+      "security": false
+    },
+    "side-effects": {
+      "security": false
+    },
+    "signal-quality": {
+      "security": false
+    },
+    "signature-change": {
+      "security": false
+    },
+    "sleep-wait": {
+      "security": false
+    },
+    "soft-delete": {
+      "security": false
+    },
+    "span-quality": {
+      "security": false
+    },
+    "sql-injection": {
+      "security": true
+    },
+    "srp": {
+      "security": false
+    },
+    "ssrf": {
+      "security": true
+    },
+    "stale-closure": {
+      "security": false
+    },
+    "stale-read": {
+      "security": false
+    },
+    "state-management": {
+      "security": false
+    },
+    "static-analysis": {
+      "security": false
+    },
+    "streams-collections": {
+      "security": false
+    },
+    "strict-mode": {
+      "security": false
+    },
+    "strict-types": {
+      "security": false
+    },
+    "string-comparison": {
+      "security": false
+    },
+    "structured-concurrency": {
+      "security": false
+    },
+    "structured-format": {
+      "security": false
+    },
+    "style-ruling": {
+      "security": false
+    },
+    "supply-chain": {
+      "security": true
+    },
+    "sync-over-async": {
+      "security": false
+    },
+    "technology-specific": {
+      "security": false
+    },
+    "telemetry-flush": {
+      "security": false
+    },
+    "temp-file": {
+      "security": true
+    },
+    "test-altitude": {
+      "security": false
+    },
+    "test-as-doc": {
+      "security": false
+    },
+    "test-consistency": {
+      "security": false
+    },
+    "test-dry": {
+      "security": false
+    },
+    "test-efficiency": {
+      "security": false
+    },
+    "test-granularity": {
+      "security": false
+    },
+    "test-helper": {
+      "security": false
+    },
+    "test-isolation": {
+      "security": false
+    },
+    "test-naming": {
+      "security": false
+    },
+    "test-sprawl": {
+      "security": false
+    },
+    "test-srp": {
+      "security": false
+    },
+    "thread-safety": {
+      "security": false
+    },
+    "threading-race": {
+      "security": false
+    },
+    "toctou": {
+      "security": true
+    },
+    "trace-propagation": {
+      "security": false
+    },
+    "transaction": {
+      "security": false
+    },
+    "transaction-scope": {
+      "security": false
+    },
+    "trap": {
+      "security": false
+    },
+    "ttl": {
+      "security": false
+    },
+    "type-hint-fidelity": {
+      "security": false
+    },
+    "type-juggling": {
+      "security": false
+    },
+    "type-safety": {
+      "security": false
+    },
+    "unbounded": {
+      "security": false
+    },
+    "unbounded-query": {
+      "security": false
+    },
+    "unchecked-cast": {
+      "security": false
+    },
+    "undefined-var": {
+      "security": false
+    },
+    "uniqueness-semantics": {
+      "security": false
+    },
+    "unnecessary-effect": {
+      "security": false
+    },
+    "unnecessary-test": {
+      "security": false
+    },
+    "unplanned-test": {
+      "security": false
+    },
+    "unsafe-cast": {
+      "security": false
+    },
+    "unsafe-soundness": {
+      "security": true
+    },
+    "untested-security": {
+      "security": true
+    },
+    "validation-placement": {
+      "security": false
+    },
+    "value-representation": {
+      "security": false
+    },
+    "value-semantics": {
+      "security": false
+    },
+    "visibility": {
+      "security": false
+    },
+    "wire-break": {
+      "security": false
+    },
+    "word-splitting": {
+      "security": false
+    },
+    "work-claim": {
+      "security": false
+    },
+    "work-in-loop": {
+      "security": false
+    },
+    "write-skew": {
+      "security": false
+    },
+    "xss": {
+      "security": true
+    },
+    "xxe": {
+      "security": true
+    },
+    "yagni": {
+      "security": false
+    },
+    "zod-schema": {
+      "security": false
+    }
+  },
+  "x-security-terms": [
+    "sql injection",
+    "nosql injection",
+    "ldap injection",
+    "xpath injection",
+    "template injection",
+    "log injection",
+    "command injection",
+    "shell injection",
+    "code injection",
+    "remote code execution",
+    "arbitrary code execution",
+    "xss",
+    "cross site scripting",
+    "path traversal",
+    "directory traversal",
+    "ssrf",
+    "server side request forgery",
+    "csrf",
+    "cross site request forgery",
+    "xxe",
+    "xml external entity",
+    "open redirect",
+    "insecure deserialization",
+    "unsafe deserialization",
+    "untrusted deserialization",
+    "deserialization of untrusted",
+    "prototype pollution",
+    "auth bypass",
+    "authn bypass",
+    "authz bypass",
+    "authentication bypass",
+    "authorization bypass",
+    "access control bypass",
+    "privilege escalation",
+    "session fixation",
+    "hardcoded secret",
+    "hardcoded credential",
+    "hardcoded password",
+    "hard coded secret",
+    "hard coded credential",
+    "hard coded password",
+    "secret leak",
+    "credential leak",
+    "fail open",
+    "fails open",
+    "failed open",
+    "failing open",
+    "timing attack",
+    "timing side channel",
+    "timing leak"
+  ],
+  "x-security-mechanism-words": [
+    "token",
+    "filter",
+    "middleware",
+    "guard",
+    "header",
+    "protection",
+    "check",
+    "option",
+    "flag",
+    "helper",
+    "helpers",
+    "prevention",
+    "mitigation",
+    "defense",
+    "defence",
+    "sanitizer",
+    "sanitiser",
+    "sanitization",
+    "escaping",
+    "validator",
+    "validation"
+  ],
+  "x-security-negation-words": [
+    "missing",
+    "no",
+    "not",
+    "never",
+    "without",
+    "lacks",
+    "lack",
+    "lacking",
+    "absent",
+    "disabled",
+    "disable",
+    "disables",
+    "bypass",
+    "bypassed",
+    "bypasses",
+    "bypassing",
+    "bypassable",
+    "skipped",
+    "skips",
+    "skipping",
+    "broken",
+    "fails",
+    "failing",
+    "failed",
+    "ineffective",
+    "incomplete",
+    "insufficient",
+    "weak",
+    "unescaped",
+    "unsanitized",
+    "unsanitised",
+    "unvalidated",
+    "unnormalized",
+    "unnormalised",
+    "unchecked",
+    "only"
+  ],
+  "x-injection-kinds": [
+    "sql",
+    "nosql",
+    "command",
+    "shell",
+    "os",
+    "code",
+    "ldap",
+    "xpath",
+    "template",
+    "log"
+  ],
+  "x-dependency-injection-words": [
+    "dependency",
+    "constructor",
+    "field",
+    "setter",
+    "property",
+    "method",
+    "parameter",
+    "interface"
+  ],
+  "x-access-subjects": {
+    "prefixes": [
+      "authenticat",
+      "unauthenticat",
+      "authoriz",
+      "authoris",
+      "unauthoriz",
+      "unauthoris"
+    ],
+    "words": [
+      "auth",
+      "login",
+      "logins",
+      "password",
+      "passwords",
+      "credential",
+      "credentials",
+      "permission",
+      "permissions",
+      "role",
+      "roles",
+      "admin",
+      "admins",
+      "token",
+      "tokens"
+    ],
+    "phrases": [
+      "access control"
+    ]
+  },
+  "x-bypass-prefixes": [
+    "bypass",
+    "circumvent",
+    "skip",
+    "sidestep",
+    "evad"
+  ],
+  "x-test-security-subjects": {
+    "prefixes": [
+      "authenticat",
+      "unauthenticat",
+      "authoriz",
+      "authoris",
+      "unauthoriz",
+      "unauthoris"
+    ],
+    "words": [
+      "auth",
+      "permission",
+      "permissions",
+      "security"
+    ],
+    "phrases": [
+      "access control",
+      "login check",
+      "password check",
+      "credential check",
+      "login password check"
+    ]
+  },
+  "x-security-patterns": {
+    "clause-subordinators": [
+      "when",
+      "whenever",
+      "if",
+      "while",
+      "because",
+      "since",
+      "unless",
+      "so",
+      "once",
+      "until",
+      "after",
+      "before"
+    ],
+    "performance-objects": {
+      "prefixes": [
+        "cach",
+        "evict",
+        "recomput",
+        "allocat",
+        "memoiz",
+        "memois"
+      ],
+      "words": [
+        "lru",
+        "lookup",
+        "lookups",
+        "redundant"
+      ]
+    },
+    "access-loss": {
+      "prefixes": [
+        "revok",
+        "retain",
+        "escalat",
+        "unauthor",
+        "unauthent"
+      ],
+      "words": [
+        "keep",
+        "keeps",
+        "kept"
+      ]
+    },
+    "unauthenticated": {
+      "prefixes": [
+        "unauthenticat",
+        "unauthoriz",
+        "unauthoris"
+      ]
+    },
+    "reach": {
+      "words": [
+        "reach",
+        "reaches",
+        "reached",
+        "reaching",
+        "reachable",
+        "access",
+        "accesses",
+        "accessed",
+        "accessing",
+        "accessible",
+        "call",
+        "calls",
+        "called",
+        "calling",
+        "invoke",
+        "invokes",
+        "invoked",
+        "invoking"
+      ]
+    },
+    "traversal-escape": {
+      "prefixes": [
+        "escap",
+        "travers",
+        "climb"
+      ],
+      "words": [
+        "outside",
+        "above"
+      ]
+    },
+    "unnormalized": {
+      "prefixes": [
+        "unnormaliz",
+        "unnormalis"
+      ]
+    },
+    "path-nouns": {
+      "prefixes": [
+        "join"
+      ],
+      "words": [
+        "path",
+        "paths",
+        "pathname",
+        "filename",
+        "filenames",
+        "dir",
+        "dirs",
+        "directory",
+        "directories"
+      ]
+    },
+    "concatenation": {
+      "prefixes": [
+        "concatenat",
+        "interpolat",
+        "splic"
+      ]
+    },
+    "injection-sinks": {
+      "words": [
+        "sql",
+        "nosql",
+        "query",
+        "queries",
+        "shell",
+        "command",
+        "commands",
+        "ldap",
+        "xpath",
+        "eval",
+        "html"
+      ]
+    },
+    "unescaped": {
+      "words": [
+        "unescaped",
+        "unsanitized",
+        "unsanitised",
+        "unparameterized",
+        "unparameterised"
+      ]
+    },
+    "secrets": {
+      "words": [
+        "token",
+        "tokens",
+        "secret",
+        "secrets",
+        "password",
+        "passwords",
+        "hmac",
+        "hmacs",
+        "signature",
+        "signatures",
+        "digest",
+        "digests",
+        "mac",
+        "macs",
+        "nonce",
+        "nonces",
+        "apikey"
+      ]
+    },
+    "comparison": {
+      "prefixes": [
+        "compar"
+      ]
+    },
+    "not-constant-time": {
+      "words": [
+        "non",
+        "not",
+        "instead",
+        "without",
+        "no",
+        "missing"
+      ]
+    },
+    "fail-open-as": {
+      "prefixes": [
+        "treat",
+        "regard",
+        "consider"
+      ]
+    },
+    "fail-open-to": {
+      "prefixes": [
+        "default",
+        "fall"
+      ]
+    },
+    "access-grants": {
+      "words": [
+        "authenticated",
+        "authorized",
+        "authorised",
+        "admin",
+        "administrator",
+        "superuser",
+        "trusted",
+        "logged"
+      ]
+    },
+    "revocation": {
+      "prefixes": [
+        "revok"
+      ]
+    },
+    "retention": {
+      "prefixes": [
+        "retain"
+      ],
+      "words": [
+        "keep",
+        "keeps",
+        "kept",
+        "keeping",
+        "still"
+      ]
+    },
+    "access-nouns": {
+      "prefixes": [
+        "permission",
+        "privilege",
+        "role",
+        "session"
+      ],
+      "words": [
+        "access",
+        "admin",
+        "rights"
+      ]
+    },
+    "check-verbs": {
+      "prefixes": [
+        "check",
+        "verif",
+        "validat",
+        "ensur",
+        "confirm",
+        "requir",
+        "test"
+      ]
+    },
+    "authentication-states": {
+      "prefixes": [
+        "authenticat"
+      ],
+      "words": [
+        "logged",
+        "login",
+        "signed"
+      ]
+    },
+    "authorization-objects": {
+      "prefixes": [
+        "role",
+        "admin",
+        "permission",
+        "authoriz",
+        "authoris",
+        "owner",
+        "privilege",
+        "scope"
+      ]
+    }
+  }
+}

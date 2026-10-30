@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "header": "Grill",
+      "question": "Answer a few short questions before anything is built?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Yes, grill me",
+          "description": "A few short questions at a time; your answers are recorded as decisions."
+        },
+        {
+          "label": "No, go on",
+          "description": "The work goes on with what is known."
+        }
+      ]
+    }
+  ]
+}

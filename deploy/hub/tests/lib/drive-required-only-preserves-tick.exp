@@ -1,0 +1,74 @@
+#!/usr/bin/env expect
+#
+# drive-required-only-preserves-tick.exp — hand-tick a domain that `r` is NOT allowed to
+#                                          act on, press `r`, and walk the ticked
+#                                          domain's own screen afterwards.
+#
+# WHAT IS FRAGILE HERE: hi_baseline_only_select is documented as "APPENDED AND THEN
+# DEDUPLICATED, never written over the top", so that a domain ticked by hand for a full
+# walk survives `r`. Every other `r` case is blind to that: either nothing is ticked
+# before the key, or every ticked domain is also a candidate — and in both of those
+# shapes an overwrite (`cat` instead of `cat >>`) produces a byte-identical selection.
+# The failure it would hide is the same class as the bug `r` already shipped once: a
+# selection the user made, silently discarded with nothing on screen having warned it
+# could be.
+#
+# THE TARGET STATE IS THE CASE. Software Development holds a technology, so it is a
+# candidate; Project Management holds nothing of its mandatory kind, so it is OFFERED as
+# a row but is NOT a candidate (hi_baseline_only_eligible refuses a never-touched
+# domain, deliberately — see its header). Ticking the NON-candidate is what makes an
+# overwrite observable, because it is the one domain `r`'s own list cannot put back.
+#
+# THE KEY SEQUENCE:
+#   1. tick the NON-candidate domain only     the selection an overwrite would lose
+#   2. `r`                                    adds the candidate, must keep the tick
+#   3. the ticked domain's OWN screen         proof its step survived the rebuild
+#   4. pick a tracker there                   proof it is still a real walk, not a stub
+#   5. confirm                                apply, and print the payload
+# Step 3 is the assertion: an overwritten selection holds only the candidate, whose
+# every step `r` then removes, so the walk would jump straight from `r` to the confirm
+# gate and this driver would time out waiting for a screen that never comes.
+#
+# The spawn, the screen helper and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-required-only-preserves-tick.exp SRC TARGET INSTALL HOME PATH
+#        with REQUIRED_ONLY_KEY, CHOSE_MARKER, APPLIED_MARKER, BASELINE_MARKER and
+#        SCREEN_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+set chose_marker $env(CHOSE_MARKER)
+
+expect_screen "Which domain(s)" "domains-screen"
+# By KEY, never by row number — see drive-empty-technology.exp's own note.
+send "project-management\r"
+
+# THE RE-RENDER, awaited by its TITLE rather than by its tally, so the dump below opens
+# at the top of the screen and carries the checkbox rows. Waiting for "1 selected"
+# instead would start the capture PAST them, and the caller could then see the hint
+# line and the tally but not which row the tick landed on.
+expect_screen "Which domain(s)" "domains-screen-after-tick"
+
+# The screen as it stands with the hand-tick in place. The caller reads three things off
+# it that nothing else can show: which row is ticked, that the domain `r` is about to add
+# was offered here to begin with, and that `r` is advertised at all.
+dump_screen domains
+
+send "$env(REQUIRED_ONLY_KEY)\r"
+
+# THE TICKED DOMAIN'S OWN SCREEN. It follows only because its step survived `r`'s
+# rebuild, which happens only because the candidate was APPENDED to the selection
+# rather than written over it.
+expect_screen "select tracker" "tracker-screen"
+send "github\r"
+expect_screen "1 selected" "tracker-chosen"
+puts $chose_marker
+send "\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so the
+# walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen"
+send "\r"
+
+report_baseline_only_payload

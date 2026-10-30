@@ -29,41 +29,41 @@
 # runs no top-level work beyond its own declarations, so sourcing it always
 # returns 0 under `set -e`.
 
-# bulk_update_field_summary -> a space-joined list of the update aspects the
-# caller asked to change, for the --plan disclosure (human + json). Mirrors the
-# single-verb flag set; purely descriptive, so it never touches the network.
-bulk_update_field_summary() {
-	bulk_fields=""
-	[ -z "$OPT_TITLE" ]            || bulk_fields="$bulk_fields title"
-	[ -z "$OPT_DESCRIPTION_FILE" ] || bulk_fields="$bulk_fields description"
-	[ -z "$OPT_APPEND_FILE" ]      || bulk_fields="$bulk_fields description(append)"
-	[ -z "$OPT_ACCEPTANCE_FILE" ]  || bulk_fields="$bulk_fields acceptance"
-	[ -z "$OPT_REVIEW_FILE" ]      || bulk_fields="$bulk_fields review"
-	[ -z "$OPT_ASSIGNEE" ]         || bulk_fields="$bulk_fields assignee"
-	[ -z "$OPT_DEVELOPER" ]        || bulk_fields="$bulk_fields developer"
-	[ -z "$OPT_LABELS" ]           || bulk_fields="$bulk_fields labels"
-	[ -z "$OPT_DUE_DATE" ]         || bulk_fields="$bulk_fields due-date"
-	[ -z "$OPT_PARENT" ]           || bulk_fields="$bulk_fields parent"
-	[ -z "$OPT_FIX_VERSIONS" ]     || bulk_fields="$bulk_fields fix-version"
-	[ -z "$OPT_AFFECTS_VERSIONS" ] || bulk_fields="$bulk_fields affects-version"
-	[ -z "$OPT_COMPONENTS" ]       || bulk_fields="$bulk_fields component"
-	# strip the single leading space
-	printf '%s' "${bulk_fields# }"
-}
-
 # bulk_intent_phrase -> one human phrase describing the change --plan would
 # apply, per --op (the "intended change" the plan discloses).
+#
+# The update arm's field list comes from cmd-update.sh's update_field_summary —
+# the ONE enumeration of the update verb's fields, shared with the
+# at-least-one-field guard (see that function's header). bulk loops the single
+# verb, so it discloses the verb's own list rather than a copy that could drift
+# from what the loop actually writes — and therefore arrives ALREADY folded, via
+# that function's fold_summary_value. The other two arms interpolate their own
+# OPT_* carriers, so they fold HERE, for the same reason: render_batch_plan lays
+# this phrase into ONE line above the key list and the closing "NOTHING WAS
+# WRITTEN (dry-run / --plan)" row, so a raw newline in an interpolated value
+# forges a line at a consent gate — an extra key, a second header, a premature
+# "nothing was written" with real writes listed below it.
+#
+# one_line_display, NOT fold_summary_value: the comma deletion is specific to
+# update_field_summary's ", "-joined LIST, where a comma inside an entry reads as
+# a second entry. Neither phrase built here is a list — each value sits in a
+# fixed sentence this function's own format string supplies — so a comma cannot
+# invent a field, while all three can legitimately hold one (a Jira status or
+# resolution name is site-side free text; a path may hold any byte but NUL and
+# "/"). Note the comment arm discloses --text-file's PATH, not the file's
+# CONTENT: a short one-line value like the other two, so the same fold fits.
 bulk_intent_phrase() {
 	case "$OPT_OP" in
 		transition)
+			bip_status=$(one_line_display "$OPT_STATUS")
 			if [ -n "$OPT_RESOLUTION" ]; then
-				printf 'transition to "%s" (resolution: %s)' "$OPT_STATUS" "$OPT_RESOLUTION"
+				printf 'transition to "%s" (resolution: %s)' "$bip_status" "$(one_line_display "$OPT_RESOLUTION")"
 			else
-				printf 'transition to "%s"' "$OPT_STATUS"
+				printf 'transition to "%s"' "$bip_status"
 			fi
 			;;
-		comment) printf 'add a comment from %s' "$OPT_TEXT_FILE" ;;
-		update)  printf 'update field(s): %s' "$(bulk_update_field_summary)" ;;
+		comment) printf 'add a comment from %s' "$(one_line_display "$OPT_TEXT_FILE")" ;;
+		update)  printf 'update field(s): %s' "$(update_field_summary)" ;;
 	esac
 }
 
@@ -90,6 +90,19 @@ apply_bulk_verb_to_key() {
 }
 
 cmd_bulk() {
+	# BULK_RESOLVED_*_ID — the accountId each "who" flag resolves to, looked up
+	# ONCE for the whole batch below and read by the looped cmd_update in place
+	# of its own per-issue lookup. DERIVED state, not user flags: hence no OPT_
+	# prefix, and deliberately not in jira.sh's OPT DEFAULTS block, which is the
+	# test-driver-sourced list of actual flag carriers. Re-initialized empty here
+	# so the reader's `[ -n ... ]` check means "this batch pre-resolved one"; the
+	# declaration that closes the environment-inheritance hazard is the
+	# process-level one in runtime.sh, which covers the direct `update` path this
+	# function never runs on.
+	BULK_RESOLVED_ASSIGNEE_ID=""
+	BULK_RESOLVED_DEVELOPER_ID=""
+	BULK_RESOLVED_REVIEWER_ID=""
+
 	# --op validity, exactly-one-of --keys/--jql, per-key shape, and the
 	# op-specific required args are all validated up front — see the main
 	# dispatch section's per-command block.
@@ -132,6 +145,33 @@ cmd_bulk() {
 		return 0
 	fi
 
+	# ONE accountId lookup per BATCH, not per issue: cmd_update resolves each
+	# "who" flag itself, so looping it spent N identical round trips resolving
+	# the SAME unchanging value. Only this step is hoisted, because an accountId
+	# is PROJECT-INDEPENDENT; the require_custom_field lookup that pairs with
+	# --developer/--reviewer stays per-issue in cmd_update, since a
+	# --jql-selected set can span projects whose configs map the same semantic
+	# key to different field ids.
+	#
+	# Position is load-bearing on both sides: AFTER the --plan return above, so
+	# --plan keeps its ZERO-request guarantee, and BEFORE the loop, so an
+	# unresolvable or ambiguous value aborts the batch with nothing written
+	# rather than failing once per issue after earlier ones already landed. The
+	# per-issue subshell INHERITS what the parent set before it started, which
+	# is the direction used here (only writes back out are lost).
+	# shellcheck disable=SC2034  # block-wide: the three readers are cmd-update.sh's resolve_update_account_id call sites, and shellcheck lints this unit alone
+	if [ "$OPT_OP" = "update" ]; then
+		if [ -n "$OPT_ASSIGNEE" ]; then
+			BULK_RESOLVED_ASSIGNEE_ID=$(resolve_account_id "$OPT_ASSIGNEE")
+		fi
+		if [ -n "$OPT_DEVELOPER" ]; then
+			BULK_RESOLVED_DEVELOPER_ID=$(resolve_account_id "$OPT_DEVELOPER")
+		fi
+		if [ -n "$OPT_REVIEWER" ]; then
+			BULK_RESOLVED_REVIEWER_ID=$(resolve_account_id "$OPT_REVIEWER")
+		fi
+	fi
+
 	# Real run: apply the verb to each issue, isolating per-issue failure and
 	# collecting outcomes. The loop reads the keys file via REDIRECTION (not a
 	# pipe) so it runs in THIS shell and its counters survive each iteration.
@@ -162,7 +202,7 @@ cmd_bulk() {
 }
 
 # validate_bulk_args() — `bulk`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_bulk_args() {
 	# bulk takes NO positional — the set is named by --keys/--jql, so a
@@ -210,10 +250,10 @@ validate_bulk_args() {
 			[ -n "$OPT_TEXT_FILE" ] || { usage >&2; error "bulk --op comment requires --text-file PATH"; exit 2; }
 			;;
 		update)
-			if [ -z "$OPT_TITLE" ] && [ -z "$OPT_DESCRIPTION_FILE" ] && [ -z "$OPT_APPEND_FILE" ] \
-				&& [ -z "$OPT_ACCEPTANCE_FILE" ] && [ -z "$OPT_REVIEW_FILE" ] && [ -z "$OPT_ASSIGNEE" ] \
-				&& [ -z "$OPT_DEVELOPER" ] && [ -z "$OPT_LABELS" ] && [ -z "$OPT_DUE_DATE" ] && [ -z "$OPT_PARENT" ] \
-				&& [ -z "$OPT_FIX_VERSIONS" ] && [ -z "$OPT_AFFECTS_VERSIONS" ] && [ -z "$OPT_COMPONENTS" ]; then
+			# The SAME predicate `update` itself uses (cmd-update.sh's
+			# has_update_field_request), so the batch can never accept a
+			# field set the single verb would reject, or vice versa.
+			if ! has_update_field_request; then
 				usage >&2
 				error "bulk --op update requires at least one field to change"
 				exit 2

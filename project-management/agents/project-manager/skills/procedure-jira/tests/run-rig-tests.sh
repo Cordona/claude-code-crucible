@@ -49,9 +49,17 @@ trap cleanup EXIT INT TERM
 # deployed and never bound by jira.sh's portability contract. Dropping dirname
 # here would break the rig itself, not catch a defect. The guard therefore lives
 # in the two suites that actually exercise jira.sh's own path resolution.
+#
+# `ls` IS PRESENT FOR ONE READER, and it gates the whole suite rather than one
+# case: runtime.sh's assert_safe_tmpdir reads ${TMPDIR:-/tmp}'s mode string from
+# `ls -ld DIR/.` and fails CLOSED on any string it cannot read as a directory's,
+# an ABSENT `ls` included. Every `jira.sh` invocation the rig makes reaches it
+# before doing anything else, so without this entry the rig's own jira.sh calls
+# all refuse at startup and every lifecycle case fails for a reason that has
+# nothing to do with the guard logic under test.
 # ---------------------------------------------------------------------------
 harness_init "$WORK"
-for t in sh mktemp sed grep tr cat rm chmod cp mv dirname mkdir od jq; do
+for t in sh mktemp sed grep tr cat rm chmod cp mv dirname mkdir od ls jq; do
 	link_tool "$TOOLBOX" "$t"
 done
 

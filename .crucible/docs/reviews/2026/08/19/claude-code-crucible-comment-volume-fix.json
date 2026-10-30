@@ -1,0 +1,247 @@
+{
+  "schema_version": "1.0",
+  "id": "claude-code-crucible-comment-volume-fix",
+  "repo": "claude-code-crucible",
+  "created": "2026-08-19",
+  "last_updated": "2026-08-19",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-08-19",
+      "reviewers": [
+        "lens-consistency-reviewer",
+        "lens-compatibility-reviewer"
+      ]
+    },
+    {
+      "round": 2,
+      "generated": "2026-08-19",
+      "reviewers": [
+        "lens-consistency-reviewer",
+        "lens-compatibility-reviewer"
+      ]
+    },
+    {
+      "round": 3,
+      "generated": "2026-08-19",
+      "reviewers": [
+        "lens-consistency-reviewer"
+      ]
+    },
+    {
+      "round": 4,
+      "generated": "2026-08-19",
+      "reviewers": [
+        "lens-consistency-reviewer"
+      ]
+    },
+    {
+      "round": 5,
+      "generated": "2026-08-19",
+      "reviewers": [
+        "lens-consistency-reviewer",
+        "lens-compatibility-reviewer"
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "resolved": 12,
+    "new": 0,
+    "ack": 0
+  },
+  "findings": [
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "layering",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-clean-code-reviewer.md:91",
+        "software-development/shared/standards/lens/standard-clean-code/SKILL.md:53"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The lens's step 6 asserted its own numeric judgment bars (2+ units, 2+ places) instead of citing standard-clean-code, which owns WHAT-good-looks-like including numeric bars.",
+      "fix": "Moved both bars into standard-clean-code's proportionality paragraph as two named failure shapes (Volume/Placement); the lens now cites them by name instead of restating the numbers.",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "colocation",
+      "locations": [
+        "software-development/shared/build-core/SKILL.md:51",
+        "software-development/shared/build-report-standards/SKILL.md:28",
+        "software-development/flows/flow-git-operations/SKILL.md:88"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "build-core promised a developer's deferred-to-commit rationale would reach the git-operator commit brief, but no receiving contract was amended to carry it.",
+      "fix": "Named the routing explicitly in build-report-standards' Key decisions row and in flow-git-operations G2's brief list.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "layering",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:110"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The cross-artifact duplication signal's sole input (commit message/PR-MR description) had no producer anywhere in flow-review's dispatch path.",
+      "fix": "Added the commit message/PR-MR description as an optional dispatch input in flow-review section 5a, scoped to when it actually exists.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-clean-code-reviewer.md:23"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "New prompt-input item 6 broke the re-review-item-always-last convention held by all sibling reviewer bodies, and falsely declared itself optional under a MUST-include preamble.",
+      "fix": "Split into a proper standalone item for the commit message/PR description, with the re-review item restored to last position.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "colocation",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-clean-code-reviewer.md:96"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The Category Vocabulary section carried follow-on explanatory prose, against the 16/16 bare-list precedent across sibling reviewer bodies.",
+      "fix": "Deleted the paragraph; the disambiguation it stated remains in step 6 and the Edge Cases table.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-006",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "colocation",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-clean-code-reviewer.md:134"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The rewrite-requirement Constraints bullet grew to a three-clause paragraph, unlike its single-clause siblings.",
+      "fix": "Reduced to one prohibition plus a short scope pointer, matching sibling bullet shape.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-007",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/shared/build-core/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "build-core cited a report field as 'Key Decisions' with no pointer to its owning skill, unlike the adjacent Validation-field precedent.",
+      "fix": "Reworded to cite the field by canonical name plus owner on first mention.",
+      "addressed_in_round": 2
+    },
+    {
+      "id": "CONS-008",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-clean-code-reviewer.md:23"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The round-2 fix folded the commit-message input into the re-review item, creating a label mismatch and a non-standard shape versus sibling precedent.",
+      "fix": "Split back into two separate items matching rust-reviewer.md's exact precedent shape.",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "CONS-009",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "api-shape",
+      "locations": [
+        "software-development/flows/flow-review/SKILL.md:110"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The new dispatch-list item was appended after the 'prior-round findings...so IDs stay stable' terminator, unlike sibling flows' convention of ending with that exact clause.",
+      "fix": "Reordered so the terminator clause stays last, matching flow-implementation and flow-testing.",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "CONS-010",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/agents/specialists/git-operator/git-operator.md:17",
+        "software-development/flows/flow-git-operations/SKILL.md:88"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "flow-git-operations G2 relayed a deferred-to-commit rationale to git-operator, but git-operator's own declared prompt-input list never mirrored it, and nothing told the operator what to do with it.",
+      "fix": "Added the mirrored input item to git-operator's prompt-input list and a handling instruction under its Message-authoring judgment call.",
+      "addressed_in_round": 3
+    },
+    {
+      "id": "CONS-011",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "MEDIUM",
+      "category": "interface-convention",
+      "locations": [
+        "software-development/flows/flow-git-operations/SKILL.md:239"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "The deferred-to-commit-rationale relay was added only to the commit path (G2) and the Pull-Request Path; a GitLab MR-only operation (commits already landed) had no destination for it, and the Merge-Request Path does not inherit the Pull-Request Path's list (it fully restates its own).",
+      "fix": "Added the identical relay clause directly to the Merge-Request Path's own step 1; corrected a prior footer claim that had incorrectly asserted inheritance.",
+      "addressed_in_round": 5
+    },
+    {
+      "id": "CONS-012",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "RESOLVED",
+      "tracked_status": "APPROVED",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/shared/build-report-standards/SKILL.md:28",
+        "software-development/agents/specialists/git-operator/git-operator.md:17",
+        "software-development/shared/build-core/SKILL.md:51"
+      ],
+      "first_seen": "2026-08-19",
+      "problem": "After a PR/MR destination was added alongside the commit destination for the deferred rationale, three upstream sites describing its routing still named only the commit destination.",
+      "fix": "Widened all three sites to name both destinations, whichever still exists.",
+      "addressed_in_round": 5
+    }
+  ]
+}

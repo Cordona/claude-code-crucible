@@ -9,7 +9,7 @@
 # scripts dot-source this file immediately after their own `set -eu`.
 #
 # READING glab's OUTPUT lives in the SIBLING glab-mr-output.sh, not here. That
-# split is deliberate: those three helpers parse an UNTRUSTED external stream and
+# split is deliberate: those helpers parse an UNTRUSTED external stream and
 # carry their own security history (SEC-001/002/003), so they change for reasons
 # nothing in this file shares. procedure-gh-pr has no equivalent surface at all
 # and therefore has only one lib — do not force the two skills into symmetry.
