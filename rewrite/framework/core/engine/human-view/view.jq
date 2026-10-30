@@ -2,11 +2,6 @@
 # "nothing to show"; `blocks` drops it. Values arrive as cleaned display text.
 # jq resolves a def only after its definition, so each helper precedes its callers.
 
-# traffic_light
-#   input:  status word: decision, done, attention or blocked
-#   output: its glyph: 🔵, 🟢, 🟡 or 🔴
-def traffic_light: {decision: "🔵", done: "🟢", attention: "🟡", blocked: "🔴"}[.];
-
 # numbered_list
 #   input:  array of strings
 #   output: one `N. item` line per item, joined by newlines
@@ -36,9 +31,11 @@ def path_text: .;
 
 # status_line($status; $title; $tail), status_line($status; $title)
 #   input:  ignored
-#   output: `<light> **<title>**`, then ` · <tail>` when $tail is neither "" nor null
+#   $status: decision, done, attention or blocked; not shown, the title's own
+#            words carry it
+#   output: `**<title>**`, then ` · <tail>` when $tail is neither "" nor null
 def status_line($status; $title; $tail):
-	"\($status | traffic_light) **\($title)**"
+	"**\($title)**"
 	+ (if ($tail // "") == "" then "" else " · \($tail)" end);
 def status_line($status; $title): status_line($status; $title; "");
 

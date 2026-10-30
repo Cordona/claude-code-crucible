@@ -6,7 +6,7 @@ What to do when a gate's relay is never confirmed or its question is blocked, pl
 
 The relay kept failing, or the Stop hook didn't act: not registered, not yet active, timed out, or jq missing. On the human's next message, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-agent-initialization/scripts/dependencies/validate-dependencies.sh"` (its `--help` first, once per session, as for every script), then, whatever its exit, send the fixed line below as one message, word for word without its backticks, and the script's stdout as printed (its pass line, or its view with every Fix or Warnings item) as the next message, with nothing else in either: the two are about different things, the relay and the install. Ask nothing, and tell the gate's procedure the plan was not shown; when a new gate opens: SKILL.md Never.
 
-`🔴 **Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`
+`**Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`
 
 - **`flow-agent-initialization` missing** (the script exits 127): in place of the script's stdout, send the line `The gate's hooks could not be checked: flow-agent-initialization is not installed.`, word for word without its backticks, and stop as this section sets.
 

@@ -11,7 +11,7 @@ readonly PROG='render-effort-offer.sh'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly DEFAULT_TITLE='start an effort for this?'
-# The title shares the first line with the light and "Decision needed · ", so
+# The title shares the first line with "Decision needed · ", so
 # it stays short enough for that line to fit one terminal line.
 readonly MAX_TITLE_CHARS=60
 # The offer stays a glance: a handful of one-line reasons, each short enough

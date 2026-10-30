@@ -21,14 +21,14 @@ include "view";
 include "paths";
 # Open and completed need nothing from the human; paused and dropped leave
 # the effort waiting on them.
-def state_light: {open: "done", completed: "done", paused: "attention", dropped: "attention"}[.];
+def state_status: {open: "done", completed: "done", paused: "attention", dropped: "attention"}[.];
 def changed_view($items):
 	$items[-1] as $newest
 	| (if $newest | has("from") | not then "started" elif $newest.state == "open" then "reopened" else $newest.state end) as $word
-	| "\(status_line(if $word == "started" or $word == "reopened" then "done" else $newest.state | state_light end; "Effort \($word) · \($name | code_span):")) \($folder | path_text)";
+	| "\(status_line(if $word == "started" or $word == "reopened" then "done" else $newest.state | state_status end; "Effort \($word) · \($name | code_span):")) \($folder | path_text)";
 def status_view($items):
 	($items[-1].state // "open") as $state
-	| [status_line($state | state_light; "Effort · \($name | code_span)"; $state),
+	| [status_line($state | state_status; "Effort · \($name | code_span)"; $state),
 	   section("History"; if ($items | length) == 0 then ["open · since \($id_time)"]
 		else $items | map("\(.state) · \(.at[0:10]) \(.at[11:16]) UTC") end),
 	   ($folder | path_text)]

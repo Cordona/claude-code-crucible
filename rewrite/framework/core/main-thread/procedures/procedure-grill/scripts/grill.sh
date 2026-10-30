@@ -142,7 +142,7 @@ def ask_result:
 		(if ($ids | length) == 0 or ($ids | length) > grill_round_max then "--ids names \($ids | length) questions; expected 1 to \(grill_round_max) ids, comma-separated" else empty end),
 		($ids | to_entries[] | .key as $position | .value | ask_id_problem($position; $ids; $file));
 		{file: ($file | .questions |= (. // [] | map(if (.id as $id | $ids | holds($id)) then .round = $round else . end))),
-		 out: ([status_line("decision"; "Grill · round \($round)"),
+		 out: ([status_line("decision"; "Decision needed · grill round \($round)"),
 			([$file.questions[] | select(.id as $id | $ids | holds($id))] | round_list),
 			(if $round == 1 then "Say \"end the grill\" at any point to stop." else "" end)] | blocks)});
 

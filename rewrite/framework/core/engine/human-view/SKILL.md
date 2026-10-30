@@ -19,7 +19,7 @@ Shared jq modules for what renderer scripts print for the human. Scripts load th
 
 Every view a renderer prints for the human follows these; the def named after a rule builds it.
 
-1. **First line:** a traffic light, a bold title, then optionally ` · ` and a count, or in a status view a state word. 🔵 a decision is needed; 🟢 done, nothing needs the human (no text saying so); 🟡 done, N items need the human, or a hint, which takes no count, or a state that needs the human's attention later (such as paused or dropped); 🔴 blocked. No other icon anywhere in the view (`status_line`).
+1. **First line:** a bold title, then optionally ` · ` and a count, or in a status view a state word. The title's words or the state word carry the meaning (such as `Blocked`); no icon anywhere in the view (`status_line`).
 2. **Headings are plain bold text, no icon:** a section's `**Name**` on its own line, or `**Name:** value` when it holds one item (`section`).
 3. **Lists:** one item is a plain line with no mark; two or more are numbered (`1.`), never bullets (`section`). One exception: an offer's or a hint's list, placed right under the line it completes, is bulleted (`bullet_list`).
 4. **Field lines** (Created, Modified, Deleted) are plain lines ending in two spaces (a hard break), a zero count left out (`field_lines`).
@@ -58,12 +58,11 @@ include "paths";
 
 | Def | Input | Output |
 |---|---|---|
-| `traffic_light` | status word: `decision`, `done`, `attention` or `blocked` | its glyph: 🔵, 🟢, 🟡 or 🔴 |
 | `numbered_list` | array of strings | one `N. item` line per item, joined by newlines |
 | `bullet_list` | array of strings | one `* item` line per item, joined by newlines |
 | `plain_line` | one line of text | the line with a leading Markdown block mark (a heading, a quote, a rule, a list item or a code fence) backslash-escaped, so it shows as plain text at the start of a line or list item; inline Markdown stays as written |
 | `path_text` | absolute path | the path whole, as plain text: no `~`, no cut, no backticks, so the terminal sees one path it can open |
-| `status_line($status; $title; $tail)`, `status_line($status; $title)` | ignored | `<light> **<title>**`, then ` · <tail>` when `$tail` is neither `""` nor null |
+| `status_line($status; $title; $tail)`, `status_line($status; $title)` | ignored; `$status` (`decision`, `done`, `attention` or `blocked`) prints nothing, kept so existing callers keep working | `**<title>**`, then ` · <tail>` when `$tail` is neither `""` nor null |
 | `section($name; $plural; $items)`, `section($name; $items)` | ignored | `""` for no items; `**<name>:** <item>` for one; `**<plural>**` and a numbered list for two or more (`$plural` defaults to `$name`) |
 | `field_lines($pairs)` | ignored; `$pairs` an array of `[name, count]` or `[name, count, tail]` | one `<name>: <count>` line per non-zero count, with ` · <tail>` when given, joined by a two-space hard break; `""` when every count is zero |
 | `field_section($heading; $pairs)` | ignored | `$heading`, a hard break, then `field_lines($pairs)`; `""` when every count is zero |

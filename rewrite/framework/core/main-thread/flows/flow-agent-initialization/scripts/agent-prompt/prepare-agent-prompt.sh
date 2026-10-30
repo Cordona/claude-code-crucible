@@ -360,7 +360,7 @@ stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
          the message
   deny   permissionDecisionReason "${REASON_PREFIX} <text>"; no KIND: a hook,
-         install or host fault. A failed check: "<prefix> 🔴 **Blocked · the
+         install or host fault. A failed check: "<prefix> **Blocked · the
          dispatch was denied: <N> problem(s)**", "**Problem:** <p>" or
          "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
          cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, effort known,

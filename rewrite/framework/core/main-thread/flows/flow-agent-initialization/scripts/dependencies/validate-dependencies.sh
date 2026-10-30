@@ -187,9 +187,9 @@ Options:
 
 stdout, to relay as printed; its last line is "(result not cached: <reason>)"
   when a pass can't be cached (never a failure):
-  🟢 **Install check passed** · <n> checks
+  **Install check passed** · <n> checks
                      a pass with no ⚠
-  🟢 **Install check passed** · unchanged since <YYYY-MM-DD HH:MM>
+  **Install check passed** · unchanged since <YYYY-MM-DD HH:MM>
                      a cached pass
   a view             any ✗: blocked, one Fix item per ✗ or ⚠ line, a hook
                      or space fix naming the exact settings.json entry to

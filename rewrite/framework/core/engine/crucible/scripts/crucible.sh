@@ -71,7 +71,7 @@ Commands:
          label) in --effort's folder, one per line, newest first; nothing
          when there is none (KIND folder missing included); a KIND folder
          it cannot read exits 4. Read-only.
-  open   opens the item's own file. stdout: one line, "🟢 **Opened:** <its
+  open   opens the item's own file. stdout: one line, "**Opened:** <its
          absolute path>".
   prune  lists effort folders unchanged for N days, or with --apply removes
          them, never one modified in the last 24 hours or not fully
@@ -484,7 +484,7 @@ render_opened_line() {
 		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
 	# shellcheck disable=SC2016 # the $ signs are jq's
 	jq -nr -L "${render_lib_dir}" --arg path "${item_path}" \
-		'include "view"; "\("done" | traffic_light) **Opened:** \($path | path_text)"' </dev/null ||
+		'include "view"; "**Opened:** \($path | path_text)"' </dev/null ||
 		install_fault "jq failed on ${render_lib_dir}/view.jq; expected jq 1.6+ and the ${RENDER_LIB} skill's module; try reinstalling it"
 }
 
