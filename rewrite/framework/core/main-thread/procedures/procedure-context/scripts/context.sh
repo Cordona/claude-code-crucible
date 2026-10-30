@@ -8,6 +8,8 @@
 # created: the JSON is built with stand-in paths and checked by
 # agent-context-validator.jq and agent-context-file-checks.sh, each problem
 # named by the option behind it.
+# The approved spec's entry and a spec skip note this call adds must each match
+# a gate record in the effort's cache/gates, as the human answered at the gate.
 # Only then is each file written atomically into the file crucible.sh new
 # --effort hands out, and checked again as prepare-agent-prompt.sh checks it.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
@@ -33,6 +35,18 @@ readonly PLACEHOLDER_ID='00000000T000000-0000'
 # still checked.
 readonly PLACEHOLDER_EFFORT='00000000T000000-0000-effort'
 readonly EMPTY_BASE='{}'
+# The spec's entries and the gate records that prove them: the approval gate
+# records the draft's path and sha256, the offer gate its case. A record
+# expires with the cache, so only the entries a call adds are checked.
+readonly GATE_RECORD_KIND='cache/gates'
+readonly SPEC_APPROVAL_LABEL='spec-approval'
+readonly SPEC_OFFER_LABEL='spec-offer'
+readonly APPROVED_SPEC_WHY='the approved spec'
+readonly SPEC_APPROVED_PREFIX='Spec approved:'
+readonly SPEC_SKIPPED_PREFIX='Spec skipped:'
+# Leads a missing gate's problem, so a caller matches the token, never the
+# sentence after it.
+readonly NO_SPEC_GATE_TOKEN='NO-SPEC-GATE'
 # A problem line shows a value whole up to 80 characters, enough to tell one
 # path or URL from another by eye; a longer one keeps its first 40 and last 39
 # around a "…", as a path or URL differs most at its start and end.
@@ -171,8 +185,12 @@ Options (no value but a note may hold a control character):
   --link URL        an http(s) URL; rules: agent-context-url.jq
   --text-file FILE  the human's long text: a file --path takes, UTF-8, at most
       ${TEXT_MAX_BYTES} bytes, one per call
-  --why LINE        one line: why the agent needs the entry just before it
-  --note TEXT       any text; new needs one
+  --why LINE        one line: why the agent needs the entry just before it;
+      '${APPROVED_SPEC_WHY}' needs the effort's ${SPEC_APPROVAL_LABEL} gate record of
+      that --path at its current sha256
+  --note TEXT       any text; new needs one. '${SPEC_SKIPPED_PREFIX}' at its start needs a
+      ${SPEC_OFFER_LABEL} gate record of case offer in the effort; '${SPEC_APPROVED_PREFIX}' needs
+      the approved spec's --path entry in the same call
   --repo ROOT       the git work-tree root, absolute
   --ref REF         a commit or a range A..B of 0-9 A-Z a-z . _ / ^ ~ - only,
       no part starting with -; its diff non-empty, UTF-8, at most ${TEXT_MAX_BYTES} bytes
@@ -204,6 +222,7 @@ Exit codes (1 on a failed write, 2, 4-6, a signal: show the human stderr; stop):
   3  invalid input, nothing written; fix what stderr names, rerun
      "--effort <folder>: its context already holds"  new: extend that version
      "--from <file>: is version ... not the latest"  extend the one named
+     "${NO_SPEC_GATE_TOKEN}"  the spec's gate holds no record for the entry; open that gate
   4  the space is unusable
   5  install fault
   ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
@@ -933,6 +952,7 @@ text_file_of() {
 # triples are in "$@".
 write_version() {
 	collect_file_problems "$@"
+	check_spec_entries "$@"
 	plan_space_paths
 	report_input_problems "$@"
 	require_open_effort
@@ -947,6 +967,84 @@ write_version() {
 	compute_context_digest "${context_path}" ||
 		fail_run "${context_digest_tool} could not hash ${context_path}; expected its sha256; try ${context_digest_tool} on it, then rerun"
 	printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "${context_path}" "${context_digest}"
+}
+
+# Adds a problem for each spec entry the call adds, the entry triples in "$@",
+# that no gate record of the effort proves: the approved spec's --path, a
+# skip note, and an approval note with no approved spec beside it. A stand-in
+# effort has its own problem already, so its records are not looked up.
+check_spec_entries() {
+	has_approved_spec=false has_approval_note=false has_skip_note=false
+	is_real_effort=true
+	[ "${effort_dir##*/}" != "${PLACEHOLDER_EFFORT}" ] || is_real_effort=false
+	while [ "$#" -gt 0 ]; do
+		case $1:$3 in
+			"path:${APPROVED_SPEC_WHY}")
+				has_approved_spec=true
+				[ "${is_real_effort}" = false ] || check_approved_spec "$2"
+				;;
+			note:*)
+				case $2 in
+					"${SPEC_APPROVED_PREFIX}"*) has_approval_note=true ;;
+					"${SPEC_SKIPPED_PREFIX}"*) has_skip_note=true ;;
+					*) ;;
+				esac
+				;;
+			*) ;;
+		esac
+		shift 3
+	done
+	if [ "${has_approval_note}" = true ] && [ "${has_approved_spec}" = false ]; then
+		rule_problems="${rule_problems}${PROG}: --note: an approval note needs the approved spec's --path entry in the same call${NL}"
+	fi
+	[ "${has_skip_note}" = true ] && [ "${is_real_effort}" = true ] || return 0
+	# shellcheck disable=SC2310 # its status says whether a record matched
+	find_gate_record "${SPEC_OFFER_LABEL}" '.case == "offer"' && return 0
+	rule_problems="${rule_problems}${PROG}: --note: ${NO_SPEC_GATE_TOKEN}: no spec offer gate record in this effort; expected the skip chosen at the spec offer gate${NL}"
+}
+
+# Adds a problem unless a spec approval record of the effort names draft $1
+# at its current sha256.
+check_approved_spec() {
+	spec_digest=''
+	if [ -f "$1" ] && [ -r "$1" ] && [ ! -L "$1" ]; then
+		# shellcheck disable=SC2310 # its status is the tool's; a failure exits
+		compute_context_digest "$1" ||
+			die 5 "${context_digest_tool} could not hash $1; expected its sha256; try ${context_digest_tool} on it, then rerun"
+		spec_digest=${context_digest}
+	fi
+	# shellcheck disable=SC2016,SC2310 # $spec and $sha256 are jq's; its status says whether a record matched
+	if [ -n "${spec_digest}" ] &&
+		find_gate_record "${SPEC_APPROVAL_LABEL}" '.case == "approval" and .spec == $spec and .sha256 == $sha256' "$1" "${spec_digest}"; then
+		return 0
+	fi
+	shown_spec=$(printable "$1")
+	rule_problems="${rule_problems}${PROG}: --path ${shown_spec}: ${NO_SPEC_GATE_TOKEN}: no approval gate record for this draft as it is now; expected the spec approved at its gate (procedure-context references/spec.md)${NL}"
+}
+
+# Succeeds when a gate record of the effort labelled $1 passes jq test $2,
+# with $spec and $sha256 bound to $3 and $4; crucible.sh find lists the
+# records, and one it cannot read as JSON matches nothing. Its space fault
+# (exit 4) stays this script's space exit; any other failure is an install
+# fault.
+find_gate_record() {
+	if gate_records=$(sh "${crucible_script}" find --effort "${effort_dir}" --kind "${GATE_RECORD_KIND}" --label "$1" </dev/null); then
+		find_status=0
+	else
+		find_status=$?
+	fi
+	case ${find_status} in
+		0) ;;
+		4) die 4 "crucible.sh find could not read the effort's gate records; its stderr is above; expected a readable ${GATE_RECORD_KIND} folder; fix what it names, then rerun" ;;
+		*) die 5 "crucible.sh find failed on the effort's gate records (exit ${find_status}); its stderr is above; fix what it names, then rerun" ;;
+	esac
+	while IFS= read -r gate_record; do
+		[ -n "${gate_record}" ] || continue
+		jq -e --arg spec "${3:-}" --arg sha256 "${4:-}" "$2" "${gate_record}" </dev/null >/dev/null 2>&1 && return 0
+	done <<EOF
+${gate_records}
+EOF
+	return 1
 }
 
 # Runs git read-only in repo_root with the arguments given. Pathspec magic

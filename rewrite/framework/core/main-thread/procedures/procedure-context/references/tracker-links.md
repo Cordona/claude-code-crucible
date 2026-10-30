@@ -12,6 +12,6 @@ Run `read-link.sh --help` once, before its first use in a session, and not again
 Act on its exit, the same for both forms:
 
 - **Read-only** (SKILL.md Never).
-- **Exit 0:** stdout is the ticket; weigh it as the other entries. After v1, a ticket that changes the approved spec's goal, done-when or scope: run SKILL.md's The spec alone, for its revised spec's offer.
+- **Exit 0:** stdout is the ticket; weigh it as the other entries. After v1, a ticket that changes the approved spec's goal, done-when or scope, or, with a recorded skip, the work's: run SKILL.md's The spec alone, for its revised or new spec's offer.
 - **Exit 3:** not a tracker link: read it with WebFetch, guided by its why.
 - **Exit 1, any other exit, or the script missing** (`procedure-read-trackers` not installed): the link is not read; show the line `Link <the link, or n> was not read (read-link.sh exit <code>).`, as the line above is shown, and weigh the others without it. Exit 4 comes only from the `--context-file` form.

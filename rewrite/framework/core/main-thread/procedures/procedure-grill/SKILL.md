@@ -37,7 +37,7 @@ Run by the main thread. A **grill** helps the human decide what they want when t
 ## Always
 
 - **Relay last:** run every `grill.sh` call the reply needs first (`answer`, `status`, `end`, `ask`); the turn's last message then holds, word for word, every acknowledgement `grill.sh` printed this turn, then either the explanation the human asked for (no round that turn) or the next round, never both, and nothing else: no summary in your own words.
-- **On the turn the grill ends,** relay its acknowledgements in a message of their own before going back to `procedure-context`, whose discovery talk or "what next?" gate stays the turn's last message.
+- **On the turn the grill ends,** relay its acknowledgements in a message of their own before going back to `procedure-context`, whose discovery talk, spec gate or "what next?" gate stays the turn's last message.
 - **One `grill.sh` call at a time, never parallel Bash calls:** a call made while another runs is refused. Exit 7, with a `locked by` stderr line: wait for the other call to finish, then run it again, once; a second exit 7 with no call running: show the human the stderr, which says how to clear a stale lock, and stop.
 - **Pass every value to `grill.sh` in single quotes,** as CLAUDE.md sets.
 - **Writes only the grill file,** in the effort's `grills/` folder through `grill.sh`, **and the offer's plan file,** at the path `procedure-approval-gate` gives; the context version is `procedure-context`'s, and you never touch another effort's files or the repository.
