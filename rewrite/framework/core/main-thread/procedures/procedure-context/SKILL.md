@@ -1,6 +1,6 @@
 ---
 name: procedure-context
-description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use when an effort starts, when a link, note, file, answer, ended grill or spec enters an open effort, or on Resume. Settles contradictions and the spec, then asks what next; writes `context/`, spec drafts and scratchpad files. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`), a fix round (`flow-code-development`) or work outside an effort."
+description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use when an effort starts, when a link, note, file, answer, ended grill or spec enters an open effort, or on Resume. Settles contradictions and the spec, then asks what next; writes `context/`, spec drafts and scratchpad files. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`), an iteration (`flow-code-development`) or work outside an effort."
 user-invocable: false
 ---
 
@@ -18,7 +18,7 @@ Run by the main thread. An effort's **context** is what its work starts from: th
 - **Extend it** when something new enters a running effort after v1: the human adds a link, a note or a file; a contradiction found after v1 is settled; a plan answer that changes the context; a grill ends, the human's own ("I feel I need a grill") or one they accepted (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger (`flow-agent-initialization` step 10); extend only when the human asks.
 - **Settle the spec alone, after v1** (The spec below): a calling flow finds neither outcome in the latest version, or the human accepts a revised or new spec it offered; or the human's own ask ("I think we need to specify"), whatever the context holds.
 - **Find the latest version** on Resume, or when a flow loads this skill for an effort that already holds a version and nothing new enters (after a grill extended it, say): run Resume below; nothing is gathered again.
-- **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), a plan's plugins, or a change to a dispatched part's work, which travels in a fix round that `flow-code-development` owns (a revised spec goes through The spec).
+- **Not for** work with no effort (an answer, a lookup, CLAUDE.md's short path), a plan's plugins, or a change to a dispatched part's work, which travels in an iteration that `flow-code-development` owns (a revised spec goes through The spec).
 
 ## Never
 
@@ -102,7 +102,7 @@ Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/co
    - **"Stop here":** step 8's stop, `stopped: stopped after the context`; the context stays in the effort.
    - **A typed answer:** a reply, not a choice: answer it as the turn's last message, and hand nothing over yet, since the question closed the gate. At the human's next message, ask again from "To ask" above, unless their reply chose an option: then take that option.
 8. **Hand over, or report the stop,** to the calling flow:
-   - **Complete first:** before handing a version over, every file, link and path the human gave for the work outside a fix round is in it.
+   - **Complete first:** before handing a version over, every file, link and path the human gave for the work outside an iteration is in it.
    - **A version written or found:** one line, `CONTEXT_FILE: <path> · v<N> · added <n> · retired <n> · settled <n>`, `<path>` the absolute path exactly as `context.sh` printed it, never shortened with `…` or `~`; the entries this run added and retired and the contradictions it settled; never a copy of the entries. After an extension, also tell it the version changed.
    - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; step 3's stop is `stopped: context not settled`, step 7's "Stop here" is `stopped: stopped after the context`, each as it reads, and The spec's as `references/spec.md` sets, its step named `references/spec.md` step `<n>`.
 

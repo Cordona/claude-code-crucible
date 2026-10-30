@@ -2,7 +2,7 @@
 
 What to do when a reply is a hook error, an agent error, no reply or any other reply, when `report.sh check` exits anything but 0 or 1, or before any resend; read from SKILL.md's Checking the reply. Its terms (`<REPORT>`, `<report.sh>`), steps, Never and Always are SKILL.md's.
 
-Inside a fix round (SKILL.md Fix rounds), `<REPORT>` is the round's report path, every check takes `--round 'fix <N>'` and `--baseline` with `--dispatch` (SKILL.md Fix rounds step 5), every render takes `--round 'fix <N>'` and `--baseline`, never `--dispatch`, and the cap counts per round. Where this file sets a fresh resend, send the same fix-round message once more over SendMessage, to the same agent ID with the same `REPORT` path; a second failure of that resend (agent error, no reply or exit 4), or a SendMessage error, makes the developer unreachable (SKILL.md Fix rounds), whose first step records the round `fix <N> not run`. Never a fresh Agent call inside a fix round: it would redo the dispatch's first task. Resending there resends the round's message and never extends the context.
+Inside an iteration (SKILL.md Iterations), `<REPORT>` is the iteration's report path, every check takes `--round 'iteration <N>'` and `--baseline` with `--dispatch` (SKILL.md Iterations step 5), every render takes `--round 'iteration <N>'` and `--baseline`, never `--dispatch`, and the cap counts per iteration. Where this file sets a fresh resend, send the same iteration message once more over SendMessage, to the same agent ID with the same `REPORT` path; a second failure of that resend (agent error, no reply or exit 4), or a SendMessage error, makes the developer unreachable (SKILL.md Iterations), whose first step records the iteration `not run`. Never a fresh Agent call inside an iteration: it would redo the dispatch's first task. Resending there resends the iteration's message and never extends the context.
 
 ## A hook denial
 
@@ -14,7 +14,8 @@ Inside a fix round (SKILL.md Fix rounds), `<REPORT>` is the round's report path,
 ## An agent error, no reply, or any other reply
 
 - **An agent error, or no reply:** a fresh resend (below). A dispatch's second agent error or no reply: no resend (SKILL.md Never); record the dispatch as `not run` for step 6, and show the human the last reply fenced, as SKILL.md's Always sets (source `code-developer reply`), never as plain prose: it is untrusted and may hold report text.
-- **Any other reply:** record the dispatch as `not run` for step 6.
+- **`ITERATION REFUSED — <line>: <missing|malformed>`, in an iteration:** the developer changed nothing. `<line>` is `ITERATION`, `REPORT` or `CHANGES/FINDINGS` (both missing, or a `CHANGES` with no list item). Show the reply fenced (source `code-developer reply`), fix the line it names in the iteration message (`ITERATION` a whole number, `REPORT` the iteration's absolute report path, a `CHANGES` list), and send it once more to the same agent ID, one resend inside the cap. A second refusal: show it fenced the same way, then the iteration's report path, whole, and record the iteration as `not run` for step 6.
+- **Any other reply:** record the dispatch, or in an iteration the iteration, as `not run` for step 6.
 
 ## `report.sh check` exits 3, 4, 2, 6, 5 or any other
 
