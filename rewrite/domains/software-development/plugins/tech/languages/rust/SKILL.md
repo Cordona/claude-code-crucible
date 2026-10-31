@@ -1,6 +1,6 @@
 ---
 name: language-rust
-description: "Rust rules for Cargo crates: toolchain, errors, panics, casts, trait contracts, `unsafe`, async hazards, ownership, clippy, plus the developer's verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin, injected into the agent's first message when loaded. Writes nothing; the gate needs `cargo`, `rustfmt` and `clippy`. Not for Rust built only from another file (a Dockerfile `RUN`, a CI step) or rules every language shares (`code-developer`, standard plugins)."
+description: "Rust rules: toolchain, errors, panics, casts, std traits, `unsafe`, async, ownership, clippy, plus the developer's verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin. Its gate writes only Cargo's `target/` and what the tests write; needs `cargo`, `rustfmt` and `clippy`. Not for Rust driven only from another file (a Dockerfile `RUN`, a CI step), or rules every language shares (`code-developer`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,16 +9,17 @@ metadata:
 
 # Language: Rust
 
-The rules that are specific to Rust. Every role receives this file in its prompt. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
+The rules that are specific to Rust. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
 
 ## Scope
 
 - **In:** Rust crates and workspaces built with Cargo: libraries, binaries, CLIs, services and async applications.
+- **In:** code on a web framework with no plugin of its own, such as Axum.
 - **Out:** Rust driven only from another file, such as a Dockerfile `RUN cargo build` line or a CI step.
 
 ## Toolchain
 
-Settle it before writing a line. The first match wins:
+Settle it before writing a line. Take each fact from the first source below that sets it:
 
 1. `rust-toolchain.toml`, or `rust-toolchain`.
 2. `Cargo.toml`'s `rust-version` and `edition`; the workspace's `Cargo.toml` when the crate inherits them.
@@ -39,7 +40,7 @@ Read whether the crate is a library or a binary from `Cargo.toml` (`[lib]`, `[[b
 
 - **Integer overflow panics in debug and wraps silently in release:** pick `checked_*`, `saturating_*` or `wrapping_*` deliberately for any value that can pass its type's bounds.
 - **No lossy `as` cast at a boundary** (`usize as u32`, `i64 as i32`, float to int): use `TryFrom` or `try_into`, so an out-of-range value is an error, not silent corruption.
-- **An overflow with a security consequence** (fraud, over-allocation, an out-of-bounds index) is a security concern, not only arithmetic.
+- **An overflow with a security consequence** (fraud, over-allocation, an out-of-bounds index) is a correctness defect with a security harm, not only arithmetic.
 
 ## std trait contracts
 
@@ -53,7 +54,7 @@ A broken contract silently corrupts `HashMap`, `BTreeMap` and sorts, whatever th
 ## `unsafe`
 
 - **Avoid `unsafe`.** Where it is unavoidable, uphold and document its invariants in a `# Safety` section, and wrap it in a safe API: no safe caller can reach undefined behaviour (UB).
-- **FFI: a panic crossing an `extern "C"` boundary is UB:** wrap the exported function's body in `catch_unwind`; set `panic = "abort"` instead only when the whole binary may abort on any panic.
+- **FFI: a panic crossing an `extern "C"` boundary is UB:** wrap the exported function's body in `catch_unwind`; set `panic = "abort"` instead only when the whole binary may abort on any panic and the task covers that `Cargo.toml` profile change.
 
 ## Concurrency and async
 
@@ -105,7 +106,7 @@ When async is in play:
 - **Secrets in memory:** `secrecy` and `zeroize`.
 - **Supply chain:** `cargo-audit`, and pinned dependencies.
 - **Tracing:** `tracing` spans with structured fields, through `tracing-subscriber`, with context carried across `.await`.
-- **Docs:** `///` doc comments and doc-tests on public items.
+- **Docs:** `///` on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it, with a doc-test where it has an example.
 - **Persistence:**
   - explicit `sqlx` or Diesel transactions;
   - `SELECT … FOR UPDATE` or a version column against lost updates;
@@ -115,13 +116,14 @@ When async is in play:
 
 ## Lints
 
-- **Clippy-clean under `clippy::all` and `clippy::pedantic`, and `rustfmt`-clean, is the bar.**
-- **Name each issue by its lint name** (`clippy::<lint>`).
-- **Every `#[allow(clippy::…)]` carries its written reason:** an unexplained allow is a defect.
+- **Compile with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
+- **Clippy (`clippy::all`, `clippy::pedantic`) with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
+- **Name each issue by its lint name** (`clippy::<lint>`): a finding with no id can't be matched against the baseline the gate compares to.
+- **Every `#[allow(…)]` and `#[expect(…)]`, rustc's and Clippy's alike, carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
 
 ## Version ledger
 
 | Fact | Value | Last verified |
 |---|---|---|
-| Default edition (Toolchain step 4) | 2024 | 2026-10-24, `cargo new` default edition on cargo 1.92.0, macOS |
+| Default edition (Toolchain step 4) | 2024 | 2026-10-24, `cargo new` (cargo 1.92.0), macOS |
 | Latest stable `rustc` | 1.99.1, released 2026-10-13 | 2026-10-24, `rustup check`, macOS |

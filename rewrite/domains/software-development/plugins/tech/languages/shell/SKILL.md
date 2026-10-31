@@ -1,6 +1,6 @@
 ---
 name: language-shell
-description: Shell (Bash and POSIX `sh`) rules for writing scripts — the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. A language plugin, injected into the agent's first message when loaded. Writes nothing; the gate needs `shellcheck`. Not for shell embedded in another file (a Dockerfile `RUN`, a CI step), or for rules every language shares (`code-developer` and the standard plugins).
+description: "Shell rules: the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the developer's verification gate. Use when writing or reviewing Bash or POSIX `sh` scripts. A language plugin. Its gate writes only what the project's own tests write; needs `shellcheck` and `bash` or `sh`. Not for shell driven only from another file, native Windows `cmd` or PowerShell, or rules every language shares (`code-developer`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -9,21 +9,27 @@ metadata:
 
 # Language: Shell script
 
-The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its prompt. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
+The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
 
 ## Scope
 
 - **In:** standalone scripts and sourced libraries run by `bash` or `sh`. Each runs on Linux, macOS, and Windows under Git Bash and WSL, unless the first message names fewer platforms.
 - **Out:** shell embedded in another file, such as a Dockerfile `RUN` line or a CI step, and native Windows `cmd` and PowerShell.
 
-## Target shell
+## Toolchain
 
-Settle it before writing a line. The first match wins:
+Settle it before writing a line. Take each fact from the first source below that sets it:
 
 1. The file's own shebang.
 2. For a new file, the shebang of its sibling scripts. Siblings on `#!/usr/bin/env sh` mean POSIX `sh`.
 3. What the project's own docs on its shell code say, where the task's context lists them.
-4. Otherwise Bash, with `#!/usr/bin/env bash`. Whichever shell wins, the script runs on every platform Scope names.
+4. Otherwise Bash, with `#!/usr/bin/env bash` (see Version ledger). Whichever shell wins, the script runs on every platform Scope names.
+
+## Injection
+
+- **`eval`, `bash -c "$x"` and `sh -c "$x"` run whatever `$x` holds:** never hand them untrusted input.
+- **Arithmetic runs commands hidden in its operand:** `(( ))`, `[[ $a -eq $b ]]`, an array subscript and `declare -i` all do. With `n='x[0$(id)]'`, `(( n ))` runs `id`.
+- **Validate untrusted input as a strict integer** before any arithmetic sees it: `[[ $n =~ ^[0-9]+$ ]]` in Bash, `case $n in ''|*[!0-9]*) die …;; esac` in `sh`.
 
 ## Quoting, expansion and comparisons
 
@@ -55,12 +61,6 @@ Settle it before writing a line. The first match wins:
 - **Forking a process per input line is slow:** a `while read` loop that calls `sed`, `grep` or `awk` on each line starts one process per line. Use one `awk`, `sed` or `grep` over the whole input.
 - **Under `set -u`,** take a required value with `${var:?message}` and an optional one with `${var:-default}`.
 
-## Injection
-
-- **`eval`, `bash -c "$x"` and `sh -c "$x"` run whatever `$x` holds:** never hand them untrusted input.
-- **Arithmetic runs commands hidden in its operand:** `(( ))`, `[[ $a -eq $b ]]`, an array subscript and `declare -i` all do. With `n='x[0$(id)]'`, `(( n ))` runs `id`.
-- **Validate untrusted input as a strict integer** before any arithmetic sees it: `[[ $n =~ ^[0-9]+$ ]]` in Bash, `case $n in ''|*[!0-9]*) die …;; esac` in `sh`.
-
 ## Temp files and leak surfaces
 
 - **Create temp files with `mktemp`** and remove them in the `EXIT` trap. A fixed or guessable name invites symlink and race attacks.
@@ -87,14 +87,15 @@ Settle it before writing a line. The first match wins:
 - **Write each path in its exact case:** the wrong case works on Windows and macOS and breaks on Linux.
 - **A tool can be missing or differ under Git Bash** (no `rsync`; `ping` is Windows' own, counting with `-n`): check it with `command -v` and stop with a message naming it; branch on `uname -s` only where a Git Bash stand-in exists.
 
-## Shellcheck
+## Lints
 
-- **Shellcheck-clean is the bar.**
-- **Name each issue by its SC code.**
-- **Every `# shellcheck disable=SCnnnn` carries its reason:** an unexplained disable is a defect.
+- **Syntax-check with no new error:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
+- **Shellcheck (`-o all`) with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
+- **Name each issue by its SC code** (`SC2086`): a finding with no id can't be matched against the baseline the gate compares to.
+- **Every `# shellcheck disable=SCnnnn` carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
 
 ## Version ledger
 
 | Fact | Value | Last verified |
 |---|---|---|
-| macOS `/bin/bash` | 3.2.57 | 2026-10-14, macOS 26.5.2 |
+| macOS `/bin/bash` | 3.2.57 | 2026-10-31, `/bin/bash --version`, macOS 27.2 |
