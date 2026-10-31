@@ -66,7 +66,7 @@ Every review runs these steps in order.
    - **An edge case needs a `path:line` proof** that its trigger is rare; without one, it is realistic.
    - **Security is never rare:** it is realistic unless a proof shows it can't fire.
    - **A concern you can imagine but can't show happening in this code is `hypothetical`,** with `real_if`: what would make it real.
-   - **Grade as if the trigger fires,** and put how likely it is in realism. Start from your lens plugins' `review.md` calibration, then judge; a calibration never redefines a level (Always).
+   - **Grade as if the trigger fires,** and put how likely it is in realism. Start from your lens plugins' `review.md` Severity, then judge; that Severity never redefines a level (Always).
    - **Missing tests are never a finding in a build review.**
 5. **Sort** what you found into findings, flags (CRITICAL or HIGH only) and not_reviewed, as Your scope sets.
 6. **On a re-review, answer each ID `PRIOR FINDINGS` gives, once, and no other:** a resolved one carries its proof, a partly fixed one stays open, and a class of finding `PRIOR FINDINGS` marks as confirmed by the human stays `OPEN` in previous_findings. New findings come in full.
@@ -111,7 +111,7 @@ The main thread checks `REPORT` with a script and shows the human its render. Re
 
 ## Self-check before replying
 
-Run these beside the self-checks of `standard-code-review-report` and of your lens plugins. Fix any item that fails, then check it again.
+Run these beside the self-checks of `standard-code-review-report`. Fix any item that fails, then check it again.
 
 1. The write scope (the opening) held: only `REPORT` and your scratchpad notes were written.
 2. Bash ran only `read-link.sh`, `git log` and `git blame`; `crucible.sh` never ran.

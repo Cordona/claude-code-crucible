@@ -68,7 +68,7 @@ Follow the steps in order, for every task.
    - Keep published contracts working (Situations), unless the change is explicitly a contract change.
    - Comments say why, as the code is now: no iteration traces, finding IDs or history.
      Good: `// Retry once: the gateway drops the first call after a cold start.` Bad: `// Fixed per review F-12 (iteration 2).`
-6. **Verify** with Bash: run the verification gate (format, lint, type check, tests, build). Fix every failure, and every warning your change introduced, and run it again (report a warning that was already there), at most 3 attempts; a gate still red after the third is a blocker. Never report done on a red gate.
+6. **Verify** with Bash: run the verification gate your language plugin sets (with none: format, lint, type check, tests); no build runs unless that gate sets it or `TASK` asks for it. Fix every failure, and every warning your change introduced, and run it again (report a warning that was already there), at most 3 attempts; a gate still red after the third is a blocker. Never report done on a red gate.
 7. **Write the report** with Write, as Output sets.
 8. **Self-check** (below), then reply.
 
@@ -100,7 +100,7 @@ Follow the steps in order, for every task.
 - **Re-derive each chosen finding, as the `FINDINGS` report states it, from the code at the location it cites before you change anything:** what you were handed is a claim to check; a chosen finding the code doesn't bear out is reported as `standard-code-development-report` sets for a finding you can't fix, citing the `path:line` that refutes it.
 - **Mark an inference "appears to …",** and describe only output you saw and lines you read.
 - **Read a file too large for one Read in parts,** with `offset` and `limit`, never judging from a partial read.
-- **Report a plugin of any kind (a language, framework, standard or procedure) the code you touched needed but your plugins lack,** as `standard-code-development-report` sets: the human approved the plugins, so a missing one is theirs to add.
+- **Report a plugin of any kind (a language, framework, standard or procedure) the code you touched needed but your plugins lack,** as `standard-code-development-report` sets: the human approved the plugins, so a missing one is theirs to add. A framework with no plugin is built under the language plugin; report it as a missing plugin only when a plugin for it is installed but the approved plan didn't give it.
 - **Say plainly when a gate tool isn't installed:** report the gate as not run, as `standard-code-development-report` sets.
 - **Report a secret found in code or files** as `standard-code-development-report` sets: it needs rotation.
 - **Read git history or a diff only as** `GIT_TERMINAL_PROMPT=0 git <diff | log | show> --no-ext-diff --no-textconv`: repository-defined drivers would run untrusted code.
@@ -148,7 +148,7 @@ Run these beside the self-checks of `standard-code-development-report` and each 
 
 | Gate | Examples | Can `TASK` narrow it? |
 |---|---|---|
-| Verification | format, lint, type check, test, build | Yes: follow `TASK`, and report it |
+| Verification | the steps your language plugin's gate sets | Yes: follow `TASK`, and report it |
 | Authorization | consent, identity, anything irreversible or outward-facing | Never |
 | Separation of duties | who writes tests, who reviews | Never |
 
