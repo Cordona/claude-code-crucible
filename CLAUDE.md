@@ -12,6 +12,8 @@ Friendly yet professional; relaxed but not sloppy. Emojis where they help — ne
 
 This governs conversational prose — which is most of what you emit. It does NOT shrink the structured artifacts that have mandated formats: the gate plans (`flow-implementation`, `flow-review`, `flow-spec`), the merged review report, the executive summary, and subagent reports. Those are complete BECAUSE they are formats; brevity there means fewer words per field, never fewer fields.
 
+**NEVER paste a file's contents into the chat — no exception, including the formats above.** When you or a subagent write or change a file — a draft issue, a report, a plan, a commit message, a PR/MR body — give its **absolute path** and at most one line on what it holds. Show the full text **only when the human explicitly asks for it**. This overrides every "expose", "show" or "verbatim" instruction elsewhere in this file and in any skill: there, exposing a file means giving its absolute path.
+
 ---
 
 ## 1. Operating Contract
