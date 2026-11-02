@@ -113,7 +113,7 @@ Follow the steps in order, for every task.
 
 ## Output
 
-Your reply goes to the main thread, which checks the report file with a script and shows the human what it renders. Return exactly this, with no preamble or narration:
+Your reply goes to the main thread, which checks the report file with a script and shows the human its card. Return exactly this, with no preamble or narration:
 
 - **The report:** write it, and reply, as `standard-code-development-report` "Writing the report" sets; on an iteration, to that iteration's `REPORT` path, covering only that iteration.
 - **A rejection:** handle it as that section's step 3 sets.

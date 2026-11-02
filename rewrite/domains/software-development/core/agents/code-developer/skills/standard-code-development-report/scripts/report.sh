@@ -1,21 +1,22 @@
 #!/usr/bin/env sh
 # Checks the developer's report JSON, stamps what its dispatch file knows into
-# it on a pass, and renders that one report for the human. The jq validator below owns the report's shape (there is no schema file): the
+# it on a pass, and prints the human's card for that one report. The jq
+# validator below owns the report's shape (there is no schema file): the
 # report standard's field table documents it, --help points there, the
 # validator wins where they differ, and doc-check compares the table with it.
-# The human views go through human-view's view.jq and paths.jq.
+# The card goes through human-view's view.jq, paths.jq and title.jq.
 set -eu
 
 readonly PROG='report.sh'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly newline='
 '
 # A LABELS line names one language, its frameworks and a handful of standards
 # and procedures, well under this; a bigger file is not the hand-back's line.
 readonly MAX_LABELS_BYTES=1000
-# Definitions the check and the render share: how git's changes compare with
-# the report's files lists. $git and $baseline hold `git status --porcelain -z`
+# Definitions the check and the card share: how git's changes compare with
+# the report's files lists (the card reads only the lists). $git and $baseline hold `git status --porcelain -z`
 # output with each NUL turned into \u0001 ($have_git false when no repo was
 # given); $baseline is the tree before the dispatch, and a path changed there
 # (or under a folder it lists, ending in /) is left out of the comparison.
@@ -65,16 +66,26 @@ def open_of($kind): [objects_of("open")[] | select(.kind == $kind)];
 
 # The stamp shapes, from flow-agent-initialization's dispatch-names.jq (-L its
 # folder): the dispatch stamp is a Crucible ID, started and finished local times.
+# The keys check --dispatch writes into the report on a pass; the agent never
+# does. plugins is left out when the dispatch loaded no plugin.
+# shellcheck disable=SC2016 # a jq program: its $ signs are jq's
 readonly STAMP_JQ='include "dispatch-names";
 def stamp_id_ok: type == "string" and test(crucible_id_pattern);
 def stamp_time_ok: type == "string" and test(local_time_pattern);
+def stamp_keys: ["dispatch", "started", "finished", "mode", "plugins"];
+def required_stamp_keys: stamp_keys - ["plugins"];
+def stamped: type == "object" and (. as $report | all(required_stamp_keys[]; . as $key | $report | has($key)));
 '
 
-# The shape check, which check prints and render shows: `problems` is an array
+# The shape check, whose problems check and card print: `problems` is an array
 # of "<field>: <what>; expected <x>" lines. Every value taken from the report
 # goes through `shown`, so a problem line never holds a newline. $findings_mode
 # is "given" (an iteration given findings, IDs in $findings_text), "none" (review_responses is
-# refused) or "unchecked" (render, which has no findings file).
+# refused) or "unchecked" (card, which has no findings file). $round is check's
+# --round ("" when not given). $write_rules is false only for card on a stamped
+# report: the text, word and item caps and the at of a found item bind when a
+# report is written, so a rule changed later never refuses a report that met
+# it then.
 # shellcheck disable=SC2016
 readonly SHAPE_JQ='
 # One sentence or a path:line with context fits; more is copied text, not a report.
@@ -95,10 +106,6 @@ def required_keys: ["summary", "toolchain", "files", "deviations", "behavior", "
 def optional_keys: ["focus", "decisions", "noticed", "open", "blockers", "review_responses"];
 def reserved_keys: ["untested", "repaired", "mutation"];
 def never_written_keys: ["round", "labels", "LABELS"];
-# The keys check --dispatch writes into the report on a pass; the agent never
-# does. plugins is left out when the dispatch loaded no plugin.
-def stamp_keys: ["dispatch", "started", "finished", "mode", "plugins"];
-def required_stamp_keys: stamp_keys - ["plugins"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
 def item_fields: {
 	deviations: {required: ["from", "what", "why"], optional: []},
@@ -119,10 +126,11 @@ def enums: {
 	"review_responses.status": ["fixed", "not_fixed", "blocked"]};
 def bool_fields: ["behavior.checked", "behavior.fix"];
 def location_fields: ["behavior.at", "focus.at", "noticed.at", "open.at", "blockers.location"];
-# The prose the human view shows as an item, never cut: one past max_text is
-# sent back to be rewritten as one shorter sentence; a location or a command
-# past it, to be written shorter.
-def rendered_text_fields: ["deviations.what", "deviations.why", "noticed.what", "open.text", "blockers.detail", "review_responses.note"];
+# The problem line of a value past its cap ends with how to shorten it (length_hint):
+# these prose fields, each one item a reader takes in whole, are rewritten as
+# one shorter sentence; a location (at, location, ref) or a verification
+# command is written shorter.
+def sentence_fields: ["deviations.what", "deviations.why", "noticed.what", "open.text", "blockers.detail", "review_responses.note"];
 def shorter_fields: location_fields + ["open.ref", "verification.command"];
 
 def among($list): . as $value | any($list[]; . == $value);
@@ -157,12 +165,12 @@ def value_problem($name):
 	if enums[$name] then (if type == "string" and among(enums[$name]) then empty else "\(shown) is not a known value" end)
 	elif $name | among(bool_fields) then (if type == "boolean" then empty else "a JSON \(type)" end)
 	elif text_ok | not then (if type == "string" then "empty" else "a JSON \(type)" end)
-	elif length > max_text then "\(length) characters"
+	elif $write_rules and length > max_text then "\(length) characters"
 	elif ($name | among(location_fields)) and absolute then "an absolute path"
 	else empty end;
 def length_hint($name):
 	if test("^[0-9]+ characters$") | not then ""
-	elif $name | among(rendered_text_fields) then "; rewrite it as one shorter sentence"
+	elif $name | among(sentence_fields) then "; rewrite it as one shorter sentence"
 	elif $name | among(shorter_fields) then "; write it shorter"
 	else "" end;
 def field_line($loc; $name): value_problem($name) | "\($loc): \(.); expected \(expected($name))\(length_hint($name))";
@@ -176,6 +184,8 @@ def cross_problems($list; $loc):
 		 | "\($loc).command: chains commands with \(join(" and ")); expected one command per item")
 	elif $list == "open" and .kind == "could_not" and (has("ref") | not) then
 		"\($loc).ref: missing on kind could_not; expected the context entry it names"
+	elif $write_rules and $list == "open" and (.kind | among(uncapped_kinds)) and (has("at") | not) then
+		"\($loc).at: missing on kind \(.kind); expected where it appeared, in a location form"
 	elif $list == "review_responses" and .status == "not_fixed" and (has("note") | not) then
 		"\($loc).note: missing on not_fixed; expected why it was not fixed"
 	else empty end;
@@ -197,14 +207,14 @@ def key_problems:
 	(required_keys + optional_keys) as $known
 	| ((keys - $known - stamp_keys)[] as $key
 		| if $key | among(reserved_keys) then "\($key): reserved for the TEST mode; expected it left out on BUILD"
-		  elif $key | among(never_written_keys) then "\($key): written into the report; expected it left out: never write round or LABELS (the script stamps the round into the render, and LABELS comes from the hand-back)"
+		  elif $key | among(never_written_keys) then "\($key): written into the report; expected it left out: never write round or LABELS (check takes the round as --round, and LABELS comes from the hand-back)"
 		  else "\($key | shown_key): unknown key; expected only \($known | names)" end),
 	  (required_keys[] as $key | select(has($key) | not) | "\($key): missing; expected the key, as the report standard\u0027s field table shows");
 # check ($stamp_check "check") refuses every stamp key a report holds: the flow
 # checks a report before stamping it and never checks a stamped one again, so a
-# stamp key at a check was written by the agent. render ("render") takes the
-# set (plugins optional) when each key has the shape of a stamp, and refuses a
-# part set.
+# stamp key at a check was written by the agent. card ("card") takes the set
+# (plugins optional) when each key has the shape of a stamp, and refuses a part
+# set.
 def stamp_rule: "the agent never writes \(stamp_keys | names); report.sh check --dispatch stamps them on a pass, and a stamped report is never checked again";
 def plugin_names_ok($kind):
 	if $kind == "language" then text_ok
@@ -224,20 +234,20 @@ def stamp_problems:
 	. as $report
 	| [stamp_keys[] | select(. as $key | $report | has($key))] as $present
 	| if ($present | length) == 0 then empty
-	  elif $stamp_check == "render" and all(required_stamp_keys[]; among($present)) then stamp_shape_problems
+	  elif $stamp_check == "card" and all(required_stamp_keys[]; among($present)) then stamp_shape_problems
 	  else $present[] | "\(.): written into the report; expected it left out: \(stamp_rule)" end;
 
 # A stamped report was written through prune, which left out a required key
-# that held only empty lists; render reads such a key as empty again.
+# that held only empty lists; card reads such a key as empty again.
 def as_written:
-	if $stamp_check == "render" and type == "object" and (. as $report | all(required_stamp_keys[]; . as $key | $report | has($key)))
+	if $stamp_check == "card" and stamped
 	then {files: {created: [], modified: [], deleted: []}, deviations: []} * .
 	else . end;
 
 def summary_problems:
 	if has("summary") | not then empty
 	elif .summary | text_ok | not then "summary: not a non-empty string; expected what changed, in at most \(max_words) words"
-	elif (.summary | word_count) > max_words then "summary: \(.summary | word_count) words; expected at most \(max_words)"
+	elif $write_rules and (.summary | word_count) > max_words then "summary: \(.summary | word_count) words; expected at most \(max_words)"
 	else empty end;
 def toolchain_problems: select(has("toolchain")) | .toolchain | field_line("toolchain"; "toolchain");
 def file_path_problems($loc):
@@ -264,7 +274,7 @@ def list_problems($key):
 	elif (.[$key] | type) != "array" then "\($key): a JSON \(.[$key] | type); expected an array of objects"
 	else
 		(if (.[$key] | length) == 0 and ($key | among(optional_keys)) then "\($key): empty; expected the key left out when it has no item" else empty end),
-		(caps[$key] as $cap | select($cap != null)
+		(caps[$key] as $cap | select($write_rules and $cap != null)
 			| [.[$key][] | select($key != "open" or (type != "object" or (.kind | among(uncapped_kinds) | not)))] | length
 			| select(. > $cap)
 			| "\($key): \(.) items\(if $key == "open" then " (instruction_found and secret_found not counted)" else "" end); expected at most \($cap)"),
@@ -312,12 +322,17 @@ def context_refs:
 	| ($context.notes // [] | arrays) as $notes
 	| [($paths[] | objects | .path | strings), ($links[] | objects | .url | strings),
 	   ($paths | keys[] | "paths[\(. + 1)]"), ($links | keys[] | "links[\(. + 1)]"), ($notes | keys[] | "notes[\(. + 1)]")];
+# An iteration never extends the context, so work it skipped from its change
+# list is named by the CHANGES field of the first message instead.
+def iteration_ref: "message: CHANGES";
 def context_problems:
-	if $context == null or (.open | type) != "array" then empty
-	else context_refs as $refs
+	($round | startswith("iteration ")) as $iteration
+	| if $context == null or (.open | type) != "array" then empty
+	else (context_refs + (if $iteration then [iteration_ref] else [] end)) as $refs
 		| .open | to_entries[] | .key as $index | .value
 		| select(type == "object" and .kind == "could_not" and (.ref | type) == "string" and (.ref | among($refs) | not))
 		| "open[\($index)].ref: \(.ref | shown) names no context entry; expected a paths[].path or links[].url of the context file, or \(context_positions)"
+			+ (if $iteration then ", or \(iteration_ref) for work skipped from the iteration\u0027s change list" else " (\(iteration_ref) only in an iteration, check --round)" end)
 	end;
 
 def count_line:
@@ -352,7 +367,7 @@ def key_order: ["dispatch", "started", "finished", "mode", "plugins", "toolchain
 | prune
 '
 
-# An iteration's baseline, which `baseline` writes and check and render read:
+# An iteration's baseline, which `baseline` writes and check reads:
 #   {"repo_root": <the repo>, "entries": [<git status entry, "XY <path>">, ...],
 #    "fingerprints": {"<path>": <git hash-object of it>, ...},
 #    "dispatch": <dispatch file>, "report": <the iteration's report>,
@@ -538,117 +553,119 @@ def text_differences:
 table_differences, stamp_differences, text_differences
 '
 
-# Text helpers. Tolerant of a broken shape, since the main thread renders an
-# invalid report once the resends run out: its problems show as report
-# problems, a value of the wrong type prints as its JSON, a list of the wrong
-# type as no items.
+# The card's own rules for the main thread's lines: each is the text of one
+# Markdown list item, so it may never open a block of its own; bold (**) is
+# inline, not a list mark.
 # shellcheck disable=SC2016
-readonly RENDER_JQ='
+readonly CARD_RULES_JQ='
+def card_keys: ["do", "decide"];
+# A handful of lines stays one glance; more belongs in a conversation.
+def card_max_lines: 5;
+# About two lines of a terminal: one instruction or one question with its stake.
+def card_max_text: 240;
+def card_line_expected: "one line of at most \(card_max_text) characters, not starting with #, -, >, a * list mark or a number and a dot";
+def card_line_problem:
+	if type != "string" then "a JSON \(type)"
+	elif text_ok | not then "empty"
+	elif test("[[:cntrl:]\u0085  ]") then "holds a line break, tab or other control character"
+	elif length > card_max_text then "\(length) characters"
+	elif test("^[[:space:]]*([#>-]|[0-9]+[.]|[*]([[:space:]]|[*]*[[:space:]]*$))") then "starts with a heading, list or quote mark"
+	else empty end;
+def card_list_problems($key):
+	if has($key) | not then "\($key): missing; expected an array of 0 to \(card_max_lines) lines ([] when none)"
+	elif (.[$key] | type) != "array" then "\($key): a JSON \(.[$key] | type); expected an array of 0 to \(card_max_lines) lines"
+	else (.[$key] | length | select(. > card_max_lines) | "\($key): \(.) lines; expected at most \(card_max_lines)"),
+		(.[$key] | to_entries[] | .key as $index | .value | card_line_problem
+			| "\($key)[\($index)]: \(.); expected \(card_line_expected)")
+	end;
+def card_problems($blockers):
+	if type != "object" then "card: a JSON \(type); expected {\"do\": [lines], \"decide\": [lines]}"
+	else ((keys - card_keys)[] | "\(shown_key): unknown key; expected only do and decide"),
+		(card_keys[] as $key | card_list_problems($key)),
+		(if $blockers > 0 and .do == [] and .decide == []
+		 then "do/decide: both empty while the report has \($blockers) blocker\(if $blockers == 1 then "" else "s" end); expected at least one line telling the human what to do or decide"
+		 else empty end)
+	end;
+'
+
+# The card of one report that passed the shape check, laid out with
+# human-view's helpers: every item on its own line, each value from the report
+# with its control characters made spaces so it cannot add one.
+# shellcheck disable=SC2016
+readonly CARD_VIEW_JQ='
 def txt: if type == "string" then . elif . == null then "" else tojson end
-	| gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
-def bare: txt | sub("[.]+$"; "");
-# A command shown inside prose, whole, the home folder as ~ (paths.jq).
-def command_span: txt | home_form($home) | link_span;
+	| gsub("[[:cntrl:]\u0085  ]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
+def words: txt | gsub("_"; " ");
 # A location in the repo-relative path:line form; the other forms (an absolute
 # or ~ path, message:, commit, a context ref, a URL, a plugin name and file) are
 # not in the repo.
 def in_repo_form: (startswith("/") or startswith("~")
 	or test("^(message: |commit |(paths|links|notes)\\[)") or contains("://")
 	or test("^(language|framework|standard|procedure)-[a-z0-9-]+([ :/]|$)")) | not;
-# A location as the human may open it: a repo-relative one joined to repo root
-# $root, every one whole, never cut or shortened.
-def whole_location($root): txt
-	| if $root != "" and in_repo_form then ($root | rtrimstr("/")) + "/" + ltrimstr("./") else . end
-	| link_span;
-'
+# A location whole, a repo-relative one joined to repo root $repo_root ("" when
+# not found: then as written).
+def place: txt
+	| if $repo_root != "" and in_repo_form then ($repo_root | rtrimstr("/")) + "/" + ltrimstr("./") else . end
+	| path_text;
+def counted($count; $one; $many): "\($count) \(if $count == 1 then $one else $many end)";
+def items: map("- " + .) | join("\n");
+def headed($heading; $lines): "**\($heading)**\n" + ($lines | items);
+def counted_section($heading; $lines):
+	if ($lines | length) == 0 then "" else headed("\($heading) (\($lines | length))"; $lines) end;
+def open_kinds: [["assumption", "assumption", "assumptions"], ["could_not", "could not do", "could not do"],
+	["missing_plugin", "missing plugin", "missing plugins"], ["contract_break", "contract break", "contract breaks"],
+	["gate_refused", "gate refused", "gates refused"]];
 
-# The developer summary of one report, laid out with human-view's view.jq.
-# Needs you holds what the human acts on, by kind in a fixed order; every kind
-# lists its first items so the view stays one screen, and the report file
-# holds the rest. No item is ever cut: check holds each text to its cap.
-# shellcheck disable=SC2016
-readonly VIEW_JQ='
-def kind_cap: 5;
-# A location, whole (joined to repo root $root when repo-relative), then the text.
-def item($at; $text; $root):
-	(if ($at | txt) == "" then "" else "\($at | whole_location($root)): " end) + ($text | txt);
-# A gate that failed without blocking, its command shown for recognition.
-def failed_gate: "check failed: \(.gate | txt)" + (if (.command | txt) == "" then "" else " (\(.command | command_span))" end);
-# The summary as shown; "" for a report whose summary is not a string.
-def summary_text: .summary | if type == "string" then txt else "" end;
-def noted($label; $text): if ($text | txt) == "" then $label else "\($label): \($text | txt)" end;
-
-# Each kind: its singular and plural heading, what follows a list past its cap,
-# whether it is uncapped, and its items.
-def needs_groups($problems; $root):
-	[{one: "Report problem", many: "Report problems", rest: "more",
-	  items: [$problems[] | item(null; .; $root)]},
-	 {one: "Blocked", many: "Blocked",
-	  items: [objects_of("blockers")[] | item(.location; .detail; $root)]},
-	 {one: "Instruction found", many: "Instructions found", uncapped: true,
-	  items: [open_of("instruction_found")[] | item(.at; .text; $root)]},
-	 {one: "Secret found", many: "Secrets found", uncapped: true,
-	  items: [open_of("secret_found")[] | item(.at; .text; $root)]},
-	 {one: "Deviation", many: "Deviations",
-	  items: [objects_of("deviations")[] | item(null; (.what | bare) + (if (.why | txt) == "" then "" else " (\(.why | bare))" end); $root)]
-		+ [open_of("gate_refused")[] | item(.at; noted("gate kept"; .text); $root)]
-		+ [open_of("contract_break")[] | item(.at; noted("contract break"; .text); $root)]
-		+ [objects_of("review_responses")[] | select(.status == "not_fixed") | item(null; noted("\(.id | txt) not fixed"; .note); $root)]
-		+ [objects_of("verification")[] | select(.result == "fail") | failed_gate]},
-	 {one: "Assumption", many: "Assumptions",
-	  items: [open_of("assumption")[] | item(null; .text; $root)]},
-	 {one: "Not read or not done", many: "Not read or not done",
-	  items: [open_of("could_not")[] | item(.ref // .at; .text; $root)]},
-	 {one: "Missing plugin", many: "Missing plugins",
-	  items: [open_of("missing_plugin")[] | item(.at; .text; $root)]},
-	 {one: "Noticed", many: "Noticed",
-	  items: [objects_of("noticed")[] | item(.at; .what | bare; $root)]
-		+ [file_mismatches[] | item(.path; .note // "changed, not in the report"; $root)]}];
-def item_count: map(.items | length) | add // 0;
-# $spec is the kind: an uncapped one (the report standard never caps
-# instructions or secrets found) lists every item.
-def kind_section($name; $plural; $items; $spec):
-	($items | length) as $count
-	| (if $spec.uncapped then $count else kind_cap end) as $cap
-	| section($name; $plural; $items[:$cap])
-	  + (if $count > $cap then "\n+\($count - $cap) \($spec.rest // "more in the report")" else "" end);
-def need_tail($count; $blocked):
-	if $count == 0 then ""
-	elif $count == 1 then (if $blocked then "needs you" else "1 item needs you" end)
-	else "\($count) items need you" end;
-
-def is_blocked: objects_of("blockers") | length > 0;
-def file_counts:
+def count_lines:
 	listed_files as $files
-	| [["created", "Created"], ["modified", "Modified"], ["deleted", "Deleted"]]
-	| map(.[0] as $label | [.[1], ([$files[] | select(.label == $label)] | length)]);
-def changed_count: map(.[1]) | add;
-
-# The title state: blocked, report invalid (it has shape problems), both, or done.
-def title_state($blocked; $problems):
-	[(if $blocked then "blocked" else empty end), (if ($problems | length) > 0 then "report invalid" else empty end)]
-	| if length == 0 then "done" else join(" · ") end;
-def developer_view($problems; $title; $repo; $path):
-	needs_groups($problems; $repo) as $groups
-	| ($groups | item_count) as $count
-	| is_blocked as $blocked
-	| file_counts as $counts
-	| [status_line(null; "\($title | txt) · \(title_state($blocked; $problems))"; need_tail($count; $blocked)),
-	   (if $blocked and ($counts | changed_count) == 0 then "" else section("Achieved"; [summary_text | select(. != "")]) end),
-	   (if $count == 0 then "" else "**Needs you**" end),
-	   ($groups[] | kind_section(.one; .many; .items; .)),
-	   field_section("**Files**" + (if $repo == "" then "" else " · repo \($repo | txt | link_span)" end); $counts),
-	   data_section([["Report", $path | txt]])]
+	| ([$files[] | select(.label == "created")] | length) as $created
+	| ([$files[] | select(.label == "deleted")] | length) as $deleted
+	| [$files | length | select(. > 0) | counted(.; "file changed"; "files changed")
+		+ (if $created > 0 then ", \($created) new" else "" end)
+		+ (if $deleted > 0 then ", \($deleted) deleted" else "" end)]
+	+ [open_kinds[] as [$kind, $one, $many] | open_of($kind) | length | select(. > 0) | counted(.; $one; $many)];
+# A gate run more than once is told apart by its command.
+def gate_lines:
+	objects_of("verification") as $gates
+	| [$gates[] | .gate | txt] as $names
+	| [$gates[] | (.gate | txt) as $gate
+		| (if .result == "pass" then "✅ \($gate)"
+		   elif .result == "fail" then "⛔ \($gate)"
+		   elif (.note | txt) == "" then "⚠️ \($gate)"
+		   else "⚠️ \($gate): \(.note | txt)" end)
+		+ (if ([$names[] | select(. == $gate)] | length) > 1 and (.command | txt) != "" then " (\(.command | txt | link_span))" else "" end)];
+def warning_lines:
+	[objects_of("open")[] | select(.kind | among(uncapped_kinds))
+		| (.at // .ref) as $where
+		| "⚠️ \(.kind | words)" + (if ($where | txt) == "" then "" else ": \($where | place)" end)];
+def card($card; $title; $path):
+	(objects_of("blockers") | length > 0) as $blocked
+	| ["### \($title | txt) · \(if $blocked then "blocked" else "done" end)",
+	   (count_lines | items),
+	   headed("Gates"; gate_lines),
+	   counted_section("Blockers"; [objects_of("blockers")[] | "⛔ \(.kind | words): \(.location | place)"]),
+	   counted_section("Deviations"; [objects_of("deviations")[] | "⚠️ \(.what | txt)"]),
+	   counted_section("Warnings"; warning_lines),
+	   headed("Do"; if $card.do == [] then ["Nothing for you to do."] else $card.do end),
+	   headed("Decide"; if $card.decide == [] then ["Nothing to decide."] else $card.decide end),
+	   "**Report:** \($path | path_text)",
+	   "_Ask for details: what changed, the decisions, or anything in the report._"]
 	| blocks;
 '
 
-# An iteration's report carries it in the title: Shell script developer · iteration 1.
+# Prints "refused" and one problem per line (the report's, then the card
+# file's), or "card" and the card. An unstamped report is taken only with
+# --dispatch ($dispatch_given).
 # shellcheck disable=SC2016
-readonly RENDER_MAIN_JQ='
-($seat | title("developer") + (if $round | startswith("iteration ") then " · \($round)" else "" end)) as $title
-| $report[0] | as_written | developer_view(all_problems; $title; $location_root; $report_path)
+readonly CARD_MAIN_JQ='
+$report[0] | as_written
+| (objects_of("blockers") | length) as $blockers
+| (if $dispatch_given or (. as $written | any(stamp_keys[]; . as $key | $written | has($key))) then []
+   else ["report is not stamped; expected a report check stamped, or --dispatch for one it left unstamped"] end) as $unstamped
+| (problems + $unstamped + [$card[0] | card_problems($blockers)]) as $refusals
+| if ($refusals | length) > 0 then "refused", $refusals[]
+  else "card", card($card[0]; $seat | title("developer"); $report_path) end
 '
-
 # The {language, frameworks} labels title() takes, from the LABELS line in
 # $labels: "LABELS:", then its parts Language, Frameworks, Standards and
 # Procedures, each at most once and in that order, joined by " · ". Prints
@@ -702,13 +719,14 @@ END {
 # command owns. Each command's own contract is its `<command> --help` page.
 usage() {
 	usage_prefix='usage: '
-	usage_lines check render baseline doc-check
+	usage_lines check card baseline doc-check
 	usage_line 'report.sh <command> --help'
 	usage_line 'report.sh --help | -h'
 	cat <<'EOF'
 
 Checks the developer's report, one JSON object in PATH, stamps it from its
-dispatch file on a pass, and renders it as Markdown. stdin is never read.
+dispatch file on a pass, and prints the human's card for it as Markdown.
+stdin is never read.
 With no arguments, prints this page on stderr and exits 2.
 EOF
 	help_shared shape
@@ -716,8 +734,9 @@ EOF
 
 Commands (each page holds its options, output, exit codes and dependencies):
   check      checks the report's shape; with --dispatch, stamps it on a pass
-  render     prints the report's developer summary for the human
-  baseline   writes an iteration's baseline, which check and render compare with
+  card       prints the report's card for the human: state, gates, what to do
+             and what to decide
+  baseline   writes an iteration's baseline, which check compares with
   doc-check  compares the report standard's field table with the validator
 EOF
 }
@@ -728,7 +747,7 @@ command_help() {
 	usage_lines "$1"
 	case $1 in
 		check) check_help ;;
-		render) render_help ;;
+		card) card_help ;;
 		baseline) baseline_help ;;
 		*) doc_check_help ;;
 	esac
@@ -750,44 +769,36 @@ EOF
 	help_shared report-repo
 	cat <<'EOF'
   --mode BUILD        the dispatch mode; only BUILD is taken
-  --context FILE      the context file; each could_not ref names an entry
+  --context FILE      the context file; each could_not ref names an entry;
+                      with --round, message: CHANGES also names the work the
+                      iteration skipped from its change list
   --findings FILE     an iteration's review finding IDs, one per line;
                       review_responses answers each exactly once
   --round 'iteration N'
-                      with --dispatch, N a positive integer: the report of
-                      iteration N, which covers that iteration alone. --report
-                      is then required: an existing file in the folder of the
-                      dispatch's report, not that report itself. --baseline is
-                      required. The stamps still come from the dispatch.
-                      Left out on the dispatch's first report
+                      N a positive integer: the report of iteration N, which
+                      covers that iteration alone; --baseline is required.
+                      With --dispatch, --report is then required: an existing
+                      file in the folder of the dispatch's report, not that
+                      report itself, and the stamps still come from the
+                      dispatch. Left out on the dispatch's first report
   --baseline FILE     without --dispatch: git status --porcelain=v1 -z
                       --no-renames of --repo from before the dispatch; needs
                       --repo. With --round: the iteration's baseline, the file
-                      report.sh baseline wrote before it; a file then counts
-                      as changed in the iteration when its status line
-                      differs from the baseline's, or when the baseline lists
-                      it and its fingerprint differs now; one naming its
-                      iteration must name this --round, --report and
-                      --dispatch. Never with --dispatch alone
+                      report.sh baseline wrote before it, naming no other
+                      --round, --report or --dispatch. Never with --dispatch
+                      alone
 EOF
 	help_shared skills-dir
 	cat <<'EOF'
 
 stdout on exits 0, 1, 3 and 6: one count line, <kind>=<n> per kind
 stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
-  most 30, then a count of the rest. A text the view shows as an item (a
-  deviation's what or why, noticed what, open text, blocker detail, review
-  response note) past 200 characters ends "; rewrite it as one shorter
-  sentence"; a location (at, location, ref) or a verification command past
-  it ends "; write it shorter".
+  most 30, then a count of the rest.
 
-Writes: with --dispatch, on exit 0 or 1 only, the report into PATH with the
+Writes: with --dispatch, on exit 0 or 1 only, the report into PATH: the
 stamps dispatch, started, finished, mode and plugins (the dispatch's plugin
-names by kind: language, frameworks, standards, procedures) first, then
-toolchain, summary, files, behavior, verification, deviations, decisions,
-focus, noticed, open, blockers, review_responses; a key holding nothing
-(null, [] or {}) is left out. Any other exit leaves PATH byte for byte as it
-was.
+names by kind) first, its own keys after them, a key holding nothing (null,
+[] or {}) left out. Any other exit leaves PATH byte for byte as it was.
 EOF
 	help_shared writes-nothing-else
 	cat <<'EOF'
@@ -796,18 +807,20 @@ Exit codes:
   0  valid (stamped, with --dispatch); go on
   1  valid with open blockers (stamped, with --dispatch); treat as blocked
 EOF
+	help_shared exit-usage 'fix the command'
+	help_shared exit-dispatch-fault
+	echo '  3  invalid; have the fields stderr names fixed, check again'
+	help_shared exit-not-a-report 'have the report written again'
+	help_shared exit-install
 	cat <<'EOF'
-  2  usage error; fix the command; stderr starting "report.sh: dispatch:":
-     a dispatch fault, stop
-  3  invalid; have the fields stderr names fixed, check again
-  4  not a report (PATH not one JSON object); write the report again
-  5  install fault; show stderr as is, the report unchecked
-  6  --dispatch: valid, but the stamp step failed; render --dispatch; in an
-     iteration, render --round 'iteration N' --baseline FILE
-  129, 130, 143  stopped by HUP, INT or TERM; the report unchecked
+  6  --dispatch: valid, the stamping failed; show it with card --dispatch
 EOF
+	help_shared exit-signal
 	help_shared dependencies
-	help_shared dependencies-check-render
+	help_shared names-module
+	help_shared own-skill
+	printf '  with --repo: '
+	help_shared git
 	cat <<'EOF'
   with --dispatch: flow-agent-initialization's dispatch validator, the
     crucible skill (its scripts/lib/prune.jq), and sha256sum or shasum
@@ -815,63 +828,82 @@ EOF
 EOF
 }
 
-render_help() {
+card_help() {
 	cat <<'EOF'
 
-Prints the report's developer summary as Markdown on stdout. Its title is the developer title from the
-language and frameworks ("Shell script developer", "Next.js and React
-developer with TypeScript"; "Generic developer" with no language), then
-"· iteration N" for an iteration's report, then its state: done, blocked,
-"report invalid" (a report with shape problems), or "blocked · report
-invalid". Every item
-is shown whole, never cut; each kind lists at most 5 (instructions and
-secrets found: all), then a count of the rest.
+Prints the report's card for the human as Markdown on stdout: a heading with
+the developer title ("Rust developer", "Kotlin developer with Spring";
+"Generic developer" with no language) and the state, done or
+blocked; the files changed and the open items by kind; each gate; the
+blockers, deviations and warnings (instructions and secrets found), each
+whole, a repo-relative location joined to the dispatch's repo_root; then the
+main thread's Do and Decide lines and the report's path. Every item is on its
+own line; no value from the report or the card file adds one.
 EOF
 	help_shared shape
 	help_shared options
-	help_shared report-repo
 	cat <<'EOF'
+  --report PATH       the report file, stamped by check --dispatch, or
+                      unstamped with --dispatch; it must pass check's shape
+                      check (a stamped one: without the text, word and item
+                      caps, which bind when a report is written)
   --labels-file FILE  the hand-back's LABELS line, whole, at most 1000 bytes;
                       its Language and Frameworks build the developer title
-                      (default: the metadata.label of the stamped language
-                      and frameworks, each plugin's name when it has none)
-  --round ROUND       initial or 'iteration N'; initial shows review_responses
-                      as a report problem, 'iteration N' takes it or its
-                      absence
-  --baseline FILE     git status --porcelain=v1 -z --no-renames of --repo from
-                      before the dispatch; needs --repo, never with
-                      --dispatch. With --round 'iteration N', it may instead
-                      be the iteration's baseline report.sh baseline wrote,
-                      compared as check --round compares it; one naming its
-                      iteration must name this --round and --report
-EOF
-	cat <<'EOF'
-  --dispatch FILE     the dispatch of a report check could not stamp, for its
-                      baseline; a stamped report needs neither this nor
-                      --baseline. Needs --repo
+                      (default: the metadata.label of the language and
+                      frameworks in the report's plugins stamp, or for an
+                      unstamped report in the --dispatch file's plugins; each
+                      plugin's name when it is not installed or has no label)
+  --card-file FILE    the main thread's lines, one JSON object
+                      {"do": [lines], "decide": [lines]}, each array 0 to 5
+                      lines; a line is a non-empty string of at most 240
+                      characters with no line break, tab or other control
+                      character, not starting with #, -, >, a * list mark
+                      ("* " or a rule) or a number and a dot; inline Markdown
+                      (bold, backticks) prints as is.
+                      Both empty is refused when the report has blockers
+  --dispatch FILE     the dispatch of a report check could not stamp: it must
+                      pass the dispatch validator and --report must be in the
+                      folder of its report (that report or an iteration's); a
+                      stamped report must be stamped from it
 EOF
 	help_shared skills-dir
-	help_shared view-exits
-	help_shared dependencies
-	help_shared dependencies-check-render
-	help_shared human-view
 	cat <<'EOF'
-  with --dispatch, or --repo on a stamped report: flow-agent-initialization's
-    dispatch validator
-  with --repo on a stamped report and neither --baseline nor --dispatch: the
-    crucible skill
+
+stdout on exit 0: the card; nothing on any other exit.
+stderr on exit 3: one "<field>: <what>; expected <x>" line per problem: the
+  report's (at most 30, then a count of the rest), then the card file's.
 EOF
+	echo
+	help_shared writes-nothing-else
+	cat <<'EOF'
+
+Exit codes:
+  0  printed; show it
+EOF
+	help_shared exit-usage 'fix the command once, else show the human stderr, and stop'
+	help_shared exit-dispatch-fault
+	echo '  3  refused; fix what stderr names'
+	help_shared exit-not-a-report 'show the human stderr, and stop'
+	help_shared exit-install
+	help_shared exit-signal
+	help_shared dependencies
+	help_shared names-module
+	help_shared own-skill
+	help_shared human-view
+	help_shared dispatch-validator
+	printf '  without --dispatch: the crucible skill (crucible.sh path), for the repo root\n'
 }
 
 baseline_help() {
 	cat <<'EOF'
 
 Writes an iteration's baseline, taken just before the iteration is sent: the
-repo's changes and a content fingerprint of each changed file, so check and
-render --round 'iteration N' can count a file changed in the iteration even
-when an earlier one changed it too.
-
-Options (every FILE, PATH and DIR absolute):
+repo's changes and a content fingerprint of each changed file, so check
+--round 'iteration N' can count a file changed in the iteration even when an
+earlier one changed it too.
+EOF
+	help_shared options
+	cat <<'EOF'
   --repo DIR          the root of a git work tree
   --out FILE          the iteration's baseline file: an existing, empty regular
                       file, not a symlink; a file holding anything is refused
@@ -893,26 +925,23 @@ Writes: into FILE, on exit 0 only, one JSON object:
    "fingerprints": {"<path>": git hash-object --no-filters of it, for each
      listed path that is a regular file},
    with --dispatch: "dispatch": FILE, "report": PATH, "round": "iteration N"}
-  check and render --round refuse a baseline naming another --round,
-  --report or --dispatch than they are given.
+  check --round refuses a baseline naming another --round, --report or
+  --dispatch than it is given.
 stdout: nothing.
-Nothing else is left behind (a SIGKILL aside); the repo, its index and its
-object store are never changed.
+EOF
+	help_shared writes-nothing-else
+	cat <<'EOF'
 
 Exit codes:
   0  written; send the iteration
-  2  usage error; fix the command
-  5  install fault; show stderr as is, FILE left empty
-  129, 130, 143  stopped by HUP, INT or TERM; FILE left empty
-
-Dependencies:
-  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  awk, cat, cp, date, grep, mktemp, mv, rm, sed, tr, wc (every macOS and
-    Linux base system)
-  git (macOS: xcode-select --install; Linux: the distro's git)
-  with --dispatch: flow-agent-initialization's dispatch validator, in
-    --skills-dir
 EOF
+	help_shared exit-usage 'show the human stderr, and stop'
+	help_shared exit-install ' (FILE left empty)'
+	help_shared exit-signal
+	help_shared dependencies
+	printf '  '
+	help_shared git
+	help_shared dispatch-validator
 }
 
 doc_check_help() {
@@ -932,11 +961,14 @@ stdout: one line per difference.
 Exit codes:
   0  the table agrees with the validator; go on
   1  differences; fix the table
-  2  usage error; fix the command
-  5  install fault; install what stderr names
-  129, 130, 143  stopped by HUP, INT or TERM; rerun
 EOF
+	help_shared exit-usage 'fix the command'
+	cat <<'EOF'
+  5  install fault; install what stderr names
+EOF
+	help_shared exit-signal
 	help_shared dependencies
+	help_shared names-module
 }
 
 # Prints the usage lines of each command named, the first after usage_prefix.
@@ -945,11 +977,9 @@ usage_lines() {
 		case ${usage_command} in
 			check)
 				usage_line "report.sh check --dispatch FILE [--report PATH] [--repo DIR] [--mode BUILD] [--context FILE] [--findings FILE] [--round 'iteration N' --baseline FILE] [--skills-dir DIR]"
-				usage_line 'report.sh check --report PATH --repo DIR --mode BUILD [--baseline FILE] [--findings FILE] [--context FILE] [--skills-dir DIR]'
+				usage_line "report.sh check --report PATH --repo DIR --mode BUILD [--round 'iteration N'] [--baseline FILE] [--findings FILE] [--context FILE] [--skills-dir DIR]"
 				;;
-			render)
-				usage_line "report.sh render --report PATH [--labels-file FILE] [--round initial|'iteration N'] [--repo DIR [--baseline FILE | --dispatch FILE]] [--skills-dir DIR]"
-				;;
+			card) usage_line 'report.sh card --report PATH --card-file FILE [--labels-file FILE] [--dispatch FILE] [--skills-dir DIR]' ;;
 			baseline) usage_line "report.sh baseline --repo DIR --out FILE [--dispatch FILE --report PATH --round 'iteration N'] [--skills-dir DIR]" ;;
 			*) usage_line 'report.sh doc-check --skill PATH [--skills-dir DIR]' ;;
 		esac
@@ -983,7 +1013,7 @@ EOF
   --skills-dir DIR    default ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 EOF
 			;;
-		writes-nothing-else) printf 'Nothing else is left behind (a SIGKILL aside); the repo and its index are\nnever changed.\n' ;;
+		writes-nothing-else) printf 'Nothing else is left behind (a SIGKILL aside); the repo, its index and its\nobject store are never changed.\n' ;;
 		dependencies)
 			cat <<'EOF'
 
@@ -991,28 +1021,18 @@ Dependencies (other skills in --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
   awk, cat, cp, date, grep, mktemp, mv, rm, sed, tr, wc (every macOS and
     Linux base system)
-  the flow-agent-initialization skill (its dispatch-names.jq)
 EOF
 			;;
-		dependencies-check-render)
-			help_shared own-skill
-			printf "  with --repo: git (macOS: xcode-select --install; Linux: the distro's git)\n"
-			;;
+		names-module) printf '  the flow-agent-initialization skill (its dispatch-names.jq)\n' ;;
+		git) printf "git (macOS: xcode-select --install; Linux: the distro's git)\n" ;;
+		exit-usage) printf '  2  usage error; %s\n' "$2" ;;
+		exit-dispatch-fault) printf '     report.sh: dispatch:  a dispatch fault; show the human stderr, and stop\n' ;;
+		exit-not-a-report) printf '  4  not a report (PATH not one JSON object); %s\n' "$2" ;;
+		exit-install) printf '  5  install fault; show the human stderr, and stop%s\n' "${2:-}" ;;
+		dispatch-validator) printf "  with --dispatch: flow-agent-initialization's dispatch validator\n" ;;
+		exit-signal) printf '  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop\n' ;;
 		own-skill) printf "  this skill's SKILL.md, beside scripts/\n" ;;
 		human-view) printf '  the human-view skill\n' ;;
-		view-exits)
-			echo
-			help_shared writes-nothing-else
-			cat <<'EOF'
-
-Exit codes:
-  0  printed, an invalid report included; show it
-  2  usage error; treat it as not rendered
-  4  not a report (a PATH not one JSON object); treat it as not rendered
-  5  install fault; treat it as not rendered
-  129, 130, 143  stopped by HUP, INT or TERM; treat it as not rendered
-EOF
-			;;
 		*) ;;
 	esac
 }
@@ -1048,11 +1068,11 @@ parse_args() {
 			usage
 			exit 0
 			;;
-		check | render | baseline | doc-check) command=$1 ;;
-		*) usage_error "unknown command: $1; expected check, render, baseline, doc-check or --help" ;;
+		check | card | baseline | doc-check) command=$1 ;;
+		*) usage_error "unknown command: $1; expected check, card, baseline, doc-check or --help" ;;
 	esac
 	shift
-	report='' repo='' baseline='' baseline_kind='' dispatch_baseline='' mode='' findings='' context='' labels_file='' labels='' seat='{}' round='' dispatch_file='' skill_file='' out_file=''
+	report='' repo='' baseline='' baseline_kind='' dispatch_baseline='' mode='' findings='' context='' labels_file='' card_file='' round='' dispatch_file='' skill_file='' out_file=''
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 	while [ "$#" -gt 0 ]; do
 		case $1 in
@@ -1060,7 +1080,7 @@ parse_args() {
 				command_help "${command}"
 				exit 0
 				;;
-			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --round | --skills-dir | --dispatch | --skill | --out)
+			--report | --repo | --baseline | --mode | --findings | --context | --labels-file | --card-file | --round | --skills-dir | --dispatch | --skill | --out)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
@@ -1080,11 +1100,15 @@ parse_args() {
 		return 0
 	fi
 	[ -z "${skill_file}" ] || usage_error '--skill is for doc-check only; expected it only with doc-check'
-	[ -z "${round}" ] || check_round_value
-	[ "${command}" != check ] || check_check_round
-	[ "${command}" != check ] || [ -z "${dispatch_file}" ] || read_dispatch
+	if [ "${command}" = card ]; then
+		check_card_args
+		return 0
+	fi
+	[ -z "${card_file}" ] || usage_error '--card-file is for card only; expected it only with card'
+	check_check_round
+	[ -z "${dispatch_file}" ] || read_dispatch
 	check_common_args
-	if [ "${command}" = check ]; then check_check_args; else check_render_args; fi
+	check_check_args
 }
 
 set_option() {
@@ -1096,6 +1120,7 @@ set_option() {
 		--findings) findings=$2 ;;
 		--context) context=$2 ;;
 		--labels-file) labels_file=$2 ;;
+		--card-file) card_file=$2 ;;
 		--round) round=$2 ;;
 		--dispatch) dispatch_file=$2 ;;
 		--skill) skill_file=$2 ;;
@@ -1110,16 +1135,11 @@ set_option() {
 # only), dispatch_context_sha256 to the context file's pinned sha256 and
 # dispatch_baseline to its baseline file (not read on an iteration, which
 # compares with its own --baseline). Exits 2 on a bad file (stderr starting
-# "report.sh: dispatch:"), a conflicting flag, a --baseline without --round or
-# an iteration without one, 5 when the validator is missing.
+# "report.sh: dispatch:"), a conflicting flag or a --baseline without --round,
+# 5 when the validator is missing.
 read_dispatch() {
-	if [ -z "${round}" ]; then
-		[ -z "${baseline}" ] ||
-			usage_error "--baseline is not taken with --dispatch: the dispatch's baseline key names the baseline the Agent hook wrote at the call; expected --baseline left out"
-	else
-		[ -n "${baseline}" ] ||
-			usage_error "--round ${round} needs --baseline FILE; expected the iteration's baseline, the file report.sh baseline wrote before the iteration"
-	fi
+	[ -n "${round}" ] || [ -z "${baseline}" ] ||
+		usage_error "--baseline is not taken with --dispatch: the dispatch's baseline key names the baseline the Agent hook wrote at the call; expected --baseline left out"
 	validate_dispatch_file "${dispatch_file}" --dispatch
 	# The validator holds these to absolute paths without a control character,
 	# the sha256 to 64 hex digits and mode to BUILD, so each is one line.
@@ -1227,17 +1247,13 @@ same_as_dispatch() {
 # regular file that is not a symlink, so a baseline is written once; and
 # --dispatch, --report and --round together or not at all.
 check_baseline_args() {
-	for other in "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${skill_file}"; do
+	for other in "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${card_file}" "${skill_file}"; do
 		[ -z "${other}" ] || usage_error "baseline takes only --repo, --out, --dispatch, --report, --round and --skills-dir; expected baseline --repo DIR --out FILE [--dispatch FILE --report PATH --round 'iteration N']"
 	done
 	if [ -n "${dispatch_file}${report}${round}" ]; then
 		[ -n "${dispatch_file}" ] && [ -n "${report}" ] && [ -n "${round}" ] ||
 			usage_error "--dispatch, --report and --round go together; expected all three, naming the iteration the baseline is for, or none"
-		case ${round} in
-			'iteration '*[!0-9]* | 'iteration 0'* | 'iteration ') usage_error "--round ${round} is not 'iteration N' with N a positive integer; expected 'iteration 2'" ;;
-			'iteration '*) ;;
-			*) usage_error "--round ${round} is unknown; expected 'iteration N', the iteration the baseline is for" ;;
-		esac
+		check_round_value 'the iteration the baseline is for'
 	fi
 	case ${repo} in
 		'') usage_error '--repo DIR missing; expected the absolute path of the repository root' ;;
@@ -1258,7 +1274,7 @@ check_baseline_args() {
 # doc-check takes --skill, an absolute path to a regular, readable file, and
 # --skills-dir alone.
 check_doc_check_args() {
-	for other in "${report}" "${repo}" "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${round}" "${dispatch_file}"; do
+	for other in "${report}" "${repo}" "${baseline}" "${mode}" "${findings}" "${context}" "${labels_file}" "${card_file}" "${round}" "${dispatch_file}"; do
 		[ -z "${other}" ] || usage_error 'doc-check takes only --skill and --skills-dir; expected doc-check --skill PATH [--skills-dir DIR]'
 	done
 	case ${skill_file} in
@@ -1294,7 +1310,7 @@ check_baseline_file() {
 }
 
 check_check_args() {
-	[ -z "${labels_file}" ] || usage_error 'check takes no --labels-file; expected it only with render'
+	[ -z "${labels_file}" ] || usage_error 'check takes no --labels-file; expected it only with card'
 	[ -n "${repo}" ] || usage_error '--repo DIR missing; expected the absolute path of the repository root'
 	case ${mode} in
 		BUILD) ;;
@@ -1326,46 +1342,46 @@ dispatch_value_fault() {
 	usage_error "$2 $3"
 }
 
-check_render_args() {
-	for check_only in "${mode}" "${findings}" "${context}"; do
-		[ -z "${check_only}" ] || usage_error 'render takes no --mode, --findings or --context; expected them only with check'
+# card takes --report and --card-file, each absolute, and --labels-file,
+# --dispatch and --skills-dir. The report path is printed on the card, so it
+# may hold no control character.
+check_card_args() {
+	for check_only in "${repo}" "${baseline}" "${mode}" "${findings}" "${context}" "${round}"; do
+		[ -z "${check_only}" ] || usage_error 'card takes only --report, --card-file, --labels-file, --dispatch and --skills-dir; expected card --report PATH --card-file FILE [--labels-file FILE] [--dispatch FILE]'
 	done
-	[ -z "${dispatch_file}" ] || check_render_dispatch_args
-	check_view_args
-}
-
-# render --dispatch names the baseline through that dispatch, so it needs
-# --repo and takes no --baseline.
-check_render_dispatch_args() {
-	[ -z "${baseline}" ] ||
-		usage_error '--dispatch and --baseline both name a baseline; expected one of them: --dispatch for a report check --dispatch could not stamp'
-	[ -n "${repo}" ] || usage_error '--dispatch needs --repo; expected --repo DIR --dispatch FILE'
-}
-
-# Checks --labels-file, which sets the title.
-check_view_args() {
-	[ -z "${labels_file}" ] || read_labels_file
-}
-
-check_round_value() {
-	case ${round} in
-		initial) ;;
-		'iteration '*[!0-9]* | 'iteration 0'* | 'iteration ') usage_error "--round ${round} is not 'iteration N' with N a positive integer; expected initial or 'iteration 2'" ;;
-		'iteration '*) ;;
-		*) usage_error "--round ${round} is unknown; expected initial or 'iteration N'" ;;
-	esac
-}
-
-# check takes --round only as an iteration's, and only with --dispatch: the
-# dispatch's first report is checked without it.
-check_check_round() {
-	case ${round} in
-		'') return 0 ;;
-		initial) usage_error "check takes --round only as 'iteration N'; expected --round left out on the dispatch's first report" ;;
+	check_common_args
+	case ${report} in
+		*[[:cntrl:]]*) usage_error '--report holds a control character; expected the path of the report file, printed on the card whole' ;;
 		*) ;;
 	esac
-	[ -n "${dispatch_file}" ] ||
-		usage_error "--round ${round} needs --dispatch; expected check --dispatch FILE --report PATH --round '${round}' --baseline FILE"
+	[ -z "${labels_file}" ] || read_labels_file
+	card_file_expected='expected the main thread'"'"'s card file, {"do": [lines], "decide": [lines]}'
+	case ${card_file} in
+		'') usage_error "--card-file FILE missing; ${card_file_expected}" ;;
+		/*) ;;
+		*) usage_error "--card-file ${card_file} is not absolute; ${card_file_expected}, by its absolute path" ;;
+	esac
+	[ -f "${card_file}" ] && [ -r "${card_file}" ] ||
+		usage_error "--card-file not readable: ${card_file}; ${card_file_expected}, a regular file"
+}
+
+# check takes --round only as 'iteration N', and only with --baseline: the
+# dispatch's first report is checked without it.
+check_check_round() {
+	[ -n "${round}" ] || return 0
+	check_round_value "the iteration the report covers; left out on the dispatch's first report"
+	[ -n "${baseline}" ] ||
+		usage_error "--round ${round} needs --baseline FILE; expected the iteration's baseline, the file report.sh baseline wrote before the iteration"
+}
+
+# Exits 2 unless round is 'iteration N' with N a positive integer; $1 says
+# what the iteration names.
+check_round_value() {
+	case ${round} in
+		'iteration '*[!0-9]* | 'iteration 0'* | 'iteration ') usage_error "--round ${round} is not 'iteration N' with N a positive integer; expected 'iteration 2'" ;;
+		'iteration '*) ;;
+		*) usage_error "--round ${round} is unknown; expected 'iteration N', $1" ;;
+	esac
 }
 
 # Sets seat to {language, frameworks} of the one LABELS line in labels_file;
@@ -1425,8 +1441,8 @@ make_work_dir() {
 	trap 'exit 143' TERM
 }
 
-# Copies the report file once to report_copy, which the check, the render and the stamps all read, so what is
-# stamped is what was checked. Exits 4 unless it holds exactly one JSON object
+# Copies the report file once to report_copy, which the check, the card and
+# the stamps all read, so what is stamped is what was checked. Exits 4 unless it holds exactly one JSON object
 # (or, before stamping, it is a symlink).
 check_report() {
 	[ -f "${report}" ] && [ -r "${report}" ] ||
@@ -1444,11 +1460,9 @@ check_report() {
 
 # Writes git status for the repo and the baseline, NULs as \001, to git_file
 # and baseline_file; with no repo, empty files and have_git false. The
-# baseline is the --baseline file, else the dispatch's baseline file: the
-# --dispatch file's (check, and render), or the one of the dispatch the report
-# is stamped with (render); a render of an unstamped report without
-# --dispatch has none. An iteration's baseline is turned into the same two
-# files by apply_round_baseline.
+# baseline is the --baseline file, else the --dispatch file's baseline file.
+# An iteration's baseline is turned into the same two files by
+# apply_round_baseline.
 read_git_status() {
 	git_file="${work_dir}/status"
 	baseline_file="${work_dir}/baseline"
@@ -1460,9 +1474,8 @@ read_git_status() {
 	[ -n "${repo}" ] || return 0
 	if [ -n "${baseline}" ]; then
 		read_given_baseline
-	else
-		[ "${command}" != render ] || find_render_baseline
-		[ -z "${dispatch_baseline}" ] || load_dispatch_baseline
+	elif [ -n "${dispatch_baseline}" ]; then
+		load_dispatch_baseline
 	fi
 	check_repo_root
 	write_git_status "${git_file}"
@@ -1507,10 +1520,7 @@ read_given_baseline() {
 	case ${baseline_kind}:${round} in
 		round:'iteration '*) check_round_baseline ;;
 		round:*) usage_error "--baseline ${baseline} is an iteration's baseline; expected it only with --round 'iteration N'" ;;
-		status:'iteration '*)
-			[ "${command}" != check ] ||
-				usage_error "--baseline ${baseline} is not an iteration's baseline; ${round_baseline_expected}"
-			;;
+		status:'iteration '*) usage_error "--baseline ${baseline} is not an iteration's baseline; ${round_baseline_expected}" ;;
 		*) ;;
 	esac
 	[ "${baseline_kind}" = round ] || tr '\000' '\001' <"${given_baseline}" >"${baseline_file}" ||
@@ -1593,24 +1603,6 @@ write_fingerprints() {
 		install_fault 'jq failed pairing the paths with their fingerprints; expected one git hash-object line per path; try jq --version'
 }
 
-# Sets dispatch_baseline for render: the baseline file of the --dispatch file,
-# else of the dispatch whose Crucible ID the report's dispatch stamp holds;
-# leaves it empty for a report with no dispatch stamp of that shape rendered
-# without --dispatch. The dispatch must pass the dispatch validator and have
-# the --repo given as its repo_root.
-find_render_baseline() {
-	read_stamped_id
-	if [ -n "${dispatch_file}" ]; then
-		take_given_dispatch
-		return 0
-	fi
-	[ -n "${stamped_id}" ] || return 0
-	find_stamped_dispatch
-	read_dispatch_baseline "${stamped_dispatch}" "the stamped dispatch"
-	[ "${repo}" = "${dispatch_repo}" ] ||
-		usage_error "--repo ${repo} differs from the stamped dispatch's repo_root ${dispatch_repo}; expected the same text, or --baseline FILE for another repository"
-}
-
 # Sets stamped_id to the report's dispatch stamp when it has the shape of a
 # Crucible ID (the validator's stamp_id_ok), else to nothing.
 read_stamped_id() {
@@ -1624,43 +1616,6 @@ locate_names_module() {
 	names_module="${skills_dir}/flow-agent-initialization/scripts/agent-dispatch/dispatch-names.jq"
 	[ -f "${names_module}" ] && [ -r "${names_module}" ] ||
 		install_fault "the shared dispatch names are missing; expected ${names_module}; install the flow-agent-initialization skill in ${skills_dir}"
-}
-
-# Takes the --dispatch file's baseline for render: exits 2 unless its
-# repo_root is --repo, its report --report and, for a stamped report, its id
-# the stamp.
-take_given_dispatch() {
-	read_dispatch_baseline "${dispatch_file}" --dispatch
-	[ "${repo}" = "${dispatch_repo}" ] ||
-		usage_error "--repo ${repo} differs from the --dispatch file's repo_root ${dispatch_repo}; expected the same text"
-	[ "${report}" = "${dispatch_report}" ] ||
-		usage_error "--report ${report} differs from the --dispatch file's report ${dispatch_report}; expected the report file of that dispatch"
-	[ -z "${stamped_id}" ] || [ "${stamped_id}" = "${dispatch_id}" ] ||
-		usage_error "--dispatch ${dispatch_file} is dispatch ${dispatch_id}, but the report is stamped from ${stamped_id}; expected the stamped dispatch, or --dispatch left out"
-}
-
-# Sets stamped_dispatch to the path crucible.sh path finds for stamped_id.
-find_stamped_dispatch() {
-	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		install_fault "crucible.sh missing; expected ${crucible_script} to find the stamped dispatch ${stamped_id}; install the crucible skill in ${skills_dir}"
-	lookup_status=0
-	stamped_dispatch=$(sh "${crucible_script}" path "${stamped_id}" </dev/null 2>"${work_dir}/crucible.err") || lookup_status=$?
-	case ${lookup_status} in
-		0) ;;
-		1)
-			lookup_message=$(sed -n '1p' "${work_dir}/crucible.err")
-			dispatch_fault "the report's dispatch stamp ${stamped_id} names no dispatch file crucible.sh can find (${lookup_message}); expected the dispatch the report was stamped from; give --baseline FILE, or leave out --repo"
-			;;
-		*)
-			lookup_message=$(sed -n '1p' "${work_dir}/crucible.err")
-			install_fault "crucible.sh path ${stamped_id} failed (exit ${lookup_status}: ${lookup_message}); expected it to print the stamped dispatch's path; fix what it names"
-			;;
-	esac
-	case ${stamped_dispatch} in
-		*/efforts/*/dispatches/"${stamped_id}"-*.json) ;;
-		*) dispatch_fault "the report's dispatch stamp ${stamped_id} names ${stamped_dispatch}, which is not a dispatch file; expected a file in an effort's dispatches/; give --baseline FILE, or leave out --repo" ;;
-	esac
 }
 
 # Checks dispatch file $1 (named $2 in the messages) with validate_dispatch_file
@@ -1752,12 +1707,12 @@ run_doc_check() {
 # Sets differences to one line per difference between file $1 and the validator.
 doc_differences() {
 	differences=$(jq -nr -L "${names_module%/*}" --rawfile doc "$1" --arg git '' --arg baseline '' --arg round_created '' --argjson have_git false \
-		--arg mode BUILD --arg stamp_check check --arg findings_mode none --arg findings_text '' \
-		"${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${DOC_CHECK_JQ}" </dev/null) ||
+		--arg mode BUILD --arg stamp_check check --arg findings_mode none --arg findings_text '' --arg round '' \
+		"${STAMP_JQ}null as \$context | true as \$write_rules | ${COMMON_JQ}${SHAPE_JQ}${DOC_CHECK_JQ}" </dev/null) ||
 		install_fault "jq failed comparing ${1} with the validator; expected jq 1.6+; try jq --version"
 }
 
-# check and render first hold this script to its own skill's SKILL.md (the one
+# check and card first hold this script to its own skill's SKILL.md (the one
 # beside its scripts/ folder): a field table that disagrees with the validator
 # is a broken install, exit 5.
 check_own_skill() {
@@ -1791,8 +1746,8 @@ run_check() {
 		context_expr='null'
 	fi
 	output=$(jq -nr -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" --rawfile baseline "${baseline_file}" --rawfile round_created "${round_created_file}" \
-		--argjson have_git "${have_git}" --arg mode "${mode}" --arg stamp_check check "$@" \
-		"${STAMP_JQ}${context_expr} as \$context | ${COMMON_JQ}${SHAPE_JQ}${CHECK_JQ}" </dev/null) ||
+		--argjson have_git "${have_git}" --arg mode "${mode}" --arg stamp_check check --arg round "${round}" "$@" \
+		"${STAMP_JQ}${context_expr} as \$context | true as \$write_rules | ${COMMON_JQ}${SHAPE_JQ}${CHECK_JQ}" </dev/null) ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
 	count_line=$(printf '%s\n' "${output}" | sed -n '1p')
 	problems=$(printf '%s\n' "${output}" | sed '1d')
@@ -1833,45 +1788,120 @@ stamp_fault() {
 	exit 6
 }
 
-run_render() {
+# Prints the card of report_copy on stdout, or its problems and the card
+# file's on stderr with exit 3.
+run_card() {
 	locate_view_modules
-	# Only a first report can refuse review_responses: render gets no findings file.
-	findings_mode=unchecked
-	[ "${round}" != initial ] || findings_mode=none
-	[ -n "${labels_file}" ] || read_seat
-	# Locations print joined to --repo, else to the stamped dispatch's repo_root.
-	location_root=${repo}
-	if [ -z "${location_root}" ]; then
-		read_report_repo
-		location_root=${report_repo}
+	read_card_file
+	dispatch_given=false stamped_id=''
+	if [ -n "${dispatch_file}" ]; then
+		check_card_dispatch
+		dispatch_given=true
 	fi
-	jq -nr -L "${skills_dir}/${RENDER_LIB}" -L "${names_module%/*}" --slurpfile report "${report_copy}" --rawfile git "${git_file}" \
-		--rawfile baseline "${baseline_file}" --rawfile round_created "${round_created_file}" --argjson have_git "${have_git}" \
-		--arg mode BUILD --arg findings_mode "${findings_mode}" --arg findings_text '' --arg stamp_check render \
-		--argjson seat "${seat}" --arg round "${round}" \
-		--arg home "${HOME:-}" --arg location_root "${location_root}" --arg report_path "${report}" \
-		"include \"paths\"; include \"view\"; include \"title\"; ${STAMP_JQ}null as \$context | ${COMMON_JQ}${SHAPE_JQ}${RENDER_JQ}${VIEW_JQ}${RENDER_MAIN_JQ}" </dev/null ||
+	[ -n "${labels_file}" ] || read_card_seat
+	read_card_repo_root
+	output=$(jq -nr -L "${skills_dir}/${VIEW_LIB}" -L "${names_module%/*}" --slurpfile report "${report_copy}" --slurpfile card "${card_copy}" \
+		--arg git '' --arg baseline '' --arg round_created '' --argjson have_git false \
+		--arg mode BUILD --arg findings_mode unchecked --arg findings_text '' --arg stamp_check card --arg round '' \
+		--argjson seat "${seat}" --argjson dispatch_given "${dispatch_given}" --arg report_path "${report}" --arg repo_root "${repo_root}" \
+		"include \"paths\"; include \"view\"; include \"title\"; ${STAMP_JQ}null as \$context | (\$report[0] | stamped | not) as \$write_rules | ${COMMON_JQ}${SHAPE_JQ}${CARD_RULES_JQ}${CARD_VIEW_JQ}${CARD_MAIN_JQ}" </dev/null) ||
 		install_fault 'jq failed on a valid JSON report; expected jq 1.6+; try jq --version'
+	verdict=$(printf '%s\n' "${output}" | sed -n '1p')
+	if [ "${verdict}" = card ]; then
+		printf '%s\n' "${output}" | sed '1d'
+		exit 0
+	fi
+	printf '%s\n' "${output}" | sed '1d' >&2
+	exit 3
 }
 
 # Exits 5 unless human-view's paths.jq, view.jq and title.jq are installed.
 locate_view_modules() {
-	for render_module in paths view title; do
-		render_module_file="${skills_dir}/${RENDER_LIB}/${render_module}.jq"
-		[ -f "${render_module_file}" ] && [ -r "${render_module_file}" ] ||
-			install_fault "${RENDER_LIB}'s ${render_module}.jq missing; expected ${render_module_file}; install the ${RENDER_LIB} skill in ${skills_dir}"
+	for view_module in paths view title; do
+		view_module_file="${skills_dir}/${VIEW_LIB}/${view_module}.jq"
+		[ -f "${view_module_file}" ] && [ -r "${view_module_file}" ] ||
+			install_fault "${VIEW_LIB}'s ${view_module}.jq missing; expected ${view_module_file}; install the ${VIEW_LIB} skill in ${skills_dir}"
 	done
 }
 
+# Copies the card file once to card_copy, the copy the card reads; exits 3
+# unless it holds exactly one JSON value (card_problems judges its shape).
+read_card_file() {
+	card_copy="${work_dir}/card"
+	cat "${card_file}" >"${card_copy}" || usage_error "--card-file not readable: ${card_file}; ${card_file_expected}"
+	card_values=$(jq -s 'length' "${card_copy}" </dev/null 2>/dev/null) ||
+		card_refused "card: not valid JSON; ${card_file_expected}"
+	[ "${card_values}" -eq 1 ] || card_refused "card: ${card_values} JSON values; ${card_file_expected}, one object"
+}
+
+# Sets seat, with no --labels-file, from the plugins of an unstamped report's
+# --dispatch file, else from the report's plugins stamp.
+read_card_seat() {
+	if [ "${dispatch_given}" = true ] && [ -z "${stamped_id}" ]; then
+		read_seat "${dispatch_file}"
+	else
+		read_seat "${report_copy}"
+	fi
+}
+
+# Sets repo_root, which repo-relative locations are joined to: the --dispatch
+# file's repo_root (the validator holds it to one absolute line), else that of
+# the dispatch the report is stamped with; nothing when it cannot be found.
+read_card_repo_root() {
+	if [ "${dispatch_given}" = true ]; then
+		repo_root=${dispatch_repo}
+	else
+		read_report_repo
+		repo_root=${report_repo}
+	fi
+}
+
+# Sets report_repo to the repo_root of the dispatch report_copy is stamped
+# with, as crucible.sh path finds it, or to nothing when it cannot be found.
+read_report_repo() {
+	report_repo=''
+	read_stamped_id
+	[ -n "${stamped_id}" ] || return 0
+	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
+	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] || return 0
+	stamped_dispatch=$(sh "${crucible_script}" path "${stamped_id}" </dev/null 2>/dev/null) || return 0
+	case ${stamped_dispatch} in
+		*"${newline}"*) return 0 ;;
+		*/efforts/*/dispatches/"${stamped_id}"-*.json) ;;
+		*) return 0 ;;
+	esac
+	report_repo=$(jq -r '.repo_root | strings | select(startswith("/") and (test("[[:cntrl:]]") | not))' "${stamped_dispatch}" </dev/null 2>/dev/null) || report_repo=''
+}
+
+card_refused() {
+	printf '%s\n' "$1" >&2
+	exit 3
+}
+
+# Exits 2 unless --dispatch passes the dispatch validator, --report is in the
+# folder of its report (that report or an iteration's) and a stamped report
+# is stamped from it.
+check_card_dispatch() {
+	read_dispatch_baseline "${dispatch_file}" --dispatch
+	[ "${report%/*}" = "${dispatch_report%/*}" ] ||
+		usage_error "--report ${report} is not in the folder of the --dispatch file's report ${dispatch_report}; expected that report or an iteration's beside it"
+	read_stamped_id
+	[ -z "${stamped_id}" ] || [ "${stamped_id}" = "${dispatch_id}" ] ||
+		usage_error "--dispatch ${dispatch_file} is dispatch ${dispatch_id}, but the report is stamped from ${stamped_id}; expected the stamped dispatch, or --dispatch left out"
+}
+
 # Sets seat to the {language, frameworks} labels title() takes for the plugins
-# report_copy is stamped with: each plugin's label, or its name when it has
-# none; {} for a report stamped with no language and no framework.
+# of file $1, a stamped report (plugin names) or a dispatch (plugin objects,
+# each with its name): each plugin's label, or its name when it has none; {}
+# for no language and no framework.
 read_seat() {
-	# The stamp's language, then each framework, one "<kind> <name>" per line.
-	stamped_seat=$(jq -r '.plugins | objects
-		| (.language | strings | "language \(.)"), (.frameworks | arrays | .[] | strings | "framework \(.)")
-		| gsub("[[:cntrl:]]"; "")' "${report_copy}" </dev/null) ||
-		install_fault 'jq failed reading the plugins stamp; expected jq 1.6+; try jq --version'
+	# The language, then each framework, one "<kind> <name>" per line.
+	# shellcheck disable=SC2016 # a jq program, not shell expansions
+	stamped_seat=$(jq -r 'def name: if type == "object" then .name else . end;
+		.plugins | objects
+		| (.language | name | strings | "language \(.)"), (.frameworks | arrays | .[] | name | strings | "framework \(.)")
+		| gsub("[[:cntrl:]]"; "")' "$1" </dev/null) ||
+		install_fault 'jq failed reading the plugin names; expected jq 1.6+; try jq --version'
 	seat_language='' seat_frameworks=''
 	while IFS=' ' read -r seat_kind seat_name; do
 		[ -n "${seat_name}" ] || continue
@@ -1906,23 +1936,6 @@ read_plugin_label() {
 	[ -f "${plugin_skill}" ] && [ -r "${plugin_skill}" ] || return 0
 	# The C locale keeps awk byte-wise, as list-plugins.sh runs it.
 	plugin_label=$(LC_ALL=C awk "${PLUGIN_LABEL_AWK}" "${plugin_skill}") || plugin_label=''
-}
-
-# Sets report_repo to the repo_root of the dispatch report_copy is stamped
-# with, as crucible.sh path finds it, or to nothing when it cannot be found.
-read_report_repo() {
-	report_repo=''
-	read_stamped_id
-	[ -n "${stamped_id}" ] || return 0
-	crucible_script="${skills_dir}/crucible/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] || return 0
-	stamped_dispatch=$(sh "${crucible_script}" path "${stamped_id}" </dev/null 2>/dev/null) || return 0
-	case ${stamped_dispatch} in
-		*"${newline}"*) return 0 ;;
-		*/efforts/*/dispatches/"${stamped_id}"-*.json) ;;
-		*) return 0 ;;
-	esac
-	report_repo=$(jq -r '.repo_root | strings | select(startswith("/"))' "${stamped_dispatch}" </dev/null 2>/dev/null) || report_repo=''
 }
 
 # Writes the iteration baseline of repo into out_file: built in the temp
@@ -1976,5 +1989,6 @@ check_own_skill
 make_work_dir
 [ "${command}" != check ] || [ -z "${dispatch_file}" ] || pin_context
 check_report
+[ "${command}" = check ] || run_card
 read_git_status
-if [ "${command}" = check ]; then run_check; else run_render; fi
+run_check

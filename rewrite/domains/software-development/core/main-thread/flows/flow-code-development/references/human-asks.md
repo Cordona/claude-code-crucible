@@ -1,10 +1,11 @@
-# Human asks: the full report, opening it, and a commit
+# Human asks: the full report, the card again, opening it, and a commit
 
-What to do when the human asks for a dispatch's full report, to open it, or for a commit or its text; read from SKILL.md steps 5.3 and 6. Its terms (`<REPORT>`, `<crucible.sh>`) and Always are SKILL.md's.
+What to do when the human asks for a dispatch's full report, its card again, to open it, or for a commit or its text; read from SKILL.md steps 5.3 and 6. Its terms (`<REPORT>`, `<crucible.sh>`) and Always are SKILL.md's.
 
-## The full report, or opening it (step 5.3)
+## The full report, the card again, or opening it (step 5.3)
 
-- **When the human asks for the full report:** follow `standard-artifact-handoff`'s rule for showing an artifact's text, `<REPORT>` being that dispatch's latest report path, whole (after an iteration, that iteration's alone: SKILL.md Terms, Always), or, when the human names an earlier one, that one: "iteration <N>'s report" as SKILL.md Terms finds it through its baseline, "the first report" the dispatch's own `<REPORT>`; after a replacement, ask which dispatch when the ask doesn't say: however the ask is worded, its one line with the path comes first. Only after a yes, run `jq . '<REPORT>'` and show its stdout fenced (SKILL.md Always, Fence outside text, source `report`); a jq that fails: show the human its stderr and the report's path. The report's JSON is its full view; nothing renders it.
+- **When the human asks for the full report:** follow `standard-artifact-handoff`'s rule for showing an artifact's text, `<REPORT>` being that dispatch's latest report path, whole (after an iteration, that iteration's alone: SKILL.md Terms, Always), or, when the human names an earlier one, that one: "iteration <N>'s report" as SKILL.md Terms finds it through its baseline, "the first report" the dispatch's own `<REPORT>`; after a replacement, ask which dispatch when the ask doesn't say: however the ask is worded, its one line with the path comes first. Only after a yes, run `jq . '<REPORT>'` and show its stdout fenced (SKILL.md Always, Fence outside text, source `report`); a jq that fails: show the human its stderr and the report's path. A narrower question about a shown report is answered from its fields, as SKILL.md Always sets, with no line first. The report's JSON is its full view; no script shows it any other way.
+- **When the human asks to see the card again:** run SKILL.md step 5.2 again for the report that card was shown for, with a new card file, and act on its exit as step 5.3 sets.
 - **When the human asks to open it** (SKILL.md Never): run `sh <crucible.sh> --help` under SKILL.md's `--help` rule (Before step 1). Then run `sh <crucible.sh> open <ID>`, with the `<YYYYMMDDTHHMMSS>-<hex>` ID in the report file's name. Exit 0: relay its one line word for word. Any other exit: show the human its stderr and the report's path, and open nothing.
 
 ## A commit (step 6)

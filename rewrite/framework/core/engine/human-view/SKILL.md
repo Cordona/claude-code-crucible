@@ -27,7 +27,7 @@ Every view a renderer prints for the human follows these; the def named after a 
 6. **Data last:** a view built from JSON in the Crucible space ends with that JSON's paths: one as `**Data · <Kind>:** <path>`, two or more as `**Data**` and a numbered `<Kind>: <path>` list (`data_section`). A view with no JSON behind it has no Data section. Three exceptions: a view repeated through one run (such as a grill round) shows its Data only on its last view, or in the view that follows the run (what-next after a grill); a one-line view carries its path inline, after its title; a status view ends with its folder's bare path.
 7. **No constants:** a value that is the same on every view (a single agent, a single mode) is not shown, until a second value exists.
 8. **Gates keep their `_Crucible gate_` marker,** which `open-gate.sh` adds; a renderer never prints it.
-9. **The script prints, the model relays:** every view is printed by a script and relayed word for word; the model composes only the fixed one-line notices its skill spells out word for word.
+9. **The script prints, the model relays:** every view is printed by a script and relayed word for word; the model composes only the fixed one-line notices its skill spells out word for word, and lines it writes to a file that the script checks for shape and prints inside its view (a report card's Do and Decide lines).
 
 Blocks of a view are joined by one blank line (`blocks`).
 
