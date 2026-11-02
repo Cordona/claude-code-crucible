@@ -8,3 +8,4 @@
 - ATEST-04: evals wait for the developer-agent pilot; owner on running them now, 2026-10-13: "We leave it" (owner)
 - ATEST-05: evals wait for the developer-agent pilot; owner on running them now, 2026-10-13: "We leave it" (owner)
 - ATEST-06: evals wait for the developer-agent pilot; owner on running them now, 2026-10-13: "We leave it" (owner)
+- STR-05: deferred to a harness follow-up task (task #2); owner 2026-10-26 at the round-3 escalation: "One last fix round (Recommended)" (owner)

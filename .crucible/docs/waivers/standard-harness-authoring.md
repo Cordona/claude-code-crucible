@@ -19,3 +19,4 @@
 - STR-09: pre-existing, out of this change; tracked on task #2 (owner)
 - REF-07: out of this change's cap; tracked on task #2 (owner)
 - SCR-18: out of this change's cap; tracked on task #2 (owner)
+- SCR-20: deferred to a harness follow-up task (task #2); owner 2026-10-26 at G3 round 2: "Fix 4 blocking, defer SHOULDs (Recommended)" (owner)

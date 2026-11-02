@@ -10,3 +10,8 @@
 - SAFE-05: crucible.sh open's temp render under ${TMPDIR:-/tmp} is the human's own viewer copy, made on the human's ask; not listed in the write boundary (owner, D13) (owner)
 - LEAN-07: "seat" at SKILL.md:26 was there before the trim experiment; a follow-up (owner, D19) (owner)
 - STR-05: the count-line field list at SKILL.md:96 was there before the trim experiment; a follow-up (owner, D19) (owner)
+- SCH-15: no rejection log; new machinery, not in this effort (owner, D5) (owner)
+- SCH-12: the human's own full-report ask shows the report's JSON after a yes, as standard-artifact-handoff sets; older text, outside this change (owner, D7) (owner)
+- SUB-03: the iteration message lines are fixed by code-developer; its preloaded honesty rule covers each report; older text, outside this change (owner, D7) (owner)
+- WF-07: the Resume ask before the unreachable way is older text, outside this change (owner, D7) (owner)
+- LEAN-10: the Terms placeholders are older text, outside this change (owner, D7) (owner)

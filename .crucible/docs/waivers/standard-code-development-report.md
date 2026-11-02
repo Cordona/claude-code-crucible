@@ -1,2 +1,8 @@
 - FM-03: the description names no sibling for the reviewer report; owner rule: name another skill only when it cannot work without it (D4) (owner)
 - SCH-16: render refuses only reports stamped from dispatches made before the baseline key, which exist only in the sandbox (owner)
+- SCR-18: the card's ### heading and its ✅ ⚠️ ⛔ item marks are the owner-approved card layout (owner, D6) (owner)
+- SCR-19: the card's bulleted sections, a one-line list included, are the owner-approved card layout (owner, D6) (owner)
+- SCR-21: the card ends with its Report line and ask line, the owner-approved card layout, not a Data line (owner, D6) (owner)
+- SCR-22: the card's fixed ask line invites a deep dive on every card, by the owner's design (owner, D6) (owner)
+- SCH-15: no rejection log; new machinery, not in this effort (owner, D6) (owner)
+- SCH-12: the reviewer's reading of the developer report is the review flow's, outside this effort (owner, D6) (owner)
