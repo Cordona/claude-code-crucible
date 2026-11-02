@@ -12,11 +12,11 @@ def joined_labels:
 # title($role)
 #   input:  {language: label, frameworks: [labels]}, either key absent or null
 #   $role:  the role word, such as developer or reviewer
-#   output: "<language> <role>" with no framework; "<frameworks> <role> with
-#           <language>" with one or more; "Generic <role>" with no language
+#   output: "<language> <role>" with no framework; "<language> <role> with
+#           <frameworks>" with one or more; "Generic <role>" with no language
 def title($role):
 	(.frameworks // []) as $frameworks
 	| if (.language // "") == "" then "Generic \($role)"
 	  elif ($frameworks | length) == 0 then "\(.language) \($role)"
-	  else "\($frameworks | joined_labels) \($role) with \(.language)"
+	  else "\(.language) \($role) with \($frameworks | joined_labels)"
 	  end;

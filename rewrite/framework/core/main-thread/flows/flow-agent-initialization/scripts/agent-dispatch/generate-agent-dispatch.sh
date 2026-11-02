@@ -187,8 +187,8 @@ stdout on exit 0, in order:
   LABELS: <labels>  the loaded plugins' labels, relayed as printed:
     "LABELS: Language: <label> · Frameworks: <labels> · Standards: <labels>
     · Procedures: <labels>", an empty kind left out ("LABELS:" alone if all)
-  TITLE: <title>  the agent's title, relayed as printed: "<frameworks>
-    developer with <language>", "<language> developer", "Generic developer"
+  TITLE: <title>  the agent's title, relayed as printed: "<language>
+    developer with <frameworks>", "<language> developer", "Generic developer"
     with no language; a code-reviewer says "reviewer", a standard seat
     "<standard label> reviewer"; frameworks in plugin-name order; the
     installed labels
