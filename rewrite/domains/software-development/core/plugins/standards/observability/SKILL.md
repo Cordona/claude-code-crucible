@@ -9,13 +9,13 @@ metadata:
 
 # Standard: Observability
 
-What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What observable code holds, in any language: operators can see what it is doing. Build instrumentation in as the code is written: never bolt it on after an incident.
 
 It is grounded in OpenTelemetry, W3C Trace Context, Google SRE (RED, USE and the Four Golden Signals), OWASP Top 10:2025, GDPR and 12-factor. A library named here (SLF4J, structlog, slog or zap, pino, OpenTelemetry) is an example only: map it to the stack in front of you.
 
 ## Scope
 
-- **In:** code the developer writes or changes that runs in production (a service, job, handler or CLI), in any language. Also in:
+- **In:** written or changed code that runs in production (a service, job, handler or CLI), in any language. Also in:
   - **Alert routing:** where each alert the code raises goes.
 - **Test code is out:** telemetry is a runtime concern.
 - **Project conventions:** follow the project's logging and metrics conventions: its facade, field names, level policy, correlation mechanism, and metric and trace setup. Never introduce a second logging style. A convention never excuses a leak of secrets or PII, a missing security audit event or silent under-instrumentation: each is a defect even where the project does the same.

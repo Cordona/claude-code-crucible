@@ -9,12 +9,12 @@ metadata:
 
 # Standard: Performance
 
-How code should scale with its input, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+How code should scale with its input, in any language.
 
 ## Scope
 
-- **In:** how the logic scales with its input (algorithmic complexity and access patterns), in all code the developer writes or changes, test code included and under the same cost model, wherever it runs on a hot path, loops, or handles large or unbounded data.
-- **Store access is in:** every rule applies in full whether or not a durable store is involved, and the developer builds to all of them either way.
+- **In:** how the logic scales with its input (algorithmic complexity and access patterns), in all code written or changed, test code included and under the same cost model, wherever it runs on a hot path, loops, or handles large or unbounded data.
+- **Store access is in:** every rule applies in full whether or not a durable store is involved.
 - **Project conventions:** follow the project's performance patterns: its batching helpers, its pagination conventions, its cache layer. New code never bypasses an existing safe pattern. A convention never excuses a scaling defect: an unbounded query, an N+1 or an O(n²) hot path is a defect even where the project does the same.
 
 ## 1. Cost model
@@ -30,7 +30,7 @@ Classify each path first, sensitive or cold: the cost model sets which rules app
 
 ## 2. Scaling rules
 
-On a sensitive path. Cited by number.
+On a sensitive path.
 
 - **Rule 1, algorithmic complexity:** no nested iteration over related data (O(n²) or worse), no sort or search inside a loop, and no repeated linear scan of the same collection.
 - **Rule 2, work per item (N+1):** never issue a query, RPC, HTTP call or expensive computation once per item where one batched call would do. A SQL N+1, an HTTP call in a loop and a cache miss in a loop are the same pattern on any stack. Hoisting invariant work out of a loop is Rule 4.
@@ -44,7 +44,6 @@ On a sensitive path. Cited by number.
 ## 3. Baseline, on every path
 
 - **Every path meets the baseline, cold paths included:** the right data structure for the access pattern, no gratuitous N+1, and bounded reads. It costs nothing in clarity and prevents the most common scaling defects.
-- **The build bar is stricter than the review floor:** the developer meets the baseline in full, even where a reviewer would grade a miss lightly, since doing it right the first time costs nothing.
 
 ## 4. Clarity and speed
 

@@ -9,11 +9,11 @@ metadata:
 
 # Standard: Clean Code
 
-What well-structured code looks like, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What well-structured code looks like, in any language.
 
 ## Scope
 
-- **In:** all code the developer writes or changes, test code included.
+- **In:** all written or changed code, test code included.
 - **Project conventions:** follow the project's structural conventions: its module boundaries, its tolerance for function length and file size, its names for abstraction layers. Never impose a foreign architecture. A convention never excuses a real violation: a SOLID, DRY or coupling violation with a nameable harm is a defect even where the project does the same.
 
 ## Reading the rules

@@ -9,13 +9,11 @@ metadata:
 
 # Standard: Persistence
 
-What a correct data layer holds, for any durable store. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
-
-It assumes fluent SQL and NoSQL, so it holds only the non-default priorities and the easy-to-miss correctness traps, never a store tutorial.
+What a correct data layer holds, for any durable store.
 
 ## Scope
 
-- **In:** code the developer writes or changes, test code included, that reads or writes a durable store, or changes its schema or migrations. A change that touches no durable store is out. Also in:
+- **In:** code written or changed, test code included, that reads or writes a durable store, or changes its schema or migrations. A change that touches no durable store is out. Also in:
   - **Store choice:** which durable store a need goes to.
   - **Aggregate sizing:** the size of an aggregate and of its transaction boundary.
   - **Cache coherence:** an application or read-model cache kept in step with its store.

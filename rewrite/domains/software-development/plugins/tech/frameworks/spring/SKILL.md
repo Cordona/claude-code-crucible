@@ -9,19 +9,16 @@ metadata:
 
 # Framework: Spring
 
-The rules that are specific to Spring. It loads beside `language-kotlin`, never alone, and repeats no rule that plugin holds. Every role receives this file in its first message, after the language plugin's. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** Spring Framework, Spring Boot, Spring Data (Spring Data JPA included) and Spring Security, used from Kotlin.
 - **In, with no rules of their own:** other Spring projects, such as WebFlux and Spring Cloud: the rules below apply where they fit.
-- **Out:** Spring code with no language plugin loaded: this plugin never loads alone.
-- **Out:** Spring code in Java: this file holds no rules for it.
+- **Out:** Spring code in Java.
 - **Out:** other JVM frameworks: Micronaut, Quarkus, Jakarta EE without Spring, Ktor, Exposed.
 
 ## Toolchain
 
-Settle it after the language plugin's toolchain, before writing a line. Take each fact from the first source below that sets it:
+Settle it after Kotlin's toolchain, before writing a line. Take each fact from the first source below that sets it:
 
 1. The Spring Boot version in the build: the `org.springframework.boot` Gradle plugin, Maven's `spring-boot-starter-parent` or the `spring-boot-dependencies` BOM, or the version catalog.
 2. What the project's own docs on its Spring code say, where the task's context lists them.
@@ -29,7 +26,7 @@ Settle it after the language plugin's toolchain, before writing a line. Take eac
 
 ## With Kotlin
 
-- **The `kotlin-spring` (all-open) and `kotlin-jpa` (no-arg) compiler plugins are needed:** Kotlin classes are `final` with no no-arg constructor, which breaks CGLIB proxies and JPA entities. With one not enabled, see the developer's edge cases.
+- **The `kotlin-spring` (all-open) and `kotlin-jpa` (no-arg) compiler plugins are needed:** Kotlin classes are `final` with no no-arg constructor, which breaks CGLIB proxies and JPA entities.
 
 ## Transactions
 
@@ -47,7 +44,7 @@ Settle it after the language plugin's toolchain, before writing a line. Take eac
 - **Deny by default:** end the request rules with `anyRequest().denyAll()`, so a path no rule names stays closed; end them with `anyRequest().authenticated()` only when every signed-in user may reach every path no rule names.
 - **Narrow matchers before broad ones:** matchers are checked in order and the first match wins, so a broad matcher first opens the narrow path.
 - **CSRF protection stays on for a browser session:** disable it only for a stateless API with no cookie-based login.
-- **Passwords go through a `PasswordEncoder`** that hashes with the algorithm `standard-security` holds, loaded only when the task's plan loads it: never `NoOpPasswordEncoder` or plain text.
+- **Passwords go through a `PasswordEncoder`,** which transforms each one one-way so it is stored securely: never `NoOpPasswordEncoder` or plain text.
 - **`@PreAuthorize` needs `@EnableMethodSecurity`:** without it the annotation does nothing.
 - **Never rely on a self-invocation for `@PreAuthorize`:** as with `@Transactional`, a call from inside the same bean skips it.
 
@@ -69,13 +66,9 @@ Settle it after the language plugin's toolchain, before writing a line. Take eac
   - `@EntityGraph` on the repository method over a lazy relation walked per row; a fetch join in `@Query` when the query is already hand-written;
   - keyset pagination through Spring Data's `ScrollPosition` and `Window` API where the build's Spring Data has it (see Version ledger); otherwise a `@Query` with `WHERE (col) > :last ORDER BY col`.
 
-## Lints
-
-- **Spring adds no lint of its own:** the language plugin's Lints apply.
-
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default Spring Boot major (Toolchain step 3) | 3 | not verified by a command: the legacy default, kept on 2026-10-30 |
-| `ScrollPosition` and `Window` available from | unknown | not verified by a command: no source read names the version, kept on 2026-10-30 |
+| Fact | Value |
+|---|---|
+| Default Spring Boot major (Toolchain step 3) | 3 |
+| `ScrollPosition` and `Window` available from | unknown |

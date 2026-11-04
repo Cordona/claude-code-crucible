@@ -9,8 +9,6 @@ metadata:
 
 # Language: Rust
 
-The rules that are specific to Rust. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** Rust crates and workspaces built with Cargo: libraries, binaries, CLIs, services and async applications.
@@ -106,7 +104,7 @@ When async is in play:
 - **Secrets in memory:** `secrecy` and `zeroize`.
 - **Supply chain:** `cargo-audit`, and pinned dependencies.
 - **Tracing:** `tracing` spans with structured fields, through `tracing-subscriber`, with context carried across `.await`.
-- **Docs:** `///` on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it, with a doc-test where it has an example.
+- **Docs:** `///` on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it; a doc example that would be a doc-test is left to the test dispatch.
 - **Persistence:**
   - explicit `sqlx` or Diesel transactions;
   - `SELECT … FOR UPDATE` or a version column against lost updates;
@@ -116,14 +114,13 @@ When async is in play:
 
 ## Lints
 
-- **Compile with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **Clippy (`clippy::all`, `clippy::pedantic`) with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **Name each issue by its lint name** (`clippy::<lint>`): a finding with no id can't be matched against the baseline the gate compares to.
+- **Compile with no new warning:** each one the change adds is a gate failure.
+- **Clippy (`clippy::all`, `clippy::pedantic`) with no new warning:** each one the change adds is a gate failure.
 - **Every `#[allow(…)]` and `#[expect(…)]`, rustc's and Clippy's alike, carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default edition (Toolchain step 4) | 2024 | 2026-10-24, `cargo new` (cargo 1.92.0), macOS |
-| Latest stable `rustc` | 1.99.1, released 2026-10-13 | 2026-10-24, `rustup check`, macOS |
+| Fact | Value |
+|---|---|
+| Default edition (Toolchain step 4) | 2024 |
+| Latest stable `rustc` | 1.99.1, released 2026-10-13 |

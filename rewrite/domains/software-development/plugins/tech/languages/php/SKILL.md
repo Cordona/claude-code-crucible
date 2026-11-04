@@ -9,15 +9,13 @@ metadata:
 
 # Language: PHP
 
-The rules that are specific to PHP. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** PHP applications, REST APIs, queue jobs and console commands.
-- **In:** code on a web framework with no plugin of its own, such as Symfony, Slim or Laminas: this file holds no rules for the framework itself.
+- **In:** code on a web framework with no plugin of its own, such as Symfony, Slim or Laminas.
 - **In:** legacy PHP, before 8.0: it lacks the features of Strict typing and modern idioms below, and its type juggling needs a harder look.
 - **Out:** PHP driven only from another file, such as a Dockerfile `RUN composer install` line or a CI step.
-- **Out:** Laravel's own rules: `framework-laravel`, when loaded beside this one, holds them.
+- **Out:** Laravel's own rules.
 
 ## Toolchain
 
@@ -54,7 +52,6 @@ Settle it before writing a line. Take each fact from the first source below that
 ## Arithmetic
 
 - **Integer overflow silently becomes a `float`:** `PHP_INT_MAX + 1` loses integer precision instead of wrapping or failing, so guard size, index and money math that can pass the bounds.
-- **An overflow with a security consequence** (fraud, over-allocation, an out-of-bounds index) is a correctness defect with a security harm, not only arithmetic.
 
 ## Exceptions
 
@@ -85,21 +82,18 @@ Settle it before writing a line. Take each fact from the first source below that
 
 ## Lints
 
-- **Syntax-check with no new error:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **PHPStan (Larastan included) or Psalm, at the project's configured level, with no new error:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **Take the gate's baseline on top of a project's `phpstan-baseline.neon`:** it is part of the project's PHPStan config.
+- **Syntax-check with no new error:** each one the change adds is a gate failure.
+- **PHPStan (Larastan included) or Psalm, at the project's configured level, with no new error:** each one the change adds is a gate failure.
 - **Honor php-cs-fixer, phpcs (PSR-12) or Pint where the project configures them,** with no new finding.
-- **Name each finding by its rule id** (PHPStan's error identifier, Psalm's issue type, the php-cs-fixer or phpcs rule): a finding with no id can't be matched against the baseline the gate compares to.
 - **Every `@phpstan-ignore`, `@phpstan-ignore-next-line`, `@phpstan-ignore-line`, `@psalm-suppress` and `phpcs:ignore` carries its written reason:** a reasoned one on a line complies; an unexplained one is a defect.
 - **No rule turned off or down in the project's lint config:** such a change is a defect.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default PHP version (Toolchain step 5) | 8.4 | not verified by a command: the legacy default, kept on 2026-10-31 |
-| Latest stable PHP | 8.5.12 | 2026-10-31, `brew info --json=v2 php`, macOS 27.2 |
-| `json_validate()` available from | PHP 8.3 | not verified by a command: the legacy value, kept on 2026-10-31 |
-| Constructor property promotion available from | PHP 8.0 | not verified by a command: no legacy source gives it, kept on 2026-10-31 |
-| `#[\Override]` available from | PHP 8.3 | not verified by a command: no legacy source gives it, kept on 2026-10-31 |
-| Enums and `readonly` properties available from | PHP 8.1 | not verified by a command: no legacy source gives it, kept on 2026-10-31 |
+| Fact | Value |
+|---|---|
+| Default PHP version (Toolchain step 5) | 8.4 |
+| `json_validate()` available from | PHP 8.3 |
+| Constructor property promotion available from | PHP 8.0 |
+| `#[\Override]` available from | PHP 8.3 |
+| Enums and `readonly` properties available from | PHP 8.1 |

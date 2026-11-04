@@ -9,16 +9,14 @@ metadata:
 
 # Language: TypeScript
 
-The rules that are specific to TypeScript. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** TypeScript on Node or in the browser, in a project with a `package.json` and a `tsconfig.json`: backends, libraries, CLIs, and the code of a React or Next.js app that no framework rule covers.
 - **In:** `.js` files inside such a project.
 - **In:** code on a web framework with no plugin of its own, such as Express.
 - **Out:** TypeScript driven only from another file, such as a Dockerfile `RUN npm run build` line or a CI step.
-- **Out:** a pure-JavaScript project, with no `tsconfig.json`: this file holds no rules for it.
-- **Out:** React and Next.js rules: their framework plugins hold them.
+- **Out:** a pure-JavaScript project, with no `tsconfig.json`.
+- **Out:** React's and Next.js's own rules.
 - **Out:** Deno and Bun runtime specifics. Bun used only as the package manager is covered by Toolchain.
 
 ## Toolchain
@@ -89,7 +87,6 @@ Apply where the project uses Zod.
 
 ## Lints
 
-- **Type-check with no new error:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
 - **Honor ESLint, Prettier or Biome where the project configures them,** with no new finding.
 - **Name each finding by its rule id** (`@typescript-eslint/no-floating-promises`, `TS2322`): a finding with no id can't be matched against the baseline the gate compares to.
 - **Every `eslint-disable`, `biome-ignore` and `@ts-expect-error` carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
@@ -97,9 +94,8 @@ Apply where the project uses Zod.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default TypeScript version (Toolchain step 7) | 5.x | not verified by a command: the legacy default, kept on 2026-10-31 |
-| Latest stable TypeScript | 7.0.2 | 2026-10-31, `npm view typescript version`, macOS 27.2 |
-| Default Node version (Toolchain step 7) | 26, the LTS line "Lithium" (v26.13.0) | 2026-10-31, `curl -s https://nodejs.org/dist/index.json` (first lts entry), macOS 27.2 |
-| Default Zod version | 3.x | not verified by a command: the legacy default, kept on 2026-10-31 |
+| Fact | Value |
+|---|---|
+| Default TypeScript version (Toolchain step 7) | 5.x |
+| Default Node version (Toolchain step 7) | 26, the LTS line "Lithium" (v26.13.0) |
+| Default Zod version | 3.x |

@@ -9,18 +9,16 @@ metadata:
 
 # Standard: Self-Documenting Code
 
-What a comment, a docstring and a name are for, in any language. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What a comment, a docstring and a name are for, in any language.
 
 ## Scope
 
-- **In:** every comment and docstring in the code the developer writes or changes, test code included, and every name in it except test and scenario names, at the same bar: a test with a docstring on every assertion is judged as a production module would be.
+- **In:** every comment and docstring in written or changed code, test code included, and every name in it except test and scenario names, at the same bar: a test with a docstring on every assertion is judged as a production module would be.
 - **Project conventions:** follow the project's comment and docstring conventions: its doc sections, its tolerance for a WHY note's length and where it sits. Never impose a foreign house style. A convention never launders a defect: a REDUNDANT comment or an undocumented public contract is a defect even where the project does the same.
 
 ## Reading the rules
 
 - **A documented, official language convention governs where it differs from a rule here;** a personal or house preference doesn't. This standard is the language-agnostic floor.
-
-The burden of proof comes first: every rule after it applies it.
 
 ## 1. When a comment earns its place
 

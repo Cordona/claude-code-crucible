@@ -9,8 +9,6 @@ metadata:
 
 # Language: Shell script
 
-The rules that are specific to shell scripts, in Bash or POSIX `sh`. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** standalone scripts and sourced libraries run by `bash` or `sh`. Each runs on Linux, macOS, and Windows under Git Bash and WSL, unless the first message names fewer platforms.
@@ -74,6 +72,7 @@ Settle it before writing a line. Take each fact from the first source below that
 - **The shebang matches the features used:** under `sh`, no arrays, `[[ ]]`, `local`, `${v,,}` or process substitution.
 - **macOS `/bin/bash` is 3.2** (see Version ledger), so Bash scripts use Bash 3.2 features only: no associative arrays, `mapfile` or `readarray`, `${v,,}` or `${v^^}`, `globstar` or `declare -n`.
 - **An empty `"${arr[@]}"` aborts under `set -u` before Bash 4.4,** 3.2 included. Guard it with `${arr[@]+"${arr[@]}"}`; test `${#arr[@]}` first only when the empty case needs its own branch.
+- **The first message names fewer platforms:** only the limits of the platforms it names apply; the Bash 3.2 limit stays while macOS's `/bin/bash` is one of them.
 - **GNU and BSD tools differ** on `sed -i`, `date`, `stat`, `readlink`, `getopt` and `mktemp`; Git Bash and the default WSL distro carry the GNU forms (an Alpine WSL distro has BusyBox). Use a form every platform accepts; branch on `uname -s` (`Linux`, `Darwin`, or `MINGW*` and `MSYS*` under Git Bash) only where no such form exists.
 
 ## Windows: Git Bash and WSL
@@ -89,13 +88,11 @@ Settle it before writing a line. Take each fact from the first source below that
 
 ## Lints
 
-- **Syntax-check with no new error:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **Shellcheck (`-o all`) with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
-- **Name each issue by its SC code** (`SC2086`): a finding with no id can't be matched against the baseline the gate compares to.
+- **Shellcheck (`-o all`) with no new warning:** each warning the change adds is a gate failure.
 - **Every `# shellcheck disable=SCnnnn` carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| macOS `/bin/bash` | 3.2.57 | 2026-10-31, `/bin/bash --version`, macOS 27.2 |
+| Fact | Value |
+|---|---|
+| macOS `/bin/bash` | 3.2.57 |

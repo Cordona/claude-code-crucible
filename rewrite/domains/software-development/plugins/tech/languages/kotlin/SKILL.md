@@ -9,14 +9,11 @@ metadata:
 
 # Language: Kotlin
 
-The rules that are specific to Kotlin. Every role receives this file in its first message. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** Kotlin on the JVM, built with Gradle (Kotlin DSL or Groovy) or Maven: libraries, applications, services and CLIs.
 - **In:** Kotlin on a web framework with no plugin of its own, such as Ktor.
-- **Out:** Kotlin driven only from another file, such as a Dockerfile `RUN ./gradlew build` line or a CI step.
-- **Out:** Android, Kotlin Multiplatform, Kotlin/Native and Kotlin/JS: this file holds no rules for them.
+- **Out:** Android, Kotlin Multiplatform, Kotlin/Native and Kotlin/JS.
 
 ## Toolchain
 
@@ -105,16 +102,14 @@ A broken contract defeats an invariant or corrupts a hash structure, whatever th
 
 ## Lints
 
-- **Compile with no new warning:** treat each one your change adds as a gate failure. Old ones in an existing project would otherwise fail every change.
+- **Compile with no new warning:** each one the change adds is a gate failure.
 - **Honor `detekt` and `ktlint` where the project configures them,** with no new finding.
-- **Name each finding by its rule id:** a finding with no id can't be matched against the baseline the gate compares to.
 - **Every `@Suppress` carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default Kotlin version (Toolchain step 5) | 2.0 | not verified by a command: the legacy default, kept on 2026-10-30 |
-| Latest stable Kotlin | 2.4.21 | 2026-10-30, `brew info --json=v2 kotlin`, macOS 27.2 |
-| Default JVM target (Toolchain step 5) | 21 | not verified by a command: the legacy default, kept on 2026-10-30 |
-| `@ConsistentCopyVisibility` available from | Kotlin 2.0 | not verified by a command: the legacy value, kept on 2026-10-30 |
+| Fact | Value |
+|---|---|
+| Default Kotlin version (Toolchain step 5) | 2.0 |
+| Default JVM target (Toolchain step 5) | 21 |
+| `@ConsistentCopyVisibility` available from | Kotlin 2.0 |

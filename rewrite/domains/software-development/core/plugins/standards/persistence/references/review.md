@@ -1,8 +1,6 @@
 # Persistence: review
 
-Apply after `SKILL.md`'s rules when judging code by the persistence rules: judge the change by every rule there, then apply these. This file holds how to judge a finding and how to grade it; it sets no category vocabulary.
-
-- **Flag offset paging only on large or changing data:** where `SKILL.md` §4 "Page stably" keeps offset correct, it is no finding.
+- **Flag offset paging only on large or changing data:** where "Page stably" keeps offset correct, it is no finding.
 - **Flag a stale read only past the task's consistency need:** a store read that misses a just-committed write (eventual consistency, replica lag), or an application or read-model cache serving a value older than the need allows. Staleness the need allows is no finding.
 - **A single-item write needs no transaction:** never demand one.
 - **A single-node store:** never demand durable replication; flag durability only where the store lets it be tuned and the loss matters.
@@ -12,8 +10,6 @@ Apply after `SKILL.md`'s rules when judging code by the persistence rules: judge
 - **A purely additive, nullable change needs no expand-contract:** never demand one.
 
 ## Severity
-
-Where a persistence defect usually lands on the four levels. Start here, then judge the case in front of you.
 
 - **CRITICAL:**
   - data corruption or loss: a non-atomic multi-write with no compensation, broken referential integrity, a lost update on a read-modify-write, a destructive in-place update that erases required prior state;
@@ -35,9 +31,6 @@ Where a persistence defect usually lands on the four levels. Start here, then ju
   - a connection or cursor not released on the error path.
 - **LOW:**
   - defence-in-depth or lower-impact hardening (a belt-and-braces constraint).
-
-**Overrides:**
-- none for this lens.
 
 **What moves a level:**
 - The CRITICAL cases drop to HIGH when less data is at risk or recovery is possible.

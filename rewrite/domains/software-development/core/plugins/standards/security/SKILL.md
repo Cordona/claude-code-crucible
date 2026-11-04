@@ -9,7 +9,7 @@ metadata:
 
 # Standard: Security
 
-What secure code holds, in any language. Security is non-negotiable: never trade it for convenience. Build security in from the first line: never leave it to be patched after a pentest. The developer builds to these rules, then follows `references/development.md`; a reviewer (once a review flow dispatches `code-reviewer`) judges by the same rules, then follows `references/review.md`. Both receive this file in their prompt, with their role's reference file right after it.
+What secure code holds, in any language.
 
 It is grounded in OWASP Top 10:2025, ASVS 5.0, the CWE Top 25 and, for password policy, NIST SP 800-63B-4. Reason in weakness classes, which carry across stacks, and map each to how it shows up in the stack in front of you.
 
@@ -17,7 +17,7 @@ The ten numbered rule sections carry OWASP Top 10:2025's names, but which rule s
 
 ## Scope
 
-- **In:** code the developer writes or changes, test code included, that handles untrusted input, authentication, sessions, authorization, secrets, queries, cryptography, outbound calls, deserialization, sensitive data or privileged operations, and the configuration, dependencies and CI that code ships with. A change that touches none of these is out.
+- **In:** code written or changed, test code included, that handles untrusted input, authentication, sessions, authorization, secrets, queries, cryptography, outbound calls, deserialization, sensitive data or privileged operations, and the configuration, dependencies and CI that code ships with. A change that touches none of these is out.
 - **Data protection beyond logs is in:** encryption at rest, PII minimization, erasure and retention.
 - **Project conventions:** follow the project's security controls: its auth pattern, its validation and encoding approach, its secret handling. New code never bypasses an existing safe pattern. A convention never excuses an exploitable vulnerability: it is a defect even where the project does the same.
 
@@ -111,8 +111,6 @@ The default control for each sink:
 - **Disable external entities, DTD processing and entity expansion in every XML parser** (CWE-611, CWE-776): XXE reads files, reaches internal hosts and can run code, and a recursive entity (billion laughs) exhausts memory.
 
 ## 6. Insecure design (OWASP A06)
-
-The PII lifecycle sits here: what is collected, erased and kept is a design decision. Resource limits and file uploads sit here too, by this standard's grouping: each is a limit the design must set.
 
 - **Rate-limit security-sensitive flows** (login, OTP, password reset, payment, token issuance) and expensive or abusable endpoints.
 - **Back off exponentially per account on repeated failed logins,** never by IP alone: an IP limit doesn't stop distributed credential stuffing, and a hard lockout lets an attacker lock users out.

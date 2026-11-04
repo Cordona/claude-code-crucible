@@ -1,19 +1,13 @@
 # Accessibility: review
 
-Apply after `SKILL.md`'s rules when judging code by the accessibility rules: judge the change by every rule there, then apply these. This file holds how to judge a finding and how to grade it; it sets no category vocabulary and no finding-ID prefix.
-
 - **Walk the rendered surfaces in this order:** semantics, keyboard, names and labels, focus, dialogs, `disabled`, media, colour and motion, structure, target size, ids.
-- **No rendered UI, no finding:** a change that renders nothing different gets none; say so, and never manufacture one.
 - **No finding without the blocked user and the task they can't do:** a keyboard user can't reach the menu; a screen reader announces nothing when the form fails.
 - **A component library's accessible primitive used as documented is the control, so no finding;** a misuse of it is one.
 - **Judge contrast and size only where the values resolve from the code;** a value defined elsewhere is no finding.
 - **A change that disables or downgrades a configured accessibility lint rule is a finding.**
 - **A lint suppression with no written reason is a finding.**
-- **Correctness goes to the tech lens:** hand it over in `not_reviewed`, ungraded.
 
 ## Severity
-
-Where an accessibility defect usually lands on the four levels. Start here, then judge the case in front of you.
 
 - **CRITICAL:**
   - none for this lens.
@@ -39,9 +33,6 @@ Where an accessibility defect usually lands on the four levels. Start here, then
   - a decorative image not hidden;
   - redundant ARIA on a native element;
   - a lint suppression with no written reason.
-
-**Overrides:**
-- Never lower a real miss because the project does it the same way everywhere.
 
 **What moves a level:**
 - A MEDIUM rises to HIGH when it blocks the task, or when it ships in a shared design-system component.

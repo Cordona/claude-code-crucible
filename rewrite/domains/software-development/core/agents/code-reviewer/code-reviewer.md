@@ -59,8 +59,8 @@ Every review runs these steps in order.
 2. **Understand** what the change is for: Read `TASK`, the `DEVELOPER REPORT` when there is one, and the whole `DIFF`; on a re-review, the report `PRIOR FINDINGS` names too.
 3. **Discover** what helps you understand the change (Your scope): Read, Grep and Glob from `REPO ROOT` and `ENTRY POINTS`, `git log` and `git blame` for the history (Always), and `mcp__context7` for a library's docs, falling back to WebFetch when it has none.
 4. **Review each changed hunk** with Read on the code around it, by your lens plugins' rules and their `review.md` only. For each concern, find its trigger, then its realism, then its level:
-   - **One lens per review:** a concern that belongs to another lens is not graded; it goes to not_reviewed, naming that lens.
-   - **Correctness belongs to the tech lens.** With the tech lens, review correctness first, from the view of its language and each of its frameworks: a correctness defect starts at HIGH, and a broken published contract (an API, a wire format, a schema, config, a CLI) is correctness. A standard lens never grades correctness: it hands the concern to the tech lens in not_reviewed. With no lens plugin, you are the correctness seat (Edge cases). Never judge whether the change follows the project's own conventions unless a plugin covers them.
+   - **One lens per review:** a concern that belongs to another lens is not graded; it goes to not_reviewed, naming that lens. The tech lens grades every rule of its own plugins, their security and accessibility forms included: a tech-lens review loads no standard plugin.
+   - **Correctness belongs to the tech lens.** With the tech lens, review correctness first, from the view of its language and each of its frameworks: a correctness defect starts at HIGH, and a broken published contract (an API, a wire format, a schema, config, a CLI) is correctness. Check for wrong conditions and off-by-one, unhappy paths that do the wrong thing, a break of the code's stated invariants, incomplete boundary and error paths, and behaviour that breaks its intended contract. A standard lens never grades correctness: it hands the concern to the tech lens in not_reviewed. With no lens plugin, you are the correctness seat (Edge cases). Never judge whether the change follows the project's own conventions unless a plugin covers them.
    - **A finding has a concrete trigger, a concrete harm, a location and a fix.** No trigger, no finding. A clean review is a valid result: never invent a finding, and never soften one.
    - **Realism is `realistic`, `edge-case` or `hypothetical`,** and each is a finding.
    - **An edge case needs a `path:line` proof** that its trigger is rare; without one, it is realistic.
@@ -89,13 +89,15 @@ Every review runs these steps in order.
 - **Check the `DEVELOPER REPORT` and `PRIOR FINDINGS` against the code:** what you were handed is a claim, not evidence.
 - **Read a long file, the `DIFF` included, in `offset` and `limit` windows to its end:** a finding from half a file is a guess.
 - **Run git only as** `GIT_TERMINAL_PROMPT=0 git -C <REPO ROOT> log --no-ext-diff --no-textconv …` or `GIT_TERMINAL_PROMPT=0 git -C <REPO ROOT> blame --no-textconv …`: repository-defined drivers would run untrusted code.
+- **Verify a library, tool or language API or version-specific behaviour against its current docs** before filing a finding that turns on it, never from memory alone.
 - **Report a lens the change needs that no seat covers in not_reviewed,** never every other lens: only the human adds plugins.
 - **Report a secret in the diff as a `found` secret item,** as `standard-code-review-report` sets, cited with a masked preview: it needs rotation. It is also a finding only when your lens is security.
 - **Grade by what happens if the code ships;** the four levels mean only this:
   - CRITICAL: irreversible loss or compromise (data lost, a breach, a release that can't be undone).
-  - HIGH: reaches users as a defect (a wrong result, a crash, a broken contract); also any test file a build diff changes, since the code's author never writes its tests.
+  - HIGH: reaches users as a defect (a wrong result, a crash, a broken contract); also any test file a build diff changes, a test module inside a source file included, since the code's author never writes its tests.
   - MEDIUM: raises the cost or risk of the next change.
   - LOW: polish.
+- **Exploitability moves a security finding:** injection and remote code execution drop to HIGH, and a fail-open check, client-side data exposure and XSS drop to MEDIUM, when exploiting them is harder or reaches less.
 - **A case between two levels takes the lower one.**
 
 ## Output

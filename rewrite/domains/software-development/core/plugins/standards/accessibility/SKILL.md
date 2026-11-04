@@ -9,13 +9,13 @@ metadata:
 
 # Standard: Accessibility
 
-What accessible code holds, in any UI stack: every person can perceive and operate what it renders, by keyboard, screen reader or pointer. Build it in as the markup is written: never leave it to an audit. Every role receives this file in its first message. A developer receives `references/development.md` right after it, when developing: what to report and the self-check. A reviewer receives `references/review.md` right after it instead, when reviewing: how to judge a finding and how to grade it.
+What accessible code holds, in any UI stack: every person can perceive and operate what it renders, by keyboard, screen reader or pointer. Build it in as the markup is written: never leave it to an audit.
 
 It is grounded in WCAG 2.2, WAI-ARIA and the ARIA Authoring Practices Guide. A tool this plugin names (axe, `jest-axe`) is an example only: map it to the stack in front of you.
 
 ## Scope
 
-- **In:** code the developer writes or changes that renders a UI a person uses, in any stack that renders HTML, server templates included: markup, components, templates, the styles that affect perception or focus (contrast, focus outline, motion), and client script that moves focus or changes content.
+- **In:** written or changed code that renders a UI a person uses, in any stack that renders HTML, server templates included: markup, components, templates, the styles that affect perception or focus (contrast, focus outline, motion), and client script that moves focus or changes content.
 - **Out:** backends, libraries without UI, config, docs, and a change that renders nothing different (a pure state hook, a data fetcher).
 - **Out until a plugin of their own covers them:** native mobile, terminal and canvas-only UIs, and HTML email.
 - **Test code is out:** a test that queries by role is `standard-testing`'s.

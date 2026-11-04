@@ -9,19 +9,16 @@ metadata:
 
 # Framework: React
 
-The rules that are specific to React. It loads beside the language plugin, never alone, and repeats no rule that plugin holds; `framework-nextjs`, when loaded beside this one, holds Next.js's own rules. Every role receives this file in its first message, after the language plugin's. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
-- **In:** React components and hooks, Server Components included, in a single-page app (Vite, react-router) or under Next.js, where `framework-nextjs` loads beside this plugin.
+- **In:** React components and hooks, Server Components included, in a single-page app (Vite, react-router) or under Next.js.
 - **In:** React in `.js` and `.jsx` files inside a TypeScript project, as the language plugin covers them; the With TypeScript rules apply only to typed files.
-- **Out:** React code with no language plugin loaded, in a pure-JavaScript project too: this plugin never loads alone.
-- **Out:** Next.js's own rules (App Router, Server Actions, route handlers, route conventions, `next/dynamic`): `framework-nextjs` holds them.
-- **Out:** Remix and React Native: this file holds no rules for them.
+- **Out:** Next.js's own rules (App Router, Server Actions, route handlers, route conventions, `next/dynamic`).
+- **Out:** Remix and React Native.
 
 ## Toolchain
 
-Settle it after the language plugin's toolchain, before writing a line. Take each fact from the first source below that sets it:
+Settle it after TypeScript's toolchain, before writing a line. Take each fact from the first source below that sets it:
 
 1. The `react` version in `package.json`, else in the lockfile.
 2. What the project's own docs on its React code say, where the task's context lists them.
@@ -75,36 +72,34 @@ Settle it after the language plugin's toolchain, before writing a line. Take eac
 - **Keep each input either controlled (a `value` with its `onChange`) or uncontrolled, never both:** a `value` without `onChange` freezes the input, and flipping between `value` and `defaultValue` is a bug.
 - **Key list items by a stable identity, never the index,** where the list reorders, inserts, deletes or is virtualized: an index key binds component state to the wrong row.
 - **Build the loading, empty and error states, with error boundaries and Suspense where they fit,** as part of done: async UI without them breaks on the first slow or failed call.
-- **Share one Zod schema between client and server:** both sides then check the same shape. `standard-security` holds the server's re-validation, loaded only when the task's plan loads it.
+- **Share one Zod schema between client and server:** both sides then check the same shape.
 - **Map a parse failure to a field-error state built from the schema's issues, never the raw `ZodError` or its default message in the UI:** each error then shows at its field.
 
 ## Render performance
 
 - **Memoize by the React Compiler's state:** with it on, add no `useMemo` or `useCallback` as a habit, since the compiler memoizes; with it off, keep references stable where they gate memoization, since a new inline object, function or array breaks `memo` and re-renders the subtree.
 - **Virtualize a list past about 100 rows:** it bounds reconciliation and DOM cost.
-- **Load a heavy client tree below the fold with `React.lazy`, inside Suspense and an error boundary, unless a framework plugin loaded beside this one names its own loader** (`framework-nextjs`: `next/dynamic`): the tree then leaves the first bundle.
+- **Load a heavy client tree below the fold with `React.lazy`, inside Suspense and an error boundary:** the tree then leaves the first bundle.
 - **Import a module directly where a barrel file would bloat the bundle:** the barrel pulls in code the page never uses.
 
 ## Accessibility: React's forms
 
 - **Generate every id a label's `htmlFor` or an `aria-*` attribute points at with `useId`, and write `htmlFor`, never `for`:** JSX takes the DOM property name, and a hand-rolled or module-level id duplicates across list rows and breaks the association.
 - **Honor `eslint-plugin-jsx-a11y` where the project configures it,** as Lints below sets for `react-hooks`.
-- **Take every other accessibility rule from `standard-accessibility`,** loaded only when the task's plan loads it.
 
 ## React mechanisms for the shared standards
 
 - **Observability:** an error boundary that reports to the project's error-tracking sink.
 - **Clean code:** stateful logic extracted into a custom hook.
-- **Docs:** TSDoc on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it, such as an exported hook that throws outside its provider.
 - **Performance and persistence:** no N+1 fetches from a Server Component tree; batch them or fetch them in parallel.
 
 ## Lints
 
-- **Honor `eslint-plugin-react-hooks` (`rules-of-hooks`, `exhaustive-deps`) where the project configures it:** it catches the Hooks and Effects breaks above, and it runs in the language plugin's lint. A rule of it turned off or down in the project's lint config is a finding; a reasoned line-level disable follows the language plugin's Lints.
+- **Honor `eslint-plugin-react-hooks` (`rules-of-hooks`, `exhaustive-deps`) where the project configures it:** it catches the Hooks and Effects breaks above, and it runs in the language plugin's lint. A rule of it turned off or down in the project's lint config is a finding; a reasoned line-level disable complies.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default React major (Toolchain step 3) | 19 | not verified by a command: the legacy default, kept on 2026-10-31 |
-| React Compiler state when nothing turns it on | off | not verified by a command: the legacy default, kept on 2026-10-31 |
+| Fact | Value |
+|---|---|
+| Default React major (Toolchain step 3) | 19 |
+| React Compiler state when nothing turns it on | off |

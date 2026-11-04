@@ -9,18 +9,13 @@ metadata:
 
 # Framework: Laravel
 
-The rules that are specific to Laravel. It loads beside `language-php`, never alone, and repeats no rule that plugin holds. Every role receives this file in its first message, after the language plugin's. A developer then receives `references/development.md` right after it: what to report, the defaults, the edge cases and the verification gate. A reviewer receives `references/review.md` right after it instead: how to judge a finding and how to grade it.
-
 ## Scope
 
 - **In:** Laravel applications, used from PHP: routes, controllers, Eloquent models, migrations, queued jobs, Blade templates and artisan commands.
-- **Out:** Laravel code with no language plugin loaded: this plugin never loads alone.
-- **Out:** PHP's own rules: `language-php` holds them.
-- **Out:** other PHP frameworks, such as Symfony, Slim or Laminas: this file holds no rules for them.
 
 ## Toolchain
 
-Settle it after the language plugin's toolchain, before writing a line. Take each fact from the first source below that sets it:
+Settle it after PHP's toolchain, before writing a line. Take each fact from the first source below that sets it:
 
 1. The `laravel/framework` version in `composer.lock`, else its constraint in `composer.json`.
 2. What the project's own docs on its Laravel code say, where the task's context lists them.
@@ -72,23 +67,14 @@ Settle it after the language plugin's toolchain, before writing a line. Take eac
 
 ## Laravel mechanisms for the shared standards
 
-- **Queries:** Eloquent or the query builder, every value bound; `standard-security` holds the injection rule this meets, loaded only when the task's plan loads it.
+- **Queries:** Eloquent or the query builder, every value bound.
 - **Persistence:**
-  - `DB::transaction()` boundaries scoped tight;
-  - `with()` over a relation walked per row;
-  - `chunk()` or `lazy()` for large reads;
   - migrations written expand-contract: add the new column or table first, drop the old one in a later release;
-  - `$casts` for typed attributes, such as dates, enums and booleans;
-  - `standard-persistence` holds the store-agnostic rules these meet, loaded only when the task's plan loads it.
+  - `$casts` for typed attributes, such as dates, enums and booleans.
 - **Logging:** the `Log` facade, with structured context passed as its context array.
-
-## Lints
-
-- **Laravel adds no lint of its own:** Larastan, where the project configures it, runs as the language plugin's PHPStan step, and the language plugin's Lints apply.
 
 ## Version ledger
 
-| Fact | Value | Last verified |
-|---|---|---|
-| Default Laravel major (Toolchain step 3) | 12 | not verified by a command: the legacy default, kept on 2026-10-31 |
-| Latest stable Laravel | 13.39.0 | 2026-10-31, `curl -s https://repo.packagist.org/p2/laravel/framework.json`, macOS 27.2 |
+| Fact | Value |
+|---|---|
+| Default Laravel major (Toolchain step 3) | 12 |

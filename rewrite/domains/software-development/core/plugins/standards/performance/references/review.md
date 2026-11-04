@@ -1,16 +1,12 @@
 # Performance: review
 
-Apply after `SKILL.md`'s rules when judging code by the performance rules: judge the change by every rule there, then apply these. This file holds how to judge a finding and how to grade it; it sets no category vocabulary.
-
 - **A bottleneck the code doesn't show:** ask for a measurement in the finding; never assert a cost you can't show from the code.
-- **Flag N+1 only where the code bypasses the framework's eager or batch loading:** that API already makes one batched call, so `SKILL.md` Rule 2 holds.
-- **A micro-optimization on a cold path that costs clarity is a finding:** `SKILL.md` counts it a defect. A cold path left simple is none.
+- **Flag N+1 only where the code bypasses the framework's eager or batch loading:** that API already makes one batched call, so Rule 2 holds.
+- **A micro-optimization on a cold path that costs clarity is a finding:** the cost model counts it a defect. A cold path left simple is none.
 - **An optimization kept on a measurably hot path, with its WHY comment, is no clarity finding.**
 - **No finding without the concrete scaling harm:** name the input size and how often the code runs.
 
 ## Severity
-
-Where a performance defect usually lands on the four levels. Start here, then judge the case in front of you.
 
 - **CRITICAL:**
   - none for this lens.
