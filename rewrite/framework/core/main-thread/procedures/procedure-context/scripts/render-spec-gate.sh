@@ -204,7 +204,7 @@ Prints a spec gate as Markdown, or with --question its question: the offer
 spec-offer) or the approval (case approval, label spec-approval).
 --approval-plan writes the approval plan for a draft. stdin is never read;
 the plan file and the draft are only read; only --approval-plan writes, and
-only --plan-out.
+only to --plan-out.
 
 Options:
   --plan-file PATH  one JSON object, no other field:
@@ -245,15 +245,7 @@ code fence (three backticks or tildes) is never a heading.
 No line is ever cut: a longer one is refused, and the draft is rewritten.
 
 stdout on exit 0 only:
-  a gate: its Markdown, with no gate marker:
-    offer: "**Decision needed · write the spec now?**", then "**Why now**"
-      and the reasons as a numbered list
-    revision: "**Decision needed · revise the spec?**", then "**Why**"
-      and the reasons as a numbered list
-    approval: "**Decision needed · approve the spec?**", "**Goal:** <the
-      Goal line>", "**Open points**" and a numbered list or "**Open
-      points:** none", then "**Data · Spec:** <the draft's path>", whole
-      and absolute
+  a gate: its Markdown, with no gate marker
   --question: one JSON object {"header": str, "question": str, "options":
     [{"label": str, "description": str}, ...]}, the first option marked
     (Recommended):
@@ -261,7 +253,7 @@ stdout on exit 0 only:
     revision: Revise it / Keep it as it is
     approval with open points: Answer the open points / Approve, leave them
       to the developer / Change it: say what
-    approval with none: Approve / Change it: say what
+    approval with no open points: Approve / Change it: say what
   --approval-plan: SPEC_SHA256: <the draft's sha256>
 stderr on exits 2 and 3: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a plan field is named
@@ -278,9 +270,7 @@ Exit codes:
      --approval-plan again
   4  --approval-plan could not write --plan-out, or stdout closed before the
      output was written; stop and show the exit code and stderr
-  5  an install fault: jq, tr, a sha256 tool, the ${RENDER_LIB} skill's
-     view.jq, the ${CRUCIBLE_SKILL} skill's scripts/lib/crucible-space.sh or
-     agent-context-file-checks.sh beside this script missing, or jq failing
+  5  an install fault
   129, 130, 143  stopped by HUP, INT or TERM; nothing written
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the

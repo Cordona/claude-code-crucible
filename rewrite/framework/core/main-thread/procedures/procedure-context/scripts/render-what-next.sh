@@ -72,7 +72,7 @@ read, the plan file and the grill file only read; no file is written.
 
 Options:
   --plan-file PATH    one JSON object, {"context": PATH, "grill": PATH}, no
-                      other field, grill only after a grill:
+                      other field; grill only when a grill ran:
                       context: the absolute path of an existing regular file,
                         not a symbolic link, named as a context version
                         (<YYYYMMDDTHHMMSS>-<4 lowercase hex>-v<N>.json), with
@@ -83,10 +83,7 @@ Options:
                         present, are an array
   CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout on exit 0 only: the gate's Markdown, a fixed decision line, with
-  a grill that settled any question its count of settled questions, and the
-  context path (and the grill path, after a grill), whole and absolute, with
-  no gate marker
+stdout on exit 0 only: the gate's Markdown, with no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a plan field is
   named context or grill
@@ -100,8 +97,7 @@ Exit codes:
   3  jq failed
   4  stdout closed before the gate was written, nothing on stderr; stop and
      show the exit code
-  5  an install fault: a tool or skill file missing or failing; stderr names
-     which
+  5  an install fault: a tool or skill file missing or failing
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
   distro's jq package), the ${RENDER_LIB} skill's view.jq and the crucible

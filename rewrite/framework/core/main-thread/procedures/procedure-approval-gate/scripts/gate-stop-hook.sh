@@ -70,7 +70,7 @@ Input: the Stop hook JSON on stdin; reads session_id, agent_id and
 Gate folder (open-gate.sh writes it):
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session_id>/
 
-stdout (Claude Code reads it):
+stdout:
   {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"<context>"}}
   "now ask" context: ${ASK_REASON}
   "relay again" context: procedure-approval-gate: relay try <n> of ${MAX_RELAY_RETRIES} failed:
@@ -130,7 +130,7 @@ relay_reason() {
 		text) cause='the gate text is missing from the last message' ;;
 		*) cause="the gate text is missing and the last non-empty line is not ${MARKER}" ;;
 	esac
-	printf 'procedure-approval-gate: relay try %s of %s failed: %s. The gate is still pending, so its question stays denied until a turn'"'"'s last message is the full text open-gate.sh printed and nothing else, its last line %s.' \
+	printf 'procedure-approval-gate: relay try %s of %s failed: %s. The gate is still pending. Its question stays denied until a turn'"'"'s last message is the full text open-gate.sh printed and nothing else, its last line %s.' \
 		"$1" "${MAX_RELAY_RETRIES}" "${cause}" "${MARKER}"
 }
 

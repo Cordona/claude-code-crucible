@@ -6,16 +6,15 @@ user-invocable: false
 
 # Standard: Spec
 
-A spec is the contract between the human and the agents for one effort's work: the what and the why, approved by the human at its approval gate. The main thread drafts it with the human through `procedure-context`, which also enters it in the context. It fits any kind of work: code, documentation, design, architecture.
+A spec is the contract between the human and the agents for one effort's work: the what and the why, approved by the human at its approval gate. It fits any kind of work: code, documentation, design, architecture.
 
 ## Scope
 
-- **Inside an effort only,** as part of building its context: a spec is discipline, not paperwork. Work outside an effort has none.
-- **Work that builds nothing needs no spec, and that is no skip** (a grill about the human's understanding of an existing system, say), judged on the work now asked for. Every rule below is for work that builds something.
+- **Inside an effort only,** as part of building its context. Work outside an effort has none.
+- **Work that builds nothing needs no spec, and that is no skip** (say, a grill about the human's understanding of an existing system). Judge it by the work now asked for. Every rule below is for work that builds something.
 - **Not here, and none loaded by this skill:**
   - drafting, skipping and entering the spec in the context, and its offer and approval gates: `procedure-context`, which loads this skill;
   - handing the spec over: `standard-artifact-handoff`;
-  - when a dispatch may be offered: `procedure-context`'s "what next?" and each flow's dispatch check;
   - a skill's or agent's `spec.md` in a `flow-harness-authoring` run: its sections differ.
 
 ## Never
@@ -28,15 +27,12 @@ A spec is the contract between the human and the agents for one effort's work: t
 
 ## Always
 
-- **Every effort gets a spec unless its work is too small.** The main thread judges "too small" with care; when a spec looks like overkill, the offer gate says why, and the skip is the human's option there.
-- **A skip ends the drafting** and is recorded as a context note, as `procedure-context`'s The spec names it, so a skipped spec is told apart from a missing one.
+- **Every effort gets a spec unless its work is too small.** The main thread judges "too small" with care.
 - **During an effort, offer a new or revised spec only when a change alters the work's goal, done-when or scope,** whether its spec was approved or skipped.
 - **The human has the final say:** they can ask for a spec, or reject one offered.
-- **The human approves the spec only at its approval gate,** before anyone builds to it: a reply elsewhere approves nothing.
-- **The approved spec is a context entry with its approval note,** as `procedure-context`'s The spec names them.
+- **The approved spec is a context entry with its approval note.**
 - **Every agent dispatched after it works from it.**
 - **Every agent still running gets a revised spec's path** in its next change and every later one, as the spec that replaces the earlier one.
-- **An agent learns how to read a spec from its context rules,** not from this skill: it builds to the what, and owns the how.
 
 ## The five sections
 
@@ -46,9 +42,9 @@ Each is a `## ` heading, in this order:
 2. **Done when:** what is true when it is finished, as behaviour or results the human can check.
 3. **Scope:** what is in, and what is out (the no-gos).
 4. **Constraints:** what must hold or must not be touched, and what needs the human's OK first.
-5. **Open points:** unknowns and risks. At approval none is open, or the human leaves every point still listed to the developer, which accepts each as the developer's call.
+5. **Open points:** unknowns and risks. At approval none is open, or the human leaves every point still listed to the developer: each becomes the developer's call.
 
 ## Size and form
 
 - **Size fits the work:** a small spec is a few lines.
-- **Free-form Markdown with the five headings,** each version written once to a `--label spec` effort draft, allocated as `crucible` sets for drafts (not loaded here: `procedure-context` allocates it). A revision is a new draft; the newest is the current one.
+- **Free-form Markdown with the five headings,** each version written once to a `--label spec` effort draft, allocated as `crucible` sets for drafts. A revision is a new draft; the newest is the current one.

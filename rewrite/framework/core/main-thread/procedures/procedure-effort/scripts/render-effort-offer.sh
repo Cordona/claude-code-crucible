@@ -90,8 +90,7 @@ usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... [--aft
 Prints the effort offer, the gate asking the human whether to start an effort,
 or with --case the state offer, which asks what should happen to the open
 effort NAME when new work comes (new-work) or suggests completing it (done),
-as Markdown from a JSON file of reasons. stdin is never read; no file is
-written.
+as Markdown from a JSON file of reasons.
 
 Options:
   --plan-file PATH  one JSON object, {"reasons": [str, ...]}, no other field:
@@ -134,8 +133,7 @@ Exit codes:
   5  the ${RENDER_LIB} skill's view.jq or paths.jq, or with --case or
      --open-effort the ${CRUCIBLE_SKILL} skill's lib/crucible-space.sh, missing
 
-Dependencies: POSIX sh, cat, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package), the ${RENDER_LIB} skill's view.jq and paths.jq in the
+Dependencies: POSIX sh, cat, jq 1.6+, the ${RENDER_LIB} skill's view.jq and paths.jq in the
   skills, and with --case or --open-effort the ${CRUCIBLE_SKILL} skill's
   scripts/lib/crucible-space.sh; the plan file is read as UTF-8 whatever the
   locale.

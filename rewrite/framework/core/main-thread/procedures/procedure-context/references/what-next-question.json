@@ -7,7 +7,7 @@
       "options": [
         {
           "label": "Dispatch agents",
-          "description": "The work's flow proposes who to dispatch, such as developers and reviewers. Each goes through its own plan gate before it runs."
+          "description": "The work's flow proposes who to dispatch, such as developers. Each goes through its own plan gate before it runs."
         },
         {
           "label": "Stop here",

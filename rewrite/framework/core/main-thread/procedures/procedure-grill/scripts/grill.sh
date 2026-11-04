@@ -278,11 +278,9 @@ usage() {
 
 Writes a grill's file, the record of one interview of the human, in an
 effort's ${KIND}/ folder, and prints what each change shows the human. A write
-replaces the file whole only when the new file passes grill-validator.jq, or
-leaves it as it was; once the grill has ended, every write is refused.
-Nothing else is left behind (a SIGKILL aside: it can leave a temp file and
-the lock beside the grill file). stdin is never read. One call at a time on
-one grill; a held lock exits ${LOCKED_EXIT}.
+replaces the file whole only when the new file passes grill-validator.jq;
+otherwise the file stays as it was. Once the grill has ended, every write is
+refused.
 
 Commands (each page holds its options, output and exit codes):
   new     creates the grill file, with its topic and no question
@@ -293,10 +291,7 @@ Commands (each page holds its options, output and exit codes):
   end     marks the grill ended
   list    prints the effort's grill files, newest first; writes nothing
 
-Ids: q1, q2, ... in the order added, never reused. Shape: see
-grill-validator.jq. claude_session_id names a session: the file's, set by
-new and never changed; a question's, the session that added it; an
-answer's, a status one included, the session that gave it.
+Ids: q1, q2, ... in the order added, never reused.
 EOF
 	help_shared environment
 	help_shared dependencies
@@ -348,8 +343,7 @@ EOF
 		ask)
 			print_page <<'EOF'
 
-Prints round N, N one more than the last round asked, and stores N on each
-question asked as the round it was last asked in.
+Prints the next round, numbered one more than the last round asked.
 
 Options:
 EOF
@@ -366,9 +360,9 @@ EOF
 			print_page <<'EOF'
 
 Records one answer per --id group, in order. An open or deferred question
-becomes settled; a settled one changes only with --change-reason, its earlier
-answers kept, and its settled children (parent ID) not answered in the same
-call go back to open.
+becomes settled. A settled one changes only with --change-reason; its earlier
+answers are kept, and its settled children (parent ID) not answered in the
+same call go back to open.
 
 Options:
 EOF
@@ -407,8 +401,7 @@ EOF
 			print_page <<'EOF'
 
 Prints the effort's grill files, newest first, each checked against
-grill-validator.jq. It reads them only: no file is written, no lock taken.
-A grills/ folder it cannot read exits 2, naming it.
+grill-validator.jq.
 
 Options:
   --effort FOLDER        the effort folder, as effort.sh start printed it
@@ -422,7 +415,7 @@ EOF
 		*)
 			print_page <<'EOF'
 
-Marks the grill ended; no command writes the file again.
+Marks the grill ended.
 
 Options:
 EOF
@@ -512,11 +505,10 @@ EOF
 			print_page <<EOF
 
 Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
-  jq package); date, mkdir, mktemp, mv, rm, rmdir, tr (every macOS and Linux
-  base system); in the skills: the ${CRUCIBLE_SKILL} skill's crucible.sh,
-  scripts/lib/crucible-space.sh and scripts/lib/prune.jq, the ${RENDER_LIB}
-  skill's view.jq, the ${EFFORT_SKILL} skill's effort.sh (but for list);
-  grill-validator.jq beside this script.
+  jq package); date, mkdir, mktemp, mv, rm, rmdir, tr; in the skills: the
+  ${CRUCIBLE_SKILL} skill's crucible.sh, scripts/lib/crucible-space.sh and
+  scripts/lib/prune.jq, the ${RENDER_LIB} skill's view.jq, the ${EFFORT_SKILL}
+  skill's effort.sh (but for list); grill-validator.jq beside this script.
 EOF
 			;;
 	esac
@@ -529,8 +521,8 @@ help_exits() {
 
 stderr on exit 2: one "${PROG}: <what>; expected <x>" line per problem, at
   most ${MAX_PROBLEMS}, then a count of the rest (a usage error adds a "Try" line)
-stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
-  prints; tell the human what it names to install, and stop
+stderr on exits 1, 3, 5: "${PROG}: install:"; tell the human what it names
+  to install, and stop
 EOF
 	[ "$2" != lock ] || print_page <<EOF
 
@@ -557,7 +549,8 @@ EOF
      and show the exit code
   5  an install fault: a tool or skill file missing or failing; stderr names
      which
-  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
+     show the exit code, and stop
 EOF
 		return 0
 	fi
@@ -580,7 +573,7 @@ EOF
 EOF
 	print_page <<'EOF'
   129, 130, 143  stopped by HUP, INT or TERM, the grill file whole, as it was
-     or as written; show the human stderr, and stop
+     or as written; tell the human it was stopped, show the exit code, and stop
 EOF
 }
 

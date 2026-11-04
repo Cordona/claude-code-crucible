@@ -110,20 +110,19 @@ Starts, lists and finds the Crucible space's effort folders,
 <space>/efforts/<id>-<name>/, and keeps each effort's state: open, paused,
 completed or dropped. One item per change in the effort's states/ folder; the
 newest is the state, none is open. Moves: open -> paused|completed|dropped,
-paused -> open|completed|dropped, completed|dropped -> open. Item shape:
-effort-state-validator.jq.
+paused -> open|completed|dropped, completed|dropped -> open.
 
   ID      <YYYYMMDDTHHMMSS>-<hex>: the local start time and 4 random lowercase
-          hex digits; never reused
+          hex digits
   NAME    words of a-z and 0-9 joined by single dashes, 1 to 40 characters
   --name NAME      start: the new effort's NAME
   --effort FOLDER  pause, complete, drop, reopen, state: an effort folder
                    directly in <space>/efforts/, absolute
   --all            list: every effort, not only the newest 20
   VALUE            path: a full ID, its 4 hex digits or an exact NAME
-  CLAUDE_CODE_SESSION_ID  start and the moves: required, the session ID
-                   Claude Code sets, a lowercase UUID, each new item's
-                   claude_session_id; list, path, state: not read
+  CLAUDE_CODE_SESSION_ID  start and the moves: required; the session ID
+                   Claude Code sets, a lowercase UUID, stored as each new
+                   item's claude_session_id; list, path, state: not read
   CRUCIBLE_HOME    the space; default $HOME/.crucible
   CLAUDE_CONFIG_DIR  holds skills/ and projects/; default $HOME/.claude
 
@@ -142,13 +141,11 @@ stderr: "effort.sh:" lines to show the human, except:
   path, exit 1 with matches: each <id>-<name>, unprefixed, newest first
   list, per unknown effort: "effort.sh: space: <file>: <why>", exit 0
 
-pause, complete and drop start procedure-metrics' harvest, detached, 10 s on.
-start creates the effort folder, mode 700, and the space and efforts/ when
+pause, complete and drop start procedure-metrics' harvest, detached.
+start creates the effort folder, and the space and efforts/ when
 missing; a failed start leaves no new folder unless stderr names it. A state
-change adds one item, whole, mode 600; refused or failed, it adds none. list,
-path and state write nothing. Nothing is written through a symbolic link.
-Nothing else is left behind (a SIGKILL aside: it can leave the lock, a temp
-file or an empty item, which reads as exit 4 until removed).
+change adds one item, whole; refused or failed, it adds none. list,
+path and state write nothing.
 
 Exit codes:
   0  done; read stdout
@@ -169,8 +166,7 @@ Exit codes:
 
 Dependencies (a missing one exits 5):
   POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir, ls, sort,
-    mktemp, mv, rm, sleep (macOS and Linux base); jq 1.6+ but for path
-    (macOS: brew install jq; Linux: the distro's jq package)
+    mktemp, mv, rm, sleep; jq 1.6+ but for path
   in the skills: the crucible skill's
     crucible.sh, lib/crucible-space.sh and lib/prune.jq;
     effort-state-validator.jq beside this script

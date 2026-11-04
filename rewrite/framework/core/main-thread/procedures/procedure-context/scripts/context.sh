@@ -171,7 +171,7 @@ Commands:
       the same diff prints the same file
   latest  prints the latest version's absolute path and sha256
 
-Options (no value but a note may hold a control character):
+Options (only a note may hold a control character):
   --effort FOLDER   the effort folder, as effort.sh start printed it
   --from VERSION    the effort's latest version, a CONTEXT_FILE path
   --retire LIST:N   drops entry N (from 1) of VERSION's paths, links or notes;
@@ -197,8 +197,7 @@ Options (no value but a note may hold a control character):
 Sensitive names, basename globs:
   ${sensitive_names}
 
-A version is at most ${context_cap}; shape: agent-context-validator.jq
-(claude_session_id first).
+A version is at most ${context_cap}; shape: agent-context-validator.jq.
 
 stdout on exit 0 (none otherwise):
   new, extend, latest: CONTEXT_FILE: <absolute path>, then
@@ -213,7 +212,7 @@ effort.
 
 Environment:
   CRUCIBLE_HOME     the space (default \$HOME/.crucible)
-  CLAUDE_CODE_SESSION_ID  required but for latest; a lowercase UUID
+  CLAUDE_CODE_SESSION_ID  required except for latest; a lowercase UUID
 
 Exit codes (1 on a failed write, 2, 4-6, a signal: show the human stderr; stop):
   0  done; read stdout

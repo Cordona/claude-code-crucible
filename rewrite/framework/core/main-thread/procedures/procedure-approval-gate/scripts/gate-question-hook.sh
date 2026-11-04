@@ -37,9 +37,9 @@ A Claude Code PreToolUse hook for AskUserQuestion: denies the main thread's
 question while this session's approval gate is pending, and closes this
 session's gate in any other state as its question goes out, first saving a
 relayed gate's plan as the gate record.
-On a fault the question is allowed, unless a pending gate (with jq missing:
-  any session's) is open, exit 2, or a relayed gate's record could not be
-  saved, the deny on stdout.
+On a fault the question is allowed, with two exceptions: while a pending gate
+  is open (with jq missing: any session's), exit 2; when a relayed gate's
+  record could not be saved, the deny on stdout.
 
 stdin: the hook JSON (session_id, agent_id, tool_name); a tool_name other than
   AskUserQuestion, a non-empty agent_id (a subagent's or side agent's
@@ -72,7 +72,6 @@ Writes, in this session's gate folder and the record's folder only:
     nothing changed for ${STALE_MINUTES} minutes: removed with its folder, records/
     included; a plan.json changed within ${STALE_MINUTES} minutes stays, and then only
     gate.md and state are removed
-  a pending gate's deny leaves the gate as it is
 
 Exit codes:
   0  allowed; or denied by the decision on stdout, which Claude Code applies,

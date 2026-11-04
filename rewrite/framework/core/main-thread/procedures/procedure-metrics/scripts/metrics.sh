@@ -271,10 +271,9 @@ stdout on exit 0: harvest nothing; show the view, Markdown, to relay.
 stderr: "metrics.sh:" lines to show the human.
 
 Session files are replaced atomically, mode 600, by one harvest of an
-effort at a time; each problem of a file metrics-validator.jq rejects is
+effort at a time. Each problem of a file metrics-validator.jq rejects is
 also appended to FOLDER/metrics/.rejections.log. Transcripts and
-everything outside FOLDER/metrics/ are never written. Nothing else is left
-behind (a SIGKILL aside).
+everything outside FOLDER/metrics/ are never written.
 A harvest rewrites FOLDER/metrics/, so Crucible's prune age check sees
 the effort as recently active.
 
@@ -285,12 +284,13 @@ Exit codes:
   5  install fault; show the human stderr, and stop
   6  another harvest of this effort is running; no session file written;
      rerun once, else show the human stderr, and stop
-  129, 130, 143  stopped by a signal; show the human stderr, and stop
+  129, 130, 143  stopped by a signal; tell the human it was stopped, show
+                 the exit code, and stop
 
 Dependencies:
   POSIX sh; awk, date, find, grep, sed, sort, mkdir, chmod, rmdir, mktemp,
-    mv, rm, sleep (macOS and Linux base); jq 1.6+ (macOS: brew
-    install jq; Linux: the distro's jq package)
+    mv, rm, sleep; jq 1.6+ (macOS: brew install jq; Linux: the distro's
+    jq package)
   metrics-validator.jq beside this script
   show only: the human-view skill's view.jq, in CLAUDE_CONFIG_DIR's skills/
 EOF

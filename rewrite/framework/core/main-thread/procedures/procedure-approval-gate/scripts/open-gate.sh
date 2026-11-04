@@ -280,7 +280,7 @@ check_combination() {
 		[ "${seen}" = ' --show-only' ] || usage_error '--show-only saves no record; expected it without --label or --effort'
 		return 0
 	fi
-	[ -n "${label}" ] || usage_error "--label missing or empty; expected --label LABEL, the plan's kind, such as dispatch-plan"
+	[ -n "${label}" ] || usage_error "--label missing or empty; expected --label LABEL, the label the gate's procedure sets, such as dispatch-plan"
 	load_space_lib
 	check_label
 	case "${seen} " in

@@ -52,8 +52,7 @@ usage: sh ${PROG} changed --effort FOLDER
        sh ${PROG} status --effort FOLDER
        sh ${PROG} --help | -h
 
-Prints one view of an effort's state for the human, as Markdown. stdin is
-never read; no file is written.
+Prints one view of an effort's state for the human, as Markdown.
 
 Commands:
   changed    the line after a state change, from the effort's newest state
@@ -70,26 +69,18 @@ stdout on exit 0 only: the view's Markdown, to relay word for word
 stderr on exit 2: one "${PROG}: <what>; expected <x>" line per
   problem (a usage error adds a "Try" line)
 
-Exit codes:
+Exit codes (on 1 to 6: show the human stderr and exit code, on 4 the exit
+code only; go on when the change it shows is already written, else stop):
   0  the view printed; go on
-  1  jq missing; show the human stderr and exit code; go on when the change
-     it shows is already written, else stop
-  2  refused input; show the human stderr and exit code; go on when the
-     change it shows is already written, else stop
-  3  jq failed on valid input; show the human stderr and exit code; go on
-     when the change it shows is already written, else stop
-  4  stdout closed before the view was written, nothing on stderr; show the
-     human stderr and exit code; go on when the change it shows is already
-     written, else stop
+  1  jq missing
+  2  refused input
+  3  jq failed on valid input
+  4  stdout closed before the view was written, nothing on stderr
   5  an install fault: a tool or skill file missing or failing, stderr names
-     which; show the human stderr and exit code; go on when the change it
-     shows is already written, else stop
-  6  the effort's folder or state items are unusable; show the human stderr
-     and exit code; go on when the change it shows is already written, else
-     stop
+     which
+  6  the effort's folder or state items are unusable
 
-Dependencies: POSIX sh, cat, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package); in the skills: the ${RENDER_LIB}
+Dependencies: POSIX sh, cat, jq 1.6+; in the skills: the ${RENDER_LIB}
   skill's view.jq and paths.jq, the ${CRUCIBLE_SKILL} skill's
   scripts/lib/crucible-space.sh; effort.sh and effort-state-validator.jq
   beside this script.

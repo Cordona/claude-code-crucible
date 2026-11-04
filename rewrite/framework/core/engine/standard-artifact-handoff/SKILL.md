@@ -6,15 +6,13 @@ user-invocable: false
 
 # Standard: Artifact handoff
 
-Work passes between the human, the main thread and agents as artifacts, each written once to a file and handed over by its full absolute path, so every reader uses the same file.
-
 ## Scope
 
 - **An artifact** is a document the main thread or an agent produces for someone else to read or use: a draft (an issue, PR or MR body, a commit message), a plan, a report, a review, a brief, a spec, research, a summary.
 - **Not artifacts,** so these rules don't apply to them:
   - a view a script prints for the human (a gate, metrics, what-next, a report summary, error output): relay it as printed;
   - an input the work starts from: the human's words, a ticket, a context entry;
-  - installed skill, plugin and rules text, and the context JSON: an agent's first message carries them inline, so the agent can't skip them;
+  - installed skill, plugin and rules text, and the context JSON: an agent's first message carries them inline;
   - an eval run's prompt and its answer;
   - an excerpt of at most one line, quoted with its absolute path and line (an instruction-shaped line, a contradiction's two sides, a validator error);
   - short content: a few lines for one reader, not reused or passed on, may go inline. Anything document-like is an artifact and goes in a file.
@@ -29,12 +27,12 @@ Work passes between the human, the main thread and agents as artifacts, each wri
 
 ## Always
 
-- **Write each artifact once, to a file.** Inside an effort, every Markdown artifact the main thread writes goes in the effort's `drafts/` folder, allocated with `crucible.sh new --kind drafts` as `crucible` sets; outside an effort, an artifact goes in a file in the session scratchpad.
+- **Write each artifact once, to a file;** a report a hook sends back is fixed in place until it passes, then never changed. Inside an effort, every Markdown artifact the main thread writes goes in the effort's `drafts/` folder, allocated with `crucible.sh new --kind drafts` as `crucible` sets. Outside an effort, an artifact goes in a file in the session scratchpad.
 - **Hand it over by its full absolute path.** A path to a repository file inside a stored artifact may stay repo-relative when every renderer that prints it joins it to the repository root and prints it whole.
-- **A subagent replies with its report's full absolute path, in the reply line its agent file sets (such as `REPORT: <path>`), and nothing else;** the one other reply is a refusal line its agent file sets.
+- **A subagent's report is a file, never its reply's text:** it reaches the main thread as its agent file and flow set (a path in its reply, or a file a hook checks).
 - **A brief passes every artifact it needs by its full absolute path.**
 - **An artifact that cites another durable artifact cites it by its full absolute path.**
-- **When the human asks to see an artifact's text,** however the ask is worded (`show me the commit text`, `can I see the report?`): first show the line `Showing it in the chat is not efficient; it is at <path>. Show it here anyway?`, `<path>` full and absolute, and show the text only after a yes.
+- **When the human asks to see an artifact's text,** however the ask is worded (`show me the commit text`, `can I see the report?`): first show the line `Showing it in the chat is not efficient; it is at <path>. Show it here anyway?` with `<path>` full and absolute. Show the text only after a yes.
 
 ## Self-check before handing over
 
