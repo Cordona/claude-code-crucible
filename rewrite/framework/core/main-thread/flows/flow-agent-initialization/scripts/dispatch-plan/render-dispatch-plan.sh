@@ -157,8 +157,7 @@ usage: sh ${PROG} --plan-file PATH [--data KIND=PATH]... [--skills-dir DIR]
 Renders a dispatch plan, or its question.
 
 Options:
-  --plan-file PATH    the plan JSON, required (stdin is not read); dispatch
-                      plan shape: see dispatch-plan-validator.jq
+  --plan-file PATH    the plan JSON, required (stdin is not read)
   --data KIND=PATH    printing a plan only, repeatable: one line of its Data
                       section, in the order given, before the context file;
                       KIND letters, digits, space or -, PATH absolute
@@ -168,12 +167,6 @@ Options:
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
 stdout, a plan: its Markdown, without the gate marker:
-  a code-developer plan: Developer, the title from its language and
-    frameworks ("Generic developer" with no language), Task, Load and Skip
-    (its standards, then procedures, by label), Data
-  a code-reviewer plan: Reviewer, the reviewer title for a language seat
-    ("Generic reviewer" with no lens) or the standard's label for a
-    standard seat, Task, Data
   a plan whose replan is "invalid" prints as blocked: the Developer or
     Reviewer line from the installed plugins not named invalid, Task,
     Invalid (the plugins named with reason "invalid"), Data
@@ -186,8 +179,7 @@ stdout, --question: one JSON object {"header": str, "question": str,
 stderr on exits 1, 3, 4, 5 and 6: a line starting "${PROG}:
   install:" is an install or host fault; show it to the human at once
 
-Checks no plan rule (generate-dispatch-plan.sh does); refuses only input it
-can't render. Writes no file.
+Checks no plan rule; refuses only input it can't render.
 
 Exit codes:
   0  printed; pipe a plan into open-gate.sh, copy a question into one

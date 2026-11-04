@@ -1,0 +1,58 @@
+{
+  "summary": "Add token refresh with one retry; stop logging tokens",
+  "verification": [
+    {
+      "gate": "format",
+      "result": "pass",
+      "command": "./gradlew --offline ktlintCheck",
+      "note": "3 warnings predate this change"
+    },
+    {
+      "gate": "typecheck",
+      "result": "pass",
+      "command": "./gradlew --offline compileKotlin compileTestKotlin"
+    },
+    {
+      "gate": "lint",
+      "result": "not_run",
+      "note": "detekt is not configured in this project"
+    },
+    {
+      "gate": "test",
+      "result": "pass",
+      "command": "./gradlew --offline test"
+    }
+  ],
+  "deviations": [
+    {
+      "from": "message: TASK",
+      "what": "Retry capped at 3 instead of 5",
+      "why": "The auth API rate-limits after 3 calls per minute"
+    }
+  ],
+  "decisions": [
+    {
+      "choice": "Kept the WHY-comment on the retry cap at TokenClient.kt:60",
+      "why": "The cap comes from the auth API's rate limit, which the code cannot show"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "shared/src/main/kotlin/http/HttpLogger.kt:30",
+      "text": "The shared HttpLogger prints full request headers at debug level"
+    }
+  ],
+  "security": [
+    {
+      "kind": "secret",
+      "at": "src/main/resources/application.yml:8",
+      "text": "A live auth client secret is hard-coded (cs-****)"
+    }
+  ],
+  "open": [
+    {
+      "text": "Assumed a 401 always means an expired token, never a revoked one; confirm",
+      "ref": "message: TASK"
+    }
+  ]
+}

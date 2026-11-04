@@ -8,7 +8,7 @@ umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches baselines plans grills states reports/development reports/review drafts cache/gates cache/denials'
+readonly KIND_LIST='context dispatches plans grills states reports/review drafts cache/gates cache/denials'
 readonly CACHE_KINDS='cache/gates cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
@@ -41,16 +41,16 @@ folder: new and find refuse it, the rest skip it.
 Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
-  kind    context, dispatches, baselines, plans, grills, states,
-          reports/development, reports/review, drafts, cache/gates or
-          cache/denials; the cache kinds expire after ${CACHE_MAX_DAYS} days
+  kind    context, dispatches, plans, grills, states, reports/review,
+          drafts, cache/gates or cache/denials; the cache kinds expire
+          after ${CACHE_MAX_DAYS} days
   ext     md for drafts (every Markdown artifact the main thread writes
           inside an effort), json for every other kind
 
 Options:
   --kind KIND         new, find: a kind of the layout
   --effort FOLDER     new, find: an existing effort folder directly in
-                      <root>/efforts/, absolute (trailing slashes allowed)
+                      <root>/efforts/, absolute
   --label LABEL       new: the item's label; find: only items with it.
                       ${help_label_rule}
   ID                  path, open (before its options): a full ID or its
@@ -85,12 +85,11 @@ Exit codes:
   2  usage error; show stderr
   4  space fault; show stderr
   5  install fault; show stderr
-  129, 130, 143  stopped by HUP, INT or TERM; show stderr
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
 Dependencies:
   POSIX sh; lib/crucible-space.sh beside this script
-  cat, date, find, mkdir, od, rm, sort, uname, /dev/urandom (every
-    macOS and Linux base system)
+  cat, date, find, mkdir, od, rm, sort, uname, /dev/urandom
   open: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); the
     ${RENDER_LIB} skill's view.jq in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
     without --editor, open (macOS) or xdg-open (Linux)
@@ -329,7 +328,7 @@ expire_cache() {
 			entered=$(pwd -P) || exit 1
 			[ "${entered}" = "${physical_effort}/${cache_kind}" ] || exit 1
 			find . ! -name . -prune -type f -mtime "+$((CACHE_MAX_DAYS - 1))" -exec rm -f -- {} +
-		) || warn "cache not fully expired in ${cache_dir}; expected its old files removed; the next new tries again"
+		) || warn "cache not fully expired in ${cache_dir}; expected its old files removed; the next crucible.sh new tries again"
 	done
 }
 

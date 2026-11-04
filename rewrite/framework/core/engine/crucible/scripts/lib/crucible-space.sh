@@ -307,7 +307,7 @@ crucible_claim_item_file() {
 		fi
 		if [ "${crucible_claim_try}" -ge "${crucible_max_create_attempts}" ]; then
 			crucible_claim_fault=taken
-			crucible_claim_problem="${crucible_max_create_attempts} tries in $1 found the name or its ID taken; expected a free one, try again"
+			crucible_claim_problem="${crucible_max_create_attempts} tries in $1 found the name or its ID taken; expected a free one; try again"
 			return 1
 		fi
 		crucible_claim_try=$((crucible_claim_try + 1))

@@ -1,11 +1,8 @@
 # Boundary map: which plugin owns a shared concern
 
-The one concern-to-owner table for the plugins. Read it at SKILL.md's step 5, when two plugins' descriptions both match one concern of a task.
-
 - **The concern goes to its owner:** load the owner for it.
 - **A non-owner is still loaded for a concern of its own** the task also touches: the half a row leaves it, or a concern no row lists. A shared concern alone never pulls it in.
-- **A standard or procedure plugin left out by a row** goes into `--skip`, its reason *(<concern>: owned by `<owner>`)*. A language or framework plugin is never left out by a row: it keeps its own form of the concern.
-- **The language plugin** is that of the language the code is in, such as `language-shell`; **a framework plugin**, that of a framework the code uses.
+- **A standard or procedure plugin left out by a row** goes into `--skip` with the reason *(<concern>: owned by `<owner>`)*. A language or framework plugin is never left out by a row: it keeps its own form of the concern.
 
 | Concern | Owner | What the others keep |
 |---|---|---|
@@ -33,7 +30,7 @@ The one concern-to-owner table for the plugins. Read it at SKILL.md's step 5, wh
 | N+1, bounded reads, offset paging, over-wide reads | `standard-performance`: their cost at scale | `standard-persistence`: their correctness (stable paging, a result set held within memory) |
 | Blocking I/O on a latency-sensitive path | `standard-performance` | `standard-observability`: the logging side (async, non-blocking appenders) |
 | How code scales with its input | `standard-performance` | `standard-clean-code`: nothing |
-| Test-only rules | `standard-testing` | every other standard: nothing (`standard-observability` covers no test code) |
+| Test-only rules | `standard-testing` | every other standard: nothing |
 | Test and scenario names | `standard-testing` | `standard-self-documenting-code`: nothing |
 | Every other name, comment and docstring, test code included | `standard-self-documenting-code` | `standard-clean-code`, `standard-testing`: nothing |
 | Code structure: responsibility, duplication, coupling, function size, dead code, file layout | `standard-clean-code` | `standard-self-documenting-code`: nothing |

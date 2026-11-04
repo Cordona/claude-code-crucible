@@ -1,0 +1,22 @@
+{
+  "summary": "Emit a logout event after three failed refreshes",
+  "verification": [
+    {
+      "gate": "test",
+      "result": "pass",
+      "command": "./gradlew test --offline"
+    }
+  ],
+  "answers": [
+    {
+      "id": "SPEC-01",
+      "status": "fixed",
+      "notes": "LogoutEvent published before the throw, TokenClient.kt:73"
+    },
+    {
+      "id": "SECURITY-01",
+      "status": "blocked",
+      "notes": "The prefix comes from the shared HttpLogger in another module, outside this task"
+    }
+  ]
+}

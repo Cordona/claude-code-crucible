@@ -14,6 +14,7 @@
 # is in load or skip, once; load_reason only when nothing is loaded; a
 # code-reviewer plan holds one lens: the language with its frameworks, or one
 # standard, or neither.
+# A developer plan always loads a language and at least one standard.
 # Output: one "<where> <problem>; expected <x>" line per problem, nothing when
 # the plan fits. With --arg format json: one {"at": <path>, "problem":
 # "<problem>; expected <x>"} object per problem, at being the field's path in
@@ -196,6 +197,14 @@ def lens_problems($plan; $items):
 		  end
 	end;
 
+def developer_problems($plan; $items):
+	if $plan.agent == lens_agent or ($plan.plugins | type) != "object" then empty
+	else (if has_language($plan) then empty
+		 else problem(["plugins", "load", "language"]; " "; "missing; expected the language the code is in: a developer always has one") end),
+		(if any($items[]; .list == "load" and .slot == "standards") then empty
+		 else problem(["plugins", "load", "standards"]; " "; "missing; expected at least one standard: a developer always builds to one") end)
+	end;
+
 def testing_problems($plan; $items):
 	if ($plan.plugins | type) != "object" then empty
 	else [$items[] | select(.list == "load" and .plugin == testing_plugin)] as $testing
@@ -215,6 +224,7 @@ def installed_problems:
 	  coverage_problems($plan; $items),
 	  framework_problems($plan; $items),
 	  lens_problems($plan; $items),
+	  developer_problems($plan; $items),
 	  testing_problems($plan; $items);
 
 (if length != 1 then problem([]; " "; "is \(length) JSON values; expected exactly one object")

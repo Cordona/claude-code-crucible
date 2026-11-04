@@ -1,19 +1,19 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-agent-initialization: its five other
-# scripts, procedure-context's context.sh, procedure-effort's effort.sh, the
+# scripts, procedure-context's context.sh, procedure-effort's effort.sh,
+# procedure-git-worktree's slots.sh and its bind and stop hook scripts, the
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module, the crucible skill's prune
-# module, which the plan and dispatch scripts, the inject hook and both report
-# scripts load, human-view's path helpers, which the developer report renderer
-# loads, its view module, which every view of the flow loads, and its title
-# module, which the dispatch script loads,
+# module, which the plan and dispatch scripts, the inject hook and the review
+# report script load, human-view's view module, which every view of the flow
+# loads, and its title module, which the dispatch script loads,
 # procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
-# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the three hook
-# entries in settings.json (the inject hook, which must block on failure, and
-# both gate hooks), the Crucible
+# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the five hook
+# entries in settings.json (the inject hook, which must block on failure, both
+# gate hooks, and procedure-git-worktree's bind and developer stop hooks), the Crucible
 # space in its additionalDirectories, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix; the lines
 # are kept and printed at the end, as a pass line, a view or the full
@@ -56,12 +56,14 @@ readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # More symlink hops than any install chain needs; a longer chain is a loop.
 readonly MAX_LINK_HOPS=40
 readonly RENDER_LIB='human-view'
-readonly PATHS_MODULE="${RENDER_LIB}/paths.jq"
 readonly VIEW_NAME='view'
 readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
 readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
+readonly WORKTREE_PROCEDURE='procedure-git-worktree'
+readonly BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/bind.sh"
+readonly DEV_STOP_SCRIPT="${WORKTREE_PROCEDURE}/scripts/dev-stop.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 # Relative to DIR/crucible/scripts/.
@@ -77,6 +79,10 @@ readonly HOOK_ON_FAILURE='block'
 # The gate hooks read one small state file, and a timed-out one lets the stop
 # or question through, so a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
+# The bind hook runs one slots.sh change; the developer stop hook checks a
+# report and commits the worktree, so its bound is wider.
+readonly BIND_HOOK_TIMEOUT=10
+readonly DEV_STOP_HOOK_TIMEOUT=30
 # Printed unexpanded so the fix can be pasted into settings.json as is.
 # shellcheck disable=SC2016
 readonly HOOK_COMMAND_ROOT='${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills'
@@ -169,7 +175,7 @@ usage: sh ${PROG} [--skills-dir DIR] [--settings FILE]
        sh ${PROG} --help | -h
 
 Checks the skills, tools, settings.json entries and plugins
-  ${PROCEDURE} needs; every check runs, so one run names every fix.
+  ${PROCEDURE} needs.
 
 Options:
   --skills-dir DIR   the skills folder; default
@@ -178,39 +184,37 @@ Options:
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/settings.json
   --cache-dir CACHE  the cache folder; default
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/agent-init
-                     (a relative DIR, FILE or CACHE is taken from the
-                     current folder; every path printed is absolute)
   --force            runs every check even when the cached pass holds
   --verbose          prints the full checklist: a header line, one line per
                      check (✓, ✗ <item>: <reason>. Fix: <action>, or
                      ⚠ <item>: <reason>), then a summary line
 
-stdout, to relay as printed; its last line is "(result not cached: <reason>)"
-  when a pass can't be cached (never a failure):
+stdout, to relay as printed; one of:
   **Install check passed** · <n> checks
                      a pass with no ⚠
   **Install check passed** · unchanged since <YYYY-MM-DD HH:MM>
                      a cached pass
-  a view             any ✗: blocked, one Fix item per ✗ or ⚠ line, a hook
-                     or space fix naming the exact settings.json entry to
-                     add; only ⚠: passed, one Warnings item per ⚠ line
+  a view             any ✗: blocked, one Fix item per ✗ or ⚠ line;
+                     only ⚠: passed, one Warnings item per ⚠ line
   without jq or ${VIEW_MODULE}: the --verbose output instead, a pass
                      without its header and check lines
+  then "(result not cached: <reason>)" as the last line when a pass
+                     can't be cached; never a failure
 
-Cache: leaves only CACHE/${MARKER_NAME}, replaced atomically, after a pass with
-  no ⚠, and reuses it until anything the checks read changes; a ✗ or ⚠
-  removes it. settings.json is never touched.
-Reads only settings.json's hook entries and
-  permissions.additionalDirectories; never prints a settings value.
+Cache: after a pass with no ⚠, leaves only CACHE/${MARKER_NAME} and
+  reuses it until anything the checks read changes; a ✗ or ⚠ removes it.
+settings.json: reads only its hook entries and
+  permissions.additionalDirectories; never writes it or prints a value.
 
 Exit codes:
   0  every check passed (a ⚠ included), or the cached pass holds; go on
   1  a check failed; stop: each Fix item names its fix
   2  usage error; reinstall ${PROCEDURE} and stop
-  129, 130, 143  stopped by HUP, INT or TERM; show it and stop
+  129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
+                 show the exit code, and stop
 
 Dependencies:
-  POSIX sh; cat, grep, readlink, tr (every macOS and Linux base system)
+  POSIX sh; cat, grep, readlink, tr
   cksum, date, find, mkdir, mktemp, mv, rm, sort for the cache (a missing one
     leaves the result not cached)
   jq ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}+, date, git, cmp, awk, sort, mktemp, mv, rm, wc, sha256sum or
@@ -317,17 +321,21 @@ fingerprint_input() {
 		"${context_scripts_dir}/${CONTEXT_VALIDATOR_LIB}" "${context_scripts_dir}/${CONTEXT_URL_LIB}" \
 		"${context_scripts_dir}/${CONTEXT_FILE_LIB}" \
 		"${context_scripts_dir}/${CONTEXT_VERSIONS_LIB}" "${context_procedure_dir}/${TEMPLATE_FILE}" \
-		"${skills_dir}/${PATHS_MODULE}" "${skills_dir}/${VIEW_MODULE}" \
+		"${skills_dir}/${VIEW_MODULE}" \
 		"${skills_dir}/${TITLE_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/slots.sh" \
+		"${skills_dir}/${BIND_SCRIPT}" "${skills_dir}/${DEV_STOP_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
+	fingerprint_hook PostToolUse Agent "${BIND_SCRIPT}"
+	fingerprint_hook SubagentStop '' "${DEV_STOP_SCRIPT}"
 	printf 'crucible space\n%s\n' "${crucible_home}"
 	jq -c "${ALLOWED_DIRS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
 		printf 'additional directories unreadable\n'
@@ -599,11 +607,11 @@ check_run_tools() {
 set_run_tool_hint() {
 	case $1 in
 		date)
-			run_tool_need='open-gate.sh, both gate hooks, the inject hook, generate-agent-dispatch.sh and crucible.sh'
+			run_tool_need='open-gate.sh, both gate hooks, the bind and dev stop hooks and crucible.sh'
 			set_coreutils_fix date /bin
 			;;
 		git)
-			run_tool_need='generate-agent-dispatch.sh and the inject hook'\''s baseline'
+			run_tool_need='the dev stop hook'\''s commit'
 			run_tool_fix='install git (macOS: xcode-select --install; Linux: the distro'\''s git package), then rerun'
 			;;
 		cmp)
@@ -634,9 +642,8 @@ set_coreutils_fix() {
 	run_tool_fix="put $1 back on PATH (macOS: it ships in $2; Linux: the distro's coreutils package), then rerun"
 }
 
-# Checks that the settings file registers the inject hook and both gate hooks
-# and allows the Crucible space; a settings file jq can't read fails once for
-# all four.
+# Checks that the settings file registers the five hooks and allows the
+# Crucible space; a settings file jq can't read fails once for all six.
 check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
@@ -668,6 +675,8 @@ each_hook() {
 	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}"
 	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
 	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
+	"$1" 'bind hook' PostToolUse Agent "${BIND_SCRIPT}" "${BIND_HOOK_TIMEOUT}" ''
+	"$1" 'dev stop hook' SubagentStop '' "${DEV_STOP_SCRIPT}" "${DEV_STOP_HOOK_TIMEOUT}" ''
 }
 
 # Appends the settings entry for hook $2..$6 (each_hook's arguments) to hook_entries.
@@ -1028,6 +1037,9 @@ check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
+check_script "${WORKTREE_PROCEDURE}" slots.sh
+check_script "${WORKTREE_PROCEDURE}" bind.sh
+check_script "${WORKTREE_PROCEDURE}" dev-stop.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
@@ -1044,7 +1056,6 @@ check_lib_file "${CONTEXT_URL_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDUR
 check_lib_file "${CONTEXT_FILE_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
 check_lib_file "${CONTEXT_VERSIONS_LIB}" "${context_scripts_dir}" "${CONTEXT_PROCEDURE}"
 check_template
-check_lib_file "${PATHS_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_lib_file "${VIEW_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_lib_file "${TITLE_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_jq

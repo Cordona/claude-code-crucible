@@ -168,10 +168,9 @@ Plugins, by folder in DIR:
              plugin: skipped, never reported
   procedure  procedure-<name>/, as a standard plugin
 A plugin is valid when its SKILL.md frontmatter is closed by --- and has
-  name: <its folder name> and disable-model-invocation: true
-  (prepare-agent-prompt.sh's plugin test), a metadata.label, a readable
-  description and no metadata.base, and its path, DIR included, holds no
-  comma or control character; any other is invalid.
+  name: <its folder name>, disable-model-invocation: true, a metadata.label,
+  a readable description and no metadata.base, and its path, DIR included,
+  holds no comma or control character; any other is invalid.
 
 stdout: one line per valid plugin, TAB-separated, language lines first, then
   framework, then standard, then procedure, each group sorted by NAME:

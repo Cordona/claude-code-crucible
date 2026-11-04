@@ -9,13 +9,15 @@
 # the flow's step 8.
 # The shape, keys in this order; a key whose value would be null, [] or {} is
 # left out, so entry_points and plugins, and each plugins kind, may be absent:
-#   {"id", "started", "claude_session_id", "agent", "mode", "task", "repo_root",
+#   {"id", "claude_session_id", "agent", "slot", "task",
 #    "entry_points": [repo-relative path, ...],
+#    "context": {"path", "sha256"}, "plan": {"sha256"},
 #    "plugins": {"language": {"name": "language-<n>", "paths": [...]},
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
 #                "standards": [{"name": "standard-<n>", ...}, ...],
-#                "procedures": [{"name": "procedure-<n>", ...}, ...]},
-#    "context": {"path", "sha256"}, "plan": {"sha256"}, "report", "baseline"}
+#                "procedures": [{"name": "procedure-<n>", ...}, ...]}}
+# slot names the seat in the effort's slots.json; the seat holds the mode and
+# the worktree.
 # The plugin rules: frameworks need a language; a name starts with its kind's
 # prefix and is listed once; a code-reviewer dispatch holds one lens: the
 # language with its frameworks and no standard, or one standard and no
@@ -23,11 +25,9 @@
 
 include "dispatch-names" {search: "./"};
 
-# The agents are dispatch-names.jq's dispatched_agents, each with a report
-# kind; mode TEST is not dispatched through this file yet.
-def dispatched_modes: ["BUILD"];
+# The agents are dispatch-names.jq's dispatched_agents.
 def lens_agent: "code-reviewer";
-def top_keys: ["id", "started", "claude_session_id", "agent", "mode", "task", "repo_root", "entry_points", "plugins", "context", "plan", "report", "baseline"];
+def top_keys: ["id", "claude_session_id", "agent", "slot", "task", "entry_points", "context", "plan", "plugins"];
 # The keys left out when they hold nothing; every other key is required.
 def optional_keys: ["entry_points", "plugins"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
@@ -61,16 +61,13 @@ def keys_problems:
 def field_problems:
 	(if (.id | type) == "string" and (.id | test(crucible_id_pattern)) then empty
 	 else problem(["id"]; " "; "is not a Crucible ID; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>") end),
-	(if (.started | type) == "string" and (.started | test(local_time_pattern)) then empty
-	 else problem(["started"]; " "; "is not an ISO 8601 local time with offset; expected YYYY-MM-DDTHH:MM:SS+HH:MM") end),
 	(if (.claude_session_id | type) == "string" and (.claude_session_id | test(claude_session_id_pattern)) then empty
 	 else problem(["claude_session_id"]; " "; "is not a session ID; expected a lowercase UUID, the session that wrote the dispatch") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
-	(if .mode | IN(dispatched_modes[]) then empty
-	 else problem(["mode"]; " "; "\(.mode | tojson) is not dispatched through a dispatch file; expected \"BUILD\" (TEST dispatches are held in the flow)") end),
-	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end),
-	(if .repo_root | absolute_path then empty else problem(["repo_root"]; " "; "is not an absolute path; expected the repository's git work-tree root") end);
+	(if (.slot | type) == "string" and (.slot | test(slot_pattern)) then empty
+	 else problem(["slot"]; " "; "is not a seat name; expected a lowercase word, a dash and a number of 1 or more, like dev-1") end),
+	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end);
 
 # The plan a dispatch came from, by its digest alone: its gate record expires,
 # so the dispatch keeps no path to it.
@@ -152,21 +149,9 @@ def entry_points_problems:
 		| problem(["entry_points", .key]; " "; "is not a repo-relative path; expected a path inside the repository without a leading /, a .. segment or a control character")
 	end;
 
-# The report and the baseline: files crucible.sh new made in the Crucible
-# space, outside the repository, and not the same file.
-def space_file_problems($key; $what):
-	.repo_root as $root | .[$key] as $file
-	| if $file | absolute_path | not then problem([$key]; " "; "is not an absolute path; expected the \($what) crucible.sh new made")
-	elif ($root | absolute_path) and ($file == $root or ($file | startswith(($root | rtrimstr("/")) + "/"))) then
-		problem([$key]; " "; "lies under repo_root \($root | tojson); expected a file in the Crucible space, outside the repository")
-	else empty end;
-def baseline_path_problems:
-	space_file_problems("baseline"; "baseline file"),
-	(if (.baseline | absolute_path) and .baseline == .report then problem(["baseline"]; " "; "is the report file; expected its own file of kind \(baseline_kind)") else empty end);
-
 # Every path the agent's message prints in a code span: a backtick would end
 # the span, so a path holding one is refused rather than printed altered.
-def is_printed_path: (.[0] | IN("repo_root", "report", "baseline")) or . == ["context", "path"]
+def is_printed_path: . == ["context", "path"]
 	or .[0] == "entry_points" or (.[0] == "plugins" and index(["paths"]) != null);
 def backtick_problems:
 	paths(type == "string") as $at | select($at | is_printed_path) | select(getpath($at) | contains("`"))
@@ -176,7 +161,6 @@ def backtick_problems:
  elif (.[0] | type) != "object" then problem([]; " "; "is a JSON \(.[0] | type); expected an object")
  else .[0] | keys_problems, field_problems, plan_problems,
 	pinned_file_problems("context"; "context file"), plugins_problems,
-	entry_points_problems, space_file_problems("report"; "report file"), baseline_path_problems,
-	backtick_problems
+	entry_points_problems, backtick_problems
  end)
 | if $ARGS.named.format == "json" then {at, problem} else .line end

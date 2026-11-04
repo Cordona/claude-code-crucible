@@ -52,7 +52,7 @@ BEGIN {
 END {
 	for (i = 1; i <= count; i++)
 		if (!(order[i] in installed))
-			problem("name " shown(order[i]) " is not an installed plugin; expected a <NAME> that list-plugins.sh prints, such as language-shell or standard-security; run list-plugins.sh --max-lines 0 to see them")
+			problem("name " shown(order[i]) " is not an installed plugin; expected a <NAME> that list-plugins.sh prints; run list-plugins.sh --max-lines 0 to see them")
 	if (failed) exit 3
 	if (want == "labels") {
 		parts = add_part("", "Language", labels["language"])

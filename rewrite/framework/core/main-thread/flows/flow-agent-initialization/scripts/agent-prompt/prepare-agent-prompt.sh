@@ -3,14 +3,18 @@
 # whole prompt, the one line "DISPATCH: <path>" naming a dispatch file that
 # generate-agent-dispatch.sh wrote; the hook checks that file, the context file
 # and the plugin files it names, and replaces the prompt with the agent's
-# message built from them and procedure-context's context-handling template, sent word
-# for word. Any problem denies the dispatch. Every other Agent
-# call passes untouched. The decision is the only output, so a listed agent is
-# denied on any unexpected exit (fail closed).
-# Once every check passes, it writes the dispatch's baseline file (the repo's
-# git status before any code changes) when it is still empty, and keeps it on
-# a resend. Each checked file is read once, into a private temp copy that the
-# checks and the message all read, so the checked bytes are the sent bytes.
+# message built from them, the seat the dispatch's slot names and
+# procedure-context's context-handling template, sent word for word. Any
+# problem denies the dispatch. Every other Agent call passes untouched. The
+# decision is the only output, so a listed agent is denied on any unexpected
+# exit (fail closed).
+# A listed agent runs in the background only: procedure-git-worktree's bind hook
+# links it to its seat from PostToolUse, which for a foreground agent comes
+# only after it has finished. Once every check passes, the hook writes
+# <effort>/pending/<tool_use_id> holding the dispatch path, the link the bind
+# hook reads, since both events of one Agent call carry that id.
+# Each checked file is read once, into a private temp copy that the checks and
+# the message all read, so the checked bytes are the sent bytes.
 # Known gap: the path checks (not a symlink or resolving inside its plugin
 # folder, regular, readable) run on the path just before the copy, since POSIX
 # sh can't test an open file, so a path swapped in between (such as for a
@@ -34,6 +38,10 @@ readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly VIEW_NAME='view'
 readonly PRUNE_NAME='prune'
+# The seat list's reader and the seat's iteration reader, relative to the
+# skills folder.
+readonly SLOTS_SCRIPT='procedure-git-worktree/scripts/slots.sh'
+readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/iteration.sh'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
 readonly CONTEXT_PROCEDURE='procedure-context'
@@ -50,11 +58,14 @@ readonly DENIAL_MAX_SHOWN=8
 readonly DENIAL_LINE_CAP=200
 # The words that start a problem; the flow's step 10 routes on them.
 # CONTEXT-STALE is a context version no longer its effort's latest, every
-# other context problem CONTEXT; BASELINE is a baseline file holding no valid
-# baseline; BASELINE-WRITE is a baseline the hook could not write.
-readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN REPORT BASELINE BASELINE-WRITE'
+# other context problem CONTEXT; BACKGROUND is a dispatch not run in the
+# background; SEAT is a seat missing, unreadable or not open; SKILL is a
+# skill the agent's frontmatter preloads that is not installed, which Claude
+# Code would drop without a word.
+readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN SEAT BACKGROUND SKILL'
+readonly BACKGROUND_PROBLEM='BACKGROUND the dispatch runs in the foreground; expected run_in_background: true; dispatch it again in the background'
 # The deny when jq is missing, printed as is: a fixed text, built without jq.
-readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-agent-initialization: jq is missing from PATH, so this dispatch is denied; the hook needs jq 1.6+."}}'
+readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-agent-initialization: jq is missing from PATH; the hook needs jq 1.6+."}}'
 # The reasons of the deny when stdin can't be read and of the deny when the hook
 # stops before deciding. Both denies are built with jq; the fixed texts below
 # are printed instead only when jq is missing. A jq that is present but fails
@@ -62,8 +73,8 @@ readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permis
 # exit 2, which blocks the call, so a listed agent never passes with no output.
 # Neither reason holds a character JSON escapes, so each fixed text is the
 # reason between the deny's fixed ends.
-readonly STDIN_REASON="${REASON_PREFIX} the hook input on stdin could not be read, so this dispatch is denied; the hook expects the PreToolUse hook JSON on stdin; the cause is on the hook's stderr."
-readonly INTERNAL_REASON="${REASON_PREFIX} the hook stopped before deciding, so this dispatch is denied; the cause is on the hook's stderr."
+readonly STDIN_REASON="${REASON_PREFIX} the hook input on stdin could not be read; the hook expects the PreToolUse hook JSON on stdin; the cause is on the hook's stderr."
+readonly INTERNAL_REASON="${REASON_PREFIX} the hook stopped before deciding; the cause is on the hook's stderr."
 readonly DENY_TEXT_HEAD='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"'
 readonly DENY_TEXT_TAIL='"}}'
 readonly STDIN_DENY="${DENY_TEXT_HEAD}${STDIN_REASON}${DENY_TEXT_TAIL}"
@@ -111,6 +122,31 @@ END {
 # is a listed agent (passed as agents) or holds an escape, so its name can't be
 # read without decoding. Both the key and the names match in every JSON
 # spelling: each character literal or as a \u00HH escape, either hex case.
+# Prints each name of an agent file's frontmatter "skills:" block list, one per
+# line: the "  - <name>" lines after a bare "skills:" key, up to the next key or
+# the closing --- line, each name unquoted.
+# The program is single-quoted on purpose: its $0 is awk's, not the shell's.
+# shellcheck disable=SC2016
+readonly AGENT_SKILLS_AWK='
+{ sub(/\r$/, "") }
+NR == 1 { if ($0 != "---") exit; next }
+$0 == "---" { exit }
+/^[^ \t#-]/ { in_skills = ($0 ~ /^skills:[ \t]*(#.*)?$/); next }
+in_skills && /^[ \t]*-[ \t]/ {
+	name = $0
+	sub(/^[ \t]*-[ \t]+/, "", name)
+	quote = substr(name, 1, 1)
+	if (quote == "\"" || quote == "\047") {
+		name = substr(name, 2)
+		sub(quote ".*$", "", name)
+	} else {
+		sub(/[ \t]+#.*$/, "", name)
+		sub(/[ \t]+$/, "", name)
+	}
+	if (name != "") print name
+}
+'
+
 # The program is single-quoted on purpose: its $0 is awk's, not the shell's.
 # shellcheck disable=SC2016
 readonly LISTED_AGENT_TEXT_AWK='
@@ -208,8 +244,9 @@ readonly DENIAL_DETAILS_JQ='
 | prune'
 
 # Builds the agent's message from the dispatch copy ($dispatch), the
-# pretty-printed context copy ($context), the template copy ($template) and
-# the plugin files, the item list build_message puts between the two halves:
+# pretty-printed context copy ($context), the template copy ($template), the
+# seat's $mode ("" for none) and $worktree, the $report path and the plugin
+# files, the item list build_message puts between the two halves:
 # [plugin name, "skill"|"reference", file text] triples in the dispatch's
 # order.
 # The programs are single-quoted on purpose: their $ signs are jq's.
@@ -229,22 +266,21 @@ def with_newline: if endswith("\n") then . else . + "\n" end;
 def block: "<crucible-plugin name=\"\(.name)\">\n\n" + (.bodies | map(with_newline) | join("\n")) + "\n</crucible-plugin>";
 # A backtick would end the code span, so it prints as a quote.
 def code: "`" + gsub("`"; [39] | implode) + "`";
-# A repo-relative entry point joined to the repo root, so it prints whole and
-# absolute; "." and "./" are the root itself.
-def in_repo($root): ($root | rtrimstr("/")) as $base
+# A repo-relative entry point joined to the worktree, so it prints whole and
+# absolute; "." and "./" are the worktree itself.
+def in_tree($root): ($root | rtrimstr("/")) as $base
 	| ltrimstr("./") | if . == "" or . == "." then $base else "\($base)/\(.)" end;
 def work($dispatch):
 	"# Your work\n\n"
-	+ "- **MODE:** \($dispatch.mode)\n"
+	+ (if $mode == "" then "" else "- **MODE:** \($mode)\n" end)
 	+ "- **TASK:** \($dispatch.task)\n"
-	+ "- **REPO ROOT:** \($dispatch.repo_root | code)\n"
+	+ "- **WORKTREE:** \($worktree | code)\n"
 	+ "- **ENTRY POINTS** (where to begin, not a limit): "
-	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_repo($dispatch.repo_root) | code) | join(", ") end) + "\n"
-	+ "- **REPORT:** \($dispatch.report | code)\n"
+	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_tree($worktree) | code) | join(", ") end) + "\n"
+	+ "- **REPORT:** \($report | code)\n"
 	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
-	+ "- **RETURN:** \("REPORT: " + $dispatch.report | code) alone\n"
 	+ "\nA marked gap beats a papered-over one: report what you could not read, run or decide.\n"
-	+ "Save your plan and progress as you go, in your scratchpad, so a cut-off run leaves them; the REPORT file is written once, as your report skill sets.\n";
+	+ "Save your plan and progress as you go, in your scratchpad, so a cut-off run leaves them; write the REPORT file last, as your report skill sets, and fix it when your stop is blocked.\n";
 ($dispatch | fromjson) as $parsed
 |'
 # shellcheck disable=SC2016
@@ -301,6 +337,16 @@ run_hook() {
 	classify_call
 	[ "${is_listed_agent}" = true ] || pass
 	# shellcheck disable=SC2310 # the function's status is its final jq's; a failure denies
+	call_fields=$(read_call_fields) ||
+		fault "jq could not read tool_use_id and tool_input.run_in_background; the hook needs jq 1.6+; the cause is on the hook's stderr."
+	run_in_background=${call_fields%%"${NL}"*}
+	tool_use_id=${call_fields#*"${NL}"}
+	[ "${run_in_background}" = true ] || refuse_now "${BACKGROUND_PROBLEM}"
+	case ${tool_use_id} in
+		'' | *[!A-Za-z0-9_-]*) fault "the call's tool_use_id is empty or holds a character other than letters, digits, _ and -; the fault is in the host, not in the dispatch." ;;
+		*) ;;
+	esac
+	# shellcheck disable=SC2310 # the function's status is its final jq's; a failure denies
 	prompt_value=$(read_dispatch_line) ||
 		fault "jq could not read tool_input; the hook needs jq 1.6+; the cause is on the hook's stderr."
 	prompt_status=${prompt_value%%"${NL}"*}
@@ -315,12 +361,12 @@ run_hook() {
 		fault "jq could not read tool_input.subagent_type; the hook needs jq 1.6+; the cause is on the hook's stderr."
 	load_dependencies
 	prepare_message "${subagent_type}"
-	fill_baseline
 	# shellcheck disable=SC2310 # the function's status is its final jq's; a failure denies
 	decision=$(printf '%s' "${hook_input}" | jq -c --rawfile message "${message_file}" \
 		'{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "allow",
 			updatedInput: (.tool_input + {prompt: $message})}}') ||
 		fault "jq could not build the allow decision; the hook needs jq 1.6+ (--rawfile); the cause is on the hook's stderr."
+	write_pending_link
 	emit "${decision}"
 }
 
@@ -334,40 +380,45 @@ The PreToolUse hook on Agent: replaces a listed agent's "DISPATCH: <path>"
 
 Hook: acts only on a listed agent (${LISTED_AGENTS}); any other
 call: no output. A closed or unreadable stdin denies every call.
-A listed agent's call is allowed only when its prompt is exactly one line
-  "DISPATCH: <absolute path>" naming a dispatch file generate-agent-dispatch.sh
-  wrote for that agent, and the dispatch, its context file (its effort's latest
-  version, matching context.sha256), plugin files (each SKILL.md frontmatter
-  valid as list-plugins.sh --help sets, the description aside), report file
-  (empty) and baseline file (absent, empty or of its repo_root) pass every
-  check (a path swapped after its check by someone who can write to the
-  plugin folder or the Crucible space aside: it is copied unchecked, or hangs
-  until the hook times out).
+A listed agent's call is allowed only when all of these hold:
+  it runs in the background (tool_input.run_in_background not false; an
+  interactive session sends no such field and always runs in the background);
+  its prompt is exactly one line "DISPATCH: <absolute path>" naming a dispatch
+  file generate-agent-dispatch.sh wrote for that agent;
+  the dispatch, its context file (its effort's latest version, matching
+  context.sha256), its plugin files (each SKILL.md frontmatter valid as
+  list-plugins.sh --help sets, the description aside) and its seat (the slot
+  in <effort>/slots.json, read with slots.sh get: open, with a worktree) pass
+  every check.
+Known gap: a path swapped after its check, by someone who can write to the
+  plugin folder or the Crucible space, is copied unchecked, or hangs until
+  the hook times out.
 
 stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
          the message
-  deny   permissionDecisionReason "${REASON_PREFIX} <text>"; no KIND: a hook,
-         install or host fault. A failed check: "<prefix> **Blocked · the
+  deny   permissionDecisionReason "${REASON_PREFIX} <text>"; a reason with no
+         KIND is a hook, install or host fault. A failed check: "<prefix> **Blocked · the
          dispatch was denied: <N> problem(s)**", "**Problem:** <p>" or
          "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
-         cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, effort known,
+         cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, when the effort is known,
          "**Data · Denial:** <path>" (absolute, all as JSON). <p>:
          "<KIND> <problem>; expected <x>", most ending ": <path>"; KIND:
          DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
-         PLUGIN, REPORT, BASELINE, BASELINE-WRITE (not written)
+         PLUGIN, SEAT, BACKGROUND (dispatched in the foreground),
+         SKILL (a skill the agent file's skills: preloads, not installed)
 The message, built from the checked bytes: # Your plugins, # Your context,
-  # Handling your context, # Your work (MODE, TASK, REPO ROOT, ENTRY POINTS,
-  REPORT, CONTEXT FILE, RETURN), two closing lines
-  (# Your plugins: one block per plugin, in the order language, frameworks,
-  standards, procedures, as the dispatch lists them; none when no plugin;
-  ENTRY POINTS: none when none; paths absolute, in code spans).
+  # Handling your context, # Your work (MODE, from the seat, left out when it
+  has none; TASK; WORKTREE; ENTRY POINTS, joined to the worktree; REPORT,
+  iteration.sh's REPORT path for the seat; CONTEXT FILE), then two closing
+  lines. # Your plugins: one block per plugin, in the order language,
+  frameworks, standards, procedures, as the dispatch lists them; none when no
+  plugin. ENTRY POINTS: none when none. Paths are absolute, in code spans.
 
-Leaves only (a SIGKILL aside): once every check passes, an absent or empty
-baseline file of the dispatch, atomically (shape: see
-scripts/agent-dispatch/${NAMES_MODULE}.jq); one holding a baseline is kept.
-On a deny, the Denial file.
-The repository is only read.
+Leaves only (a SIGKILL aside): once every check passes,
+<effort>/pending/<tool_use_id>, holding the dispatch path and a newline, written
+atomically, for procedure-git-worktree's bind hook; on a deny, the Denial file.
+The repository and slots.json are only read.
 
 Exit codes:
   0  a decision, or none; read stdout
@@ -378,10 +429,9 @@ Exit codes:
 
 Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
-  awk, cat, date, dd, grep, mktemp, mv, readlink, rm, tr, wc, and sha256sum
-    or shasum (base system)
-  git, for the baseline (macOS: xcode-select --install; Linux: the distro's
-    git)
+  awk, cat, date, dd, grep, mkdir, mktemp, mv, readlink, rm, tr, wc, and
+    sha256sum or shasum (base system)
+  procedure-git-worktree: scripts/slots.sh, scripts/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
@@ -418,7 +468,7 @@ classify_call() {
 		# shellcheck disable=SC2310 # its status is the match result; errexit adds nothing
 		names_listed_agent_as_text || return 0
 		is_listed_agent=true
-		fault "the hook input is not valid JSON, so this dispatch is denied; the hook expects one PreToolUse object on stdin, as Claude Code sends it to a registered hook entry."
+		fault "the hook input is not valid JSON; the hook expects one PreToolUse object on stdin."
 	fi
 	[ "${verdict}" = true ] && is_listed_agent=true
 	return 0
@@ -444,6 +494,14 @@ read_dispatch_line() {
 		  end'
 }
 
+# Prints whether the call runs in the background, then its tool_use_id. Only an
+# explicit false (or "false") is foreground: an interactive session's Agent tool
+# has no run_in_background parameter, drops the field before this hook, and
+# always runs its agents in the background.
+read_call_fields() {
+	printf '%s' "${hook_input}" | jq -r '(.tool_input.run_in_background | . != false and . != "false"), (.tool_use_id // "" | strings | gsub("\n"; " "))'
+}
+
 # Runs every check on dispatch_path for agent $1 and, when all pass, sets
 # message_file to the message built from the checked copies; else refuses with
 # every problem.
@@ -456,9 +514,9 @@ prepare_message() {
 	[ "${dispatch_agent}" = "${expected_agent}" ] ||
 		add_problem AGENT "the dispatch is for \"${dispatch_agent}\"; expected \"${expected_agent}\"" "${dispatch_path}"
 	check_context
-	check_report
-	check_baseline
 	resolve_skills_dir
+	check_preloaded_skills "${expected_agent}"
+	check_seat
 	check_plugins
 	[ -z "${problems}" ] || refuse_all
 	build_message
@@ -478,9 +536,9 @@ load_dependencies() {
 
 # Faults unless every base tool the checks and the message use is on PATH.
 check_base_tools() {
-	for tool in awk cat date dd grep mktemp mv readlink rm tr wc; do
+	for tool in awk cat date dd grep mkdir mktemp mv readlink rm tr wc; do
 		command -v "${tool}" >/dev/null 2>&1 ||
-			fault "${tool} missing from PATH; expected it on PATH; ${tool} is part of the base system, so the fault is in the host, not in the dispatch."
+			fault "${tool} missing from PATH; expected it on PATH; the fault is in the host, not in the dispatch."
 	done
 }
 
@@ -504,25 +562,19 @@ load_shared_checks() {
 		fault "${context_load_problem}; ${PROG} needs it; the fault is in the install or the host, not in the dispatch."
 }
 
-# Sets BASELINE_KIND from the shared names module, and faults unless its
-# listed agents are LISTED_AGENTS.
+# Faults unless the shared names module's listed agents are LISTED_AGENTS.
 load_shared_names() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure faults
 	module_listed_agents=$(read_shared_name 'listed_agents | join(" ")') ||
 		fault "jq could not read listed_agents from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
 	[ "${module_listed_agents}" = "${LISTED_AGENTS}" ] ||
 		fault "the listed agents differ from ${NAMES_MODULE}.jq (${PROG}: ${LISTED_AGENTS}; module: ${module_listed_agents}); expected the same list; the fault is in the flow-agent-initialization install, not in the dispatch."
-	# shellcheck disable=SC2310 # its status is jq's; a failure faults
-	BASELINE_KIND=$(read_shared_name baseline_kind) && [ -n "${BASELINE_KIND}" ] ||
-		fault "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
-	readonly BASELINE_KIND
 }
 
-# Prints the value of jq expression $1 over the shared names module, with
-# $agent set to $2 (empty when not given).
+# Prints the value of jq expression $1 over the shared names module.
 read_shared_name() {
 	names_dir=$(script_dir)/../agent-dispatch
-	jq -nr -L "${names_dir}" --arg agent "${2-}" "include \"${NAMES_MODULE}\"; $1" </dev/null
+	jq -nr -L "${names_dir}" "include \"${NAMES_MODULE}\"; $1" </dev/null
 }
 
 # Creates the private temp folder that holds every checked file's copy.
@@ -600,20 +652,18 @@ check_dispatch_file() {
 }
 
 # Sets dispatch_agent, dispatch_context, dispatch_context_sha256,
-# dispatch_report, dispatch_baseline, dispatch_repo_root and plugin_entries
+# dispatch_slot and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .report, .baseline, .repo_root' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .slot' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
 		IFS= read -r dispatch_agent
 		IFS= read -r dispatch_context
 		IFS= read -r dispatch_context_sha256
-		IFS= read -r dispatch_report
-		IFS= read -r dispatch_baseline
-		IFS= read -r dispatch_repo_root
+		IFS= read -r dispatch_slot
 	} <<EOF
 ${dispatch_fields}
 EOF
@@ -657,167 +707,6 @@ check_context() {
 		fault "jq could not print the context copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
-# Adds a problem when the report path fails the context path checks, is not
-# in the reports folder of the dispatch's agent in the dispatch's effort, or
-# is not an empty regular file.
-check_report() {
-	path_problem=$(context_path_problem "${dispatch_report}")
-	if [ -n "${path_problem}" ]; then
-		add_problem REPORT "${path_problem}; expected ${context_path_expected}" "${dispatch_report}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is jq's; a failure faults
-	# shellcheck disable=SC2016 # $agent is jq's
-	report_kind=$(read_shared_name '$agent | report_kind' "${dispatch_agent}") ||
-		fault "jq could not read report_kind from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
-	# The validator admits only the agents of report_kinds; this guards a drift between them.
-	[ -n "${report_kind}" ] ||
-		fault "${NAMES_MODULE}.jq names no report kind for agent \"${dispatch_agent}\"; expected one for every dispatched agent; the fault is in the flow-agent-initialization install, not in the dispatch."
-	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	if ! crucible_check_effort_item "${dispatch_report}" "${report_kind}"; then
-		add_problem REPORT "path is ${crucible_item_problem}" "${dispatch_report}"
-		return 0
-	fi
-	if [ "${crucible_effort}" != "${dispatch_effort}" ]; then
-		add_problem REPORT "file is in effort ${crucible_effort}, not the dispatch's; expected a file directly in ${dispatch_effort}/${report_kind}/" "${dispatch_report}"
-		return 0
-	fi
-	if [ -L "${dispatch_report}" ] || [ ! -f "${dispatch_report}" ]; then
-		add_problem REPORT 'file is missing, a symlink or not a regular file; expected the empty regular file made for this dispatch' "${dispatch_report}"
-	elif [ -s "${dispatch_report}" ]; then
-		add_problem REPORT 'file is not empty; expected the empty report file made for this dispatch' "${dispatch_report}"
-	fi
-}
-
-# Adds a problem when the baseline path fails the context path checks, is not
-# in the dispatch's effort's baselines folder, or is not an absent or regular file; one that
-# already holds text must hold a baseline of the dispatch's repo_root. Sets
-# baseline_filled to true for a baseline already written (a resend), which is
-# then kept as it is.
-check_baseline() {
-	baseline_filled=false
-	path_problem=$(context_path_problem "${dispatch_baseline}")
-	if [ -n "${path_problem}" ]; then
-		add_problem BASELINE "${path_problem}; expected ${context_path_expected}" "${dispatch_baseline}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	if ! crucible_check_effort_item "${dispatch_baseline}" "${BASELINE_KIND}"; then
-		add_problem BASELINE "path is ${crucible_item_problem}" "${dispatch_baseline}"
-		return 0
-	fi
-	if [ "${crucible_effort}" != "${dispatch_effort}" ]; then
-		add_problem BASELINE "file is in effort ${crucible_effort}, not the dispatch's; expected a file directly in ${dispatch_effort}/${BASELINE_KIND}/" "${dispatch_baseline}"
-		return 0
-	fi
-	if [ -L "${dispatch_baseline}" ]; then
-		add_problem BASELINE 'file is a symlink; expected the regular file made for this dispatch, or none yet' "${dispatch_baseline}"
-		return 0
-	fi
-	[ -e "${dispatch_baseline}" ] || return 0
-	if [ ! -f "${dispatch_baseline}" ] || [ ! -r "${dispatch_baseline}" ]; then
-		add_problem BASELINE 'file is unreadable or not a regular file; expected the regular file made for this dispatch' "${dispatch_baseline}"
-		return 0
-	fi
-	[ -s "${dispatch_baseline}" ] || return 0
-	baseline_copy="${snapshot_dir}/baseline"
-	if ! cat -- "${dispatch_baseline}" >"${baseline_copy}"; then
-		add_problem BASELINE 'file is unreadable or not a regular file; expected the regular file made for this dispatch' "${dispatch_baseline}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is jq's; a failure faults
-	baseline_report=$(baseline_shape_problems "${baseline_copy}") ||
-		fault "jq could not run the baseline check of ${names_module}; the hook needs jq 1.6+; the cause is on stderr."
-	if [ -n "${baseline_report}" ]; then
-		baseline_problems=$(join_lines "${baseline_report}")
-		add_problem BASELINE "file holds no baseline of this dispatch (${baseline_problems}); expected the git status this hook writes at the first call; the flow stops this dispatch until the human fixes this file" "${dispatch_baseline}"
-		return 0
-	fi
-	baseline_filled=true
-}
-
-# Prints the problems of baseline file $1 against the shared baseline shape,
-# for the dispatch's repo_root, one per line; fails only when jq does.
-baseline_shape_problems() {
-	if ! jq empty "$1" </dev/null >/dev/null 2>&1; then
-		printf 'not valid JSON; expected one JSON object\n'
-		return 0
-	fi
-	jq -rs -L "${names_module%/*}" --arg repo_root "${dispatch_repo_root}" \
-		"include \"${NAMES_MODULE}\"; if length == 1 then .[0] | baseline_problems(\$repo_root) else \"\\(length) JSON values; expected one object\" end" \
-		"$1" </dev/null
-}
-
-# Writes the repository's git status, as the shared baseline shape, into the
-# dispatch's baseline file, unless a resend finds it written already. Runs once
-# every check has passed, before the agent can change the tree; never after.
-# Written through a temp file in its folder moved onto it.
-fill_baseline() {
-	[ "${baseline_filled}" = false ] || return 0
-	# Missing git: a BASELINE-WRITE deny; any other missing dependency: a deny
-	# with no KIND.
-	command -v git >/dev/null 2>&1 ||
-		baseline_write_failed "git missing from PATH; expected git on PATH to take the dispatch's baseline; the dispatch can be sent again once git is on PATH"
-	status_raw="${snapshot_dir}/status.raw"
-	status_text="${snapshot_dir}/status.text"
-	baseline_built="${snapshot_dir}/baseline.built"
-	# The tree is read only: no optional lock, no fsmonitor command, no prompt.
-	GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0 GIT_CONFIG_NOSYSTEM=1 \
-		git -c core.fsmonitor=false -C "${dispatch_repo_root}" status --porcelain=v1 -z --no-renames \
-		</dev/null >"${status_raw}" 2>"${snapshot_dir}/status.err" || {
-		git_message=$(first_line "${snapshot_dir}/status.err")
-		baseline_write_failed "git status failed in repo_root ${dispatch_repo_root} (${git_message}); expected the repository's git work tree; the dispatch can be sent again once the repository is a git work tree"
-	}
-	tr '\000' '\001' <"${status_raw}" >"${status_text}" ||
-		fault "tr could not convert git's NUL-separated output; the fault is in the host, not in the dispatch; the cause is on stderr."
-	taken_raw=$(date +%Y-%m-%dT%H:%M:%S%z) ||
-		fault "date failed; expected it to print the local time as +%Y-%m-%dT%H:%M:%S%z; the fault is in the host, not in the dispatch."
-	taken="${taken_raw%??}:${taken_raw#"${taken_raw%??}"}"
-	# repo_root binds the baseline to its dispatch and only the checks read it;
-	# taken is kept for audit and not read.
-	jq -n --rawfile status "${status_text}" --arg repo_root "${dispatch_repo_root}" --arg taken "${taken}" \
-		'{repo_root: $repo_root, taken: $taken, entries: ($status | split("\u0001") | map(select(length > 0)))}' \
-		</dev/null >"${baseline_built}" ||
-		fault "jq could not build the baseline; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
-	# shellcheck disable=SC2310 # its status is jq's; a failure faults
-	built_problems=$(baseline_shape_problems "${baseline_built}") ||
-		fault "jq could not run the baseline check of ${names_module}; the hook needs jq 1.6+; the cause is on stderr."
-	if [ -n "${built_problems}" ]; then
-		built_problems=$(join_lines "${built_problems}")
-		fault "the baseline built from git status fails its own shape (${built_problems}); the fault is in ${PROG}, not in the dispatch."
-	fi
-	baseline_dir=${dispatch_baseline%/*}
-	temp_file=$(mktemp "${baseline_dir}/.${dispatch_baseline##*/}.XXXXXX") ||
-		baseline_write_failed "mktemp could not create a temp file beside the baseline file; expected a writable folder ${baseline_dir}; the dispatch can be sent again once that folder is writable and has free space"
-	cat -- "${baseline_built}" >"${temp_file}" ||
-		baseline_write_failed "could not write the temp file ${temp_file}; expected a writable folder ${baseline_dir}; the dispatch can be sent again once that folder has free space"
-	# A call racing this one may have written it since the check; its baseline is kept.
-	if [ -s "${dispatch_baseline}" ]; then
-		rm -f -- "${temp_file}"
-		temp_file=''
-		return 0
-	fi
-	mv -f -- "${temp_file}" "${dispatch_baseline}" ||
-		baseline_write_failed "mv could not move the temp file onto the baseline file; expected a writable folder ${baseline_dir}; the dispatch can be sent again once that folder is writable"
-	temp_file=''
-}
-
-# Prints the first line of file $1, control characters as "?", or "no message".
-first_line() {
-	message=''
-	{ IFS= read -r message <"$1"; } 2>/dev/null || true
-	message=$(printf '%s' "${message}" | tr '[:cntrl:]' '?')
-	printf '%s' "${message:-no message}"
-}
-
-# The baseline can't be written: a deny, the problem $1 under KIND
-# BASELINE-WRITE with the baseline path.
-baseline_write_failed() {
-	baseline_line="BASELINE-WRITE $1: ${dispatch_baseline}"
-	problems="${baseline_line}${NL}"
-	deny_problems ''
-}
-
 # Prints the folder this script was run from (".", when run by a bare name).
 script_dir() {
 	case $0 in
@@ -847,6 +736,129 @@ resolve_skills_dir() {
 	while [ "${skills_dir}" != '/' ] && [ "${skills_dir%/}" != "${skills_dir}" ]; do
 		skills_dir=${skills_dir%/}
 	done
+}
+
+# Adds a SKILL problem for each skill agent $1's file preloads (its frontmatter
+# skills: list) with no <name>/SKILL.md in the user or the project skills
+# folder, since Claude Code drops such a skill without a word. The agent file
+# is the project's, else the user's, as Claude Code picks it; none found or
+# none readable: nothing to check.
+check_preloaded_skills() {
+	project_dir=$(printf '%s' "${hook_input}" | jq -r '.cwd // "" | strings') ||
+		fault "jq could not read cwd; the hook needs jq 1.6+; the cause is on the hook's stderr."
+	case ${project_dir} in
+		/*) project_claude_dir="${project_dir%/}/.claude" ;;
+		*) project_claude_dir='' ;;
+	esac
+	agent_file=''
+	for agent_dir in ${project_claude_dir:+"${project_claude_dir}/agents"} "${skills_dir%/*}/agents"; do
+		[ -f "${agent_dir}/$1.md" ] && [ -r "${agent_dir}/$1.md" ] || continue
+		agent_file="${agent_dir}/$1.md"
+		break
+	done
+	[ -n "${agent_file}" ] || return 0
+	preloaded_skills=$(awk "${AGENT_SKILLS_AWK}" "${agent_file}") ||
+		fault "awk could not read the skills: list of ${agent_file}; the hook expects a readable text file; the cause is on stderr."
+	while IFS= read -r skill_name; do
+		[ -n "${skill_name}" ] || continue
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		is_skill_installed "${skill_name}" ||
+			add_problem SKILL "the agent's preloaded skill ${skill_name} is not installed; expected its SKILL.md in the user or the project skills folder; install it, then dispatch again" "${skills_dir}/${skill_name}/SKILL.md"
+	done <<EOF
+${preloaded_skills}
+EOF
+}
+
+# True when skill $1 has a SKILL.md in the user or the project skills folder; a
+# name that is not one folder name is never installed.
+is_skill_installed() {
+	case $1 in
+		.* | */*) return 1 ;;
+		*) ;;
+	esac
+	[ -f "${skills_dir}/$1/SKILL.md" ] && return 0
+	[ -n "${project_claude_dir}" ] && [ -f "${project_claude_dir}/skills/$1/SKILL.md" ]
+}
+
+# Adds a SEAT problem unless the dispatch's slot names an open seat with a
+# worktree in its effort's slots.json, read with slots.sh get; sets
+# seat_mode and seat_worktree from it, and report_path with read_report_path.
+check_seat() {
+	slots_script="${skills_dir}/${SLOTS_SCRIPT}"
+	[ -f "${slots_script}" ] && [ -r "${slots_script}" ] ||
+		fault "the seat reader ${slots_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
+	slots_file="${dispatch_effort}/slots.json"
+	if [ ! -f "${slots_file}" ]; then
+		add_problem SEAT "the effort has no slots.json; expected the seat list procedure-git-worktree's slots.sh add writes" "${slots_file}"
+		return 0
+	fi
+	# On exit 0 slots.sh prints only the seat; otherwise only its stderr lines.
+	seat_status=0
+	seat_out=$(sh "${slots_script}" get --slots "${slots_file}" --slot "${dispatch_slot}" </dev/null 2>&1) || seat_status=$?
+	seat_line=$(printf '%s' "${seat_out%%"${NL}"*}" | tr '[:cntrl:]' '?')
+	case ${seat_status} in
+		0) ;;
+		6)
+			add_problem SEAT "seat ${dispatch_slot} is not in slots.json; expected a seat procedure-git-worktree's slots.sh add made" "${slots_file}"
+			return 0
+			;;
+		3)
+			add_problem SEAT "slots.json can't be read (${seat_line}); expected the effort's seat list as slots.sh --help sets" "${slots_file}"
+			return 0
+			;;
+		*) fault "slots.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
+	esac
+	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // ""') ||
+		fault "jq could not read the seat slots.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
+	{
+		IFS= read -r seat_state
+		IFS= read -r seat_mode
+		IFS= read -r seat_worktree
+	} <<EOF
+${seat_fields}
+EOF
+	if [ "${seat_state}" != open ]; then
+		add_problem SEAT "seat ${dispatch_slot} is ${seat_state}; expected an open seat" "${slots_file}"
+		return 0
+	fi
+	case ${seat_worktree} in
+		'') add_problem SEAT "seat ${dispatch_slot} has no worktree; expected a developer or tester seat" "${slots_file}" ;;
+		*'`'*) add_problem SEAT "seat ${dispatch_slot}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${slots_file}" ;;
+		*) read_report_path ;;
+	esac
+}
+
+# Sets report_path from iteration.sh's REPORT line for the seat. A seat whose
+# mode, worktree or base does not fit (exit 3) is a SEAT problem; any other
+# failure is a fault.
+read_report_path() {
+	iteration_script="${skills_dir}/${ITERATION_SCRIPT}"
+	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
+		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
+	iteration_status=0
+	iteration_out=$(sh "${iteration_script}" --slots "${slots_file}" --slot "${dispatch_slot}" </dev/null 2>&1) || iteration_status=$?
+	iteration_line=$(printf '%s' "${iteration_out##*"${NL}"}" | tr '[:cntrl:]' '?')
+	case ${iteration_status} in
+		0) ;;
+		3)
+			add_problem SEAT "seat ${dispatch_slot}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${slots_file}"
+			return 0
+			;;
+		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
+	esac
+	report_path=''
+	while IFS= read -r iteration_entry; do
+		case ${iteration_entry} in
+			'REPORT: '*) report_path=${iteration_entry#REPORT: } ;;
+			*) ;;
+		esac
+	done <<EOF
+${iteration_out}
+EOF
+	case ${report_path} in
+		/*) ;;
+		*) fault "iteration.sh printed no absolute REPORT line; the fault is in the procedure-git-worktree install, not in the dispatch." ;;
+	esac
 }
 
 # Checks, copies and scans the plugin files in plugin_entries, adding a problem for each fault.
@@ -1101,8 +1113,30 @@ EOF
 	message_file="${snapshot_dir}/message"
 	jq -nj --rawfile dispatch "${dispatch_copy}" --rawfile context "${context_pretty}" \
 		--rawfile template "${template_copy}" \
+		--arg mode "${seat_mode}" --arg worktree "${seat_worktree}" --arg report "${report_path}" \
 		"$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
+}
+
+# Writes <effort>/pending/<tool_use_id> holding the dispatch path, through a
+# temp file in that folder moved onto it, for the bind hook.
+write_pending_link() {
+	pending_dir="${dispatch_effort}/pending"
+	mkdir -p -- "${pending_dir}" || link_failed "mkdir could not create ${pending_dir}"
+	temp_file=$(mktemp "${pending_dir}/.${tool_use_id}.XXXXXX") || {
+		temp_file=''
+		link_failed "mktemp could not create a temp file in ${pending_dir}"
+	}
+	printf '%s\n' "${dispatch_path}" >"${temp_file}" || link_failed "could not write ${temp_file}"
+	mv -f -- "${temp_file}" "${pending_dir}/${tool_use_id}" ||
+		link_failed "mv could not move ${temp_file} onto ${pending_dir}/${tool_use_id}"
+	temp_file=''
+}
+
+# The pending link can't be written ($1): a deny, since the bind hook could
+# not link the agent to its seat.
+link_failed() {
+	fault "$1, so the bind hook could not link the agent to its seat; expected a writable effort folder; the dispatch can be sent again once it is."
 }
 
 # Refuses with problem $1 alone, when the later checks can't run without it passing.

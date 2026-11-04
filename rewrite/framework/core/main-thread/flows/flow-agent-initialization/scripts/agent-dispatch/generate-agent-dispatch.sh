@@ -2,7 +2,9 @@
 # Writes one agent dispatch file from the plan the human approved at its
 # effort's gate, so a dispatch is never assembled by hand. The plan is found
 # by its digest among the effort's gate records, as the plan the human was
-# shown, and its context version must be in that effort.
+# shown, and its context version must be in that effort. The seat --slot names
+# must be in the effort's slots.json with the plan's mode, since the plugins
+# the plan chose depend on it; procedure-git-worktree's slots.sh reads it.
 # The plan is checked again by dispatch-plan-validator.jq; its context file by
 # procedure-context's agent-context-file-checks.sh, agent-context-validator.jq,
 # context-versions.sh and its digest; its plugins are resolved to files by
@@ -19,37 +21,29 @@ umask 077
 readonly PROG='generate-agent-dispatch.sh'
 readonly PROCEDURE='flow-agent-initialization'
 readonly CONTEXT_PROCEDURE='procedure-context'
-readonly REQUIRED_TOOLS='awk cat date git mktemp mv rm tr wc'
+readonly REQUIRED_TOOLS='awk cat mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
 readonly VIEW_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
+readonly WORKTREE_SKILL='procedure-git-worktree'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
-# Stand for the parts only crucible.sh new and the clock know, so the dispatch
-# is checked whole before any file exists.
+# Stands for the ID only crucible.sh new knows, so the dispatch is checked
+# whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
-readonly PLACEHOLDER_STARTED='0000-00-00T00:00:00+00:00'
-# Stands for the effort folder while no plan is found, so the dispatch is
-# still checked.
-readonly PLACEHOLDER_EFFORT='00000000T000000-0000-effort'
 readonly PLAN_RECORD_KIND='cache/gates'
 readonly DISPATCH_KIND='dispatches'
-# Stands for the report kind of an agent the shared names give none: such an
-# agent is no dispatched agent, so the dispatch check refuses it and no file
-# is made.
-readonly PLACEHOLDER_REPORT_KIND='reports/no-report-kind'
 # Lead the problems a caller acts on, so it matches the token exactly, never
 # the sentence after it: a plan no gate record of the effort holds, a context
 # file changed since the plan was shown or no longer its effort's latest
-# version (the Agent hook's KIND word for it), an earlier dispatch whose
-# baseline was never filled, and a plugin the plan names that is no longer
-# installed or no longer valid (the Agent hook's KIND word for it).
+# version (the Agent hook's KIND word for it), and a plugin the plan names
+# that is no longer installed or no longer valid (the Agent hook's KIND word
+# for it).
 readonly NO_GATE_RECORD_TOKEN='NO-GATE-RECORD'
 readonly CONTEXT_CHANGED_TOKEN='CONTEXT-CHANGED'
 readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
-readonly BASELINE_EMPTY_TOKEN='BASELINE-EMPTY'
 readonly PLUGIN_TOKEN='PLUGIN'
 readonly TASK_STAND_IN='(no task chosen)'
 NL='
@@ -81,12 +75,11 @@ def plugins: plugin_entries as $entries
 	{language: (of_kind("language-") | first), frameworks: of_kind("framework-"),
 	 standards: of_kind("standard-"), procedures: of_kind("procedure-")};
 def dispatch: {
-	id: $id, started: $started, claude_session_id: $session_id, agent: $agent, mode: $mode, task: $task,
-	repo_root: $repo_root, entry_points: $ARGS.positional,
-	plugins: plugins,
+	id: $id, claude_session_id: $session_id, agent: $agent, slot: $slot, task: $task,
+	entry_points: $ARGS.positional,
 	context: {path: $context_path, sha256: $context_sha256},
 	plan: {sha256: $plan_sha256},
-	report: $report, baseline: $baseline}
+	plugins: plugins}
 	| prune;
 
 # A long value keeps its start and end, where a path differs most.
@@ -96,17 +89,15 @@ def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \(
 def field_name: map(if type == "number" then "[\(.)]" else "." + . end) | join("") | ltrimstr(".");
 # Fields whose value is a stand-in (the plan not found or not valid, or no
 # task chosen) are not reported again: their problem is reported already.
-def stood_in: (.at[0] | IN("agent", "mode", "plugins", "plan", "context", "report", "baseline")) and $plan_known == "false"
+def stood_in: (.at[0] | IN("agent", "plugins", "plan", "context")) and $plan_known == "false"
 	or .at[0] == "task" and $task_known == "false";
 def named_line:
 	.at as $at | .problem as $problem
 	| if stood_in then empty
 	  elif $at[0] == "entry_points" and ($at | length) > 1 then line("--entry-point"; $ARGS.positional[$at[1]]; $problem)
-	  elif $at[0] == "repo_root" then line("--repo-root"; $repo_root; $problem)
+	  elif $at[0] == "slot" then line("--slot"; $slot; "the slot \($problem)")
 	  elif $at[0] == "task" then line("--task"; $task_number; "the task \($problem)")
-	  elif $at[0] == "report" then line("CRUCIBLE_HOME"; $space_root; "the report file \($problem)")
-	  elif $at[0] == "baseline" then line("CRUCIBLE_HOME"; $space_root; "the baseline file \($problem)")
-	  elif ($at[0] | IN("agent", "mode", "plugins", "plan", "context")) then
+	  elif ($at[0] | IN("agent", "plugins", "plan", "context")) then
 		line("--plan-sha256"; $plan_sha256; "the plan'"'"'s \($at | field_name) \($problem)")
 	  else "\($prog): dispatch \($at | field_name): \($problem)" end;
 def report: $validator_problem_lines | split("\n")[] | select(. != "") | fromjson | named_line;
@@ -162,78 +153,63 @@ def as_line: "line\t\(.)";
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --repo-root PATH
-           [--entry-point REL]... [--skills-dir DIR] [--baseline-from DISPATCH]
+usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --slot S
+           [--entry-point REL]... [--skills-dir DIR]
        sh ${PROG} --help | -h
 
-Writes the dispatch file for task N of a plan the human approved at its gate,
-with the agent's report file and its baseline file.
+Writes the dispatch file for task N of a plan the human approved at its
+gate, for seat S of the effort.
 
 Options:
   --effort FOLDER     the effort folder the plan's gate was opened with (rule:
       crucible.sh --help)
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
-  --repo-root PATH    the git work-tree root, absolute
+  --slot S            the seat in FOLDER/slots.json (a lowercase word, a dash,
+      a number of 1 or more, like dev-1) whose mode is the plan's; whether it
+      is open is checked at the Agent call
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
-  --skills-dir DIR    only \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
-      default) is taken; any other DIR exits 3
-  --baseline-from DISPATCH  the earlier dispatch file in FOLDER this one
-      replaces, absolute; the caller holds it is this task's
+  --skills-dir DIR    must be \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
+      default); any other DIR exits 3
 
 stdout on exit 0, in order:
   DISPATCH: <absolute path>  the dispatch file; the Agent call's whole prompt
-  LABELS: <labels>  the loaded plugins' labels, relayed as printed:
-    "LABELS: Language: <label> · Frameworks: <labels> · Standards: <labels>
-    · Procedures: <labels>", an empty kind left out ("LABELS:" alone if all)
-  TITLE: <title>  the agent's title, relayed as printed: "<language>
-    developer with <frameworks>", "<language> developer", "Generic developer"
-    with no language; a code-reviewer says "reviewer", a standard seat
-    "<standard label> reviewer"; frameworks in plugin-name order; the
-    installed labels
-stderr on exit 3: one line per problem; one a caller routes on reads
+  LABELS: <labels>  the loaded plugins' labels, relayed as printed
+  TITLE: <title>  the agent's title, relayed as printed
+stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
-Leaves only three files in FOLDER (a SIGKILL aside): the dispatch file, whole
-or not at all (shape: agent-dispatch-validator.jq; keys id, started,
-claude_session_id, agent, mode, task, repo_root, entry_points, plugins
-{language, frameworks, standards, procedures}, context, plan, report,
-baseline, empty keys left out; plugins in load order: language, frameworks by
-name, standards, procedures, each with SKILL.md, then
-references/development.md and references/*-template.md, or
-references/review.md alone for code-reviewer); the report file, empty; the
-baseline file, empty (the Agent hook fills it) or the --baseline-from one's
-bytes. On a non-zero exit this run's files are removed and named on stderr (a
-signal may leave one crucible.sh new was making, empty). No other effort is
-read; the --repo-root tree and git index never change.
+Leaves only the dispatch file in FOLDER (a SIGKILL aside), whole or not at
+all. On a non-zero exit it is removed and named on stderr; a signal may
+leave the empty file crucible.sh new was making. No other effort is read;
+slots.json is only read.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
   0  written; keep the three stdout lines
-  1  making a file failed after the inputs passed, none left
+  1  the inputs passed but making the file failed; no file left
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, no file made; fix what stderr names. A problem may lead
      with a token right after "<option> <value>: ":
        ${NO_GATE_RECORD_TOKEN}  no gate record holds the plan; ask it again at its gate
        ${CONTEXT_CHANGED_TOKEN}  the shown context file changed; show the plan again
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
-       ${BASELINE_EMPTY_TOKEN}  the --baseline-from baseline is empty; rerun without it
        ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
-  5  a dependency missing or failing
-  ${NOT_OPEN_EXIT}  the effort is not open, or its state unknown
-  129, 130, 143  stopped by HUP, INT or TERM; show it and stop
+  5  a dependency is missing or failed
+  ${NOT_OPEN_EXIT}  the effort is not open, or its state is unknown
+  129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
+                 show the exit code, and stop
 
 Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID with a session
   transcript
 
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's)
-  git (macOS: xcode-select --install; Linux: the distro's)
-  sha256sum (Linux: coreutils) or shasum; awk, cat, date, mktemp, mv, rm, tr,
-    wc (base system)
+  sha256sum (Linux: coreutils) or shasum; awk, cat, mktemp, mv, rm, tr, wc
+    (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
-    ${EFFORT_SKILL} (effort.sh) and ${VIEW_LIB} (title.jq) skills in the default
-    --skills-dir
+    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/slots.sh) and
+    ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
 }
@@ -264,7 +240,6 @@ printable() {
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
-	[ -z "${earlier_baseline_copy}" ] || rm -f "${earlier_baseline_copy}"
 	[ "${exit_status}" -eq 0 ] || remove_created_files
 }
 
@@ -275,10 +250,10 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--effort | --plan-sha256 | --task | --repo-root | --entry-point | --skills-dir | --baseline-from) awaited_option=$1 ;;
+		--effort | --plan-sha256 | --task | --slot | --entry-point | --skills-dir) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --repo-root, --entry-point, --skills-dir, --baseline-from or --help"
+			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --slot, --entry-point, --skills-dir or --help"
 			;;
 	esac
 }
@@ -294,8 +269,7 @@ take_value() {
 		--effort) given_effort=$2 ;;
 		--plan-sha256) plan_sha256=$2 ;;
 		--task) task_number=$2 ;;
-		--repo-root) repo_root=$2 ;;
-		--baseline-from) baseline_from=$2 ;;
+		--slot) slot=$2 ;;
 		*) given_skills_dir=$2 ;;
 	esac
 }
@@ -303,7 +277,7 @@ take_value() {
 # Exits 2 on an option left without its value or a required option missing.
 finish_parse() {
 	[ -z "${awaited_option}" ] || usage_error "${awaited_option} needs a value; expected ${awaited_option} VALUE"
-	for required in --effort --plan-sha256 --task --repo-root; do
+	for required in --effort --plan-sha256 --task --slot; do
 		case " ${seen_options} " in
 			*" ${required} "*) ;;
 			*) usage_error "${required} missing; expected ${required} VALUE" ;;
@@ -332,9 +306,8 @@ trim_trailing_slashes() {
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh, crucible's
-# prune module, human-view's title module and every shared check and helper
-# are in place; sources the two shell helpers and reads BASELINE_KIND from the
-# shared names.
+# prune module, human-view's title module, slots.sh and every shared check and
+# helper are in place; sources the two shell helpers.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -359,11 +332,6 @@ load_dependencies() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
-	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	BASELINE_KIND=$(read_shared_name baseline_kind) &&
-		[ -n "${BASELINE_KIND}" ] ||
-		die 5 "jq could not read baseline_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
-	readonly BASELINE_KIND
 	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
@@ -379,6 +347,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
+	slots_script="${skills_dir}/${WORKTREE_SKILL}/scripts/slots.sh"
+	[ -f "${slots_script}" ] && [ -r "${slots_script}" ] ||
+		die 5 "slots.sh missing; expected ${slots_script}; install the ${WORKTREE_SKILL} skill"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
@@ -433,26 +404,6 @@ check_task_number() {
 	esac
 	add_problem --task "${task_number}" 'not a positive integer; expected the task'\''s number in the plan, from 1'
 	task_number_ok=false
-}
-
-# Adds a problem when repo_root is an absolute path that is not an existing
-# folder or not git's work-tree root; the validator owns the path's shape.
-check_repo_root() {
-	case ${repo_root} in
-		/*) ;;
-		*) return 0 ;;
-	esac
-	if [ ! -d "${repo_root}" ]; then
-		add_problem --repo-root "${repo_root}" 'not an existing folder; expected the repository'\''s git work-tree root'
-		return 0
-	fi
-	if git_root=$(GIT_TERMINAL_PROMPT=0 GIT_OPTIONAL_LOCKS=0 GIT_CONFIG_NOSYSTEM=1 \
-		git -c core.fsmonitor=false -C "${repo_root}" rev-parse --show-toplevel 2>/dev/null </dev/null); then
-		[ "${git_root}" = "${repo_root}" ] && return 0
-		add_problem --repo-root "${repo_root}" "not the git work-tree root; expected ${git_root}"
-	else
-		add_problem --repo-root "${repo_root}" 'not in a git work tree; expected the repository'\''s git work-tree root'
-	fi
 }
 
 # Sets effort_dir to --effort without trailing slashes when it names a real
@@ -686,139 +637,70 @@ resolve_space_root() {
 	add_problem CRUCIBLE_HOME "${space_root}" "${crucible_root_problem}"
 }
 
-# Sets report_kind (the agent's reports folder, empty for an agent the shared
-# names give none), and placeholder_report and placeholder_baseline, the
-# stand-ins for the two paths crucible.sh new makes in the effort.
-plan_space_paths() {
-	# shellcheck disable=SC2016,SC2310 # $agent is jq's; a failure exits
-	report_kind=$(read_shared_name '$agent | report_kind' "${agent}") ||
-		die 5 "jq could not read report_kind from ${names_module}; expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill"
-	planned_effort=${effort_dir:-${space_root}/efforts/${PLACEHOLDER_EFFORT}}
-	placeholder_report="${planned_effort}/${report_kind:-${PLACEHOLDER_REPORT_KIND}}/${PLACEHOLDER_ID}-${agent}-report.json"
-	placeholder_baseline="${planned_effort}/${BASELINE_KIND}/${PLACEHOLDER_ID}-${agent}-baseline.json"
-}
-
-# Adds a problem unless the --baseline-from dispatch is a valid dispatch of
-# repo_root whose baseline file holds a baseline of it; on a pass, that
-# baseline is read once into earlier_baseline_copy, the bytes the new
-# dispatch's baseline file gets.
-check_baseline_from() {
-	case ${baseline_from} in
-		/*) ;;
-		*)
-			add_baseline_from_problem 'not an absolute path; expected the DISPATCH path of the earlier dispatch'
+# Adds a problem unless the seat --slot names is in the effort's slots.json
+# with the plan's mode; slots.sh get reads it. A value that is no seat name is
+# left to the dispatch check, which names it.
+check_slot() {
+	[ -n "${effort_dir}" ] || return 0
+	# shellcheck disable=SC2310 # its status is the test result; a jq failure exits inside
+	is_slot_name || return 0
+	slots_file="${effort_dir}/slots.json"
+	if [ ! -f "${slots_file}" ]; then
+		add_problem --slot "${slot}" "the effort has no slots.json; expected ${slots_file} holding the seat"
+		return 0
+	fi
+	# On exit 0 slots.sh prints only the seat; otherwise only its stderr lines.
+	if seat_out=$(sh "${slots_script}" get --slots "${slots_file}" --slot "${slot}" </dev/null 2>&1); then
+		seat_status=0
+	else
+		seat_status=$?
+	fi
+	slots_line=$(printable "${seat_out%%"${NL}"*}")
+	case ${seat_status} in
+		0) ;;
+		6)
+			add_problem --slot "${slot}" "no such seat in ${slots_file}; expected a seat procedure-git-worktree's slots.sh add made"
 			return 0
 			;;
+		3)
+			add_problem --slot "${slot}" "${slots_file} can't be read (${slots_line}); expected the effort's seat list"
+			return 0
+			;;
+		*) die 5 "slots.sh get failed (exit ${seat_status}): ${slots_line}; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
 	esac
-	# shellcheck disable=SC2310 # its status says whether the path is the effort's; the problem is added inside
-	in_effort_folder "${baseline_from}" "${DISPATCH_KIND}" 'is' 'the earlier dispatch' || return 0
-	if [ -L "${baseline_from}" ] || [ ! -f "${baseline_from}" ] || [ ! -r "${baseline_from}" ]; then
-		add_baseline_from_problem 'missing, unreadable, a symlink or not a regular file; expected the earlier dispatch file generate-agent-dispatch.sh wrote'
-		return 0
-	fi
-	if ! earlier_problems=$(jq -rs -f "${dispatch_validator}" "${baseline_from}" </dev/null 2>/dev/null); then
-		add_baseline_from_problem 'not JSON; expected the earlier dispatch file generate-agent-dispatch.sh wrote'
-		return 0
-	fi
-	if [ -n "${earlier_problems}" ]; then
-		earlier_problems=$(joined_lines "${earlier_problems}")
-		add_baseline_from_problem "fails the dispatch validator (${earlier_problems}); expected a dispatch generate-agent-dispatch.sh wrote"
-		return 0
-	fi
-	earlier_fields=$(jq -r '.repo_root, .baseline' "${baseline_from}" </dev/null) ||
-		die 5 'jq failed reading the --baseline-from dispatch; expected jq 1.6+; try jq --version, then rerun'
-	{
-		IFS= read -r earlier_repo_root
-		IFS= read -r earlier_baseline
-	} <<EOF
-${earlier_fields}
-EOF
-	if [ "${earlier_repo_root}" != "${repo_root}" ]; then
-		add_baseline_from_problem "a dispatch of repo_root ${earlier_repo_root}; expected a dispatch of --repo-root ${repo_root}"
-		return 0
-	fi
-	read_earlier_baseline
+	[ "${plan_ok}" = true ] || return 0
+	seat_mode=$(printf '%s\n' "${seat_out}" | jq -r '.mode // ""') ||
+		die 5 'jq failed reading the seat slots.sh get printed; expected jq 1.6+; try jq --version, then rerun'
+	[ "${seat_mode}" != "${mode}" ] || return 0
+	seat_mode_text="mode ${seat_mode}"
+	[ -n "${seat_mode}" ] || seat_mode_text='no mode'
+	add_problem --slot "${slot}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
 }
 
-add_baseline_from_problem() {
-	add_problem --baseline-from "${baseline_from}" "$1"
+# Succeeds when slot fits the shared names' slot_pattern; jq -e exits 1 when
+# it does not.
+is_slot_name() {
+	slot_name_status=0
+	jq -ne --arg s "${slot}" -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; \$s | test(slot_pattern)" \
+		</dev/null >/dev/null || slot_name_status=$?
+	case ${slot_name_status} in
+		0) return 0 ;;
+		1) return 1 ;;
+		*) die 5 "jq failed testing --slot against slot_pattern in ${names_module} (exit ${slot_name_status}); expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill" ;;
+	esac
 }
 
-# Succeeds when path $1 is a file directly in kind folder $2 of the --effort
-# folder; otherwise adds a --baseline-from problem, its subject $3 ("is", or
-# "its baseline file <path> is") and the expected file $4, and fails, so
-# nothing outside that folder is read. With the space refused nothing is
-# checked, and with --effort refused only the space rules' layout: their
-# problem is reported already, and it fails all the same.
-in_effort_folder() {
-	[ "${space_ok}" = true ] || return 1
-	# shellcheck disable=SC2310 # its status is the test result; the problem is read below
-	if ! crucible_check_effort_item "$1" "$2"; then
-		add_baseline_from_problem "$3 ${crucible_item_problem}"
-		return 1
-	fi
-	[ -n "${effort_dir}" ] || return 1
-	[ "${crucible_effort}" != "${effort_dir}" ] || return 0
-	add_baseline_from_problem "$3 in effort ${crucible_effort}; expected $4 in ${effort_dir}/$2/, the folder of --effort"
-	return 1
-}
-
-# Prints the lines of $1 joined by "; ".
-joined_lines() {
-	joined=''
-	while IFS= read -r joined_line; do
-		joined="${joined}${joined:+; }${joined_line}"
-	done <<EOF
-$1
-EOF
-	printf '%s' "${joined}"
-}
-
-# Copies the earlier dispatch's baseline file once into earlier_baseline_copy
-# and adds a problem unless that copy is a baseline of repo_root.
-read_earlier_baseline() {
-	# shellcheck disable=SC2310 # its status says whether the path is the effort's; the problem is added inside
-	in_effort_folder "${earlier_baseline}" "${BASELINE_KIND}" "its baseline file ${earlier_baseline} is" 'the baseline file generate-agent-dispatch.sh made' || return 0
-	if [ -L "${earlier_baseline}" ] || [ ! -f "${earlier_baseline}" ] || [ ! -r "${earlier_baseline}" ]; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} is missing, unreadable, a symlink or not a regular file; expected the regular file the Agent hook filled"
-		return 0
-	fi
-	earlier_baseline_copy=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
-		die 5 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try checking its permissions and free space, then rerun"
-	if ! cat -- "${earlier_baseline}" >"${earlier_baseline_copy}"; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} cannot be read; expected the regular file the Agent hook filled"
-		return 0
-	fi
-	if [ ! -s "${earlier_baseline_copy}" ]; then
-		add_baseline_from_problem "${BASELINE_EMPTY_TOKEN} its baseline file ${earlier_baseline} is empty: that dispatch never went through the Agent hook; expected its filled baseline"
-		return 0
-	fi
-	if ! jq empty "${earlier_baseline_copy}" </dev/null >/dev/null 2>&1; then
-		add_baseline_from_problem "its baseline file ${earlier_baseline} is not JSON; expected a baseline of ${repo_root}"
-		return 0
-	fi
-	earlier_shape=$(jq -rs -L "${dispatch_dir}" --arg repo_root "${repo_root}" \
-		"include \"${NAMES_MODULE}\"; if length == 1 then .[0] | baseline_problems(\$repo_root) else \"\\(length) JSON values; expected one object\" end" \
-		"${earlier_baseline_copy}" </dev/null) ||
-		die 5 "jq failed on the baseline shape in ${names_module}; expected jq 1.6+; try jq --version, then rerun"
-	[ -n "${earlier_shape}" ] || return 0
-	earlier_shape=$(joined_lines "${earlier_shape}")
-	add_baseline_from_problem "its baseline file ${earlier_baseline} holds no baseline of ${repo_root} (${earlier_shape}); expected the baseline the Agent hook wrote"
-}
-
-# Runs DISPATCH_JQ in mode $1 with id $2, started $3, report $4 and baseline
-# $5, over the entry points after them.
+# Runs DISPATCH_JQ in mode $1 with id $2, over the entry points after it.
 run_dispatch_jq() {
-	run_mode=$1 run_id=$2 run_started=$3 run_report=$4 run_baseline=$5
-	shift 5
-	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" --arg started "${run_started}" \
+	run_mode=$1 run_id=$2
+	shift 2
+	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" \
 		--arg session_id "${session_id}" \
-		--arg agent "${agent}" --arg mode "${mode}" \
+		--arg agent "${agent}" --arg slot "${slot}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" \
 		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
-		--arg task "${task}" --arg task_number "${task_number}" --arg repo_root "${repo_root}" \
-		--arg report "${run_report}" --arg baseline "${run_baseline}" --arg space_root "${space_root}" \
+		--arg task "${task}" --arg task_number "${task_number}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		--arg plan_known "${plan_ok}" --arg task_known "${task_known}" \
 		-r "${DISPATCH_JQ}" --args -- "$@" </dev/null
@@ -828,12 +710,12 @@ run_dispatch_jq() {
 # the stand-ins, named by option.
 check_planned_dispatch() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	planned_dispatch=$(run_dispatch_jq dispatch "${PLACEHOLDER_ID}" "${PLACEHOLDER_STARTED}" "${placeholder_report}" "${placeholder_baseline}" "$@") ||
+	planned_dispatch=$(run_dispatch_jq dispatch "${PLACEHOLDER_ID}" "$@") ||
 		die 5 "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	validator_problems=$(printf '%s\n' "${planned_dispatch}" | jq -cs --arg format json -f "${dispatch_validator}") ||
 		die 5 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	named_problems=$(run_dispatch_jq report '' '' '' '' "$@") ||
+	named_problems=$(run_dispatch_jq report '' "$@") ||
 		die 5 "jq failed naming the dispatch problems; expected jq 1.6+; try jq --version, then rerun"
 	[ -z "${named_problems}" ] || problems="${problems}${named_problems}${NL}"
 }
@@ -895,27 +777,6 @@ EOF
 	created_files=''
 }
 
-# Makes an empty file of kind $1 labelled <agent>-$2 and checks it lies
-# directly in that kind folder of the effort; sets created_path.
-make_space_file() {
-	create_item "$1" "${agent}-$2"
-	# shellcheck disable=SC2310 # its status is the test result; a failure fails the run
-	crucible_check_effort_item "${created_path}" "$1" && [ "${crucible_effort}" = "${effort_dir}" ] ||
-		fail_run "the $2 file ${created_path} is not in ${effort_dir}/$1/; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun"
-}
-
-# Writes the earlier baseline's checked bytes into the new baseline file,
-# through a temp file in its folder moved onto it.
-copy_earlier_baseline() {
-	temp_file=$(mktemp "${baseline_path%/*}/.${baseline_path##*/}.XXXXXX") ||
-		fail_run "mktemp could not create a temp file beside ${baseline_path}; expected a writable folder ${baseline_path%/*}; try checking its permissions and free space, then rerun"
-	cat -- "${earlier_baseline_copy}" >"${temp_file}" ||
-		fail_run "could not write the temp file ${temp_file}; expected a writable folder ${baseline_path%/*}; try checking its free space, then rerun"
-	mv -f "${temp_file}" "${baseline_path}" ||
-		fail_run "mv could not move the temp file onto ${baseline_path}; expected a writable folder ${baseline_path%/*}; try checking its permissions, then rerun"
-	temp_file=''
-}
-
 # Makes, writes and checks the dispatch file; sets dispatch_path.
 write_dispatch() {
 	create_item "${DISPATCH_KIND}" "${agent}-dispatch"
@@ -925,10 +786,8 @@ write_dispatch() {
 	crucible_split_id "${dispatch_name}" ||
 		fail_run "crucible.sh new printed ${dispatch_path}, whose name holds no Crucible ID; expected <ID>-<label>.json; try reinstalling the crucible skill, then rerun"
 	dispatch_id=${crucible_name_id}
-	started_raw=$(date +%Y-%m-%dT%H:%M:%S%z) || fail_run 'date failed; expected it to print the local time as +%Y-%m-%dT%H:%M:%S%z; try date +%Y-%m-%dT%H:%M:%S%z by hand, fix your system date tool, then rerun'
-	started="${started_raw%??}:${started_raw#"${started_raw%??}"}"
 	# shellcheck disable=SC2310 # its status is jq's; a failure fails the run
-	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "${started}" "${report_path}" "${baseline_path}" "$@") ||
+	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "$@") ||
 		fail_run "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	final_problems=$(printf '%s\n' "${dispatch_json}" | jq -rs -f "${dispatch_validator}") ||
 		fail_run 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
@@ -946,7 +805,6 @@ write_dispatch() {
 }
 
 temp_file=''
-earlier_baseline_copy=''
 created_files=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files go on every path.
@@ -960,7 +818,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-given_effort='' plan_sha256='' task_number='' repo_root='' skills_dir='' given_skills_dir='' baseline_from='' seen_options='' awaited_option=''
+given_effort='' plan_sha256='' task_number='' slot='' skills_dir='' given_skills_dir='' seen_options='' awaited_option=''
 # Each --entry-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
@@ -980,11 +838,8 @@ finish_parse
 shift "${argument_count}"
 
 for tool in ${REQUIRED_TOOLS}; do
-	command -v "${tool}" >/dev/null 2>&1 && continue
-	case ${tool} in
-	git) die 5 "git missing; expected it on PATH; install it (macOS: xcode-select --install; Linux: the distro's git package)" ;;
-	*) die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}" ;;
-	esac
+	command -v "${tool}" >/dev/null 2>&1 ||
+		die 5 "${tool} missing; expected it on PATH; install your base system's ${tool}"
 done
 
 problems='' validator_problems='' plan_sha256_ok=true task_number_ok=true plan_ok=false session_id=''
@@ -994,7 +849,6 @@ resolve_space_root
 check_skills_dir
 check_plan_sha256
 check_task_number
-check_repo_root
 # Stand-ins for what the plan gives, so the dispatch check still reports the
 # options' own problems when the plan is not found or not valid.
 agent=code-developer mode=BUILD plugin_paths='' labels_line='' title_line='' context_path=/ plan_context_sha256=''
@@ -1011,26 +865,12 @@ if [ "${plan_ok}" = true ]; then
 	check_context
 	resolve_plugins
 fi
-plan_space_paths
+check_slot
 check_planned_dispatch "$@"
-[ -z "${baseline_from}" ] || check_baseline_from
 if [ -n "${problems}" ]; then
 	printf '%s' "${problems}" >&2
 	exit 3
 fi
 require_open_effort
-
-# The dispatch check refuses an agent with no report kind; this guards a
-# drift between it and the shared names.
-[ -n "${report_kind}" ] ||
-	die 5 "${NAMES_MODULE}.jq names no report kind for agent \"${agent}\", which its dispatch check passed; expected one for every dispatched agent; reinstall the ${PROCEDURE} skill"
-make_space_file "${report_kind}" report
-report_path=${created_path}
-# Left empty without --baseline-from: prepare-agent-prompt.sh writes git
-# status into it at the Agent call, which for a dispatch waiting on another's
-# result comes much later.
-make_space_file "${BASELINE_KIND}" baseline
-baseline_path=${created_path}
-[ -z "${baseline_from}" ] || copy_earlier_baseline
 write_dispatch "$@"
 printf 'DISPATCH: %s\n%s\n%s\n' "${dispatch_path}" "${labels_line}" "${title_line}"

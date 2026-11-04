@@ -106,14 +106,11 @@ usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-fil
 
 Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
 context file's effort.
-Keys in order: claude_session_id, agent, mode, tasks, plugins {load
-{language, frameworks, standards, procedures}, skip {standards, procedures},
-load_reason}, replan, context; each plugin {plugin, reason}; empty keys left
-out.
-Rules (dispatch-plan-validator.jq): at most one --language; --framework
+Rules: at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
---language with its --framework plugins, one standard --load, or neither.
+--language with its --framework plugins, one standard --load, or neither;
+code-developer: a --language and a standard --load.
 
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
@@ -144,12 +141,9 @@ stdout on exit 0, in order:
     render-dispatch-plan.sh --data Plan=
 stderr on exit 3, one line per problem:
   "${PROG}: <option> <value>: <problem>; expected <x>"
-list-plugins.sh's stderr passes through, to relay
+list-plugins.sh's stderr passes through; relay it
 
 Exit 1 may leave only --plan-file changed; other failures change nothing.
-Only crucible.sh new changes the space; nothing is left behind (a SIGKILL
-aside). Reads only the context file, its folder's version names, the effort's
-state, the plan it wrote and list-plugins.sh's.
 
 Exit codes (1, 5, 6, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
   0  written; keep PLAN_SHA256, go on
@@ -536,10 +530,10 @@ require_open_effort() {
 # Writes plan_json to plan_file through a temp file in its folder, or exits 1.
 write_plan() {
 	temp_file=$(mktemp "${plan_folder}/.${plan_file##*/}.XXXXXX") ||
-		die 1 "mktemp could not create a temp file in ${plan_folder}; nothing was written; expected a writable folder ${plan_folder}; try checking its permissions and free space, then rerun"
+		die 1 "mktemp could not create a temp file in ${plan_folder}; nothing was written; expected a writable folder ${plan_folder}; check its permissions and free space, then rerun"
 	printf '%s\n' "${plan_json}" >"${temp_file}" ||
-		die 1 "could not write the temp file ${temp_file}; nothing was written; expected a writable folder ${plan_folder}; try checking its free space, then rerun"
-	mv -f "${temp_file}" "${plan_file}" || die 1 "mv could not move the temp file onto ${plan_file}; nothing was written; expected a writable folder ${plan_folder}; try checking its permissions and free space, then rerun"
+		die 1 "could not write the temp file ${temp_file}; nothing was written; expected a writable folder ${plan_folder}; check its free space, then rerun"
+	mv -f "${temp_file}" "${plan_file}" || die 1 "mv could not move the temp file onto ${plan_file}; nothing was written; expected a writable folder ${plan_folder}; check its permissions and free space, then rerun"
 	temp_file=''
 }
 
@@ -550,10 +544,10 @@ write_record() {
 		die 1 "crucible.sh new --kind ${RECORD_KIND} failed (its stderr is above); nothing was written; expected an empty file in ${record_effort}/${RECORD_KIND}/; fix what it names, then rerun"
 	case ${new_record} in
 		"${record_effort}/${RECORD_KIND}/"*.json) record_file=${new_record} ;;
-		*) die 1 "crucible.sh new printed no file of ${record_effort}/${RECORD_KIND}/; nothing was written; expected crucible.sh to use the same CRUCIBLE_HOME; try exporting CRUCIBLE_HOME once for both, then rerun" ;;
+		*) die 1 "crucible.sh new printed no file of ${record_effort}/${RECORD_KIND}/; nothing was written; expected crucible.sh to use the same CRUCIBLE_HOME; export CRUCIBLE_HOME once for both, then rerun" ;;
 	esac
 	printf '%s\n' "${plan_json}" >"${record_file}" ||
-		die 1 "could not write the plan record ${record_file}; nothing was written; expected a writable folder ${record_effort}/${RECORD_KIND}; try checking its free space, then rerun"
+		die 1 "could not write the plan record ${record_file}; nothing was written; expected a writable folder ${record_effort}/${RECORD_KIND}; check its free space, then rerun"
 }
 
 # Sets context_digest to the sha256 of the written plan in canonical form, the
@@ -561,7 +555,7 @@ write_record() {
 # record is the plan with "v": 1 added, so jq -cS 'del(.v)' of it hashes the same.
 digest_written_plan() {
 	canonical_plan=$(jq -cS . "${plan_file}" </dev/null) ||
-		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed; expected the JSON this run wrote; try checking that nothing else writes to ${plan_folder}, then rerun"
+		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed; expected the JSON this run wrote; check that nothing else writes to ${plan_folder}, then rerun"
 	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
 	compute_stdin_digest <<EOF || die 1 "${context_digest_tool} could not hash the plan ${plan_file}; it is written, but its digest is not printed; expected ${context_digest_tool} to print a sha256; try ${context_digest_tool} on a small file by hand, fix or reinstall it, then rerun"
 ${canonical_plan}
