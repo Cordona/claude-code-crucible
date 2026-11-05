@@ -6,7 +6,6 @@ skills:
   - harness-authoring-core
 model: claude-opus-5-5
 effort: medium
-maxTurns: 150
 color: green
 omitClaudeMd: true
 ---

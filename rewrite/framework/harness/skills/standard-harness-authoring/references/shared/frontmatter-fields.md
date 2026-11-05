@@ -43,7 +43,7 @@ The full field sets Claude Code accepts, one row per field: what it does, the de
 | `disallowedTools` | optional | Removes tools; an entry with a specifier removes the whole tool (ATOOL-14). | Nothing removed | Tool names |
 | `model` | required | The agent's model; house rule pins a full ID (ATOOL-22). | Resolution order: per-invocation, then this field, then `CLAUDE_CODE_SUBAGENT_MODEL`, then the main session's model (docs) | `sonnet`, `opus`, `haiku`, `fable`, `inherit`, or a full model ID (docs) |
 | `permissionMode` | optional | Permission mode; ignored when the main session runs in `bypassPermissions`, `acceptEdits` or `auto`; `bypassPermissions` is never honoured from here; plugin agents ignore it (ATOOL-17, ATOOL-05). | Inherits the main conversation's mode (docs) | `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, `plan`, `manual` (= `default`) (docs) |
-| `maxTurns` | required | Turn cap, a safety cap sized to the role (ATOOL-24). | Not documented (no cap assumed) | Integer |
+| `maxTurns` | optional | Turn cap; an agent that hits it stops mid-task with no report, so leave it unset unless a runaway loop is a real risk (ATOOL-24). | Not documented (no cap assumed) | Integer |
 | `skills` | optional | Preloads skills: each full body is injected; a missing one, or one with `disable-model-invocation: true`, is skipped with a debug warning (docs). | No preloads | Skill names, at most 32 (docs) |
 | `mcpServers` | optional | MCP servers available to the agent; plugin agents ignore it (docs, ATOOL-05). | Not documented | Server names or inline definitions (docs) |
 | `hooks` | optional | Hooks for this subagent's lifetime; `Stop` becomes `SubagentStop`; plugin agents ignore it (HK-02, ATOOL-05). | No hooks | Hook config (LNT-33) |

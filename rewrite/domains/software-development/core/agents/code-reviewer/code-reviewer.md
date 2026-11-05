@@ -3,7 +3,6 @@ name: code-reviewer
 description: Reviewer for any language and its frameworks, dispatched by the main thread, one lens per dispatch (the tech lens of a language with its frameworks, or one standard), to review one change through that injected lens and write a findings report; not for direct invocation.
 tools: Read, Grep, Glob, Write, Edit, Bash, WebFetch, mcp__context7
 model: claude-opus-5-5
-maxTurns: 60
 skills:
   - standard-code-review-report
   - standard-artifact-handoff

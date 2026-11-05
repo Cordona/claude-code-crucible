@@ -4,7 +4,6 @@ description: Read-only skill analyst dispatched by `flow-harness-authoring` (Ski
 tools: Read, Grep, Glob
 model: claude-opus-5-5
 effort: medium
-maxTurns: 100
 color: cyan
 omitClaudeMd: true
 ---

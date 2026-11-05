@@ -4,7 +4,6 @@ description: Agent author dispatched by `flow-harness-authoring` (Agent flow) to
 tools: Read, Grep, Glob, Write, Edit
 model: claude-opus-5-5
 effort: medium
-maxTurns: 100
 color: green
 omitClaudeMd: true
 skills:

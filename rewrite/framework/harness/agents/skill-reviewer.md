@@ -4,7 +4,6 @@ description: Restricted read-only reviewer dispatched by `flow-harness-authoring
 tools: Read, Grep, Glob
 model: claude-opus-5-5
 effort: medium
-maxTurns: 80
 color: yellow
 omitClaudeMd: true
 skills:

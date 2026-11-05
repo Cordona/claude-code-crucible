@@ -51,4 +51,4 @@ Purpose: the file loads, every field means what the author thinks, and the agent
 
 ### SHOULD
 
-- **ATOOL-24** · Is `maxTurns` sized to the role as a safety cap, tightest for an agent that reads beyond the files handed to it, traces effects, or loops? · Check: presence is LNT-66; judge the value against the process; whether the caller treats capped, partial output as unfinished is judged in 06. · Fix: set `maxTurns` sized to the role.
+- **ATOOL-24** · If `maxTurns` is set, is it high enough that a normal run never reaches it? An agent that hits it stops mid-task with no report. Absent is fine (no cap). · Check: judge the value against the largest normal run; whether the caller treats capped, partial output as unfinished is judged in 06. · Fix: raise it, or remove it.

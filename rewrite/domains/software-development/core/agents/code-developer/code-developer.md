@@ -3,7 +3,6 @@ name: code-developer
 description: Developer for any language and its frameworks, dispatched by the main thread (`flow-code-development`) into one git worktree to write, fix or refactor code, then to make the human's changes to it; not for direct invocation.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch, mcp__context7
 model: claude-opus-5-5
-maxTurns: 120
 skills:
   - standard-code-development-report
   - standard-artifact-handoff

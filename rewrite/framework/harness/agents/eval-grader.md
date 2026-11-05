@@ -4,7 +4,6 @@ description: Restricted read-only grader dispatched by `flow-harness-authoring` 
 tools: Read, Grep, Glob
 model: claude-opus-5-5
 effort: medium
-maxTurns: 60
 color: orange
 omitClaudeMd: true
 ---

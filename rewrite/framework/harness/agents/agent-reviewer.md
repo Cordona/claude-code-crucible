@@ -6,7 +6,6 @@ skills:
   - harness-review-core
 model: claude-opus-5-5
 effort: medium
-maxTurns: 80
 color: yellow
 omitClaudeMd: true
 ---
