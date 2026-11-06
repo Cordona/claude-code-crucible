@@ -82,6 +82,6 @@ After a compaction, an interruption or a new session, load `procedure-resume` fi
 ## Dependencies
 
 - **Agent:** `code-developer`, checked before step 1.
-- **Skills,** each under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `procedure-effort` (the effort; step 5's offer), `procedure-resume` (Resume), `procedure-context` (steps 1 and 2.1, Changes), `procedure-grill` (step 1), `flow-agent-initialization` (steps 2.5 and 3), `procedure-git-worktree` (its `dirty-check.sh`, `snapshot.sh`, `seat-open.sh`, `slots.sh`, `iteration.sh`, and the `bind.sh` and `dev-stop.sh` hooks), `standard-code-development-report` (its `card.sh`), `crucible` (its `crucible.sh find`, in `references/resume.md`), `standard-artifact-handoff` (the whole report).
+- **Skills,** each under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`: `procedure-effort` (the effort; step 5's offer), `procedure-resume` (Resume), `procedure-context` (steps 1 and 2.1, Changes), `procedure-grill` (step 1), `flow-agent-initialization` (steps 2.5 and 3), `procedure-git-worktree` (its `dirty-check.sh`, `snapshot.sh`, `seat-open.sh`, `slots.sh`, `iteration.sh`, and the `seat-bind-hook.sh`, `report-commit-hook.sh` and `block-relay-hook.sh` hooks), `standard-code-development-report` (its `card.sh`), `crucible` (its `crucible.sh find`, in `references/resume.md`), `standard-artifact-handoff` (the whole report).
 - **Tools:** Agent, Skill, Read, Bash, AskUserQuestion, SendMessage and ToolSearch.
 - **Commands:** git and jq 1.6+.

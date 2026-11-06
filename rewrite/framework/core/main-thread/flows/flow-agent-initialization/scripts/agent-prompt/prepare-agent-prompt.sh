@@ -8,7 +8,7 @@
 # problem denies the dispatch. Every other Agent call passes untouched. The
 # decision is the only output, so a listed agent is denied on any unexpected
 # exit (fail closed).
-# A listed agent runs in the background only: procedure-git-worktree's bind hook
+# A listed agent runs in the background only: procedure-git-worktree's seat bind hook
 # links it to its seat from PostToolUse, which for a foreground agent comes
 # only after it has finished. Once every check passes, the hook writes
 # <effort>/pending/<tool_use_id> holding the dispatch path, the link the bind
@@ -417,7 +417,7 @@ The message, built from the checked bytes: # Your plugins, # Your context,
 
 Leaves only (a SIGKILL aside): once every check passes,
 <effort>/pending/<tool_use_id>, holding the dispatch path and a newline, written
-atomically, for procedure-git-worktree's bind hook; on a deny, the Denial file.
+atomically, for procedure-git-worktree's seat bind hook; on a deny, the Denial file.
 The repository and slots.json are only read.
 
 Exit codes:
@@ -1119,7 +1119,7 @@ EOF
 }
 
 # Writes <effort>/pending/<tool_use_id> holding the dispatch path, through a
-# temp file in that folder moved onto it, for the bind hook.
+# temp file in that folder moved onto it, for the seat bind hook.
 write_pending_link() {
 	pending_dir="${dispatch_effort}/pending"
 	mkdir -p -- "${pending_dir}" || link_failed "mkdir could not create ${pending_dir}"
@@ -1133,10 +1133,10 @@ write_pending_link() {
 	temp_file=''
 }
 
-# The pending link can't be written ($1): a deny, since the bind hook could
+# The pending link can't be written ($1): a deny, since the seat bind hook could
 # not link the agent to its seat.
 link_failed() {
-	fault "$1, so the bind hook could not link the agent to its seat; expected a writable effort folder; the dispatch can be sent again once it is."
+	fault "$1, so the seat bind hook could not link the agent to its seat; expected a writable effort folder; the dispatch can be sent again once it is."
 }
 
 # Refuses with problem $1 alone, when the later checks can't run without it passing.

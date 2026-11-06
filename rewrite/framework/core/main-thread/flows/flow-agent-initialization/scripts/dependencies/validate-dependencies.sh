@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-agent-initialization: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's slots.sh and its bind and stop hook scripts, the
+# procedure-git-worktree's slots.sh and its seat bind, report commit and block
+# relay hook scripts, the
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
@@ -11,9 +12,10 @@
 # loads, and its title module, which the dispatch script loads,
 # procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
-# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the five hook
+# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the six hook
 # entries in settings.json (the inject hook, which must block on failure, both
-# gate hooks, and procedure-git-worktree's bind and developer stop hooks), the Crucible
+# gate hooks, and procedure-git-worktree's seat bind, report commit and async
+# block relay hooks), the Crucible
 # space in its additionalDirectories, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix; the lines
 # are kept and printed at the end, as a pass line, a view or the full
@@ -62,8 +64,9 @@ readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly WORKTREE_PROCEDURE='procedure-git-worktree'
-readonly BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/bind.sh"
-readonly DEV_STOP_SCRIPT="${WORKTREE_PROCEDURE}/scripts/dev-stop.sh"
+readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/seat-bind-hook.sh"
+readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/report-commit-hook.sh"
+readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/block-relay-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 # Relative to DIR/crucible/scripts/.
@@ -79,10 +82,14 @@ readonly HOOK_ON_FAILURE='block'
 # The gate hooks read one small state file, and a timed-out one lets the stop
 # or question through, so a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
-# The bind hook runs one slots.sh change; the developer stop hook checks a
+# The seat bind hook runs one slots.sh change; the report commit hook checks a
 # report and commits the worktree, so its bound is wider.
-readonly BIND_HOOK_TIMEOUT=10
-readonly DEV_STOP_HOOK_TIMEOUT=30
+readonly SEAT_BIND_HOOK_TIMEOUT=10
+readonly REPORT_COMMIT_HOOK_TIMEOUT=30
+# The block relay hook waits for the report commit hook's outcome, up to two minutes, and must
+# run async with asyncRewake: its exit 2 is what wakes the main thread.
+readonly BLOCK_RELAY_HOOK_TIMEOUT=150
+readonly HOOK_ASYNC_REWAKE='rewake'
 # Printed unexpanded so the fix can be pasted into settings.json as is.
 # shellcheck disable=SC2016
 readonly HOOK_COMMAND_ROOT='${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills'
@@ -125,7 +132,15 @@ readonly HOOK_FINGERPRINT_JQ='.hooks?[$event]?[]?
 	| select(type == "object" and ($matcher == "" or .matcher == $matcher))
 	| .hooks?[]?
 	| select(type == "object" and (.command? | type == "string" and contains($needle)))
-	| [.command, .onFailure?]'
+	| [.command, .onFailure?, .async?, .asyncRewake?]'
+# Counts the hook entries under event $event and matcher $matcher that run
+# $needle with "async" and "asyncRewake" both true.
+# shellcheck disable=SC2016
+readonly HOOK_ASYNC_REWAKE_COUNT_JQ='[.hooks?[$event]?[]?
+	| select(type == "object" and ($matcher == "" or .matcher == $matcher))
+	| .hooks?[]?
+	| select(type == "object" and (.command? | type == "string" and contains($needle)) and .async? == true and .asyncRewake? == true)]
+	| length'
 
 # Emits each non-empty permissions.additionalDirectories entry, trailing
 # slashes dropped (so "/" becomes ""); a missing or mistyped level emits nothing.
@@ -327,15 +342,16 @@ fingerprint_input() {
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/slots.sh" \
-		"${skills_dir}/${BIND_SCRIPT}" "${skills_dir}/${DEV_STOP_SCRIPT}" \
+		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
-	fingerprint_hook PostToolUse Agent "${BIND_SCRIPT}"
-	fingerprint_hook SubagentStop '' "${DEV_STOP_SCRIPT}"
+	fingerprint_hook PostToolUse Agent "${SEAT_BIND_SCRIPT}"
+	fingerprint_hook SubagentStop '' "${REPORT_COMMIT_SCRIPT}"
+	fingerprint_hook SubagentStop '' "${BLOCK_RELAY_SCRIPT}"
 	printf 'crucible space\n%s\n' "${crucible_home}"
 	jq -c "${ALLOWED_DIRS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
 		printf 'additional directories unreadable\n'
@@ -607,11 +623,11 @@ check_run_tools() {
 set_run_tool_hint() {
 	case $1 in
 		date)
-			run_tool_need='open-gate.sh, both gate hooks, the bind and dev stop hooks and crucible.sh'
+			run_tool_need='open-gate.sh, both gate hooks, the seat bind and report commit hooks and crucible.sh'
 			set_coreutils_fix date /bin
 			;;
 		git)
-			run_tool_need='the dev stop hook'\''s commit'
+			run_tool_need='the report commit hook'\''s commit'
 			run_tool_fix='install git (macOS: xcode-select --install; Linux: the distro'\''s git package), then rerun'
 			;;
 		cmp)
@@ -642,8 +658,8 @@ set_coreutils_fix() {
 	run_tool_fix="put $1 back on PATH (macOS: it ships in $2; Linux: the distro's coreutils package), then rerun"
 }
 
-# Checks that the settings file registers the five hooks and allows the
-# Crucible space; a settings file jq can't read fails once for all six.
+# Checks that the settings file registers the six hooks and allows the
+# Crucible space; a settings file jq can't read fails once for all seven.
 check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
@@ -669,36 +685,41 @@ check_settings() {
 }
 
 # Calls $1 once per hook entry with: item name, event, matcher ("" any), script,
-# timeout, onFailure ("" not required). The one list both the check and its
-# fix text are built from.
+# timeout, onFailure ("" not required), async ("rewake": async and
+# asyncRewake required; "" not). The one list both the check and its fix text
+# are built from.
 each_hook() {
-	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}"
-	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
-	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" ''
-	"$1" 'bind hook' PostToolUse Agent "${BIND_SCRIPT}" "${BIND_HOOK_TIMEOUT}" ''
-	"$1" 'dev stop hook' SubagentStop '' "${DEV_STOP_SCRIPT}" "${DEV_STOP_HOOK_TIMEOUT}" ''
+	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}" ''
+	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'seat bind hook' PostToolUse Agent "${SEAT_BIND_SCRIPT}" "${SEAT_BIND_HOOK_TIMEOUT}" '' ''
+	"$1" 'report commit hook' SubagentStop '' "${REPORT_COMMIT_SCRIPT}" "${REPORT_COMMIT_HOOK_TIMEOUT}" '' ''
+	"$1" 'block relay hook' SubagentStop '' "${BLOCK_RELAY_SCRIPT}" "${BLOCK_RELAY_HOOK_TIMEOUT}" '' "${HOOK_ASYNC_REWAKE}"
 }
 
-# Appends the settings entry for hook $2..$6 (each_hook's arguments) to hook_entries.
+# Appends the settings entry for hook $2..$7 (each_hook's arguments) to hook_entries.
 # shellcheck disable=SC2329 # called by name through each_hook
 append_hook_entry() {
-	hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
+	hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
 	hook_entries="${hook_entries}${hook_entries:+; }${hook_entry}"
 }
 
 # Prints the settings entry for event $1, matcher $2 ("" none), script $3,
-# timeout $4 and onFailure $5 ("" none).
+# timeout $4, onFailure $5 ("" none) and async $6 ("rewake", "" none).
 # shellcheck disable=SC2329 # called from each_hook's callbacks, which shellcheck can't trace
 hook_entry_text() {
 	matcher_text=''
 	[ -z "$2" ] || matcher_text=" (matcher $2)"
 	on_failure_text=''
 	[ -z "$5" ] || on_failure_text=", \"onFailure\": \"$5\""
-	printf 'a %s hook%s with command sh "%s/%s", timeout %s%s' "$1" "${matcher_text}" "${HOOK_COMMAND_ROOT}" "$3" "$4" "${on_failure_text}"
+	async_text=''
+	[ -z "${6-}" ] || async_text=', "async": true, "asyncRewake": true'
+	printf 'a %s hook%s with command sh "%s/%s", timeout %s%s%s' "$1" "${matcher_text}" "${HOOK_COMMAND_ROOT}" "$3" "$4" "${on_failure_text}" "${async_text}"
 }
 
 # Checks one entry: item name $1, event $2, matcher $3 ("" any), script $4,
-# timeout $5, onFailure $6 ("" not required).
+# timeout $5, onFailure $6 ("" not required), async $7 ("rewake", "" not
+# required).
 # shellcheck disable=SC2329 # called by name through each_hook
 check_hook_entry() {
 	where=$2
@@ -711,12 +732,14 @@ check_hook_entry() {
 	fi
 	case ${hook_count} in
 		'' | *[!0-9]* | 0)
-			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
 			fail_hook "$4" "$1 not registered" "no ${where} entry runs ${4##*/}" "add ${hook_entry}, in settings.json, then run /hooks or restart"
 			;;
 		*)
 			# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
 			check_on_failure "$@" || return 0
+			# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+			check_async_rewake "$@" || return 0
 			pass "$1 registered (${where} in settings.json)"
 			;;
 	esac
@@ -736,8 +759,30 @@ check_on_failure() {
 	fi
 	case ${blocking_count} in
 		'' | *[!0-9]* | 0)
-			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6")
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
 			fail_hook "$4" "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets the dispatch through unprepared" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			return 1
+			;;
+		*) return 0 ;;
+	esac
+}
+
+# Fails hook $1..$7 (check_hook_entry's arguments) when async $7 is required
+# and no entry running its script is async with asyncRewake; returns 1 then.
+# shellcheck disable=SC2329 # called from check_hook_entry, which each_hook calls by name
+check_async_rewake() {
+	[ -n "$7" ] || return 0
+	if rewake_count=$(jq --arg event "$2" --arg matcher "$3" --arg needle "$4" \
+		"${HOOK_ASYNC_REWAKE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+		:
+	else
+		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		return 1
+	fi
+	case ${rewake_count} in
+		'' | *[!0-9]* | 0)
+			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
+			fail_hook "$4" "$1 does not wake the main thread" "the $2 entry that runs ${4##*/} is not \"async\": true with \"asyncRewake\": true, so a developer that handed back never hears why its stop was blocked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
 			return 1
 			;;
 		*) return 0 ;;
@@ -1038,8 +1083,9 @@ check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
 check_script "${WORKTREE_PROCEDURE}" slots.sh
-check_script "${WORKTREE_PROCEDURE}" bind.sh
-check_script "${WORKTREE_PROCEDURE}" dev-stop.sh
+check_script "${WORKTREE_PROCEDURE}" seat-bind-hook.sh
+check_script "${WORKTREE_PROCEDURE}" report-commit-hook.sh
+check_script "${WORKTREE_PROCEDURE}" block-relay-hook.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh

@@ -2,16 +2,16 @@
 # Claude Code's SubagentStop hook for an effort's developers. It finds the
 # stopping agent's working seat, checks the agent's report and, when the
 # report fits, commits the worktree as the seat's next iteration and sets the
-# seat idle. A report
-# that does not fit blocks the stop with the checker's lines, MAX_BLOCKS times
-# at most. A fault allows the stop and is logged: a failing hook must never
-# hold an agent. Every child's stdout is captured, so stdout carries only the
+# seat idle. A report that does not fit blocks the stop with the checker's
+# lines, MAX_BLOCKS times at most, and records why in the seat's own log in
+# the worktree, which block-relay-hook.sh reads. A fault allows the stop and is
+# logged: a failing hook must never hold an agent. Every child's stdout is captured, so stdout carries only the
 # block decision.
 set -eu
 umask 077
 
-readonly PROG='dev-stop.sh'
-readonly MAX_BLOCKS=3
+readonly PROG='report-commit-hook.sh'
+readonly MAX_BLOCKS=2
 readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
 # From this folder to the report checker of the code-developer agent's skill.
 readonly CHECKER_DIR='../../../../agents/code-developer/skills/standard-code-development-report/scripts'
@@ -55,9 +55,14 @@ Every other stop goes ahead:
 --efforts DIR  absolute path of the efforts folder; default
                \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
-writes: DIR/<effort>/logs/dev-stop.log, one line per outcome (UTC time,
-slot, agent_id, outcome, like committed <sha> build-iteration 2), and
-DIR/<effort>/blocks/<slot>, the block count
+writes: DIR/<effort>/logs/report-commit.log, one line per outcome (UTC time,
+slot, agent_id, event id, outcome, like committed <sha> build-iteration 2
+or blocked 1: <the checker's lines joined by " / ">);
+DIR/<effort>/blocks/<slot>, the block count; and, for a block or a give-up,
+one JSON line in the worktree's .crucible-effort/logs/<slot>/report-commit.jsonl
+({time, event, outcome, block, reason}, reason the text the agent is sent),
+committed with the seat's next commit. The event id is the cksum of the
+event JSON, the same for every hook Claude Code gives that event.
 
 stdout: {"decision":"block","reason":"<text>"} to block the stop; nothing
 to let it go ahead. Faults go to the log, or to stderr before a seat is found.
@@ -131,8 +136,8 @@ log() {
 	fi
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
 	if ! { mkdir -p -- "${effort_dir}/logs" &&
-		printf '%s %s %s %s\n' "${now}" "${slot:--}" "${agent_id:--}" "$1" >>"${effort_dir}/logs/dev-stop.log"; } 2>/dev/null; then
-		warn "could not append to ${effort_dir}/logs/dev-stop.log: $1"
+		printf '%s %s %s %s %s\n' "${now}" "${slot:--}" "${agent_id:--}" "${event_id:--}" "$1" >>"${effort_dir}/logs/report-commit.log"; } 2>/dev/null; then
+		warn "could not append to ${effort_dir}/logs/report-commit.log: $1"
 	fi
 }
 
@@ -180,6 +185,7 @@ read_event() {
 		warn 'stdin could not be read; the stop goes ahead'
 		allow
 	}
+	event_id=$(cksum <"${work_dir}/event" | cut -d ' ' -f 1) || event_id=''
 	agent_id=$(jq -r 'if type == "object" then .agent_id // empty | strings else empty end' "${work_dir}/event" 2>/dev/null) || {
 		warn 'stdin is not one JSON object; expected the SubagentStop event; the stop goes ahead'
 		allow
@@ -310,20 +316,52 @@ block_or_give_up() {
 	if ! { mkdir -p -- "${effort_dir}/blocks" && printf '%s\n' "${blocks}" >"${counter}"; }; then
 		fault "could not write the block count ${counter}"
 	fi
-	checker_lines=$(cat "${work_dir}/stderr") || checker_lines=''
-	decision=$(jq -nc --arg reason "${BLOCK_LEAD}${newline}${checker_lines}" '{decision: "block", reason: $reason}') ||
+	reason="${BLOCK_LEAD}${newline}$(checker_lines)"
+	decision=$(jq -nc --arg reason "${reason}" '{decision: "block", reason: $reason}') ||
 		fault 'jq could not build the block decision'
-	log "blocked ${blocks}"
+	seat_log blocked "${blocks}" "${reason}"
+	log "blocked ${blocks}: $(checker_line)"
 	printf '%s\n' "${decision}"
 	exit 0
 }
 
 give_up() {
 	rm -f -- "${counter}"
+	run_lines=$(checker_lines)
 	run sh "${own_dir}/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status gave-up
 	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status gave-up'
-	log 'gave-up'
+	seat_log gave-up "${blocks}" "${run_lines}"
+	log "gave-up: $(printf '%s' "${run_lines}" | flatten)"
 	allow
+}
+
+# Prints the checker's lines from the last run.
+checker_lines() {
+	cat "${work_dir}/stderr" 2>/dev/null || :
+}
+
+# Prints the checker's lines as one log-safe line.
+checker_line() {
+	checker_lines | flatten
+}
+
+# Joins stdin's lines with " / " and masks control characters.
+flatten() {
+	awk 'NR > 1 { printf " / " } { printf "%s", $0 }' | tr '[:cntrl:]' '?'
+}
+
+# Appends outcome $1, block number $2 and reason $3 to the seat's own log in
+# its worktree; a log that can't be written is logged, never a fault.
+seat_log() {
+	seat_log_dir="${worktree}/.crucible-effort/logs/${slot}"
+	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
+	if ! { mkdir -p -- "${seat_log_dir}" &&
+		jq -nc --arg time "${now}" --arg event "${event_id}" --arg outcome "$1" \
+			--argjson block "$2" --arg reason "$3" \
+			'{time: $time, event: $event, outcome: $outcome, block: $block, reason: $reason}' \
+			>>"${seat_log_dir}/report-commit.jsonl"; } 2>/dev/null; then
+		log "could not append to ${seat_log_dir}/report-commit.jsonl"
+	fi
 }
 
 # Builds the commit-message input, writes the message, commits every change,
@@ -371,7 +409,7 @@ on_exit() {
 	exit 0
 }
 
-work_dir='' usage_failed=no effort_dir='' slot='' agent_id=''
+work_dir='' usage_failed=no effort_dir='' slot='' agent_id='' event_id=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -383,7 +421,7 @@ own_dir=$(cd -P -- "${own_path}" && pwd -P) || {
 	warn 'this script'\''s folder could not be entered; the stop goes ahead'
 	allow
 }
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-dev-stop.XXXXXX") || {
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-report-commit.XXXXXX") || {
 	warn 'mktemp could not create a work folder; expected a writable TMPDIR; the stop goes ahead'
 	work_dir=''
 	allow

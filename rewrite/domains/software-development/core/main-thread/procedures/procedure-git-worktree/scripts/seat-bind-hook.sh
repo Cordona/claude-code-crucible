@@ -7,7 +7,7 @@
 set -eu
 umask 077
 
-readonly PROG='bind.sh'
+readonly PROG='seat-bind-hook.sh'
 # A fault line quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
 # The C locale keeps the shell byte-wise; jq reads the JSON as UTF-8.
@@ -29,7 +29,7 @@ No agentId or no pending file: not an effort dispatch, nothing done.
 --efforts DIR  absolute path of the efforts folder; default
                \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
-writes: DIR/<effort>/logs/bind.log, one line per outcome (UTC time,
+writes: DIR/<effort>/logs/seat-bind.log, one line per outcome (UTC time,
 tool_use_id, slot, agent id, outcome); faults before an effort is known go
 to stderr. stdout: nothing.
 
@@ -102,8 +102,8 @@ log() {
 	fi
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
 	if ! { mkdir -p -- "${effort_dir}/logs" &&
-		printf '%s %s %s %s %s\n' "${now}" "${tool_use_id:--}" "${slot:--}" "${shown_agent:--}" "$1" >>"${effort_dir}/logs/bind.log"; } 2>/dev/null; then
-		warn "could not append to ${effort_dir}/logs/bind.log: $1"
+		printf '%s %s %s %s %s\n' "${now}" "${tool_use_id:--}" "${slot:--}" "${shown_agent:--}" "$1" >>"${effort_dir}/logs/seat-bind.log"; } 2>/dev/null; then
+		warn "could not append to ${effort_dir}/logs/seat-bind.log: $1"
 	fi
 }
 
@@ -272,7 +272,7 @@ own_dir=$(cd -P -- "${own_path}" && pwd -P) || {
 	warn 'this script'\''s folder could not be entered; no seat bound'
 	finish
 }
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-bind.XXXXXX") || {
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-seat-bind.XXXXXX") || {
 	warn 'mktemp could not create a work folder; expected a writable TMPDIR; no seat bound'
 	work_dir=''
 	finish
