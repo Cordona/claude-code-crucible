@@ -5,6 +5,8 @@
 # dependencies, sets config, or creates a branch or ref. It refuses before
 # touching anything, and rolls back what it created when anything fails.
 set -eu
+# The checkout gets the caller's file modes, as a plain clone would.
+checkout_umask=$(umask)
 umask 077
 
 readonly PROG='worktree-create.sh'
@@ -298,12 +300,13 @@ record_main_before() {
 	head_before=${main_head}
 }
 
-# Runs git worktree add with the repository's hooks and fsmonitor off; git's
-# own output goes to stderr so stdout stays the two result lines.
+# Runs git worktree add with the repository's hooks and fsmonitor off, under
+# the caller's umask; git's own output goes to stderr so stdout stays the two
+# result lines.
 create_worktree() {
 	add_started=yes
-	git -C "${repo_root}" -c core.hooksPath=/dev/null -c core.fsmonitor=false \
-		worktree add --detach --quiet "${path}" "${base_sha}" >&2 ||
+	(umask "${checkout_umask}" && git -C "${repo_root}" -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+		worktree add --detach --quiet "${path}" "${base_sha}" >&2) ||
 		fail_rolled_back 'git worktree add failed; expected a new detached worktree'
 }
 

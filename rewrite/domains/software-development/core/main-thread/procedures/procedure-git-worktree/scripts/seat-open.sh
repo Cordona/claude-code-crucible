@@ -5,6 +5,8 @@
 # slots.sh in order; a failure after the worktree exists removes it again, so
 # a rerun starts clean.
 set -eu
+# worktree-create.sh checks the worktree out under the caller's umask.
+caller_umask=$(umask)
 umask 077
 
 readonly PROG='seat-open.sh'
@@ -224,7 +226,9 @@ remove_worktree() {
 
 create_worktree() {
 	mkdir -p -- "${effort_dir}/worktrees" || die 4 "could not create the worktrees folder in ${shown_effort}"
+	umask "${caller_umask}"
 	run_step worktree-create.sh --repo "${repo}" --base "${base}" --path "${effort_dir}/worktrees/${slot}"
+	umask 077
 	[ "${step_rc}" -eq 0 ] || step_failed 'worktree-create.sh'
 	created_path='' full_base=''
 	while IFS= read -r line; do
