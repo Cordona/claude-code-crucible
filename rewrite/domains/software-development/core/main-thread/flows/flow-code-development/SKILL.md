@@ -50,7 +50,7 @@ Copy steps 1–5 into the todo list and tick each. Before step 1, check that `co
 4. **Show each result** as its developer's run ends (its task notification), without waiting for the others: run `sh "<scripts>/slots.sh" find --slots '<slots>' --agent-id '<id>'` and act on the seat's `status`:
    - `idle`: the stop hook committed. Run `sh "<card.sh>" --worktree '<worktree>' --commit "$(git -C '<worktree>' rev-parse HEAD)"` and relay its stdout (Always). A non-zero exit: show its stderr, and record the part `no card`.
    - `gave-up`: show the line `The developer in <slot> could not write a valid report; its work stays uncommitted in <worktree>.`, and record the part `gave up`.
-   - `working`: the run ended without a commit (the stop hook faulted, or the agent died); show the line `The work in <slot> ended without a commit (see <effort folder>/logs/dev-stop.log); ask me to continue it.`, and record the part `not committed`; its run has ended.
+   - `working`: the run ended without a commit (the stop hook faulted, or never ran: an agent cut off mid-run gets none); show the line `The work in <slot> ended without a commit; what it changed stays uncommitted in <worktree>; ask me to continue it.`, and record the part `not committed`; its run has ended.
    - `find` fails: show its stderr, and record the part `not checked`.
    A waiting part (2.4) goes on once the part it needs is `idle` with a done card.
 5. **Close the run** (steps 1–4, or one change), once every part dispatched in it has its result (step 4):
