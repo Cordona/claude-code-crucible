@@ -42,8 +42,9 @@ Checks a developer's BUILD report; changes nothing, prints nothing on stdout.
                  line, blank lines ignored. Given: a fix round, whose answers
                  hold exactly these ids. Absent: an iteration, no answers.
 
-the report: summary (one line, at most 56 characters) and verification (at
-least one gate) are required; deviations, decisions, noticed, security
+the report: summary (one line, at most 56 characters, not starting with a
+word: or word(word): prefix) and verification (at least one gate) are
+required; deviations, decisions, noticed, security
 ({kind, at, text}, kind secret or instruction), open (at most 8 items) and
 blockers are optional; answers only in a fix round. Every text
 is one line of at most 200 characters; no value is null, [] or {}; a

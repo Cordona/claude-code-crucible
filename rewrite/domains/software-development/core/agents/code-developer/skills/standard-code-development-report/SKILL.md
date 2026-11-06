@@ -16,7 +16,7 @@ One JSON object per iteration at the `REPORT` path, with only the keys below. Ea
 
 ## The fields
 
-- **`summary`:** what this iteration did, in at most 56 characters; it becomes the commit subject.
+- **`summary`:** what this iteration did, in plain words and at most 56 characters, with no `type(scope):` prefix; it becomes the commit subject after the prefix the commit adds.
 - **`verification`** (`gate`, `result`, `command`, `note`): one item per gate command, its last run after your change; a step that didn't run is still an item. `command` is the one command as run from the worktree root, with no `cd … &&`, `;` or `||` (a project in a subfolder through the tool's own directory option). It is required on `pass` and `fail` and left out when nothing ran. `note` is required on `fail`, `not_run` and `narrowed` (the task's or change's words quoted), and holds the count of warnings, errors and findings that predate your change, with the tool's name. Each `fail` has a `gate_red` blocker.
 - **`deviations`** (`from`, `what`, `why`): where you did other than the task, the change or the context says, `from` naming which; a small disagreement you settled by the human's words, `from` the source you departed from; a part of the task you refused.
 - **`decisions`** (`choice`, `why`): a choice a reviewer could flag, such as a gap in the task or spec you read narrowly, an open spec point you decided, a project guideline a standard overrode, an unavoidable contract break with its migration path.

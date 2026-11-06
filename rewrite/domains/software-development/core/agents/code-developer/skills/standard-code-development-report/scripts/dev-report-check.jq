@@ -265,10 +265,16 @@ def report_unknown_key:
 	report_derived_keys[.] as $why
 	| "\(report_name) is not a report key; remove it\(if $why == null then "" else " (\($why))" end). Allowed keys: \(report_keys | report_list)";
 
+# The commit message puts its own "crucible(dev): " in front of the summary,
+# so a summary starting "word:" or "word(word):" would read as a second prefix.
+def report_prefix_problem:
+	(report_trim | capture("^(?<prefix>[A-Za-z][A-Za-z0-9_-]*(\\([^()]*\\))?!?:)").prefix) as $prefix
+	| "starts with \($prefix | report_echo); drop the prefix and say what happened in plain words, as the commit adds its own";
+
 def report_summary_problems:
 	if (has("summary") | not) or (.summary | report_is_empty) then
 		"summary \(report_absence("summary")); add one line of at most \(report_summary_max) characters saying what happened (it becomes the commit subject)"
-	else .summary | report_text_problem(report_summary_max) | "summary \(.)"
+	else .summary | (report_text_problem(report_summary_max) // report_prefix_problem) | "summary \(.)"
 	end;
 
 def report_open_cap_problems:
