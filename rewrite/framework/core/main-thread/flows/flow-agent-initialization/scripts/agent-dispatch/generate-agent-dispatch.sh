@@ -208,7 +208,7 @@ Dependencies:
   sha256sum (Linux: coreutils) or shasum; awk, cat, mktemp, mv, rm, tr, wc
     (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
-    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/slots.sh) and
+    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/slots.sh) and
     ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
@@ -347,7 +347,7 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
-	slots_script="${skills_dir}/${WORKTREE_SKILL}/scripts/slots.sh"
+	slots_script="${skills_dir}/${WORKTREE_SKILL}/scripts/seats/slots.sh"
 	[ -f "${slots_script}" ] && [ -r "${slots_script}" ] ||
 		die 5 "slots.sh missing; expected ${slots_script}; install the ${WORKTREE_SKILL} skill"
 }

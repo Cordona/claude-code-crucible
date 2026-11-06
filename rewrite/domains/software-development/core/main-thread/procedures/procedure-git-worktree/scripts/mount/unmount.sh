@@ -38,23 +38,25 @@ left there.
 
 --repo DIR  absolute path of the main checkout's top folder
 
+A record of version 1 (one seat) or 2 (one or more seats) is read.
+
 stdout, one JSON line:
-  {"unmounted":true,"slot":S,"paths":N}           reversed
-  {"unmounted":false,"forgotten":true,"slot":S}   finished: record removed
+  {"unmounted":true,"slots":[S...],"paths":N}           reversed
+  {"unmounted":false,"forgotten":true,"slots":[S...]}   finished: record removed
 
 exit codes:
   0  unmounted, or a finished mount forgotten
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
-     unreadable or not version 1
+     unreadable or not version 1 or 2
   4  environment: git or jq missing or failed, a write failed, or the
      reversed paths or their bytes did not verify (the record is kept)
   5  refused by state: nothing mounted, HEAD moved with mounted paths
      still uncommitted, a mounted path changed, or git apply -R --check
      failed; nothing touched
 
-needs: POSIX sh, git 2.26+, jq 1.6+; mount-state.sh beside this script
+needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh beside this script
 EOF
 }
 
@@ -113,10 +115,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	[ -f "${own_dir}/mount-state.sh" ] ||
-		die 4 'mount-state.sh not found beside this script; expected the procedure'\''s scripts in one folder'
-	# shellcheck source=mount-state.sh
-	. "${own_dir}/mount-state.sh"
+	[ -f "${own_dir}/mount-lib.sh" ] || {
+		shown_neighbour=$(printable "${own_dir}/mount-lib.sh")
+		die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+	}
+	# shellcheck source=mount-lib.sh
+	. "${own_dir}/mount-lib.sh"
 }
 
 refuse() {
@@ -207,7 +211,7 @@ checkout_states "${work_dir}/spec" "${work_dir}/now-states"
 check_finished "${work_dir}/now-states" "${head}"
 if [ "${finished}" = true ]; then
 	remove_record
-	jq -nc --arg slot "${rec_slot}" '{unmounted: false, forgotten: true, slot: $slot}' ||
+	jq -nc --arg slots "${rec_slots}" '{unmounted: false, forgotten: true, slots: ($slots | split(" "))}' ||
 		die 4 'jq could not print the result; the record is removed'
 	exit 0
 fi
@@ -231,5 +235,5 @@ restore_saved_bytes "the record in ${shown_record_dir} is kept"
 remove_empty_folders
 remove_record
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the unmounted paths'
-jq -nc --arg slot "${rec_slot}" --argjson paths "${paths}" '{unmounted: true, slot: $slot, paths: $paths}' ||
+jq -nc --arg slots "${rec_slots}" --argjson paths "${paths}" '{unmounted: true, slots: ($slots | split(" ")), paths: $paths}' ||
 	die 4 'jq could not print the result; the mount is removed'

@@ -19,13 +19,15 @@ export GIT_TERMINAL_PROMPT
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --effort DIR --repo DIR --slot S --role developer|tester --base SHA
+          [--base-slot S]...
        sh ${PROG} --help | -h
 
 Opens a developer seat, stopping at the first failing step:
-  worktree-create.sh --repo DIR --base SHA --path <effort>/worktrees/S
-  worktree-setup.sh --from DIR --to <the new worktree>
+  ../worktree/worktree-create.sh --repo DIR --base SHA --path <effort>/worktrees/S
+  ../worktree/worktree-setup.sh --from DIR --to <the new worktree>
   slots.sh add --slots <effort>/slots.json --slot S --role ROLE
                --worktree <the new worktree> --repo DIR --base <full sha>
+               [--base-slot S]...
 and prints the seat as slots.sh get does. A failure after the worktree
 exists removes it (git worktree remove --force) and says so.
 
@@ -36,6 +38,8 @@ exists removes it (git worktree remove --force) and says so.
 --role ROLE   developer; tester (sharing a developer's worktree) is not yet
               supported and refused
 --base SHA    the commit the worktree starts at, like snapshot.sh's sha
+--base-slot S a developer seat in slots.json the base was cut from;
+              repeatable, each once; checked before anything is created
 
 The steps' own stderr lines come first; this script adds one line saying
 which step failed.
@@ -44,9 +48,12 @@ exit codes:
   0  the seat is open; its JSON line is printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a refused option, the slot already in slots.json, or a step
-     refused its input (exit 3)
+  3  input: a refused option, the slot already in slots.json, a base slot
+     not a developer seat in it, or a step refused its input (exit 3)
   4  a step failed otherwise, or a dependency is missing
+
+needs: POSIX sh, git 2.26+, jq 1.6+; ../worktree/worktree-create.sh,
+../worktree/worktree-setup.sh and slots.sh from this script's folder
 EOF
 }
 
@@ -105,9 +112,12 @@ parse_args() {
 				take_value "$1" "${base}" "${2-}" SHA
 				base=${option_value}
 				;;
+			--base-slot)
+				take_value "$1" '' "${2-}" S
+				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --slot, --role, --base or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --slot, --role, --base, --base-slot or --help"
 				;;
 		esac
 		shift 2
@@ -128,10 +138,14 @@ script_dir() {
 
 load_dependencies() {
 	command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
+	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for step in worktree-create.sh worktree-setup.sh slots.sh; do
-		[ -f "${own_dir}/${step}" ] || die 4 "${step} not found beside this script; expected the procedure's scripts in one folder"
+	for step in ../worktree/worktree-create.sh ../worktree/worktree-setup.sh slots.sh; do
+		[ -f "${own_dir}/${step}" ] || {
+			shown_step=$(printable "${own_dir}/${step}")
+			die 4 "${shown_step} not found; expected the procedure's scripts folders whole"
+		}
 	done
 }
 
@@ -147,7 +161,7 @@ check_inputs() {
 			;;
 	esac
 	# Checked here because the slot names a folder before slots.sh sees it.
-	check_slot_name
+	check_slot_name --slot "${slot}"
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
 		/*) ;;
@@ -156,21 +170,23 @@ check_inputs() {
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
 	slots_file="${effort_dir}/slots.json"
+	shown_slots=$(printable "${slots_file}")
 }
 
-# Refuses a slot that is no lowercase word, a dash and a number of 1 or more.
+# Refuses option $1's value $2 when it is no lowercase word, a dash and a
+# number of 1 or more.
 check_slot_name() {
-	case ${slot} in
+	case $2 in
 		[a-z]*-[1-9]*)
-			case ${slot%-*}/${slot##*-} in
+			case ${2%-*}/${2##*-} in
 				*[!a-z0-9]*/* | */*[!0-9]*) ;;
 				*) return 0 ;;
 			esac
 			;;
 		*) ;;
 	esac
-	shown_slot=$(printable "${slot}")
-	die 3 "--slot ${shown_slot} is not allowed; expected a slot name like dev-1"
+	shown_slot=$(printable "$2")
+	die 3 "$1 ${shown_slot} is not allowed; expected a slot name like dev-1"
 }
 
 # Refuses a slot slots.json already holds, before anything is created;
@@ -180,10 +196,7 @@ check_slot_free() {
 	step_rc=0
 	get_lines=$(sh "${own_dir}/slots.sh" get --slots "${slots_file}" --slot "${slot}" 2>&1 >/dev/null) || step_rc=$?
 	case ${step_rc} in
-		0)
-			shown_slots=$(printable "${slots_file}")
-			die 3 "slot ${slot} is already in ${shown_slots}; expected a new slot"
-			;;
+		0) die 3 "slot ${slot} is already in ${shown_slots}; expected a new slot" ;;
 		6) ;;
 		*)
 			[ -z "${get_lines}" ] || printf '%s\n' "${get_lines}" >&2
@@ -192,8 +205,41 @@ check_slot_free() {
 	esac
 }
 
-# Runs step $1 beside this script with the rest as arguments; its stdout in
-# step_out, its exit code in step_rc; its stderr passes through.
+# Refuses a --base-slot of the checked command line ("$@") that is given twice
+# or is no developer seat in slots.json, before anything is created.
+check_base_slots() {
+	seen_base_slots=' '
+	while [ "$#" -gt 0 ]; do
+		[ "$1" != --base-slot ] || check_base_slot "$2"
+		shift 2
+	done
+}
+
+check_base_slot() {
+	check_slot_name --base-slot "$1"
+	case ${seen_base_slots} in
+		*" $1 "*) die 3 "--base-slot $1 is given twice; expected each base slot once" ;;
+		*) seen_base_slots="${seen_base_slots}$1 " ;;
+	esac
+	# On exit 0 slots.sh prints only the seat; otherwise only its stderr lines.
+	step_rc=0
+	base_seat=$(sh "${own_dir}/slots.sh" get --slots "${slots_file}" --slot "$1" 2>&1) || step_rc=$?
+	case ${step_rc} in
+		0) ;;
+		6) die 3 "--base-slot $1 is not in ${shown_slots}; expected an existing developer seat" ;;
+		*)
+			printf '%s\n' "${base_seat}" >&2
+			step_failed 'slots.sh get'
+			;;
+	esac
+	base_role=$(printf '%s\n' "${base_seat}" | jq -r '.role') || die 4 'jq could not read the seat slots.sh get printed'
+	[ "${base_role}" = developer ] ||
+		die 3 "--base-slot $1 is a ${base_role} seat in ${shown_slots}; expected a developer seat"
+}
+
+# Runs step $1, a path from this script's folder, with the rest as
+# arguments; its stdout in step_out, its exit code in step_rc; its stderr
+# passes through.
 run_step() {
 	step_rc=0
 	step_script=$1
@@ -224,10 +270,25 @@ remove_worktree() {
 	worktree=''
 }
 
+# Adds the seat with slots.sh, passing each --base-slot of the checked
+# command line ("$@") on in order.
+add_seat() {
+	left=$#
+	set -- "$@" add --slots "${slots_file}" --slot "${slot}" --role "${role}" \
+		--worktree "${worktree}" --repo "${repo}" --base "${full_base}"
+	while [ "${left}" -gt 0 ]; do
+		[ "$1" != --base-slot ] || set -- "$@" --base-slot "$2"
+		shift 2
+		left=$((left - 2))
+	done
+	run_step slots.sh "$@"
+	[ "${step_rc}" -eq 0 ] || step_failed 'slots.sh add'
+}
+
 create_worktree() {
 	mkdir -p -- "${effort_dir}/worktrees" || die 4 "could not create the worktrees folder in ${shown_effort}"
 	umask "${caller_umask}"
-	run_step worktree-create.sh --repo "${repo}" --base "${base}" --path "${effort_dir}/worktrees/${slot}"
+	run_step ../worktree/worktree-create.sh --repo "${repo}" --base "${base}" --path "${effort_dir}/worktrees/${slot}"
 	umask 077
 	[ "${step_rc}" -eq 0 ] || step_failed 'worktree-create.sh'
 	created_path='' full_base=''
@@ -253,12 +314,11 @@ load_dependencies
 worktree=''
 check_inputs
 check_slot_free
+check_base_slots "$@"
 create_worktree
-run_step worktree-setup.sh --from "${repo}" --to "${worktree}"
+run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
 [ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
-run_step slots.sh add --slots "${slots_file}" --slot "${slot}" --role "${role}" \
-	--worktree "${worktree}" --repo "${repo}" --base "${full_base}"
-[ "${step_rc}" -eq 0 ] || step_failed 'slots.sh add'
+add_seat "$@"
 run_step slots.sh get --slots "${slots_file}" --slot "${slot}"
 [ "${step_rc}" -eq 0 ] || die 4 "slots.sh get failed (exit ${step_rc}) after the seat was added; the seat is open"
 printf '%s\n' "${step_out}"

@@ -52,8 +52,8 @@ exit codes:
   4  environment: jq, slots.sh or iteration.sh missing or failed, or --out
      could not be written
 
-needs: POSIX sh, jq 1.6+; slots.sh and iteration.sh (git 2.26+) beside
-this script
+needs: POSIX sh, jq 1.6+; ../seats/slots.sh and ../seats/iteration.sh (git 2.26+)
+from this script's folder
 EOF
 }
 
@@ -126,8 +126,11 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for sibling in slots.sh iteration.sh; do
-		[ -f "${own_dir}/${sibling}" ] || die 4 "${sibling} not found beside this script; expected it in this folder"
+	for neighbour in ../seats/slots.sh ../seats/iteration.sh; do
+		[ -f "${own_dir}/${neighbour}" ] || {
+			shown_neighbour=$(printable "${own_dir}/${neighbour}")
+			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+		}
 	done
 }
 
@@ -149,7 +152,7 @@ read_effort() {
 # own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/slots.sh" get --slots "${slots_file}" --slot "${slot}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/slots.sh" get --slots "${slots_file}" --slot "${slot}") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		2 | 3 | 6)
@@ -191,7 +194,7 @@ find_dispatch_file() {
 # it refused.
 read_iteration() {
 	iteration_rc=0
-	iteration_out=$(sh "${own_dir}/iteration.sh" --slots "${slots_file}" --slot "${slot}") || iteration_rc=$?
+	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --slots "${slots_file}" --slot "${slot}") || iteration_rc=$?
 	case ${iteration_rc} in
 		0) ;;
 		3) die 3 "iteration.sh refused seat ${slot} (exit 3); expected a seat with a worktree and its base" ;;

@@ -37,7 +37,7 @@ exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+; slots.sh beside this script
+needs: POSIX sh, jq 1.6+; ../seats/slots.sh from this script's folder
 EOF
 }
 
@@ -237,7 +237,7 @@ EOF
 }
 
 bind_seat() {
-	run sh "${own_dir}/slots.sh" bind --slots "${effort_dir}/slots.json" --slot "${slot}" \
+	run sh "${own_dir}/../seats/slots.sh" bind --slots "${effort_dir}/slots.json" --slot "${slot}" \
 		--agent-id "${agent_id}" --dispatch "${dispatch_id}"
 	if [ "${child_rc}" -eq 0 ]; then
 		log 'bound'

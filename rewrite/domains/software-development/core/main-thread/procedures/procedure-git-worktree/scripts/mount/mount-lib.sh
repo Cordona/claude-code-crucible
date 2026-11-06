@@ -16,22 +16,34 @@ readonly RECORD_FOLDER='crucible'
 readonly MAX_LISTED=20
 readonly tab='	'
 
+# A version 1 record holds one seat (slot, worktree, seat_commit) and its
+# base; it reads as version 2 with that one seat, start = base and target =
+# seat_commit.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly RECORD_JQ='def sha: type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$");
 def state: type == "string" and test("^(absent|(100644|100755|120000) ([0-9a-f]{40}|[0-9a-f]{64}))$");
 def folder: type == "string" and startswith("/") and (test("[\u0000-\u001f\u007f]") | not);
 def relative: type == "string" and length > 0 and (test("[\u0000\n]") | not)
 	and (split("/") | all(. != "" and . != "." and . != ".." and . != ".git"));
-if type == "object" and .version == 1 and (.effort | folder) and (.worktree | folder) and (.repo | folder)
-	and (.slot | type == "string" and test("^[a-z]+-[1-9][0-9]*$"))
-	and (.base | sha) and (.seat_commit | sha) and (.head | sha)
-	and (.base_is_snapshot | type == "boolean") and (.branch == null or (.branch | type == "string"))
-	and (.mounted_at | type == "string")
+def slot_name: type == "string" and test("^[a-z][a-z0-9]*-[1-9][0-9]*$");
+def common_fits: (.effort | folder) and (.repo | folder) and (.head | sha)
+	and (.branch == null or (.branch | type == "string")) and (.mounted_at | type == "string")
 	and (.paths | type == "array" and length > 0
 		and all(type == "object" and (.path | relative) and (.before | state) and (.after | state)
-			and (.saved == null or .saved == (.before | test("^100(644|755) ")))))
-then .effort, .slot, .worktree, .seat_commit, .head, (.paths[] | "\(.before)\t\(.after)\t\(.path)")
-else error("not a version 1 mount record") end'
+			and (.saved == null or .saved == (.before | test("^100(644|755) ")))));
+def v1_fits: common_fits and (.worktree | folder) and (.slot | slot_name)
+	and (.base | sha) and (.seat_commit | sha) and (.base_is_snapshot | type == "boolean");
+def v2_fits: common_fits and (.start | sha) and (.target | sha) and (.start_is_snapshot | type == "boolean")
+	and (.seats | type == "array" and length > 0
+		and all(type == "object" and (.slot | slot_name) and (.worktree | folder) and (.seat_commit | sha))
+		and (map(.slot) | unique | length) == length)
+	and ((.seats | length > 1) or .seats[0].seat_commit == .target);
+if type == "object" and .version == 1 and v1_fits then
+	{effort, repo, start: .base, target: .seat_commit, head, seats: [{slot, worktree, seat_commit}], paths}
+elif type == "object" and .version == 2 and v2_fits then .
+else error("not a version 1 or 2 mount record") end
+| .effort, .repo, .start, .target, .head, (.seats | length), (.seats[] | "\(.slot)\t\(.worktree)\t\(.seat_commit)"),
+	(.paths[] | "\(.before)\t\(.after)\t\(.path)")'
 
 # Sets checkout_problem to why $1 is not a main checkout's top folder, empty
 # when it is; then also checkout_dir (physical), git_dir and record_dir.
@@ -99,9 +111,11 @@ check_checkout_idle() {
 	}
 }
 
-# Sets record_present; when true also rec_effort, rec_slot, rec_worktree,
-# rec_seat_commit, rec_head and the spec file work_dir/spec. Exits 3 on a
-# record that fails the contract.
+# Sets record_present; when true also rec_effort, rec_repo, rec_start,
+# rec_target, rec_head, rec_slots (the slots, space-separated, in order),
+# the seats file work_dir/rec-seats ("<slot><TAB><worktree><TAB><seat
+# commit>" per seat) and the spec file work_dir/spec. Exits 3 on a record
+# that fails the contract.
 read_record() {
 	record_file="${record_dir}/mount.json"
 	record_present=false
@@ -111,13 +125,21 @@ read_record() {
 	[ -f "${record_file}" ] && [ ! -L "${record_file}" ] ||
 		die 3 "the mount record ${shown_record} is not a regular file; expected mount.sh's record"
 	jq -r "${RECORD_JQ}" "${record_file}" >"${work_dir}/record" 2>/dev/null ||
-		die 3 "the mount record ${shown_record} is unreadable or not version 1; expected mount.sh's record"
+		die 3 "the mount record ${shown_record} is unreadable or not version 1 or 2; expected mount.sh's record"
+	rec_slots=''
 	{
 		IFS= read -r rec_effort
-		IFS= read -r rec_slot
-		IFS= read -r rec_worktree
-		IFS= read -r rec_seat_commit
+		IFS= read -r rec_repo
+		IFS= read -r rec_start
+		IFS= read -r rec_target
 		IFS= read -r rec_head
+		IFS= read -r rec_seat_count
+		while [ "${rec_seat_count}" -gt 0 ]; do
+			IFS= read -r rec_seat
+			printf '%s\n' "${rec_seat}"
+			rec_slots="${rec_slots:+${rec_slots} }${rec_seat%%"${tab}"*}"
+			rec_seat_count=$((rec_seat_count - 1))
+		done >"${work_dir}/rec-seats"
 		cat >"${work_dir}/spec"
 	} <"${work_dir}/record"
 }

@@ -13,15 +13,15 @@ def slots_writer_modes: {"developer": "BUILD", "tester": "TEST"};
 def slots_statuses: ["open", "working", "idle", "gave-up"];
 # open is only ever set by add and handover, with the agent removed.
 def slots_settable_statuses: ["working", "idle", "gave-up"];
-def slots_writer_fields: ["slot", "role", "mode", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "awaiting_round", "status"];
+def slots_writer_fields: ["slot", "role", "mode", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "base_slots", "awaiting_round", "status"];
 def slots_reviewer_fields: ["slot", "role", "lens", "agent_id", "dispatch", "previous_agent_ids", "status"];
 # Present only when they hold something; status decides whether agent_id and
 # dispatch must be.
-def slots_optional_fields: ["agent_id", "dispatch", "previous_agent_ids", "awaiting_round"];
+def slots_optional_fields: ["agent_id", "dispatch", "previous_agent_ids", "base_slots", "awaiting_round"];
 # The bound agent's keys: they come and go together.
 def slots_agent_fields: ["agent_id", "dispatch"];
 # The order a slot's fields are written in.
-def slots_field_order: ["slot", "role", "mode", "lens", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "awaiting_round", "status"];
+def slots_field_order: ["slot", "role", "mode", "lens", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "base_slots", "awaiting_round", "status"];
 # The largest round a JSON number holds exactly.
 def slots_round_max: 9007199254740991;
 
@@ -66,6 +66,47 @@ def slots_previous_problem:
 		(map(strings) | group_by(.) | map(select(length > 1) | .[0])[] | "holds \(tojson) more than once; expected each agent once")
 	end;
 
+def slots_base_slots_problem:
+	if type != "array" then "is a JSON \(type); expected an array of the slots the seat was cut from"
+	else
+		(to_entries[] | .key as $index | .value | slots_name_problem | "item \($index) \(.)"),
+		(map(strings) | group_by(.) | map(select(length > 1) | .[0])[] | "holds \(tojson) more than once; expected each slot once")
+	end;
+
+# Each base slot of each seat must name another developer seat of the file.
+def slots_base_link_problems:
+	(reduce (.slots[] | objects | select(.slot | type == "string")) as $seat ({}; .[$seat.slot] = $seat.role)) as $roles
+	| .slots | to_entries[] | .key as $index | .value
+	| select(type == "object" and (.base_slots | type) == "array") | .slot as $own
+	| .base_slots[] | strings | select([slots_name_problem] == [])
+	| "slots[\($index)].base_slots \(tojson) "
+		+ (if . == $own then "is the seat itself; expected another seat"
+		elif $roles[.] == null then "is not in the file; expected an existing seat"
+		elif $roles[.] != "developer" then "is a \($roles[.]) seat; expected a developer seat"
+		else empty
+		end);
+
+# The seats $from reaches through the base_slots links $links, each once.
+def slots_base_reach($links; $from):
+	{queue: ($links[$from] // []), seen: []}
+	| until(.queue == [];
+		.queue[0] as $next | .queue |= .[1:]
+		| if any(.seen[]; . == $next) then . else .seen += [$next] | .queue += ($links[$next] // []) end)
+	| .seen;
+
+# A seat may not be cut, through any number of base_slots, from itself;
+# each cycle is named once, by its seats in order. A seat naming itself is
+# slots_base_link_problems' to report.
+def slots_base_cycle_problems:
+	(reduce (.slots[] | objects | select((.slot | type) == "string" and (.base_slots | type) == "array")) as $seat ({};
+		.[$seat.slot] = [$seat.base_slots[] | strings | select(. != $seat.slot)])) as $links
+	| ($links | keys[]) as $slot
+	| slots_base_reach($links; $slot) as $reach
+	| select(any($reach[]; . == $slot))
+	| ([$slot] + [$reach[] | . as $other | select(any(slots_base_reach($links; $other)[]; . == $slot))] | unique) as $cycle
+	| select($cycle[0] == $slot)
+	| "base_slots of \($cycle | slots_list) form a cycle; expected no seat cut from itself through other seats";
+
 # The problems of the values of a slot whose role is valid; $fields are its
 # role's. An empty value is reported once, by slots_empty_problems.
 def slots_value_problems($where; $fields):
@@ -81,6 +122,7 @@ def slots_value_problems($where; $fields):
 	elif $field == "previous_agent_ids" then slots_previous_problem
 	elif $field == "worktree" or $field == "repo" then slots_path_problem
 	elif $field == "base" then slots_base_problem
+	elif $field == "base_slots" then slots_base_slots_problem
 	elif $field == "awaiting_round" then slots_round_problem
 	elif $field == "status" then slots_enum_problem(slots_statuses)
 	else empty
@@ -131,6 +173,8 @@ def slots_problems:
 		elif (.slots | type) != "array" then "slots is a JSON \(.slots | type); expected an array of slots"
 		else
 			(.slots | to_entries[] | .key as $index | .value | slots_slot_problems("slots[\($index)]")),
+			slots_base_link_problems,
+			slots_base_cycle_problems,
 			([.slots[] | objects | .slot | strings] | group_by(.) | map(select(length > 1) | .[0])[]
 				| "slot \(tojson) appears more than once; expected unique slot names")
 		end)
@@ -144,6 +188,7 @@ def slots_option_problems:
 	elif $name == "role" then slots_enum_problem(slots_roles)
 	elif $name == "worktree" or $name == "repo" then slots_path_problem
 	elif $name == "base" then slots_base_problem
+	elif $name == "base-slot" then to_entries[] | .key as $index | .value | slots_name_problem | "item \($index) \(.)"
 	elif $name == "lens" then slots_lens_problem
 	elif $name == "agent-id" then slots_agent_problem
 	elif $name == "dispatch" then slots_dispatch_problem
@@ -172,7 +217,8 @@ def slots_new($options):
 		{slot: $options.slot, role: "reviewer", lens: $options.lens, status: "open"}
 	else
 		{slot: $options.slot, role: $options.role, mode: slots_writer_modes[$options.role],
-			worktree: $options.worktree, repo: $options.repo, base: $options.base, status: "open"}
+			worktree: $options.worktree, repo: $options.repo, base: $options.base, base_slots: $options["base-slot"],
+			status: "open"}
 	end;
 
 def slots_add($options):

@@ -43,7 +43,7 @@ exit codes:
   1  wrong command line
   ${WAKE_EXIT}  the main thread has a line to act on (stderr)
 
-needs: POSIX sh, jq 1.6+, cksum; slots.sh beside this script
+needs: POSIX sh, jq 1.6+, cksum; ../seats/slots.sh from this script's folder
 EOF
 }
 
@@ -120,7 +120,7 @@ find_seat() {
 	for candidate in "${efforts}"/*/slots.json; do
 		[ -f "${candidate}" ] || continue
 		[ ! -L "${candidate%/slots.json}" ] || continue
-		seat=$(sh "${own_dir}/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}" 2>/dev/null) || continue
+		seat=$(sh "${own_dir}/../seats/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}" 2>/dev/null) || continue
 		fields=$(printf '%s\n' "${seat}" | jq -r 'select(.role == "developer") | .slot, .worktree // ""') || quiet
 		[ -n "${fields}" ] || quiet
 		effort_dir=${candidate%/slots.json}

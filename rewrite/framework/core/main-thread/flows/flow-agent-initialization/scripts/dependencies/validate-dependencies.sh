@@ -64,9 +64,9 @@ readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly WORKTREE_PROCEDURE='procedure-git-worktree'
-readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/seat-bind-hook.sh"
-readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/report-commit-hook.sh"
-readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/block-relay-hook.sh"
+readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
+readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
+readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 # Relative to DIR/crucible/scripts/.
@@ -341,7 +341,7 @@ fingerprint_input() {
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/slots.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/slots.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
@@ -1082,10 +1082,10 @@ check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
-check_script "${WORKTREE_PROCEDURE}" slots.sh
-check_script "${WORKTREE_PROCEDURE}" seat-bind-hook.sh
-check_script "${WORKTREE_PROCEDURE}" report-commit-hook.sh
-check_script "${WORKTREE_PROCEDURE}" block-relay-hook.sh
+check_script "${WORKTREE_PROCEDURE}" seats/slots.sh
+check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
+check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
+check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh

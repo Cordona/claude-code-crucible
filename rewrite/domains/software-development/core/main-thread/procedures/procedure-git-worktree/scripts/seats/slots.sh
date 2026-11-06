@@ -24,13 +24,17 @@ export LC_ALL
 
 # Prints {exit, problems, file, out}: the exit code, the problem lines (at
 # most $max), the new file (null when nothing is written) and the stdout text.
-# The new file is pruned, then checked against the contract.
+# The new file is pruned, then checked against the contract. Each
+# --base-slot value comes as $base_slot_<n>, n its place from 0.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly RUN_JQ='include "slots";
 include "prune";
-{slot: $slot, role: $role, worktree: $worktree, repo: $repo, base: $base, lens: $lens,
-	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "awaiting-round": $awaiting_round} as $given
-| slots_run($command; $given | with_entries(select(.value != "")); $effort; if $exists == "yes" then $current else null end)
+([$ARGS.named | to_entries[] | select(.key | startswith("base_slot_"))
+	| {place: (.key | ltrimstr("base_slot_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_slots
+| {slot: $slot, role: $role, worktree: $worktree, repo: $repo, base: $base, lens: $lens,
+	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "awaiting-round": $awaiting_round,
+	"base-slot": $base_slots} as $given
+| slots_run($command; $given | with_entries(select(.value != "" and .value != [])); $effort; if $exists == "yes" then $current else null end)
 | .file |= prune
 | slots_checked
 | .problems |= (if length > $max then .[:$max - 1] + ["\(length - $max + 1) more problems not shown; expected none"] else . end)'
@@ -38,6 +42,7 @@ include "prune";
 usage() {
 	cat <<EOF
 usage: sh ${PROG} add --slots FILE --slot S --role developer|tester --worktree DIR --repo DIR --base SHA
+           [--base-slot S]...
        sh ${PROG} add --slots FILE --slot S --role reviewer --lens L
        sh ${PROG} bind --slots FILE --slot S --agent-id ID --dispatch ID
        sh ${PROG} status --slots FILE --slot S --status working|idle|gave-up [--awaiting-round N|none]
@@ -58,7 +63,8 @@ with nothing in it is left out: no value is null, [] or {}.
 add       a new seat: status open, no agent; a developer or tester
           gets mode BUILD or TEST. A tester's --worktree may be a
           developer's; this only records the sharing: seat-open.sh does
-          not open a tester seat yet.
+          not open a tester seat yet. Each --base-slot is a developer
+          seat this one was cut from, kept as base_slots in that order.
 bind      seats an agent and its dispatch on an open seat: status working;
           the same agent and dispatch again changes nothing; refused for
           an agent handed out of the seat
@@ -79,7 +85,8 @@ the file: {"effort": string, "slots": [slot, ...]}, slot names unique
                open, present otherwise), previous_agent_ids (optional: agent
                ids handed out of the seat, oldest first, no repeats)
   developer    mode BUILD, worktree, repo (absolute paths), base (40 hex),
-  tester       mode TEST,  awaiting_round (optional, a whole number of 1 or more)
+  tester       mode TEST,  awaiting_round (optional, a whole number of 1 or more),
+               base_slots (optional: other developer seats, no repeats; set by add only)
   reviewer     lens (lowercase letters, digits and dashes)
 
 needs jq 1.6+ and prune.jq from the ${CRUCIBLE_SKILL} skill, in
@@ -124,7 +131,7 @@ printable() {
 # Prints the options command $1 takes.
 command_options() {
 	case $1 in
-		add) printf -- '--slots --slot --role --worktree --repo --base --lens' ;;
+		add) printf -- '--slots --slot --role --worktree --repo --base --base-slot --lens' ;;
 		bind) printf -- '--slots --slot --agent-id --dispatch' ;;
 		find) printf -- '--slots --agent-id' ;;
 		status) printf -- '--slots --slot --status --awaiting-round' ;;
@@ -136,13 +143,19 @@ command_options() {
 # Sets $option_value from "$1 $2", refusing an option command does not take,
 # a repeat or a missing value.
 take_value() {
+	take_repeated "$1" "$3"
+	[ -z "$2" ] || usage_error "$1 given twice; expected one"
+}
+
+# Sets $option_value from "$1 $2", refusing an option command does not take
+# or a missing value.
+take_repeated() {
 	case " ${allowed} " in
 		*" $1 "*) ;;
 		*) usage_error "$1 is not an option of ${command}; expected ${allowed}" ;;
 	esac
-	[ -n "$3" ] || usage_error "$1 needs a value; expected $1 VALUE"
-	[ -z "$2" ] || usage_error "$1 given twice; expected one"
-	option_value=$3
+	[ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
+	option_value=$2
 }
 
 parse_args() {
@@ -160,7 +173,7 @@ parse_args() {
 	esac
 	shift
 	allowed=$(command_options "${command}")
-	slots_file='' slot='' role='' worktree='' repo='' base='' lens='' agent_id='' dispatch='' status='' awaiting_round=''
+	slots_file='' slot='' role='' worktree='' repo='' base='' base_slot='' lens='' agent_id='' dispatch='' status='' awaiting_round=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -190,6 +203,10 @@ parse_args() {
 			--base)
 				take_value "$1" "${base}" "${2-}"
 				base=${option_value}
+				;;
+			--base-slot)
+				take_repeated "$1" "${2-}"
+				base_slot=${option_value}
 				;;
 			--lens)
 				take_value "$1" "${lens}" "${2-}"
@@ -250,8 +267,8 @@ require_add_options() {
 			require --base "${base}" SHA
 			;;
 		reviewer)
-			[ -z "${worktree}${repo}${base}" ] ||
-				usage_error '--worktree, --repo or --base is given for a reviewer; expected only --lens'
+			[ -z "${worktree}${repo}${base}${base_slot}" ] ||
+				usage_error '--worktree, --repo, --base or --base-slot is given for a reviewer; expected only --lens'
 			require --lens "${lens}" L
 			;;
 		*) ;;
@@ -315,8 +332,18 @@ take_lock() {
 	lock_held=yes
 }
 
-# Sets result to RUN_JQ's output over the file as it is now.
+# Sets result to RUN_JQ's output over the file as it is now; the arguments
+# are the checked command line after the command, read for --base-slot.
 run_command() {
+	place=0 left=$#
+	while [ "${left}" -gt 0 ]; do
+		[ "$1" != --base-slot ] || {
+			set -- "$@" --arg "base_slot_${place}" "$2"
+			place=$((place + 1))
+		}
+		shift 2
+		left=$((left - 2))
+	done
 	if [ -e "${slots_file}" ]; then
 		[ -f "${slots_file}" ] && [ -r "${slots_file}" ] ||
 			die 3 "--slots ${shown_slots} is not a readable file; expected the slots JSON file"
@@ -328,7 +355,7 @@ run_command() {
 		--arg command "${command}" --arg effort "${effort}" --argjson max "${MAX_PROBLEMS}" \
 		--arg slot "${slot}" --arg role "${role}" --arg worktree "${worktree}" --arg repo "${repo}" \
 		--arg base "${base}" --arg lens "${lens}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
-		--arg status "${status}" --arg awaiting_round "${awaiting_round}" "${RUN_JQ}") ||
+		--arg status "${status}" --arg awaiting_round "${awaiting_round}" "$@" "${RUN_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and prune.jq in ${shown_lib_dir}"
 }
 
@@ -382,5 +409,6 @@ case ${command} in
 	get | find | busy) ;;
 	*) take_lock ;;
 esac
-run_command
+shift
+run_command "$@"
 finish

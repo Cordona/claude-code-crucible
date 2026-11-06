@@ -40,8 +40,8 @@ readonly VIEW_NAME='view'
 readonly PRUNE_NAME='prune'
 # The seat list's reader and the seat's iteration reader, relative to the
 # skills folder.
-readonly SLOTS_SCRIPT='procedure-git-worktree/scripts/slots.sh'
-readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/iteration.sh'
+readonly SLOTS_SCRIPT='procedure-git-worktree/scripts/seats/slots.sh'
+readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/seats/iteration.sh'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
 readonly CONTEXT_PROCEDURE='procedure-context'
@@ -431,7 +431,7 @@ Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
   awk, cat, date, dd, grep, mkdir, mktemp, mv, readlink, rm, tr, wc, and
     sha256sum or shasum (base system)
-  procedure-git-worktree: scripts/slots.sh, scripts/iteration.sh
+  procedure-git-worktree: scripts/seats/slots.sh, scripts/seats/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq

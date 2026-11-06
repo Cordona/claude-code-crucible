@@ -14,7 +14,7 @@ readonly PROG='report-commit-hook.sh'
 readonly MAX_BLOCKS=2
 readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
 # From this folder to the report checker of the code-developer agent's skill.
-readonly CHECKER_DIR='../../../../agents/code-developer/skills/standard-code-development-report/scripts'
+readonly CHECKER_DIR='../../../../../agents/code-developer/skills/standard-code-development-report/scripts'
 readonly CHECKER='dev-report-check.sh'
 readonly PRUNER='dev-report-prune.sh'
 # A fault line quotes at most this many bytes of a child's first stderr line.
@@ -71,8 +71,9 @@ exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+, git 2.26+; slots.sh, iteration.sh,
-commit-input.sh, commit-message.sh and commit.sh beside this script,
+needs: POSIX sh, jq 1.6+, git 2.26+; ../seats/slots.sh, ../seats/iteration.sh,
+../commit/commit-input.sh, ../commit/commit-message.sh and ../commit/commit.sh
+from this script's folder,
 ${PRUNER} and ${CHECKER} at ${CHECKER_DIR}
 EOF
 }
@@ -232,7 +233,7 @@ find_seat() {
 		[ -f "${candidate}" ] || continue
 		candidate_dir=${candidate%/slots.json}
 		[ ! -L "${candidate_dir}" ] || continue
-		run sh "${own_dir}/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}"
+		run sh "${own_dir}/../seats/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}"
 		case ${child_rc} in
 			0)
 				effort_dir=${candidate_dir} slots_file=${candidate} seat_json=${child_out}
@@ -280,7 +281,7 @@ find_checker() {
 
 # Sets report to this iteration's report path from iteration.sh.
 find_report() {
-	run sh "${own_dir}/iteration.sh" --slots "${slots_file}" --slot "${slot}"
+	run sh "${own_dir}/../seats/iteration.sh" --slots "${slots_file}" --slot "${slot}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'iteration.sh'
 	report=$(printf '%s\n' "${child_out}" | sed -n 's/^REPORT: //p')
 	[ -n "${report}" ] || fault 'iteration.sh printed no REPORT line'
@@ -328,7 +329,7 @@ block_or_give_up() {
 give_up() {
 	rm -f -- "${counter}"
 	run_lines=$(checker_lines)
-	run sh "${own_dir}/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status gave-up
+	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status gave-up
 	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status gave-up'
 	seat_log gave-up "${blocks}" "${run_lines}"
 	log "gave-up: $(printf '%s' "${run_lines}" | flatten)"
@@ -367,13 +368,13 @@ seat_log() {
 # Builds the commit-message input, writes the message, commits every change,
 # restarts the seat's block count and sets the seat idle.
 commit_work() {
-	run sh "${own_dir}/commit-input.sh" --slots "${slots_file}" --slot "${slot}" --out "${work_dir}/message.json"
+	run sh "${own_dir}/../commit/commit-input.sh" --slots "${slots_file}" --slot "${slot}" --out "${work_dir}/message.json"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-input.sh'
 	iteration=$(jq -r '.trailers | to_entries[] | select(.key | endswith("-iteration")) | "\(.key) \(.value)"' \
 		"${work_dir}/message.json" 2>/dev/null) || iteration=''
-	run sh "${own_dir}/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
+	run sh "${own_dir}/../commit/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-message.sh'
-	run sh "${own_dir}/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" \
+	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" \
 		--author-name "${slot}" --author-email "${slot}@crucible.invalid" --all
 	case ${child_rc} in
 		0) ;;
@@ -382,7 +383,7 @@ commit_work() {
 	esac
 	rm -f -- "${effort_dir}/blocks/${slot}"
 	log "committed ${child_out} ${iteration}"
-	run sh "${own_dir}/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
+	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
 	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status idle'
 }
 
@@ -393,7 +394,7 @@ commit_work() {
 set_idle() {
 	rm -f -- "${effort_dir}/blocks/${slot}"
 	log "$1"
-	run sh "${own_dir}/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
+	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
 	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status idle'
 	allow
 }
