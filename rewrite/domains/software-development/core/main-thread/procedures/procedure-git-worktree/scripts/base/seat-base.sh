@@ -48,8 +48,9 @@ Prints the base for seat-open.sh's --base and --base-slot.
 stdout, one JSON line:
   {"base":<sha>,"base_slots":[S...],"unmerged":[S...],"line":L}
   base_slots: the --on seats in order ([] when independent); L, for the
-  human: "Starts from your checkout (<sha>)." or "Starts from S + S
-  (<sha>)."
+  human: "Starts from your checkout (<sha>).", with --snapshot "Starts
+  from your checkout with your uncommitted changes (<sha>).", or "Starts
+  from S + S (<sha>)."
 
 exit codes:
   0  printed
@@ -432,8 +433,9 @@ else
 	: >"${work_dir}/unmerged"
 	printf '%s\n' "${on_slots}" >"${work_dir}/base-slots" || die 4 'could not write the base slots in the work folder'
 fi
-jq -nc --arg base "${base}" --rawfile base_slots "${work_dir}/base-slots" --rawfile unmerged "${work_dir}/unmerged" '
+jq -nc --arg base "${base}" --arg snapshot "${snapshot}" --rawfile base_slots "${work_dir}/base-slots" --rawfile unmerged "${work_dir}/unmerged" '
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
 	{base: $base, base_slots: ($base_slots | lines), unmerged: ($unmerged | lines)}
-	| .line = "Starts from \(if .base_slots == [] then "your checkout" else .base_slots | join(" + ") end) (\($base))."' ||
+	| .line = "Starts from \(if .base_slots != [] then .base_slots | join(" + ")
+		elif $snapshot != "" then "your checkout with your uncommitted changes" else "your checkout" end) (\($base))."' ||
 	die 4 'jq could not print the result'

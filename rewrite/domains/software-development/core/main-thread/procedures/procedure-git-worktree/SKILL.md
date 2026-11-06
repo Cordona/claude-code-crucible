@@ -21,7 +21,7 @@ A **seat** is one developer's git worktree of a part's repository, inside the ef
 - **Run each script's `--help` once, before its first use in a session, and again only when its contract is no longer in context (after a compaction):** it is the full contract.
 - **A refusal** (a non-zero exit, or exit 0 without the JSON line the step reads): show its stderr, or its output, as it is, and stop that action.
 - **A conflict** is a refusal whose stderr holds a line starting `tips-merge.sh: the commits conflict`: show that line, and the human says what next.
-- **Show a fixed line as a message of its own,** each value copied whole from the script's output.
+- **Show a fixed line as a message of its own,** each value copied whole.
 
 ## Base
 
@@ -29,7 +29,7 @@ When `flow-code-development` opens a seat for a part:
 
 1. **The facts:** run `sh "<scripts>/base/seat-base.sh" --effort '<effort folder>' --repo '<repo>' --independent`, adding `--snapshot '<sha>'` only for a `SNAPSHOT:` sha the flow took. Its `unmerged` lists the idle seats whose work the checkout lacks.
 2. **The choice:** judge from the part's task and the spec or the work whether it builds on a seat in `unmerged`, or on the seat of a part it was waiting for. Builds on none: step 1's `base`. Builds on seats: run it again with one `--on '<slot>'` per seat in place of `--independent` and `--snapshot`, and take its `base` and `base_slots`.
-3. **Say it:** show the `line` of the run whose `base` you take, as a fixed line.
+3. **Say it:** show the line `<slot>: <the line of the run whose base you take>`.
 4. **Open:** `sh "<scripts>/seats/seat-open.sh" --effort '<effort folder>' --repo '<repo>' --slot '<slot>' --role developer --base '<base>'`, plus one `--base-slot '<slot>'` per `base_slots` entry.
 
 ## Mount
@@ -44,7 +44,7 @@ On the human's ask to see or run seats' work in their checkout; one mount per ch
 
 ## Chains
 
-After a seat's new commit (`flow-code-development` step 4, `idle`), and when `mount-status.sh` lists `parents_moved`:
+After a seat's new commit (`flow-code-development` step 4, `idle`), and when `mount-status.sh` gives a non-empty `parents_moved`:
 
 1. **Check:** `jq -r '.slots[] | select(.role == "developer" and ((.base_slots // []) | length) > 0) | [.slot, .status] | @tsv' '<effort folder>/slots.json'`, the seat that just committed included; per seat, `sh "<scripts>/merge/chain.sh" --effort '<effort folder>' --slot '<slot>'`. `moved: false`: nothing to do. A failed read: show its output, and offer nothing.
 2. **Offer:** for a moved seat that is `idle`, ask with AskUserQuestion, header `Sync`, question `<slot> was cut from <the seats in parents whose in_seat is false>, which have newer work. Merge it into <slot>?`: `Sync now` (Recommended: its developer builds on the latest work) → step 3; `Not now` (nothing changes; offered again at the next commit) → nothing. A typed answer: ask again. A moved seat that is `working`: offer once its result is shown.
