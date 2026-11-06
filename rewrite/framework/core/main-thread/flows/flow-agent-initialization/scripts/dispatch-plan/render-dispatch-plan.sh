@@ -136,7 +136,7 @@ readonly QUESTION_JQ='
 	question: ((if $count > 1 then "Approve these \($count) dispatches with the plugins shown?"
 		else "Approve this dispatch with the plugins shown?" end) + $change),
 	options: (if .replan == "stop-recommended" then
-			[option("Stop (Recommended)"; "Nothing is dispatched; reinstall the dropped plugin (faulty files: fix it), then rerun."),
+			[option("Stop (Recommended)"; "Nothing is dispatched; reinstall the dropped plugin, then rerun."),
 			 option("Approve"; $approve)]
 		elif $plans > 1 then
 			[option("Approve (Recommended)"; $approve),

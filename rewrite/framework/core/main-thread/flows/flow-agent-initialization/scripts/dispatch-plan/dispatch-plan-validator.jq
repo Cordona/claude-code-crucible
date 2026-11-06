@@ -29,7 +29,7 @@ include "dispatch-names" {search: "../agent-dispatch"};
 def testing_plugin: "standard-testing";
 def lens_agent: "code-reviewer";
 # A step-10 re-plan may list, under skip, a plugin list-plugins.sh no longer prints.
-def dropped_reasons: "invalid", "uninstalled after approval", "faulty files";
+def dropped_reasons: "invalid", "uninstalled after approval";
 def top_keys: ["claude_session_id", "agent", "mode", "tasks", "plugins", "replan", "context"];
 def plugins_keys: ["load", "skip", "load_reason"];
 def load_keys: ["language", "frameworks", "standards", "procedures"];
@@ -155,7 +155,7 @@ def dropped_ok($plan):
 	or (.list == "load" and .slot == "frameworks" and .reason == "invalid" and $plan.replan == "invalid");
 
 def not_installed_hint:
-	if .list == "skip" then ", or for a dropped plugin a reason of exactly \"invalid\", \"uninstalled after approval\" or \"faulty files\""
+	if .list == "skip" then ", or for a dropped plugin a reason of exactly \"invalid\" or \"uninstalled after approval\""
 	elif .slot == "frameworks" then ", or for a framework dropped as invalid the reason \"invalid\" in a replan \"invalid\" plan"
 	else "" end;
 
