@@ -32,20 +32,22 @@ aside).
 A record of version 1 (one seat) or 2 (one or more seats) is read.
 
 stdout, one JSON line:
-  {"mounted":false}   nothing is mounted
+  {"mounted":false,"line":L}   nothing is mounted
   {"mounted":true,"effort":<dir>,"seats":[{"slot":S,"seat_commit":<sha>,
    "seat_head":<sha or null>,"stale":bool}...],"stale":bool,
-   "parents_moved":[{"slot":S,"parent":P}...],"head_moved":bool,
-   "finished":bool,"paths":[<path>...],"edited":[<path>...]}
+   "parents_moved":[{"slot":S,"parent":P}...] or null,"head_moved":bool,
+   "finished":bool,"paths":[<path>...],"edited":[<path>...],"line":L}
   seat_head is the seat worktree's HEAD now, null when the worktree is
   gone; a seat is stale when seat_head is not seat_commit (false when
   null), the mount when any seat is; parents_moved: each seat P a mounted
   seat S was cut from (slots.json's base_slots, followed through every
-  level) whose worktree HEAD the mount's target lacks, [] when slots.json
-  or a seat can't be read; head_moved: HEAD is not the HEAD at mount time;
+  level) whose worktree HEAD the mount's target lacks, null (not checked)
+  when slots.json or a seat can't be read; head_moved: HEAD is not the HEAD at mount time;
   finished: head_moved and every mounted path holds what HEAD's tree holds
   (the human committed it; unmount.sh then only forgets the record);
-  edited: the mounted paths that no longer hold what the mount left there
+  edited: the mounted paths that no longer hold what the mount left there;
+  line: one sentence of the above for the human, to relay word for word
+  (at most 20 edited paths named; control characters as "?")
 
 exit codes:
   0  printed
@@ -141,10 +143,11 @@ read_seat_heads() {
 
 # Writes work_dir/parents-moved, "<slot><TAB><parent>" per seat a mounted
 # seat was cut from whose worktree HEAD the mount's target lacks; a
-# parent without a worktree or HEAD has nothing to give. Any failure leaves
-# the file empty.
+# parent without a worktree or HEAD has nothing to give. Sets
+# parents_checked; any failure makes it false.
 list_parents_moved() {
 	: >"${work_dir}/parents-moved"
+	parents_checked=false
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r -L "${own_dir}/../merge" --rawfile seats "${work_dir}/rec-seats" 'include "chain";
 		($seats | rtrimstr("\n") | split("\n") | map(split("\t") | .[0]))[] as $slot
@@ -164,12 +167,10 @@ list_parents_moved() {
 		case ${ancestor_rc} in
 			0) ;;
 			1) printf '%s\t%s\n' "${mounted_slot}" "${parent}" >>"${work_dir}/parents-moved" ;;
-			*)
-				: >"${work_dir}/parents-moved"
-				return 0
-				;;
+			*) return 0 ;;
 		esac
 	done <"${work_dir}/ancestors"
+	parents_checked=true
 }
 
 # shellcheck disable=SC2329 # invoked by the EXIT trap
@@ -191,7 +192,10 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-mount-status.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 read_record
 if [ "${record_present}" != true ]; then
-	printf '{"mounted":false}\n'
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+	jq -nc --arg repo "${checkout_dir}" \
+		'{mounted: false, line: "Nothing is mounted in \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."}' ||
+		die 4 'jq could not print the mount state'
 	exit 0
 fi
 read_seat_heads
@@ -201,16 +205,26 @@ checkout_states "${work_dir}/spec" "${work_dir}/now-states"
 check_finished "${work_dir}/now-states" "${head}"
 list_mismatches "${work_dir}/spec" "${work_dir}/now-states" 2 'recreated' "${work_dir}/edited"
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc --arg effort "${rec_effort}" --rawfile seats "${work_dir}/seat-heads" \
+jq -nc --arg effort "${rec_effort}" --arg repo "${checkout_dir}" --rawfile seats "${work_dir}/seat-heads" \
+	--argjson parents_checked "${parents_checked}" --argjson max "${MAX_LISTED}" \
 	--rawfile parents_moved "${work_dir}/parents-moved" --arg head "${head}" --arg rec_head "${rec_head}" \
 	--argjson finished "${finished}" --rawfile spec "${work_dir}/spec" --rawfile edited "${work_dir}/edited" '
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
 	def path_of: split("\t") | .[2:] | join("\t");
+	def shown: gsub("[\u0000-\u001f\u007f]"; "?");
+	def listed: if . == [] then "none" else join(", ") end;
 	($seats | lines | map(split("\t") | {slot: .[0], seat_commit: .[1], seat_head: (if .[2] == "" then null else .[2] end)}
 		| .stale = (.seat_head != null and .seat_head != .seat_commit))) as $mounted
 	| {mounted: true, effort: $effort, seats: $mounted, stale: any($mounted[]; .stale),
-	 parents_moved: ($parents_moved | lines | map(split("\t") | {slot: .[0], parent: .[1]})),
+	 parents_moved: (if $parents_checked then $parents_moved | lines | map(split("\t") | {slot: .[0], parent: .[1]}) else null end),
 	 head_moved: ($head != $rec_head), finished: $finished,
 	 paths: ($spec | lines | map(path_of)),
-	 edited: ($edited | lines | map(split("\t") | .[1:] | join("\t")))}' ||
+	 edited: ($edited | lines | map(split("\t") | .[1:] | join("\t")))}
+	| .line = "Mounted in \($repo | shown): \(.seats | map(.slot) | join(" + "))"
+		+ "; moved on since: \(.seats | map(select(.stale) | .slot) | listed)"
+		+ "; cut-from seats with newer work: "
+		+ (if .parents_moved == null then "not checked" else .parents_moved | map("\(.parent) → \(.slot)") | listed end)
+		+ "; HEAD moved: \(if .head_moved then "yes" else "no" end)"
+		+ "; edited: \(if .edited == [] then "none"
+			else (.edited[:$max] | map(shown) | join(", ")) + (if (.edited | length) > $max then " and \((.edited | length) - $max) more" else "" end) end)."' ||
 	die 4 'jq could not print the mount state'

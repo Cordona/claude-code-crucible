@@ -41,8 +41,11 @@ left there.
 A record of version 1 (one seat) or 2 (one or more seats) is read.
 
 stdout, one JSON line:
-  {"unmounted":true,"slots":[S...],"paths":N}           reversed
-  {"unmounted":false,"forgotten":true,"slots":[S...]}   finished: record removed
+  {"unmounted":true,"slots":[S...],"paths":N,"line":L}           reversed
+  {"unmounted":false,"forgotten":true,"slots":[S...],"line":L}   finished:
+                                                       record removed
+  L, for the human: "Unmounted S + S from <repo>." or "S + S are committed
+  in <repo>; the mount record is dropped." (control characters as "?")
 
 exit codes:
   0  unmounted, or a finished mount forgotten
@@ -211,7 +214,9 @@ checkout_states "${work_dir}/spec" "${work_dir}/now-states"
 check_finished "${work_dir}/now-states" "${head}"
 if [ "${finished}" = true ]; then
 	remove_record
-	jq -nc --arg slots "${rec_slots}" '{unmounted: false, forgotten: true, slots: ($slots | split(" "))}' ||
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+	jq -nc --arg slots "${rec_slots}" --arg repo "${checkout_dir}" '{unmounted: false, forgotten: true, slots: ($slots | split(" "))}
+		| .line = "\(.slots | join(" + ")) are committed in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")); the mount record is dropped."' ||
 		die 4 'jq could not print the result; the record is removed'
 	exit 0
 fi
@@ -235,5 +240,8 @@ restore_saved_bytes "the record in ${shown_record_dir} is kept"
 remove_empty_folders
 remove_record
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the unmounted paths'
-jq -nc --arg slots "${rec_slots}" --argjson paths "${paths}" '{unmounted: true, slots: ($slots | split(" ")), paths: $paths}' ||
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+jq -nc --arg slots "${rec_slots}" --argjson paths "${paths}" --arg repo "${checkout_dir}" \
+	'{unmounted: true, slots: ($slots | split(" ")), paths: $paths}
+	| .line = "Unmounted \(.slots | join(" + ")) from \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."' ||
 	die 4 'jq could not print the result; the mount is removed'

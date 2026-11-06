@@ -46,8 +46,10 @@ Prints the base for seat-open.sh's --base and --base-slot.
                 S", trailer ${EFFORT_TRAILER}: slots.json's effort)
 
 stdout, one JSON line:
-  {"base":<sha>,"base_slots":[S...],"unmerged":[S...]}
-  base_slots: the --on seats in order ([] when independent)
+  {"base":<sha>,"base_slots":[S...],"unmerged":[S...],"line":L}
+  base_slots: the --on seats in order ([] when independent); L, for the
+  human: "Starts from your checkout (<sha>)." or "Starts from S + S
+  (<sha>)."
 
 exit codes:
   0  printed
@@ -432,5 +434,6 @@ else
 fi
 jq -nc --arg base "${base}" --rawfile base_slots "${work_dir}/base-slots" --rawfile unmerged "${work_dir}/unmerged" '
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
-	{base: $base, base_slots: ($base_slots | lines), unmerged: ($unmerged | lines)}' ||
+	{base: $base, base_slots: ($base_slots | lines), unmerged: ($unmerged | lines)}
+	| .line = "Starts from \(if .base_slots == [] then "your checkout" else .base_slots | join(" + ") end) (\($base))."' ||
 	die 4 'jq could not print the result'

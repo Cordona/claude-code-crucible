@@ -60,8 +60,10 @@ start, is a submodule, or holds a newline or non-UTF-8 byte; or git apply
 
 stdout, one JSON line:
   {"mounted":true,"seats":[{"slot":S,"seat_commit":<sha>}...],
-   "target":<sha>,"paths":N,"left_alone":M}
-  M counts the checkout's other uncommitted paths (not ignored)
+   "target":<sha>,"paths":N,"left_alone":M,"line":L}
+  M counts the checkout's other uncommitted paths (not ignored); L, for
+  the human: "Mounted S + S in <repo>: N files; your other M changed
+  files are untouched." (control characters as "?")
 
 exit codes:
   0  mounted
@@ -668,7 +670,11 @@ verify_applied
 write_record
 count_left_alone
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the mounted paths'
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 jq -nc --rawfile seats "${work_dir}/seats" --arg target "${target}" --argjson paths "${paths}" --argjson left_alone "${left_alone}" \
+	--arg repo "${checkout_dir}" \
 	'{mounted: true, seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {slot: .[0], seat_commit: .[2]})),
-	  target: $target, paths: $paths, left_alone: $left_alone}' ||
+	  target: $target, paths: $paths, left_alone: $left_alone}
+	| .line = "Mounted \(.seats | map(.slot) | join(" + ")) in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")): \($paths) files;"
+		+ " your other \($left_alone) changed files are untouched."' ||
 	die 4 'jq could not print the result; the mount is recorded'

@@ -41,8 +41,10 @@ worktree out, detached, at the merge, with no hook run.
               uncommitted change
 
 stdout, one JSON line:
-  {"synced":false,"slot":S,"reason":"in_sync"}   nothing moved
-  {"synced":true,"slot":S,"commit":<sha>,"parents":[P...],"message":M}
+  {"synced":false,"slot":S,"reason":"in_sync","line":null}   nothing moved
+  {"synced":true,"slot":S,"commit":<sha>,"parents":[P...],"message":M,
+   "line":L}
+  L, for the human: "S now holds the latest work of P + P."
   M is the line to send S's developer: "Your seat S now also holds the
   latest work of P (merged at <short sha>); build on top of it.", or,
   when S had nothing of its own and takes P's HEAD as it is, "Your seat S
@@ -328,7 +330,7 @@ check_seat
 [ "${problems}" -eq 0 ] || exit 5
 run_chain
 if [ "${moved}" != true ]; then
-	jq -nc --arg slot "${slot}" '{synced: false, slot: $slot, reason: "in_sync"}' || die 4 'jq could not print the result'
+	jq -nc --arg slot "${slot}" '{synced: false, slot: $slot, reason: "in_sync", line: null}' || die 4 'jq could not print the result'
 	exit 0
 fi
 check_moved
@@ -342,5 +344,6 @@ jq -nc --arg slot "${slot}" --arg commit "${merge_commit}" --arg synced_from "${
 	'($synced_from | split(", ")) as $parents | ($parents | join(", ")) as $named
 	| {synced: true, slot: $slot, commit: $commit, parents: $parents,
 	   message: (if $new then "Your seat \($slot) now also holds the latest work of \($named) (merged at \($short)); build on top of it."
-		else "Your seat \($slot) now matches the latest work of \($named) (\($short)); build on top of it." end)}' ||
+		else "Your seat \($slot) now matches the latest work of \($named) (\($short)); build on top of it." end),
+	   line: "\($slot) now holds the latest work of \($parents | join(" + "))."}' ||
 	die 4 'jq could not print the result'
