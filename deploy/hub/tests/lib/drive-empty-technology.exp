@@ -1,0 +1,115 @@
+#!/usr/bin/env expect
+#
+# drive-empty-technology.exp — walk hub-install.sh's INTERACTIVE onboarding as far
+#                              as an EMPTY technology selection, then report which
+#                              of the two possible verdicts the screen gave.
+#
+# WHY expect(1) AND A pty AT ALL: the interactive path is gated on
+# lib/hub-common.sh's hub_is_tty ([ -t 0 ] && [ -t 1 ]), so no redirected stdin
+# can reach it. macOS script(1) is not a substitute — it refuses a non-tty stdin
+# outright ("tcgetattr/ioctl: Operation not supported on socket") and, on a pipe,
+# delivers its EOF ahead of the scripted keystrokes, so hub_checklist's first
+# `read` returns EOF and the walk quits before any screen is answered.
+#
+# WHY IT REPORTS MARKERS instead of asserting: expect owns the pty driving and
+# nothing else. Every assertion stays in run-tests-interactive.sh, on the same
+# assertion vocabulary the non-interactive suite uses, so there is exactly one
+# place that decides what a pass means.
+#
+# ONE SCRIPT FOR EVERY CASE, driven purely by the TARGET's install state: the key
+# sequence is identical in all of them (pick Software Development, confirm, decline
+# the optional VCS screen, decline the mandatory technology screen) and the only
+# thing that varies is what the target already holds — which is exactly the
+# variable under test.
+#
+# Markers, on stdout. The first three are not spelled here at all — the caller
+# exports them and this script echoes them back, so the strings it emits and the
+# strings the caller greps for cannot drift apart:
+#   $env(REFUSED_MARKER)   the empty-selection rule fired and re-prompted.
+#   $env(ACCEPTED_MARKER)  the walk advanced to the confirm prompt, i.e. the empty
+#                          selection was accepted.
+#   $env(APPLIED_MARKER)   that confirm prompt was answered and the Result screen
+#                          reported the install.
+#   MARKER:TIMEOUT-<stage> a screen never arrived; <stage> names which. Literal
+#                          because no assertion greps for it: it is a diagnostic
+#                          for a run that already failed its exit-status check.
+#
+# THE ACCEPTED BRANCH IS CARRIED THROUGH TO THE APPLY, not stopped at the confirm
+# prompt, and that is what makes the caller's "nothing was installed" assertions
+# falsifiable: a walk abandoned at the prompt writes nothing no matter what the
+# guard decided, so an assertion that the target is empty would pass even with the
+# guard inverted. Answering the prompt is what gives the two outcomes different
+# footprints on disk.
+#
+# Usage: expect -f drive-empty-technology.exp SRC TARGET INSTALL HOME PATH
+#        with REFUSED_MARKER, ACCEPTED_MARKER and APPLIED_MARKER exported.
+
+set timeout 30
+log_user 0
+
+set fixture_source [lindex $argv 0]
+set target_dir     [lindex $argv 1]
+set install_script [lindex $argv 2]
+set isolated_home  [lindex $argv 3]
+set toolbox_path   [lindex $argv 4]
+
+# An absent marker aborts this script with expect's own "no such variable" error
+# and a non-zero exit, which the caller's exit-status assertion reports — never a
+# silently empty marker the caller would read as "that screen never happened".
+set refused_marker  $env(REFUSED_MARKER)
+set accepted_marker $env(ACCEPTED_MARKER)
+set applied_marker  $env(APPLIED_MARKER)
+
+# The SPAWNED process carries the same env -i isolation harness_run gives every
+# non-interactive case; only expect itself runs outside it, because expect is
+# deliberately not in the toolbox. TERM is set because a pty child is entitled to
+# expect one; --no-color is what actually keeps the captured screens byte-clean.
+spawn env -i HOME=$isolated_home PATH=$toolbox_path TMPDIR=$isolated_home TERM=dumb \
+	sh $install_script --source $fixture_source --target $target_dir --no-color
+
+# expect_screen PATTERN STAGE — wait for one screen, or report which one never came.
+proc expect_screen {pattern stage} {
+	expect {
+		-ex $pattern {}
+		timeout {
+			puts "MARKER:TIMEOUT-$stage"
+			exit 1
+		}
+	}
+}
+
+expect_screen "Which domain(s)" "domains-screen"
+# By KEY, never by row number: the onboarding checklist offers only domains with
+# something pending, so a row number depends on the target's install state — the
+# one thing that varies between the cases this script serves.
+send "software-development\r"
+expect_screen "1 selected" "domain-toggled"
+send "\r"
+
+expect_screen "select VCS" "vcs-screen"
+send "\r"
+
+expect_screen "select technologies" "technology-screen"
+send "\r"
+
+expect {
+	-ex "at least one technology" {
+		puts $refused_marker
+		# Nothing further to drive: the guard has re-prompted the same screen, and
+		# letting expect exit closes the pty and takes the child with it. Whether the
+		# target stayed empty is the CALLER's assertion, not a keystroke's.
+		exit 0
+	}
+	-ex "Proceed?" { puts $accepted_marker }
+	timeout {
+		puts "MARKER:TIMEOUT-verdict"
+		exit 1
+	}
+}
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate),
+# so the accepted branch actually writes and the caller can assert on what landed.
+send "\r"
+expect_screen "Installed " "result-screen"
+puts $applied_marker
+exit 0

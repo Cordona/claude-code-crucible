@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "name": "TypeScript",
+      "inspections": [
+        {
+          "shortName": "TypeScriptValidateTypes",
+          "displayName": "Type mismatch",
+          "defaultSeverity": "ERROR",
+          "pluginId": "JavaScript",
+          "pluginVersion": "262.8665.337",
+          "language": "TypeScript",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports type mismatches.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Issue Shapes"
+}

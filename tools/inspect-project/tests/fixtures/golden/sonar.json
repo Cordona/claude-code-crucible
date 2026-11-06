@@ -1,0 +1,45 @@
+{
+  "issues": [
+    {
+      "file": "src/main.rs",
+      "key": "K1",
+      "line": 7,
+      "message": "tidy this up",
+      "rule": "rust:S1",
+      "severity": "MAJOR",
+      "status": "OPEN",
+      "type": "CODE_SMELL"
+    },
+    {
+      "file": "src/other.rs",
+      "key": "K2",
+      "line": 7,
+      "message": "tidy this up",
+      "rule": "rust:S1",
+      "severity": "MAJOR",
+      "status": "OPEN",
+      "type": "CODE_SMELL"
+    }
+  ],
+  "metadata": {
+    "analysis_id": "AN-1",
+    "availability_checks": {
+      "project_config_found": true,
+      "scanner_on_path": true,
+      "server_up": true
+    },
+    "changed_only_filter_matched_nothing": false,
+    "engine": "sonar-scanner",
+    "generated_at": "2026-08-26T10:34:56Z",
+    "project": "<PROJECT>",
+    "project_key": "my:project",
+    "project_name": "sonarproj",
+    "quality_gate_failed_conditions": [],
+    "quality_gate_status": "OK",
+    "scope": "all",
+    "scope_note": "quality gate and full scan are always whole-project; only issues[] below is filtered to files in the current diff",
+    "sonar_host_url": "http://localhost:9000",
+    "total_issues": 2,
+    "total_issues_project_wide": 2
+  }
+}

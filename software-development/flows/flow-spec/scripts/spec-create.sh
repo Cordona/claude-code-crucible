@@ -209,7 +209,9 @@ require_optional_type() {
 
 # require_repos_in_scope_shape FIELDS_FILE — exit 2 unless every
 # repos_in_scope[] entry is an object with a non-empty string "repo" and
-# "tech". `and` short-circuits in jq, so a non-object entry never reaches the
+# "tech", and no other key — spec-document.schema.json's repo_ref closes its
+# shape with additionalProperties:false, so this must match. `and`
+# short-circuits in jq, so a non-object entry never reaches the
 # field-indexing operators.
 require_repos_in_scope_shape() {
 	fields_file=$1
@@ -218,18 +220,20 @@ require_repos_in_scope_shape() {
 			type == "object"
 			and (.repo | type == "string") and (.repo | length > 0)
 			and (.tech | type == "string") and (.tech | length > 0)
+			and ((keys - ["repo", "tech"]) == [])
 		)] | all' \
 		"$fields_file" >/dev/null 2>&1
 	then
 		usage >&2
-		error "--fields-file: every repos_in_scope[] entry must be an object with a non-empty string 'repo' and 'tech'"
+		error "--fields-file: every repos_in_scope[] entry must be an object with exactly 'repo' and 'tech' (non-empty strings), no other keys"
 		exit 2
 	fi
 }
 
 # require_interface_contracts_shape FIELDS_FILE — exit 2 unless every
-# interface_contracts[] entry is an object with a non-empty string "repo" and
-# array "exposes"/"consumes".
+# interface_contracts[] entry is an object with a non-empty string "repo",
+# array "exposes"/"consumes", and no other key — spec-document.schema.json's
+# interface_contract closes its shape with additionalProperties:false.
 require_interface_contracts_shape() {
 	fields_file=$1
 	if ! jq -e \
@@ -238,20 +242,22 @@ require_interface_contracts_shape() {
 			and (.repo | type == "string") and (.repo | length > 0)
 			and (.exposes | type == "array")
 			and (.consumes | type == "array")
+			and ((keys - ["repo", "exposes", "consumes"]) == [])
 		)] | all' \
 		"$fields_file" >/dev/null 2>&1
 	then
 		usage >&2
-		error "--fields-file: every interface_contracts[] entry must be an object with a non-empty string 'repo' and array 'exposes'/'consumes'"
+		error "--fields-file: every interface_contracts[] entry must be an object with exactly 'repo' (non-empty string), 'exposes', 'consumes' (arrays), no other keys"
 		exit 2
 	fi
 }
 
 # require_decision_log_shape FIELDS_FILE — a no-op when decision_log is
 # absent; when present, exit 2 unless every entry is an object with a
-# non-empty string "fork"/"decision"/"why" (spec-document.schema.json's
-# decision_entry). Runs after require_optional_type has already confirmed
-# decision_log, when present, is an array.
+# non-empty string "fork"/"decision"/"why" and no other key
+# (spec-document.schema.json's decision_entry, additionalProperties:false).
+# Runs after require_optional_type has already confirmed decision_log, when
+# present, is an array.
 require_decision_log_shape() {
 	fields_file=$1
 	if ! jq -e \
@@ -261,11 +267,12 @@ require_decision_log_shape() {
 			and (.fork | type == "string") and (.fork | length > 0)
 			and (.decision | type == "string") and (.decision | length > 0)
 			and (.why | type == "string") and (.why | length > 0)
+			and ((keys - ["fork", "decision", "why"]) == [])
 		 )] | all)' \
 		"$fields_file" >/dev/null 2>&1
 	then
 		usage >&2
-		error "--fields-file: every decision_log[] entry must be an object with a non-empty string 'fork', 'decision', and 'why'"
+		error "--fields-file: every decision_log[] entry must be an object with exactly 'fork', 'decision', and 'why' (non-empty strings), no other keys"
 		exit 2
 	fi
 }

@@ -5,14 +5,14 @@
   "description": "The durable wire contract for a flow-spec artifact — the human-approved interface contract one or more flow-implementation tech pairs build against. This file defines the SHAPE only; the SEMANTICS (when a spec is required, the panel-then-draft procedure, the approval gate, the path+hint briefing discipline) live in the flow-spec skill. software-architect emits this shape as its draft; the orchestrator persists it and calls the deterministic renderer for the human-facing .md. One JSON object per file, at `.crucible/docs/specs/{year}/{month}/{day}/{slug}.json`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "id", "title", "status", "created", "repos_in_scope", "goal", "interface_contracts"],
+  "required": ["schema_version", "id", "title", "status", "created", "repos_in_scope", "goal", "interface_contracts", "decision_log"],
   "properties": {
     "schema_version": {
       "description": "Contract version. Pinned so a consumer can detect a shape change. The document is durable and may outlive a revision.",
       "const": "1.0"
     },
     "id": {
-      "description": "The effort slug — matches the filename (without extension) and the directory it lives under.",
+      "description": "The effort slug — matches the filename (without extension).",
       "$ref": "artifact-slug.schema.json"
     },
     "title": {
@@ -21,7 +21,7 @@
       "minLength": 1
     },
     "status": {
-      "description": "draft: awaiting approval, not yet buildable-against. approved: the human approved it; every flow-implementation pair for this effort builds against it. superseded: a later spec replaced it (this file is kept for history, never edited in place).",
+      "description": "draft / approved / superseded. Value domain only; the lifecycle SEMANTICS (what each state permits, the approval gate, the never-edit-in-place rule for a superseded spec) live in the flow-spec skill.",
       "enum": ["draft", "approved", "superseded"]
     },
     "created": {
@@ -51,7 +51,7 @@
       "minLength": 1
     },
     "non_goals": {
-      "description": "Explicitly excluded scope, one line per item. The thing that stops silent scope creep.",
+      "description": "Explicitly excluded scope, one line per item.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
@@ -72,7 +72,7 @@
       "items": { "$ref": "#/$defs/decision_entry" }
     },
     "open_questions": {
-      "description": "Explicitly deferred, non-blocking — things the spec deliberately does not resolve.",
+      "description": "Explicitly deferred, non-blocking.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     }

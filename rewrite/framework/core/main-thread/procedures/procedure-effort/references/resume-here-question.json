@@ -1,0 +1,13 @@
+{
+  "questions": [
+    {
+      "header": "Resume",
+      "question": "This session already works on <open>. A new session or /clear keeps each effort clean. Continue <next> here?",
+      "multiSelect": false,
+      "options": [
+        { "label": "Open a new session (Recommended)", "description": "Nothing resumes here. Open a new session or run /clear, then ask to continue it; it picks up there with a clean context." },
+        { "label": "Go on here", "description": "It resumes in this session, next to the effort already here." }
+      ]
+    }
+  ]
+}

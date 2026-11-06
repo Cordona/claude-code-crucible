@@ -1,0 +1,96 @@
+#!/usr/bin/env expect
+#
+# drive-required-only-exempt.exp — answer ONE domain's sub-selection for real, walk back
+#                                  to the domains checklist, and press `r` there.
+#
+# WHAT IS FRAGILE HERE, and it was a real bug: `r` reduces every candidate domain to its
+# required content, and a candidate reached through `b` can ALREADY hold a specific
+# technology the user went out of their way to pick. Reducing it would delete that pick
+# with nothing on screen having warned that `r` could — so an already-answered domain is
+# EXEMPT: `r` leaves it completely alone, says so on the human channel, and walks its
+# own screens normally, while every other candidate on the same screen is still reduced.
+# Both halves of that split have to be observed on ONE walk, because "exempt" is only
+# meaningful beside a domain that was not.
+#
+# THE KEY SEQUENCE, and why every step of it is load-bearing:
+#   1. select BOTH domains                     both need a mandatory sub-selection
+#   2. decline VCS (optional)                  not an exemption; must not be recorded
+#   3. PICK A TECHNOLOGY (mandatory)           the answer `r` must not destroy
+#   4. decline trackers (mandatory)            leaves domain 2 unanswered
+#   5. walk_back_to_domains                    confirm -> trackers -> technologies ->
+#                                              VCS -> domains, one `b` per screen
+#   6. `r`                                     the key under test, on a mixed screen
+#   7. the exemption notice                    domain 1 was left alone, and says so
+#   8. re-walk VCS and technologies            domain 1's own screens still follow
+#   9. confirm                                 apply, and print the payload
+# Step 3 is what makes domain 1 answered; step 4 is what leaves domain 2 reducible;
+# step 8 is what proves the exempt domain kept its screens rather than being skipped
+# with the other one. The payload then has to name domain 2 and ONLY domain 2, and the
+# technology from step 3 has to be on disk.
+#
+# THE MANDATORY-KIND HALF of hi_domain_already_answered's contract. Its sibling
+# lib/drive-required-only-exempt-optional.exp answers the OPTIONAL kind instead, which
+# that contract says counts equally — see that driver's own header for why one case
+# cannot cover both.
+#
+# THE NOTICE IS AWAITED, not merely allowed. It is `r`'s only account of why one of the
+# domains it was pressed on did not change, and a walk that skipped the exempt domain's
+# screens silently would still reach the confirm prompt — just with the pick discarded.
+# Waiting for the notice is what makes the exemption itself, rather than its side
+# effects alone, part of what this walk observes.
+#
+# The spawn, the screen helper, the back-walk and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-required-only-exempt.exp SRC TARGET INSTALL HOME PATH
+#        with REQUIRED_ONLY_KEY, EXEMPT_NOTICE, EXEMPT_MARKER, CHOSE_MARKER,
+#        APPLIED_MARKER and BASELINE_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+set exempt_marker $env(EXEMPT_MARKER)
+set chose_marker  $env(CHOSE_MARKER)
+
+expect_screen "Which domain(s)" "domains-screen"
+# By KEY, never by row number — see drive-empty-technology.exp's own note.
+send "software-development,project-management\r"
+expect_screen "2 selected" "both-domains-toggled"
+send "\r"
+
+expect_screen "select VCS" "vcs-screen"
+send "\r"
+
+# THE REAL PICK. `alpha` is a technology row rather than a bare number for the same
+# reason the domains are named by key: which rows the screen offers depends on what the
+# target already holds.
+expect_screen "select technologies" "technology-screen"
+send "alpha\r"
+expect_screen "1 selected" "technology-chosen"
+puts $chose_marker
+send "\r"
+
+expect_screen "select tracker" "tracker-screen"
+send "\r"
+
+walk_back_to_domains
+
+# THE KEY, pressed on a screen where one candidate is answered and one is not.
+send "$env(REQUIRED_ONLY_KEY)\r"
+
+# The notice text comes from the caller, the same discipline the markers follow.
+expect_screen $env(EXEMPT_NOTICE) "exemption-notice"
+puts $exempt_marker
+
+# The exempt domain's own screens, which a reduced domain would not have. The
+# technology screen arrives pre-seeded with the step-3 pick, so a bare Enter keeps it.
+expect_screen "select VCS" "vcs-screen-final"
+send "\r"
+expect_screen "select technologies" "technology-screen-final"
+send "\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so the
+# walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen-final"
+send "\r"
+
+report_baseline_only_payload

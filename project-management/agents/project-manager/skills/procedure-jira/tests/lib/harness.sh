@@ -62,6 +62,14 @@ CUR_RC=0
 # isolated environment with PATH_VALUE as its PATH, capturing stdout/stderr/rc
 # into $CUR_OUT/$CUR_ERR/$CUR_RC. `set +e` around the call is deliberate: a
 # non-zero exit is the THING UNDER TEST here, not a harness failure.
+#
+# STDIN IS /dev/null, and that is a TIMEOUT SUBSTITUTE, not tidiness. Nothing
+# under test reads stdin (every payload arrives as a file path), but the curl
+# stub reads it on a `-K -` call — so a regression that emitted `-K -` WITHOUT
+# piping a config into it would inherit this harness's own stdin and block on the
+# terminal forever. There is no timeout anywhere in this suite, so that hang is
+# strictly worse than a red assertion: it never reports at all. An immediate EOF
+# turns it back into a loud failure.
 harness_run() {
 	hr_path=$1; shift
 	set +e
@@ -73,7 +81,8 @@ harness_run() {
 		CURL_STUB_COUNTER_FILE="$CURL_STUB_COUNTER_FILE" \
 		CURL_STUB_ARGV_LOG="$CURL_STUB_ARGV_LOG" \
 		CURL_STUB_BODY_LOG_DIR="$CURL_STUB_BODY_LOG_DIR" \
-		"$@" >"$HARNESS_WORK/out" 2>"$HARNESS_WORK/err"
+		CURL_STUB_STDIN_LOG_DIR="$CURL_STUB_STDIN_LOG_DIR" \
+		"$@" <"/dev/null" >"$HARNESS_WORK/out" 2>"$HARNESS_WORK/err"
 	CUR_RC=$?
 	set -e
 	CUR_OUT=$(cat "$HARNESS_WORK/out"); CUR_ERR=$(cat "$HARNESS_WORK/err")
@@ -117,6 +126,44 @@ stderr_has() {
        stderr was: $CUR_ERR"; fi
 }
 
+# stdout_no_line_starting_with — the COLUMN-0 forgery assertion: no line of
+# stdout may BEGIN with PREFIX. It is deliberately not expressible as
+# stdout_not_has, which is substring-anchored and therefore also fires on the
+# engine's own legitimate quoted-as-data copy of the same text
+# ("  | JIRA_COMMENT_EDITED=…"). Only the line anchor separates "the untrusted
+# value was rendered as data" from "the untrusted value forged one of the
+# engine's own machine lines", which is the whole claim these tests make.
+#
+# The match is a literal prefix via `case`, not a `grep '^…'` BRE, for the same
+# reason argv_log_has_token is an exact-line grep rather than a substring one: a
+# needle carrying a BRE metacharacter (a `.`, a `[`) would silently match
+# something else, or nothing, and prove neither.
+stdout_no_line_starting_with() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	snlsw_offender=""
+	while IFS= read -r snlsw_line; do
+		case $snlsw_line in
+			"$2"*) snlsw_offender=$snlsw_line; break ;;
+		esac
+	done <<EOF
+$CUR_OUT
+EOF
+	if [ -n "$snlsw_offender" ]; then
+		fail "$1" "a stdout line starts with the forbidden prefix: $2
+       offending line: $snlsw_offender"
+	else pass "$1"; fi
+}
+
+# stderr_not_has — the stdout_not_has twin, for the case where TWO guards could
+# each produce the same exit code and the test must prove WHICH one fired: an
+# `expect_rc 2` alone passes for either, so the losing guard's diagnostic has to
+# be asserted ABSENT for the ordering claim to mean anything.
+stderr_not_has() {
+	TESTS_RUN=$((TESTS_RUN + 1))
+	if printf '%s\n' "$CUR_ERR" | grep -Fq -- "$2"; then fail "$1" "stderr unexpectedly contains: $2"
+	else pass "$1"; fi
+}
+
 file_has() {
 	TESTS_RUN=$((TESTS_RUN + 1))
 	if [ -f "$2" ] && grep -Fq -- "$3" "$2"; then pass "$1"
@@ -154,3 +201,22 @@ equals() {
 }
 
 section() { printf '\n== %s ==\n' "$1"; }
+
+# ---------------------------------------------------------------------------
+# Byte needles for the render-forgery cases, shared by every suite
+# ---------------------------------------------------------------------------
+# UNI_NEL / UNI_LS / UNI_PS — the three MULTIBYTE line-break codepoints, U+0085
+# (NEL), U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR), as their UTF-8
+# bytes. `read` and `grep` do NOT split on them, so a column-0 assertion
+# (stdout_no_line_starting_with) cannot fail for them: what discriminates is the
+# raw bytes being gone AND a space standing where each was.
+# C1_CSI — U+009B, the 8-bit CSI an 8-bit terminal reads as ESC-[: not a line
+# break, but in the same C1 range the engine's one-line fold replaces with a
+# space.
+# shellcheck disable=SC2034  # read by the suites that source this file, which shellcheck lints separately
+{
+	UNI_NEL=$(printf '\302\205')
+	UNI_LS=$(printf '\342\200\250')
+	UNI_PS=$(printf '\342\200\251')
+	C1_CSI=$(printf '\302\233')
+}

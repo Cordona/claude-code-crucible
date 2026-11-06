@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/test-plan-recheck.schema.json",
+  "title": "Test Plan Re-check Sidecar",
+  "description": "The re-checks of a flow-testing test plan's not_tested entries, kept beside the plan as {id}.recheck.json so the plan bytes, and so its approval digest, never change; a plan never stores a re-check of its own. Written only by flow-testing/scripts/test-plan-recheck.sh; shown by render-md.sh --recheck-file beside the entry each names. A record is shown beside, and refuses a second re-check of, only the not_tested entry whose digest equals its entry_sha256, so an amendment that renumbers or changes the entry never moves a re-check onto another. A pending record (the entry is being looked at again) is replaced by the entry's next re-check; an outcome — survived, cleared or escalated — is recorded once. An escalated entry is closed by the human with a second record after it, dismissed (test-plan-recheck.sh --recheck dismissed --reason), whatever the entry's category: the entry is kept untested, rendered \"Kept untested by you — <reason>\", and no longer needs the human's decision. Rules JSON Schema cannot express — one re-check per entry (by entry_sha256), except an escalated one followed by its dismissal, the proof form, a calendar-valid recorded date — are enforced by flow-testing's scripts/lib/test-plan-validate.jq (recheck_sidecar_errors); the proof naming a real file line or a test the plan holds, by test-plan-recheck.sh.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan", "rechecks"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "plan": {
+      "description": "The id of the test plan these re-checks belong to.",
+      "$ref": "artifact-slug.schema.json"
+    },
+    "rechecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["not_tested", "what", "entry_sha256", "status", "recorded"],
+        "oneOf": [
+          { "properties": { "status": { "enum": ["survived", "cleared"] } }, "required": ["proof"], "not": { "required": ["reason"] } },
+          { "properties": { "status": { "enum": ["escalated", "dismissed"] } }, "required": ["reason"], "not": { "required": ["proof"] } },
+          { "properties": { "status": { "const": "pending" } }, "not": { "anyOf": [{ "required": ["proof"] }, { "required": ["reason"] }] } }
+        ],
+        "properties": {
+          "not_tested": {
+            "description": "The entry's number in render-md.sh's Not tested list (numbered on after the tests and the rejected proposals) when the re-check was recorded.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "what": {
+            "description": "The entry's what when the re-check was recorded.",
+            "$ref": "test-plan.schema.json#/$defs/text_line"
+          },
+          "entry_sha256": {
+            "description": "The SHA-256 of the re-checked entry as `jq -S -c` prints it, with waived_by_human and waiver_reason removed: the key the re-check is matched to its entry by. Its first 12 hex digits are the entry's handle (test-plan-recheck.sh --list-not-tested), which test-plan-recheck.sh and test-plan-amend.sh --waive-not-tested take as --expect-sha.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "status": { "enum": ["pending", "survived", "cleared", "escalated", "dismissed"] },
+          "proof": {
+            "description": "Present exactly when status is survived or cleared: the evidence of the outcome from a reviewer or the review-arbiter, one line naming a file:line whose file is path-like (an extension or a \"/\", or Makefile, Dockerfile, Justfile, Rakefile, Gemfile, Procfile; never a URL or a bare number like 10:30) under test-plan-recheck.sh's --repo-root with that line, or a test number the plan holds; never a \"ran \" form.",
+            "$ref": "test-plan.schema.json#/$defs/text_line"
+          },
+          "reason": {
+            "description": "Present exactly when status is escalated or dismissed, one line of at most 200 characters in plain words: for escalated, why the re-check escalated the entry to the human (the verifier's or the adversary's unresolved disagreement); for dismissed, the human's reason for keeping the entry untested, in their words.",
+            "$ref": "test-plan.schema.json#/$defs/reason_line"
+          },
+          "recorded": {
+            "description": "Date (UTC) the re-check was recorded.",
+            "$ref": "test-plan.schema.json#/$defs/date"
+          }
+        }
+      }
+    }
+  }
+}

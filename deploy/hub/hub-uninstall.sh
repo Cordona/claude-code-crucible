@@ -1049,8 +1049,8 @@ hu_row_counts_build() {
 	hurcb_units=$1
 	hurcb_out=$2
 	# Per-row unit counts in one pass. The phase test carries the usual
-	# FILENAME == ARGV[1] anchor (see hu_group_in_plan) even though ROW_MAP cannot
-	# be empty here, so the shape stays the same everywhere it appears in this file.
+	# FILENAME == ARGV[1] anchor (see hu_group_in_plan), which is load-bearing here:
+	# ROW_MAP is empty on an --all run over a bundle-only target.
 	hurcb_counts="$HUB_WORK/row-counts.tsv"
 	awk -F '\t' -v OFS='\t' '
 		FNR == NR && FILENAME == ARGV[1] { row[$1] = $2; next }
@@ -1439,6 +1439,74 @@ hu_preview_remove_items() {
 	hu_row_lines "$(hub_glyph_remove)" '    ' "$PREVIEW_ROWS" "$REMOVE_ONLY"
 }
 
+# hu_bundle_present_build -> classify the first-run bundle's items as they sit in
+# TARGET_DIR now, by asking hub_bundle_remove itself in PREVIEW mode (APPLY=0)
+# rather than through a second copy of its presence test — the same way
+# hub-install.sh previews its bundle through hub_bundle_install. Sets
+# HU_BUNDLE_CONFIG_PRESENT (0 | 1), HU_BUNDLE_SCHEMA_COUNT and their sum,
+# HU_BUNDLE_PRESENT_COUNT, plus two facts hu_bundle_work_pending needs:
+# HU_BUNDLE_REMOVABLE_COUNT — the subset apply would actually remove (outcome
+# `removed`, i.e. framework-owned) — and HU_BUNDLE_CONFIG_FOREIGN (0 | 1), whether
+# a foreign occupant holds CLAUDE.md's path.
+#
+# PRESENT MEANS EVERY OUTCOME BUT already-absent, i.e. exactly what the apply call
+# will attempt. A foreign occupant is therefore counted: it is attempted and then
+# reported foreign-blocked, just like a component whose path a foreign file holds
+# (REMOVABLE_ROWS keeps every row that is not "available"). The source's own
+# item count, used before, promised items the target never had, so a complete
+# removal read as "Uninstalled 50/70".
+#
+# APPLY=0 CANNOT WRITE: hub_unlink_at removes only under APPLY=1, and the restore
+# is gated on APPLY=1 as well (no restore path is passed here anyway). The call
+# resets HUB_BUNDLE_RESTORED to empty; nothing reads it before the apply call,
+# which sets it afresh.
+hu_bundle_present_build() {
+	hubpb_log="$(hub_mktemp_dir)/bundle-preview.tsv"
+	hub_bundle_remove "$FRAMEWORK_ROOT" "$TARGET_DIR" 0 "" >"$hubpb_log"
+	HU_BUNDLE_CONFIG_PRESENT=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 != "already-absent" && $2 == ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_SCHEMA_COUNT=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 != "already-absent" && $2 != ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_PRESENT_COUNT=$((HU_BUNDLE_CONFIG_PRESENT + HU_BUNDLE_SCHEMA_COUNT))
+	HU_BUNDLE_REMOVABLE_COUNT=$(awk -F '\t' '$1 == "removed" { n++ } END { print n + 0 }' "$hubpb_log")
+	HU_BUNDLE_CONFIG_FOREIGN=$(hubpb_config="$HUB_BUNDLE_CONFIG_NAME" awk -F '\t' '
+		$1 == "foreign-blocked" && $2 == ENVIRON["hubpb_config"] { n++ }
+		END { print n + 0 }' "$hubpb_log")
+}
+
+# hu_bundle_work_pending -> exit 0 when this run has bundle work of its own: a
+# framework-owned bundle item to remove, or a backup restore that can actually
+# land. Never on a selective uninstall (BUNDLE_REMOVE=0), which does not touch the
+# bundle at all. Reads the classification hu_bundle_present_build made and the
+# resolved RESTORE_TARGET.
+#
+# A FOREIGN CLAUDE.md (the user's own file) IS NEVER PENDING WORK BY ITSELF, in
+# either role. As an item it is attempted and counted once the run proceeds for
+# another reason, but apply would refuse it. And it blocks the restore: hub_bundle_remove
+# skips a restore onto a foreign-blocked path. So a target holding only that file,
+# with or without a backup, would preview work and then change nothing.
+hu_bundle_work_pending() {
+	[ "$BUNDLE_REMOVE" -eq 1 ] || return 1
+	[ "$HU_BUNDLE_REMOVABLE_COUNT" -gt 0 ] && return 0
+	[ -n "$RESTORE_TARGET" ] && [ "$HU_BUNDLE_CONFIG_FOREIGN" -eq 0 ]
+}
+
+# hu_bundle_preview_item -> the bundle's "Also removing" line, naming only what
+# hu_bundle_present_build found: "CLAUDE.md and 3 contract schemas", "CLAUDE.md"
+# or "1 contract schema". The caller prints nothing when neither is present.
+hu_bundle_preview_item() {
+	hubpi_schemas="$HU_BUNDLE_SCHEMA_COUNT $(hub_plural "$HU_BUNDLE_SCHEMA_COUNT" 'contract schema' 'contract schemas')"
+	if [ "$HU_BUNDLE_CONFIG_PRESENT" -eq 0 ]; then
+		printf '%s\n' "$hubpi_schemas"
+	elif [ "$HU_BUNDLE_SCHEMA_COUNT" -gt 0 ]; then
+		printf '%s and %s\n' "$HUB_BUNDLE_CONFIG_NAME" "$hubpi_schemas"
+	else
+		printf '%s\n' "$HUB_BUNDLE_CONFIG_NAME"
+	fi
+}
+
 # hu_result_remove_items -> the Result screen's receipt, at the granularity the user
 # actually chose at: one line per TECHNOLOGY or TRACKER that came out ("✓ Java
 # (3 items)"), one line per cascaded domain baseline ("✓ Software Development
@@ -1525,6 +1593,21 @@ hu_result_remove_items() {
 		"$hurri_unattributed"
 }
 
+# APPLY_WITHOUT_PROMPT — whether the confirm block below will fall straight
+# through to Apply with no prompt: --apply on a run that cannot prompt, and — for
+# --all — one that already carries the critical phrase, since without it the run
+# is BLOCKED rather than applied and "Nothing has changed yet" stays true. The
+# preview reads it (via lib/hub-render.sh's hub_preview_is_dry_run) to drop its
+# dry-run wording on exactly that path, where the very next line is the Result.
+# INTERACTIVE_SELECTION needs no term of its own: the checklist is reachable only
+# when hub_interactive holds, so it always ends at a prompt.
+APPLY_WITHOUT_PROMPT=0
+if [ "$OPT_APPLY" -eq 1 ] && ! hub_interactive; then
+	if [ "$OPT_ALL" -eq 0 ] || [ "$OPT_CONFIRM" = "$HUB_CRITICAL_PHRASE" ]; then
+		APPLY_WITHOUT_PROMPT=1
+	fi
+fi
+
 # ===========================================================================
 # THE PLAN LOOP — selection -> units -> retention -> preview -> confirm.
 #
@@ -1566,7 +1649,67 @@ if [ "$INTERACTIVE_SELECTION" -eq 1 ]; then
 	esac
 fi
 
-if [ ! -s "$SELECTED_ROWS" ]; then
+# The first-run bundle comes out only on a complete uninstall. A selective
+# uninstall never touches CLAUDE.md or the contract schemas: they are not any
+# domain's component, so no selection of components can imply removing them.
+BUNDLE_REMOVE=$OPT_ALL
+
+# ---------------------------------------------------------------------------
+# CLAUDE.md backup selection (--all only).
+# ---------------------------------------------------------------------------
+RESTORE_TARGET=""
+BACKUPS="$HUB_WORK/backups.txt"
+: >"$BACKUPS"
+if [ "$BUNDLE_REMOVE" -eq 1 ]; then
+	hub_bundle_backups "$TARGET_DIR" >"$BACKUPS"
+	BACKUP_COUNT=$(hub_count_lines "$BACKUPS")
+	# --restore-backup IS CONSULTED FIRST, BEFORE the count branches below, and
+	# that ordering is the fix for two silent failures. It used to be read only
+	# inside the "more than one backup" arm, so with EXACTLY ONE backup present
+	# `--restore-backup=none` was ignored outright and that backup was restored
+	# anyway (and, per lib/hub-bundle.sh, consumed) — a caller's explicit
+	# instruction not to touch its contract, silently inverted. A bogus timestamp
+	# matching no real backup was ignored the same way instead of being rejected.
+	# The count now decides only what happens when the caller said NOTHING, and a
+	# named timestamp is validated against the backups that actually exist however
+	# many that is — including none, where naming one is a usage error and not a
+	# no-op.
+	if [ -n "$OPT_RESTORE_BACKUP" ]; then
+		if [ "$OPT_RESTORE_BACKUP" = none ]; then
+			RESTORE_TARGET=""
+		else
+			# An exact whole-line match against the fully-qualified backup
+			# path, not a substring/suffix search: a timestamp is
+			# attacker-irrelevant but user-typo-prone, and a partial match
+			# would happily restore a DIFFERENT backup than the one named.
+			RESTORE_TARGET=$(grep -xF -- "$TARGET_DIR/$HUB_BUNDLE_CONFIG_NAME.backup.$OPT_RESTORE_BACKUP" "$BACKUPS") ||
+				die_usage "no backup matches --restore-backup=$OPT_RESTORE_BACKUP"
+		fi
+	elif [ "$BACKUP_COUNT" -eq 1 ]; then
+		RESTORE_TARGET=$(cat "$BACKUPS")
+	elif [ "$BACKUP_COUNT" -gt 1 ]; then
+		if ! hub_interactive; then
+			hu_blocked restore_selection_required \
+				"multiple $HUB_BUNDLE_CONFIG_NAME backups found; pass --restore-backup=<timestamp> or --restore-backup=none"
+		fi
+		hu_choose_backup
+	fi
+fi
+
+# CLASSIFIED HERE, not in the preview, because the empty-selection exit just below
+# needs the answer too; the preview reads the same variables.
+if [ "$BUNDLE_REMOVE" -eq 1 ]; then
+	hu_bundle_present_build
+fi
+
+# AN EMPTY SELECTION IS NOT "NOTHING TO DO" UNDER --all while hu_bundle_work_pending
+# holds. Once every component is gone, --all is the only path that removes CLAUDE.md
+# and the contract schemas or restores a backed-up CLAUDE.md, and exiting here left
+# a bundle-only target impossible to uninstall. Such a run continues through the
+# normal preview, gate and apply, where every component table is simply empty. A
+# selective uninstall never has bundle work, so its empty selection still ends here,
+# and so does an --all run on a target holding nothing at all.
+if [ ! -s "$SELECTED_ROWS" ] && ! hu_bundle_work_pending; then
 	hu_ok_exit 'Nothing selected — nothing removed.'
 fi
 
@@ -1784,59 +1927,14 @@ PREVIEW_ROWS="$HUB_WORK/preview-rows.tsv"
 : >"$PREVIEW_ROWS"
 hu_row_counts_build "$REMOVE_ONLY" "$PREVIEW_ROWS"
 
-# The first-run bundle comes out only on a complete uninstall. A selective
-# uninstall never touches CLAUDE.md or the contract schemas: they are not any
-# domain's component, so no selection of components can imply removing them.
-BUNDLE_REMOVE=$OPT_ALL
-
-# ---------------------------------------------------------------------------
-# CLAUDE.md backup selection (--all only).
-# ---------------------------------------------------------------------------
-RESTORE_TARGET=""
-BACKUPS="$HUB_WORK/backups.txt"
-: >"$BACKUPS"
-if [ "$BUNDLE_REMOVE" -eq 1 ]; then
-	hub_bundle_backups "$TARGET_DIR" >"$BACKUPS"
-	BACKUP_COUNT=$(hub_count_lines "$BACKUPS")
-	# --restore-backup IS CONSULTED FIRST, BEFORE the count branches below, and
-	# that ordering is the fix for two silent failures. It used to be read only
-	# inside the "more than one backup" arm, so with EXACTLY ONE backup present
-	# `--restore-backup=none` was ignored outright and that backup was restored
-	# anyway (and, per lib/hub-bundle.sh, consumed) — a caller's explicit
-	# instruction not to touch its contract, silently inverted. A bogus timestamp
-	# matching no real backup was ignored the same way instead of being rejected.
-	# The count now decides only what happens when the caller said NOTHING, and a
-	# named timestamp is validated against the backups that actually exist however
-	# many that is — including none, where naming one is a usage error and not a
-	# no-op.
-	if [ -n "$OPT_RESTORE_BACKUP" ]; then
-		if [ "$OPT_RESTORE_BACKUP" = none ]; then
-			RESTORE_TARGET=""
-		else
-			# An exact whole-line match against the fully-qualified backup
-			# path, not a substring/suffix search: a timestamp is
-			# attacker-irrelevant but user-typo-prone, and a partial match
-			# would happily restore a DIFFERENT backup than the one named.
-			RESTORE_TARGET=$(grep -xF -- "$TARGET_DIR/$HUB_BUNDLE_CONFIG_NAME.backup.$OPT_RESTORE_BACKUP" "$BACKUPS") ||
-				die_usage "no backup matches --restore-backup=$OPT_RESTORE_BACKUP"
-		fi
-	elif [ "$BACKUP_COUNT" -eq 1 ]; then
-		RESTORE_TARGET=$(cat "$BACKUPS")
-	elif [ "$BACKUP_COUNT" -gt 1 ]; then
-		if ! hub_interactive; then
-			hu_blocked restore_selection_required \
-				"multiple $HUB_BUNDLE_CONFIG_NAME backups found; pass --restore-backup=<timestamp> or --restore-backup=none"
-		fi
-		hu_choose_backup
-	fi
-fi
-
 # ---------------------------------------------------------------------------
 # Preview. Always human-readable text, in EVERY mode — the dry run is the
 # informed-consent surface and an agent-facing caller reads it too. The block is
 # wrapped in `{ ... } >&3` (the human channel opened at the top of this script);
 # a brace group, not a subshell, so the variables it sets — notably TOTAL, which
-# the confirm and result stages both need — survive it.
+# the confirm and result stages both need — survive it. Its dry-run wording (the
+# total's "Nothing has changed yet." and the [DRY RUN] marker) is dropped only
+# when APPLY_WITHOUT_PROMPT=1, where the removal follows with no prompt between.
 # ---------------------------------------------------------------------------
 {
 if [ "$OPT_ALL" -eq 1 ]; then
@@ -1881,21 +1979,24 @@ fi
 
 TOTAL=$REMOVE_COUNT
 if [ "$BUNDLE_REMOVE" -eq 1 ]; then
-	BUNDLE_COUNT=$(hub_bundle_count "$FRAMEWORK_ROOT")
-	TOTAL=$((TOTAL + BUNDLE_COUNT))
-	printf "  Also removing (the framework's own operating contract, removed last):\n"
-	printf '    %s %s and %s contract %s\n' "$(hub_glyph_remove)" "$HUB_BUNDLE_CONFIG_NAME" \
-		"$((BUNDLE_COUNT - 1))" "$(hub_plural "$((BUNDLE_COUNT - 1))" schema schemas)"
-	if [ -n "$RESTORE_TARGET" ]; then
-		printf '\n  A backed-up %s was found and will be restored:\n' "$HUB_BUNDLE_CONFIG_NAME"
-		printf '    %s %s %s\n' "${RESTORE_TARGET##*/}" "$(hub_glyph_arrow)" "$HUB_BUNDLE_CONFIG_NAME"
+	# Only the bundle items present in the target are counted and named — see
+	# hu_bundle_present_build. The restore note stands on its own: a backup is
+	# restored even when the CLAUDE.md link itself is already absent.
+	TOTAL=$((TOTAL + HU_BUNDLE_PRESENT_COUNT))
+	if [ "$HU_BUNDLE_PRESENT_COUNT" -gt 0 ]; then
+		printf "  Also removing (the framework's own operating contract, removed last):\n"
+		printf '    %s %s\n' "$(hub_glyph_remove)" "$(hu_bundle_preview_item)"
+		printf '\n'
 	fi
-	printf '\n'
+	if [ -n "$RESTORE_TARGET" ]; then
+		printf '  A backed-up %s was found and will be restored:\n' "$HUB_BUNDLE_CONFIG_NAME"
+		printf '    %s %s %s\n' "${RESTORE_TARGET##*/}" "$(hub_glyph_arrow)" "$HUB_BUNDLE_CONFIG_NAME"
+		printf '\n'
+	fi
 fi
 
-printf '  %s %s total. Nothing has changed yet.\n' "$TOTAL" "$(hub_plural "$TOTAL" item items)"
+printf '  %s %s total.%s\n' "$TOTAL" "$(hub_plural "$TOTAL" item items)" "$(hub_not_changed_yet_clause)"
 
-printf '\n'
 hub_dry_run_marker
 printf '\n'
 } >&3
@@ -1906,7 +2007,10 @@ printf '\n'
 # stderr under --format=env|json — leaving stdout completely EMPTY and breaking
 # this script's own invariant that a machine caller always receives a HUB_STATUS
 # line on stdout. Reachable whenever every selected row resolves to "Kept".
-if [ "$TOTAL" -eq 0 ]; then
+#
+# A PENDING RESTORE IS NOT "nothing": hub_bundle_remove restores a chosen backup
+# even when no bundle item is present, so exiting here would silently drop it.
+if [ "$TOTAL" -eq 0 ] && [ -z "$RESTORE_TARGET" ]; then
 	hu_ok_exit 'Nothing to remove.'
 fi
 

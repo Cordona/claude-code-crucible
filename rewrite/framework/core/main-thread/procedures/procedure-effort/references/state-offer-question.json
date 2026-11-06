@@ -1,0 +1,15 @@
+{
+  "questions": [
+    {
+      "header": "Effort",
+      "question": "What should happen to this effort?",
+      "multiSelect": false,
+      "options": [
+        { "label": "Keep going", "description": "Nothing changes; it stays open." },
+        { "label": "Pause", "description": "Park it; it can be picked up again later." },
+        { "label": "Complete", "description": "Mark it done; it can be reopened." },
+        { "label": "Drop", "description": "Mark it abandoned; it can be reopened." }
+      ]
+    }
+  ]
+}

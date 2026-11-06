@@ -1,0 +1,23 @@
+# 03 · Description and frontmatter (FM)
+
+Purpose: the skill loads, triggers on the right requests, and only on them.
+Judges description content and invocation control; field syntax, limits and names are lint.
+
+**Applies when:** every skill and command file. Agent descriptions: agent-04.
+**MUST lint:** LNT-02, LNT-03, LNT-04, LNT-05, LNT-06, LNT-07, LNT-08, LNT-09, LNT-10, LNT-12, LNT-13, LNT-14, LNT-35, LNT-64. SHOULD lint used here: LNT-11, LNT-42, LNT-49, LNT-63.
+
+**Levels.** Each item takes the level of the heading above it.
+
+## MUST
+
+- **FM-01** · Does the description state what the skill does and when to use it, key use case first? · Check: yes if (a) a capability clause and a when-clause exist and (b) sentence 1 names the main use, judged regardless of voice (FM-04); a body "when this applies" section is fine only when it carries preconditions or gates, not trigger phrases. · Fix: rewrite as "<capability>. Use when <triggers>.".
+- **FM-04** · Is the voice the house pattern: a noun-phrase or third-person capability, then a when-clause ("Use when…", "Bind when…", "Bind ONLY when…", "Pair with…")? · Check: first and second person are LNT-14; judge the pattern only. · Fix: rewrite the opening, then the when-clause.
+- **FM-06** · Do skills the orchestrator invokes or agents preload leave `disable-model-invocation` unset (or `false`), with `true` used only on user-typed commands nothing binds? A plugin is exempt: a plugin (a `language-` or `framework-` skill, a `standard-` skill under `plugins/standards/`, or a `procedure-` skill under `plugins/procedures/`) is read by path only and sets it by design. · Check: LNT-35 covers prefixes and preloads; judge other binders. `user-invocable: false` only hides the `/` entry and is not judged here. · Context: `grep -rn '<name>'` in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md`, skill bodies and agent files. · Fix: set the flag to `false`; gate the side effect inside by consent (SAFE-04).
+
+## SHOULD
+
+- **FM-02** · Does the description carry the requester's terms — domain nouns and intent categories within the first ~200 characters, at most five quoted anchor phrasings, longer example lists in `when_to_use` — framed on intent, not mechanics? · Check: write three natural requests; yes if each shares a key term with the description; N/A with `disable-model-invocation: true`. · Context: up to three sibling descriptions with overlapping scope. · Fix: add the missing terms; move long phrase lists to `when_to_use` (within LNT-11; the description itself within LNT-63); remove implementation detail.
+- **FM-03** · Does the description state negative scope and name the sibling to use instead? · Check: yes if every overlapping sibling has a "not for X (use Y)" clause. · Context: descriptions of skills sharing the target's prefix. · Fix: add "Not for … (use `<sibling>`)."
+- **FM-05** · Does the description disclose side effects (writes, commits, publishing, outward calls) and hard prerequisites? · Check: compare with the body's writes and required tools. · Fix: add one clause: "Writes …; needs …".
+- **FM-07** · Does a user-invocable skill taking arguments declare `argument-hint`, parse arguments against a closed list, and reject unknown ones with a one-sentence usage message? · Check: read the frontmatter and the parsing step. · Fix: add the hint, the valid list, and the rejection sentence.
+- **FM-08** · Is each optional field (`model`, `effort`, `paths`, `context`, `agent`, `shell`, `hooks`, `compatibility`, `metadata`, `license`) present only because the skill relies on its documented effect? · Check: for each present field, find the step that depends on it; `model` lowers the tier only after an EVAL-09 delta shows no loss. · Fix: delete fields nothing relies on.

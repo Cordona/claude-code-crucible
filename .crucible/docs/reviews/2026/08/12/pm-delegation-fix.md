@@ -1,0 +1,51 @@
+# Review: claude-code-crucible
+
+**Repo:** claude-code-crucible
+**Started:** 2026-08-12 · **Last updated:** 2026-08-12
+**Round:** 1 (of 3 max)
+**Verdict:** CHANGES_REQUIRED
+
+## Round history
+- Round 1: lens-security-reviewer
+
+## Findings
+
+### SEC-001 — HIGH
+**Tracked status:** pending · **Finding status:** new
+**Reviewer:** lens-security-reviewer
+**File:** project-management/flows/flow-project-management/SKILL.md:53-55
+
+The P2 handoff relays the confirmed Jira site and the resolved config-file path as two independent literal strings with no binding check, and P4/P5 are told to reuse the remembered path — but nothing enforces that the reused path actually belongs to the confirmed site, so a stale/mis-paired path can send one client's Jira credential to another client's site with no detection.
+→ Fix: Never hand or reuse a remembered path across steps: re-run jira-curl-config.sh --site <confirmed-host> at each point of use (it is non-interactive, idempotent, fails closed), and require the basename of the resolved path to equal <confirmed-site>.cfg before any jira.sh call.
+
+### SEC-002 — MEDIUM
+**Tracked status:** pending · **Finding status:** new
+**Reviewer:** lens-security-reviewer
+**File:** project-management/flows/flow-project-management/SKILL.md:70
+
+The missing-agent exception that permits skipping this diff's own mandatory-delegation rule triggers on a self-asserted, unfalsifiable condition ("verify it is actually missing, never assume so from a failed recall") with no named verification mechanism, so the orchestrator can declare the specialist absent on nothing more than its own failed recall.
+→ Fix: Name a deterministic check (e.g. testing for the absence of the deployed agent file/symlink) and require its literal command + output to appear in the mandatory disclosure to the user, so the absence claim is evidenced, not merely asserted.
+
+### SEC-003 — MEDIUM
+**Tracked status:** pending · **Finding status:** new
+**Reviewer:** lens-security-reviewer
+**File:** project-management/flows/flow-project-management/SKILL.md:70
+
+The missing-agent exception claims "the bar never lowers" by citing P4's consent gate as the substitute for the missing specialist analysis, but P4 already applies unconditionally on the normal path too, so nothing new actually fills the gap the missing analysis leaves; the cited flow-implementation precedent substitutes a genuinely new independent check (a cold execution test), which this exception does not.
+→ Fix: Give the exception a real substitute: either dispatch a cold general-purpose agent to do the convention analysis, or require the orchestrator to present the raw evidence its own read produced at P4 and state explicitly that no specialist convention-check was performed.
+
+### SEC-004 — MEDIUM
+**Tracked status:** pending · **Finding status:** new
+**Reviewer:** lens-security-reviewer
+**File:** project-management/agents/project-manager/skills/procedure-jira-auth/SKILL.md:28
+
+The fixed site+account confirmation template is now also presented at P2 (a read-only lookup), but its header still reads "confirm before I write to Jira" and its first row "Writing under (site)" — a write-framed prompt used to authorize a read, immediately followed by a second, separate write-consent prompt at P4, risking rubber-stamped consent ("I already approved this").
+→ Fix: Add a P2-specific variant of the block whose header and first row state the imminent action is a read-only lookup, and that the actual write still requires the separate P4 consent gate, keeping the four data rows byte-identical to the P4/P5 variant.
+
+### SEC-005 — MEDIUM
+**Tracked status:** pending · **Finding status:** new
+**Reviewer:** lens-security-reviewer
+**File:** project-management/flows/flow-project-management/SKILL.md:52-54
+
+P2 now places a write-capable Jira credential inside the project-manager subagent's process before any user consent exists, with no scope restriction stated in the dispatch — and that same process ingests attacker-authorable Jira ticket text (comments/changelog), so a prompt-injected instruction meets an agent that now holds the means to act on it.
+→ Fix: State explicitly in P2 step 2 (and in the dispatch text itself) that the handed credential authorizes read-only jira.sh commands only (view/search/workflow/children/transition --plan) and that project-manager must never invoke a write command with it — every write remains the orchestrator's, at P5.

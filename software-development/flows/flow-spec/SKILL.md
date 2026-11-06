@@ -83,9 +83,9 @@ Brief `software-architect` (it has no conversation history — give it the full 
 
 ## 4. Persist the durable artifact
 
-Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same-named `.json` alongside it, conforming to `spec-document.schema.json`), written once at approval time, referenced (never re-dated) by every downstream commit/PR/`flow-implementation` dispatch for the life of the effort.
+Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same-named `.json` alongside it, conforming to `spec-document.schema.json`), written once at approval time, referenced (never re-dated) by every downstream commit/PR/`flow-implementation` dispatch for the life of the effort. If the interface later needs to change, draft a new spec rather than editing this one — flip this file's `status` to `superseded` and keep it for history; a superseded spec is never edited in place.
 
-**The rendered MD — every field maps directly to the JSON schema, one-to-one:**
+**The rendered MD (Markdown) — every CONTENT field maps directly to the JSON schema, one-to-one** (`schema_version` and `id` are bookkeeping-only and never rendered):
 
 ```markdown
 # Spec: <title>
@@ -121,9 +121,9 @@ Location: `.crucible/docs/specs/{year}/{month}/{day}/{effort-slug}.md` (+ a same
 - <open_questions[0]>
 ```
 
-Omit the "Approved by" line entirely while `status` is `draft`. Render "Decision log" as the literal "(none — ...)" line when `decision_log` is empty — never a blank heading with nothing under it, same rendering-completeness rule the gate plan (§3) already follows.
+Omit the "Approved by" line entirely while `status` is `draft`. Render "Decision log" as the literal "(none — ...)" line when `decision_log` is empty — never a blank heading with nothing under it. Render an empty `exposes`/`consumes` list as the literal "(none)" line. Omit the "Non-goals", "Constraints", or "Open questions" section entirely — heading and all — when that field is absent from the JSON, rather than rendering an empty heading.
 
-> **Script-backed.** `spec-create.sh` drafts and stamps the JSON artifact, `spec-approve.sh` flips it to `approved`, and `render-md.sh` renders the JSON to the Markdown template above — the same deterministic-script discipline as the GTD inbox scripts. Use them rather than writing the file directly.
+> **Script-backed.** `spec-create.sh` drafts and stamps the JSON artifact, `spec-approve.sh` flips it to `approved`, and `render-md.sh` renders the JSON to the Markdown template above — the same deterministic-script discipline as the GTD — Getting Things Done — inbox scripts. Use them rather than writing the file directly.
 
 ---
 
@@ -141,6 +141,3 @@ Omit the "Approved by" line entirely while `status` is `draft`. Render "Decision
 - **The spec is a durable, committed artifact, not conversational context** — every pair is briefed with a path, never a paraphrase (§4, §5).
 - **Never paste the spec verbatim into a dispatch prompt** — path + hint only (§5).
 - **Never price the review** — the gate asks about the contract's correctness, never tokens or time (§3).
-
----
-*Procedure Version: 1.0 — the cross-repo/multi-tech-pair gate that precedes `flow-implementation`. The panel itself lives in `flow-decision`; the drafting specialist is `software-architect`. The durable-artifact persistence mechanism is script-backed (§4): `spec-create.sh`, `spec-approve.sh`, and `render-md.sh`.*

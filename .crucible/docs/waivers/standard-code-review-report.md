@@ -1,0 +1,2 @@
+- FM-03: the description names no sibling for the developer report; owner rule: name another skill only when it cannot work without it (owner)
+- SCH-15: rejections return to the reviewer for an in-place fix; no reader for a log (owner)

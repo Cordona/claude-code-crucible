@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.0",
+  "id": "test-plan-gate-lens-pass",
+  "repo": "claude-code-crucible",
+  "created": "2026-10-02",
+  "last_updated": "2026-10-03",
+  "rounds": [
+    {
+      "round": 1,
+      "generated": "2026-10-02",
+      "reviewers": [
+        "lens-security-reviewer",
+        "lens-compatibility-reviewer",
+        "lens-consistency-reviewer",
+        "lens-clean-code-reviewer",
+        "lens-self-documenting-code-reviewer"
+      ]
+    }
+  ],
+  "overall_verdict": "APPROVED_WITH_FOLLOWUPS",
+  "summary": {
+    "open": {
+      "critical": 0,
+      "high": 0,
+      "medium": 9,
+      "low": 14
+    },
+    "resolved": 0,
+    "new": 23,
+    "ack": 0
+  },
+  "findings": [
+    {
+      "id": "SEC-001",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "insecure-design",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-approve.sh:170-252",
+        "software-development/flows/flow-testing/SKILL.md:62"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Nothing binds the approved plan to the bytes the human saw; approve.sh re-reads the mutable plan file, drafts share its directory, and a prompt-injected tests-developer could swap in another valid plan before or after approval.",
+      "fix": "render-md.sh emits a sha256 of the rendered bytes; approve.sh requires --expect-sha256 and builds from a private copy; orchestrator re-checks the digest before AUTHOR/TESTS dispatch; drafts go to a separate directory."
+    },
+    {
+      "id": "SEC-002",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "input-validation",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/lib/test-plan-validate.jq:39",
+        "software-development/contracts/test-plan.schema.json:215"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The forbidden set omits invisible format characters (U+200B-200F, U+061C, U+00AD, U+2060-2064, U+FEFF, tag characters U+E0000-E007F); tag characters can smuggle instructions to downstream agents that the human never sees; a ZWSP-only value passes as non-empty; tojson'd keys can echo C1/bidi raw.",
+      "fix": "Extend forbidden_characters, schema patterns, and neutralize in lockstep to the full invisible/Cf list; require a visible character; gsub forbidden characters out of echoed keys."
+    },
+    {
+      "id": "SEC-003",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "injection",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/render-md.sh:190"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Inline Markdown/HTML stays live: an HTML comment split across two values can hide renderer text in HTML-aware viewers, image links can beacon, and whitespace padding can fake a line start in a terminal.",
+      "fix": "Escape & < > and inline Markdown metacharacters in free text; collapse whitespace runs."
+    },
+    {
+      "id": "SEC-004",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "path-traversal",
+      "locations": [
+        "software-development/contracts/test-plan.schema.json:236",
+        "software-development/flows/flow-testing/scripts/lib/test-plan-validate.jq:68"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Paths are described as repo-relative but not enforced; an approved plan could name an absolute or ../ path and authorize writes outside the repo.",
+      "fix": "Reject leading / or ~, any .. segment, backslashes, and a leading - in paths (validator and schema)."
+    },
+    {
+      "id": "SEC-005",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "security-consistency",
+      "locations": [
+        "software-development/flows/flow-testing/SKILL.md:62-73"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "flow-testing never states that plan contents, render output, and script diagnostics are untrusted data, right before the consent gate; injected 'already approved' text targets exactly this gate.",
+      "fix": "State in §3 and the Invariants that these are data, never instructions; approve runs only on the human's in-turn answer."
+    },
+    {
+      "id": "SEC-006",
+      "reviewer": "lens-security-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "secrets",
+      "locations": [
+        "software-development/agents/developers/tests-developer.md:65"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The scratch-copy rule copies the whole project (including .env/credentials) to an unspecified location with no permissions or deletion step.",
+      "fix": "Create it with mktemp -d (0700) under the session scratchpad or TMPDIR, copy only what the build needs, delete it at dispatch end and report that."
+    },
+    {
+      "id": "COMPAT-001",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "optional-to-required",
+      "locations": [
+        "software-development/agents/developers/tests-developer.md:11"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "MODE is a new required dispatch input with no defined behavior when missing; an old-style dispatch gets undefined behavior.",
+      "fix": "Add a no-MODE rule and Edge Cases row: stop and report that the dispatch must name PLAN or AUTHOR."
+    },
+    {
+      "id": "COMPAT-002",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "mixed-version-unsafe",
+      "locations": [
+        "software-development/agents/developers/tests-developer.md:48",
+        "software-development/flows/flow-testing/SKILL.md:54"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Agents and skill are live via symlink but test-plan.schema.json is not deployed to ~/.claude/crucible/contracts; there is no 'if unreadable' clause.",
+      "fix": "Deploy the contract with the hub in the same rollout; add an 'if the schema is unreadable, the script's validation error is the shape authority' clause."
+    },
+    {
+      "id": "COMPAT-003",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "behavioral-break",
+      "locations": [
+        "CLAUDE.md:56"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "An untouched CLAUDE.md line says flow-testing §3 runs in full before tests-developer or the reviewer touch anything, contradicting §3b/§3c which dispatch both inside the gate.",
+      "fix": "Reword to: flow-testing §3, starting with the §3a scope question, before any test is written."
+    },
+    {
+      "id": "COMPAT-004",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "response-shape-change",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-test-quality-reviewer.md:64-68"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Revised-plan JSON in ## Notes, plan:item locations, and an unused verdict conflict with the bound review-report-standards; the payload risks being dropped. Convergent with CONS-001.",
+      "fix": "Sanction the plan payload and plan:item locations in review-report-standards and the finding schema, and cite that from the reviewer."
+    },
+    {
+      "id": "COMPAT-005",
+      "reviewer": "lens-compatibility-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "behavioral-break",
+      "locations": [
+        "software-development/shared/standards/lens/standard-testing/SKILL.md:94"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "standard-testing §4/§7 change meaning (lowest-level-first, golden default); existing suites will draw new findings with no migration note.",
+      "fix": "Note in the reviewer that suites built to the old rules fall under the conflict protocol and diff-scope."
+    },
+    {
+      "id": "CONS-001",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "api-shape",
+      "locations": [
+        "software-development/agents/reviewers/lens/lens-test-quality-reviewer.md:66",
+        "software-development/flows/flow-testing/SKILL.md:66"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The reviewer emits a fenced revised-plan JSON and a Volume line inside ## Notes, but review-report-standards limits Notes to five prose kinds and routes machine artifacts to a schema field. Convergent with COMPAT-004.",
+      "fix": "Add an optional plan_revision field to review-finding-report.schema.json documented beside conventions_profile, or sanction the exception in review-report-standards."
+    },
+    {
+      "id": "CONS-002",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-challenge.sh:26"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "--plan/--revision diverge from the house --json-file/--fields-file, and from test-plan-create.sh's own --fields-file.",
+      "fix": "Rename to --json-file and --fields-file across the scripts and flow-testing §3."
+    },
+    {
+      "id": "CONS-003",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-create.sh:312"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Output key TESTPLAN_JSON breaks the prefix-uppercased rule (SPEC_JSON, REVIEW_JSON).",
+      "fix": "Emit TEST_PLAN_JSON in all four scripts and docs."
+    },
+    {
+      "id": "CONS-004",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "dto-shape",
+      "locations": [
+        "software-development/contracts/test-plan.schema.json:30"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Schema descriptions restate lifecycle semantics owned by flow-testing §3.",
+      "fix": "Trim to value domain plus a citation of flow-testing §3."
+    },
+    {
+      "id": "CONS-005",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "dto-shape",
+      "locations": [
+        "software-development/contracts/artifact-slug.schema.json:5"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "artifact-slug.schema.json is scoped to durable flow-spec/flow-review artifacts; test plans are an unacknowledged third, non-durable consumer.",
+      "fix": "Widen its description to name flow-testing test plans."
+    },
+    {
+      "id": "CONS-006",
+      "reviewer": "lens-consistency-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "naming-convention",
+      "locations": [
+        "software-development/flows/flow-implementation/SKILL.md:122"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "A bare §3a refers to flow-testing, violating the bare-§N-means-same-file rule.",
+      "fix": "Write it as `flow-testing` §3a."
+    },
+    {
+      "id": "CLEAN-001",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "MEDIUM",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-create.sh:260-266",
+        "software-development/flows/flow-testing/scripts/test-plan-approve.sh:225-229"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The body-assembly shape (six keys plus floor-normalising) is hand-copied into four writers; a missed edit silently drops an optional field.",
+      "fix": "Add def plan_body($src) to the shared lib and build from it in all writers."
+    },
+    {
+      "id": "CLEAN-002",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/lib/test-plan-validate.jq:196-245"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The earlier-duplicate idiom is repeated in four rules.",
+      "fix": "Extract def duplicate_positions and map over it."
+    },
+    {
+      "id": "CLEAN-003",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "dry",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-create.sh:183"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The slug regex is duplicated between create.sh and the validator.",
+      "fix": "Add def slug_errors to the lib and use it in both."
+    },
+    {
+      "id": "CLEAN-004",
+      "reviewer": "lens-clean-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "function-size",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/lib/test-plan-validate.jq:281-311"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "plan_document_errors mixes key presence, stamped-field shape, and lifecycle rules at four nesting levels.",
+      "fix": "Extract stamped_field_errors and status_lifecycle_errors; derive the required list from stamped_keys."
+    },
+    {
+      "id": "DOC-001",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "redundant-comment",
+      "locations": [
+        "software-development/flows/flow-testing/scripts/test-plan-challenge.sh:14-17"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "The WHY comment restates the workflow and gets it wrong: the reviewer drafts the revised plan, the orchestrator writes it unchanged.",
+      "fix": "Keep only the WHY (whole-plan validation) and cite flow-testing §3c."
+    },
+    {
+      "id": "DOC-002",
+      "reviewer": "lens-self-documenting-code-reviewer",
+      "status": "NEW",
+      "tracked_status": "IN_PROGRESS",
+      "severity": "LOW",
+      "category": "redundant-comment",
+      "locations": [
+        "software-development/agents/developers/tests-developer.md:33"
+      ],
+      "first_seen": "2026-10-02",
+      "problem": "Lists the reviewer's review-only checks while saying they are not restated here.",
+      "fix": "Cite the reviewer's Review-only checks instead of enumerating."
+    }
+  ]
+}

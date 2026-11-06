@@ -1,0 +1,47 @@
+#!/usr/bin/env expect
+#
+# drive-skipped-screen-baseline-only.exp — walk a target where every candidate of the
+#                                          mandatory kind is ALREADY installed, so its
+#                                          screen is never rendered at all.
+#
+# WHAT THIS REACHES THAT NOTHING ELSE DOES: with no candidate left, the technology
+# screen's rows file is empty and the walk SKIPS the step instead of asking — a
+# branch entirely separate from the empty-selection guard the other drivers exercise.
+# The same target taken non-interactively has no rows file at all, reaches the guard,
+# finds something present and records there instead. Two different pieces of code,
+# one documented answer: the field must publish the same value either way. This
+# driver is the interactive half of that; run-tests.sh's own
+# install(all-candidates-installed) is the other, against the identical fixture.
+#
+# THE KEY SEQUENCE — and the absence in it is the case:
+#   1. select the one domain
+#   2. decline VCS (optional)   not an exemption; must not be recorded
+#   3. …no technology screen…   skipped, and recorded on the way past
+#   4. confirm                  apply, and print the payload
+# Nothing is ever typed at a technology screen here, which is why the confirm prompt
+# arriving straight after the VCS screen is itself part of what is being asserted:
+# a rendered technology screen would swallow the Enter meant for the confirm gate and
+# the walk would time out rather than quietly passing.
+#
+# The spawn, the screen helper and the payload readback are shared — see
+# lib/drive-baseline-only-common.exp for those, and for the marker contract.
+#
+# Usage: expect -f drive-skipped-screen-baseline-only.exp SRC TARGET INSTALL HOME PATH
+#        with APPLIED_MARKER and BASELINE_MARKER exported.
+
+source [file join [file dirname [info script]] drive-baseline-only-common.exp]
+
+expect_screen "Which domain(s)" "domains-screen"
+send "software-development\r"
+expect_screen "1 selected" "domain-toggled"
+send "\r"
+
+expect_screen "select VCS" "vcs-screen"
+send "\r"
+
+# Enter accepts the SAFE-tier confirm gate (lib/hub-nav.sh's hub_confirm_gate), so
+# the walk actually applies and emits the machine payload this case reads.
+expect_screen "Proceed?" "confirm-screen"
+send "\r"
+
+report_baseline_only_payload

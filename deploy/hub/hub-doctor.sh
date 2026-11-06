@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# hub-doctor.sh — Capability: Doctor. Required tools, diverged components and
-#                  Accounts — plus a summary and next steps scoped to only
-#                  those things.
+# hub-doctor.sh — Capability: Doctor. Required tools, diverged components,
+#                  missing bundle contract schemas and Accounts — plus a
+#                  summary and next steps scoped to only those things.
 #
 # Doctor deliberately does NOT list installed-and-healthy components — List
 # owns "what is installed", Doctor owns "can the environment actually run it".
@@ -87,6 +87,7 @@ HUB_DIR0=$(dirname "$0")
 . "$HUB_DIR0/lib/hub-discovery.sh"
 . "$HUB_DIR0/lib/hub-state.sh"
 . "$HUB_DIR0/lib/hub-symlink.sh"
+. "$HUB_DIR0/lib/hub-bundle.sh"
 
 hub_workspace_init
 
@@ -237,6 +238,25 @@ awk -F '\t' '$4 == "DIVERGED"' "$HUB_ROWS" >"$DIVERGED_ROWS"
 DIVERGED_ITEMS="$HUB_WORK/diverged-items.txt"
 awk -F '\t' '{ print $3 }' "$DIVERGED_ROWS" >"$DIVERGED_ITEMS"
 DIVERGED_COUNT=$(hub_count_lines "$DIVERGED_ITEMS")
+
+# ---------------------------------------------------------------------------
+# Bundle contract schemas — on a target the bundle has bootstrapped, the schemas
+# it does not have linked: MISSING (an install links them — a schema the
+# framework gained after the first run, or one removed by hand) or BLOCKED (a
+# file that is not framework-owned occupies the path; install reports and skips
+# it). A flow that reads a missing schema cannot work, which is this screen's
+# charter. hub_bundle_contracts_pending is the same classification install's
+# preview and Status read, so the three cannot disagree.
+#
+# Reported in its own section and its own payload fields, never folded into
+# PROBLEMS/NOTES/STEPS — the same reasoning the orphan section below states for
+# keeping that published, closed payload's counts stable.
+# ---------------------------------------------------------------------------
+HD_BUNDLE_MISSING="$HUB_WORK/bundle-contracts-missing.txt"
+HD_BUNDLE_BLOCKED="$HUB_WORK/bundle-contracts-blocked.txt"
+hub_bundle_contracts_pending "$FRAMEWORK_ROOT" "$TARGET_DIR" "$HD_BUNDLE_MISSING" "$HD_BUNDLE_BLOCKED"
+HD_BUNDLE_MISSING_COUNT=$(hub_count_lines "$HD_BUNDLE_MISSING")
+HD_BUNDLE_BLOCKED_COUNT=$(hub_count_lines "$HD_BUNDLE_BLOCKED")
 
 # ---------------------------------------------------------------------------
 # Orphaned components — the other half of the same charter, and it was missing.
@@ -865,6 +885,8 @@ env)
 	# discipline elsewhere calls forbidden, just in the direction that's easier
 	# to miss (a human sees it, an agent parsing --format=env cannot).
 	hub_emit_itemized_env HUB_ORPHANED "$HD_ORPHAN_NAMES"
+	hub_emit_itemized_env HUB_BUNDLE_CONTRACTS_MISSING "$HD_BUNDLE_MISSING"
+	hub_emit_itemized_env HUB_BUNDLE_CONTRACTS_BLOCKED "$HD_BUNDLE_BLOCKED"
 	# THE MUTATION RECEIPT for --clean-orphans --apply, ONLY when that flag was
 	# actually given — the same "HUB_APPLIED only on a real result" rule
 	# hub-install.sh/hub-uninstall.sh already follow, so a caller that never
@@ -908,6 +930,8 @@ json)
 	# Same contract addition as the env branch above: HD_ORPHAN_NAMES already
 	# holds just the name column (HD_ORPHANS is name<TAB>kind).
 	HD_ORPHAN_JSON=$(hub_itemized_json_array "$HD_ORPHAN_NAMES")
+	HD_BUNDLE_MISSING_JSON=$(hub_itemized_json_array "$HD_BUNDLE_MISSING")
+	HD_BUNDLE_BLOCKED_JSON=$(hub_itemized_json_array "$HD_BUNDLE_BLOCKED")
 	# THE MUTATION RECEIPT, same rule as the env branch: present only when
 	# --clean-orphans was actually given.
 	HD_CLEAN_APPLIED=false
@@ -930,6 +954,8 @@ json)
 		--argjson jira_state_known "$([ "$JIRA_STATE_KNOWN" = true ] && printf true || printf false)" \
 		--argjson diverged_count "$DIVERGED_COUNT" \
 		--argjson orphaned_count "$HD_ORPHAN_COUNT" \
+		--argjson bundle_contracts_missing_count "$HD_BUNDLE_MISSING_COUNT" \
+		--argjson bundle_contracts_blocked_count "$HD_BUNDLE_BLOCKED_COUNT" \
 		--argjson clean_applied "$HD_CLEAN_APPLIED" \
 		--argjson clean_attempted_count "$HD_CLEAN_ATTEMPTED_JSON" \
 		--argjson clean_acted_on_count "$HD_CLEAN_ACTED_ON_JSON" \
@@ -939,6 +965,8 @@ json)
 		--slurpfile steps "$HD_STEP_JSON" \
 		--slurpfile diverged "$HD_DIVERGED_JSON" \
 		--slurpfile orphaned "$HD_ORPHAN_JSON" \
+		--slurpfile bundle_contracts_missing "$HD_BUNDLE_MISSING_JSON" \
+		--slurpfile bundle_contracts_blocked "$HD_BUNDLE_BLOCKED_JSON" \
 		--slurpfile clean_foreign_blocked "$HD_CLEAN_BLOCKED_JSON" \
 		'{status:"ok", action:"doctor", gh_authenticated:$gh_authenticated,
 		  gh_state_known:$gh_state_known,
@@ -946,6 +974,10 @@ json)
 		  jira_configured:$jira_configured, jira_state_known:$jira_state_known,
 		  diverged_count:$diverged_count, diverged:$diverged,
 		  orphaned_count:$orphaned_count, orphaned:$orphaned,
+		  bundle_contracts_missing_count:$bundle_contracts_missing_count,
+		  bundle_contracts_missing:$bundle_contracts_missing,
+		  bundle_contracts_blocked_count:$bundle_contracts_blocked_count,
+		  bundle_contracts_blocked:$bundle_contracts_blocked,
 		  clean_orphans:{applied:$clean_applied, attempted_count:$clean_attempted_count,
 		    acted_on_count:$clean_acted_on_count, foreign_blocked:$clean_foreign_blocked},
 		  tools:$tools, problems:$problems, notes:$notes, steps:$steps}'
@@ -1007,6 +1039,25 @@ text)
 		printf '\n  Diverged components (%s):\n' "$HD_DIVERGED_LINES"
 		cat "$HD_DIVERGED_TEXT"
 		printf '    Run "Install" and re-select these to re-sync (see "List" for full detail).\n'
+	fi
+
+	HD_BUNDLE_LINES=$((HD_BUNDLE_MISSING_COUNT + HD_BUNDLE_BLOCKED_COUNT))
+	if [ "$HD_BUNDLE_LINES" -gt 0 ]; then
+		printf '\n  Contract schemas (%s):\n' "$HD_BUNDLE_LINES"
+		while IFS= read -r HD_LINE; do
+			[ -n "$HD_LINE" ] || continue
+			printf '    %s %s — missing from this target\n' "$(hub_glyph_warn)" "$HD_LINE"
+		done <"$HD_BUNDLE_MISSING"
+		while IFS= read -r HD_LINE; do
+			[ -n "$HD_LINE" ] || continue
+			printf '    %s %s — a file that is not framework-owned occupies its path\n' "$(hub_glyph_fail)" "$HD_LINE"
+		done <"$HD_BUNDLE_BLOCKED"
+		if [ "$HD_BUNDLE_MISSING_COUNT" -gt 0 ]; then
+			printf '    Run "Install" again (any domain selection) to add the missing ones.\n'
+		fi
+		if [ "$HD_BUNDLE_BLOCKED_COUNT" -gt 0 ]; then
+			printf '    Move or remove a blocking file, then run "Install" again.\n'
+		fi
 	fi
 
 	printf '\n  Accounts\n'
