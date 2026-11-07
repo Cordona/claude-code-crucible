@@ -25,7 +25,7 @@ A **seat** is one developer's git worktree of a part's repository, inside the ef
 
 ## Base
 
-When `flow-code-development` opens a seat for a part:
+When `flow-code-development` chooses a part's seat (steps 1–3, before its plan is shown) and, once that plan is approved, opens it (step 4):
 
 1. **The facts:** run `sh "<scripts>/base/seat-base.sh" --effort '<effort folder>' --repo '<repo>' --independent`, adding `--snapshot '<sha>'` only for a `SNAPSHOT:` sha the flow took. Its `unmerged` lists the idle seats whose work the checkout lacks.
 2. **The choice:** judge from the part's task and the spec or the work whether it builds on a seat in `unmerged`, or on the seat of a part it was waiting for. Builds on none: step 1's `base`. Builds on seats: run it again with one `--on '<slot>'` per seat in place of `--independent` and `--snapshot`, and take its `base` and `base_slots`.
