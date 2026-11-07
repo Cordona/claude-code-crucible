@@ -176,27 +176,30 @@ BEGIN {
 END { exit !(text ~ pattern) }
 '
 
-# Prints one "PLUGIN <problem>: <file>" line per SKILL.md without a closed
-# frontmatter. It reads the temp copies; the environment's
-# PREPARE_PROMPT_SCAN_PATHS holds each copy's checked path, one per line in
-# operand order, and every line names that path. A "---" line may end in a CR,
+# Prints one "PLUGIN plugin folder <name>: <problem>: <file>" line per SKILL.md
+# without a closed frontmatter. It reads the temp copies; the environment's
+# PREPARE_PROMPT_SCAN_PATHS and PREPARE_PROMPT_SCAN_NAMES hold each copy's
+# checked path and plugin name, one per line in operand order, and every line
+# names that path. A "---" line may end in a CR,
 # as in the frontmatter read and the message.
 # The program is single-quoted on purpose: its $0 is awk's, not the shell's.
 # shellcheck disable=SC2016
 readonly SCAN_AWK='
 function is_fence(line) { sub(/\r$/, "", line); return line == "---" }
-function add(problem, file) { printf "PLUGIN %s: %s\n", problem, file }
+function add(problem, file) { printf "PLUGIN plugin folder %s: %s: %s\n", current_name, problem, file }
 function finish_file() {
 	if (current == "") return
 	if (is_skill && !closed) add("SKILL.md has no frontmatter closed by a --- line; expected a frontmatter opened and closed by --- lines", current)
 }
 BEGIN {
 	split(ENVIRON["PREPARE_PROMPT_SCAN_PATHS"], checked_paths, "\n")
-	for (i = 1; i < ARGC; i++) checked_path[ARGV[i]] = checked_paths[i]
+	split(ENVIRON["PREPARE_PROMPT_SCAN_NAMES"], checked_names, "\n")
+	for (i = 1; i < ARGC; i++) { checked_path[ARGV[i]] = checked_paths[i]; checked_name[ARGV[i]] = checked_names[i] }
 }
 FNR == 1 {
 	finish_file()
 	current = checked_path[FILENAME]
+	current_name = checked_name[FILENAME]
 	is_skill = (current ~ /\/SKILL\.md$/)
 	closed = 0
 	opened = is_fence($0)
@@ -688,7 +691,7 @@ check_context() {
 	context_read_problem "${context_path}" "${context_copy}" ||
 		fault "a tool failed on the context read checks (jq or wc); the fault is in the host, not in the dispatch; the cause is on stderr."
 	if [ "${context_read_fault}" = stale ]; then
-		add_problem CONTEXT-STALE "${context_read_text}" "${context_path}"
+		add_stale_problem
 		return 0
 	fi
 	if [ -n "${context_read_fault}" ]; then
@@ -885,10 +888,10 @@ check_paths() {
 	while IFS="${TAB}" read -r listed_name path; do
 		check_path "${path}"
 		[ -n "${path_problem}" ] || [ "${plugin_name}" = "${listed_name}" ] ||
-			path_problem="path is in plugin folder ${plugin_name}, but listed under plugin ${listed_name}; expected it listed under plugin ${plugin_name}"
+			path_problem="plugin folder ${plugin_name} holds the path, but it is listed under plugin ${listed_name}; expected it listed under plugin ${plugin_name}"
 		[ -n "${path_problem}" ] || check_run_order
 		if [ -n "${path_problem}" ]; then
-			add_problem PLUGIN "${path_problem}" "${path}"
+			add_plugin_problem "${plugin_name:-${listed_name}}" "${path_problem}" "${path}"
 		else
 			build_args="${build_args}${plugin_name}
 ${file_kind}
@@ -902,7 +905,7 @@ EOF
 
 # Sets path_problem, plugin_name and file_kind for path $1 (every path check, then containment).
 check_path() {
-	path_problem=''
+	path_problem='' plugin_name=''
 	case $1 in
 		/*) ;;
 		*) path_problem="path is not absolute; expected a path under ${skills_dir}/"; return 0 ;;
@@ -919,7 +922,11 @@ check_path() {
 	plugin_name=${path_in_skills%%/*}
 	case ${plugin_name} in
 		language-?* | framework-?* | standard-?* | procedure-?*) ;;
-		*) path_problem="path is not in a plugin folder; expected a path in a language-*, framework-*, standard-* or procedure-* folder of ${skills_dir}/"; return 0 ;;
+		*)
+			plugin_name=''
+			path_problem="path is not in a plugin folder; expected a path in a language-*, framework-*, standard-* or procedure-* folder of ${skills_dir}/"
+			return 0
+			;;
 	esac
 	[ -f "${skills_dir}/${plugin_name}/SKILL.md" ] || {
 		path_problem="plugin folder ${plugin_name} has no SKILL.md; expected ${skills_dir}/${plugin_name}/SKILL.md"
@@ -960,7 +967,7 @@ ${plugin_name}
 	run_plugins="${run_plugins}${plugin_name}
 "
 	[ "${file_kind}" = skill ] ||
-		path_problem="first path of plugin folder ${plugin_name} is not ${plugin_name}/SKILL.md; expected its SKILL.md before its references"
+		path_problem="plugin folder ${plugin_name} has a first path that is not ${plugin_name}/SKILL.md; expected its SKILL.md before its references"
 }
 
 # Sets path_problem when file $1, its symlinks followed, resolves outside the
@@ -1053,6 +1060,23 @@ add_problem() {
 	problems="${problems}$1 $2: $3${NL}"
 }
 
+# Adds a PLUGIN problem whose text starts "plugin folder <name>", $1 the
+# plugin's install name, so the name survives the line cap; $2 the problem,
+# kept as it is when it already starts so; $3 the path.
+add_plugin_problem() {
+	case $2 in
+		"plugin folder $1 "*) add_problem PLUGIN "$2" "$3" ;;
+		*) add_problem PLUGIN "plugin folder $1: $2" "$3" ;;
+	esac
+}
+
+# Adds the CONTEXT-STALE problem with the shared read check's text, its path
+# the effort's latest version (context_read_latest), or the dispatch's
+# context file when the check gave none.
+add_stale_problem() {
+	add_problem CONTEXT-STALE "${context_read_text}" "${context_read_latest:-${context_path}}"
+}
+
 # Copies each file in build_args once into the private temp folder and sets
 # copy_args to its name, kind, path and copy lines; re-runs the plugin test on
 # each SKILL.md copy. Adds a problem for a file that can't be copied or fails it.
@@ -1063,13 +1087,13 @@ snapshot_files() {
 		copy_index=$((copy_index + 1))
 		copy="${snapshot_dir}/plugin-${copy_index}"
 		cat -- "${path}" >"${copy}" || {
-			add_problem PLUGIN 'file is missing, unreadable or not a regular file; expected a readable regular file' "${path}"
+			add_plugin_problem "${name}" 'file is missing, unreadable or not a regular file; expected a readable regular file' "${path}"
 			continue
 		}
 		if [ "${kind}" = skill ]; then
 			plugin_test "${name}" "${copy}"
 			[ -z "${not_plugin_reason}" ] || {
-				add_problem PLUGIN "not a plugin (${not_plugin_reason})" "${path}"
+				add_plugin_problem "${name}" "not a plugin (${not_plugin_reason})" "${path}"
 				continue
 			}
 		fi
@@ -1087,15 +1111,17 @@ EOF
 # The copies' paths are absolute, so awk never reads one as a var=value operand.
 scan_files() {
 	set --
-	checked_paths=''
+	checked_paths='' checked_names=''
 	while IFS= read -r name && IFS= read -r kind && IFS= read -r path && IFS= read -r copy; do
 		set -- "$@" "${copy}"
 		checked_paths="${checked_paths}${path}
 "
+		checked_names="${checked_names}${name}
+"
 	done <<EOF
 ${copy_args}
 EOF
-	PREPARE_PROMPT_SCAN_PATHS=${checked_paths} awk "${SCAN_AWK}" "$@"
+	PREPARE_PROMPT_SCAN_PATHS=${checked_paths} PREPARE_PROMPT_SCAN_NAMES=${checked_names} awk "${SCAN_AWK}" "$@"
 }
 
 # Sets message_file to the message built from the checked copies, each read byte for byte by jq.

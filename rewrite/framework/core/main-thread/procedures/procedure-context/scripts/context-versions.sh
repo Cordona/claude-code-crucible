@@ -53,11 +53,14 @@ context_find_latest_version() {
 	done
 }
 
-# Prints why context file $1 can't be used: it is a version file in an
-# effort's context/ folder (<...>/efforts/<effort>/context/<id>-v<N>.json)
-# that is not that effort's latest version. Prints nothing for the latest, and
-# nothing for a file anywhere else: a context file outside an effort (legacy).
+# Sets context_version_stale to why context file $1 can't be used: it is a
+# version file in an effort's context/ folder
+# (<...>/efforts/<effort>/context/<id>-v<N>.json) that is not that effort's
+# latest version, which context_version_latest then names. Empty for the
+# latest, and for a file anywhere else: a context file outside an effort
+# (legacy).
 context_stale_version_problem() {
+	context_version_stale=''
 	# shellcheck disable=SC2310 # its status says whether the name is a version's
 	context_version_of_name "${1##*/}" || return 0
 	context_version_given_number=${context_version_number}
@@ -71,6 +74,5 @@ context_stale_version_problem() {
 	context_find_latest_version "${context_version_dir}"
 	[ -n "${context_version_latest}" ] || return 0
 	[ "${context_version_latest##*/}" != "${1##*/}" ] || return 0
-	printf 'is version v%s of its effort, not the latest (v%s: %s)' \
-		"${context_version_given_number}" "${context_version_latest_number}" "${context_version_latest}"
+	context_version_stale="is version v${context_version_given_number} of its effort, not the latest (v${context_version_latest_number}: ${context_version_latest})"
 }

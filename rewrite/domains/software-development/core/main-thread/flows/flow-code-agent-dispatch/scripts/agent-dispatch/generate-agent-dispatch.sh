@@ -196,7 +196,8 @@ Exit codes (1, 2, 5, 6: show stderr and stop):
        ${NO_GATE_RECORD_TOKEN}  no gate record holds the plan; ask it again at its gate
        ${CONTEXT_CHANGED_TOKEN}  the shown context file changed; show the plan again
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
-       ${PLUGIN_TOKEN} <name> uninstalled|invalid  a plugin the plan names; re-plan
+       ${PLUGIN_TOKEN} plugin folder <name> uninstalled|invalid  a plugin the plan
+         names; re-plan
   5  a dependency is missing or failed
   ${NOT_OPEN_EXIT}  the effort is not open, or its state is unknown
   129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
@@ -534,7 +535,7 @@ add_plugin_problem() {
 	else
 		plugin_state="uninstalled: the plan's ${plugin_field} is no longer in the skills folder; expected it reinstalled, or the plan re-planned without it"
 	fi
-	add_problem --plan-sha256 "${plan_sha256}" "${PLUGIN_TOKEN} ${missing_plugin} ${plugin_state}"
+	add_problem --plan-sha256 "${plan_sha256}" "${PLUGIN_TOKEN} plugin folder ${missing_plugin} ${plugin_state}"
 }
 
 # Sets task to the task_number-th task of the plan and task_known=true, or

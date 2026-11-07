@@ -147,14 +147,15 @@ context_config_path_problem() {
 # a symlink (fault unusable), at most context_max_bytes (size), valid JSON
 # (json), one object passing agent-context-validator.jq (shape), and, when it
 # is a version file in an effort's context/, that effort's latest version
-# (stale). Callers branch on the fault, never on the text. The caller applies
+# (stale; context_read_latest then names the latest version, empty
+# otherwise). Callers branch on the fault, never on the text. The caller applies
 # context_path_problem first where it needs it (a writer checks its own path)
 # and runs context_load_checks first. With a copy path $2, the file is read
 # once into $2 (at most one byte over the cap) and the later checks read the
 # copy, so what the caller hashes and sends is what passed. Fails, its cause
 # on stderr, only when a tool fails.
 context_read_problem() {
-	context_read_fault='' context_read_text=''
+	context_read_fault='' context_read_text='' context_read_latest=''
 	context_read_unusable='file is missing, unreadable, a symlink or not a regular file; expected a readable regular file'
 	if [ -L "$1" ] || [ ! -f "$1" ] || [ ! -r "$1" ]; then
 		context_read_found unusable "${context_read_unusable}"
@@ -193,8 +194,11 @@ EOF
 		context_read_found shape "file does not have the context shape (${context_read_joined}); expected the shape agent-context-validator.jq checks"
 		return 0
 	fi
-	context_read_stale=$(context_stale_version_problem "$1")
-	[ -z "${context_read_stale}" ] || context_read_found stale "${context_read_stale}; expected the latest version"
+	context_stale_version_problem "$1"
+	[ -z "${context_version_stale}" ] || {
+		context_read_latest=${context_version_latest}
+		context_read_found stale "${context_version_stale}; expected the latest version"
+	}
 }
 
 # Sets context_read_fault to $1 and context_read_text to $2.
