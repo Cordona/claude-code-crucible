@@ -12,7 +12,13 @@
 # gate and ends when the gate goes stale.
 # shellcheck source-path=SCRIPTDIR
 set -eu
-trap 'exit 0' EXIT
+# The EXIT trap also removes the record temp file, and a signal exits
+# through it.
+record_temp=''
+trap '[ -z "${record_temp}" ] || rm -f -- "${record_temp}"; exit 0' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 umask 077
 
 readonly PROG='gate-question-hook.sh'
@@ -81,12 +87,16 @@ Exit codes:
      ${STALE_MINUTES} minutes after the pending gate opened
 
 Dependencies:
-  POSIX sh; cat, date, find (with -mmin), rm, rmdir (every macOS and Linux
-    base system)
+  POSIX sh; cat, date, find (with -mmin, as on macOS and Linux), rm, rmdir
+    (every macOS and Linux base system)
   jq 1.6+ (macOS: brew install jq; Linux: the distro's jq package)
   for a relayed gate's record: mktemp, mv, the crucible skill's space rules,
     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
     and crucible.sh (with an effort) or od and mkdir (without one)
+
+Environment:
+  CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
+  CRUCIBLE_HOME  the Crucible space; its rules: see crucible.sh --help
 EOF
 }
 
@@ -170,8 +180,12 @@ save_gate_record() {
 	# written.
 	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) ||
 		deny_record "cannot create a temp file beside ${record_path}, which stays empty" 'make the Crucible space writable'
-	if printf '%s\n' "${record}" >"${record_temp}" && mv -f "${record_temp}" "${record_path}"; then return 0; fi
+	if printf '%s\n' "${record}" >"${record_temp}" && mv -f "${record_temp}" "${record_path}"; then
+		record_temp=''
+		return 0
+	fi
 	rm -f "${record_temp}"
+	record_temp=''
 	deny_record "the write to ${record_path} failed, and it stays empty" 'make the Crucible space writable'
 }
 

@@ -14,8 +14,13 @@
 # Code hooks docs, https://code.claude.com/docs/en/hooks ("Stop input").
 set -eu
 # Every outcome exits 0: a hook fault must allow the stop, never keep Claude
-# going (exit 2 would), so the EXIT trap turns any failure into 0.
-trap 'exit 0' EXIT
+# going (exit 2 would), so the EXIT trap turns any failure into 0. It also
+# removes the state temp file, and a signal exits through it.
+state_temp=''
+trap '[ -z "${state_temp}" ] || rm -f -- "${state_temp}"; exit 0' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 readonly PROG='gate-stop-hook.sh'
 readonly MARKER='_Crucible gate_'
@@ -97,6 +102,9 @@ Exit codes:
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package), cat, date, find (with -mmin, as on macOS and Linux), mktemp,
   mv, rm.
+
+Environment:
+  CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
 EOF
 }
 
@@ -111,9 +119,11 @@ write_state() {
 		exit 0
 	}
 	if printf '%s %s %s\n' "$1" "$2" "$3" >"${state_temp}" && mv -f "${state_temp}" "${gate_dir}/state"; then
+		state_temp=''
 		return 0
 	fi
 	rm -f "${state_temp}"
+	state_temp=''
 	warn "cannot write ${gate_dir}/state; expected a writable gate folder; stop allowed; check the folder's owner and free space"
 	exit 0
 }

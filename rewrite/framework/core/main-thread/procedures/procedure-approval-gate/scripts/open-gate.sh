@@ -57,6 +57,8 @@ Options:
 
 Environment:
   CLAUDE_CODE_SESSION_ID  the session id Claude Code sets in the Bash tool
+  CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
+  CRUCIBLE_HOME  the Crucible space; its rules: see crucible.sh --help
 
 stdout with --plan-path: one absolute path, the session's plan file
 stdout otherwise: the gate text, its last line ${MARKER}, word for word
@@ -82,7 +84,8 @@ Exit codes:
 
 Dependencies (a missing one exits 5, named):
   POSIX sh; ${REQUIRED_TOOLS}
-    (every macOS and Linux base system; find with -mmin)
+    (every macOS and Linux base system; find (with -mmin, as on macOS and
+    Linux))
   with --label: the crucible skill's space rules,
     ${SPACE_LIB_TEXT}
     (install the crucible skill)
