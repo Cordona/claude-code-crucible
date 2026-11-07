@@ -6,7 +6,7 @@ user-invocable: false
 
 # Standard: Code development report
 
-One JSON object per iteration at the `REPORT` path, with only the keys below. Each text is one line of at most 200 characters. Every `path:line` is relative to the worktree root and names a line that exists at your stop (`src/App.kt:12`), though you work in absolute paths. You get 3 blocked stops; at the next misfit your work stays uncommitted.
+One JSON object per iteration at the `REPORT` path, with only the keys below. Each text is one line of at most 200 characters. Every `path:line` is relative to the worktree root and names a line that exists at your stop (`src/App.kt:12`), though you work in absolute paths. You get 2 blocked stops; at the next misfit your work stays uncommitted.
 
 ## Never
 
