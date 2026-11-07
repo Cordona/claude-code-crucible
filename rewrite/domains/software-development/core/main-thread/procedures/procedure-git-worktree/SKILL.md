@@ -1,6 +1,6 @@
 ---
 name: procedure-git-worktree
-description: "An effort's developer seats (git worktrees): a new seat's base, mounts in the human's checkout, merge conflicts, syncing chained seats. Use from `flow-code-development` to open a seat or after a seat's commit, and when the human asks to mount, unmount or see mounts. Writes seats, sync merges, seats.json and git objects; on a mount, the human's working tree and a record in its git folder. Needs jq. Not for plans and dispatches (`flow-agent-initialization`) or landing."
+description: "An effort's developer seats (git worktrees): a new seat's base, mounts in the human's checkout, merge conflicts, syncing chained seats. Use from `flow-code-development` to open a seat or after a seat's commit, and when the human asks to mount, unmount or see mounts. Writes seats, sync merges, seats.json and git objects; on a mount, the human's working tree and a record in its git folder. Needs jq. Not for plans and dispatches (`flow-code-agent-dispatch`) or landing."
 user-invocable: false
 ---
 
@@ -52,7 +52,7 @@ After a seat's new commit (`flow-code-development` step 4, `idle`), and when `mo
 
 ## Scripts
 
-Under `<scripts>`, one folder per job. This skill runs those named above. `flow-code-development` runs `worktree/dirty-check.sh`, `worktree/snapshot.sh`, `seats/seat-name.sh`, `seats/seats.sh` and `seats/iteration.sh` itself. The hooks in `hooks/` (`seat-bind-hook.sh`, `report-commit-hook.sh`, `block-relay-hook.sh`) run from `settings.json`; each `--help` is its contract; `flow-agent-initialization` step 1 checks their entries, and its `references/turn-off-and-uninstall.md` removes them. The rest run only from other scripts. `worktree/worktree-setup.json` lists what a new seat copies from the checkout.
+Under `<scripts>`, one folder per job. This skill runs those named above. `flow-code-development` runs `worktree/dirty-check.sh`, `worktree/snapshot.sh`, `seats/seat-name.sh`, `seats/seats.sh` and `seats/iteration.sh` itself. The hooks in `hooks/` (`seat-bind-hook.sh`, `report-commit-hook.sh`, `block-relay-hook.sh`) run from `settings.json`; each `--help` is its contract; `flow-code-agent-dispatch` step 1 checks their entries, and its `references/turn-off-and-uninstall.md` removes them. The rest run only from other scripts. `worktree/worktree-setup.json` lists what a new seat copies from the checkout.
 
 ## Dependencies
 

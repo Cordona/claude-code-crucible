@@ -1,6 +1,6 @@
 ---
 name: procedure-context
-description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use when an effort starts, when a link, note, file, answer, ended grill or spec enters an open effort, or on Resume. Settles contradictions and the spec, then asks what next; writes `context/`, spec drafts and scratchpad files. Not for the effort (`procedure-effort`), plans and dispatches (`flow-agent-initialization`), a change to a dispatched part's work (`flow-code-development`'s Changes) or work outside an effort."
+description: "Builds and extends an effort's context, the human's words and references the work starts from, in versions. Use when an effort starts, when a link, note, file, answer, ended grill or spec enters an open effort, or on Resume. Settles contradictions and the spec, then asks what next; writes `context/`, spec drafts and scratchpad files. Not for the effort (`procedure-effort`), plans and dispatches, which are not this skill's, a change to a dispatched part's work (`flow-code-development`'s Changes) or work outside an effort."
 user-invocable: false
 ---
 
@@ -52,7 +52,7 @@ An effort's **context** is what its work starts from: the human's own words, as 
 ## Invariants
 
 - **A position** (`paths[<n>]`, `links[<n>]`, `notes[<n>]`, from 1) means the entry at that place in the version its dispatch pinned.
-- **What an extension does to a plan is `flow-agent-initialization`'s;** this skill only tells the calling flow the version changed (step 8).
+- **What an extension does to a plan is the calling flow's;** this skill only tells the calling flow the version changed (step 8).
 
 ## Steps
 

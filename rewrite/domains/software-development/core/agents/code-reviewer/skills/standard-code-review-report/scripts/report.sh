@@ -7,7 +7,7 @@
 set -eu
 
 readonly PROG='report.sh'
-readonly DISPATCH_DIR='flow-agent-initialization/scripts/agent-dispatch'
+readonly DISPATCH_DIR='flow-code-agent-dispatch/scripts/agent-dispatch'
 readonly CRUCIBLE_SKILL='crucible'
 # The lens a dispatch that loads no language, framework or standard reviews
 # through.
@@ -417,7 +417,7 @@ Exit codes:
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
   cat, cp, date, grep, mktemp, mv, rm, sed (every macOS and Linux base system)
-  with --dispatch: the flow-agent-initialization skill in --skills-dir (its
+  with --dispatch: the flow-code-agent-dispatch skill in --skills-dir (its
     dispatch validator and dispatch-names.jq), and the crucible skill there
     (its scripts/lib/prune.jq)
 EOF
@@ -555,9 +555,9 @@ locate_dispatch_modules() {
 	names_dir="${skills_dir}/${DISPATCH_DIR}"
 	validator="${names_dir}/agent-dispatch-validator.jq"
 	[ -f "${validator}" ] && [ -r "${validator}" ] ||
-		install_fault "dispatch validator missing; expected ${validator}; install the flow-agent-initialization skill in ${skills_dir}"
+		install_fault "dispatch validator missing; expected ${validator}; install the flow-code-agent-dispatch skill in ${skills_dir}"
 	[ -f "${names_dir}/dispatch-names.jq" ] && [ -r "${names_dir}/dispatch-names.jq" ] ||
-		install_fault "the shared dispatch names are missing; expected ${names_dir}/dispatch-names.jq; install the flow-agent-initialization skill in ${skills_dir}"
+		install_fault "the shared dispatch names are missing; expected ${names_dir}/dispatch-names.jq; install the flow-code-agent-dispatch skill in ${skills_dir}"
 	prune_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
 	[ -f "${prune_dir}/prune.jq" ] && [ -r "${prune_dir}/prune.jq" ] ||
 		install_fault "${CRUCIBLE_SKILL}'s prune.jq missing; expected ${prune_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill in ${skills_dir}"
@@ -576,7 +576,7 @@ read_dispatch() {
 	jq -s 'length' "${dispatch_file}" </dev/null >/dev/null 2>&1 ||
 		dispatch_fault "${dispatch_file} is not JSON; ${dispatch_expected}"
 	dispatch_problems=$(jq -rs -f "${validator}" "${dispatch_file}" </dev/null) ||
-		install_fault "the dispatch validator failed to run: ${validator}; expected jq 1.6+ and dispatch-names.jq beside it; try reinstalling flow-agent-initialization"
+		install_fault "the dispatch validator failed to run: ${validator}; expected jq 1.6+ and dispatch-names.jq beside it; try reinstalling flow-code-agent-dispatch"
 	if [ -n "${dispatch_problems}" ]; then
 		printf '%s\n' "${dispatch_problems}" | sed "s/^/${PROG}: dispatch: /" >&2
 		dispatch_fault "${dispatch_file} fails the dispatch validator, each problem above; ${dispatch_expected}, unchanged since"

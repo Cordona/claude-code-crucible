@@ -4,7 +4,7 @@
 - SUB-08: no new machinery in this effort; no incremental run file or resume from it (owner, D1) (owner)
 - SUB-01: direct implementation by the main thread on the user's explicit go is the approved design (owner, D2) (owner)
 - LNT-15: body over 5,000 tokens after the JSON report reply check; slimming is a follow-up, not risked in this effort (owner)
-- DET-06: step and resend state stay in the conversation and the todo list, as in flow-agent-initialization; no state file in this effort (owner, D12) (owner)
+- DET-06: step and resend state stay in the conversation and the todo list, as in flow-code-agent-dispatch; no state file in this effort (owner, D12) (owner)
 - DET-08: the direct path's write limit stays a prose rule; a Write/Edit hook or deny rules are new machinery, a follow-up only if a live run shows a stray write (owner, D12) (owner)
 - LEAN-09: the remaining multi-rule bullets (SKILL.md:26, :59, :60) are wording only, past the round cap; a follow-up (owner, D13) (owner)
 - SAFE-05: crucible.sh open's temp render under ${TMPDIR:-/tmp} is the human's own viewer copy, made on the human's ask; not listed in the write boundary (owner, D13) (owner)

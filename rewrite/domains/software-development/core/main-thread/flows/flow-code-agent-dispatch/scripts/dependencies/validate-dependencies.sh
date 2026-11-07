@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Runs the install check for flow-agent-initialization: its five other
+# Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
 # procedure-git-worktree's seats.sh and its seat bind, report commit and block
 # relay hook scripts, the
@@ -30,7 +30,7 @@
 set -eu
 
 readonly PROG='validate-dependencies.sh'
-readonly PROCEDURE='flow-agent-initialization'
+readonly PROCEDURE='flow-code-agent-dispatch'
 readonly GATE_PROCEDURE='procedure-approval-gate'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly EFFORT_PROCEDURE='procedure-effort'
@@ -198,7 +198,7 @@ Options:
   --settings FILE    the settings file; default
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/settings.json
   --cache-dir CACHE  the cache folder; default
-                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/agent-init
+                     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/code-agent-dispatch
   --force            runs every check even when the cached pass holds
   --verbose          prints the full checklist: a header line, one line per
                      check (✓, ✗ <item>: <reason>. Fix: <action>, or
@@ -249,7 +249,7 @@ parse_args() {
 	config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 	skills_dir="${config_dir}/skills"
 	settings_file="${config_dir}/settings.json"
-	cache_dir="${config_dir}/cache/agent-init"
+	cache_dir="${config_dir}/cache/code-agent-dispatch"
 	force=0
 	verbose=0
 	while [ "$#" -gt 0 ]; do
@@ -1066,7 +1066,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 parse_args "$@"
-add_line 'Agent initialization: install check'
+add_line 'Code agent dispatch: install check'
 check_base_tools
 resolve_crucible_home
 compute_fingerprint

@@ -7,12 +7,12 @@
 # checked by dispatch-plan-validator.jq against the installed plugins; every
 # problem is named by the option behind it, and nothing is written until there
 # is none.
-# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
 
 readonly PROG='generate-dispatch-plan.sh'
-readonly PROCEDURE='flow-agent-initialization'
+readonly PROCEDURE='flow-code-agent-dispatch'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
@@ -345,7 +345,7 @@ load_dependencies() {
 	prune_lib_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
 	[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
 		die 5 "prune module missing; expected ${prune_lib_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
-	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
 	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"

@@ -24,11 +24,11 @@
 # because everything it embeds is trusted: the human's request, the notes and
 # whys, as procedure-context sets what notes and whys may hold, and the template
 # and plugins the human installed.
-# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 
 readonly PROG='prepare-agent-prompt.sh'
-readonly REASON_PREFIX='flow-agent-initialization:'
+readonly REASON_PREFIX='flow-code-agent-dispatch:'
 # The agents whose dispatches carry a DISPATCH line. The no-jq path needs them
 # without jq, so they stay here; the hook faults unless they match the listed
 # agents of the shared names module, the list to edit first.
@@ -48,7 +48,7 @@ readonly CONTEXT_PROCEDURE='procedure-context'
 readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # Bounds the symlink chain followed for one file, so a link loop ends in a deny.
 readonly MAX_LINK_HOPS=40
-readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <absolute path>", the DISPATCH line generate-agent-dispatch.sh printed for this dispatch (flow-agent-initialization).'
+readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <absolute path>", the DISPATCH line generate-agent-dispatch.sh printed for this dispatch (flow-code-agent-dispatch).'
 # The cache kind and label of the file a deny's Data · Denial line names.
 readonly DENIAL_KIND='cache/denials'
 readonly DENIAL_LABEL='denial'
@@ -65,7 +65,7 @@ readonly DENIAL_LINE_CAP=200
 readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN SEAT BACKGROUND SKILL'
 readonly BACKGROUND_PROBLEM='BACKGROUND the dispatch runs in the foreground; expected run_in_background: true; dispatch it again in the background'
 # The deny when jq is missing, printed as is: a fixed text, built without jq.
-readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-agent-initialization: jq is missing from PATH; the hook needs jq 1.6+."}}'
+readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-code-agent-dispatch: jq is missing from PATH; the hook needs jq 1.6+."}}'
 # The reasons of the deny when stdin can't be read and of the deny when the hook
 # stops before deciding. Both denies are built with jq; the fixed texts below
 # are printed instead only when jq is missing. A jq that is present but fails
@@ -555,7 +555,7 @@ load_shared_checks() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			fault "the shared check ${shared_file} is missing or unreadable; ${PROG} needs it; the fault is in the ${REASON_PREFIX%:} install, not in the dispatch."
 	done
-	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
 	context_load_checks "${context_skill_dir%/*}" ||
@@ -566,9 +566,9 @@ load_shared_checks() {
 load_shared_names() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure faults
 	module_listed_agents=$(read_shared_name 'listed_agents | join(" ")') ||
-		fault "jq could not read listed_agents from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-agent-initialization install, not in the dispatch."
+		fault "jq could not read listed_agents from ${names_module}; expected jq 1.6+ and the flow's shared names; the fault is in the flow-code-agent-dispatch install, not in the dispatch."
 	[ "${module_listed_agents}" = "${LISTED_AGENTS}" ] ||
-		fault "the listed agents differ from ${NAMES_MODULE}.jq (${PROG}: ${LISTED_AGENTS}; module: ${module_listed_agents}); expected the same list; the fault is in the flow-agent-initialization install, not in the dispatch."
+		fault "the listed agents differ from ${NAMES_MODULE}.jq (${PROG}: ${LISTED_AGENTS}; module: ${module_listed_agents}); expected the same list; the fault is in the flow-code-agent-dispatch install, not in the dispatch."
 }
 
 # Prints the value of jq expression $1 over the shared names module.

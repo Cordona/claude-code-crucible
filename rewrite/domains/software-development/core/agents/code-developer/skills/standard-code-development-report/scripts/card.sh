@@ -31,7 +31,7 @@ readonly CARD_JQ='include "card";
 	{total: $total, new: $new};
 	{seat: $seat, count: "\($count_label) \($count)", short: $short, report_path: $report_path})'
 
-# Prints a plugin SKILL.md's metadata.label by flow-agent-initialization's
+# Prints a plugin SKILL.md's metadata.label by flow-code-agent-dispatch's
 # list-plugins.sh rules: the frontmatter opens on line 1 and is closed by
 # ---; a "  label:" line under a "metadata:" line (a trailing comment
 # allowed), the last one counting; a ` # comment` after an unquoted value

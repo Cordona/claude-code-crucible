@@ -8,7 +8,7 @@
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
-readonly PROCEDURE='flow-agent-initialization'
+readonly PROCEDURE='flow-code-agent-dispatch'
 readonly RENDER_LIB='human-view'
 
 # Definitions every program below starts with. The programs are single-quoted

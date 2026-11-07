@@ -14,12 +14,12 @@
 # Every problem is named by the option behind
 # it; no file is left behind on a problem (a signal may leave one, as the page
 # says).
-# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../procedures/procedure-context/scripts
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
 
 readonly PROG='generate-agent-dispatch.sh'
-readonly PROCEDURE='flow-agent-initialization'
+readonly PROCEDURE='flow-code-agent-dispatch'
 readonly CONTEXT_PROCEDURE='procedure-context'
 readonly REQUIRED_TOOLS='awk cat mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
@@ -334,7 +334,7 @@ load_dependencies() {
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
-	# shellcheck source=../../../../procedures/procedure-context/scripts/agent-context-file-checks.sh
+	# shellcheck source=../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts/agent-context-file-checks.sh
 	. "${context_lib}"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
 	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"
