@@ -13,6 +13,9 @@ readonly EFFORT_TRAILER='Effort'
 readonly SNAPSHOT_MESSAGE='crucible(snapshot): uncommitted changes'
 readonly SNAPSHOT_AUTHOR='crucible'
 readonly SNAPSHOT_EMAIL='crucible@crucible.invalid'
+readonly VIEW_LIB='human-view'
+# The line shows this many characters of the base's sha.
+readonly SHORT_SHA_LENGTH=7
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -25,15 +28,17 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --repo DIR --independent [--snapshot SHA]
-       sh ${PROG} --effort DIR --repo DIR --on S [--on S]...
+usage: sh ${PROG} --effort DIR --repo DIR --seat S --independent [--snapshot SHA]
+       sh ${PROG} --effort DIR --repo DIR --seat S --on S [--on S]...
        sh ${PROG} --help | -h
 
-Prints the base for seat-open.sh's --base and --base-slot.
+Prints the base for ../seats/seats.sh choose's --base and --base-seat.
 
---effort DIR    absolute path of the effort folder (its slots.json may not
+--effort DIR    absolute path of the effort folder (its seats.json may not
                 exist yet)
 --repo DIR      absolute path of the main checkout's top folder
+--seat S        the seat this base is for, as ../seats/seat-name.sh named
+                it; it need not be in seats.json yet and is no --on seat
 --independent   base: --snapshot, else the checkout's HEAD; every idle
                 developer seat of --repo whose HEAD is neither its base
                 nor in the checkout's HEAD is listed in unmerged
@@ -43,29 +48,32 @@ Prints the base for seat-open.sh's --base and --base-slot.
 --on S          an idle developer seat of --repo; repeatable, each once.
                 base: the one seat's HEAD, or ../merge/tips-merge.sh's
                 merge of every seat's HEAD (message "crucible(merge): S +
-                S", trailer ${EFFORT_TRAILER}: slots.json's effort)
+                S", trailer ${EFFORT_TRAILER}: seats.json's effort)
 
 stdout, one JSON line:
-  {"base":<sha>,"base_slots":[S...],"unmerged":[S...],"line":L}
-  base_slots: the --on seats in order ([] when independent); L, for the
-  human: "Starts from your checkout (<sha>).", with --snapshot "Starts
-  from your checkout with your uncommitted changes (<sha>).", or "Starts
-  from S + S (<sha>)."
+  {"base":<sha>,"base_seats":[S...],"unmerged":[S...],"line":L}
+  base_seats: the --on seats in order ([] when independent); L, for the
+  human, starts with --seat's name as the human sees it, like "Software
+  developer Beta: ", then "Starts from your checkout (<short sha>).",
+  with --snapshot "Starts from your checkout with your uncommitted
+  changes (<short sha>).", or "Starts from Software developer Alpha +
+  ... (<short sha>)."; a short sha is the first ${SHORT_SHA_LENGTH} characters
 
 exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, a missing
      value, --independent with --on or neither, or --snapshot with --on
-  3  input: a bad option value, an --on seat not in slots.json,
-     slots.json does not fit (slots.sh's own lines first), or --snapshot
-     is no snapshot of HEAD
-  4  environment: git, jq or a neighbour missing or failed
+  3  input: a bad option value, --seat also given as --on, an --on seat
+     not in seats.json, seats.json does not fit (seats.sh's own lines
+     first), or --snapshot is no snapshot of HEAD
+  4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed
   5  refused by state, no file or ref written: an --on seat is no developer,
-     of another repo or not idle, or the HEADs conflict
-     (tips-merge.sh's line)
+     of another repo, chosen (no worktree yet) or not idle, or the HEADs
+     conflict (tips-merge.sh's line)
 
-needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/slots.sh and
-../merge/tips-merge.sh from this script's folder
+needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq and
+../merge/tips-merge.sh from this script's folder; ${VIEW_LIB}'s title.jq in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -97,7 +105,7 @@ take_value() {
 }
 
 parse_args() {
-	effort='' repo='' snapshot='' independent=no on_slots=''
+	effort='' repo='' seat='' snapshot='' independent=no on_seats=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -118,59 +126,73 @@ parse_args() {
 				take_value "$1" "${repo}" "${2-}" DIR
 				repo=${option_value}
 				;;
+			--seat)
+				take_value "$1" "${seat}" "${2-}" S
+				seat=${option_value}
+				;;
 			--snapshot)
 				take_value "$1" "${snapshot}" "${2-}" SHA
 				snapshot=${option_value}
 				;;
 			--on)
 				take_value "$1" '' "${2-}" S
-				add_on_slot "${option_value}"
+				add_on_seat "${option_value}"
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --independent, --on, --snapshot or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --seat, --independent, --on, --snapshot or --help"
 				;;
 		esac
 		shift 2
 	done
 	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
 	[ -n "${repo}" ] || usage_error '--repo missing; expected --repo DIR'
+	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 	if [ "${independent}" = yes ]; then
-		[ -z "${on_slots}" ] || usage_error '--independent given with --on; expected one of them'
+		[ -z "${on_seats}" ] || usage_error '--independent given with --on; expected one of them'
 	else
-		[ -n "${on_slots}" ] || usage_error '--independent or --on missing; expected one of them'
+		[ -n "${on_seats}" ] || usage_error '--independent or --on missing; expected one of them'
 		[ -z "${snapshot}" ] || usage_error '--snapshot given with --on; expected it with --independent only'
 	fi
 }
 
-# Adds seat $1 to on_slots, one per line, refusing a bad name or a repeat.
-add_on_slot() {
-	check_slot_name --on "$1"
+# Adds seat $1 to on_seats, one per line, refusing a repeat; check_names
+# checks the name.
+add_on_seat() {
 	case "
-${on_slots}
+${on_seats}
 " in
 		*"
 $1
-"*) die 3 "--on $1 is given twice; expected each seat once" ;;
-		*) on_slots="${on_slots:+${on_slots}
+"*)
+			shown_seat=$(printable "$1")
+			die 3 "--on ${shown_seat} is given twice; expected each seat once"
+			;;
+		*) on_seats="${on_seats:+${on_seats}
 }$1" ;;
 	esac
 }
 
-# Refuses option $1's value $2 when it is no lowercase word, a dash and a
-# number of 1 or more.
-check_slot_name() {
-	case $2 in
-		[a-z]*-[1-9]*)
-			case ${2%-*}/${2##*-} in
-				*[!a-z0-9]*/* | */*[!0-9]*) ;;
-				*) return 0 ;;
-			esac
-			;;
-		*) ;;
-	esac
-	shown_slot=$(printable "$2")
-	die 3 "$1 ${shown_slot} is not allowed; expected a slot name like dev-1"
+# Refuses a --seat or --on value that is no seat name by seats.jq, and a
+# --seat given as --on too.
+check_names() {
+	check_seat_name --seat "${seat}"
+	[ -n "${on_seats}" ] || return 0
+	while IFS= read -r on_seat; do
+		check_seat_name --on "${on_seat}"
+		[ "${on_seat}" != "${seat}" ] || die 3 "--seat ${on_seat} is also given as --on; expected a seat cut from other seats"
+	done <<EOF
+${on_seats}
+EOF
+}
+
+# Refuses option $1's value $2 with seats.jq's own problem line.
+check_seat_name() {
+	name_problem=$(jq -nr -L "${own_dir}/../seats" --arg name "$2" 'include "seats"; $name | seats_name_problem' </dev/null) ||
+		die 4 'jq failed checking a seat name; expected jq 1.6+ and ../seats/seats.jq'
+	[ -n "${name_problem}" ] || return 0
+	shown_problem=$(printable "${name_problem}")
+	die 3 "$1 ${shown_problem}"
 }
 
 script_dir() {
@@ -185,15 +207,20 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/slots.sh ../merge/tips-merge.sh; do
+	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
+	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	[ -f "${view_dir}/title.jq" ] || {
+		shown_view_dir=$(printable "${view_dir}")
+		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
+	}
 }
 
-# Sets effort_dir (physical), slots_file, repo_dir (physical) and head.
+# Sets effort_dir (physical), seats_file, repo_dir (physical) and head.
 check_inputs() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -202,8 +229,8 @@ check_inputs() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	slots_file="${effort_dir}/slots.json"
-	shown_slots=$(printable "${slots_file}")
+	seats_file="${effort_dir}/seats.json"
+	shown_seats=$(printable "${seats_file}")
 	shown_repo=$(printable "${repo}")
 	case ${repo} in
 		/*) ;;
@@ -236,17 +263,17 @@ EOF
 		die 3 "--snapshot ${base} is not a snapshot of HEAD ${head}; expected snapshot.sh's sha for --repo"
 }
 
-# Writes work_dir/unmerged, one slot per idle developer seat of the repo
+# Writes work_dir/unmerged, one seat per idle developer seat of the repo
 # whose HEAD is neither its base nor in the checkout's HEAD.
 list_unmerged() {
 	: >"${work_dir}/unmerged"
-	[ -e "${slots_file}" ] || return 0
+	[ -e "${seats_file}" ] || return 0
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -r '.slots[] | select(.role == "developer" and .status == "idle")
-		| [.slot, .worktree, .repo, .base] | map(strings) | select(length == 4) | join("\t")' "${slots_file}" \
-		>"${work_dir}/idle" 2>/dev/null || die 3 "${shown_slots} is not the effort's slots.json; expected its seats"
+	jq -r '.seats[] | select(.role == "developer" and .status == "idle")
+		| [.seat, .worktree, .repo, .base] | map(strings) | select(length == 4) | join("\t")' "${seats_file}" \
+		>"${work_dir}/idle" 2>/dev/null || die 3 "${shown_seats} is not the effort's seats.json; expected its seats"
 	while IFS= read -r idle_line; do
-		idle_slot=${idle_line%%"${tab}"*}
+		idle_seat=${idle_line%%"${tab}"*}
 		idle_rest=${idle_line#*"${tab}"}
 		idle_worktree=${idle_rest%%"${tab}"*}
 		idle_rest=${idle_rest#*"${tab}"}
@@ -258,7 +285,7 @@ list_unmerged() {
 			continue
 		[ "${idle_head}" != "${idle_base}" ] || continue
 		is_ancestor "${idle_head}" "${head}"
-		[ "${ancestor}" = true ] || printf '%s\n' "${idle_slot}" >>"${work_dir}/unmerged"
+		[ "${ancestor}" = true ] || printf '%s\n' "${idle_seat}" >>"${work_dir}/unmerged"
 	done <"${work_dir}/idle"
 }
 
@@ -289,29 +316,29 @@ refuse() {
 # refuses each that does not.
 read_on_seats() {
 	: >"${work_dir}/on-heads"
-	while IFS= read -r on_slot; do
-		read_on_seat "${on_slot}"
+	while IFS= read -r on_seat; do
+		read_on_seat "${on_seat}"
 	done <<EOF
-${on_slots}
+${on_seats}
 EOF
 }
 
 read_on_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/slots.sh" get --slots "${slots_file}" --slot "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
-		6) die 3 "--on $1 is not in ${shown_slots}; expected an existing developer seat" ;;
+		6) die 3 "--on $1 is not in ${shown_seats}; expected an existing developer seat" ;;
 		*)
 			cat -- "${work_dir}/get-stderr" >&2 || :
 			case ${seat_rc} in
-				2 | 3) die 3 "slots.sh get refused seat $1 (exit ${seat_rc}); expected a seat in --effort's slots.json" ;;
-				*) die 4 "slots.sh get failed (exit ${seat_rc})" ;;
+				2 | 3) die 3 "seats.sh get refused seat $1 (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+				*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 			esac
 			;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .worktree // "", .repo // ""') ||
-		die 4 'jq could not read the seat slots.sh get printed'
+		die 4 'jq could not read the seat seats.sh get printed'
 	role='' status='' worktree='' seat_repo=''
 	{
 		IFS= read -r role || :
@@ -339,6 +366,10 @@ check_on_seat() {
 	fi
 	case ${status} in
 		idle) ;;
+		chosen)
+			refuse "seat $1 is chosen: its worktree is not made yet; expected status idle"
+			return 0
+			;;
 		working) refuse "seat $1 is working: its developer is busy; expected status idle" ;;
 		*) refuse "seat $1 is ${status}: it has nothing finished; expected status idle" ;;
 	esac
@@ -365,14 +396,14 @@ merge_on_seats() {
 		return 0
 	fi
 	read_effort_id
-	joined_slots=''
-	while IFS= read -r on_slot; do
-		joined_slots="${joined_slots:+${joined_slots} + }${on_slot}"
+	joined_seats=''
+	while IFS= read -r on_seat; do
+		joined_seats="${joined_seats:+${joined_seats} + }${on_seat}"
 	done <<EOF
-${on_slots}
+${on_seats}
 EOF
 	merge_message="${work_dir}/merge-message"
-	printf 'crucible(merge): %s\n\n%s: %s\n' "${joined_slots}" "${EFFORT_TRAILER}" "${effort_id}" >"${merge_message}" ||
+	printf 'crucible(merge): %s\n\n%s: %s\n' "${joined_seats}" "${EFFORT_TRAILER}" "${effort_id}" >"${merge_message}" ||
 		die 4 'could not write the merge message in the work folder'
 	step_rc=0
 	step_out=$(sh "${own_dir}/../merge/tips-merge.sh" --repo "${repo_dir}" "$@" --message-file "${merge_message}") || step_rc=$?
@@ -385,12 +416,12 @@ EOF
 	base=$(printf '%s\n' "${step_out}" | jq -r '.commit') || die 4 'jq could not read what tips-merge.sh printed'
 }
 
-# Sets effort_id from slots.json's effort, the value of the seats' Effort
+# Sets effort_id from seats.json's effort, the value of the seats' Effort
 # trailer.
 read_effort_id() {
-	effort_id=$(jq -r '.effort | strings' "${slots_file}" 2>/dev/null) ||
-		die 3 "${shown_slots} is not JSON; expected the effort's slots.json"
-	[ -n "${effort_id}" ] || die 3 "${shown_slots} has no effort; expected a non-empty effort string"
+	effort_id=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
+		die 3 "${shown_seats} is not JSON; expected the effort's seats.json"
+	[ -n "${effort_id}" ] || die 3 "${shown_seats} has no effort; expected a non-empty effort string"
 }
 
 # Exits 4 naming step $1 and the first line of work_dir/stderr.
@@ -413,6 +444,7 @@ trap 'exit 143' TERM
 
 parse_args "$@"
 load_dependencies
+check_names
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-seat-base.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 # tips-merge.sh takes only an absolute message file.
@@ -424,18 +456,20 @@ if [ "${independent}" = yes ]; then
 	base=${head}
 	[ -z "${snapshot}" ] || check_snapshot
 	list_unmerged
-	: >"${work_dir}/base-slots"
+	: >"${work_dir}/base-seats"
 else
 	problems=0
 	read_on_seats
 	[ "${problems}" -eq 0 ] || exit 5
 	merge_on_seats
 	: >"${work_dir}/unmerged"
-	printf '%s\n' "${on_slots}" >"${work_dir}/base-slots" || die 4 'could not write the base slots in the work folder'
+	printf '%s\n' "${on_seats}" >"${work_dir}/base-seats" || die 4 'could not write the base seats in the work folder'
 fi
-jq -nc --arg base "${base}" --arg snapshot "${snapshot}" --rawfile base_slots "${work_dir}/base-slots" --rawfile unmerged "${work_dir}/unmerged" '
+jq -nc -L "${view_dir}" --arg base "${base}" --arg snapshot "${snapshot}" --arg seat "${seat}" \
+	--argjson short_length "${SHORT_SHA_LENGTH}" --rawfile base_seats "${work_dir}/base-seats" --rawfile unmerged "${work_dir}/unmerged" '
+	include "title";
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
-	{base: $base, base_slots: ($base_slots | lines), unmerged: ($unmerged | lines)}
-	| .line = "Starts from \(if .base_slots != [] then .base_slots | join(" + ")
-		elif $snapshot != "" then "your checkout with your uncommitted changes" else "your checkout" end) (\($base))."' ||
-	die 4 'jq could not print the result'
+	{base: $base, base_seats: ($base_seats | lines), unmerged: ($unmerged | lines)}
+	| .line = "\($seat | seat_display): Starts from \(if .base_seats != [] then .base_seats | map(seat_display) | join(" + ")
+		elif $snapshot != "" then "your checkout with your uncommitted changes" else "your checkout" end) (\($base[:$short_length]))."' ||
+	die 4 "jq could not print the result; expected jq 1.6+ and ${VIEW_LIB}'s title.jq"

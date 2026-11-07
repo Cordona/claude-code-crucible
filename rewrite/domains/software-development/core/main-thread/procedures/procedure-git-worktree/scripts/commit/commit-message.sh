@@ -49,7 +49,7 @@ kinds and their trailers, in message order (all required but frameworks):
   fix, review                    review-round, then the agent trailers
   aggregated-review, fix-choice  review-round, effort
   import                         effort, imported-from (no count)
-  agent trailers: effort, dispatch, agent-slot, agent-id, language,
+  agent trailers: effort, dispatch, agent-seat, agent-id, language,
                   frameworks, standards
 A count trailer of another kind is refused.
 

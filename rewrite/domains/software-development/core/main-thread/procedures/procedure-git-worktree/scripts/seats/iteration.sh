@@ -18,19 +18,19 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --slots FILE --slot S
+usage: sh ${PROG} --seats FILE --seat S
        sh ${PROG} --help | -h
 
 Prints the iteration seat S is working on and its report's path; reads
 only.
 
---slots FILE  absolute path of the effort's slots.json
---slot S      a developer (mode BUILD) or tester (mode TEST) seat with a
-              worktree; it may be open or bound
+--seats FILE  absolute path of the effort's seats.json
+--seat S      a developer (mode BUILD) or tester (mode TEST) seat with a
+              worktree; it may be open or bound, not chosen (no worktree yet)
 
 stdout, two lines:
   ITERATION: <N>   1 + the commits in <base>..HEAD of the seat's worktree
-                   whose Agent-Slot trailer is S
+                   whose Agent-Seat trailer is S
   REPORT: <path>   <worktree>/${REPORTS_DIR}/<S>/<kind>-iteration-<N>.json,
                    absolute; kind build for BUILD, test for TEST
 
@@ -38,12 +38,13 @@ exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: slots.json, the seat, its worktree or its base does not fit;
-     one stderr line per problem (slots.sh's own lines first when it
+  3  input: seats.json, the seat, its worktree or its base does not fit,
+     or the seat is chosen;
+     one stderr line per problem (seats.sh's own lines first when it
      refused)
-  4  environment: git, jq or slots.sh missing or failed
+  4  environment: git, jq or seats.sh missing or failed
 
-needs: POSIX sh, git 2.26+, jq 1.6+; slots.sh beside this script
+needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh beside this script
 EOF
 }
 
@@ -75,30 +76,30 @@ take_value() {
 }
 
 parse_args() {
-	slots_file='' slot=''
+	seats_file='' seat=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--slots)
-				take_value "$1" "${slots_file}" "${2-}" FILE
-				slots_file=${option_value}
+			--seats)
+				take_value "$1" "${seats_file}" "${2-}" FILE
+				seats_file=${option_value}
 				;;
-			--slot)
-				take_value "$1" "${slot}" "${2-}" S
-				slot=${option_value}
+			--seat)
+				take_value "$1" "${seat}" "${2-}" S
+				seat=${option_value}
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --slots, --slot or --help"
+				usage_error "unknown option: ${shown_option}; expected --seats, --seat or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${slots_file}" ] || usage_error '--slots missing; expected --slots FILE'
-	[ -n "${slot}" ] || usage_error '--slot missing; expected --slot S'
+	[ -n "${seats_file}" ] || usage_error '--seats missing; expected --seats FILE'
+	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
 script_dir() {
@@ -113,25 +114,26 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	[ -f "${own_dir}/slots.sh" ] || die 4 'slots.sh not found beside this script; expected both in one folder'
+	[ -f "${own_dir}/seats.sh" ] || die 4 'seats.sh not found beside this script; expected both in one folder'
 }
 
-# Sets kind, worktree and base from slots.sh get; slots.sh's own lines say
-# why it refused.
+# Sets kind, worktree and base from seats.sh get, refusing a chosen seat;
+# seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/slots.sh" get --slots "${slots_file}" --slot "${slot}") || seat_rc=$?
-	shown_slot=$(printable "${slot}")
+	seat_json=$(sh "${own_dir}/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "slots.sh get refused seat ${shown_slot} (exit ${seat_rc}); expected a seat in --slots" ;;
-		*) die 4 "slots.sh get failed (exit ${seat_rc})" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --seats" ;;
+		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .worktree // "", .base // ""') ||
-		die 4 'jq could not read the seat slots.sh get printed'
-	mode='' worktree='' base=''
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .status // "", .worktree // "", .base // ""') ||
+		die 4 'jq could not read the seat seats.sh get printed'
+	mode='' status='' worktree='' base=''
 	{
 		IFS= read -r mode || :
+		IFS= read -r status || :
 		IFS= read -r worktree || :
 		IFS= read -r base || :
 	} <<EOF
@@ -140,27 +142,28 @@ EOF
 	case ${mode} in
 		BUILD) kind='build' ;;
 		TEST) kind='test' ;;
-		*) die 3 "seat ${shown_slot} has no mode; expected a developer or tester seat" ;;
+		*) die 3 "seat ${shown_seat} has no mode; expected a developer or tester seat" ;;
 	esac
-	[ -n "${worktree}" ] || die 3 "seat ${shown_slot} has no worktree; expected a developer or tester seat"
+	[ "${status}" != chosen ] || die 3 "seat ${shown_seat} is chosen: its worktree is not made yet; expected an open or bound seat"
+	[ -n "${worktree}" ] || die 3 "seat ${shown_seat} has no worktree; expected a developer or tester seat"
 }
 
 # Sets iteration: 1 + the commits in base..HEAD of the worktree whose
-# Agent-Slot trailer is this slot, so another seat sharing the worktree is
+# Agent-Seat trailer is this seat, so another seat sharing the worktree is
 # not counted.
 count_iteration() {
 	shown_worktree=$(printable "${worktree}")
-	[ -d "${worktree}" ] || die 3 "seat ${shown_slot}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
+	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
 	git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify --quiet "${base}^{commit}" >/dev/null ||
-		die 3 "seat ${shown_slot}'s base ${base} is not a commit in ${shown_worktree}; expected the seat's base"
-	slot_lines=$(git -c core.fsmonitor=false -C "${worktree}" log \
-		--format='%(trailers:key=Agent-Slot,valueonly,separator=%x2C)' "${base}..HEAD") ||
+		die 3 "seat ${shown_seat}'s base ${base} is not a commit in ${shown_worktree}; expected the seat's base"
+	seat_lines=$(git -c core.fsmonitor=false -C "${worktree}" log \
+		--format='%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "${base}..HEAD") ||
 		die 4 "git log failed in ${shown_worktree}"
 	own_commits=0
 	while IFS= read -r line; do
-		[ "${line}" != "${slot}" ] || own_commits=$((own_commits + 1))
+		[ "${line}" != "${seat}" ] || own_commits=$((own_commits + 1))
 	done <<EOF
-${slot_lines}
+${seat_lines}
 EOF
 	iteration=$((own_commits + 1))
 }
@@ -170,4 +173,4 @@ load_dependencies
 read_seat
 count_iteration
 printf 'ITERATION: %s\nREPORT: %s/%s/%s/%s-iteration-%s.json\n' \
-	"${iteration}" "${worktree%/}" "${REPORTS_DIR}" "${slot}" "${kind}" "${iteration}"
+	"${iteration}" "${worktree%/}" "${REPORTS_DIR}" "${seat}" "${kind}" "${iteration}"

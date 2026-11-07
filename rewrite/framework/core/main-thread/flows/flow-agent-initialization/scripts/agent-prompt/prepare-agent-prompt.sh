@@ -3,7 +3,7 @@
 # whole prompt, the one line "DISPATCH: <path>" naming a dispatch file that
 # generate-agent-dispatch.sh wrote; the hook checks that file, the context file
 # and the plugin files it names, and replaces the prompt with the agent's
-# message built from them, the seat the dispatch's slot names and
+# message built from them, the seat the dispatch's seat field names and
 # procedure-context's context-handling template, sent word for word. Any
 # problem denies the dispatch. Every other Agent call passes untouched. The
 # decision is the only output, so a listed agent is denied on any unexpected
@@ -40,7 +40,7 @@ readonly VIEW_NAME='view'
 readonly PRUNE_NAME='prune'
 # The seat list's reader and the seat's iteration reader, relative to the
 # skills folder.
-readonly SLOTS_SCRIPT='procedure-git-worktree/scripts/seats/slots.sh'
+readonly SEATS_SCRIPT='procedure-git-worktree/scripts/seats/seats.sh'
 readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/seats/iteration.sh'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
@@ -387,8 +387,8 @@ A listed agent's call is allowed only when all of these hold:
   file generate-agent-dispatch.sh wrote for that agent;
   the dispatch, its context file (its effort's latest version, matching
   context.sha256), its plugin files (each SKILL.md frontmatter valid as
-  list-plugins.sh --help sets, the description aside) and its seat (the slot
-  in <effort>/slots.json, read with slots.sh get: open, with a worktree) pass
+  list-plugins.sh --help sets, the description aside) and its seat (the seat
+  in <effort>/seats.json, read with seats.sh get: open, with a worktree) pass
   every check.
 Known gap: a path swapped after its check, by someone who can write to the
   plugin folder or the Crucible space, is copied unchecked, or hangs until
@@ -418,7 +418,7 @@ The message, built from the checked bytes: # Your plugins, # Your context,
 Leaves only (a SIGKILL aside): once every check passes,
 <effort>/pending/<tool_use_id>, holding the dispatch path and a newline, written
 atomically, for procedure-git-worktree's seat bind hook; on a deny, the Denial file.
-The repository and slots.json are only read.
+The repository and seats.json are only read.
 
 Exit codes:
   0  a decision, or none; read stdout
@@ -431,7 +431,7 @@ Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
   awk, cat, date, dd, grep, mkdir, mktemp, mv, readlink, rm, tr, wc, and
     sha256sum or shasum (base system)
-  procedure-git-worktree: scripts/seats/slots.sh, scripts/seats/iteration.sh
+  procedure-git-worktree: scripts/seats/seats.sh, scripts/seats/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
@@ -652,18 +652,18 @@ check_dispatch_file() {
 }
 
 # Sets dispatch_agent, dispatch_context, dispatch_context_sha256,
-# dispatch_slot and plugin_entries
+# dispatch_seat and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .slot' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .seat' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
 		IFS= read -r dispatch_agent
 		IFS= read -r dispatch_context
 		IFS= read -r dispatch_context_sha256
-		IFS= read -r dispatch_slot
+		IFS= read -r dispatch_seat
 	} <<EOF
 ${dispatch_fields}
 EOF
@@ -780,36 +780,36 @@ is_skill_installed() {
 	[ -n "${project_claude_dir}" ] && [ -f "${project_claude_dir}/skills/$1/SKILL.md" ]
 }
 
-# Adds a SEAT problem unless the dispatch's slot names an open seat with a
-# worktree in its effort's slots.json, read with slots.sh get; sets
+# Adds a SEAT problem unless the dispatch's seat field names an open seat with a
+# worktree in its effort's seats.json, read with seats.sh get; sets
 # seat_mode and seat_worktree from it, and report_path with read_report_path.
 check_seat() {
-	slots_script="${skills_dir}/${SLOTS_SCRIPT}"
-	[ -f "${slots_script}" ] && [ -r "${slots_script}" ] ||
-		fault "the seat reader ${slots_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
-	slots_file="${dispatch_effort}/slots.json"
-	if [ ! -f "${slots_file}" ]; then
-		add_problem SEAT "the effort has no slots.json; expected the seat list procedure-git-worktree's slots.sh add writes" "${slots_file}"
+	seats_script="${skills_dir}/${SEATS_SCRIPT}"
+	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
+		fault "the seat reader ${seats_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
+	seats_file="${dispatch_effort}/seats.json"
+	if [ ! -f "${seats_file}" ]; then
+		add_problem SEAT "the effort has no seats.json; expected the seat list procedure-git-worktree's seats.sh writes" "${seats_file}"
 		return 0
 	fi
-	# On exit 0 slots.sh prints only the seat; otherwise only its stderr lines.
+	# On exit 0 seats.sh prints only the seat; otherwise only its stderr lines.
 	seat_status=0
-	seat_out=$(sh "${slots_script}" get --slots "${slots_file}" --slot "${dispatch_slot}" </dev/null 2>&1) || seat_status=$?
+	seat_out=$(sh "${seats_script}" get --seats "${seats_file}" --seat "${dispatch_seat}" </dev/null 2>&1) || seat_status=$?
 	seat_line=$(printf '%s' "${seat_out%%"${NL}"*}" | tr '[:cntrl:]' '?')
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem SEAT "seat ${dispatch_slot} is not in slots.json; expected a seat procedure-git-worktree's slots.sh add made" "${slots_file}"
+			add_problem SEAT "seat ${dispatch_seat} is not in seats.json; expected a seat procedure-git-worktree's seats.sh choose or add made" "${seats_file}"
 			return 0
 			;;
 		3)
-			add_problem SEAT "slots.json can't be read (${seat_line}); expected the effort's seat list as slots.sh --help sets" "${slots_file}"
+			add_problem SEAT "seats.json can't be read (${seat_line}); expected the effort's seat list as seats.sh --help sets" "${seats_file}"
 			return 0
 			;;
-		*) fault "slots.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
+		*) fault "seats.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
 	esac
 	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // ""') ||
-		fault "jq could not read the seat slots.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
+		fault "jq could not read the seat seats.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
 	{
 		IFS= read -r seat_state
 		IFS= read -r seat_mode
@@ -818,12 +818,12 @@ check_seat() {
 ${seat_fields}
 EOF
 	if [ "${seat_state}" != open ]; then
-		add_problem SEAT "seat ${dispatch_slot} is ${seat_state}; expected an open seat" "${slots_file}"
+		add_problem SEAT "seat ${dispatch_seat} is ${seat_state}; expected an open seat" "${seats_file}"
 		return 0
 	fi
 	case ${seat_worktree} in
-		'') add_problem SEAT "seat ${dispatch_slot} has no worktree; expected a developer or tester seat" "${slots_file}" ;;
-		*'`'*) add_problem SEAT "seat ${dispatch_slot}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${slots_file}" ;;
+		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer or tester seat" "${seats_file}" ;;
+		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${seats_file}" ;;
 		*) read_report_path ;;
 	esac
 }
@@ -836,12 +836,12 @@ read_report_path() {
 	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
 		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
 	iteration_status=0
-	iteration_out=$(sh "${iteration_script}" --slots "${slots_file}" --slot "${dispatch_slot}" </dev/null 2>&1) || iteration_status=$?
+	iteration_out=$(sh "${iteration_script}" --seats "${seats_file}" --seat "${dispatch_seat}" </dev/null 2>&1) || iteration_status=$?
 	iteration_line=$(printf '%s' "${iteration_out##*"${NL}"}" | tr '[:cntrl:]' '?')
 	case ${iteration_status} in
 		0) ;;
 		3)
-			add_problem SEAT "seat ${dispatch_slot}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${slots_file}"
+			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${seats_file}"
 			return 0
 			;;
 		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;

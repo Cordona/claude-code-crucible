@@ -48,9 +48,9 @@ def value_of($kind): of_kind($kind)[0].value;
 def item: {plugin: .value, reason};
 # A --load or --skip plugin installed or named as a procedure goes under
 # procedures, any other under standards, where the validator names a wrong kind.
-def slot: ($installed[.value].kind // (if .value | startswith("procedure-") then "procedure" else "standard" end))
+def list_key: ($installed[.value].kind // (if .value | startswith("procedure-") then "procedure" else "standard" end))
 	| if . == "procedure" then "procedures" else "standards" end;
-def listed($kind; $key): [of_kind($kind)[] | select(slot == $key)];
+def listed($kind; $key): [of_kind($kind)[] | select(list_key == $key)];
 def frameworks: of_kind("framework") | sort_by(.value);
 def plan:
 	{claude_session_id: $session_id, agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
@@ -73,7 +73,7 @@ def shown: if . == null then "(not given)"
 	else tojson | gsub("[[:cntrl:]]"; "?") | if length > max_shown_chars then .[:40] + "…" + .[-39:] else . end end;
 def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \($problem)";
 def option: {agent: "--agent", mode: "--mode", replan: "--replan"}[.];
-# The option behind a plugin entry at plugins.<list>.<slot>[<n>] (language: no
+# The option behind a plugin entry at plugins.<list>.<key>[<n>] (language: no
 # index), and its --reason when the problem is the reason.
 def plugin_line($at; $problem):
 	(if $at[2] == "language" then ["--language", of_kind("language")[0]]

@@ -1,6 +1,6 @@
 ---
 name: human-view
-description: "Shared jq modules for scripts' human views: `view.jq` (status line, sections, lists, Data section, whole paths), `paths.jq` (short paths cited for recognition), `title.jq` (developer or reviewer titles). Use when a script prints a view for the human. Loaded by scripts via `jq -L` and `include`; never by the model or the human. Writes nothing; needs jq 1.6+. Not for input checks or a view's content (each renderer's own)."
+description: "Shared jq modules for scripts' human views: `view.jq` (status line, sections, lists, Data section, whole paths), `paths.jq` (short paths cited for recognition), `title.jq` (developer or reviewer titles, a seat's name for the human). Use when a script prints a view for the human. Loaded by scripts via `jq -L` and `include`; never by the model or the human. Writes nothing; needs jq 1.6+. Not for input checks or a view's content (each renderer's own)."
 user-invocable: false
 ---
 
@@ -52,7 +52,7 @@ include "paths";
 |---|---|
 | `view.jq` | A view's layout, as the Layout rules set: its status line, sections, numbered and bullet lists, plain lines, field lines, Data section and whole paths |
 | `paths.jq` | Path and link display for a path cited for recognition: the shortening, the `~` form for the home folder, the middle cut and the 80-character cap; and `link_span`, a whole path in backticks |
-| `title.jq` | The one place a developer or reviewer title is built from a language label and framework labels; the caller passes the role word and never adds it itself |
+| `title.jq` | The one place a developer or reviewer title is built from a language label and framework labels, and a seat's name for the human from its seat name; the caller passes the role word and never adds it itself |
 
 `view.jq`'s public defs. A def returning `""` means nothing to show, and `blocks` drops it. None cleans control characters, so values must arrive as cleaned display text.
 
@@ -91,3 +91,7 @@ include "paths";
 |---|---|---|
 | `joined_labels` | array of labels | `A`, `A and B`, or `A, B and C` for three or more, in the given order |
 | `title($role)` | `{language: label, frameworks: [labels]}`, either key absent or null; `$role` such as `developer` | `<language> <role>` with no framework; `<language> <role> with <frameworks>` with one or more; `Generic <role>` with no language |
+| `capitalised` | a word | the word with its first letter in upper case |
+| `seat_letter` | a seat name, such as `software-developer-alpha` | its last word capitalised, such as `Alpha` |
+| `seat_display` | a seat name | its words with spaces, the first and the last capitalised, such as `Software developer Alpha` |
+| `seat_title($role; $seat)` | as `title`'s | `title`'s, with `$seat`'s letter right after the role word: `Rust developer Alpha`, `Kotlin developer Alpha with Spring`, `Generic developer Alpha` |

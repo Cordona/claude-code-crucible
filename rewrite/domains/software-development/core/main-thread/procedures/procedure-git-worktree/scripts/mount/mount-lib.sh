@@ -1,7 +1,8 @@
 # Sourced by mount.sh, unmount.sh and mount-status.sh, never run: the main
 # checkout's shape, where its mount record lives, the record's contract and
 # the state of a path in the checkout. Uses the sourcing script's warn, die,
-# printable and work_dir; sets no shell option of its own.
+# printable, work_dir and own_dir (seats.jq is in ../seats from it); sets no
+# shell option of its own.
 #
 # A path's state is absent or "<mode> <blob sha>", the blob as git would
 # store the checkout's file: clean filters applied, a symlink's target text.
@@ -10,39 +11,46 @@
 # symlink). A spec file holds one "<before><TAB><after><TAB><path>" line per
 # path, in the record's order. Every git call runs with fsmonitor off, so
 # a read never refreshes an index.
-# shellcheck disable=SC2034,SC2154 # the sourcing scripts read the variables set here and set work_dir
+# shellcheck disable=SC2034,SC2154 # the sourcing scripts read the variables set here and set work_dir and own_dir
 
 readonly RECORD_FOLDER='crucible'
 readonly MAX_LISTED=20
 readonly tab='	'
 
 # A version 1 record holds one seat (slot, worktree, seat_commit) and its
-# base; it reads as version 2 with that one seat, start = base and target =
-# seat_commit.
+# base, the seat's field and name in the form of its time (slot, like dev-1);
+# it reads as version 2 with that one seat, start = base and target =
+# seat_commit. A version 2 seat is {seat, worktree, seat_commit}, the name
+# seats.jq's; one written before seats were named so holds slot (like dev-1)
+# instead of seat, and reads as seat.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly RECORD_JQ='def sha: type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$");
+readonly RECORD_JQ='include "seats";
+def sha: type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$");
 def state: type == "string" and test("^(absent|(100644|100755|120000) ([0-9a-f]{40}|[0-9a-f]{64}))$");
 def folder: type == "string" and startswith("/") and (test("[\u0000-\u001f\u007f]") | not);
 def relative: type == "string" and length > 0 and (test("[\u0000\n]") | not)
 	and (split("/") | all(. != "" and . != "." and . != ".." and . != ".git"));
-def slot_name: type == "string" and test("^[a-z][a-z0-9]*-[1-9][0-9]*$");
+def v1_slot_name: type == "string" and test("^[a-z][a-z0-9]*-[1-9][0-9]*$");
+def seat_name: type == "string" and test(seats_name_pattern);
+def v2_seat_fits: type == "object" and (.worktree | folder) and (.seat_commit | sha)
+	and ((.seat | seat_name) or ((has("seat") | not) and (.slot | v1_slot_name)));
 def common_fits: (.effort | folder) and (.repo | folder) and (.head | sha)
 	and (.branch == null or (.branch | type == "string")) and (.mounted_at | type == "string")
 	and (.paths | type == "array" and length > 0
 		and all(type == "object" and (.path | relative) and (.before | state) and (.after | state)
 			and (.saved == null or .saved == (.before | test("^100(644|755) ")))));
-def v1_fits: common_fits and (.worktree | folder) and (.slot | slot_name)
+def v1_fits: common_fits and (.worktree | folder) and (.slot | v1_slot_name)
 	and (.base | sha) and (.seat_commit | sha) and (.base_is_snapshot | type == "boolean");
 def v2_fits: common_fits and (.start | sha) and (.target | sha) and (.start_is_snapshot | type == "boolean")
 	and (.seats | type == "array" and length > 0
-		and all(type == "object" and (.slot | slot_name) and (.worktree | folder) and (.seat_commit | sha))
-		and (map(.slot) | unique | length) == length)
+		and all(v2_seat_fits)
+		and (map(.seat // .slot) | unique | length) == length)
 	and ((.seats | length > 1) or .seats[0].seat_commit == .target);
 if type == "object" and .version == 1 and v1_fits then
-	{effort, repo, start: .base, target: .seat_commit, head, seats: [{slot, worktree, seat_commit}], paths}
-elif type == "object" and .version == 2 and v2_fits then .
+	{effort, repo, start: .base, target: .seat_commit, head, seats: [{seat: .slot, worktree, seat_commit}], paths}
+elif type == "object" and .version == 2 and v2_fits then .seats |= map({seat: (.seat // .slot), worktree, seat_commit})
 else error("not a version 1 or 2 mount record") end
-| .effort, .repo, .start, .target, .head, (.seats | length), (.seats[] | "\(.slot)\t\(.worktree)\t\(.seat_commit)"),
+| .effort, .repo, .start, .target, .head, (.seats | length), (.seats[] | "\(.seat)\t\(.worktree)\t\(.seat_commit)"),
 	(.paths[] | "\(.before)\t\(.after)\t\(.path)")'
 
 # Sets checkout_problem to why $1 is not a main checkout's top folder, empty
@@ -112,8 +120,8 @@ check_checkout_idle() {
 }
 
 # Sets record_present; when true also rec_effort, rec_repo, rec_start,
-# rec_target, rec_head, rec_slots (the slots, space-separated, in order),
-# the seats file work_dir/rec-seats ("<slot><TAB><worktree><TAB><seat
+# rec_target, rec_head, rec_seats (the seats, space-separated, in order),
+# the seats file work_dir/rec-seats ("<seat><TAB><worktree><TAB><seat
 # commit>" per seat) and the spec file work_dir/spec. Exits 3 on a record
 # that fails the contract.
 read_record() {
@@ -124,9 +132,9 @@ read_record() {
 	shown_record=$(printable "${record_file}")
 	[ -f "${record_file}" ] && [ ! -L "${record_file}" ] ||
 		die 3 "the mount record ${shown_record} is not a regular file; expected mount.sh's record"
-	jq -r "${RECORD_JQ}" "${record_file}" >"${work_dir}/record" 2>/dev/null ||
+	jq -r -L "${own_dir}/../seats" "${RECORD_JQ}" "${record_file}" >"${work_dir}/record" 2>/dev/null ||
 		die 3 "the mount record ${shown_record} is unreadable or not version 1 or 2; expected mount.sh's record"
-	rec_slots=''
+	rec_seats=''
 	{
 		IFS= read -r rec_effort
 		IFS= read -r rec_repo
@@ -137,7 +145,7 @@ read_record() {
 		while [ "${rec_seat_count}" -gt 0 ]; do
 			IFS= read -r rec_seat
 			printf '%s\n' "${rec_seat}"
-			rec_slots="${rec_slots:+${rec_slots} }${rec_seat%%"${tab}"*}"
+			rec_seats="${rec_seats:+${rec_seats} }${rec_seat%%"${tab}"*}"
 			rec_seat_count=$((rec_seat_count - 1))
 		done >"${work_dir}/rec-seats"
 		cat >"${work_dir}/spec"

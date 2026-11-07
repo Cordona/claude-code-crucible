@@ -166,7 +166,7 @@ check_chosen() {
 	case ${report} in
 		"${worktree_prefix}"*) report_place=${report#"${worktree_prefix}"} ;;
 		"${worktree%/}/"*) report_place=${report#"${worktree%/}/"} ;;
-		*) report_place='.crucible-effort/reports/<slot>/<build or test>-iteration-<N>.json' ;;
+		*) report_place='.crucible-effort/reports/<seat>/<build or test>-iteration-<N>.json' ;;
 	esac
 	report_place=$(printable "${report_place}")
 	# Resolved physically, so the path holds when the skill is installed through a link.

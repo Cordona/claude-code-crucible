@@ -37,12 +37,12 @@ def card_gates:
 		  + (if $note == "" then "" else ": \($note)" end)]
 	| if . == [] then "" else "**Gates**\n" + card_dash_list end;
 
-# Input: the parsed report. $seat: {language, frameworks} labels for title;
-# $files: {total, new}; $commit: {slot, count ("build iteration 2"), short,
+# Input: the parsed report. $labels: {language, frameworks} labels for title;
+# $files: {total, new}; $commit: {seat, count ("build iteration 2"), short,
 # report_path}.
-def card($seat; $files; $commit):
+def card($labels; $files; $commit):
 	(if card_count("blockers") > 0 then "blocked" else "done" end) as $state
-	| ["### \($seat | title("developer")) · \($commit.slot) · \($commit.count) · \($state)",
+	| ["### \($labels | seat_title("developer"; $commit.seat)) · \($commit.count) · \($state)",
 	   "Task: \(.summary | card_text)",
 	   (card_count_lines($files) | card_dash_list),
 	   card_gates,

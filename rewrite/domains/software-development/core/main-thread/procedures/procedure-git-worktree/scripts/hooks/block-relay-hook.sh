@@ -22,13 +22,13 @@ usage: sh ${PROG} [--efforts DIR]
 
 Claude Code's SubagentStop hook, registered async with asyncRewake, beside
 report-commit-hook.sh. Reads the event JSON on stdin; finds the agent's developer seat
-with slots.sh find in each DIR/*/slots.json; goes on only when the agent's
+with seats.sh find in each DIR/*/seats.json; goes on only when the agent's
 transcript (agent_transcript_path) ends in a SubagentHandback call. Then waits
 up to $((WAIT_TICKS / 2)) s for report-commit-hook.sh's line for the same event in
 DIR/<effort>/logs/report-commit.log (the event id: the cksum of the event JSON).
 
   blocked N   prints to stderr the line to send the agent, the reason from
-              the worktree's .crucible-effort/logs/<slot>/report-commit.jsonl,
+              the worktree's .crucible-effort/logs/<seat>/report-commit.jsonl,
               and exits ${WAKE_EXIT}: Claude Code wakes the main thread with it
   gave-up     prints to stderr the line to show the human; exits ${WAKE_EXIT}
   any other   exits 0, silent
@@ -43,7 +43,7 @@ exit codes:
   1  wrong command line
   ${WAKE_EXIT}  the main thread has a line to act on (stderr)
 
-needs: POSIX sh, jq 1.6+, cksum; ../seats/slots.sh from this script's folder
+needs: POSIX sh, jq 1.6+, cksum; ../seats/seats.sh from this script's folder
 EOF
 }
 
@@ -115,16 +115,16 @@ read_event() {
 	esac
 }
 
-# Sets effort_dir, slot and worktree from the developer seat holding agent_id.
+# Sets effort_dir, seat and worktree from the developer seat holding agent_id.
 find_seat() {
-	for candidate in "${efforts}"/*/slots.json; do
+	for candidate in "${efforts}"/*/seats.json; do
 		[ -f "${candidate}" ] || continue
-		[ ! -L "${candidate%/slots.json}" ] || continue
-		seat=$(sh "${own_dir}/../seats/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}" 2>/dev/null) || continue
-		fields=$(printf '%s\n' "${seat}" | jq -r 'select(.role == "developer") | .slot, .worktree // ""') || quiet
+		[ ! -L "${candidate%/seats.json}" ] || continue
+		seat_json=$(sh "${own_dir}/../seats/seats.sh" find --seats "${candidate}" --agent-id "${agent_id}" 2>/dev/null) || continue
+		fields=$(printf '%s\n' "${seat_json}" | jq -r 'select(.role == "developer") | .seat, .worktree // ""') || quiet
 		[ -n "${fields}" ] || quiet
-		effort_dir=${candidate%/slots.json}
-		slot=$(printf '%s\n' "${fields}" | sed -n 1p)
+		effort_dir=${candidate%/seats.json}
+		seat=$(printf '%s\n' "${fields}" | sed -n 1p)
 		worktree=$(printf '%s\n' "${fields}" | sed -n 2p)
 		return 0
 	done
@@ -162,7 +162,7 @@ await_outcome() {
 # Prints the reason report-commit-hook.sh recorded for this event.
 seat_reason() {
 	jq -rs --arg e "${event_id}" 'map(select(.event == $e)) | last | .reason // empty' \
-		"${worktree}/.crucible-effort/logs/${slot}/report-commit.jsonl" 2>/dev/null
+		"${worktree}/.crucible-effort/logs/${seat}/report-commit.jsonl" 2>/dev/null
 }
 
 wake() {
@@ -170,10 +170,10 @@ wake() {
 		blocked)
 			reason=$(seat_reason)
 			[ -n "${reason}" ] || quiet
-			printf '%s\n' "Crucible: the developer in ${slot} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
+			printf '%s\n' "Crucible: the developer in ${seat} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
 			;;
 		gave-up)
-			printf '%s\n' "Crucible: the developer in ${slot} failed its report check 3 times; nothing was committed. Show the human exactly this line: The developer in ${slot} could not write a valid report; its work stays uncommitted in ${worktree}." >&2
+			printf '%s\n' "Crucible: the developer in ${seat} failed its report check 3 times; nothing was committed. Show the human exactly this line: The developer in ${seat} could not write a valid report; its work stays uncommitted in ${worktree}." >&2
 			;;
 		*) quiet ;;
 	esac
@@ -187,7 +187,7 @@ on_exit() {
 	exit "${exit_status}"
 }
 
-work_dir='' effort_dir='' slot='' worktree='' outcome=''
+work_dir='' effort_dir='' seat='' worktree='' outcome=''
 trap on_exit EXIT
 parse_args "$@"
 own_dir=$(cd -P -- "$(script_dir)" && pwd -P) || quiet

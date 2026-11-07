@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# The only writer of an effort's slots.json, the seat list hooks and scripts
+# The only writer of an effort's seats.json, the seat list hooks and scripts
 # route work by. One command per change, under a mkdir lock beside the file.
-# The shell checks the command line and the path; slots.jq checks the options
+# The shell checks the command line and the path; seats.jq checks the options
 # and the file, applies the change and checks the result, so the shell never
 # edits JSON. Every written file goes through crucible's prune, so a key with
 # nothing in it is left out. A change goes in place through a temp file beside
@@ -10,61 +10,67 @@
 set -eu
 umask 077
 
-readonly PROG='slots.sh'
-readonly MODULE='slots'
+readonly PROG='seats.sh'
+readonly MODULE='seats'
 readonly CRUCIBLE_SKILL='crucible'
 # Bounds stderr so a refusal stays readable; the last line counts the rest.
 readonly MAX_PROBLEMS=20
 readonly LOCK_WAIT_SECONDS=10
 readonly LOCK_POLL_SECONDS=0.2
-readonly COMMANDS='add bind status handover get find busy'
+readonly COMMANDS='choose opened drop add bind status handover get find busy'
 # The C locale keeps the shell byte-wise; jq writes the file as UTF-8.
 LC_ALL=C
 export LC_ALL
 
-# Prints {exit, problems, file, out}: the exit code, the problem lines (at
-# most $max), the new file (null when nothing is written) and the stdout text.
+# Prints {exit, problems, file, out, remove}: the exit code, the problem lines
+# (at most $max), the new file (null when nothing is written), the stdout
+# text and, when drop removed the last seat, remove true (the file goes).
 # The new file is pruned, then checked against the contract. Each
-# --base-slot value comes as $base_slot_<n>, n its place from 0.
+# --base-seat value comes as $base_seat_<n>, n its place from 0.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly RUN_JQ='include "slots";
+readonly RUN_JQ='include "seats";
 include "prune";
-([$ARGS.named | to_entries[] | select(.key | startswith("base_slot_"))
-	| {place: (.key | ltrimstr("base_slot_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_slots
-| {slot: $slot, role: $role, worktree: $worktree, repo: $repo, base: $base, lens: $lens,
+([$ARGS.named | to_entries[] | select(.key | startswith("base_seat_"))
+	| {place: (.key | ltrimstr("base_seat_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_seats
+| {seat: $seat, role: $role, repo: $repo, base: $base, lens: $lens,
 	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "awaiting-round": $awaiting_round,
-	"base-slot": $base_slots} as $given
-| slots_run($command; $given | with_entries(select(.value != "" and .value != [])); $effort; if $exists == "yes" then $current else null end)
+	"base-seat": $base_seats} as $given
+| seats_run($command; $given | with_entries(select(.value != "" and .value != [])); $effort; $seats_dir;
+	if $exists == "yes" then $current else null end)
 | .file |= prune
-| slots_checked
+| seats_checked
 | .problems |= (if length > $max then .[:$max - 1] + ["\(length - $max + 1) more problems not shown; expected none"] else . end)'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} add --slots FILE --slot S --role developer|tester --worktree DIR --repo DIR --base SHA
-           [--base-slot S]...
-       sh ${PROG} add --slots FILE --slot S --role reviewer --lens L
-       sh ${PROG} bind --slots FILE --slot S --agent-id ID --dispatch ID
-       sh ${PROG} status --slots FILE --slot S --status working|idle|gave-up [--awaiting-round N|none]
-       sh ${PROG} handover --slots FILE --slot S
-       sh ${PROG} get --slots FILE --slot S
-       sh ${PROG} find --slots FILE --agent-id ID
-       sh ${PROG} busy --slots FILE
+usage: sh ${PROG} choose --seats FILE --seat S --role developer --repo DIR --base SHA
+           [--base-seat S]...
+       sh ${PROG} opened --seats FILE --seat S
+       sh ${PROG} drop --seats FILE --seat S
+       sh ${PROG} add --seats FILE --seat S --role reviewer --lens L
+       sh ${PROG} bind --seats FILE --seat S --agent-id ID --dispatch ID
+       sh ${PROG} status --seats FILE --seat S --status working|idle|gave-up [--awaiting-round N|none]
+       sh ${PROG} handover --seats FILE --seat S
+       sh ${PROG} get --seats FILE --seat S
+       sh ${PROG} find --seats FILE --agent-id ID
+       sh ${PROG} busy --seats FILE
        sh ${PROG} --help | -h
 
-Keeps an effort's seat list. Each change runs under the lock FILE.lock,
-waiting at most ${LOCK_WAIT_SECONDS}s, and is written only when the whole file fits the
-contract; a file that already fails it is refused, never repaired. A key
-with nothing in it is left out: no value is null, [] or {}.
+Keeps an effort's seat list. Each change runs under the lock FILE.lock
+(waiting at most ${LOCK_WAIT_SECONDS}s) and is written only when the whole file fits
+the contract; a file that fails it is refused, never repaired. An empty
+key is left out: no value is null, [] or {}.
 
---slots FILE  absolute path of slots.json; its folder must exist and its
-              name is the effort id written when add creates the file
+--seats FILE  absolute path of seats.json; its folder must exist; the
+              folder's name is the effort id a new file gets
 
-add       a new seat: status open, no agent; a developer or tester
-          gets mode BUILD or TEST. A tester's --worktree may be a
-          developer's; this only records the sharing: seat-open.sh does
-          not open a tester seat yet. Each --base-slot is a developer
-          seat this one was cut from, kept as base_slots in that order.
+choose    a writer seat with no worktree yet: status chosen, mode BUILD,
+          worktree <FILE's folder, symlinks resolved>/worktrees/S, each
+          --base-seat (a developer seat it was cut from) in base_seats in
+          order; S is software-developer-<letter>; tester refused
+opened    sets a chosen seat open; seat-open.sh runs it once the worktree exists
+drop      removes a chosen seat (the last: FILE goes); others refused
+add       a reviewer seat, S <L>-reviewer-<letter>: status open
 bind      seats an agent and its dispatch on an open seat: status working;
           the same agent and dispatch again changes nothing; refused for
           an agent handed out of the seat
@@ -74,20 +80,23 @@ status    sets working, idle or gave-up on a bound seat, and awaiting_round
 handover  frees a bound seat: the agent moves to the end of
           previous_agent_ids, agent_id and dispatch go, status open
 get       prints the seat as one line of JSON
-find      prints, like get, the seat whose agent_id is ID
-busy      prints "slot<TAB>status<TAB>awaiting_round" per seat that is open,
-          working or awaits a round (none when it awaits none)
+find      like get, the seat whose agent_id is ID
+busy      prints "seat<TAB>status<TAB>awaiting_round" per seat that is open,
+          working or awaits a round (none when it awaits none); never a
+          chosen one
 
-the file: {"effort": string, "slots": [slot, ...]}, slot names unique
-  every slot   slot (a lowercase word, a dash, a number of 1 or more, like
-               dev-1), role, status (open, working, idle or gave-up),
-               agent_id and dispatch (letters, digits, _ and -; absent when
-               open, present otherwise), previous_agent_ids (optional: agent
-               ids handed out of the seat, oldest first, no repeats)
+the file: {"effort": string, "seats": [seat, ...]}, seat names unique
+  every seat   seat (dash-joined lowercase words ending in one of alpha
+               ... omega, like software-developer-alpha), role,
+               status (chosen, open, working, idle or gave-up), agent_id
+               and dispatch (letters, digits, _ and -; absent when chosen or
+               open, present otherwise), previous_agent_ids (optional, not
+               when chosen: agents handed out, oldest first, no repeats)
   developer    mode BUILD, worktree, repo (absolute paths), base (40 hex),
-  tester       mode TEST,  awaiting_round (optional, a whole number of 1 or more),
-               base_slots (optional: other developer seats, no repeats; set by add only)
-  reviewer     lens (lowercase letters, digits and dashes)
+  tester       mode TEST,  awaiting_round (optional, a whole number >= 1),
+               base_seats (optional, set by choose only: other developer
+               seats, none chosen, no repeats)
+  reviewer     lens (lowercase words joined by dashes); never chosen
 
 needs jq 1.6+ and prune.jq from the ${CRUCIBLE_SKILL} skill, in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib
@@ -97,12 +106,14 @@ exit codes:
   2  wrong command line: a missing or unknown command or option, an option
      the command does not take, or a missing or repeated value
   3  invalid input or the file fails the contract; each problem is one stderr
-     line (at most ${MAX_PROBLEMS})
+     line (at most ${MAX_PROBLEMS}); also a --role or --seat name the command
+     does not take
   4  jq or prune.jq is missing, jq failed, or the file could not be written
-  5  refused by the seat's state: the slot exists, another agent or
-     dispatch holds it, the agent was handed out of it, or it is open
-     (status, handover), or find found ID in more than one seat
-  6  the slot is not in the file; find: no seat holds ID
+  5  refused by the seat's state: it exists (choose, add), another agent
+     or dispatch holds it, the agent was handed out of it, it is chosen
+     (bind, status, handover), open (status, handover) or not chosen
+     (opened, drop), or find found ID in more than one seat
+  6  the seat is not in the file; find: no seat holds ID
   7  the lock is held by another run past ${LOCK_WAIT_SECONDS}s
   8  busy found work in flight
 EOF
@@ -131,12 +142,13 @@ printable() {
 # Prints the options command $1 takes.
 command_options() {
 	case $1 in
-		add) printf -- '--slots --slot --role --worktree --repo --base --base-slot --lens' ;;
-		bind) printf -- '--slots --slot --agent-id --dispatch' ;;
-		find) printf -- '--slots --agent-id' ;;
-		status) printf -- '--slots --slot --status --awaiting-round' ;;
-		busy) printf -- '--slots' ;;
-		*) printf -- '--slots --slot' ;;
+		choose) printf -- '--seats --seat --role --repo --base --base-seat' ;;
+		add) printf -- '--seats --seat --role --lens' ;;
+		bind) printf -- '--seats --seat --agent-id --dispatch' ;;
+		find) printf -- '--seats --agent-id' ;;
+		status) printf -- '--seats --seat --status --awaiting-round' ;;
+		busy) printf -- '--seats' ;;
+		*) printf -- '--seats --seat' ;;
 	esac
 }
 
@@ -165,7 +177,7 @@ parse_args() {
 			exit 0
 			;;
 		'') usage_error "command missing; expected one of ${COMMANDS}" ;;
-		add | bind | status | handover | get | find | busy) command=$1 ;;
+		choose | opened | drop | add | bind | status | handover | get | find | busy) command=$1 ;;
 		*)
 			shown_command=$(printable "$1")
 			usage_error "unknown command: ${shown_command}; expected one of ${COMMANDS}"
@@ -173,28 +185,24 @@ parse_args() {
 	esac
 	shift
 	allowed=$(command_options "${command}")
-	slots_file='' slot='' role='' worktree='' repo='' base='' base_slot='' lens='' agent_id='' dispatch='' status='' awaiting_round=''
+	seats_file='' seat='' role='' repo='' base='' lens='' agent_id='' dispatch='' status='' awaiting_round=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--slots)
-				take_value "$1" "${slots_file}" "${2-}"
-				slots_file=${option_value}
+			--seats)
+				take_value "$1" "${seats_file}" "${2-}"
+				seats_file=${option_value}
 				;;
-			--slot)
-				take_value "$1" "${slot}" "${2-}"
-				slot=${option_value}
+			--seat)
+				take_value "$1" "${seat}" "${2-}"
+				seat=${option_value}
 				;;
 			--role)
 				take_value "$1" "${role}" "${2-}"
 				role=${option_value}
-				;;
-			--worktree)
-				take_value "$1" "${worktree}" "${2-}"
-				worktree=${option_value}
 				;;
 			--repo)
 				take_value "$1" "${repo}" "${2-}"
@@ -204,9 +212,9 @@ parse_args() {
 				take_value "$1" "${base}" "${2-}"
 				base=${option_value}
 				;;
-			--base-slot)
+			--base-seat)
+				# run_command reads each value from the command line, in order.
 				take_repeated "$1" "${2-}"
-				base_slot=${option_value}
 				;;
 			--lens)
 				take_value "$1" "${lens}" "${2-}"
@@ -238,39 +246,30 @@ parse_args() {
 	require_options
 }
 
-# Refuses a command missing an option it needs; add's needs follow --role.
+# Refuses a command missing an option it needs.
 require_options() {
-	require --slots "${slots_file}" FILE
+	require --seats "${seats_file}" FILE
 	case ${command} in
 		busy | find) ;;
-		*) require --slot "${slot}" S ;;
+		*) require --seat "${seat}" S ;;
 	esac
 	case ${command} in
-		add) require_add_options ;;
+		choose)
+			require --role "${role}" developer
+			require --repo "${repo}" DIR
+			require --base "${base}" SHA
+			;;
+		add)
+			require --role "${role}" reviewer
+			# Another role is seats.jq's refusal, which names choose.
+			[ "${role}" != reviewer ] || require --lens "${lens}" L
+			;;
 		bind)
 			require --agent-id "${agent_id}" ID
 			require --dispatch "${dispatch}" ID
 			;;
 		status) require --status "${status}" 'working|idle|gave-up' ;;
 		find) require --agent-id "${agent_id}" ID ;;
-		*) ;;
-	esac
-}
-
-require_add_options() {
-	require --role "${role}" 'developer|tester|reviewer'
-	case ${role} in
-		developer | tester)
-			[ -z "${lens}" ] || usage_error "--lens is given for a ${role}; expected it only for a reviewer"
-			require --worktree "${worktree}" DIR
-			require --repo "${repo}" DIR
-			require --base "${base}" SHA
-			;;
-		reviewer)
-			[ -z "${worktree}${repo}${base}${base_slot}" ] ||
-				usage_error '--worktree, --repo, --base or --base-slot is given for a reviewer; expected only --lens'
-			require --lens "${lens}" L
-			;;
 		*) ;;
 	esac
 }
@@ -287,24 +286,28 @@ script_dir() {
 	esac
 }
 
-# Sets slots_dir and effort from --slots, refusing a path that can't be the file.
-check_slots_path() {
-	shown_slots=$(printable "${slots_file}")
-	case ${slots_file} in
-		*[[:cntrl:]]*) die 3 "--slots ${shown_slots} holds a control character; expected a plain path" ;;
-		*/) die 3 "--slots ${shown_slots} names a folder; expected the slots.json path" ;;
+# Sets seats_dir, physical_dir (the folder with no symlink, where choose puts
+# the worktrees folder) and effort from --seats, refusing a path that can't be
+# the file.
+check_seats_path() {
+	shown_seats=$(printable "${seats_file}")
+	case ${seats_file} in
+		*[[:cntrl:]]*) die 3 "--seats ${shown_seats} holds a control character; expected a plain path" ;;
+		*/) die 3 "--seats ${shown_seats} names a folder; expected the seats.json path" ;;
 		/*) ;;
-		*) die 3 "--slots ${shown_slots} is not absolute; expected an absolute path" ;;
+		*) die 3 "--seats ${shown_seats} is not absolute; expected an absolute path" ;;
 	esac
-	slots_dir=${slots_file%/*}
-	effort=${slots_dir##*/}
-	[ -n "${slots_dir}" ] || slots_dir=/
-	shown_dir=$(printable "${slots_dir}")
-	[ -d "${slots_dir}" ] || die 3 "--slots folder ${shown_dir} does not exist; expected the effort folder"
-	[ ! -d "${slots_file}" ] || die 3 "--slots ${shown_slots} is a folder; expected the slots.json path"
+	seats_dir=${seats_file%/*}
+	effort=${seats_dir##*/}
+	[ -n "${seats_dir}" ] || seats_dir=/
+	shown_dir=$(printable "${seats_dir}")
+	[ -d "${seats_dir}" ] || die 3 "--seats folder ${shown_dir} does not exist; expected the effort folder"
+	[ ! -d "${seats_file}" ] || die 3 "--seats ${shown_seats} is a folder; expected the seats.json path"
+	physical_dir=$(cd -P -- "${seats_dir}" 2>/dev/null && pwd -P) ||
+		die 3 "--seats folder ${shown_dir} can't be entered; expected a readable effort folder"
 }
 
-# Sets own_dir (slots.jq) and crucible_lib_dir (prune.jq, from the installed
+# Sets own_dir (seats.jq) and crucible_lib_dir (prune.jq, from the installed
 # crucible skill).
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
@@ -318,7 +321,7 @@ load_dependencies() {
 # Waits for the lock folder at most LOCK_WAIT_SECONDS; mkdir is atomic, so
 # one run holds it at a time.
 take_lock() {
-	lock_dir="${slots_file}.lock"
+	lock_dir="${seats_file}.lock"
 	shown_lock=$(printable "${lock_dir}")
 	deadline=$(($(date +%s) + LOCK_WAIT_SECONDS))
 	until mkdir -- "${lock_dir}" 2>/dev/null; do
@@ -333,27 +336,27 @@ take_lock() {
 }
 
 # Sets result to RUN_JQ's output over the file as it is now; the arguments
-# are the checked command line after the command, read for --base-slot.
+# are the checked command line after the command, read for --base-seat.
 run_command() {
 	place=0 left=$#
 	while [ "${left}" -gt 0 ]; do
-		[ "$1" != --base-slot ] || {
-			set -- "$@" --arg "base_slot_${place}" "$2"
+		[ "$1" != --base-seat ] || {
+			set -- "$@" --arg "base_seat_${place}" "$2"
 			place=$((place + 1))
 		}
 		shift 2
 		left=$((left - 2))
 	done
-	if [ -e "${slots_file}" ]; then
-		[ -f "${slots_file}" ] && [ -r "${slots_file}" ] ||
-			die 3 "--slots ${shown_slots} is not a readable file; expected the slots JSON file"
-		exists=yes current_file=${slots_file}
+	if [ -e "${seats_file}" ]; then
+		[ -f "${seats_file}" ] && [ -r "${seats_file}" ] ||
+			die 3 "--seats ${shown_seats} is not a readable file; expected the seats JSON file"
+		exists=yes current_file=${seats_file}
 	else
 		exists=no current_file=/dev/null
 	fi
 	result=$(jq -nc -L "${own_dir}" -L "${crucible_lib_dir}" --rawfile current "${current_file}" --arg exists "${exists}" \
-		--arg command "${command}" --arg effort "${effort}" --argjson max "${MAX_PROBLEMS}" \
-		--arg slot "${slot}" --arg role "${role}" --arg worktree "${worktree}" --arg repo "${repo}" \
+		--arg command "${command}" --arg effort "${effort}" --arg seats_dir "${physical_dir}" --argjson max "${MAX_PROBLEMS}" \
+		--arg seat "${seat}" --arg role "${role}" --arg repo "${repo}" \
 		--arg base "${base}" --arg lens "${lens}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
 		--arg status "${status}" --arg awaiting_round "${awaiting_round}" "$@" "${RUN_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and prune.jq in ${shown_lib_dir}"
@@ -362,9 +365,11 @@ run_command() {
 # Prints the problems and the output, writes the new file when there is one,
 # and exits with the command's code.
 finish() {
-	outcome=$(printf '%s\n' "${result}" | jq -r '"\(.exit) \(.file != null)"') ||
+	outcome=$(printf '%s\n' "${result}" | jq -r '"\(.exit) \(.file != null) \(.remove == true)"') ||
 		die 4 'jq failed reading the result; expected jq 1.6+'
-	[ "${outcome#* }" = false ] || write_file
+	exit_code=${outcome%% *} outcome=${outcome#* }
+	[ "${outcome% *}" = false ] || write_file
+	[ "${outcome#* }" = false ] || remove_file
 	problems=$(printf '%s\n' "${result}" | jq -r '.problems[]') ||
 		die 4 'jq failed reading the problems; expected jq 1.6+'
 	if [ -n "${problems}" ]; then
@@ -376,18 +381,23 @@ EOF
 	fi
 	output=$(printf '%s\n' "${result}" | jq -r '.out') || die 4 'jq failed reading the output; expected jq 1.6+'
 	[ -z "${output}" ] || printf '%s\n' "${output}"
-	exit "${outcome% *}"
+	exit "${exit_code}"
 }
 
-# Writes the new file over --slots through a temp file in the same folder.
+# Writes the new file over --seats through a temp file in the same folder.
 write_file() {
-	temp_file=$(mktemp "${slots_dir}/.${slots_file##*/}.XXXXXX") ||
-		die 4 "mktemp could not create a temp file beside ${shown_slots}; expected a writable folder"
+	temp_file=$(mktemp "${seats_dir}/.${seats_file##*/}.XXXXXX") ||
+		die 4 "mktemp could not create a temp file beside ${shown_seats}; expected a writable folder"
 	printf '%s\n' "${result}" | jq '.file' >"${temp_file}" ||
-		die 4 "could not write the temp file beside ${shown_slots}; expected free space"
-	mv -f "${temp_file}" "${slots_file}" ||
-		die 4 "mv could not move the temp file onto ${shown_slots}; expected a writable folder"
+		die 4 "could not write the temp file beside ${shown_seats}; expected free space"
+	mv -f "${temp_file}" "${seats_file}" ||
+		die 4 "mv could not move the temp file onto ${shown_seats}; expected a writable folder"
 	temp_file=''
+}
+
+# Removes --seats, under the lock, once its last seat is dropped.
+remove_file() {
+	rm -f -- "${seats_file}" || die 4 "rm could not remove ${shown_seats}; expected a writable folder"
 }
 
 # shellcheck disable=SC2329 # invoked by the EXIT trap
@@ -403,7 +413,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 parse_args "$@"
-check_slots_path
+check_seats_path
 load_dependencies
 case ${command} in
 	get | find | busy) ;;

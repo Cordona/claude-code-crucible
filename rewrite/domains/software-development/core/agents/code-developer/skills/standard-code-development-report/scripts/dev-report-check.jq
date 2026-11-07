@@ -18,11 +18,11 @@ def report_derived_keys: {
 	"dispatch": "the dispatch gives it",
 	"started": "the dispatch gives it",
 	"finished": "the commit date gives it",
-	"effort": "slots.json gives it",
-	"slot": "slots.json gives it",
-	"agent_id": "slots.json gives it",
-	"agent-id": "slots.json gives it",
-	"base": "slots.json gives it",
+	"effort": "seats.json gives it",
+	"seat": "seats.json gives it",
+	"agent_id": "seats.json gives it",
+	"agent-id": "seats.json gives it",
+	"base": "seats.json gives it",
 	"behavior": "dropped from the contract",
 	"focus": "dropped from the contract",
 	"review_responses": "a fix round answers in answers"
@@ -303,7 +303,7 @@ def report_answer_id_problems($chosen):
 		| ($given | map(.id)) as $ids
 		| ($chosen[] | select(IN($ids[]) | not) | "answers lacks \(report_name); add \(report_answer_shape(.))"),
 		($given[] | select(.id | IN($chosen[]) | not)
-			| "answers[\(.index)].id \(.id | report_echo) was not chosen for this slot; remove that answer, and if you changed code for it, report that change in deviations with from \"message: FINDINGS\""),
+			| "answers[\(.index)].id \(.id | report_echo) was not chosen for this seat; remove that answer, and if you changed code for it, report that change in deviations with from \"message: FINDINGS\""),
 		($ids | group_by(.) | map(select(length > 1))[] | "answers holds \(.[0] | report_name) \(length) times; keep one answer per id")
 	end;
 

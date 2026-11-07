@@ -21,8 +21,8 @@ usage: sh ${PROG} [--efforts DIR]
 
 Claude Code's PostToolUse hook on Agent. Reads the event JSON on stdin; with
 a tool_response.agentId and a DIR/*/pending/<tool_use_id> file, reads the
-dispatch path in it, then that dispatch's id and slot, and runs
-slots.sh bind --slots <effort>/slots.json --slot <slot> --agent-id <agentId>
+dispatch path in it, then that dispatch's id and seat, and runs
+seats.sh bind --seats <effort>/seats.json --seat <seat> --agent-id <agentId>
 --dispatch <id>. The pending file is removed whatever bind's outcome.
 No agentId or no pending file: not an effort dispatch, nothing done.
 
@@ -30,14 +30,14 @@ No agentId or no pending file: not an effort dispatch, nothing done.
                \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
 writes: DIR/<effort>/logs/seat-bind.log, one line per outcome (UTC time,
-tool_use_id, slot, agent id, outcome); faults before an effort is known go
+tool_use_id, seat, agent id, outcome); faults before an effort is known go
 to stderr. stdout: nothing.
 
 exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+; ../seats/slots.sh from this script's folder
+needs: POSIX sh, jq 1.6+; ../seats/seats.sh from this script's folder
 EOF
 }
 
@@ -102,7 +102,7 @@ log() {
 	fi
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
 	if ! { mkdir -p -- "${effort_dir}/logs" &&
-		printf '%s %s %s %s %s\n' "${now}" "${tool_use_id:--}" "${slot:--}" "${shown_agent:--}" "$1" >>"${effort_dir}/logs/seat-bind.log"; } 2>/dev/null; then
+		printf '%s %s %s %s %s\n' "${now}" "${tool_use_id:--}" "${seat:--}" "${shown_agent:--}" "$1" >>"${effort_dir}/logs/seat-bind.log"; } 2>/dev/null; then
 		warn "could not append to ${effort_dir}/logs/seat-bind.log: $1"
 	fi
 }
@@ -218,26 +218,26 @@ read_pending() {
 		fault "dispatch file ${shown_file} is not in this effort's dispatches/; expected the effort of the pending file"
 }
 
-# Sets dispatch_id and slot from the dispatch file.
+# Sets dispatch_id and seat from the dispatch file.
 read_dispatch() {
-	ids=$(jq -r '(.id // "" | strings), (.slot // "" | strings)' "${dispatch_file}" 2>/dev/null) ||
+	ids=$(jq -r '(.id // "" | strings), (.seat // "" | strings)' "${dispatch_file}" 2>/dev/null) ||
 		fault "jq could not read ${shown_file}; expected the dispatch JSON"
-	dispatch_id='' slot=''
+	dispatch_id='' seat=''
 	{
 		IFS= read -r dispatch_id || :
-		IFS= read -r slot || :
+		IFS= read -r seat || :
 	} <<EOF
 ${ids}
 EOF
-	[ -n "${dispatch_id}" ] && [ -n "${slot}" ] || {
-		slot=$(printable "${slot}")
-		fault "dispatch file ${shown_file} has no id or slot; expected both strings"
+	[ -n "${dispatch_id}" ] && [ -n "${seat}" ] || {
+		seat=$(printable "${seat}")
+		fault "dispatch file ${shown_file} has no id or seat; expected both strings"
 	}
-	slot=$(printable "${slot}")
+	seat=$(printable "${seat}")
 }
 
 bind_seat() {
-	run sh "${own_dir}/../seats/slots.sh" bind --slots "${effort_dir}/slots.json" --slot "${slot}" \
+	run sh "${own_dir}/../seats/seats.sh" bind --seats "${effort_dir}/seats.json" --seat "${seat}" \
 		--agent-id "${agent_id}" --dispatch "${dispatch_id}"
 	if [ "${child_rc}" -eq 0 ]; then
 		log 'bound'
@@ -245,7 +245,7 @@ bind_seat() {
 	fi
 	first_line=$(head -n 1 "${work_dir}/stderr" | cut -c "1-${MAX_QUOTE_BYTES}") || first_line=''
 	shown_line=$(printable "${first_line}")
-	fault "slots.sh bind exit ${child_rc}: ${shown_line}"
+	fault "seats.sh bind exit ${child_rc}: ${shown_line}"
 }
 
 # An unexpected failure lets the call go on too, logged, the pending file removed.
@@ -260,7 +260,7 @@ on_exit() {
 	exit 0
 }
 
-work_dir='' pending_file='' usage_failed=no effort_dir='' slot='' tool_use_id='' shown_agent=''
+work_dir='' pending_file='' usage_failed=no effort_dir='' seat='' tool_use_id='' shown_agent=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

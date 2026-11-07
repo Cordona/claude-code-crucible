@@ -31,8 +31,8 @@ usage: sh ${PROG} [--efforts DIR]
        sh ${PROG} --help | -h
 
 Claude Code's SubagentStop hook for effort developers. Reads the event JSON
-on stdin and takes its agent_id; finds the agent's seat with slots.sh find
-in each DIR/*/slots.json; for a developer seat, drops the empty keys
+on stdin and takes its agent_id; finds the agent's seat with seats.sh find
+in each DIR/*/seats.json; for a developer seat, drops the empty keys
 from this iteration's report (iteration.sh's REPORT path) with
 ${PRUNER}, then checks it with ${CHECKER}.
 
@@ -56,10 +56,10 @@ Every other stop goes ahead:
                \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
 writes: DIR/<effort>/logs/report-commit.log, one line per outcome (UTC time,
-slot, agent_id, event id, outcome, like committed <sha> build-iteration 2
+seat, agent_id, event id, outcome, like committed <sha> build-iteration 2
 or blocked 1: <the checker's lines joined by " / ">);
-DIR/<effort>/blocks/<slot>, the block count; and, for a block or a give-up,
-one JSON line in the worktree's .crucible-effort/logs/<slot>/report-commit.jsonl
+DIR/<effort>/blocks/<seat>, the block count; and, for a block or a give-up,
+one JSON line in the worktree's .crucible-effort/logs/<seat>/report-commit.jsonl
 ({time, event, outcome, block, reason}, reason the text the agent is sent),
 committed with the seat's next commit. The event id is the cksum of the
 event JSON, the same for every hook Claude Code gives that event.
@@ -71,7 +71,7 @@ exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+, git 2.26+; ../seats/slots.sh, ../seats/iteration.sh,
+needs: POSIX sh, jq 1.6+, git 2.26+; ../seats/seats.sh, ../seats/iteration.sh,
 ../commit/commit-input.sh, ../commit/commit-message.sh and ../commit/commit.sh
 from this script's folder,
 ${PRUNER} and ${CHECKER} at ${CHECKER_DIR}
@@ -137,7 +137,7 @@ log() {
 	fi
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
 	if ! { mkdir -p -- "${effort_dir}/logs" &&
-		printf '%s %s %s %s %s\n' "${now}" "${slot:--}" "${agent_id:--}" "${event_id:--}" "$1" >>"${effort_dir}/logs/report-commit.log"; } 2>/dev/null; then
+		printf '%s %s %s %s %s\n' "${now}" "${seat:--}" "${agent_id:--}" "${event_id:--}" "$1" >>"${effort_dir}/logs/report-commit.log"; } 2>/dev/null; then
 		warn "could not append to ${effort_dir}/logs/report-commit.log: $1"
 	fi
 }
@@ -195,7 +195,7 @@ read_event() {
 		'') allow ;;
 		*[!A-Za-z0-9_-]*)
 			shown_agent=$(printable "${agent_id}")
-			warn "agent_id ${shown_agent} is not an id slots.json holds; the stop goes ahead"
+			warn "agent_id ${shown_agent} is not an id seats.json holds; the stop goes ahead"
 			allow
 			;;
 		*) ;;
@@ -226,23 +226,23 @@ resolve_efforts() {
 	efforts="${root}/efforts"
 }
 
-# Sets effort_dir, slots_file and seat_json from the first slots.json with a
-# seat for agent_id; a slots.json slots.sh can't read is logged and skipped.
+# Sets effort_dir, seats_file and seat_json from the first seats.json with a
+# seat for agent_id; a seats.json seats.sh can't read is logged and skipped.
 find_seat() {
-	for candidate in "${efforts}"/*/slots.json; do
+	for candidate in "${efforts}"/*/seats.json; do
 		[ -f "${candidate}" ] || continue
-		candidate_dir=${candidate%/slots.json}
+		candidate_dir=${candidate%/seats.json}
 		[ ! -L "${candidate_dir}" ] || continue
-		run sh "${own_dir}/../seats/slots.sh" find --slots "${candidate}" --agent-id "${agent_id}"
+		run sh "${own_dir}/../seats/seats.sh" find --seats "${candidate}" --agent-id "${agent_id}"
 		case ${child_rc} in
 			0)
-				effort_dir=${candidate_dir} slots_file=${candidate} seat_json=${child_out}
+				effort_dir=${candidate_dir} seats_file=${candidate} seat_json=${child_out}
 				return 0
 				;;
 			6) ;;
 			*)
 				effort_dir=${candidate_dir}
-				log_child_fault 'slots.sh find'
+				log_child_fault 'seats.sh find'
 				effort_dir=''
 				;;
 		esac
@@ -250,17 +250,17 @@ find_seat() {
 	allow
 }
 
-# Sets role, status, slot, worktree and awaiting_round from the seat.
+# Sets role, status, seat, worktree and awaiting_round from the seat.
 read_seat() {
 	fields=$(printf '%s\n' "${seat_json}" |
-		jq -r '.role, .status, .slot, .worktree // "", (.awaiting_round // "" | tostring)') ||
-		fault 'jq could not read the seat slots.sh find printed'
+		jq -r '.role, .status, .seat, .worktree // "", (.awaiting_round // "" | tostring)') ||
+		fault 'jq could not read the seat seats.sh find printed'
 	# $( ) drops trailing empty lines, so a read past them finds the end: empty.
-	role='' status='' slot='' worktree='' awaiting_round=''
+	role='' status='' seat='' worktree='' awaiting_round=''
 	{
 		IFS= read -r role || :
 		IFS= read -r status || :
-		IFS= read -r slot || :
+		IFS= read -r seat || :
 		IFS= read -r worktree || :
 		IFS= read -r awaiting_round || :
 	} <<EOF
@@ -281,7 +281,7 @@ find_checker() {
 
 # Sets report to this iteration's report path from iteration.sh.
 find_report() {
-	run sh "${own_dir}/../seats/iteration.sh" --slots "${slots_file}" --slot "${slot}"
+	run sh "${own_dir}/../seats/iteration.sh" --seats "${seats_file}" --seat "${seat}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'iteration.sh'
 	report=$(printf '%s\n' "${child_out}" | sed -n 's/^REPORT: //p')
 	[ -n "${report}" ] || fault 'iteration.sh printed no REPORT line'
@@ -304,7 +304,7 @@ check_report() {
 
 # Counts this misfit; blocks the stop up to MAX_BLOCKS times, then gives up.
 block_or_give_up() {
-	counter="${effort_dir}/blocks/${slot}"
+	counter="${effort_dir}/blocks/${seat}"
 	blocks=''
 	[ ! -f "${counter}" ] || blocks=$(head -n 1 "${counter}") || blocks=''
 	# A count that is no small number restarts, so a damaged file can't hold the agent.
@@ -329,8 +329,8 @@ block_or_give_up() {
 give_up() {
 	rm -f -- "${counter}"
 	run_lines=$(checker_lines)
-	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status gave-up
-	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status gave-up'
+	run sh "${own_dir}/../seats/seats.sh" status --seats "${seats_file}" --seat "${seat}" --status gave-up
+	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh status gave-up'
 	seat_log gave-up "${blocks}" "${run_lines}"
 	log "gave-up: $(printf '%s' "${run_lines}" | flatten)"
 	allow
@@ -354,7 +354,7 @@ flatten() {
 # Appends outcome $1, block number $2 and reason $3 to the seat's own log in
 # its worktree; a log that can't be written is logged, never a fault.
 seat_log() {
-	seat_log_dir="${worktree}/.crucible-effort/logs/${slot}"
+	seat_log_dir="${worktree}/.crucible-effort/logs/${seat}"
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
 	if ! { mkdir -p -- "${seat_log_dir}" &&
 		jq -nc --arg time "${now}" --arg event "${event_id}" --arg outcome "$1" \
@@ -368,23 +368,23 @@ seat_log() {
 # Builds the commit-message input, writes the message, commits every change,
 # restarts the seat's block count and sets the seat idle.
 commit_work() {
-	run sh "${own_dir}/../commit/commit-input.sh" --slots "${slots_file}" --slot "${slot}" --out "${work_dir}/message.json"
+	run sh "${own_dir}/../commit/commit-input.sh" --seats "${seats_file}" --seat "${seat}" --out "${work_dir}/message.json"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-input.sh'
 	iteration=$(jq -r '.trailers | to_entries[] | select(.key | endswith("-iteration")) | "\(.key) \(.value)"' \
 		"${work_dir}/message.json" 2>/dev/null) || iteration=''
 	run sh "${own_dir}/../commit/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-message.sh'
 	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" \
-		--author-name "${slot}" --author-email "${slot}@crucible.invalid" --all
+		--author-name "${seat}" --author-email "${seat}@crucible.invalid" --all
 	case ${child_rc} in
 		0) ;;
 		5) set_idle 'no-change' ;;
 		*) child_fault 'commit.sh' ;;
 	esac
-	rm -f -- "${effort_dir}/blocks/${slot}"
+	rm -f -- "${effort_dir}/blocks/${seat}"
 	log "committed ${child_out} ${iteration}"
-	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
-	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status idle'
+	run sh "${own_dir}/../seats/seats.sh" status --seats "${seats_file}" --seat "${seat}" --status idle
+	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh status idle'
 }
 
 # A fitting report with nothing for git to commit (each iteration's report
@@ -392,10 +392,10 @@ commit_work() {
 # restarts the block count and sets the seat idle, so a later wake starts
 # clean.
 set_idle() {
-	rm -f -- "${effort_dir}/blocks/${slot}"
+	rm -f -- "${effort_dir}/blocks/${seat}"
 	log "$1"
-	run sh "${own_dir}/../seats/slots.sh" status --slots "${slots_file}" --slot "${slot}" --status idle
-	[ "${child_rc}" -eq 0 ] || child_fault 'slots.sh status idle'
+	run sh "${own_dir}/../seats/seats.sh" status --seats "${seats_file}" --seat "${seat}" --status idle
+	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh status idle'
 	allow
 }
 
@@ -410,7 +410,7 @@ on_exit() {
 	exit 0
 }
 
-work_dir='' usage_failed=no effort_dir='' slot='' agent_id='' event_id=''
+work_dir='' usage_failed=no effort_dir='' seat='' agent_id='' event_id=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

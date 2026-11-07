@@ -22,9 +22,11 @@ def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
 # scripts/lib/crucible-space.sh takes it: the session a plan or a dispatch
 # names as claude_session_id.
 def claude_session_id_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
-# A seat name of the effort's slots.json, as procedure-git-worktree's slots.sh
-# names one: a lowercase word, a dash and a number of 1 or more, like dev-1.
-def slot_pattern: "\\A[a-z][a-z0-9]*-[1-9][0-9]*\\z";
+# A seat name of the effort's seats.json, as procedure-git-worktree's
+# scripts/seats/seats.jq names one (seats_name_pattern, kept the same here):
+# lowercase words joined by dashes, the last one of alpha ... omega, like
+# software-developer-alpha.
+def seat_pattern: "\\A[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*-(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\\z";
 # A local time with its offset, YYYY-MM-DDTHH:MM:SS+HH:MM.
 def local_time_pattern: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\z";
 

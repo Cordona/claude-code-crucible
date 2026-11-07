@@ -9,14 +9,14 @@
 # the flow's step 8.
 # The shape, keys in this order; a key whose value would be null, [] or {} is
 # left out, so entry_points and plugins, and each plugins kind, may be absent:
-#   {"id", "claude_session_id", "agent", "slot", "task",
+#   {"id", "claude_session_id", "agent", "seat", "task",
 #    "entry_points": [repo-relative path, ...],
 #    "context": {"path", "sha256"}, "plan": {"sha256"},
 #    "plugins": {"language": {"name": "language-<n>", "paths": [...]},
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
 #                "standards": [{"name": "standard-<n>", ...}, ...],
 #                "procedures": [{"name": "procedure-<n>", ...}, ...]}}
-# slot names the seat in the effort's slots.json; the seat holds the mode and
+# seat names the seat in the effort's seats.json; the seat holds the mode and
 # the worktree.
 # The plugin rules: frameworks need a language; a name starts with its kind's
 # prefix and is listed once; a code-reviewer dispatch holds one lens: the
@@ -27,7 +27,7 @@ include "dispatch-names" {search: "./"};
 
 # The agents are dispatch-names.jq's dispatched_agents.
 def lens_agent: "code-reviewer";
-def top_keys: ["id", "claude_session_id", "agent", "slot", "task", "entry_points", "context", "plan", "plugins"];
+def top_keys: ["id", "claude_session_id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins"];
 # The keys left out when they hold nothing; every other key is required.
 def optional_keys: ["entry_points", "plugins"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
@@ -65,8 +65,8 @@ def field_problems:
 	 else problem(["claude_session_id"]; " "; "is not a session ID; expected a lowercase UUID, the session that wrote the dispatch") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
-	(if (.slot | type) == "string" and (.slot | test(slot_pattern)) then empty
-	 else problem(["slot"]; " "; "is not a seat name; expected a lowercase word, a dash and a number of 1 or more, like dev-1") end),
+	(if (.seat | type) == "string" and (.seat | test(seat_pattern)) then empty
+	 else problem(["seat"]; " "; "is not a seat name; expected lowercase words joined by dashes, the last one of alpha, beta ... omega, like software-developer-alpha") end),
 	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end);
 
 # The plan a dispatch came from, by its digest alone: its gate record expires,

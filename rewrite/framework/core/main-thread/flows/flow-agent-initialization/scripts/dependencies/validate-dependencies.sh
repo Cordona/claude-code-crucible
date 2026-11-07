@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-agent-initialization: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's slots.sh and its seat bind, report commit and block
+# procedure-git-worktree's seats.sh and its seat bind, report commit and block
 # relay hook scripts, the
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
@@ -82,7 +82,7 @@ readonly HOOK_ON_FAILURE='block'
 # The gate hooks read one small state file, and a timed-out one lets the stop
 # or question through, so a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
-# The seat bind hook runs one slots.sh change; the report commit hook checks a
+# The seat bind hook runs one seats.sh change; the report commit hook checks a
 # report and commits the worktree, so its bound is wider.
 readonly SEAT_BIND_HOOK_TIMEOUT=10
 readonly REPORT_COMMIT_HOOK_TIMEOUT=30
@@ -341,7 +341,7 @@ fingerprint_input() {
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/slots.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
@@ -1082,7 +1082,7 @@ check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
-check_script "${WORKTREE_PROCEDURE}" seats/slots.sh
+check_script "${WORKTREE_PROCEDURE}" seats/seats.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh

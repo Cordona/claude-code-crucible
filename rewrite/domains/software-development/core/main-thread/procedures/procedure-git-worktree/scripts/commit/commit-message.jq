@@ -5,7 +5,7 @@
 # "<field> <problem>; expected <x>" lines, empty when it fits; commit_message
 # builds the message of an input that fits.
 
-def commit_agent_trailers: ["effort", "dispatch", "agent-slot", "agent-id", "language", "frameworks", "standards"];
+def commit_agent_trailers: ["effort", "dispatch", "agent-seat", "agent-id", "language", "frameworks", "standards"];
 # Each kind: its count trailer (null for none), its other trailers in the
 # order the message lists them after the count, and those that may be left out.
 def commit_kinds: {
@@ -123,7 +123,7 @@ def commit_problems:
 		]
 	end;
 
-# agent-slot -> Agent-Slot.
+# agent-seat -> Agent-Seat.
 def commit_trailer_key: split("-") | map((.[:1] | ascii_upcase) + .[1:]) | join("-");
 
 def commit_trailer_text:

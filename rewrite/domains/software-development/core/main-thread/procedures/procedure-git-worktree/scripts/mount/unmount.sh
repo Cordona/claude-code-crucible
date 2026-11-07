@@ -9,6 +9,7 @@ inherited_umask=$(umask)
 umask 077
 
 readonly PROG='unmount.sh'
+readonly VIEW_LIB='human-view'
 # The C locale keeps the shell, sed and awk byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -41,11 +42,13 @@ left there.
 A record of version 1 (one seat) or 2 (one or more seats) is read.
 
 stdout, one JSON line:
-  {"unmounted":true,"slots":[S...],"paths":N,"line":L}           reversed
-  {"unmounted":false,"forgotten":true,"slots":[S...],"line":L}   finished:
+  {"unmounted":true,"seats":[S...],"paths":N,"line":L}           reversed
+  {"unmounted":false,"forgotten":true,"seats":[S...],"line":L}   finished:
                                                        record removed
-  L, for the human: "Unmounted S + S from <repo>." or "S + S are committed
-  in <repo>; the mount record is dropped." (control characters as "?")
+  L, for the human: "Unmounted Software developer Alpha + ... from <repo>."
+  or "Software developer Alpha + ... are committed in <repo>; the mount
+  record is dropped." (each seat by its name for the human; control
+  characters as "?")
 
 exit codes:
   0  unmounted, or a finished mount forgotten
@@ -53,13 +56,16 @@ exit codes:
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
      unreadable or not version 1 or 2
-  4  environment: git or jq missing or failed, a write failed, or the
-     reversed paths or their bytes did not verify (the record is kept)
+  4  environment: git, jq or ${VIEW_LIB} missing or failed, a write
+     failed, or the reversed paths or their bytes did not verify (the
+     record is kept)
   5  refused by state: nothing mounted, HEAD moved with mounted paths
      still uncommitted, a mounted path changed, or git apply -R --check
      failed; nothing touched
 
-needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh beside this script
+needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh beside this script and
+../seats/seats.jq from its folder; ${VIEW_LIB}'s title.jq in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -118,9 +124,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	[ -f "${own_dir}/mount-lib.sh" ] || {
-		shown_neighbour=$(printable "${own_dir}/mount-lib.sh")
-		die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+	for neighbour in mount-lib.sh ../seats/seats.jq; do
+		[ -f "${own_dir}/${neighbour}" ] || {
+			shown_neighbour=$(printable "${own_dir}/${neighbour}")
+			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+		}
+	done
+	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	[ -f "${view_dir}/title.jq" ] || {
+		shown_view_dir=$(printable "${view_dir}")
+		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
 	}
 	# shellcheck source=mount-lib.sh
 	. "${own_dir}/mount-lib.sh"
@@ -215,8 +228,9 @@ check_finished "${work_dir}/now-states" "${head}"
 if [ "${finished}" = true ]; then
 	remove_record
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -nc --arg slots "${rec_slots}" --arg repo "${checkout_dir}" '{unmounted: false, forgotten: true, slots: ($slots | split(" "))}
-		| .line = "\(.slots | join(" + ")) are committed in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")); the mount record is dropped."' ||
+	jq -nc -L "${view_dir}" --arg seats "${rec_seats}" --arg repo "${checkout_dir}" 'include "title";
+		{unmounted: false, forgotten: true, seats: ($seats | split(" "))}
+		| .line = "\(.seats | map(seat_display) | join(" + ")) are committed in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")); the mount record is dropped."' ||
 		die 4 'jq could not print the result; the record is removed'
 	exit 0
 fi
@@ -241,7 +255,8 @@ remove_empty_folders
 remove_record
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the unmounted paths'
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc --arg slots "${rec_slots}" --argjson paths "${paths}" --arg repo "${checkout_dir}" \
-	'{unmounted: true, slots: ($slots | split(" ")), paths: $paths}
-	| .line = "Unmounted \(.slots | join(" + ")) from \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."' ||
+jq -nc -L "${view_dir}" --arg seats "${rec_seats}" --argjson paths "${paths}" --arg repo "${checkout_dir}" \
+	'include "title";
+	{unmounted: true, seats: ($seats | split(" ")), paths: $paths}
+	| .line = "Unmounted \(.seats | map(seat_display) | join(" + ")) from \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."' ||
 	die 4 'jq could not print the result; the mount is removed'

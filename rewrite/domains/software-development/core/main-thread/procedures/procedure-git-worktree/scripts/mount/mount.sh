@@ -13,6 +13,7 @@ umask 077
 
 readonly PROG='mount.sh'
 readonly EFFORT_TRAILER='Effort'
+readonly VIEW_LIB='human-view'
 # The C locale keeps the shell, sed and awk byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -27,14 +28,14 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --slot S [--slot S]...
+usage: sh ${PROG} --effort DIR --seat S [--seat S]...
        sh ${PROG} --help | -h
 
 Applies idle developer seats' committed work to their main checkout's
 working tree: the diff from the start to the target, .crucible-effort left
 out. The target is the one seat's HEAD, or ../merge/tips-merge.sh's merge
 of every seat's HEAD; effort-commits.sh proves every commit from HEAD to
-the target is the effort's (slots.json's effort) and gives the start: HEAD,
+the target is the effort's (seats.json's effort) and gives the start: HEAD,
 or the snapshot the seats were cut from. Never touches the index, a ref, a
 seat's worktree or a path outside the patch. A success leaves
 crucible/mount.json (version 2), crucible/mount.patch and crucible/before/
@@ -42,42 +43,45 @@ crucible/mount.json (version 2), crucible/mount.patch and crucible/before/
 git folder; a refusal writes no file, index or ref (tips-merge.sh may
 leave git objects); a failed check after applying reverses the patch.
 
---effort DIR  absolute path of the effort folder (it holds slots.json)
---slot S      a developer seat, status idle, clean worktree; repeatable,
+--effort DIR  absolute path of the effort folder (it holds seats.json)
+--seat S      a developer seat, status idle, clean worktree; repeatable,
               each once; every seat of one repo
 
 A finished mount's record (HEAD moved and holds every mounted path, as
 mount-status.sh says) is removed first, with one stderr line.
 
 refused (exit 5, every problem listed) when: an unfinished mount is
-recorded; a seat is not an idle developer, is dirty or has another repo;
-the seats' HEADs conflict (tips-merge.sh's line); the checkout is not a
-full main checkout at rest; the range holds other work (effort-commits.sh's
-line); nothing to mount; a patch path differs in the checkout from the
-start (ignored files count), is staged differently from both HEAD and the
-start, is a submodule, or holds a newline or non-UTF-8 byte; or git apply
---check fails.
+recorded; a seat is not an idle developer (a chosen seat has no worktree
+yet), is dirty or has another repo; the seats' HEADs conflict
+(tips-merge.sh's line); the checkout is not a full main checkout at rest;
+the range holds other work (effort-commits.sh's line); nothing to mount;
+a patch path differs in the checkout from the start (ignored files count),
+is staged differently from both HEAD and the start, is a submodule, or
+holds a newline or non-UTF-8 byte; or git apply --check fails.
 
 stdout, one JSON line:
-  {"mounted":true,"seats":[{"slot":S,"seat_commit":<sha>}...],
+  {"mounted":true,"seats":[{"seat":S,"seat_commit":<sha>}...],
    "target":<sha>,"paths":N,"left_alone":M,"line":L}
   M counts the checkout's other uncommitted paths (not ignored); L, for
-  the human: "Mounted S + S in <repo>: N files; your other M changed
-  files are untouched." (control characters as "?")
+  the human: "Mounted Software developer Alpha + ... in <repo>: N files;
+  your other M changed files are untouched." (each seat by its name for
+  the human; control characters as "?")
 
 exit codes:
   0  mounted
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a bad option value, slots.json or a seat does not fit
-     (slots.sh's own lines first), or the record is unreadable
-  4  environment: git, jq or a neighbour missing or failed, a write
-     failed, or the applied paths did not verify (the patch was reversed)
+  3  input: a bad option value, seats.json or a seat does not fit
+     (seats.sh's own lines first), or the record is unreadable
+  4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, a
+     write failed, or the applied paths did not verify (the patch was
+     reversed)
   5  refused by state; no file, index or ref is written
 
-needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/slots.sh,
+needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq,
 ../merge/tips-merge.sh, effort-commits.sh and mount-lib.sh from this
-script's folder
+script's folder; ${VIEW_LIB}'s title.jq in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -109,7 +113,7 @@ take_value() {
 }
 
 parse_args() {
-	effort='' slot_given=false
+	effort='' seat_given=false
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -120,19 +124,19 @@ parse_args() {
 				take_value "$1" "${effort}" "${2-}" DIR
 				effort=${option_value}
 				;;
-			--slot)
+			--seat)
 				take_value "$1" '' "${2-}" S
-				slot_given=true
+				seat_given=true
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --slot or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat or --help"
 				;;
 		esac
 		shift 2
 	done
 	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
-	[ "${slot_given}" = true ] || usage_error '--slot missing; expected --slot S'
+	[ "${seat_given}" = true ] || usage_error '--seat missing; expected --seat S'
 }
 
 script_dir() {
@@ -147,17 +151,22 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/slots.sh ../merge/tips-merge.sh effort-commits.sh mount-lib.sh; do
+	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh effort-commits.sh mount-lib.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
+	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	[ -f "${view_dir}/title.jq" ] || {
+		shown_view_dir=$(printable "${view_dir}")
+		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
+	}
 	# shellcheck source=mount-lib.sh
 	. "${own_dir}/mount-lib.sh"
 }
 
-# Sets effort_dir (physical) and slots_file.
+# Sets effort_dir (physical) and seats_file.
 check_effort() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -166,77 +175,71 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	slots_file="${effort_dir}/slots.json"
+	seats_file="${effort_dir}/seats.json"
 }
 
-# Refuses a --slot of the checked command line ("$@") that is no slot name
+# Refuses a --seat of the checked command line ("$@") that is no seat name
 # or is given twice.
-check_slots() {
-	seen_slots=' '
+check_seats() {
+	seen_seats=' '
 	while [ "$#" -gt 0 ]; do
-		[ "$1" != --slot ] || check_slot "$2"
+		[ "$1" != --seat ] || check_seat "$2"
 		shift 2
 	done
 }
 
-check_slot() {
-	check_slot_name --slot "$1"
-	case ${seen_slots} in
-		*" $1 "*) die 3 "--slot $1 is given twice; expected each seat once" ;;
-		*) seen_slots="${seen_slots}$1 " ;;
+check_seat() {
+	check_seat_name --seat "$1"
+	case ${seen_seats} in
+		*" $1 "*) die 3 "--seat $1 is given twice; expected each seat once" ;;
+		*) seen_seats="${seen_seats}$1 " ;;
 	esac
 }
 
-# Refuses option $1's value $2 when it is no lowercase word, a dash and a
-# number of 1 or more.
-check_slot_name() {
-	case $2 in
-		[a-z]*-[1-9]*)
-			case ${2%-*}/${2##*-} in
-				*[!a-z0-9]*/* | */*[!0-9]*) ;;
-				*) return 0 ;;
-			esac
-			;;
-		*) ;;
-	esac
-	shown_slot=$(printable "$2")
-	die 3 "$1 ${shown_slot} is not allowed; expected a slot name like dev-1"
+# Refuses option $1's value $2 with seats.jq's own problem line.
+check_seat_name() {
+	name_problem=$(jq -nr -L "${own_dir}/../seats" --arg name "$2" 'include "seats"; $name | seats_name_problem' </dev/null) ||
+		die 4 'jq failed checking a seat name; expected jq 1.6+ and ../seats/seats.jq'
+	[ -n "${name_problem}" ] || return 0
+	shown_problem=$(printable "${name_problem}")
+	die 3 "$1 ${shown_problem}"
 }
 
-# Reads and checks each --slot of the checked command line ("$@"); writes
-# work_dir/seats, "<slot><TAB><worktree><TAB><seat commit>" per developer
+# Reads and checks each --seat of the checked command line ("$@"); writes
+# work_dir/seats, "<seat><TAB><worktree><TAB><seat commit>" per developer
 # seat, and sets repo to the first one's repo.
 read_seats() {
 	: >"${work_dir}/seats"
 	repo='' shown_seats=''
 	while [ "$#" -gt 0 ]; do
-		if [ "$1" = --slot ]; then
-			slot=$2
-			shown_seats="${shown_seats:+${shown_seats} + }${slot}"
+		if [ "$1" = --seat ]; then
+			seat=$2
+			shown_seats="${shown_seats:+${shown_seats} + }${seat}"
 			read_seat
 			check_seat_state
 			check_seat_repo
 			check_seat_clean
-			[ "${role}" != developer ] ||
-				printf '%s\t%s\t%s\n' "${slot}" "${worktree}" "${seat_commit}" >>"${work_dir}/seats"
+			[ "${mountable}" = no ] ||
+				printf '%s\t%s\t%s\n' "${seat}" "${worktree}" "${seat_commit}" >>"${work_dir}/seats"
 		fi
 		shift 2
 	done
 }
 
-# Sets role, status, worktree and seat_repo from slots.sh get, and
-# seat_commit; slots.sh's own lines say why it refused.
+# Sets role, status, worktree and seat_repo from seats.sh get, mountable
+# (yes for a developer seat that is not chosen, so it has a worktree) and
+# seat_commit; seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/slots.sh" get --slots "${slots_file}" --slot "${slot}") || seat_rc=$?
-	shown_slot=$(printable "${slot}")
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "slots.sh get refused seat ${shown_slot} (exit ${seat_rc}); expected a seat in --effort's slots.json" ;;
-		*) die 4 "slots.sh get failed (exit ${seat_rc})" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .worktree // "", .repo // ""') ||
-		die 4 'jq could not read the seat slots.sh get printed'
+		die 4 'jq could not read the seat seats.sh get printed'
 	role='' status='' worktree='' seat_repo=''
 	{
 		IFS= read -r role || :
@@ -246,21 +249,23 @@ read_seat() {
 	} <<EOF
 ${fields}
 EOF
-	[ "${role}" != developer ] || check_seat_worktree
+	mountable=no
+	[ "${role}" != developer ] || [ "${status}" = chosen ] || mountable=yes
+	[ "${mountable}" = no ] || check_seat_worktree
 }
 
 # Refuses a developer seat whose worktree and repo git can't read as one
 # repository; sets seat_commit.
 check_seat_worktree() {
 	shown_worktree=$(printable "${worktree}")
-	[ -d "${worktree}" ] || die 3 "seat ${shown_slot}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
+	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
 	seat_commit=$(git -C "${worktree}" -c core.fsmonitor=false rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null) ||
-		die 3 "seat ${shown_slot}'s worktree ${shown_worktree} has no HEAD commit; expected its git worktree"
+		die 3 "seat ${shown_seat}'s worktree ${shown_worktree} has no HEAD commit; expected its git worktree"
 	seat_common=$(git -C "${worktree}" -c core.fsmonitor=false rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || seat_common=''
 	repo_common=$(git -C "${seat_repo}" -c core.fsmonitor=false rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || repo_common=''
 	[ -n "${seat_common}" ] && [ "${seat_common}" = "${repo_common}" ] || {
 		shown_repo=$(printable "${seat_repo}")
-		die 3 "seat ${shown_slot}'s worktree ${shown_worktree} is not a worktree of its repo ${shown_repo}; expected one repository"
+		die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a worktree of its repo ${shown_repo}; expected one repository"
 	}
 }
 
@@ -271,19 +276,20 @@ refuse() {
 
 check_seat_state() {
 	if [ "${role}" != developer ]; then
-		refuse "seat ${shown_slot} is not a developer seat; expected a developer's seat"
+		refuse "seat ${shown_seat} is not a developer seat; expected a developer's seat"
 		return 0
 	fi
 	case ${status} in
 		idle) ;;
-		working) refuse "seat ${shown_slot} is working: its developer is busy; expected status idle" ;;
-		*) refuse "seat ${shown_slot} is ${status}: it has nothing finished; expected status idle" ;;
+		chosen) refuse "seat ${shown_seat} is chosen: its worktree is not made yet; expected status idle" ;;
+		working) refuse "seat ${shown_seat} is working: its developer is busy; expected status idle" ;;
+		*) refuse "seat ${shown_seat} is ${status}: it has nothing finished; expected status idle" ;;
 	esac
 }
 
 # The first developer seat's repo is the mount's; every other must match it.
 check_seat_repo() {
-	[ "${role}" = developer ] || return 0
+	[ "${mountable}" = yes ] || return 0
 	if [ -z "${repo}" ]; then
 		repo=${seat_repo}
 		return 0
@@ -291,13 +297,13 @@ check_seat_repo() {
 	[ "${seat_repo}" != "${repo}" ] || return 0
 	shown_seat_repo=$(printable "${seat_repo}")
 	shown_repo=$(printable "${repo}")
-	refuse "seat ${shown_slot}'s repo ${shown_seat_repo} is not the other seats' repo ${shown_repo}; expected seats of one repo"
+	refuse "seat ${shown_seat}'s repo ${shown_seat_repo} is not the other seats' repo ${shown_repo}; expected seats of one repo"
 }
 
 # Lists at most MAX_LISTED of the seat worktree's uncommitted paths; a
 # rename's source path is skipped.
 check_seat_clean() {
-	[ "${role}" = developer ] || return 0
+	[ "${mountable}" = yes ] || return 0
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all >"${work_dir}/seat-status" 2>"${work_dir}/stderr" ||
 		git_failed "git status in the seat's worktree"
 	[ -s "${work_dir}/seat-status" ] || return 0
@@ -308,19 +314,19 @@ check_seat_clean() {
 		| .paths | (.[:$max][] | gsub("[\u0000-\u001f\u007f]"; "?")), (length - $max | select(. > 0) | "... and \(.) more")' \
 		"${work_dir}/seat-status" >"${work_dir}/seat-dirty" 2>"${work_dir}/stderr" ||
 		git_failed "jq reading the seat's status"
-	refuse "seat ${shown_slot}'s worktree ${shown_worktree} has uncommitted changes: the last stop did not commit; expected a clean worktree"
+	refuse "seat ${shown_seat}'s worktree ${shown_worktree} has uncommitted changes: the last stop did not commit; expected a clean worktree"
 	while IFS= read -r dirty_path; do
 		warn "  ${dirty_path}"
 	done <"${work_dir}/seat-dirty"
 }
 
-# Sets effort_id from slots.json's effort, the value of the seats' Effort
+# Sets effort_id from seats.json's effort, the value of the seats' Effort
 # trailer.
 read_effort_id() {
-	shown_slots=$(printable "${slots_file}")
-	effort_id=$(jq -r '.effort | strings' "${slots_file}" 2>/dev/null) ||
-		die 3 "${shown_slots} is not JSON; expected the effort's slots.json"
-	[ -n "${effort_id}" ] || die 3 "${shown_slots} has no effort; expected a non-empty effort string"
+	shown_seats_file=$(printable "${seats_file}")
+	effort_id=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
+		die 3 "${shown_seats_file} is not JSON; expected the effort's seats.json"
+	[ -n "${effort_id}" ] || die 3 "${shown_seats_file} has no effort; expected a non-empty effort string"
 }
 
 check_no_record() {
@@ -333,11 +339,11 @@ check_no_record() {
 	check_finished "${work_dir}/record-states" "${record_head}"
 	if [ "${finished}" = true ]; then
 		remove_record
-		warn "removed the finished mount of ${rec_slots} (target ${rec_target}): HEAD holds every mounted path"
+		warn "removed the finished mount of ${rec_seats} (target ${rec_target}): HEAD holds every mounted path"
 		return 0
 	fi
 	shown_rec_effort=$(printable "${rec_effort}")
-	refuse "a mount is already recorded in ${shown_record}: effort ${shown_rec_effort}, ${rec_slots}, target ${rec_target}; run unmount.sh first"
+	refuse "a mount is already recorded in ${shown_record}: effort ${shown_rec_effort}, ${rec_seats}, target ${rec_target}; run unmount.sh first"
 }
 
 check_checkout() {
@@ -538,7 +544,7 @@ write_record() {
 		--arg start "${start}" --argjson start_is_snapshot "${start_is_snapshot}" --arg target "${target}" \
 		--arg head "${head}" --arg branch "${branch}" --arg mounted_at "${mounted_at}" --rawfile spec "${work_dir}/spec" \
 		'{version: 2, effort: $effort, repo: $repo,
-		  seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {slot: .[0], worktree: .[1], seat_commit: .[2]})),
+		  seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {seat: .[0], worktree: .[1], seat_commit: .[2]})),
 		  start: $start, start_is_snapshot: $start_is_snapshot, target: $target, head: $head,
 		  branch: (if $branch == "" then null else $branch end), mounted_at: $mounted_at,
 		  paths: ($spec | rtrimstr("\n") | split("\n")
@@ -631,7 +637,7 @@ trap 'exit 143' TERM
 parse_args "$@"
 load_dependencies
 check_effort
-check_slots "$@"
+check_seats "$@"
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-mount.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 # tips-merge.sh takes only an absolute message file.
@@ -671,10 +677,11 @@ write_record
 count_left_alone
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the mounted paths'
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc --rawfile seats "${work_dir}/seats" --arg target "${target}" --argjson paths "${paths}" --argjson left_alone "${left_alone}" \
+jq -nc -L "${view_dir}" --rawfile seats "${work_dir}/seats" --arg target "${target}" --argjson paths "${paths}" --argjson left_alone "${left_alone}" \
 	--arg repo "${checkout_dir}" \
-	'{mounted: true, seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {slot: .[0], seat_commit: .[2]})),
+	'include "title";
+	{mounted: true, seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {seat: .[0], seat_commit: .[2]})),
 	  target: $target, paths: $paths, left_alone: $left_alone}
-	| .line = "Mounted \(.seats | map(.slot) | join(" + ")) in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")): \($paths) files;"
+	| .line = "Mounted \(.seats | map(.seat | seat_display) | join(" + ")) in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")): \($paths) files;"
 		+ " your other \($left_alone) changed files are untouched."' ||
 	die 4 'jq could not print the result; the mount is recorded'

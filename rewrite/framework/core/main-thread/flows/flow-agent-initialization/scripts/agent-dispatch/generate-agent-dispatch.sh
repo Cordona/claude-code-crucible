@@ -2,9 +2,9 @@
 # Writes one agent dispatch file from the plan the human approved at its
 # effort's gate, so a dispatch is never assembled by hand. The plan is found
 # by its digest among the effort's gate records, as the plan the human was
-# shown, and its context version must be in that effort. The seat --slot names
-# must be in the effort's slots.json with the plan's mode, since the plugins
-# the plan chose depend on it; procedure-git-worktree's slots.sh reads it.
+# shown, and its context version must be in that effort. The seat --seat names
+# must be in the effort's seats.json with the plan's mode, since the plugins
+# the plan chose depend on it; procedure-git-worktree's seats.sh reads it.
 # The plan is checked again by dispatch-plan-validator.jq; its context file by
 # procedure-context's agent-context-file-checks.sh, agent-context-validator.jq,
 # context-versions.sh and its digest; its plugins are resolved to files by
@@ -75,7 +75,7 @@ def plugins: plugin_entries as $entries
 	{language: (of_kind("language-") | first), frameworks: of_kind("framework-"),
 	 standards: of_kind("standard-"), procedures: of_kind("procedure-")};
 def dispatch: {
-	id: $id, claude_session_id: $session_id, agent: $agent, slot: $slot, task: $task,
+	id: $id, claude_session_id: $session_id, agent: $agent, seat: $seat, task: $task,
 	entry_points: $ARGS.positional,
 	context: {path: $context_path, sha256: $context_sha256},
 	plan: {sha256: $plan_sha256},
@@ -95,7 +95,7 @@ def named_line:
 	.at as $at | .problem as $problem
 	| if stood_in then empty
 	  elif $at[0] == "entry_points" and ($at | length) > 1 then line("--entry-point"; $ARGS.positional[$at[1]]; $problem)
-	  elif $at[0] == "slot" then line("--slot"; $slot; "the slot \($problem)")
+	  elif $at[0] == "seat" then line("--seat"; $seat; "the seat \($problem)")
 	  elif $at[0] == "task" then line("--task"; $task_number; "the task \($problem)")
 	  elif ($at[0] | IN("agent", "plugins", "plan", "context")) then
 		line("--plan-sha256"; $plan_sha256; "the plan'"'"'s \($at | field_name) \($problem)")
@@ -153,7 +153,7 @@ def as_line: "line\t\(.)";
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --slot S
+usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --seat S
            [--entry-point REL]... [--skills-dir DIR]
        sh ${PROG} --help | -h
 
@@ -165,9 +165,11 @@ Options:
       crucible.sh --help)
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
-  --slot S            the seat in FOLDER/slots.json (a lowercase word, a dash,
-      a number of 1 or more, like dev-1) whose mode is the plan's; whether it
-      is open is checked at the Agent call
+  --seat S            the seat in FOLDER/seats.json (lowercase words joined by
+      dashes, the last one of alpha ... omega, like software-developer-alpha)
+      whose mode is the plan's and whose status is open, working or idle (a
+      chosen or gave-up seat is exit 3); that it is open is checked at the
+      Agent call
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
   --skills-dir DIR    must be \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
@@ -183,7 +185,7 @@ stderr on exit 3: one line per problem; a line a caller routes on reads
 Leaves only the dispatch file in FOLDER (a SIGKILL aside), whole or not at
 all. On a non-zero exit it is removed and named on stderr; a signal may
 leave the empty file crucible.sh new was making. No other effort is read;
-slots.json is only read.
+seats.json is only read.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
   0  written; keep the three stdout lines
@@ -208,7 +210,7 @@ Dependencies:
   sha256sum (Linux: coreutils) or shasum; awk, cat, mktemp, mv, rm, tr, wc
     (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
-    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/slots.sh) and
+    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh) and
     ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
@@ -250,10 +252,10 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--effort | --plan-sha256 | --task | --slot | --entry-point | --skills-dir) awaited_option=$1 ;;
+		--effort | --plan-sha256 | --task | --seat | --entry-point | --skills-dir) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --slot, --entry-point, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --seat, --entry-point, --skills-dir or --help"
 			;;
 	esac
 }
@@ -269,7 +271,7 @@ take_value() {
 		--effort) given_effort=$2 ;;
 		--plan-sha256) plan_sha256=$2 ;;
 		--task) task_number=$2 ;;
-		--slot) slot=$2 ;;
+		--seat) seat=$2 ;;
 		*) given_skills_dir=$2 ;;
 	esac
 }
@@ -277,7 +279,7 @@ take_value() {
 # Exits 2 on an option left without its value or a required option missing.
 finish_parse() {
 	[ -z "${awaited_option}" ] || usage_error "${awaited_option} needs a value; expected ${awaited_option} VALUE"
-	for required in --effort --plan-sha256 --task --slot; do
+	for required in --effort --plan-sha256 --task --seat; do
 		case " ${seen_options} " in
 			*" ${required} "*) ;;
 			*) usage_error "${required} missing; expected ${required} VALUE" ;;
@@ -306,7 +308,7 @@ trim_trailing_slashes() {
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh, crucible's
-# prune module, human-view's title module, slots.sh and every shared check and
+# prune module, human-view's title module, seats.sh and every shared check and
 # helper are in place; sources the two shell helpers.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
@@ -347,9 +349,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
-	slots_script="${skills_dir}/${WORKTREE_SKILL}/scripts/seats/slots.sh"
-	[ -f "${slots_script}" ] && [ -r "${slots_script}" ] ||
-		die 5 "slots.sh missing; expected ${slots_script}; install the ${WORKTREE_SKILL} skill"
+	seats_script="${skills_dir}/${WORKTREE_SKILL}/scripts/seats/seats.sh"
+	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
+		die 5 "seats.sh missing; expected ${seats_script}; install the ${WORKTREE_SKILL} skill"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
@@ -637,56 +639,64 @@ resolve_space_root() {
 	add_problem CRUCIBLE_HOME "${space_root}" "${crucible_root_problem}"
 }
 
-# Adds a problem unless the seat --slot names is in the effort's slots.json
-# with the plan's mode; slots.sh get reads it. A value that is no seat name is
-# left to the dispatch check, which names it.
-check_slot() {
+# Adds a problem unless the seat --seat names is in the effort's seats.json,
+# open, working or idle, with the plan's mode; seats.sh get reads it. A
+# value that is no seat name is left to the dispatch check, which names it.
+check_seat() {
 	[ -n "${effort_dir}" ] || return 0
 	# shellcheck disable=SC2310 # its status is the test result; a jq failure exits inside
-	is_slot_name || return 0
-	slots_file="${effort_dir}/slots.json"
-	if [ ! -f "${slots_file}" ]; then
-		add_problem --slot "${slot}" "the effort has no slots.json; expected ${slots_file} holding the seat"
+	is_seat_name || return 0
+	seats_file="${effort_dir}/seats.json"
+	if [ ! -f "${seats_file}" ]; then
+		add_problem --seat "${seat}" "the effort has no seats.json; expected ${seats_file} holding the seat"
 		return 0
 	fi
-	# On exit 0 slots.sh prints only the seat; otherwise only its stderr lines.
-	if seat_out=$(sh "${slots_script}" get --slots "${slots_file}" --slot "${slot}" </dev/null 2>&1); then
+	# On exit 0 seats.sh prints only the seat; otherwise only its stderr lines.
+	if seat_out=$(sh "${seats_script}" get --seats "${seats_file}" --seat "${seat}" </dev/null 2>&1); then
 		seat_status=0
 	else
 		seat_status=$?
 	fi
-	slots_line=$(printable "${seat_out%%"${NL}"*}")
+	seats_line=$(printable "${seat_out%%"${NL}"*}")
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem --slot "${slot}" "no such seat in ${slots_file}; expected a seat procedure-git-worktree's slots.sh add made"
+			add_problem --seat "${seat}" "no such seat in ${seats_file}; expected a seat procedure-git-worktree's seats.sh choose or add made"
 			return 0
 			;;
 		3)
-			add_problem --slot "${slot}" "${slots_file} can't be read (${slots_line}); expected the effort's seat list"
+			add_problem --seat "${seat}" "${seats_file} can't be read (${seats_line}); expected the effort's seat list"
 			return 0
 			;;
-		*) die 5 "slots.sh get failed (exit ${seat_status}): ${slots_line}; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
+		*) die 5 "seats.sh get failed (exit ${seat_status}): ${seats_line}; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
+	esac
+	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // ""') ||
+		die 5 'jq failed reading the seat seats.sh get printed; expected jq 1.6+; try jq --version, then rerun'
+	seat_state=${seat_fields%%"${NL}"*} seat_mode=${seat_fields#*"${NL}"}
+	case ${seat_state} in
+		open | working | idle) ;;
+		*)
+			add_problem --seat "${seat}" "the seat is ${seat_state}; expected an open, working or idle seat (a chosen seat is opened by seat-open.sh first)"
+			return 0
+			;;
 	esac
 	[ "${plan_ok}" = true ] || return 0
-	seat_mode=$(printf '%s\n' "${seat_out}" | jq -r '.mode // ""') ||
-		die 5 'jq failed reading the seat slots.sh get printed; expected jq 1.6+; try jq --version, then rerun'
 	[ "${seat_mode}" != "${mode}" ] || return 0
 	seat_mode_text="mode ${seat_mode}"
 	[ -n "${seat_mode}" ] || seat_mode_text='no mode'
-	add_problem --slot "${slot}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
+	add_problem --seat "${seat}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
 }
 
-# Succeeds when slot fits the shared names' slot_pattern; jq -e exits 1 when
+# Succeeds when seat fits the shared names' seat_pattern; jq -e exits 1 when
 # it does not.
-is_slot_name() {
-	slot_name_status=0
-	jq -ne --arg s "${slot}" -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; \$s | test(slot_pattern)" \
-		</dev/null >/dev/null || slot_name_status=$?
-	case ${slot_name_status} in
+is_seat_name() {
+	seat_name_status=0
+	jq -ne --arg s "${seat}" -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; \$s | test(seat_pattern)" \
+		</dev/null >/dev/null || seat_name_status=$?
+	case ${seat_name_status} in
 		0) return 0 ;;
 		1) return 1 ;;
-		*) die 5 "jq failed testing --slot against slot_pattern in ${names_module} (exit ${slot_name_status}); expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill" ;;
+		*) die 5 "jq failed testing --seat against seat_pattern in ${names_module} (exit ${seat_name_status}); expected jq 1.6+ and the ${PROCEDURE} skill's shared names; try jq --version, or reinstall the skill" ;;
 	esac
 }
 
@@ -696,7 +706,7 @@ run_dispatch_jq() {
 	shift 2
 	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" \
 		--arg session_id "${session_id}" \
-		--arg agent "${agent}" --arg slot "${slot}" \
+		--arg agent "${agent}" --arg seat "${seat}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" \
 		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
@@ -818,7 +828,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-given_effort='' plan_sha256='' task_number='' slot='' skills_dir='' given_skills_dir='' seen_options='' awaited_option=''
+given_effort='' plan_sha256='' task_number='' seat='' skills_dir='' given_skills_dir='' seen_options='' awaited_option=''
 # Each --entry-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#
@@ -865,7 +875,7 @@ if [ "${plan_ok}" = true ]; then
 	check_context
 	resolve_plugins
 fi
-check_slot
+check_seat
 check_planned_dispatch "$@"
 if [ -n "${problems}" ]; then
 	printf '%s' "${problems}" >&2

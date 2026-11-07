@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Prints the commit-message.sh input for one writer seat's current work: the
 # kind from the seat's mode, the count and the report from iteration.sh, the
-# text from that report, the trailers from slots.json, the seat and its
+# text from that report, the trailers from seats.json, the seat and its
 # dispatch file. It reads only; commit-message.sh checks what it prints.
 set -eu
 umask 077
@@ -14,22 +14,22 @@ export LC_ALL
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly INPUT_JQ='$dispatch_json[0].plugins as $plugins
 | {kind: $kind, text: $report[0].summary,
-	trailers: ({($count_key): $count, effort: $effort, dispatch: $seat.dispatch, "agent-slot": $seat.slot,
+	trailers: ({($count_key): $count, effort: $effort, dispatch: $seat.dispatch, "agent-seat": $seat.seat,
 		"agent-id": $seat.agent_id, language: $plugins.language.name?,
 		frameworks: [$plugins.frameworks[]?.name], standards: [$plugins.standards[]?.name]}
 		| with_entries(select(.value != null and .value != [])))}'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --slots FILE --slot S [--out FILE]
+usage: sh ${PROG} --seats FILE --seat S [--out FILE]
        sh ${PROG} --help | -h
 
 Prints the commit-message.sh input JSON for seat S's current work. Reads
 only; checks no value commit-message.sh checks.
 
---slots FILE   absolute path of the effort's slots.json; its folder is the
+--seats FILE   absolute path of the effort's seats.json; its folder is the
                effort folder
---slot S       a developer or tester seat with an agent bound
+--seat S       a developer or tester seat with an agent bound
 --out FILE     write the JSON there, whole through a temp file beside it,
                instead of printing it
 
@@ -37,7 +37,7 @@ the input:
   kind      dev for mode BUILD, test for mode TEST
   text      the summary of iteration.sh's REPORT file, one JSON object
   trailers  build-iteration (dev) or test-iteration (test): iteration.sh's
-            ITERATION; effort (slots.json's effort), dispatch, agent-slot,
+            ITERATION; effort (seats.json's effort), dispatch, agent-seat,
             agent-id (the seat's); language, frameworks (left out when
             none) and standards: the plugin names in the seat's one
             dispatch file, <effort folder>/dispatches/<dispatch>-*-dispatch.json
@@ -46,13 +46,13 @@ exit codes:
   0  printed (or written); with --out nothing is printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: slots.json, the seat, the report, the dispatch file or the
-     worktree does not fit; one stderr line per problem (slots.sh's or
+  3  input: seats.json, the seat, the report, the dispatch file or the
+     worktree does not fit; one stderr line per problem (seats.sh's or
      iteration.sh's own lines first when it refused)
-  4  environment: jq, slots.sh or iteration.sh missing or failed, or --out
+  4  environment: jq, seats.sh or iteration.sh missing or failed, or --out
      could not be written
 
-needs: POSIX sh, jq 1.6+; ../seats/slots.sh and ../seats/iteration.sh (git 2.26+)
+needs: POSIX sh, jq 1.6+; ../seats/seats.sh and ../seats/iteration.sh (git 2.26+)
 from this script's folder
 EOF
 }
@@ -85,20 +85,20 @@ take_value() {
 }
 
 parse_args() {
-	slots_file='' slot='' out=''
+	seats_file='' seat='' out=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--slots)
-				take_value "$1" "${slots_file}" "${2-}" FILE
-				slots_file=${option_value}
+			--seats)
+				take_value "$1" "${seats_file}" "${2-}" FILE
+				seats_file=${option_value}
 				;;
-			--slot)
-				take_value "$1" "${slot}" "${2-}" S
-				slot=${option_value}
+			--seat)
+				take_value "$1" "${seat}" "${2-}" S
+				seat=${option_value}
 				;;
 			--out)
 				take_value "$1" "${out}" "${2-}" FILE
@@ -106,13 +106,13 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --slots, --slot, --out or --help"
+				usage_error "unknown option: ${shown_option}; expected --seats, --seat, --out or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${slots_file}" ] || usage_error '--slots missing; expected --slots FILE'
-	[ -n "${slot}" ] || usage_error '--slot missing; expected --slot S'
+	[ -n "${seats_file}" ] || usage_error '--seats missing; expected --seats FILE'
+	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
 script_dir() {
@@ -126,7 +126,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/slots.sh ../seats/iteration.sh; do
+	for neighbour in ../seats/seats.sh ../seats/iteration.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -134,38 +134,39 @@ load_dependencies() {
 	done
 }
 
-# Sets effort_dir and effort from slots.json.
+# Sets effort_dir and effort from seats.json.
 read_effort() {
-	shown_slots=$(printable "${slots_file}")
-	case ${slots_file} in
+	shown_seats=$(printable "${seats_file}")
+	case ${seats_file} in
 		/*) ;;
-		*) die 3 "--slots ${shown_slots} is not absolute; expected an absolute path" ;;
+		*) die 3 "--seats ${shown_seats} is not absolute; expected an absolute path" ;;
 	esac
-	[ -f "${slots_file}" ] && [ -r "${slots_file}" ] || die 3 "--slots ${shown_slots} is not a readable file; expected the effort's slots.json"
-	effort_dir=${slots_file%/*}
-	effort=$(jq -r '.effort | strings' "${slots_file}" 2>/dev/null) ||
-		die 3 "--slots ${shown_slots} is not JSON; expected the effort's slots.json"
-	[ -n "${effort}" ] || die 3 "--slots ${shown_slots} has no effort; expected a non-empty effort string"
+	[ -f "${seats_file}" ] && [ -r "${seats_file}" ] || die 3 "--seats ${shown_seats} is not a readable file; expected the effort's seats.json"
+	effort_dir=${seats_file%/*}
+	effort=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
+		die 3 "--seats ${shown_seats} is not JSON; expected the effort's seats.json"
+	[ -n "${effort}" ] || die 3 "--seats ${shown_seats} has no effort; expected a non-empty effort string"
 }
 
-# Sets seat_json, kind, count_key and dispatch from slots.sh get; slots.sh's
+# Sets seat_json, kind, count_key and dispatch from seats.sh get; seats.sh's
 # own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/slots.sh" get --slots "${slots_file}" --slot "${slot}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		2 | 3 | 6)
-			shown_slot=$(printable "${slot}")
-			die 3 "slots.sh get refused seat ${shown_slot} (exit ${seat_rc}); expected a seat in --slots"
+			shown_seat=$(printable "${seat}")
+			die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --seats"
 			;;
-		*) die 4 "slots.sh get failed (exit ${seat_rc})" ;;
+		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .dispatch // ""') ||
-		die 4 'jq could not read the seat slots.sh get printed'
-	mode='' dispatch=''
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .status // "", .dispatch // ""') ||
+		die 4 'jq could not read the seat seats.sh get printed'
+	mode='' status='' dispatch=''
 	{
 		IFS= read -r mode || :
+		IFS= read -r status || :
 		IFS= read -r dispatch || :
 	} <<EOF
 ${fields}
@@ -173,9 +174,9 @@ EOF
 	case ${mode} in
 		BUILD) kind=dev count_key=build-iteration ;;
 		TEST) kind=test count_key=test-iteration ;;
-		*) die 3 "seat ${slot} has no mode; expected a developer or tester seat" ;;
+		*) die 3 "seat ${seat} has no mode; expected a developer or tester seat" ;;
 	esac
-	[ -n "${dispatch}" ] || die 3 "seat ${slot} is open; expected an agent and its dispatch bound"
+	[ -n "${dispatch}" ] || die 3 "seat ${seat} is ${status}; expected an agent and its dispatch bound"
 }
 
 # Sets dispatch_file to the seat's one dispatch file.
@@ -194,10 +195,10 @@ find_dispatch_file() {
 # it refused.
 read_iteration() {
 	iteration_rc=0
-	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --slots "${slots_file}" --slot "${slot}") || iteration_rc=$?
+	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --seats "${seats_file}" --seat "${seat}") || iteration_rc=$?
 	case ${iteration_rc} in
 		0) ;;
-		3) die 3 "iteration.sh refused seat ${slot} (exit 3); expected a seat with a worktree and its base" ;;
+		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base" ;;
 		*) die 4 "iteration.sh failed (exit ${iteration_rc})" ;;
 	esac
 	count='' report=''

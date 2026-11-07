@@ -31,7 +31,7 @@ Its plugins are your coding rules for this task; read no plugin file from disk.
 
 ## Changes
 
-After your stop, the main thread may wake you with a change from the human: their words, maybe the path of something new, and a `REPORT: <path>` line; a first line `Your seat <slot> now … holds the latest work of …` means the seat's HEAD moved to take another seat's work: build on it. Make it in the same worktree, with the same plugins and rules, through Process steps 1–5, and write a whole new report at that path. A change you don't make still gets a report.
+After your stop, the main thread may wake you with a change from the human: their words, maybe the path of something new, and a `REPORT: <path>` line; a first line `Your seat <seat> now … holds the latest work of …` means the seat's HEAD moved to take another seat's work: build on it. Make it in the same worktree, with the same plugins and rules, through Process steps 1–5, and write a whole new report at that path. A change you don't make still gets a report.
 
 Uncommitted work already in the worktree that this iteration didn't make (left by an earlier run whose stop never committed it, or work your task says to continue) ships in your commit: read it with git's status and diff, Read each untracked file, and cover it all in your report.
 

@@ -35,8 +35,8 @@ def plugins_keys: ["load", "skip", "load_reason"];
 def load_keys: ["language", "frameworks", "standards", "procedures"];
 def skip_keys: ["standards", "procedures"];
 # The plugin kind each plugins.load or plugins.skip key holds, and back.
-def slot_kinds: {language: "language", frameworks: "framework", standards: "standard", procedures: "procedure"};
-def kind_slots: {language: "language", framework: "frameworks", standard: "standards", procedure: "procedures"};
+def list_key_kinds: {language: "language", frameworks: "framework", standards: "standard", procedures: "procedure"};
+def kind_list_keys: {language: "language", framework: "frameworks", standard: "standards", procedure: "procedures"};
 def plugin_item_shape: "{\"plugin\": str, \"reason\": str}";
 
 def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
@@ -134,42 +134,42 @@ def context_problems:
 	end;
 
 # Every plugin entry that names a plugin, in plan order: its path, its list
-# (load or skip), its key in that list (slot), plugin and reason.
+# (load or skip), its key in that list (list_key), plugin and reason.
 def named_items:
 	[(.plugins | objects) as $plugins
 	 | ("load", "skip") as $list
 	 | ($plugins[$list] | objects) as $group
-	 | ($group | keys_unsorted[]) as $slot
-	 | select(slot_kinds | has($slot))
-	 | $group[$slot] as $value
-	 | if ($value | type) == "array" then $value | to_entries[] | {at: ["plugins", $list, $slot, .key], item: .value}
-	   else {at: ["plugins", $list, $slot], item: $value} end
+	 | ($group | keys_unsorted[]) as $list_key
+	 | select(list_key_kinds | has($list_key))
+	 | $group[$list_key] as $value
+	 | if ($value | type) == "array" then $value | to_entries[] | {at: ["plugins", $list, $list_key, .key], item: .value}
+	   else {at: ["plugins", $list, $list_key], item: $value} end
 	 | select((.item | type) == "object" and (.item.plugin | text_ok))
-	 | {at: (.at + ["plugin"]), list: $list, slot: $slot, plugin: .item.plugin, reason: .item.reason}];
+	 | {at: (.at + ["plugin"]), list: $list, list_key: $list_key, plugin: .item.plugin, reason: .item.reason}];
 
 # A plugin no longer installed may stay in a re-plan: dropped to skip with its
 # drop reason, or, for a framework, kept in load with reason "invalid" in a
 # replan "invalid" plan, which is shown blocked and never dispatched.
 def dropped_ok($plan):
 	(.list == "skip" and (.reason | IN(dropped_reasons)))
-	or (.list == "load" and .slot == "frameworks" and .reason == "invalid" and $plan.replan == "invalid");
+	or (.list == "load" and .list_key == "frameworks" and .reason == "invalid" and $plan.replan == "invalid");
 
 def not_installed_hint:
 	if .list == "skip" then ", or for a dropped plugin a reason of exactly \"invalid\" or \"uninstalled after approval\""
-	elif .slot == "frameworks" then ", or for a framework dropped as invalid the reason \"invalid\" in a replan \"invalid\" plan"
+	elif .list_key == "frameworks" then ", or for a framework dropped as invalid the reason \"invalid\" in a replan \"invalid\" plan"
 	else "" end;
 
 def kind_hint($kind):
 	if .list == "skip" and ($kind | IN("language", "framework")) then "; a language or framework not used is left out"
-	else "; a \($kind) goes in plugins.\(.list).\(kind_slots[$kind])" end;
+	else "; a \($kind) goes in plugins.\(.list).\(kind_list_keys[$kind])" end;
 
 def item_installed_problems($plan):
 	$installed[.plugin] as $plugin
 	| if $plugin == null then
 		select(dropped_ok($plan) | not)
 		| problem(.at; " "; "\(.plugin | tojson) is not installed; expected a name list-plugins.sh prints\(not_installed_hint)")
-	  elif $plugin.kind == slot_kinds[.slot] then empty
-	  else problem(.at; " "; "\(.plugin | tojson) is a \($plugin.kind) plugin; expected a \(slot_kinds[.slot]) plugin here\(kind_hint($plugin.kind))") end;
+	  elif $plugin.kind == list_key_kinds[.list_key] then empty
+	  else problem(.at; " "; "\(.plugin | tojson) is a \($plugin.kind) plugin; expected a \(list_key_kinds[.list_key]) plugin here\(kind_hint($plugin.kind))") end;
 
 def coverage_problems($plan; $items):
 	if ($plan.plugins | type) != "object" then empty
@@ -183,13 +183,13 @@ def has_language($plan): ($plan.plugins | objects | .load | objects | has("langu
 
 def framework_problems($plan; $items):
 	if has_language($plan) then empty
-	else $items[] | select(.list == "load" and .slot == "frameworks")
+	else $items[] | select(.list == "load" and .list_key == "frameworks")
 		| problem(.at; " "; "\(.plugin | tojson) has no language; expected the language the code is in, in plugins.load.language")
 	end;
 
 def lens_problems($plan; $items):
 	if $plan.agent != lens_agent then empty
-	else [$items[] | select(.list == "load" and .slot == "standards")] as $standards
+	else [$items[] | select(.list == "load" and .list_key == "standards")] as $standards
 		| if has_language($plan) then
 			($standards[] | problem(.at; " "; "\(.plugin | tojson) with a language loaded; expected one lens per \(lens_agent) seat: the language with its frameworks, or one standard"))
 		  else
@@ -201,7 +201,7 @@ def developer_problems($plan; $items):
 	if $plan.agent == lens_agent or ($plan.plugins | type) != "object" then empty
 	else (if has_language($plan) then empty
 		 else problem(["plugins", "load", "language"]; " "; "missing; expected the language the code is in: a developer always has one") end),
-		(if any($items[]; .list == "load" and .slot == "standards") then empty
+		(if any($items[]; .list == "load" and .list_key == "standards") then empty
 		 else problem(["plugins", "load", "standards"]; " "; "missing; expected at least one standard: a developer always builds to one") end)
 	end;
 
