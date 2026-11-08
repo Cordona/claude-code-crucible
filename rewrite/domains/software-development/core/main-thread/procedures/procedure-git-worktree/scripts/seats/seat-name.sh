@@ -23,24 +23,26 @@ usage: sh ${PROG} --seats FILE --role developer|tester
        sh ${PROG} --help | -h
 
 Prints the next free seat name of the role: its prefix, a dash and the
-first of alpha, beta ... omega that no seat in FILE uses with that prefix.
+first letter no seat in FILE uses with that prefix, in the order alpha,
+beta ... omega, then alpha-2 ... omega-2, alpha-3 and on, with no limit.
 Reads only; a missing FILE means no name is used yet.
 
 --seats FILE  absolute path of the effort's seats.json; its folder must
               exist
---role ROLE   developer (software-developer-...), tester
-              (software-tester-...) or reviewer (<L>-reviewer-...)
+--role ROLE   developer (build-agent-...), tester (test-agent-...) or
+              reviewer (<L>-reviewer-agent-...)
 --lens L      the reviewer's lens, lowercase words joined by dashes, like
               security; a reviewer only
 
-stdout: the name, like software-developer-alpha or security-reviewer-alpha
+stdout: the name, like build-agent-alpha, build-agent-alpha-2 or
+        security-reviewer-agent-alpha
 
 exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, a missing
      value, --lens without --role reviewer or missing with it
-  3  input: a bad --seats path, role or lens, seats.json does not fit
-     (one stderr line per problem), or all 24 names of the prefix are taken
+  3  input: a bad --seats path, role or lens, or seats.json does not fit
+     (one stderr line per problem)
   4  environment: jq missing or failed, or ${MODULE}.jq not beside ${PROG}
 
 needs: POSIX sh, jq 1.6+; ${MODULE}.jq beside this script

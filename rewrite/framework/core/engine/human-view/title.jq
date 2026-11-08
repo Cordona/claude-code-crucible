@@ -26,19 +26,31 @@ def title($role):
 #   output: the word with its first letter in upper case
 def capitalised: (.[:1] | ascii_upcase) + .[1:];
 
+# seat_parts
+#   input:  a seat name, such as build-agent-alpha or build-agent-alpha-2
+#   output: {words: the words before the letter, letter: the letter and, from
+#           the second round, its round, such as "Alpha" or "Alpha 2"}
+def seat_parts:
+	split("-")
+	| if length > 1 and (.[-1] | test("\\A[0-9]+\\z")) then {words: .[:-2], letter: "\(.[-2] | capitalised) \(.[-1])"}
+	  else {words: .[:-1], letter: (.[-1] | capitalised)}
+	  end;
+
 # seat_letter
-#   input:  a seat name, such as software-developer-alpha
-#   output: its last word capitalised, such as "Alpha"
-def seat_letter: split("-") | .[-1] | capitalised;
+#   input:  a seat name, such as build-agent-alpha or build-agent-alpha-2
+#   output: its letter capitalised, with its round from the second one, such
+#           as "Alpha" or "Alpha 2"
+def seat_letter: seat_parts | .letter;
 
 # seat_display
-#   input:  a seat name, such as software-developer-alpha
-#   output: its words with spaces, the first and the last capitalised, such
-#           as "Software developer Alpha"
+#   input:  a seat name, such as build-agent-alpha or build-agent-alpha-2
+#   output: its words with spaces, the first capitalised, then its letter as
+#           seat_letter gives it, such as "Build agent Alpha" or "Build agent
+#           Alpha 2"
 def seat_display:
-	split("-")
-	| if length == 1 then .[0] | capitalised
-	  else [(.[0] | capitalised)] + .[1:-1] + [.[-1] | capitalised] | join(" ")
+	seat_parts
+	| if .words == [] then .letter
+	  else [(.words[0] | capitalised)] + .words[1:] + [.letter] | join(" ")
 	  end;
 
 # seat_title($role; $seat)

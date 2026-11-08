@@ -1,11 +1,12 @@
 #!/usr/bin/env sh
-# Prints the iteration a writer seat is working on and where its report goes.
-# The iteration is 1 + the seat's own commits since its base, so the count
-# lives here once and every reader of the report path agrees. It reads only.
+# Prints the iteration a writer seat is working on, where its report goes and
+# the report its newest iteration committed. The iteration is 1 + the seat's
+# own report commits since its base, so the count lives here once and every
+# reader of the report path agrees. It reads only.
 set -eu
 
 readonly PROG='iteration.sh'
-readonly REPORTS_DIR='.crucible-effort/reports'
+readonly SEATS_DIR='.crucible/seats'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -21,18 +22,23 @@ usage() {
 usage: sh ${PROG} --seats FILE --seat S
        sh ${PROG} --help | -h
 
-Prints the iteration seat S is working on and its report's path; reads
-only.
+Prints the iteration seat S is working on, its report's path and the
+report of its newest committed iteration; reads only.
 
 --seats FILE  absolute path of the effort's seats.json
 --seat S      a developer (mode BUILD) or tester (mode TEST) seat with a
               worktree; it may be open or bound, not chosen (no worktree yet)
 
-stdout, two lines:
+stdout, three lines:
   ITERATION: <N>   1 + the commits in <base>..HEAD of the seat's worktree
-                   whose Agent-Seat trailer is S
-  REPORT: <path>   <worktree>/${REPORTS_DIR}/<S>/<kind>-iteration-<N>.json,
+                   whose Agent-Seat trailer is S and which carry a Report:
+                   trailer (a dispatch commit carries none)
+  REPORT: <path>   <worktree>/${SEATS_DIR}/<S>/iterations/<N>/<kind>-report.json,
                    absolute; kind build for BUILD, test for TEST
+  LAST_REPORT: <path> | none
+                   absolute: <worktree>/<the Report: trailer of the newest
+                   of those commits>; none when there is none. Another
+                   seat's commits, a sync merge's included, never change it
 
 exit codes:
   0  printed
@@ -149,19 +155,29 @@ EOF
 }
 
 # Sets iteration: 1 + the commits in base..HEAD of the worktree whose
-# Agent-Seat trailer is this seat, so another seat sharing the worktree is
-# not counted.
+# Agent-Seat trailer is this seat and which name a report, so another seat
+# sharing the worktree and the seat's dispatch commits are not counted; sets
+# last_report to the Report: trailer of the newest of them (git log lists
+# newest first, each commit before its parents), empty when there is none.
 count_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
 	git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify --quiet "${base}^{commit}" >/dev/null ||
 		die 3 "seat ${shown_seat}'s base ${base} is not a commit in ${shown_worktree}; expected the seat's base"
-	seat_lines=$(git -c core.fsmonitor=false -C "${worktree}" log \
-		--format='%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "${base}..HEAD") ||
+	seat_lines=$(git -c core.fsmonitor=false -C "${worktree}" log --topo-order \
+		--format='%(trailers:key=Agent-Seat,valueonly,separator=%x2C)%x09%(trailers:key=Report,valueonly,separator=%x2C)' \
+		"${base}..HEAD") ||
 		die 4 "git log failed in ${shown_worktree}"
-	own_commits=0
+	own_commits=0 last_report=''
+	tab=$(printf '\t')
 	while IFS= read -r line; do
-		[ "${line}" != "${seat}" ] || own_commits=$((own_commits + 1))
+		case ${line} in
+			"${seat}${tab}"?*)
+				own_commits=$((own_commits + 1))
+				[ -n "${last_report}" ] || last_report=${line#"${seat}${tab}"}
+				;;
+			*) ;;
+		esac
 	done <<EOF
 ${seat_lines}
 EOF
@@ -172,5 +188,10 @@ parse_args "$@"
 load_dependencies
 read_seat
 count_iteration
-printf 'ITERATION: %s\nREPORT: %s/%s/%s/%s-iteration-%s.json\n' \
-	"${iteration}" "${worktree%/}" "${REPORTS_DIR}" "${seat}" "${kind}" "${iteration}"
+printf 'ITERATION: %s\nREPORT: %s/%s/%s/iterations/%s/%s-report.json\n' \
+	"${iteration}" "${worktree%/}" "${SEATS_DIR}" "${seat}" "${iteration}" "${kind}"
+if [ -n "${last_report}" ]; then
+	printf 'LAST_REPORT: %s/%s\n' "${worktree%/}" "${last_report}"
+else
+	printf 'LAST_REPORT: none\n'
+fi

@@ -45,9 +45,8 @@ stdout, one JSON line:
   {"synced":false,"seat":S,"reason":"in_sync","line":null}   nothing moved
   {"synced":true,"seat":S,"commit":<sha>,"parents":[P...],"message":M,
    "line":L}
-  L, for the human, each seat by its name for the human: "Software
-  developer Beta now holds the latest work of Software developer Alpha
-  + ..."
+  L, for the human, each seat by its name for the human: "Build agent
+  Beta now holds the latest work of Build agent Alpha + ..."
   M is the line to send S's developer: "Your seat S now also holds the
   latest work of P (merged at <short sha>); build on top of it.", or,
   when S had nothing of its own and takes P's HEAD as it is, "Your seat S

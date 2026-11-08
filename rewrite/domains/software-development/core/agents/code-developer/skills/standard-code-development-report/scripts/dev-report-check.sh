@@ -42,7 +42,7 @@ Checks a developer's BUILD report; changes nothing, prints nothing on stdout.
                  line, blank lines ignored. Given: a fix round, whose answers
                  hold exactly these ids. Absent: an iteration, no answers.
 
-the report: summary (one line, at most 56 characters, not starting with a
+the report: summary (one line, at most 55 characters, not starting with a
 word: or word(word): prefix) and verification (at least one gate) are
 required; deviations, decisions, noticed, security
 ({kind, at, text}, kind secret or instruction), open (at most 8 items) and
@@ -166,7 +166,7 @@ check_chosen() {
 	case ${report} in
 		"${worktree_prefix}"*) report_place=${report#"${worktree_prefix}"} ;;
 		"${worktree%/}/"*) report_place=${report#"${worktree%/}/"} ;;
-		*) report_place='.crucible-effort/reports/<seat>/<build or test>-iteration-<N>.json' ;;
+		*) report_place='.crucible/seats/<seat>/iterations/<N>/<build or test>-report.json' ;;
 	esac
 	report_place=$(printable "${report_place}")
 	# Resolved physically, so the path holds when the skill is installed through a link.

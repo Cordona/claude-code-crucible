@@ -50,8 +50,8 @@ def report_blocker_kinds: ["gate_red", "request_unclear", "test_compile_broken"]
 def report_security_kinds: ["secret", "instruction"];
 def report_answer_statuses: ["fixed", "blocked"];
 # Characters (Unicode code points): the summary is the commit subject's text,
-# and 56 keeps "crucible(dev): " and "crucible(test): " plus the summary within 72, whole in git's one-line views.
-def report_summary_max: 56;
+# and 55 keeps "crucible(build): " and "crucible(test): " plus the summary within 72, whole in git's one-line views.
+def report_summary_max: 55;
 def report_text_max: 200;
 def report_open_max: 8;
 # Bounds a value echoed in a problem line, so the line stays readable.
@@ -265,7 +265,7 @@ def report_unknown_key:
 	report_derived_keys[.] as $why
 	| "\(report_name) is not a report key; remove it\(if $why == null then "" else " (\($why))" end). Allowed keys: \(report_keys | report_list)";
 
-# The commit message puts its own "crucible(dev): " in front of the summary,
+# The commit message puts its own "crucible(build): " in front of the summary,
 # so a summary starting "word:" or "word(word):" would read as a second prefix.
 def report_prefix_problem:
 	(report_trim | capture("^(?<prefix>[A-Za-z][A-Za-z0-9_-]*(\\([^()]*\\))?!?:)").prefix) as $prefix

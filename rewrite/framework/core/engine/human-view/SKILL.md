@@ -92,6 +92,6 @@ include "paths";
 | `joined_labels` | array of labels | `A`, `A and B`, or `A, B and C` for three or more, in the given order |
 | `title($role)` | `{language: label, frameworks: [labels]}`, either key absent or null; `$role` such as `developer` | `<language> <role>` with no framework; `<language> <role> with <frameworks>` with one or more; `Generic <role>` with no language |
 | `capitalised` | a word | the word with its first letter in upper case |
-| `seat_letter` | a seat name, such as `software-developer-alpha` | its last word capitalised, such as `Alpha` |
-| `seat_display` | a seat name | its words with spaces, the first and the last capitalised, such as `Software developer Alpha` |
+| `seat_letter` | a seat name, such as `build-agent-alpha` or `build-agent-alpha-2` | its letter capitalised, with its round from the second one, such as `Alpha` or `Alpha 2` |
+| `seat_display` | a seat name | its words with spaces, the first capitalised, then its letter as `seat_letter` gives it, such as `Build agent Alpha` |
 | `seat_title($role; $seat)` | as `title`'s | `title`'s, with `$seat`'s letter right after the role word: `Rust developer Alpha`, `Kotlin developer Alpha with Spring`, `Generic developer Alpha` |

@@ -53,10 +53,10 @@ Prints the base for ../seats/seats.sh choose's --base and --base-seat.
 stdout, one JSON line:
   {"base":<sha>,"base_seats":[S...],"unmerged":[S...],"line":L}
   base_seats: the --on seats in order ([] when independent); L, for the
-  human, starts with --seat's name as the human sees it, like "Software
-  developer Beta: ", then "Starts from your checkout (<short sha>).",
+  human, starts with --seat's name as the human sees it, like "Build
+  agent Beta: ", then "Starts from your checkout (<short sha>).",
   with --snapshot "Starts from your checkout with your uncommitted
-  changes (<short sha>).", or "Starts from Software developer Alpha +
+  changes (<short sha>).", or "Starts from Build agent Alpha +
   ... (<short sha>)."; a short sha is the first ${SHORT_SHA_LENGTH} characters
 
 exit codes:

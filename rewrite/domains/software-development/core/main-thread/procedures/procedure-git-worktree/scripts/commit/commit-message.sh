@@ -31,8 +31,8 @@ usage: sh ${PROG} --input FILE --out FILE
 Writes one Crucible commit message; runs no git.
 
 --input FILE  a JSON object, no other fields:
-                kind      dev, test, fix, review, aggregated-review,
-                          fix-choice or import
+                kind      build, test, dispatch, fix, review,
+                          aggregated-review, fix-choice or import
                 text      the subject's text: one line; the whole subject
                           "crucible(<kind>): <text>" at most 72 characters
                 trailers  an object; the count a whole number of 1 or more,
@@ -44,13 +44,16 @@ Writes one Crucible commit message; runs no git.
               its folder must exist
 
 kinds and their trailers, in message order (all required but frameworks):
-  dev                            build-iteration, then the agent trailers
-  test                           test-iteration, then the agent trailers
+  build                          build-iteration, then the report trailers
+  test                           test-iteration, then the report trailers
+  dispatch                       effort, agent-seat, dispatch (no count)
   fix, review                    review-round, then the agent trailers
   aggregated-review, fix-choice  review-round, effort
   import                         effort, imported-from (no count)
-  agent trailers: effort, dispatch, agent-seat, agent-id, language,
-                  frameworks, standards
+  agent trailers:  effort, dispatch, agent-seat, agent-id, language,
+                   frameworks, standards
+  report trailers: the agent trailers with report (the report's path,
+                   relative to the worktree) after agent-id
 A count trailer of another kind is refused.
 
 output: crucible(<kind>): <text>

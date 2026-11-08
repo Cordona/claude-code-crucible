@@ -3,13 +3,14 @@
 # launch, to the seat its dispatch names: the Agent hook left the dispatch path
 # in <effort>/pending/<tool_use_id>, the one key both events of an Agent call
 # share. PostToolUse can't undo a launch, so every outcome lets the call go on;
-# faults are logged.
+# only faults are written, to the seat folder's faults log.
 set -eu
 umask 077
 
 readonly PROG='seat-bind-hook.sh'
 # A fault line quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
+readonly FAULTS='bind-hook-faults.log'
 # The C locale keeps the shell byte-wise; jq reads the JSON as UTF-8.
 LC_ALL=C
 export LC_ALL
@@ -26,12 +27,21 @@ seats.sh bind --seats <effort>/seats.json --seat <seat> --agent-id <agentId>
 --dispatch <id>. The pending file is removed whatever bind's outcome.
 No agentId or no pending file: not an effort dispatch, nothing done.
 
+The dispatch path is accepted only when, symlinks resolved, it is
+<effort>/worktrees/<worktree>/.crucible/seats/<seat>/dispatch-<ID>.json,
+<effort> the pending file's own, not itself a link, and the dispatch's id
+is <ID> and its seat <seat>.
+
 --efforts DIR  absolute path of the efforts folder; default
                \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
-writes: DIR/<effort>/logs/seat-bind.log, one line per outcome (UTC time,
-tool_use_id, seat, agent id, outcome); faults before an effort is known go
-to stderr. stdout: nothing.
+writes, faults only: <seat folder>/${FAULTS}, one line per fault (UTC
+time, tool_use_id, agent id, the dispatch ID its file name holds, fault:
+<what failed>); a fault before the
+dispatch path is accepted, or when the file can't be written, goes to
+stderr. Nothing is written through a symbolic link: a link at the faults
+log, or at a folder from the worktree's .crucible down to it, is named on
+stderr and the fault goes there too. stdout: nothing.
 
 exit codes:
   0  done, whatever the outcome
@@ -93,22 +103,56 @@ finish() {
 	exit 0
 }
 
-# Appends outcome $1 to the effort's log; stderr when no effort is known yet
-# or the log can't be written.
-log() {
-	if [ -z "${effort_dir}" ]; then
-		warn "$1"
+# Appends fault $1 to the seat folder's faults log, with the dispatch ID, so
+# a reader matches a fault to its dispatch; stderr while no seat folder is
+# known or when the log can't be written.
+log_fault() {
+	if [ -z "${seat_dir}" ]; then
+		warn "fault: $1"
 		return 0
 	fi
 	now=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || now='unknown-time'
-	if ! { mkdir -p -- "${effort_dir}/logs" &&
-		printf '%s %s %s %s %s\n' "${now}" "${tool_use_id:--}" "${seat:--}" "${shown_agent:--}" "$1" >>"${effort_dir}/logs/seat-bind.log"; } 2>/dev/null; then
-		warn "could not append to ${effort_dir}/logs/seat-bind.log: $1"
+	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
+	if no_link_below "${worktree_root}" "${seat_dir}/${FAULTS}" &&
+		{ printf '%s %s %s %s fault: %s\n' "${now}" "${tool_use_id:--}" "${shown_agent:--}" "${shown_file_id:--}" "$1" >>"${seat_dir}/${FAULTS}"; } 2>/dev/null; then
+		return 0
 	fi
+	warn "could not append to ${seat_dir}/${FAULTS}: fault: $1"
+}
+
+# Succeeds when neither file $2 nor a folder between worktree $1 and it is a
+# symbolic link; else names the link on stderr. A missing level ends the
+# walk: nothing below it exists. The hook runs outside the agent's permission
+# prompts, so a link the agent planted must never carry a write out.
+no_link_below() {
+	case $2 in
+		"$1"/*) ;;
+		*) return 1 ;;
+	esac
+	level_path=$1
+	levels_left=${2#"$1"/}
+	while [ -n "${levels_left}" ]; do
+		level=${levels_left%%/*}
+		case ${levels_left} in
+			*/*) levels_left=${levels_left#*/} ;;
+			*) levels_left='' ;;
+		esac
+		case ${level} in
+			'' | . | ..) return 1 ;;
+			*) ;;
+		esac
+		level_path="${level_path}/${level}"
+		if [ -L "${level_path}" ]; then
+			shown_link=$(printable "${level_path}")
+			warn "${shown_link} is a symbolic link; nothing is written through it"
+			return 1
+		fi
+		[ -e "${level_path}" ] || return 0
+	done
 }
 
 fault() {
-	log "fault: $1"
+	log_fault "$1"
 	finish
 }
 
@@ -200,25 +244,41 @@ find_pending() {
 	finish
 }
 
-# Sets dispatch_file from the pending file's one line, a file directly in the
-# dispatches folder of the pending file's own effort.
+# Sets dispatch_file, file_id, shown_file_id, path_seat, worktree_root and
+# seat_dir from the pending file's one line, a dispatch file in a seat folder
+# of one of the pending file's own effort's worktrees.
 read_pending() {
 	dispatch_file=''
 	{ IFS= read -r dispatch_file <"${pending_file}"; } 2>/dev/null || :
 	shown_file=$(printable "${dispatch_file}")
+	expected='expected <effort>/worktrees/<worktree>/.crucible/seats/<seat>/dispatch-<ID>.json of the pending file'\''s effort'
 	case ${dispatch_file} in
-		/*/dispatches/?*) ;;
-		*) fault "pending file holds '${shown_file}'; expected an absolute path in an effort's dispatches/" ;;
+		/*/dispatch-?*.json) ;;
+		*) fault "pending file holds '${shown_file}'; ${expected}" ;;
 	esac
-	[ -f "${dispatch_file}" ] || fault "dispatch file ${shown_file} is missing"
-	dispatch_effort=${dispatch_file%/dispatches/*}
-	real_dispatch_effort=$(cd -P -- "${dispatch_effort}" 2>/dev/null && pwd -P) || real_dispatch_effort=''
+	[ -f "${dispatch_file}" ] && [ ! -L "${dispatch_file}" ] || fault "dispatch file ${shown_file} is missing or a link; ${expected}"
+	file_name=${dispatch_file##*/}
+	file_id=${file_name#dispatch-}
+	file_id=${file_id%.json}
+	shown_file_id=$(printable "${file_id}")
+	real_folder=$(cd -P -- "${dispatch_file%/*}" 2>/dev/null && pwd -P) || real_folder=''
 	real_effort=$(cd -P -- "${effort_dir}" 2>/dev/null && pwd -P) || real_effort=''
-	[ -n "${real_effort}" ] && [ "${real_dispatch_effort}" = "${real_effort}" ] ||
-		fault "dispatch file ${shown_file} is not in this effort's dispatches/; expected the effort of the pending file"
+	[ -n "${real_effort}" ] && [ -n "${real_folder}" ] || fault "dispatch file ${shown_file}'s folder or its effort could not be entered"
+	in_worktrees=${real_folder#"${real_effort}/worktrees/"}
+	[ "${in_worktrees}" != "${real_folder}" ] || fault "dispatch file ${shown_file} is not under this effort's worktrees/; ${expected}"
+	path_seat=${in_worktrees#*/.crucible/seats/}
+	worktree_name=${in_worktrees%%/*}
+	case ${path_seat} in
+		'' | */*) fault "dispatch file ${shown_file} is not directly in a seat folder; ${expected}" ;;
+		*) ;;
+	esac
+	[ "${in_worktrees}" = "${worktree_name}/.crucible/seats/${path_seat}" ] ||
+		fault "dispatch file ${shown_file} is not in a worktree's .crucible/seats/<seat>/; ${expected}"
+	worktree_root="${real_effort}/worktrees/${worktree_name}"
+	seat_dir=${real_folder}
 }
 
-# Sets dispatch_id and seat from the dispatch file.
+# Sets dispatch_id and seat from the dispatch file; both must match its path.
 read_dispatch() {
 	ids=$(jq -r '(.id // "" | strings), (.seat // "" | strings)' "${dispatch_file}" 2>/dev/null) ||
 		fault "jq could not read ${shown_file}; expected the dispatch JSON"
@@ -234,15 +294,17 @@ EOF
 		fault "dispatch file ${shown_file} has no id or seat; expected both strings"
 	}
 	seat=$(printable "${seat}")
+	[ "${seat}" = "${path_seat}" ] || fault "dispatch file ${shown_file} names seat ${seat}; expected ${path_seat}, its seat folder"
+	[ "${dispatch_id}" = "${file_id}" ] || {
+		shown_id=$(printable "${dispatch_id}")
+		fault "dispatch file ${shown_file} has id ${shown_id}; expected the id in its name"
+	}
 }
 
 bind_seat() {
 	run sh "${own_dir}/../seats/seats.sh" bind --seats "${effort_dir}/seats.json" --seat "${seat}" \
 		--agent-id "${agent_id}" --dispatch "${dispatch_id}"
-	if [ "${child_rc}" -eq 0 ]; then
-		log 'bound'
-		finish
-	fi
+	[ "${child_rc}" -ne 0 ] || finish
 	first_line=$(head -n 1 "${work_dir}/stderr" | cut -c "1-${MAX_QUOTE_BYTES}") || first_line=''
 	shown_line=$(printable "${first_line}")
 	fault "seats.sh bind exit ${child_rc}: ${shown_line}"
@@ -256,11 +318,11 @@ on_exit() {
 	[ -z "${pending_file}" ] || rm -f -- "${pending_file}"
 	[ "${exit_status}" -ne 0 ] && [ "${usage_failed}" = no ] || return 0
 	work_dir='' pending_file=''
-	log "fault: unexpected exit ${exit_status}"
+	log_fault "unexpected exit ${exit_status}"
 	exit 0
 }
 
-work_dir='' pending_file='' usage_failed=no effort_dir='' seat='' tool_use_id='' shown_agent=''
+work_dir='' pending_file='' usage_failed=no effort_dir='' worktree_root='' seat_dir='' seat='' tool_use_id='' shown_agent='' shown_file_id=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

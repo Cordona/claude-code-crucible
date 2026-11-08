@@ -66,7 +66,7 @@ def field_problems:
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
 	(if (.seat | type) == "string" and (.seat | test(seat_pattern)) then empty
-	 else problem(["seat"]; " "; "is not a seat name; expected lowercase words joined by dashes, the last one of alpha, beta ... omega, like software-developer-alpha") end),
+	 else problem(["seat"]; " "; "is not a seat name; expected lowercase words joined by dashes, then one of alpha, beta ... omega and, from the second round, -2, -3 ..., like build-agent-alpha") end),
 	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end);
 
 # The plan a dispatch came from, by its digest alone: its gate record expires,

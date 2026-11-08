@@ -330,7 +330,7 @@ crucible_effort_of() {
 }
 
 # Succeeds when path $1 names a file directly in kind folder $2 (such as
-# dispatches or cache/gates) of an effort folder of the space, and the space,
+# context or cache/gates) of an effort folder of the space, and the space,
 # efforts/, the effort folder and every level of the kind folder are real
 # folders, none a symbolic link; sets crucible_effort. Fails with
 # crucible_item_problem ("<what>; expected <x>") otherwise. The file itself is
@@ -343,6 +343,14 @@ crucible_check_effort_item() {
 		"$1" | '' | */*) return 1 ;;
 		*) ;;
 	esac
+	crucible_real_folders_of "$1"
+}
+
+# Succeeds when every folder path $1 lies in, from its own folder up to the
+# space root, is a real folder, none a symbolic link, so the path resolves
+# where its text says. Run crucible_effort_of on $1 first, so the space root
+# is one of them.
+crucible_real_folders_of() {
 	crucible_layout_dir=${1%/*}
 	while :; do
 		[ -d "${crucible_layout_dir}" ] && [ ! -L "${crucible_layout_dir}" ] || return 1

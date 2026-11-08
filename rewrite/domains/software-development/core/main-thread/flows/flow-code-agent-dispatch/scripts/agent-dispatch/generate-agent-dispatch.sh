@@ -11,9 +11,12 @@
 # plugin-files.sh, and the agent's title is built by human-view's title; and the
 # dispatch is checked by agent-dispatch-validator.jq before and after it is
 # written, after crucible's prune leaves out each key with nothing in it.
-# Every problem is named by the option behind
-# it; no file is left behind on a problem (a signal may leave one, as the page
-# says).
+# The dispatch goes into the seat's own folder of its worktree, named by an ID
+# crucible.sh id hands out, and procedure-git-worktree's seed-commit.sh
+# commits it on the seat's worktree before the agent starts; a failed seed is
+# a failed run. Every problem is named by the option behind it; no file is left
+# behind on a problem (a signal, or a seed committed but not verified, may
+# leave one, as the page says).
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
@@ -30,11 +33,12 @@ readonly EFFORT_SKILL='procedure-effort'
 readonly WORKTREE_SKILL='procedure-git-worktree'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
-# Stands for the ID only crucible.sh new knows, so the dispatch is checked
-# whole before any file exists.
+# Stands for the ID crucible.sh id hands out once the effort is known open,
+# so the dispatch is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
 readonly PLAN_RECORD_KIND='cache/gates'
-readonly DISPATCH_KIND='dispatches'
+# Every seat's own folder in a worktree lies in this folder of it.
+readonly SEATS_FOLDER='.crucible/seats'
 # Lead the problems a caller acts on, so it matches the token exactly, never
 # the sentence after it: a plan no gate record of the effort holds, a context
 # file changed since the plan was shown or no longer its effort's latest
@@ -166,9 +170,10 @@ Options:
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed
   --task N            the task's place in the plan, from 1
   --seat S            the seat in FOLDER/seats.json (lowercase words joined by
-      dashes, the last one of alpha ... omega, like software-developer-alpha)
-      whose mode is the plan's and whose status is open, working or idle (a
-      chosen or gave-up seat is exit 3); that it is open is checked at the
+      dashes, then alpha ... omega and from the second round -2, -3 ..., like
+      build-agent-alpha) whose mode is the plan's, whose status is open,
+      working or idle (a chosen or gave-up seat is exit 3) and whose worktree
+      is a folder in FOLDER/worktrees/; that it is open is checked at the
       Agent call
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
@@ -176,20 +181,26 @@ Options:
       default); any other DIR exits 3
 
 stdout on exit 0, in order:
-  DISPATCH: <absolute path>  the dispatch file; the Agent call's whole prompt
+  DISPATCH: <absolute path>  the dispatch file,
+    <worktree>/${SEATS_FOLDER}/S/dispatch-<ID>.json; the Agent call's whole prompt
   LABELS: <labels>  the loaded plugins' labels, relayed as printed
   TITLE: <title>  the agent's title, relayed as printed
 stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
-Leaves only the dispatch file in FOLDER (a SIGKILL aside), whole or not at
-all. On a non-zero exit it is removed and named on stderr; a signal may
-leave the empty file crucible.sh new was making. No other effort is read;
+Writes only the dispatch file, whole, in the seat's folder of its worktree
+(made if missing), then commits it on the seat's worktree with
+procedure-git-worktree's seed-commit.sh, so the agent starts from that
+commit. A failed seed fails the run. On a non-zero exit the file and the
+folders this run made are removed and named on stderr (a SIGKILL aside; a
+signal during the seed may leave its commit), but for a seed that
+committed without verifying it. No other effort is read;
 seats.json is only read.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
   0  written; keep the three stdout lines
-  1  the inputs passed but making the file failed; no file left
+  1  the inputs passed but making the file failed, or seed-commit.sh
+     refused it (its exit 3); no file left
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, no file made; fix what stderr names. A problem may lead
      with a token right after "<option> <value>: ":
@@ -198,7 +209,9 @@ Exit codes (1, 2, 5, 6: show stderr and stop):
        ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
        ${PLUGIN_TOKEN} plugin folder <name> uninstalled|invalid  a plugin the plan
          names; re-plan
-  5  a dependency is missing or failed
+  5  a dependency is missing or failed, seed-commit.sh's other exits
+     included; on its exit 5 (a commit made, not verified) the file stays
+     and stderr names the commit
   ${NOT_OPEN_EXIT}  the effort is not open, or its state is unknown
   129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
                  show the exit code, and stop
@@ -211,8 +224,9 @@ Dependencies:
   sha256sum (Linux: coreutils) or shasum; awk, cat, mktemp, mv, rm, tr, wc
     (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
-    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh) and
-    ${VIEW_LIB} (title.jq) skills in the default --skills-dir
+    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh,
+    scripts/commit/seed-commit.sh) and ${VIEW_LIB} (title.jq) skills in the
+    default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts
 EOF
 }
@@ -238,7 +252,7 @@ printable() {
 }
 
 # Removes the temp files; on a failing exit, a signal included, also the
-# files this run made, so no partial dispatch is left behind.
+# files and folders this run made, so no partial dispatch is left behind.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	exit_status=$?
@@ -309,8 +323,8 @@ trim_trailing_slashes() {
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh, crucible's
-# prune module, human-view's title module, seats.sh and every shared check and
-# helper are in place; sources the two shell helpers.
+# prune module, human-view's title module, seats.sh, seed-commit.sh and every
+# shared check and helper are in place; sources the two shell helpers.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -353,6 +367,9 @@ load_dependencies() {
 	seats_script="${skills_dir}/${WORKTREE_SKILL}/scripts/seats/seats.sh"
 	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
 		die 5 "seats.sh missing; expected ${seats_script}; install the ${WORKTREE_SKILL} skill"
+	seed_script="${skills_dir}/${WORKTREE_SKILL}/scripts/commit/seed-commit.sh"
+	[ -f "${seed_script}" ] && [ -r "${seed_script}" ] ||
+		die 5 "seed-commit.sh missing; expected ${seed_script}; install the ${WORKTREE_SKILL} skill"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
@@ -641,8 +658,10 @@ resolve_space_root() {
 }
 
 # Adds a problem unless the seat --seat names is in the effort's seats.json,
-# open, working or idle, with the plan's mode; seats.sh get reads it. A
-# value that is no seat name is left to the dispatch check, which names it.
+# open, working or idle, with the plan's mode and a worktree folder directly
+# in the effort's worktrees/; seats.sh get reads it, and seat_worktree is set
+# from it. A value that is no seat name is left to the dispatch check, which
+# names it.
 check_seat() {
 	[ -n "${effort_dir}" ] || return 0
 	# shellcheck disable=SC2310 # its status is the test result; a jq failure exits inside
@@ -671,9 +690,17 @@ check_seat() {
 			;;
 		*) die 5 "seats.sh get failed (exit ${seat_status}): ${seats_line}; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
 	esac
-	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // ""') ||
+	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // "" | gsub("\n"; "?")') ||
 		die 5 'jq failed reading the seat seats.sh get printed; expected jq 1.6+; try jq --version, then rerun'
-	seat_state=${seat_fields%%"${NL}"*} seat_mode=${seat_fields#*"${NL}"}
+	# A seat with no mode or worktree ends early: command substitution drops
+	# the empty last lines, so a read past them finds the end.
+	{
+		IFS= read -r seat_state || :
+		IFS= read -r seat_mode || :
+		IFS= read -r seat_worktree || :
+	} <<EOF
+${seat_fields}
+EOF
 	case ${seat_state} in
 		open | working | idle) ;;
 		*)
@@ -681,11 +708,38 @@ check_seat() {
 			return 0
 			;;
 	esac
+	check_seat_worktree
 	[ "${plan_ok}" = true ] || return 0
 	[ "${seat_mode}" != "${mode}" ] || return 0
 	seat_mode_text="mode ${seat_mode}"
 	[ -n "${seat_mode}" ] || seat_mode_text='no mode'
 	add_problem --seat "${seat}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
+}
+
+# Adds a problem unless seat_worktree is a real folder directly in the
+# effort's worktrees/, where the dispatch hook looks for the dispatch. Both
+# sides compare symlinks resolved: seats.sh choose resolves the worktree's
+# path, and --effort may run through a linked parent (/tmp on macOS).
+check_seat_worktree() {
+	worktrees_dir="${effort_dir}/worktrees"
+	shown_worktree=$(printable "${seat_worktree}")
+	if [ -z "${seat_worktree}" ]; then
+		add_problem --seat "${seat}" "the seat has no worktree; expected a developer or tester seat, whose worktree holds its dispatch"
+		return 0
+	fi
+	real_worktrees_dir=$(cd -P -- "${worktrees_dir}" 2>/dev/null && pwd -P) || real_worktrees_dir=''
+	real_parent=$(cd -P -- "${seat_worktree%/*}/" 2>/dev/null && pwd -P) || real_parent=''
+	case ${seat_worktree##*/} in
+		'' | . | ..) ;;
+		*)
+			if [ -n "${real_worktrees_dir}" ] && [ "${real_parent}" = "${real_worktrees_dir}" ]; then
+				[ ! -L "${worktrees_dir}" ] && [ ! -L "${seat_worktree}" ] && [ -d "${seat_worktree}" ] ||
+					add_problem --seat "${seat}" "the seat's worktree ${shown_worktree} is missing, not a folder or a symbolic link; expected the folder seat-open.sh made"
+				return 0
+			fi
+			;;
+	esac
+	add_problem --seat "${seat}" "the seat's worktree ${shown_worktree} is not directly in ${worktrees_dir}/; expected ${worktrees_dir}/<letter>, as seats.sh choose sets it"
 }
 
 # Succeeds when seat fits the shared names' seat_pattern; jq -e exits 1 when
@@ -757,70 +811,116 @@ require_open_effort() {
 	esac
 }
 
-# Sets created_path to a new empty file crucible.sh made of kind $1 with
-# label $2 in the effort, or fails the run.
-create_item() {
-	created_path=$(sh "${crucible_script}" new --kind "$1" --label "$2" --effort "${effort_dir}" </dev/null) ||
-		fail_run "crucible.sh new --kind $1 --label $2 failed; expected it to make an empty file in ${effort_dir}/$1/ and print its path; try the crucible.sh error above, check that the effort folder is writable, then rerun"
-	case ${created_path} in
-		/*.json) ;;
-		*) fail_run "crucible.sh new --kind $1 printed no file path; expected one absolute path ending in .json; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun" ;;
-	esac
-	created_files="${created_files}${created_files:+${NL}}${created_path}"
-	[ -f "${created_path}" ] && [ ! -L "${created_path}" ] && [ ! -s "${created_path}" ] ||
-		fail_run "crucible.sh new printed ${created_path}, which is not an empty regular file; expected a new empty file in the Crucible space; try checking that nothing else writes to ${created_path%/*}, then rerun"
-}
-
 # Removes the files this run made, names them, and exits 1 with $1.
 fail_run() {
 	remove_created_files
 	die 1 "$1"
 }
 
-# Removes and names the files this run made.
+# Removes and names the files this run made, then the folders it made, the
+# deepest first; a folder something else wrote into stays.
 remove_created_files() {
-	[ -n "${created_files}" ] || return 0
-	while IFS= read -r created_file; do
-		rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
-	done <<EOF
+	if [ -n "${created_files}" ]; then
+		while IFS= read -r created_file; do
+			rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
+		done <<EOF
 ${created_files}
 EOF
+	fi
 	created_files=''
+	[ -n "${created_dirs}" ] || return 0
+	while IFS= read -r created_dir; do
+		rmdir "${created_dir}" 2>/dev/null && warn "removed the folder ${created_dir}, made by this run"
+	done <<EOF
+${created_dirs}
+EOF
+	created_dirs=''
 }
 
-# Makes, writes and checks the dispatch file; sets dispatch_path.
-write_dispatch() {
-	create_item "${DISPATCH_KIND}" "${agent}-dispatch"
-	dispatch_path=${created_path}
-	dispatch_name=${dispatch_path##*/}
+# Sets dispatch_id to a fresh ID crucible.sh id hands out for the effort.
+read_fresh_id() {
+	dispatch_id=$(sh "${crucible_script}" id --effort "${effort_dir}" </dev/null) ||
+		fail_run "crucible.sh id --effort failed; expected it to print a fresh ID for ${effort_dir}; try the crucible.sh error above, then rerun"
 	# shellcheck disable=SC2310 # a pure test; a failure fails the run
-	crucible_split_id "${dispatch_name}" ||
-		fail_run "crucible.sh new printed ${dispatch_path}, whose name holds no Crucible ID; expected <ID>-<label>.json; try reinstalling the crucible skill, then rerun"
-	dispatch_id=${crucible_name_id}
+	crucible_is_id "${dispatch_id}" ||
+		fail_run "crucible.sh id printed no Crucible ID; expected one <YYYYMMDDTHHMMSS>-<4 lowercase hex>; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun"
+}
+
+# Sets seat_dir to the seat's folder in its worktree, making each missing
+# level; a level that is a symbolic link fails the run, so the dispatch never
+# lands outside the worktree.
+make_seat_dir() {
+	seat_dir=${seat_worktree}
+	for level in "${SEATS_FOLDER%/*}" "${SEATS_FOLDER##*/}" "${seat}"; do
+		seat_dir="${seat_dir}/${level}"
+		[ ! -L "${seat_dir}" ] ||
+			fail_run "${seat_dir} is a symbolic link; expected a real folder in the seat's worktree; try removing the link, then rerun"
+		[ ! -d "${seat_dir}" ] || continue
+		mkdir "${seat_dir}" ||
+			fail_run "mkdir could not create ${seat_dir}; expected a writable worktree ${seat_worktree}; try checking its permissions, then rerun"
+		created_dirs="${seat_dir}${created_dirs:+${NL}}${created_dirs}"
+	done
+}
+
+# Builds, checks and writes the dispatch file into the seat's folder, then
+# seeds it; sets dispatch_path.
+write_dispatch() {
+	read_fresh_id
 	# shellcheck disable=SC2310 # its status is jq's; a failure fails the run
 	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "$@") ||
 		fail_run "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	final_problems=$(printf '%s\n' "${dispatch_json}" | jq -rs -f "${dispatch_validator}") ||
 		fail_run 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
 	[ -z "${final_problems}" ] || fail_run "the dispatch would fail its validator: ${final_problems}"
-	temp_file=$(mktemp "${dispatch_path%/*}/.${dispatch_name}.XXXXXX") ||
-		fail_run "mktemp could not create a temp file beside ${dispatch_path}; expected a writable folder ${dispatch_path%/*}; try checking its permissions and free space, then rerun"
+	make_seat_dir
+	dispatch_name="dispatch-${dispatch_id}.json"
+	dispatch_path="${seat_dir}/${dispatch_name}"
+	# noclobber, so a file already there is never overwritten.
+	(
+		set -C
+		: >"${dispatch_path}"
+	) 2>/dev/null || fail_run "could not create ${dispatch_path}, or it exists; expected a new file in a writable seat folder; try again, then check its permissions"
+	created_files=${dispatch_path}
+	temp_file=$(mktemp "${seat_dir}/.${dispatch_name}.XXXXXX") ||
+		fail_run "mktemp could not create a temp file beside ${dispatch_path}; expected a writable folder ${seat_dir}; try checking its permissions and free space, then rerun"
 	printf '%s\n' "${dispatch_json}" >"${temp_file}" ||
-		fail_run "could not write the temp file ${temp_file}; expected a writable folder ${dispatch_path%/*}; try checking its free space, then rerun"
+		fail_run "could not write the temp file ${temp_file}; expected a writable folder ${seat_dir}; try checking its free space, then rerun"
 	mv -f "${temp_file}" "${dispatch_path}" ||
-		fail_run "mv could not move the temp file onto ${dispatch_path}; expected a writable folder ${dispatch_path%/*}; try checking its permissions and free space, then rerun"
+		fail_run "mv could not move the temp file onto ${dispatch_path}; expected a writable folder ${seat_dir}; try checking its permissions and free space, then rerun"
 	temp_file=''
 	written_problems=$(jq -rs -f "${dispatch_validator}" "${dispatch_path}" </dev/null) ||
-		fail_run "the written dispatch ${dispatch_path} is not valid JSON; expected the JSON this run wrote; try checking that nothing else writes to ${dispatch_path%/*}, then rerun"
+		fail_run "the written dispatch ${dispatch_path} is not valid JSON; expected the JSON this run wrote; try checking that nothing else writes to ${seat_dir}, then rerun"
 	[ -z "${written_problems}" ] || fail_run "the written dispatch fails its validator: ${written_problems}"
+	seed_dispatch
+}
+
+# Commits the dispatch on the seat's worktree with seed-commit.sh; once it is
+# committed, verified or not, the run no longer removes it. Its SEED line is
+# not relayed: the DISPATCH line names what the caller needs.
+seed_dispatch() {
+	seed_status=0
+	seed_out=$(sh "${seed_script}" --seats "${seats_file}" --seat "${seat}" --dispatch "${dispatch_path}" </dev/null) ||
+		seed_status=$?
+	case ${seed_status} in
+		0)
+			created_files='' created_dirs=''
+			;;
+		3) fail_run "seed-commit.sh refused to commit ${dispatch_path} (exit 3; its stderr is above); expected it committed on seat ${seat}'s worktree; fix what it names, then rerun" ;;
+		5)
+			created_files='' created_dirs=''
+			seed_commit=$(printable "${seed_out#SEED: }")
+			die 5 "seed-commit.sh made commit ${seed_commit} on seat ${seat}'s worktree but could not verify it (exit 5; its stderr is above); ${dispatch_path} stays; expected a verified commit; check that commit with git show, then ask the human"
+			;;
+		*) die 5 "seed-commit.sh failed (exit ${seed_status}; its stderr is above); expected exit 0 with the dispatch committed; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
+	esac
 }
 
 temp_file=''
-created_files=''
+created_files='' created_dirs=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files go on every path.
-# A crucible.sh new still running when the signal lands is not stopped: its
-# empty file may appear after this exit.
+# A seed-commit.sh still running when the signal lands is not stopped: its
+# commit may land after the file is removed.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM

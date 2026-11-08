@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # PreToolUse hook on Agent. A dispatch of a listed agent must carry, as its
 # whole prompt, the one line "DISPATCH: <path>" naming a dispatch file that
-# generate-agent-dispatch.sh wrote; the hook checks that file, the context file
+# generate-agent-dispatch.sh wrote into its seat's folder of the seat's
+# worktree; the hook checks that file, the context file
 # and the plugin files it names, and replaces the prompt with the agent's
 # message built from them, the seat the dispatch's seat field names and
 # procedure-context's context-handling template, sent word for word. Any
@@ -42,6 +43,8 @@ readonly PRUNE_NAME='prune'
 # skills folder.
 readonly SEATS_SCRIPT='procedure-git-worktree/scripts/seats/seats.sh'
 readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/seats/iteration.sh'
+# Every seat's own folder in a worktree lies in this folder of it.
+readonly SEATS_FOLDER='.crucible/seats'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
 readonly CONTEXT_PROCEDURE='procedure-context'
@@ -387,12 +390,14 @@ A listed agent's call is allowed only when all of these hold:
   it runs in the background (tool_input.run_in_background not false; an
   interactive session sends no such field and always runs in the background);
   its prompt is exactly one line "DISPATCH: <absolute path>" naming a dispatch
-  file generate-agent-dispatch.sh wrote for that agent;
+  file generate-agent-dispatch.sh wrote for that agent, at
+  <effort>/worktrees/*/${SEATS_FOLDER}/<seat>/dispatch-<ID>.json (symlinks
+  resolved), <seat> and <ID> the dispatch's own;
   the dispatch, its context file (its effort's latest version, matching
   context.sha256), its plugin files (each SKILL.md frontmatter valid as
   list-plugins.sh --help sets, the description aside) and its seat (the seat
-  in <effort>/seats.json, read with seats.sh get: open, with a worktree) pass
-  every check.
+  in <effort>/seats.json, read with seats.sh get: open, its worktree the one
+  the dispatch is in) pass every check.
 Known gap: a path swapped after its check, by someone who can write to the
   plugin folder or the Crucible space, is copied unchecked, or hangs until
   the hook times out.
@@ -514,6 +519,7 @@ prepare_message() {
 	resolve_space_root
 	check_dispatch_file
 	read_dispatch_fields
+	check_dispatch_place_fields
 	[ "${dispatch_agent}" = "${expected_agent}" ] ||
 		add_problem AGENT "the dispatch is for \"${dispatch_agent}\"; expected \"${expected_agent}\"" "${dispatch_path}"
 	check_context
@@ -630,16 +636,15 @@ resolve_space_root() {
 		fault "the Crucible space is unusable (${crucible_root_problem}); the fault is in CRUCIBLE_HOME or HOME, not in the dispatch."
 }
 
-# Refuses unless dispatch_path is a regular file directly in an effort's
-# dispatches folder holding a valid dispatch; sets dispatch_copy and
-# dispatch_effort.
+# Refuses unless dispatch_path is a regular file in a seat's folder of an
+# effort's worktree, as check_dispatch_place sets, holding a valid dispatch;
+# sets dispatch_copy, dispatch_effort, place_worktree, place_seat and place_id.
 check_dispatch_file() {
 	path_problem=$(context_path_problem "${dispatch_path}")
 	[ -z "${path_problem}" ] || refuse_now "DISPATCH ${path_problem}; expected ${context_path_expected}: ${dispatch_path}"
 	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
-	crucible_check_effort_item "${dispatch_path}" dispatches ||
-		refuse_now "DISPATCH path is ${crucible_item_problem}: ${dispatch_path}"
-	dispatch_effort=${crucible_effort}
+	check_dispatch_place ||
+		refuse_now "DISPATCH path is not a dispatch-<ID>.json file in a seat's folder of an effort's worktree; expected ${crucible_root}/efforts/<effort>/worktrees/<worktree>/${SEATS_FOLDER}/<seat>/dispatch-<ID>.json, symlinks resolved: ${dispatch_path}"
 	[ ! -L "${dispatch_path}" ] || refuse_now "DISPATCH file is a symlink; expected a regular file: ${dispatch_path}"
 	[ -f "${dispatch_path}" ] && [ -r "${dispatch_path}" ] ||
 		refuse_now "DISPATCH file is missing, unreadable or not a regular file; expected a readable regular file: ${dispatch_path}"
@@ -654,15 +659,67 @@ check_dispatch_file() {
 	refuse_now "DISPATCH file does not have the dispatch shape (${shape_problems}); expected the shape agent-dispatch-validator.jq checks; the flow's step 8 writes a new dispatch file: ${dispatch_path}"
 }
 
-# Sets dispatch_agent, dispatch_context, dispatch_context_sha256,
+# Succeeds when dispatch_path's folder and the space, both with symlinks
+# resolved, read <space>/efforts/<effort>/worktrees/<worktree>/SEATS_FOLDER/<seat>/
+# and the file is dispatch-<ID>.json, so it resolves inside that seat's
+# folder whatever linked parent either path runs through (/tmp on macOS);
+# sets dispatch_effort (the effort under the space as the space rules name
+# it), place_worktree (the worktree's resolved path), place_seat and place_id.
+check_dispatch_place() {
+	place_file=${dispatch_path##*/}
+	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
+	resolve_dir "${dispatch_path%/*}/" 2>/dev/null || return 1
+	place_dir=${resolved_dir}
+	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
+	resolve_dir "${crucible_root}" 2>/dev/null || return 1
+	real_root=${resolved_dir%/}
+	place_rest=${place_dir#"${real_root}/efforts/"}
+	[ "${place_rest}" != "${place_dir}" ] || return 1
+	place_effort_name=${place_rest%%/*}
+	place_worktrees_rest=${place_rest#"${place_effort_name}/worktrees/"}
+	[ "${place_worktrees_rest}" != "${place_rest}" ] || return 1
+	place_worktree_name=${place_worktrees_rest%%/*}
+	place_seat=${place_worktrees_rest#"${place_worktree_name}/${SEATS_FOLDER}/"}
+	[ "${place_seat}" != "${place_worktrees_rest}" ] || return 1
+	case ${place_worktree_name} in
+		'' | . | ..) return 1 ;;
+		*) ;;
+	esac
+	case ${place_seat} in
+		'' | . | .. | */*) return 1 ;;
+		*) ;;
+	esac
+	case ${place_file} in
+		dispatch-*.json) ;;
+		*) return 1 ;;
+	esac
+	place_id=${place_file#dispatch-}
+	place_id=${place_id%.json}
+	# shellcheck disable=SC2310 # pure tests; their status is the answer
+	crucible_is_effort_name "${place_effort_name}" && crucible_is_id "${place_id}" || return 1
+	dispatch_effort="${crucible_root}/efforts/${place_effort_name}"
+	place_worktree="${real_root}/efforts/${place_effort_name}/worktrees/${place_worktree_name}"
+}
+
+# Adds a DISPATCH problem unless the dispatch's own seat and id are the seat
+# folder and the file name it lies in.
+check_dispatch_place_fields() {
+	[ "${dispatch_seat}" = "${place_seat}" ] ||
+		add_problem DISPATCH "file lies in seat ${place_seat}'s folder but is for seat ${dispatch_seat}; expected it in its own seat's folder" "${dispatch_path}"
+	[ "${dispatch_id}" = "${place_id}" ] ||
+		add_problem DISPATCH "file is named for id ${place_id} but holds id ${dispatch_id}; expected the name generate-agent-dispatch.sh gave it" "${dispatch_path}"
+}
+
+# Sets dispatch_id, dispatch_agent, dispatch_context, dispatch_context_sha256,
 # dispatch_seat and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.agent, .context.path, .context.sha256, .seat' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.sha256, .seat' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
+		IFS= read -r dispatch_id
 		IFS= read -r dispatch_agent
 		IFS= read -r dispatch_context
 		IFS= read -r dispatch_context_sha256
@@ -783,8 +840,9 @@ is_skill_installed() {
 	[ -n "${project_claude_dir}" ] && [ -f "${project_claude_dir}/skills/$1/SKILL.md" ]
 }
 
-# Adds a SEAT problem unless the dispatch's seat field names an open seat with a
-# worktree in its effort's seats.json, read with seats.sh get; sets
+# Adds a SEAT problem unless the dispatch's seat field names an open seat in its
+# effort's seats.json, read with seats.sh get, whose worktree is the one the
+# dispatch lies in; sets
 # seat_mode and seat_worktree from it, and report_path with read_report_path.
 check_seat() {
 	seats_script="${skills_dir}/${SEATS_SCRIPT}"
@@ -813,10 +871,12 @@ check_seat() {
 	esac
 	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // ""') ||
 		fault "jq could not read the seat seats.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
+	# A seat with no mode or worktree ends early: command substitution drops
+	# the empty last lines, so a read past them finds the end.
 	{
-		IFS= read -r seat_state
-		IFS= read -r seat_mode
-		IFS= read -r seat_worktree
+		IFS= read -r seat_state || :
+		IFS= read -r seat_mode || :
+		IFS= read -r seat_worktree || :
 	} <<EOF
 ${seat_fields}
 EOF
@@ -827,7 +887,14 @@ EOF
 	case ${seat_worktree} in
 		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer or tester seat" "${seats_file}" ;;
 		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${seats_file}" ;;
-		*) read_report_path ;;
+		*)
+			# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
+			if resolve_dir "${seat_worktree}" 2>/dev/null && [ "${resolved_dir%/}" = "${place_worktree}" ]; then
+				read_report_path
+			else
+				add_problem SEAT "seat ${dispatch_seat}'s worktree is not ${place_worktree}, the one the dispatch lies in (symlinks resolved); expected the dispatch in its seat's own worktree" "${seats_file}"
+			fi
+			;;
 	esac
 }
 

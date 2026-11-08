@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Hands out paths in the effort folders of the durable Crucible space, finds
-# items by ID or kind, opens them, expires an effort's cache and prunes
+# Hands out paths and IDs in the effort folders of the durable Crucible space,
+# finds items by ID or kind, opens them, expires an effort's cache and prunes
 # efforts no file changed in for long.
 # shellcheck source-path=SCRIPTDIR
 set -eu
@@ -8,7 +8,7 @@ umask 077
 
 readonly PROG='crucible.sh'
 # Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context dispatches plans grills states reports/review drafts cache/gates cache/denials'
+readonly KIND_LIST='context plans grills states reports/review drafts cache/gates cache/denials'
 readonly CACHE_KINDS='cache/gates cache/denials'
 # A cache item is read in the session that wrote it; a week covers a session
 # resumed days later. One fixed age until the hub has settings.
@@ -24,6 +24,7 @@ usage() {
 	load_help_rules
 	cat <<EOF
 usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
+       crucible.sh id --effort FOLDER
        crucible.sh path ID
        crucible.sh find --effort FOLDER --kind KIND [--label LABEL]
        crucible.sh open ID [--editor CMD]
@@ -41,15 +42,15 @@ folder: new and find refuse it, the rest skip it.
 Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
   ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
   effort  named ${help_name_rule}
-  kind    context, dispatches, plans, grills, states, reports/review,
-          drafts, cache/gates or cache/denials; the cache kinds expire
+  kind    context, plans, grills, states, reports/review, drafts,
+          cache/gates or cache/denials; the cache kinds expire
           after ${CACHE_MAX_DAYS} days
   ext     md for drafts (every Markdown artifact the main thread writes
           inside an effort), json for every other kind
 
 Options:
   --kind KIND         new, find: a kind of the layout
-  --effort FOLDER     new, find: an existing effort folder directly in
+  --effort FOLDER     new, id, find: an existing effort folder directly in
                       <root>/efforts/, absolute
   --label LABEL       new: the item's label; find: only items with it.
                       ${help_label_rule}
@@ -66,6 +67,8 @@ Commands:
   new    creates an empty file in --effort's KIND folder (made if missing),
          never overwriting, with an ID no other item of the effort holds;
          stdout: its absolute path. Also expires the effort's cache.
+  id     stdout: a fresh ID no item of --effort holds, for a file the
+         caller keeps outside the kinds. Read-only.
   path   stdout: the absolute path of the item with ID.
   find   stdout: the absolute path of each KIND item (with --label, of that
          label) in --effort's folder, one per line, newest first; nothing
@@ -133,13 +136,14 @@ main() {
 			usage
 			exit 0
 			;;
-		new | path | find | open | prune | root) ;;
-		*) usage_error "unknown command: ${command}; expected new, path, find, open, prune, root or --help" ;;
+		new | id | path | find | open | prune | root) ;;
+		*) usage_error "unknown command: ${command}; expected new, id, path, find, open, prune, root or --help" ;;
 	esac
 	load_space_lib
 	resolve_root
 	case ${command} in
 		new) run_new "$@" ;;
+		id) run_id "$@" ;;
 		path) run_path "$@" ;;
 		find) run_find "$@" ;;
 		open) run_open "$@" ;;
@@ -299,15 +303,51 @@ claim_item_file() {
 }
 
 # True when the file just created is the only one with this ID in any kind
-# folder of the effort, one or two levels down. Each caller counts after its
-# own create, so of two racing for one ID at most one sees itself alone.
+# folder of the effort. Each caller counts after its own create, so of two
+# racing for one ID at most one sees itself alone.
 id_is_unique() {
+	count_id_holders "$1"
+	[ "${holders}" -eq 1 ]
+}
+
+# Sets holders to the number of files with ID $1 in any kind folder of the
+# effort, one or two levels down.
+count_id_holders() {
 	holders=0
 	for holder in "${effort}"/*/"$1"-* "${effort}"/*/*/"$1"-*; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
 	done
-	[ "${holders}" -eq 1 ]
+}
+
+run_id() {
+	effort=''
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			--effort) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for id: $1; expected --effort" ;;
+		esac
+		effort=$2
+		shift 2
+	done
+	check_effort
+	mint_free_id
+	printf '%s\n' "${crucible_id}"
+}
+
+# Sets crucible_id to a fresh ID no item of the effort holds; exits 5 when no
+# ID can be minted, 4 when every try is taken.
+mint_free_id() {
+	id_try=1
+	while :; do
+		# shellcheck disable=SC2310 # its status says whether an ID was minted; the fault is named here
+		crucible_mint_id || install_fault "${crucible_id_problem}"
+		count_id_holders "${crucible_id}"
+		[ "${holders}" -ne 0 ] || return 0
+		[ "${id_try}" -lt "${crucible_max_create_attempts}" ] ||
+			space_fault "${crucible_max_create_attempts} tries in ${effort} found the ID taken; expected a free one; try again"
+		id_try=$((id_try + 1))
+	done
 }
 
 # Removes the regular files directly in the effort's cache kind folders last

@@ -45,8 +45,8 @@ stdout, one JSON line:
   {"unmounted":true,"seats":[S...],"paths":N,"line":L}           reversed
   {"unmounted":false,"forgotten":true,"seats":[S...],"line":L}   finished:
                                                        record removed
-  L, for the human: "Unmounted Software developer Alpha + ... from <repo>."
-  or "Software developer Alpha + ... are committed in <repo>; the mount
+  L, for the human: "Unmounted Build agent Alpha + ... from <repo>."
+  or "Build agent Alpha + ... are committed in <repo>; the mount
   record is dropped." (each seat by its name for the human; control
   characters as "?")
 

@@ -1,5 +1,5 @@
-# The effort's seat list, seats.json: each seat (software-developer-alpha,
-# security-reviewer-alpha) a place whose agent is replaceable. A module: load
+# The effort's seat list, seats.json: each seat (build-agent-alpha,
+# security-reviewer-agent-alpha) a place whose agent is replaceable. A module: load
 # it with jq -L <this folder> and include "seats".
 # seats_problems checks a parsed file and prints a list of
 # "<where> <problem>; expected <x>" lines, empty when it fits the contract.
@@ -11,14 +11,17 @@
 def seats_top_fields: ["effort", "seats"];
 def seats_roles: ["developer", "tester", "reviewer"];
 def seats_writer_modes: {"developer": "BUILD", "tester": "TEST"};
-# The name a writer role's seats start with; a reviewer's is "<lens>-reviewer".
-def seats_writer_prefixes: {"developer": "software-developer", "tester": "software-tester"};
-# The last word of every seat name, in the order seat-name.sh hands them out.
+# The name a writer role's seats start with; a reviewer's is "<lens>-reviewer-agent".
+def seats_writer_prefixes: {"developer": "build-agent", "tester": "test-agent"};
+# The letter ending every seat name, in the order seat-name.sh hands them out;
+# after omega the round goes on as alpha-2 ... omega-2, then alpha-3, with no limit.
 def seats_letters: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda",
 	"mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega"];
 def seats_word_pattern: "[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*";
+# A letter and, from the second round on, "-<round>".
+def seats_letter_pattern: "(\(seats_letters | join("|")))(-[2-9]|-[1-9][0-9]+)?";
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
-def seats_name_pattern: "\\A\(seats_word_pattern)-(\(seats_letters | join("|")))\\z";
+def seats_name_pattern: "\\A\(seats_word_pattern)-\(seats_letter_pattern)\\z";
 def seats_statuses: ["chosen", "open", "working", "idle", "gave-up"];
 # chosen is only ever set by choose, on a writer seat; open only by opened
 # (seat-open.sh, once the chosen seat's worktree exists), add (a reviewer)
@@ -48,8 +51,8 @@ def seats_pattern_problem($pattern; $what):
 	end;
 
 def seats_name_problem: seats_pattern_problem(seats_name_pattern;
-	"a seat name like software-developer-alpha: lowercase words joined by dashes, the last one of \(seats_letters[0]), \(seats_letters[1]) ... \(seats_letters[-1])");
-# A lens of this shape always makes a valid "<lens>-reviewer-<letter>" name.
+	"a seat name like build-agent-alpha: lowercase words joined by dashes, ending in one of \(seats_letters[0]), \(seats_letters[1]) ... \(seats_letters[-1]), from the second round with -2, -3 ...");
+# A lens of this shape always makes a valid "<lens>-reviewer-agent-<letter>" name.
 def seats_lens_problem: seats_pattern_problem("\\A\(seats_word_pattern)\\z"; "a lens name of lowercase words joined by dashes, like security");
 def seats_agent_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "an agent id of letters, digits, _ and -");
 def seats_dispatch_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "a dispatch id of letters, digits, _ and -");
@@ -243,12 +246,15 @@ def seats_index($name): [.seats | to_entries[] | select(.value.seat == $name) | 
 def seats_taken($name): "seat \($name | tojson) already exists; expected a new seat name";
 
 # The name a role's seats start with, before "-<letter>".
-def seats_prefix($role; $lens): if $role == "reviewer" then "\($lens)-reviewer" else seats_writer_prefixes[$role] end;
+def seats_prefix($role; $lens): if $role == "reviewer" then "\($lens)-reviewer-agent" else seats_writer_prefixes[$role] end;
+
+# The seat's letter: its name after "<prefix>-", like alpha or alpha-2.
+def seats_letter($options): $options.seat | ltrimstr("\(seats_prefix($options.role; $options.lens))-");
 
 # The problem of a --seat whose name does not fit its role, or nothing.
 def seats_prefix_problem($options):
 	seats_prefix($options.role; $options.lens) as $prefix
-	| if $options.seat | ltrimstr("\($prefix)-") | IN(seats_letters[]) then empty
+	| if seats_letter($options) | test("\\A\(seats_letter_pattern)\\z") then empty
 	else "--seat \($options.seat | tojson) does not fit --role \($options.role)\(if $options.role == "reviewer" then " --lens \($options.lens)" else "" end); expected \($prefix)-<letter>, as seat-name.sh names it"
 	end;
 
@@ -261,9 +267,10 @@ def seats_add($options):
 	else .seats += [{seat: $options.seat, role: "reviewer", lens: $options.lens, status: "open"}] | seats_changed
 	end;
 
-# A writer seat whose worktree is not made yet: $worktree is where
-# seat-open.sh makes it.
-def seats_choose($options; $worktree):
+# A writer seat whose worktree is not made yet: <$worktrees_dir>/<letter> is
+# where seat-open.sh makes it. Only a developer seat opens a worktree, so its
+# letter names the worktree alone.
+def seats_choose($options; $worktrees_dir):
 	if $options.role == "reviewer" then
 		seats_refused(3; "--role reviewer is not chosen; expected developer: a reviewer seat is added with add")
 	elif $options.role == "tester" then
@@ -272,7 +279,7 @@ def seats_choose($options; $worktree):
 	elif seats_index($options.seat) != null then seats_refused(5; seats_taken($options.seat))
 	else
 		.seats += [{seat: $options.seat, role: $options.role, mode: seats_writer_modes[$options.role],
-			worktree: $worktree, repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
+			worktree: "\($worktrees_dir)/\(seats_letter($options))", repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
 			status: "chosen"}]
 		| seats_changed
 	end;
@@ -363,7 +370,7 @@ def seats_on_seat($command; $options):
 # $seats_dir is the folder of seats.json, which holds the worktrees folder.
 def seats_command($command; $options; $seats_dir):
 	if $command == "add" then seats_add($options)
-	elif $command == "choose" then seats_choose($options; "\($seats_dir | rtrimstr("/"))/worktrees/\($options.seat)")
+	elif $command == "choose" then seats_choose($options; "\($seats_dir | rtrimstr("/"))/worktrees")
 	elif $command == "busy" then seats_busy
 	elif $command == "find" then seats_find($options["agent-id"])
 	else seats_on_seat($command; $options)
@@ -405,15 +412,15 @@ def seats_checked:
 		| if $problems == [] then . else seats_result(3; $problems | map("the change would leave \(.)"); null; "") end
 	end;
 
-# The next free name for $prefix: the first letter no seat of the file uses
-# after "<prefix>-"; exit 3 once all of them are used.
+# The next free name for $prefix: the first "<prefix>-<letter>" no seat of
+# the file uses, round by round; a round past the last taken one is all free,
+# so the search ends.
 def seats_next_name($prefix):
 	[.seats[].seat] as $taken
-	| [seats_letters[] | "\($prefix)-\(.)" | select(IN($taken[]) | not)] as $free
-	| if $free == [] then
-		seats_refused(3; "every seat name from \($prefix)-alpha to \($prefix)-\(seats_letters[-1]) is taken; expected at most \(seats_letters | length) seats named \($prefix)-<letter> in an effort")
-	else seats_result(0; []; null; $free[0])
-	end;
+	| first(range(1; ($taken | length) + 2) as $round
+		| seats_letters[] | "\($prefix)-\(.)\(if $round == 1 then "" else "-\($round)" end)"
+		| select(IN($taken[]) | not))
+	| seats_result(0; []; null; .);
 
 # The next free name of $role (and $lens for a reviewer) in $text, the file's
 # raw text or null when there is no file; the options are checked first.

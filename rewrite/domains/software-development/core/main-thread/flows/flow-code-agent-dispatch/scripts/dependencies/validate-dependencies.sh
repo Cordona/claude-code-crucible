@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's seats.sh and its seat bind, report commit and block
-# relay hook scripts, the
+# procedure-git-worktree's seats.sh, its seed-commit.sh, which the dispatch
+# script runs, and its seat bind, report commit and block relay hook scripts,
+# the
 # crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
@@ -342,6 +343,7 @@ fingerprint_input() {
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/commit/seed-commit.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
@@ -1083,6 +1085,7 @@ check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
 check_script "${WORKTREE_PROCEDURE}" seats/seats.sh
+check_script "${WORKTREE_PROCEDURE}" commit/seed-commit.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh

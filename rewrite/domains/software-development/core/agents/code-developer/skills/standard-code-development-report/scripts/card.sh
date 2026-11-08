@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Prints the human's compact card for one developer commit the stop hook made
 # in a worktree. Everything comes from the commit: the subject gives the kind,
-# the trailers the count, the seat and the plugins, the committed report its counts and
-# gates, and the commit's diff the files. card.jq lays it out with human-view.
+# the trailers the count, the seat, the plugins and the report's path, the
+# committed report its counts and gates, and the commit's diff the files.
+# card.jq lays it out with human-view.
 # Read-only on the repo: no git command here takes the index lock or writes it.
 set -eu
 umask 077
@@ -12,7 +13,9 @@ readonly MODULE='card'
 readonly VIEW_LIB='human-view'
 # Its seats.jq holds the one seat-name check.
 readonly SEATS_LIB='procedure-git-worktree/scripts/seats'
-readonly REPORTS_DIR='.crucible-effort/reports'
+# Every seat's own folder, its report included, lies in this folder of the
+# worktree; the files the card counts are those outside it.
+readonly SEATS_FOLDER='.crucible/seats'
 # The card shows this many characters of the commit's sha.
 readonly SHORT_SHA_LENGTH=12
 readonly newline='
@@ -64,10 +67,12 @@ usage: sh ${PROG} --worktree DIR --commit SHA [--skills-dir DIR]
 
 Prints the compact Markdown card of one developer commit. Reads the
 commit only, never the working tree's report; writes nothing to the repo.
+The report is the file the commit's Report: trailer names, in the commit.
 
 --worktree DIR    absolute path of the developer's git worktree
---commit SHA      4 to 64 hex digits: a crucible(dev), crucible(test) or
-                  crucible(fix) commit
+--commit SHA      4 to 64 hex digits: a crucible(build) or crucible(test)
+                  commit whose Report: trailer names a file in
+                  ${SEATS_FOLDER}/<its Agent-Seat>/
 --skills-dir DIR  absolute; default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
                   holds ${VIEW_LIB}, procedure-git-worktree (its seats.jq) and
                   each plugin, whose metadata.label titles the card (the
@@ -82,8 +87,8 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, a path that
      is not absolute, or a --commit that is not hex; fix the call
   3  input: not a git worktree, the commit is missing, is no developer
-     commit, has no single valid count or Agent-Seat trailer, or its report
-     is missing or not one JSON object; one stderr line
+     commit, has no single valid count, Agent-Seat or Report: trailer, or
+     its report is missing or not one JSON object; one stderr line
   4  environment: git or jq missing or failed, ${MODULE}.jq not beside
      ${PROG}, ${VIEW_LIB} or ${SEATS_LIB}/seats.jq not in the
      skills dir, or the temp file failed
@@ -221,12 +226,11 @@ read_commit() {
 		die 3 "commit ${commit} is not in the worktree's repository; expected a commit sha it holds"
 	subject=$(git -c core.fsmonitor=false log -1 --format=%s "${sha}") || die 4 "git log failed on commit ${sha}"
 	case ${subject} in
-		'crucible(dev): '*) count_key='Build-Iteration' count_label='build iteration' ;;
+		'crucible(build): '*) count_key='Build-Iteration' count_label='build iteration' ;;
 		'crucible(test): '*) count_key='Test-Iteration' count_label='test iteration' ;;
-		'crucible(fix): '*) count_key='Review-Round' count_label='review round' ;;
 		*)
 			shown_subject=$(printable "${subject}")
-			die 3 "commit ${sha} is not a developer commit: its subject is ${shown_subject}; expected crucible(dev|test|fix): <summary>"
+			die 3 "commit ${sha} is not a developer commit: its subject is ${shown_subject}; expected crucible(build|test): <summary>"
 			;;
 	esac
 	count=$(trailer "${count_key}")
@@ -263,15 +267,28 @@ trailer() {
 	git -c core.fsmonitor=false log -1 --format="%(trailers:key=$1,valueonly,unfold)" "${sha}" | sed '/^$/d'
 }
 
-# Sets report_text from the commit, refusing a missing or empty report. A dev
-# or test commit holds its iteration's own report; a fix commit's report has
-# no round in its name yet.
-read_report() {
-	case ${count_key} in
-		Build-Iteration) report_entry="${REPORTS_DIR}/${seat}/build-iteration-${count}.json" ;;
-		Test-Iteration) report_entry="${REPORTS_DIR}/${seat}/test-iteration-${count}.json" ;;
-		*) report_entry="${REPORTS_DIR}/${seat}.json" ;;
+# Sets report_entry to the path the commit's one Report: trailer names,
+# refusing a path outside the seat's own folder or one that could climb out of
+# it, so the value reaches git only as a plain path in the commit's tree.
+read_report_entry() {
+	report_entry=$(trailer Report)
+	case ${report_entry} in
+		'') die 3 "commit ${sha} has no Report: trailer; expected the stop hook's commit, which names its report" ;;
+		*"${newline}"*) die 3 "commit ${sha} has more than one Report: trailer; expected one" ;;
+		*) ;;
 	esac
+	shown_entry=$(printable "${report_entry}")
+	case /${report_entry}/ in
+		*/../* | */./* | *//* | *[[:cntrl:]]*) die 3 "commit ${sha} has Report: ${shown_entry}; expected a plain path relative to the worktree" ;;
+		"/${SEATS_FOLDER}/${seat}/"?*) ;;
+		*) die 3 "commit ${sha} has Report: ${shown_entry}; expected a file in ${SEATS_FOLDER}/${seat}/, the folder of its Agent-Seat" ;;
+	esac
+}
+
+# Sets report_text from the file the commit's Report: trailer names, refusing
+# a missing or empty report.
+read_report() {
+	read_report_entry
 	report_text=$(git -c core.fsmonitor=false cat-file blob "${sha}:${report_entry}" 2>/dev/null) ||
 		die 3 "commit ${sha} holds no ${report_entry}; expected the report the stop hook committed"
 	[ -n "${report_text}" ] || die 3 "commit ${sha} holds an empty ${report_entry}; expected one JSON object"
@@ -301,9 +318,9 @@ place_report() {
 }
 
 # Sets files_total and files_new: the commit's changed paths outside
-# .crucible-effort, and those it added.
+# SEATS_FOLDER, and those it added.
 count_files() {
-	counts=$(git -c core.fsmonitor=false diff-tree -r --root --no-commit-id --no-renames --name-status "${sha}" -- ':(exclude).crucible-effort' |
+	counts=$(git -c core.fsmonitor=false diff-tree -r --root --no-commit-id --no-renames --name-status "${sha}" -- ":(exclude)${SEATS_FOLDER}" |
 		awk '{ total++ } /^A/ { added++ } END { printf "%d %d", total, added }') ||
 		die 4 "git diff-tree failed on commit ${sha}"
 	files_total=${counts% *}

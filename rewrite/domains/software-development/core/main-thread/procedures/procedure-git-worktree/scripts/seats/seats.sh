@@ -65,12 +65,12 @@ key is left out: no value is null, [] or {}.
               folder's name is the effort id a new file gets
 
 choose    a writer seat with no worktree yet: status chosen, mode BUILD,
-          worktree <FILE's folder, symlinks resolved>/worktrees/S, each
-          --base-seat (a developer seat it was cut from) in base_seats in
-          order; S is software-developer-<letter>; tester refused
+          worktree <FILE's folder, symlinks resolved>/worktrees/<letter>,
+          each --base-seat (a developer seat it was cut from) in
+          base_seats in order; S is build-agent-<letter>; tester refused
 opened    sets a chosen seat open; seat-open.sh runs it once the worktree exists
 drop      removes a chosen seat (the last: FILE goes); others refused
-add       a reviewer seat, S <L>-reviewer-<letter>: status open
+add       a reviewer seat, S <L>-reviewer-agent-<letter>: status open
 bind      seats an agent and its dispatch on an open seat: status working;
           the same agent and dispatch again changes nothing; refused for
           an agent handed out of the seat
@@ -86,8 +86,8 @@ busy      prints "seat<TAB>status<TAB>awaiting_round" per seat that is open,
           chosen one
 
 the file: {"effort": string, "seats": [seat, ...]}, seat names unique
-  every seat   seat (dash-joined lowercase words ending in one of alpha
-               ... omega, like software-developer-alpha), role,
+  every seat   seat (dash-joined lowercase words ending in alpha ...
+               omega, alpha-2 ... omega-2, alpha-3 ...), role,
                status (chosen, open, working, idle or gave-up), agent_id
                and dispatch (letters, digits, _ and -; absent when chosen or
                open, present otherwise), previous_agent_ids (optional, not

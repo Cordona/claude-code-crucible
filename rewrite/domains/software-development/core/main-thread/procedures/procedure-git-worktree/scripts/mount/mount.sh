@@ -32,7 +32,7 @@ usage: sh ${PROG} --effort DIR --seat S [--seat S]...
        sh ${PROG} --help | -h
 
 Applies idle developer seats' committed work to their main checkout's
-working tree: the diff from the start to the target, .crucible-effort left
+working tree: the diff from the start to the target, .crucible/seats left
 out. The target is the one seat's HEAD, or ../merge/tips-merge.sh's merge
 of every seat's HEAD; effort-commits.sh proves every commit from HEAD to
 the target is the effort's (seats.json's effort) and gives the start: HEAD,
@@ -63,7 +63,7 @@ stdout, one JSON line:
   {"mounted":true,"seats":[{"seat":S,"seat_commit":<sha>}...],
    "target":<sha>,"paths":N,"left_alone":M,"line":L}
   M counts the checkout's other uncommitted paths (not ignored); L, for
-  the human: "Mounted Software developer Alpha + ... in <repo>: N files;
+  the human: "Mounted Build agent Alpha + ... in <repo>: N files;
   your other M changed files are untouched." (each seat by its name for
   the human; control characters as "?")
 
@@ -423,13 +423,13 @@ build_patch() {
 	# Plumbing diff-tree reads no diff config (prefixes, context, textconv,
 	# external drivers), so the patch is the same for every human's setup.
 	git -C "${checkout_dir}" -c core.fsmonitor=false diff-tree -r -z --no-renames --no-abbrev "${start}" "${target}" \
-		-- . ':(exclude).crucible-effort' >"${work_dir}/raw" 2>"${work_dir}/stderr" ||
+		-- . ':(exclude).crucible/seats' >"${work_dir}/raw" 2>"${work_dir}/stderr" ||
 		git_failed 'git diff-tree --raw of the seats'
 	git -C "${checkout_dir}" -c core.fsmonitor=false diff-tree -r -p --binary --full-index --no-renames "${start}" "${target}" \
-		-- . ':(exclude).crucible-effort' >"${work_dir}/patch" 2>"${work_dir}/stderr" ||
+		-- . ':(exclude).crucible/seats' >"${work_dir}/patch" 2>"${work_dir}/stderr" ||
 		git_failed 'git diff-tree --binary of the seats'
 	if [ ! -s "${work_dir}/patch" ] || [ ! -s "${work_dir}/raw" ]; then
-		refuse "the commits of ${shown_seats} change nothing outside .crucible-effort since the start ${start}: nothing to mount"
+		refuse "the commits of ${shown_seats} change nothing outside .crucible/seats since the start ${start}: nothing to mount"
 		return 0
 	fi
 	newlines=$(tr -cd '\n' <"${work_dir}/raw" | wc -c | tr -d ' ') || die 4 'tr or wc failed reading the seats diff'

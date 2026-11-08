@@ -1,9 +1,11 @@
 #!/usr/bin/env sh
 # Commits one agent's work in its detached linked worktree: exactly the given
-# paths, or every change git sees, with a message file written beforehand,
-# then proves the commit is the one asked for. It never picks the paths, writes the message, moves a ref by
-# name or pushes. It refuses a main checkout, an attached HEAD and an index
-# something else already staged, before it touches anything.
+# paths, or every change git sees but other seats' folders, with a message
+# file written beforehand, then proves the commit is the one asked for. It
+# never writes the message, moves a ref by name or pushes. It refuses a main checkout, an attached HEAD and an index
+# something else already staged, before it touches anything. A seat's own
+# folder is staged past the repo's ignore rules: they are written for the
+# repo's code, and must not drop a seat's dispatch, report or logs.
 set -eu
 umask 077
 
@@ -12,6 +14,17 @@ readonly PROG='commit.sh'
 readonly MAX_PROBLEMS=20
 readonly COMMITTER_NAME='crucible'
 readonly COMMITTER_EMAIL='crucible@crucible.invalid'
+# Each seat's own files live in one folder under this one.
+readonly SEATS_DIR='.crucible/seats'
+# other() is true for a path line under SEATS_DIR/<a folder other than own>/.
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are awk's
+readonly OTHER_SEAT_AWK='
+	function other(  rest, cut) {
+		if (index($0, seats) != 1) return 0
+		rest = substr($0, length(seats) + 1)
+		cut = index(rest, "/")
+		return !(cut > 0 && substr(rest, 1, cut - 1) == own)
+	}'
 # The C locale keeps the shell and its pattern classes byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -26,11 +39,11 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --worktree DIR --message-file FILE --author-name NAME
-                 --author-email EMAIL --paths-file FILE | --all
+                 --author-email EMAIL --paths-file FILE | --seat S
        sh ${PROG} --help | -h
 
-Commits exactly the given paths, or every change, in a detached linked git
-worktree and prints the new commit's full sha. Runs no repository hook and
+Commits exactly the given paths, or every change but other seats' folders,
+in a detached linked git worktree and prints the new commit's full sha. Runs no repository hook and
 signs nothing.
 
 --worktree DIR       absolute path of the linked worktree's top folder; its
@@ -40,22 +53,28 @@ signs nothing.
                      or any of . , : ; " ' \\
 --author-email EMAIL one line with an @; the same character rules as the name
 --paths-file FILE    repo-relative paths to stage (added, modified or deleted),
+                     even where an ignore rule covers them,
                      one per line, matched literally (no globs); each path is
                      relative, has no empty, "." or ".." segment, is not
                      .git or under .git/, and holds no control character;
                      no empty line except the file's trailing newline
---all                instead of --paths-file: every change git sees, as
-                     git add -A stages it; nothing git ignores. The worktree
-                     must show no change after the commit
+--seat S             instead of --paths-file: every change git sees (added,
+                     modified or deleted; nothing git ignores but under
+                     ${SEATS_DIR}/S/) except those under
+                     ${SEATS_DIR}/<a seat other than S>/; S is one path
+                     segment. A path holding a line break is refused (exit
+                     3). After the commit the worktree must show no change
+                     outside those other seats' folders
 
 The committer is always ${COMMITTER_NAME} <${COMMITTER_EMAIL}>.
 
 exit codes:
   0  committed; the new commit's full sha is the only stdout line
   2  wrong command line: a missing, repeated or unknown option, a missing
-     value, or both or neither of --paths-file and --all
-  3  invalid input: options, paths, files or worktree checks; each problem is one
-     stderr line (at most ${MAX_PROBLEMS})
+     value, or both or neither of --paths-file and --seat
+  3  invalid input: options, paths, files or worktree checks, or with
+     --seat a path holding a line break, which may come after the commit;
+     each problem is one stderr line (at most ${MAX_PROBLEMS})
   5  nothing to commit: the paths (or the worktree) hold no change; the
      index is left clean
   6  git staging or the commit failed; the index is restored to clean
@@ -115,18 +134,16 @@ take_value() {
 }
 
 parse_args() {
-	worktree='' message_file='' author_name='' author_email='' paths_file='' all=no
+	worktree='' message_file='' author_name='' author_email='' paths_file='' own_seat=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--all)
-				[ "${all}" = no ] || usage_error '--all given twice; expected one'
-				all=yes
-				shift
-				continue
+			--seat)
+				take_value "$1" "${own_seat}" "${2-}"
+				own_seat=${option_value}
 				;;
 			--worktree)
 				take_value "$1" "${worktree}" "${2-}"
@@ -150,7 +167,7 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --worktree, --message-file, --author-name, --author-email, --paths-file, --all or --help"
+				usage_error "unknown option: ${shown_option}; expected --worktree, --message-file, --author-name, --author-email, --paths-file, --seat or --help"
 				;;
 		esac
 		shift 2
@@ -159,10 +176,10 @@ parse_args() {
 	[ -n "${message_file}" ] || usage_error '--message-file missing; expected --message-file FILE'
 	[ -n "${author_name}" ] || usage_error '--author-name missing; expected --author-name NAME'
 	[ -n "${author_email}" ] || usage_error '--author-email missing; expected --author-email EMAIL'
-	if [ "${all}" = yes ]; then
-		[ -z "${paths_file}" ] || usage_error '--paths-file and --all both given; expected one of them'
+	if [ -n "${own_seat}" ]; then
+		[ -z "${paths_file}" ] || usage_error '--paths-file and --seat both given; expected one of them'
 	else
-		[ -n "${paths_file}" ] || usage_error '--paths-file and --all both missing; expected --paths-file FILE or --all'
+		[ -n "${paths_file}" ] || usage_error '--paths-file and --seat both missing; expected --paths-file FILE or --seat S'
 	fi
 }
 
@@ -172,7 +189,7 @@ copy_inputs() {
 	message_copy="${work_dir}/message"
 	paths_copy="${work_dir}/paths"
 	copy_input --message-file "${message_file}" "${message_copy}"
-	[ "${all}" = yes ] || copy_input --paths-file "${paths_file}" "${paths_copy}"
+	[ -n "${own_seat}" ] || copy_input --paths-file "${paths_file}" "${paths_copy}"
 }
 
 copy_input() {
@@ -214,8 +231,21 @@ check_author() {
 	esac
 }
 
+# The seat's own folder name must be one plain path segment.
+check_seat() {
+	[ -n "${own_seat}" ] || return 0
+	case ${own_seat} in
+		*[[:cntrl:]]*) add_problem '--seat holds a control character; expected a seat name' ;;
+		*/* | . | ..)
+			shown_seat=$(printable "${own_seat}")
+			add_problem "--seat ${shown_seat} is not one path segment; expected a seat name"
+			;;
+		*) ;;
+	esac
+}
+
 check_paths() {
-	[ "${all}" = no ] && [ -s "${paths_copy}" ] || return 0
+	[ -z "${own_seat}" ] && [ -s "${paths_copy}" ] || return 0
 	line_number=0
 	while IFS= read -r path || [ -n "${path}" ]; do
 		line_number=$((line_number + 1))
@@ -321,18 +351,61 @@ fail_restored() {
 }
 
 stage_changes() {
-	if [ "${all}" = yes ]; then
-		git -C "${worktree}" -c core.fsmonitor=false add -A >&2 ||
-			fail_restored 'git add -A failed; expected every changed file readable'
-		git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the worktree'
+	paths_nul="${work_dir}/paths.nul"
+	if [ -n "${own_seat}" ]; then
+		list_own_changes "${paths_nul}"
+		if [ -s "${paths_nul}" ]; then
+			git -C "${worktree}" -c core.fsmonitor=false add -A --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
+				fail_restored 'git add failed; expected every changed file readable'
+		fi
+		stage_own_folder
+		git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 "nothing to commit; expected a change outside other seats' folders"
 		return 0
 	fi
-	paths_nul="${work_dir}/paths.nul"
 	tr '\n' '\000' <"${paths_copy}" >"${paths_nul}"
-	git -C "${worktree}" -c core.fsmonitor=false add -A --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
-		fail_restored 'git add failed; expected every path to exist or be tracked, and none ignored'
+	git -C "${worktree}" -c core.fsmonitor=false add -A -f --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
+		fail_restored 'git add failed; expected every path to exist or be tracked'
 	git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the given paths'
 	return 0
+}
+
+# Writes to $1, NUL-separated, every changed path git sees but those under
+# another seat's folder.
+list_own_changes() {
+	git -C "${worktree}" -c core.fsmonitor=false status --porcelain -z --no-renames \
+		--untracked-files=all --ignore-submodules=none >"${work_dir}/status" ||
+		die 6 'git status could not list the worktree; expected a readable worktree'
+	refuse_line_breaks "${work_dir}/status" 'the worktree holds'
+	tr '\000' '\n' <"${work_dir}/status" | sed 's/^...//' | own_paths | tr '\n' '\000' >"$1"
+}
+
+# Exits 3 when the NUL-separated list in file $1 holds a line break: the
+# lists are read one path per line, so such a path would be read as two.
+# $2 says where the list came from.
+refuse_line_breaks() {
+	line_breaks=$(tr -cd '\n' <"$1" | wc -c)
+	[ "${line_breaks}" -eq 0 ] ||
+		die 3 "$2 a path with a line break; expected none, since --seat reads its paths one per line"
+}
+
+# Stages the seat's own folder whole, past the repo's ignore rules.
+stage_own_folder() {
+	own_folder="${SEATS_DIR}/${own_seat}"
+	[ -d "${worktree}/${own_folder}" ] && [ ! -L "${worktree}/${own_folder}" ] || return 0
+	git -C "${worktree}" -c core.fsmonitor=false add -A -f -- "${own_folder}" >&2 ||
+		fail_restored "git add failed on ${own_folder}; expected every file in it readable"
+}
+
+# Passes each path line through but those under another seat's folder.
+own_paths() {
+	awk -v seats="${SEATS_DIR}/" -v own="${own_seat}" "${OTHER_SEAT_AWK}"'
+		!other() { print }'
+}
+
+# Passes only the path lines under another seat's folder.
+other_seat_paths() {
+	awk -v seats="${SEATS_DIR}/" -v own="${own_seat}" "${OTHER_SEAT_AWK}"'
+		other() { print }'
 }
 
 commit_staged() {
@@ -354,8 +427,8 @@ verify_commit() {
 		die 7 'HEAD did not change; expected a new commit'
 	verify_object
 	verify_idents
-	if [ "${all}" = yes ]; then
-		verify_nothing_left
+	if [ -n "${own_seat}" ]; then
+		verify_own_changes
 	else
 		verify_paths
 	fi
@@ -411,18 +484,26 @@ ${outside}
 EOF
 }
 
-# With --all, every change git sees must be in the commit: the worktree shows none.
-verify_nothing_left() {
-	left="${work_dir}/left"
+# With --seat, the commit holds no path of another seat's folder, and the
+# worktree shows no change outside those folders.
+verify_own_changes() {
+	git -C "${worktree}" diff-tree --no-commit-id --name-only -r -z "${new_head}" >"${work_dir}/changed" ||
+		die 7 'git diff-tree could not list the commit'\''s paths; expected a readable commit'
+	refuse_line_breaks "${work_dir}/changed" "the new commit ${new_head} holds"
+	tr '\000' '\n' <"${work_dir}/changed" | other_seat_paths >"${work_dir}/changed.other"
+	while IFS= read -r path; do
+		shown_path=$(printable "${path}")
+		add_problem "the commit changes ${shown_path}, in another seat's folder; expected only ${SEATS_DIR}/${own_seat}/ and paths outside ${SEATS_DIR}/"
+	done <"${work_dir}/changed.other"
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain -z --no-renames \
-		--untracked-files=all --ignore-submodules=none >"${left}" ||
+		--untracked-files=all --ignore-submodules=none >"${work_dir}/left" ||
 		die 7 'git status could not list the worktree after the commit; expected a readable worktree'
-	[ -s "${left}" ] || return 0
-	tr '\000' '\n' <"${left}" >"${left}.lines"
-	while IFS= read -r entry; do
-		shown_path=$(printable "${entry#???}")
-		add_problem "the worktree still shows a change at ${shown_path}; expected the commit to hold every change"
-	done <"${left}.lines"
+	refuse_line_breaks "${work_dir}/left" "after the new commit ${new_head}, the worktree holds"
+	tr '\000' '\n' <"${work_dir}/left" | sed 's/^...//' | own_paths >"${work_dir}/left.own"
+	while IFS= read -r path; do
+		shown_path=$(printable "${path}")
+		add_problem "the worktree still shows a change at ${shown_path}; expected the commit to hold every change outside other seats' folders"
+	done <"${work_dir}/left.own"
 }
 
 # shellcheck disable=SC2329 # invoked by the EXIT trap
@@ -442,6 +523,7 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-commit.XXXXXX") ||
 copy_inputs
 check_message
 check_author
+check_seat
 check_paths
 check_worktree
 exit_on_problems 3

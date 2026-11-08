@@ -48,7 +48,7 @@ stdout, one JSON line:
   (the human committed it; unmount.sh then only forgets the record);
   edited: the mounted paths that no longer hold what the mount left there;
   line: one sentence of the above for the human, to relay word for word
-  (each seat by its name for the human, like Software developer Alpha; at
+  (each seat by its name for the human, like Build agent Alpha; at
   most 20 edited paths named; control characters as "?")
 
 exit codes:
