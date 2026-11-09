@@ -1,7 +1,9 @@
 #!/usr/bin/env sh
 # Renders one dispatch plan, or its approval question, from its JSON file, so
 # the main thread never hand-formats either. This script owns the wording; the
-# layout is human-view's view.jq. A dispatch plan's rules are
+# layout is human-view's view.jq. The Data section ends with what the dispatch
+# would cut, as procedure-context's context.sh latest reads the plan's effort.
+# A dispatch plan's rules are
 # dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
 # the plan; this script only refuses a plan it can't render. Pipe its stdout
 # into procedure-approval-gate's open-gate.sh.
@@ -10,6 +12,14 @@ set -eu
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='flow-code-agent-dispatch'
 readonly RENDER_LIB='human-view'
+readonly CONTEXT_PROCEDURE='procedure-context'
+# context.sh latest's exits: a version and nothing new, nothing yet, and new
+# material waiting for the next cut.
+readonly LATEST_CONTEXT=0
+readonly LATEST_NONE=1
+readonly LATEST_DOCS=7
+# The pending entries' file in the effort's context/ folder.
+readonly PENDING_FILE='next-entries.json'
 
 # Definitions every program below starts with. The programs are single-quoted
 # on purpose: their $ signs are jq's.
@@ -35,10 +45,10 @@ def task_text: gsub("\r"; "") | split("\n") | map(gsub("[[:cntrl:]]+"; " ") | su
 # The later lines of a numbered item are indented under it; a blank line stays empty.
 def list_item_lines: split("\n") | .[:1] + (.[1:] | map(if . == "" then . else "   " + . end)) | join("\n");
 def task_section: section("Task"; "Tasks"; .tasks | map(task_text | list_item_lines));
-# The --data pairs in the order given, then the context file.
-def data_pairs($context_path):
-	[$data_lines | split("\n")[] | select(. != "") | index("=") as $at | [.[:$at], .[($at + 1):]]]
-	+ [["Context", $context_path | clean]];
+# KIND=PATH lines, in order, as Data pairs.
+def pairs_of($lines): [$lines | split("\n")[] | select(. != "") | index("=") as $at | [.[:$at], (.[($at + 1):] | clean)]];
+# The --data pairs in the order given, then what the dispatch would cut.
+def data_pairs: pairs_of($data_lines) + pairs_of($context_lines);
 '
 
 # Prints one line per field a printed plan (want "plan") or its question
@@ -65,8 +75,8 @@ def plan_fields:
 	field_problem("mode"; .mode | type == "string"; "a string"),
 	field_problem("plugins"; .plugins | is_plugins;
 		"an object {\"load\": {...}, \"skip\": {...}} of {\"plugin\": str, ...} entries"),
-	field_problem("context"; (.context | type) == "object" and (.context.path | type) == "string" and (.context.sha256 | type) == "string";
-		"an object {\"path\": str, \"sha256\": str}");
+	field_problem("context"; (.context | type) == "object" and (.context.effort | type) == "string" and (.context.sha256 | type) == "string";
+		"an object {\"effort\": str, \"sha256\": str}");
 checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
@@ -99,7 +109,6 @@ def invalid_labels:
 	[(.plugins.load.language // empty), (.plugins.load.frameworks // [])[], (.plugins.skip.standards // [])[], (.plugins.skip.procedures // [])[]
 	 | select(.reason == "invalid") | plugin_label];
 .[0]
-| .context.path as $plan_context
 | if .replan == "invalid" then
 	[status_line("blocked"; "Blocked · this plan names an invalid plugin: fix it, then rerun"),
 	 role_section,
@@ -116,7 +125,7 @@ def invalid_labels:
 	 section("Load"; kind_labels(.plugins.load // {})),
 	 section("Skip"; kind_labels(.plugins.skip // {}))]
   end
-| . + [data_section(data_pairs($plan_context))]
+| . + [data_section(data_pairs)]
 | blocks
 '
 
@@ -159,14 +168,18 @@ Renders a dispatch plan, or its question.
 Options:
   --plan-file PATH    the plan JSON, required (stdin is not read)
   --data KIND=PATH    printing a plan only, repeatable: one line of its Data
-                      section, in the order given, before the context file;
+                      section, in the order given, before the context lines;
                       KIND letters, digits, space or -, PATH absolute
   --question          print the plan's question instead of the plan
   --plans N           with --question, then required: how many plans are
                       asked one after another, 1 or more
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout, a plan: its Markdown, without the gate marker:
+stdout, a plan: its Markdown, without the gate marker; its Data section
+  ends with what the dispatch would cut, by context.sh latest --effort of
+  the plan's context.effort: "Docs folder" (DOCS_FOLDER) and, when the file
+  exists, "Pending entries" (<effort>/context/${PENDING_FILE}) for new
+  material, or "Context" (CONTEXT_FILE) when nothing is new;
   a plan whose replan is "invalid" prints as blocked: the Developer or
     Reviewer line from the installed plugins not named invalid, Task,
     Invalid (the plugins named with reason "invalid"), Data
@@ -185,17 +198,19 @@ Exit codes:
   0  printed; pipe a plan into open-gate.sh, copy a question into one
      AskUserQuestion; nothing printed: ask nothing
   1  a tool missing; install what stderr names
-  2  the call or its input is wrong; show stderr and stop
+  2  the call or its input is wrong, a plan's effort with no context yet
+     included; show stderr and stop
   3  a tool failed (its stderr is above)
   4  list-plugins.sh missing from the --skills-dir; install
      ${PROCEDURE} there
   5  a shared file missing; install the skill stderr names
-  6  list-plugins.sh failed (its stderr and exit are printed)
+  6  list-plugins.sh or context.sh failed (its stderr and exit are printed)
 
 Dependencies (skills in the --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  to print a plan: the ${RENDER_LIB} skill's view.jq and title.jq, and this
-    skill's list-plugins.sh and installed-plugins.jq
+  to print a plan: the ${RENDER_LIB} skill's view.jq and title.jq, the
+    ${CONTEXT_PROCEDURE} skill's context.sh (it reads CRUCIBLE_HOME), and
+    this skill's list-plugins.sh and installed-plugins.jq
 EOF
 }
 
@@ -329,12 +344,56 @@ read_installed() {
 		install_fault 3 'jq failed reading the plugin list; expected jq 1.6+; try jq --version, then rerun'
 }
 
+# Sets context_lines to the KIND=PATH lines of what the dispatch would cut,
+# from context.sh latest on the plan's effort; exits 2 when the effort has no
+# context yet, 5 when context.sh is missing and 6 when it fails.
+read_context_lines() {
+	context_script="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/context.sh"
+	[ -f "${context_script}" ] && [ -r "${context_script}" ] ||
+		install_fault 5 "context.sh missing; expected ${context_script}; install the ${CONTEXT_PROCEDURE} skill in ${skills_dir}"
+	plan_effort=$(printf '%s' "${slurped}" | jq -r '.[0].context.effort') ||
+		install_fault 3 'jq failed reading the plan'\''s effort; expected jq 1.6+; try jq --version, then rerun'
+	if latest_out=$(sh "${context_script}" latest --effort "${plan_effort}" </dev/null); then
+		latest_status=0
+	else
+		latest_status=$?
+	fi
+	case ${latest_status} in
+		"${LATEST_CONTEXT}") context_lines="Context=$(latest_value CONTEXT_FILE)" ;;
+		"${LATEST_DOCS}")
+			context_lines="Docs folder=$(latest_value DOCS_FOLDER)"
+			pending_path="${plan_effort}/context/${PENDING_FILE}"
+			[ ! -f "${pending_path}" ] || context_lines="${context_lines}
+Pending entries=${pending_path}"
+			;;
+		"${LATEST_NONE}") usage_error "the plan's effort has no context yet (context.sh latest exit ${LATEST_NONE}); expected a plan made after context.sh freeze --dry-run printed its fingerprint" ;;
+		*) install_fault 6 "context.sh latest failed (exit ${latest_status}); expected exit ${LATEST_CONTEXT}, ${LATEST_NONE} or ${LATEST_DOCS}; fix what its stderr above names, or reinstall ${CONTEXT_PROCEDURE}" ;;
+	esac
+}
+
+# Prints the value of context.sh latest's "$1: <value>" line, or exits 6 when
+# it printed none.
+latest_value() {
+	while IFS= read -r latest_line; do
+		case ${latest_line} in
+			"$1: "?*)
+				printf '%s' "${latest_line#"$1: "}"
+				return 0
+				;;
+			*) ;;
+		esac
+	done <<EOF
+${latest_out}
+EOF
+	install_fault 6 "context.sh latest printed no $1 line; expected one on exit ${latest_status}; reinstall ${CONTEXT_PROCEDURE}"
+}
+
 # Runs jq program $1 over the slurped input, with human-view on jq's module
 # path; a jq failure exits 3.
 run_jq() {
 	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --arg want "${want}" \
 		--argjson installed "${installed}" --argjson plans "${plans:-1}" \
-		--arg data_lines "${data_lines}" \
+		--arg data_lines "${data_lines}" --arg context_lines "${context_lines}" \
 		"$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
@@ -349,7 +408,7 @@ slurped=$(read_input)
 render_lib_dir="${skills_dir}/${RENDER_LIB}"
 want=plan
 [ "${want_question}" -eq 0 ] || want=question
-installed='{}'
+installed='{}' context_lines=''
 if [ "${want}" = plan ]; then
 	check_render_lib
 	read_installed
@@ -362,6 +421,7 @@ if [ -n "${problems}" ]; then
 	printf '%s\n' "${problems}" | while IFS= read -r problem; do warn "${problem}"; done
 	exit 2
 fi
+[ "${want}" != plan ] || read_context_lines
 if [ "${want_question}" -eq 1 ]; then
 	run_jq "${question_program}"
 else

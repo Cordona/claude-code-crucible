@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Renders the spec gates, so the main thread never hand-formats them: the
-# offer (write the spec now?), the revision offer (revise the spec?) and the
-# approval (approve the spec?), or with --question the gate's question. The
+# revision offer (revise the spec?) and the approval (approve the spec?), or
+# with --question the gate's question. The
 # approval view takes its Goal line and open points from the draft itself,
 # and only while the draft is the one --approval-plan hashed. Pipe its stdout
 # into procedure-approval-gate's open-gate.sh.
@@ -13,8 +13,8 @@ readonly PROG='render-spec-gate.sh'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly SPEC_LABEL='spec'
-# The offer stays a glance: a few one-line reasons, each short enough to fit
-# one terminal line beside its list number.
+# The revision offer stays a glance: a few one-line reasons, each short
+# enough to fit one terminal line beside its list number.
 readonly MAX_REASONS=3
 readonly MAX_REASON_CHARS=100
 # A line is never cut, so a longer Goal line or open point is refused: the
@@ -27,7 +27,7 @@ LC_ALL=C
 export LC_ALL
 
 # Definitions every program below starts with: the draft's parts, read from
-# $draft (the draft's text; empty for an offer). A line inside a ``` or ~~~
+# $draft (the draft's text; empty for a revision offer). A line inside a ``` or ~~~
 # fence, its fence lines included, is never a heading. A section runs from its
 # "## " heading (its name in any case, maybe followed by more words) to the
 # next level 1 or 2 heading. In Open points, an item starts at a list mark in
@@ -83,7 +83,7 @@ def draft:
 # plan object of a known case with the fields that case takes.
 # shellcheck disable=SC2016
 readonly PLAN_CHECK_JQ='
-def expected_plan: "expected one JSON object {\"case\": \"offer\" or \"revision\", \"reasons\": [str, ...]} or {\"case\": \"approval\", \"spec\": PATH, \"sha256\": HEX}";
+def expected_plan: "expected one JSON object {\"case\": \"revision\", \"reasons\": [str, ...]} or {\"case\": \"approval\", \"spec\": PATH, \"sha256\": HEX}";
 def expected_reasons: "expected an array of 1 to \($max_reasons) strings";
 def unknown_fields($allowed): (keys - $allowed)[] | "\(tojson) is an unknown field; expected only \($allowed | join(", "))";
 def reason_problem:
@@ -111,8 +111,8 @@ elif (.[0] | type) != "object" then "the plan file holds a JSON \(.[0] | type); 
 else .[0]
 	| if has("case") | not then "case missing; \(expected_plan)"
 	  elif .case == "approval" then unknown_fields(["case", "spec", "sha256"]), approval_problems
-	  elif .case == "offer" or .case == "revision" then unknown_fields(["case", "reasons"]), reasons_problems
-	  else "case is \(.case | tojson); expected \"offer\", \"revision\" or \"approval\"" end
+	  elif .case == "revision" then unknown_fields(["case", "reasons"]), reasons_problems
+	  else "case is \(.case | tojson); expected \"revision\" or \"approval\"" end
 end
 '
 
@@ -147,9 +147,7 @@ readonly VIEW_INCLUDE='include "view";'
 readonly RENDER_JQ='
 def numbered($heading): "**\($heading)**\n" + (map(trimmed | plain_line) | numbered_list);
 .[0]
-| if .case == "offer" then
-	[status_line("decision"; "Decision needed · write the spec now?"), (.reasons | numbered("Why now"))]
-  elif .case == "revision" then
+| if .case == "revision" then
 	[status_line("decision"; "Decision needed · revise the spec?"), (.reasons | numbered("Why"))]
   else
 	draft as $parts
@@ -166,12 +164,7 @@ def numbered($heading): "**\($heading)**\n" + (map(trimmed | plain_line) | numbe
 readonly QUESTION_JQ='
 option("Change it: say what"; "Type the change; the spec comes back here.") as $change
 | .[0]
-| if .case == "offer" then
-	{header: "Spec", question: "Write the spec now?",
-	 options: [option("Draft it now (Recommended)"; "Draft the spec and hand over its path."),
-		option("Keep talking"; "No draft; discovery goes on."),
-		option("Skip the spec: say why"; "Type why; your words become the skip note.")]}
-  elif .case == "revision" then
+| if .case == "revision" then
 	{header: "Spec", question: "Revise the spec?",
 	 options: [option("Revise it (Recommended)"; "Draft a revision; it then goes to the approval gate."),
 		option("Keep it as it is"; "The approved spec stays.")]}
@@ -199,16 +192,16 @@ usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts
        sh ${PROG} --approval-plan --spec PATH --plan-out PATH
        sh ${PROG} --help | -h
 
-Prints a spec gate as Markdown, or with --question its question: the offer
-(case offer, label spec-offer), the revision offer (case revision, label
-spec-offer) or the approval (case approval, label spec-approval).
+Prints a spec gate as Markdown, or with --question its question: the
+revision offer (case revision, label spec-offer) or the approval (case
+approval, label spec-approval).
 --approval-plan writes the approval plan for a draft. stdin is never read;
 the plan file and the draft are only read; only --approval-plan writes, and
 only to --plan-out.
 
 Options:
   --plan-file PATH  one JSON object, no other field:
-                    {"case": "offer" or "revision", "reasons": [str, ...]}:
+                    {"case": "revision", "reasons": [str, ...]}:
                       1 to ${MAX_REASONS} reasons, each not blank, with no control
                       character (line break, tab) or U+2028/U+2029, at most
                       ${MAX_REASON_CHARS} characters (code points, as written); written
@@ -249,7 +242,6 @@ stdout on exit 0 only:
   --question: one JSON object {"header": str, "question": str, "options":
     [{"label": str, "description": str}, ...]}, the first option marked
     (Recommended):
-    offer: Draft it now / Keep talking / Skip the spec: say why
     revision: Revise it / Keep it as it is
     approval with open points: Answer the open points / Approve, leave them
       to the developer / Change it: say what
@@ -483,7 +475,7 @@ read_plan() {
 }
 
 # Runs jq program $1 over the slurped plan with draft file $2 (/dev/null for
-# an offer) and the limits; a jq failure exits 5.
+# a revision offer) and the limits; a jq failure exits 5.
 run_jq() {
 	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --rawfile draft "$2" \
 		--argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \

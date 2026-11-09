@@ -22,9 +22,11 @@
 # symlink or a FIFO) is copied unchecked, or blocks until the hook times out.
 # Swapping it takes write access to the plugin folder or the Crucible space.
 # No crucible-context or crucible-plugin marker is stripped from the message,
-# because everything it embeds is trusted: the human's request, the notes and
-# whys, as procedure-context sets what notes and whys may hold, and the template
-# and plugins the human installed.
+# because everything it embeds is trusted: the human's request, the context
+# version naming the spec the human approved and the whys, as
+# procedure-context sets what a version may hold, and the template and
+# plugins the human installed. The version embeds no docs text: the agent
+# reads its docs folders and the spec itself.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 
@@ -59,6 +61,8 @@ readonly DENIAL_LABEL='denial'
 # so the reason stays a short view; the details file holds them all.
 readonly DENIAL_MAX_SHOWN=8
 readonly DENIAL_LINE_CAP=200
+# Ends every CONTEXT problem's text, before its path: the flow stops on one.
+readonly CONTEXT_TAIL="; the human changes the context through ${CONTEXT_PROCEDURE}"
 # The words that start a problem; the flow's step 10 routes on them.
 # CONTEXT-STALE is a context version no longer its effort's latest, every
 # other context problem CONTEXT; BACKGROUND is a dispatch not run in the
@@ -216,13 +220,20 @@ END { finish_file() }
 # none) and the bounds $max_shown and $line_cap, with human-view's view module.
 # The first problem of each KIND is always shown (there are fewer KINDs than
 # $max_shown), so the reason names every KIND found; the others follow in
-# order up to $max_shown, and the rest become "+N more". Claude Code caps a
-# hook's text added to the context at 10,000 characters; the bounds keep the
-# reason far under it.
+# order up to $max_shown, and the rest become "+N more". A line over
+# $line_cap is cut, but one holding $context_tail keeps it as its end: the text
+# before it is cut and the path after it dropped. Claude Code caps a hook's
+# text added to the context at 10,000 characters; the bounds keep the reason
+# far under it.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly DENIAL_JQ='
-def cut: if length > $line_cap then .[:$line_cap - 1] + "…" else . end;
+def cut_to($n): if length > $n then .[:$n - 1] + "…" else . end;
+def cut: if length <= $line_cap then .
+	else split($context_tail) as $parts
+	| if ($parts | length) > 1 then ($parts[0] | cut_to($line_cap - ($context_tail | length))) + $context_tail
+	  else cut_to($line_cap) end
+	end;
 ($kinds | split(" ")) as $kind_list
 | ($problems | split("\n") | map(select(length > 0))) as $all
 | ($all | length) as $count
@@ -394,7 +405,7 @@ A listed agent's call is allowed only when all of these hold:
   <effort>/worktrees/*/${SEATS_FOLDER}/<seat>/dispatch-<ID>.json (symlinks
   resolved), <seat> and <ID> the dispatch's own;
   the dispatch, its context file (its effort's latest version, matching
-  context.sha256), its plugin files (each SKILL.md frontmatter valid as
+  context.sha256, passing ${CONTEXT_PROCEDURE}'s checks), its plugin files (each SKILL.md frontmatter valid as
   list-plugins.sh --help sets, the description aside) and its seat (the seat
   in <effort>/seats.json, read with seats.sh get: open, its worktree the one
   the dispatch is in) pass every check.
@@ -411,7 +422,8 @@ stdout (one JSON line):
          "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
          cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, when the effort is known,
          "**Data · Denial:** <path>" (absolute, all as JSON). <p>:
-         "<KIND> <problem>; expected <x>", most ending ": <path>"; KIND:
+         "<KIND> <problem>; expected <x>", most ending ": <path>" (a cut CONTEXT
+         <p> keeps its end); KIND:
          DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
          PLUGIN, SEAT, BACKGROUND (dispatched in the foreground),
          SKILL (a skill the agent file's skills: preloads, not installed)
@@ -740,7 +752,7 @@ check_context() {
 	context_path=${dispatch_context}
 	path_problem=$(context_path_problem "${context_path}")
 	if [ -n "${path_problem}" ]; then
-		add_problem CONTEXT "${path_problem}; expected ${context_path_expected}" "${context_path}"
+		add_context_problem "${path_problem}; expected ${context_path_expected}"
 		return 0
 	fi
 	context_copy="${snapshot_dir}/context"
@@ -752,14 +764,14 @@ check_context() {
 		return 0
 	fi
 	if [ -n "${context_read_fault}" ]; then
-		add_problem CONTEXT "${context_read_text}" "${context_path}"
+		add_context_problem "${context_read_text}"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is the tool's; a failure faults
 	compute_context_digest "${context_copy}" ||
 		fault "${context_digest_tool} could not hash the temp copy; the fault is in the host, not in the dispatch; the cause is on stderr."
 	if [ "${context_digest}" != "${dispatch_context_sha256}" ]; then
-		add_problem CONTEXT "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds; ${CONTEXT_PROCEDURE}'s context.sh extend writes a new version" "${context_path}"
+		add_context_problem "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds, since a cut version never changes"
 		return 0
 	fi
 	context_pretty="${snapshot_dir}/context.pretty"
@@ -1137,6 +1149,12 @@ add_plugin_problem() {
 	esac
 }
 
+# Adds a CONTEXT problem with text $1 about the dispatch's context file,
+# ending with CONTEXT_TAIL.
+add_context_problem() {
+	add_problem CONTEXT "$1${CONTEXT_TAIL}" "${context_path}"
+}
+
 # Adds the CONTEXT-STALE problem with the shared read check's text, its path
 # the effort's latest version (context_read_latest), or the dispatch's
 # context file when the check gave none.
@@ -1254,7 +1272,7 @@ deny_problems() {
 	write_denial_details "$1"
 	reason=$(jq -nr -L "${view_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" \
 		--arg prefix "${REASON_PREFIX}" --arg details "${details_path}" \
-		--argjson max_shown "${DENIAL_MAX_SHOWN}" --argjson line_cap "${DENIAL_LINE_CAP}" \
+		--argjson max_shown "${DENIAL_MAX_SHOWN}" --argjson line_cap "${DENIAL_LINE_CAP}" --arg context_tail "${CONTEXT_TAIL}" \
 		"include \"${VIEW_NAME}\"; ${DENIAL_JQ}" </dev/null) ||
 		fault "jq could not render the deny reason with ${view_dir}/${VIEW_NAME}.jq; the hook needs jq 1.6+; the cause is on stderr."
 	deny "${reason}"

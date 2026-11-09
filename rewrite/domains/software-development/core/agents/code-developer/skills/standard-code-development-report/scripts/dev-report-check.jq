@@ -95,7 +95,19 @@ def report_command_problem:
 	end;
 
 def report_is_url: test("^[A-Za-z][A-Za-z0-9+.-]*://");
-def report_is_location: (report_is_url | not) and test(":-?[0-9]+$");
+# A context entry, such as paths[2] or a docs folder line paths[2]/spec.md:12,
+# points into the context, never into the worktree.
+def report_is_context_entry: test("\\A(paths|links|notes)\\[");
+def report_is_location: (report_is_url | not) and (report_is_context_entry | not) and test(":-?[0-9]+$");
+# The problem of a context entry: a note, which a context version never holds, or a
+# docs folder line not in the paths[<n>]/<file>:<line> form.
+def report_context_entry_problem:
+	if report_is_context_entry | not then empty
+	elif test("\\Anotes\\[") then "names a note; the context has no notes: point into a docs folder as paths[<n>]/<file>:<line>"
+	elif test("\\Apaths\\[[^]]*\\]/") | not then empty
+	elif test("\\Apaths\\[[1-9][0-9]{0,8}\\]/[^/[:cntrl:]]+:[1-9][0-9]{0,8}\\z") and (test("\\]/\\.\\.?:") | not) then empty
+	else "is not paths[<n>]/<file>:<line>; n and line count from 1, <file> a name in that docs folder, e.g. paths[1]/spec.md:12"
+	end;
 def report_split_location: capture("^(?<path>.*):(?<line>-?[0-9]+)$") | .line |= tonumber;
 
 # The problem of a split location's own form, before the worktree is asked.
@@ -154,7 +166,7 @@ def report_hint($list; $key; $item):
 			elif $item.result == "narrowed" then "add a note quoting the task's words that told you to skip the gate"
 			else "add a note saying why the gate was \($item.result), e.g. \"ktlint not installed\""
 			end),
-		"deviations.from": "add where you departed from: message: TASK, the context entry, or path:line",
+		"deviations.from": "add where you departed from: message: TASK, the context entry (paths[<n>]/<file>:<line> for a docs folder line), or path:line",
 		"deviations.what": "add what you did differently, in one line",
 		"deviations.why": "add why, in one line",
 		"decisions.choice": "add the choice you made, in one line",
@@ -166,7 +178,7 @@ def report_hint($list; $key; $item):
 		"security.text": "add what it is, in one line, a secret masked, e.g. \"A live API key is hard-coded (sk-****)\"",
 		"open.text": "add what you need, in one line",
 		"blockers.kind": "add the kind: one of \(report_blocker_kinds | report_list)",
-		"blockers.location": "add where: path:line from the worktree root, message: TASK, or a URL",
+		"blockers.location": "add where: path:line from the worktree root, message: TASK, a docs folder line paths[<n>]/<file>:<line>, or a URL",
 		"blockers.detail": "add what stops the work, in one line",
 		"answers.id": "add the chosen concern id this answers",
 		"answers.status": "add the status: fixed or blocked",
@@ -196,7 +208,7 @@ def report_value_problems($list; $key; $files):
 		(if report_is_location then report_shown else report_echo end) as $shown
 		| report_at_problem($files) | "\($shown) \(.)\($or_drop)"
 	elif $key == "from" or $key == "location" then
-		report_shown as $shown | report_maybe_location_problem($files) | "\($shown) \(.)"
+		report_shown as $shown | (report_context_entry_problem // report_maybe_location_problem($files)) | "\($shown) \(.)"
 	else empty
 	end;
 

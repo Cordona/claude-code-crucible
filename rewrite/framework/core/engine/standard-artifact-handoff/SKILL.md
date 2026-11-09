@@ -27,7 +27,7 @@ user-invocable: false
 
 ## Always
 
-- **Write each artifact once, to a file;** a report a hook sends back is fixed in place until it passes, then never changed. Inside an effort, every Markdown artifact the main thread writes goes in the effort's `drafts/` folder, allocated with `crucible.sh new --kind drafts` as `crucible` sets. Outside an effort, an artifact goes in a file in the session scratchpad.
+- **Write each artifact once, to a file;** a report a hook sends back is fixed in place until it passes, then never changed. Inside an effort, every Markdown artifact the main thread writes goes in the effort's `drafts/` folder, allocated with `crucible.sh new --kind drafts` as `crucible` sets, spec drafts included; a context doc goes where `crucible` sets. Outside an effort, an artifact goes in a file in the session scratchpad.
 - **Hand it over by its full absolute path.** A path to a repository file inside a stored artifact may stay repo-relative when every renderer that prints it joins it to the repository root and prints it whole.
 - **A subagent's report is a file, never its reply's text:** it reaches the main thread as its agent file and flow set (a path in its reply, or a file a hook checks).
 - **A brief passes every artifact it needs by its full absolute path.**

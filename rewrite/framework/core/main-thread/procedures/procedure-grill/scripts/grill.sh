@@ -5,6 +5,9 @@
 # checks every value against the file it changes and builds the new file;
 # grill-validator.jq checks the file read and the file about to be written.
 # Only a new file that passes replaces the old one, through a temp file beside it.
+# end first copies the ended grill into the effort's next version's docs
+# folder as grill-<ID>.json, <ID> the grill file's, so the next context
+# version carries every grill ended before it.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
@@ -14,6 +17,8 @@ readonly PROCEDURE='procedure-grill'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
+readonly CONTEXT_SKILL='procedure-context'
+readonly DOCS_COPY_PREFIX='grill-'
 readonly KIND='grills'
 readonly REQUIRED_TOOLS='date mkdir mktemp mv rm rmdir tr'
 # The exit of a write refused because another call holds the grill's lock.
@@ -413,17 +418,22 @@ EOF
 			help_shared exits 'read stdout' read
 			;;
 		*)
-			print_page <<'EOF'
+			print_page <<EOF
 
-Marks the grill ended.
+Marks the grill ended, after copying the ended grill into the effort's next
+version's docs folder as ${DOCS_COPY_PREFIX}<ID>.json, <ID> the grill file's (the
+folder ${CONTEXT_SKILL}'s context.sh docs prints), replacing one there. A
+failed copy leaves the grill not ended.
 
 Options:
 EOF
 			help_shared grill
-			print_page <<'EOF'
+			print_page <<EOF
 
-stdout on exit 0: GRILL_ENDED: <the grill file, absolute> · settled <n> ·
-  open <n> · deferred <n> · dropped <n>
+stdout on exit 0, in order:
+  GRILL_ENDED: <the grill file, absolute> · settled <n> · open <n> ·
+    deferred <n> · dropped <n>
+  DOCS_FILE: <the copy, absolute>
 EOF
 			help_shared exits 'read stdout' lock
 			;;
@@ -508,7 +518,8 @@ Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package); date, mkdir, mktemp, mv, rm, rmdir, tr; in the skills: the
   ${CRUCIBLE_SKILL} skill's crucible.sh, scripts/lib/crucible-space.sh and
   scripts/lib/prune.jq, the ${RENDER_LIB} skill's view.jq, the ${EFFORT_SKILL}
-  skill's effort.sh (but for list); grill-validator.jq beside this script.
+  skill's effort.sh (but for list), and for end the ${CONTEXT_SKILL} skill's
+  context.sh; grill-validator.jq beside this script.
 EOF
 			;;
 	esac
@@ -740,6 +751,10 @@ load_dependencies() {
 		effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
 		require_skill_file "${effort_script}" "${EFFORT_SKILL}" 'effort.sh'
 	fi
+	if [ "${command}" = end ]; then
+		context_script="${skills_dir}/${CONTEXT_SKILL}/scripts/context.sh"
+		require_skill_file "${context_script}" "${CONTEXT_SKILL}" 'context.sh'
+	fi
 	# shellcheck source=crucible-space.sh
 	. "${space_lib}"
 }
@@ -900,6 +915,7 @@ set_effort_dir() {
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
+	[ -z "${docs_temp}" ] || rm -f "${docs_temp}"
 	if [ "${exit_status}" -ne 0 ] && [ -n "${created_file}" ]; then
 		rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
 	fi
@@ -920,9 +936,49 @@ write_file() {
 	written_problems=$(file_problems "${temp_file}" 'the file this call would write: ') ||
 		install_fault 3 'jq failed on the grill validator; expected jq 1.6+; try jq --version, then rerun'
 	exit_on_problems "${written_problems}"
+	[ "${command}" != end ] || copy_into_docs "${temp_file}"
 	mv -f "${temp_file}" "$1" ||
 		die 6 "mv could not move the temp file onto $1; expected the grill file in place; try checking the permissions and free space of ${1%/*}, then rerun"
 	temp_file=''
+}
+
+# end: copies grill file $1, as it is about to be written, into the effort's
+# next version's docs folder as DOCS_COPY_PREFIX<ID>.json, through a temp file
+# in the effort's context/, so the folder never holds a part of it; sets
+# docs_copy.
+copy_into_docs() {
+	grills_folder=${grill%/*}
+	grill_effort=${grills_folder%/*}
+	# shellcheck disable=SC2310 # --grill passed is_grill_name, so its name splits
+	crucible_split_id "${grill##*/}" || die 6 "--grill ${grill} is not named <ID>-<label>.json; expected the grill file ${PROG} new printed"
+	docs_copy_name="${DOCS_COPY_PREFIX}${crucible_name_id}.json"
+	if docs_out=$(sh "${context_script}" docs --effort "${grill_effort}" </dev/null); then
+		docs_status=0
+	else
+		docs_status=$?
+	fi
+	case ${docs_status} in
+		0) ;;
+		5) install_fault 5 'context.sh docs names a missing dependency above; install it, then rerun' ;;
+		6) die "${NOT_OPEN_EXIT}" "context.sh docs refused the effort (its stderr is above); expected an open effort; ask the human to check the effort" ;;
+		*) die 6 "context.sh docs failed (exit ${docs_status}; its stderr is above); the grill is not ended; try the fix it names, then rerun" ;;
+	esac
+	docs_folder=${docs_out#DOCS_FOLDER: }
+	case ${docs_folder} in
+		"${grill_effort}/context/docs/v"[1-9]*) ;;
+		*)
+			shown_docs=$(printable "${docs_out}")
+			die 6 "context.sh docs printed ${shown_docs}, which is not a docs folder of ${grill_effort}; expected DOCS_FOLDER: <folder>; try reinstalling the ${CONTEXT_SKILL} skill, then rerun"
+			;;
+	esac
+	docs_temp=$(mktemp "${grill_effort}/context/.${docs_copy_name}.XXXXXX") ||
+		die 6 "mktemp could not create a temp file in ${grill_effort}/context; expected a writable folder; the grill is not ended; try checking its permissions, then rerun"
+	cat "$1" >"${docs_temp}" ||
+		die 6 "could not copy the grill into ${docs_temp}; expected the copy written; the grill is not ended; try checking free space, then rerun"
+	docs_copy="${docs_folder}/${docs_copy_name}"
+	mv -f "${docs_temp}" "${docs_copy}" ||
+		die 6 "mv could not move the copy onto ${docs_copy}; expected the copy in place; the grill is not ended; try checking the folder's permissions, then rerun"
+	docs_temp=''
 }
 
 # new: creates the grill file through crucible.sh and sets grill to it.
@@ -1040,11 +1096,15 @@ write_command() {
 	created_file=''
 	case ${command} in
 		new) print_out "GRILL_FILE: ${grill}" ;;
+		end)
+			print_result_out
+			print_out "DOCS_FILE: ${docs_copy}"
+			;;
 		*) print_result_out ;;
 	esac
 }
 
-temp_file='' created_file='' lock_dir='' session_id=''
+temp_file='' created_file='' lock_dir='' session_id='' docs_temp='' docs_copy=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

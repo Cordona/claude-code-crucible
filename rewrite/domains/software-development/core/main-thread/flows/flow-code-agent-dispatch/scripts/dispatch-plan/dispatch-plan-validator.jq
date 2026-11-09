@@ -6,7 +6,8 @@
 # str}, ...}.
 # The plan: {claude_session_id, agent, mode, tasks, plugins: {load: {language,
 # frameworks, standards, procedures}, skip: {standards, procedures},
-# load_reason}, replan, context}, claude_session_id the session that wrote it;
+# load_reason}, replan, context: {effort, sha256}}, claude_session_id the
+# session that wrote it;
 # each plugin entry {"plugin": str, "reason": str}; a key holding
 # nothing is left out, never null, [] or {}.
 # Plugin rules: at most one language; a framework only with a language; skip
@@ -123,14 +124,17 @@ def replan_problems:
 	elif .replan == "invalid" or .replan == "stop-recommended" then empty
 	else problem(["replan"]; " "; "unknown; expected \"invalid\" or \"stop-recommended\", or no replan field") end;
 
+# The context the plan pins: the effort whose next context version the
+# dispatch cuts, and the fingerprint procedure-context's context.sh freeze
+# --dry-run printed for it.
 def context_problems:
-	if (.context | type) != "object" then problem(["context"]; " "; "missing or not an object; expected {\"path\": absolute path, \"sha256\": 64 lowercase hex}")
+	if (.context | type) != "object" then problem(["context"]; " "; "missing or not an object; expected {\"effort\": absolute path, \"sha256\": 64 lowercase hex}")
 	else .context
-		| ((keys - ["path", "sha256"])[] | problem(["context", .]; ": "; "unknown field; expected only path and sha256")),
-		  (if (.path | type) == "string" and (.path | startswith("/")) and (.path | test("[[:cntrl:]]") | not) then empty
-		   else problem(["context", "path"]; " "; "missing or not an absolute path; expected the context file's absolute path") end),
+		| ((keys - ["effort", "sha256"])[] | problem(["context", .]; ": "; "unknown field; expected only effort and sha256")),
+		  (if (.effort | type) == "string" and (.effort | startswith("/")) and (.effort | test("[[:cntrl:]]") | not) then empty
+		   else problem(["context", "effort"]; " "; "missing or not an absolute path; expected the effort folder's absolute path") end),
 		  (if (.sha256 | type) == "string" and (.sha256 | test(sha256_pattern)) then empty
-		   else problem(["context", "sha256"]; " "; "missing or not 64 lowercase hex digits; expected the context file's sha256") end)
+		   else problem(["context", "sha256"]; " "; "missing or not 64 lowercase hex digits; expected the fingerprint context.sh freeze --dry-run printed") end)
 	end;
 
 # Every plugin entry that names a plugin, in plan order: its path, its list

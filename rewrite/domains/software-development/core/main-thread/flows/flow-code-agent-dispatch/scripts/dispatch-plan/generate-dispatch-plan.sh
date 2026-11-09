@@ -1,12 +1,10 @@
 #!/usr/bin/env sh
 # Writes one dispatch plan from the main thread's choices, so the plan JSON is
-# never typed by hand, to the gate's plan file and as a plans item of the
-# context file's effort. The plan is built, its context file checked by
-# procedure-context's agent-context-file-checks.sh, agent-context-validator.jq
-# and context-versions.sh, and the plan
-# checked by dispatch-plan-validator.jq against the installed plugins; every
-# problem is named by the option behind it, and nothing is written until there
-# is none.
+# never typed by hand, to the gate's plan file and as a plans item of its
+# effort. The plan pins the effort and the fingerprint of the context version
+# the approved dispatch cuts; it is checked by dispatch-plan-validator.jq
+# against the installed plugins; every problem is named by the option behind
+# it, and nothing is written until there is none.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
@@ -19,9 +17,6 @@ readonly EFFORT_SKILL='procedure-effort'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
-# Leads the problem of a context version no longer its effort's latest, so a
-# caller matches it exactly: the Agent hook's KIND word for the same problem.
-readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
 readonly RECORD_KIND='plans'
 readonly RECORD_LABEL='dispatch-plan'
 NL='
@@ -63,7 +58,7 @@ def plan:
 			procedures: listed("skip"; "procedures") | map(item)},
 		load_reason: value_of("load_reason")},
 	 replan: value_of("replan"),
-	 context: {path: $context_path, sha256: $context_digest}}
+	 context: {effort: $context_effort, sha256: $context_fingerprint}}
 	| prune;
 
 # A long value keeps its start and end, where a path differs most; an option
@@ -84,7 +79,8 @@ def plugin_line($at; $problem):
 def named_line:
 	.at as $at | .problem as $problem
 	| if $at[0] == "installed" then line("--load or --skip"; $at[1]; $problem)
-	  elif $at[0] == "context" then line("--context-file"; $context_path; $problem)
+	  elif $at[:2] == ["context", "sha256"] then line("--fingerprint"; $context_fingerprint; $problem)
+	  elif $at[0] == "context" then line("--effort"; $context_effort; $problem)
 	  elif $at[0] == "tasks" then line("--task"; of_kind("task")[$at[1] // -1].value; $problem)
 	  elif $at[:2] == ["plugins", "load_reason"] then line("--load-reason"; value_of("load_reason"); $problem)
 	  elif $at[0] == "plugins" and ($at[2] == "language" or ($at[3] | type) == "number") then plugin_line($at; $problem)
@@ -97,15 +93,15 @@ if $mode == "report" then report else plan end
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --context-file CTX
-           --task TEXT [--task TEXT]... [--language NAME --reason LINE]
+usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --effort FOLDER
+           --fingerprint HEX --task TEXT [--task TEXT]... [--language NAME --reason LINE]
            [--framework NAME --reason LINE]... [--load NAME --reason LINE]...
            [--skip NAME --reason LINE]... [--load-reason LINE]
            [--replan KIND] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
 Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
-context file's effort.
+effort.
 Rules: at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
@@ -116,8 +112,9 @@ Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
   --mode BUILD|TEST   the mode
-  --context-file CTX  the effort's latest context version, passing
-      procedure-context's checks; path + sha256 go in the plan
+  --effort FOLDER     the effort folder, as effort.sh start printed it
+  --fingerprint HEX   the FINGERPRINT ${CONTEXT_PROCEDURE}'s context.sh freeze
+      --dry-run printed for the effort; the dispatch cuts that version
   --task TEXT         one task, in order; two or more make a group
   --language NAME     the code's language plugin, a list-plugins.sh name
   --framework NAME    a framework plugin, repeatable, needs --language;
@@ -150,7 +147,6 @@ Exit codes (1, 5, 6, a bad CLAUDE_CODE_SESSION_ID: show stderr and stop):
   1  write or digest failed; stderr says if the plan is written
   2  usage error: fix the command; or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input; fix what each stderr line names, rerun
-     ${CONTEXT_STALE_TOKEN}  leads a problem: rerun with the newer context version
   5  a dependency missing or failing
   ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
   129, 130, 143  stopped by HUP, INT or TERM; show it and stop
@@ -160,8 +156,7 @@ Dependencies (skills in --skills-dir):
     system cat, mktemp, mv, rm, tr, wc; sha256sum (Linux: coreutils) or shasum
   this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
     installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
-  ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh, agent-context-validator.jq,
-    agent-context-url.jq, context-versions.sh
+  ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh and what it loads
   ${CRUCIBLE_SKILL}: crucible.sh, lib/crucible-space.sh, lib/prune.jq
   ${EFFORT_SKILL}: effort.sh
 EOF
@@ -225,12 +220,12 @@ take_option() {
 			[ -n "${entry_kind}" ] ||
 				usage_error '--reason without a --language, --framework, --load or --skip before it; expected each --reason right after one of their values'
 			;;
-		--plan-file | --agent | --mode | --context-file | --task | --language | --framework | --load | --skip | --load-reason | --replan | --skills-dir)
+		--plan-file | --agent | --mode | --effort | --fingerprint | --task | --language | --framework | --load | --skip | --load-reason | --replan | --skills-dir)
 			[ -z "${entry_kind}" ] || missing_reason_error
 			;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --mode, --context-file, --task, --language, --framework, --load, --skip, --reason, --load-reason, --replan, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --mode, --effort, --fingerprint, --task, --language, --framework, --load, --skip, --reason, --load-reason, --replan, --skills-dir or --help"
 			;;
 	esac
 	awaited_option=$1
@@ -247,11 +242,12 @@ missing_reason_error() {
 take_value() {
 	is_entry_complete=false
 	case $1 in
-		--plan-file | --context-file | --skills-dir)
+		--plan-file | --effort | --fingerprint | --skills-dir)
 			check_single_value "$1" "$2"
 			case $1 in
 				--plan-file) plan_file=$2 ;;
-				--context-file) context_file=$2 ;;
+				--effort) given_effort=$2 ;;
+				--fingerprint) fingerprint=$2 ;;
 				*) skills_dir=$2 ;;
 			esac
 			;;
@@ -318,15 +314,16 @@ finish_parse() {
 		*' --mode '*) ;;
 		*) usage_error '--mode missing; expected --mode BUILD or --mode TEST' ;;
 	esac
-	[ -n "${context_file}" ] || usage_error '--context-file missing; expected --context-file CTX, the effort'\''s context file'
+	[ -n "${given_effort}" ] || usage_error '--effort missing; expected --effort FOLDER, the effort folder'
+	[ -n "${fingerprint}" ] || usage_error '--fingerprint missing; expected --fingerprint HEX, the FINGERPRINT context.sh freeze --dry-run printed'
 	[ "${task_count}" -gt 0 ] || usage_error '--task missing; expected at least one --task TEXT'
 	[ -n "${skills_dir}" ] || skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
 }
 
 # Exits 5 unless jq, a sha256 tool, list-plugins.sh, the context checks, the
 # plan checks, the validator's names module and crucible's prune module are
-# in place; loads the context read checks and sets the plan checks' paths,
-# prune_lib_dir and list_script.
+# in place; loads the context checks (the space rules and the sha256 tool
+# among them) and sets the plan checks' paths, prune_lib_dir and list_script.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -393,53 +390,23 @@ read_installed() {
 		die 5 'jq failed reading the plugin list; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Sets context_problems to one problem line per finding of the context file's
-# checks, and context_digest to its sha256 when they pass.
-check_context_file() {
-	context_problems=''
-	context_digest=''
-	path_problem=$(context_path_problem "${context_file}")
-	if [ -n "${path_problem}" ]; then
-		add_context_problem "${path_problem}; expected ${context_path_expected}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "${context_file}" ||
-		die 5 'a tool failed on the context read checks (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
-	if [ "${context_read_fault}" = stale ]; then
-		add_context_problem "${CONTEXT_STALE_TOKEN} ${context_read_text}; plan with it"
-		return 0
-	fi
-	if [ -n "${context_read_fault}" ]; then
-		add_context_problem "${context_read_text}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_context_digest "${context_file}" ||
-		die 5 "${context_digest_tool} could not hash ${context_file}; expected 64 hex digits; check the tool, then rerun"
-	find_record_effort
-}
-
-# Sets record_effort to the effort folder the context file lies in, or adds a
-# context problem; exits 5 when the space root is unusable.
-find_record_effort() {
+# Sets record_effort to --effort without its trailing slashes when it names an
+# effort folder of the space, or sets effort_problem to its stderr line; exits
+# 5 when the space root is unusable.
+check_effort() {
+	effort_problem=''
 	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read here
 	crucible_resolve_root || die 5 "space: ${crucible_root_problem}"
-	# shellcheck disable=SC2310 # its status says whether the path is in an effort
-	if crucible_effort_of "${context_file}"; then
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is read below
+	if crucible_check_effort_folder "${given_effort}"; then
 		record_effort=${crucible_effort}
 		return 0
 	fi
-	add_context_problem "not in an effort folder; expected the context file of an effort in ${crucible_root}/efforts/"
-}
-
-# Appends problem $1 of the context file to context_problems as a stderr line,
-# the path shown whole, control characters replaced.
-add_context_problem() {
-	shown_context=$(jq -nr --arg value "${context_file}" \
+	record_effort=${given_effort}
+	shown_effort=$(jq -nr --arg value "${given_effort}" \
 		'$value | tojson | gsub("[[:cntrl:]]"; "?")') ||
-		die 5 'jq failed showing the context path; expected jq 1.6+; try jq --version, then rerun'
-	context_problems="${context_problems}${PROG}: --context-file ${shown_context}: $1
+		die 5 'jq failed showing the effort path; expected jq 1.6+; try jq --version, then rerun'
+	effort_problem="${PROG}: --effort ${shown_effort}: ${crucible_effort_problem}
 "
 }
 
@@ -473,17 +440,14 @@ run_plan_jq() {
 	run_mode=$1
 	shift
 	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --argjson installed "${installed}" \
-		--arg context_path "${context_file}" --arg context_digest "${digest_in_plan}" --arg session_id "${session_id}" \
+		--arg context_effort "${record_effort}" --arg context_fingerprint "${fingerprint}" --arg session_id "${session_id}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		"${PLAN_JQ}" --args -- "$@" </dev/null
 }
 
 # Sets plan_json to the plan, or exits 3 after printing every problem the
-# context file, the plan file path and the validator find.
+# effort, the plan file path and the validator find.
 build_plan() {
-	# A context file that failed its checks has no digest; a stand-in keeps the
-	# plan checks to the plan, the context problems being reported already.
-	digest_in_plan=${context_digest:-0000000000000000000000000000000000000000000000000000000000000000}
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
 	plan_json=$(run_plan_jq plan "$@") ||
 		die 5 "jq failed building the plan; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
@@ -493,7 +457,7 @@ build_plan() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
 	plan_problems=$(run_plan_jq report "$@") ||
 		die 5 "jq failed reporting the plan's problems; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
-	all_problems="${context_problems}${plan_problem:+${plan_problem}
+	all_problems="${effort_problem}${plan_problem:+${plan_problem}
 }${plan_problems}"
 	[ -n "${all_problems}" ] || return 0
 	printf '%s' "${all_problems}" >&2
@@ -537,7 +501,7 @@ write_plan() {
 	temp_file=''
 }
 
-# Writes plan_json to a new plans item of the context file's effort, through
+# Writes plan_json to a new plans item of the effort, through
 # crucible.sh new, and sets record_file to it; or exits 1, nothing written.
 write_record() {
 	new_record=$(sh "${crucible_script}" new --kind "${RECORD_KIND}" --effort "${record_effort}" --label "${RECORD_LABEL}" </dev/null) ||
@@ -573,7 +537,7 @@ trap 'exit 143' TERM
 	usage >&2
 	exit 2
 }
-plan_file='' context_file='' skills_dir='' seen_options='' task_count=0
+plan_file='' given_effort='' fingerprint='' skills_dir='' seen_options='' task_count=0
 awaited_option='' entry_kind='' entry_value='' entry_reason='' validator_problems=''
 # Each completed option is appended to the positional parameters as a triple
 # (kind, value, reason); "for" walks the original arguments only, which are
@@ -597,7 +561,7 @@ require_tools
 load_dependencies
 require_session
 read_installed
-check_context_file
+check_effort
 check_plan_file
 build_plan "$@"
 require_open_effort

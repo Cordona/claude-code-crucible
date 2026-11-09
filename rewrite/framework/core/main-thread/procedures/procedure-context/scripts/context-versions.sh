@@ -13,8 +13,8 @@ context_version_max_digits=9
 
 # Sets context_version_number to N when file name $1 is a version file's,
 # <YYYYMMDDTHHMMSS>-<4 lowercase hex>-v<N>.json with N from 1, no leading zero
-# and at most context_version_max_digits digits; fails otherwise. The text and
-# diff files (-v<N>-text, -diff-<sha>) are not version files.
+# and at most context_version_max_digits digits; fails otherwise. Nothing else in
+# context/ is a version file.
 context_version_of_name() {
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_split_id "$1" || return 1
@@ -57,8 +57,7 @@ context_find_latest_version() {
 # version file in an effort's context/ folder
 # (<...>/efforts/<effort>/context/<id>-v<N>.json) that is not that effort's
 # latest version, which context_version_latest then names. Empty for the
-# latest, and for a file anywhere else: a context file outside an effort
-# (legacy).
+# latest, and for a file anywhere else, which the read checks refuse first.
 context_stale_version_problem() {
 	context_version_stale=''
 	# shellcheck disable=SC2310 # its status says whether the name is a version's

@@ -19,7 +19,7 @@ Run by the main thread. After a compaction, an interruption or a new session, th
 - **Never resend or re-dispatch on an approval no longer visible in the conversation:** a lost approval is no approval.
 - **Never take a plan as approved unless its AskUserQuestion answer is still visible in the conversation.**
 - **Never relay a plan, a view, a report or a task from memory:** re-run the script that prints it, or hand over its full absolute path.
-- **Never gather again what is on disk:** take the latest context version through `procedure-context`, never pick one by hand, and never ask again an answer `procedure-context` saved.
+- **Never gather again what is on disk:** take the context through `procedure-context`'s Resume, the latest version or the docs folder (`CONTEXT-DOCS`), never pick either by hand, and never ask again an answer the newest spec draft holds.
 - **Never guess:** on two candidates, the conversation and the disk disagreeing, or a failed read, ask the human with one AskUserQuestion and run no step before the answer. A failed `find` stops instead (step 2).
 - **Never write a file in this procedure's steps:** a rerun after a break must be safe.
 - **Never read the effort folder except through `crucible.sh find` and the scripts the loaded skills name.**
@@ -43,7 +43,7 @@ Run by the main thread. After a compaction, an interruption or a new session, th
    - **Can't tell:** a `find` prints a line that isn't an absolute path inside the effort folder, or the conversation and the disk disagree. Ask with one AskUserQuestion which to resume: the lines below that the conversation or the disk point to, each option naming the skill it loads and what points to it, the likeliest first and marked (Recommended), then "Stop". Run no step before the answer; take the line picked, or on "Stop" resume nothing.
    - **Grill files found:** load `procedure-grill` (step 3). It resumes the grill in progress, or hands back that none is in progress: then take the next line that fits.
    - **Plan records found:** load `flow-code-development` (step 3).
-   - **Neither, or the grill handed back and no plan record found:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-development` for code in an effort (step 3); it finds the latest context version and goes on.
+   - **Neither, or the grill handed back and no plan record found:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-development` for code in an effort (step 3).
 3. **Hand over** the effort folder's absolute path to the skill step 2 loads, as you load it. That skill's own Resume rules take the work from there; this procedure does nothing more, except step 2's next line when `procedure-grill` hands back.
 
 ## Dependencies

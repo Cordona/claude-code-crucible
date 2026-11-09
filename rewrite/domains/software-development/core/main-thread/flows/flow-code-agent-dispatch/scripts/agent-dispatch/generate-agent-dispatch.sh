@@ -2,21 +2,25 @@
 # Writes one agent dispatch file from the plan the human approved at its
 # effort's gate, so a dispatch is never assembled by hand. The plan is found
 # by its digest among the effort's gate records, as the plan the human was
-# shown, and its context version must be in that effort. The seat --seat names
+# shown, and the context version it pins must still be the one its effort's
+# docs and pending entries give. The seat --seat names
 # must be in the effort's seats.json with the plan's mode, since the plugins
 # the plan chose depend on it; procedure-git-worktree's seats.sh reads it.
-# The plan is checked again by dispatch-plan-validator.jq; its context file by
-# procedure-context's agent-context-file-checks.sh, agent-context-validator.jq,
-# context-versions.sh and its digest; its plugins are resolved to files by
-# plugin-files.sh, and the agent's title is built by human-view's title; and the
-# dispatch is checked by agent-dispatch-validator.jq before and after it is
-# written, after crucible's prune leaves out each key with nothing in it.
+# The plan is checked again by dispatch-plan-validator.jq; its fingerprint
+# against procedure-context's context.sh freeze --dry-run; its plugins are
+# resolved to files by plugin-files.sh, and the agent's title is built by
+# human-view's title; and the dispatch is checked by agent-dispatch-validator.jq
+# before and after it is written, after crucible's prune leaves out each key
+# with nothing in it. Only once every check passes and the effort is open does
+# context.sh freeze --expect cut the version, or return the one already cut;
+# the cut version passes agent-context-file-checks.sh's checks and the
+# dispatch pins it by path and sha256.
 # The dispatch goes into the seat's own folder of its worktree, named by an ID
 # crucible.sh id hands out, and procedure-git-worktree's seed-commit.sh
 # commits it on the seat's worktree before the agent starts; a failed seed is
-# a failed run. Every problem is named by the option behind it; no file is left
-# behind on a problem (a signal, or a seed committed but not verified, may
-# leave one, as the page says).
+# a failed run. Every problem is named by the option behind it; no dispatch
+# file is left behind on a problem (a signal, or a seed committed but not
+# verified, may leave one, as the page says).
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
@@ -24,6 +28,8 @@ umask 077
 readonly PROG='generate-agent-dispatch.sh'
 readonly PROCEDURE='flow-code-agent-dispatch'
 readonly CONTEXT_PROCEDURE='procedure-context'
+# context.sh freeze's refusal exit: nothing was written.
+readonly FREEZE_REFUSED_EXIT=3
 readonly REQUIRED_TOOLS='awk cat mktemp mv rm tr wc'
 readonly PLAN_RECORD_LABEL='dispatch-plan'
 readonly NAMES_MODULE='dispatch-names'
@@ -36,18 +42,24 @@ readonly NOT_OPEN_EXIT=6
 # Stands for the ID crucible.sh id hands out once the effort is known open,
 # so the dispatch is checked whole before any file exists.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
+# Stand for the version context.sh freeze cuts, for the same check.
+readonly PLACEHOLDER_VERSION="${PLACEHOLDER_ID}-v1.json"
+readonly PLACEHOLDER_SHA256='0000000000000000000000000000000000000000000000000000000000000000'
 readonly PLAN_RECORD_KIND='cache/gates'
 # Every seat's own folder in a worktree lies in this folder of it.
 readonly SEATS_FOLDER='.crucible/seats'
 # Lead the problems a caller acts on, so it matches the token exactly, never
 # the sentence after it: a plan no gate record of the effort holds, a context
-# file changed since the plan was shown or no longer its effort's latest
-# version (the Agent hook's KIND word for it), and a plugin the plan names
-# that is no longer installed or no longer valid (the Agent hook's KIND word
-# for it).
+# whose docs or pending entries changed since the plan was shown, an effort
+# with no approved spec, a docs file's name or the folder's size the cut
+# refuses (context.sh freeze's own words for these four), and a plugin
+# the plan names that is no longer installed or no longer valid (the Agent
+# hook's KIND word for it).
 readonly NO_GATE_RECORD_TOKEN='NO-GATE-RECORD'
 readonly CONTEXT_CHANGED_TOKEN='CONTEXT-CHANGED'
-readonly CONTEXT_STALE_TOKEN='CONTEXT-STALE'
+readonly NO_SPEC_TOKEN='NO-SPEC'
+readonly DOCS_NAME_TOKEN='DOCS-NAME'
+readonly DOCS_SIZE_TOKEN='DOCS-SIZE'
 readonly PLUGIN_TOKEN='PLUGIN'
 readonly TASK_STAND_IN='(no task chosen)'
 NL='
@@ -172,9 +184,8 @@ Options:
   --seat S            the seat in FOLDER/seats.json (lowercase words joined by
       dashes, then alpha ... omega and from the second round -2, -3 ..., like
       build-agent-alpha) whose mode is the plan's, whose status is open,
-      working or idle (a chosen or gave-up seat is exit 3) and whose worktree
-      is a folder in FOLDER/worktrees/; that it is open is checked at the
-      Agent call
+      working or idle and whose worktree is a folder in FOLDER/worktrees/;
+      that it is open is checked at the Agent call
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
   --skills-dir DIR    must be \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
@@ -187,36 +198,39 @@ stdout on exit 0, in order:
   TITLE: <title>  the agent's title, relayed as printed
 stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
-stderr on exit 0: may hold seed-commit.sh's "UNSIGNED: <reason>" line as
-  it printed it; the dispatch was committed unsigned
+stderr on exit 0: may hold seed-commit.sh's "UNSIGNED: <reason>" line: the
+  dispatch was committed unsigned
 
-Writes only the dispatch file, whole, in the seat's folder of its worktree
-(made if missing), then commits it on the seat's worktree with
-procedure-git-worktree's seed-commit.sh, so the agent starts from that
-commit. A failed seed fails the run. On a non-zero exit the file and the
-folders this run made are removed and named on stderr (a SIGKILL aside; a
-signal during the seed may leave its commit), but for a seed that
-committed without verifying it. No other effort is read;
+Once every check passes and the effort is open, context.sh freeze --expect
+cuts the plan's version into FOLDER/context/ (or gives the one cut for that
+fingerprint; a refusal is exit 3, nothing written). Then writes the dispatch
+file, whole, pinning it, in the seat's folder of its worktree (made if
+missing), and commits it there with seed-commit.sh. A failed seed fails the
+run. On a non-zero exit the version stays; the file and the folders this run
+made are removed and named on stderr (a SIGKILL aside; a signal during the
+seed may leave its commit), but for exit 5's. No other effort is read;
 seats.json is only read.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
   0  written; keep the three stdout lines
-  1  the inputs passed but making the file failed, or seed-commit.sh
-     refused it (its exit 3); no file left
+  1  the inputs passed but the cut or the file failed, or seed-commit.sh
+     refused it (its exit 3); no dispatch file left
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, no file made; fix what stderr names. A problem may lead
      with a token right after "<option> <value>: ":
        ${NO_GATE_RECORD_TOKEN}  no gate record holds the plan; ask it again at its gate
-       ${CONTEXT_CHANGED_TOKEN}  the shown context file changed; show the plan again
-       ${CONTEXT_STALE_TOKEN}  a newer context version exists; show the plan with it
+       ${CONTEXT_CHANGED_TOKEN}  the docs or pending entries changed; re-plan
+       ${NO_SPEC_TOKEN}  no approved spec; approve one, then re-plan
+       ${DOCS_NAME_TOKEN}, ${DOCS_SIZE_TOKEN}  a docs file's name or the folder's size: rename,
+         remove or shorten it, then re-plan
        ${PLUGIN_TOKEN} plugin folder <name> uninstalled|invalid  a plugin the plan
          names; re-plan
-  5  a dependency is missing or failed, seed-commit.sh's other exits
-     included; on its exit 5 (a commit made, not verified) the file stays
+  5  a dependency is missing or failed, context.sh's and seed-commit.sh's
+     other exits included; on its exit 5 (a commit made, not verified) the file stays
      and stderr names the commit
   ${NOT_OPEN_EXIT}  the effort is not open, or its state is unknown
-  129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
-                 show the exit code, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code,
+     and stop
 
 Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID with a session
   transcript
@@ -225,7 +239,8 @@ Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's)
   sha256sum (Linux: coreutils) or shasum; awk, cat, mktemp, mv, rm, tr, wc
     (base system)
-  the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE},
+  the ${CRUCIBLE_SKILL} (crucible.sh, scripts/lib/prune.jq), ${CONTEXT_PROCEDURE}
+    (context.sh, agent-context-file-checks.sh),
     ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh,
     scripts/commit/seed-commit.sh) and ${VIEW_LIB} (title.jq) skills in the
     default --skills-dir
@@ -259,6 +274,7 @@ printable() {
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
+	[ -z "${freeze_err_file}" ] || rm -f "${freeze_err_file}"
 	[ "${exit_status}" -eq 0 ] || remove_created_files
 }
 
@@ -324,15 +340,19 @@ trim_trailing_slashes() {
 	done
 }
 
-# Exits 5 unless jq, a sha256 tool, crucible.sh, list-plugins.sh, crucible's
-# prune module, human-view's title module, seats.sh, seed-commit.sh and every
-# shared check and helper are in place; sources the two shell helpers.
+# Exits 5 unless jq, a sha256 tool, crucible.sh, context.sh, list-plugins.sh,
+# crucible's prune module, human-view's title module, seats.sh, seed-commit.sh
+# and every shared check and helper are in place; sources the two shell
+# helpers.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
 	context_lib="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/agent-context-file-checks.sh"
 	[ -f "${context_lib}" ] && [ -r "${context_lib}" ] ||
 		die 5 "context check missing; expected ${context_lib}; install the ${CONTEXT_PROCEDURE} skill"
+	context_script="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/context.sh"
+	[ -f "${context_script}" ] && [ -r "${context_script}" ] ||
+		die 5 "context.sh missing; expected ${context_script}; install the ${CONTEXT_PROCEDURE} skill"
 	crucible_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}"
 	prune_lib_dir="${crucible_skill_dir}/scripts/lib"
 	[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
@@ -494,8 +514,8 @@ read_installed() {
 
 # Checks the record's plan against the validator's current rules, its "v"
 # never read; when it fits, sets agent, mode, task_count, loaded_names (the
-# plugin names under plugins.load, one per line),
-# context_path and plan_context_sha256, and plan_ok=true.
+# plugin names under plugins.load, one per line), plan_context_effort and
+# plan_fingerprint, and plan_ok=true.
 check_plan() {
 	plan_ok=false
 	plan_record=$(jq -c 'del(.v)' "${record_path}" </dev/null) ||
@@ -507,14 +527,14 @@ check_plan() {
 		add_plan_problems
 		return 0
 	fi
-	plan_fields=$(jq -r '.agent, .mode, (.tasks | length), .context.path, .context.sha256' "${record_path}" </dev/null) ||
+	plan_fields=$(jq -r '.agent, .mode, (.tasks | length), .context.effort, .context.sha256' "${record_path}" </dev/null) ||
 		die 5 'jq failed reading the plan; expected jq 1.6+; try jq --version, then rerun'
 	{
 		IFS= read -r agent
 		IFS= read -r mode
 		IFS= read -r task_count
-		IFS= read -r context_path
-		IFS= read -r plan_context_sha256
+		IFS= read -r plan_context_effort
+		IFS= read -r plan_fingerprint
 	} <<EOF
 ${plan_fields}
 EOF
@@ -570,45 +590,97 @@ pick_task() {
 		die 5 'jq failed reading the task; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Adds a problem when the context file is not in the effort's context/, fails
-# its path or read checks, or changed since the plan was shown.
+# Adds a problem unless the plan's effort is --effort and context.sh freeze
+# --dry-run still gives the plan's fingerprint: the docs and pending entries
+# the human approved. A refusal of the cut (NO-SPEC, a refused docs file name
+# or size) is a problem; an effort not open is left to require_open_effort.
 check_context() {
-	# shellcheck disable=SC2310 # its status is the test result; the problem is read below
-	if ! crucible_check_effort_item "${context_path}" context; then
-		add_context_problem "is ${crucible_item_problem}"
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is read below
+	if ! crucible_check_effort_folder "${plan_context_effort}" || [ "${crucible_effort}" != "${effort_dir}" ]; then
+		add_context_problem "is not the effort of --effort; expected ${effort_dir}, the effort whose gate the plan was approved at"
 		return 0
 	fi
-	if [ "${crucible_effort}" != "${effort_dir}" ]; then
-		add_context_problem "is in effort ${crucible_effort}; expected a context version in ${effort_dir}/context/, the effort whose gate the plan was approved at"
-		return 0
-	fi
-	path_problem=$(context_path_problem "${context_path}")
-	if [ -n "${path_problem}" ]; then
-		add_context_problem "${path_problem}; expected ${context_path_expected}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "${context_path}" ||
-		die 5 'a tool failed on the context read checks (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
-	if [ "${context_read_fault}" = stale ]; then
-		add_context_problem "${context_read_text}; show the plan again at its gate with it" "${CONTEXT_STALE_TOKEN} "
-		return 0
-	fi
-	if [ -n "${context_read_fault}" ]; then
-		add_context_problem "${context_read_text}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_context_digest "${context_path}" ||
-		die 5 "${context_digest_tool} could not hash ${context_path}; check the tool, then rerun"
-	[ "${context_digest}" = "${plan_context_sha256}" ] ||
-		add_context_problem "changed since the plan was shown (sha256 $(printf '%.12s' "${plan_context_sha256}") shown, $(printf '%.12s' "${context_digest}") now); expected it as shown; show the plan again for the changed file" "${CONTEXT_CHANGED_TOKEN} "
+	run_freeze --dry-run
+	case ${freeze_status} in
+		0) ;;
+		"${FREEZE_REFUSED_EXIT}")
+			add_freeze_problems "${CONTEXT_PROCEDURE}'s context.sh freeze --dry-run refuses the cut"
+			return 0
+			;;
+		"${NOT_OPEN_EXIT}") return 0 ;;
+		*) die 5 "context.sh freeze --dry-run failed (exit ${freeze_status}; its stderr is above); expected exit 0 or ${FREEZE_REFUSED_EXIT}; fix what it names, or reinstall ${CONTEXT_PROCEDURE}" ;;
+	esac
+	current_fingerprint=$(freeze_value FINGERPRINT)
+	[ "${current_fingerprint}" = "${plan_fingerprint}" ] ||
+		add_context_problem "the docs or pending entries changed since the plan was shown (fingerprint $(printf '%.12s' "${plan_fingerprint}") shown, $(printf '%.12s' "${current_fingerprint}") now); expected them as shown; show the plan again with a fresh fingerprint" "${CONTEXT_CHANGED_TOKEN} "
 }
 
-# Adds problem $1 of the plan's context file, led by token $2 and its space
-# when given.
+# Runs context.sh freeze on effort_dir with the options given; sets
+# freeze_status, freeze_out (its stdout) and freeze_errors (its stderr). On an
+# exit other than the refusal, its stderr is passed through.
+run_freeze() {
+	[ -n "${freeze_err_file}" ] || freeze_err_file=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
+		die 5 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; check it, then rerun"
+	freeze_status=0
+	freeze_out=$(sh "${context_script}" freeze --effort "${effort_dir}" "$@" </dev/null 2>"${freeze_err_file}") ||
+		freeze_status=$?
+	freeze_errors=$(cat "${freeze_err_file}") ||
+		die 5 "cat could not read context.sh's stderr from ${freeze_err_file}; expected a readable temp file; check \${TMPDIR:-/tmp}, then rerun"
+	[ "${freeze_status}" -eq "${FREEZE_REFUSED_EXIT}" ] || [ -z "${freeze_errors}" ] ||
+		printf '%s\n' "${freeze_errors}" >&2
+}
+
+# Prints the value of context.sh freeze's "$1: <value>" line, or exits 5 when
+# it printed none.
+freeze_value() {
+	while IFS= read -r freeze_line; do
+		case ${freeze_line} in
+			"$1: "?*)
+				printf '%s' "${freeze_line#"$1: "}"
+				return 0
+				;;
+			*) ;;
+		esac
+	done <<EOF
+${freeze_out}
+EOF
+	die 5 "context.sh freeze printed no $1 line; expected one on exit 0; reinstall ${CONTEXT_PROCEDURE}"
+}
+
+# Adds one problem per line of freeze_errors, led by the freeze token in it
+# (CONTEXT-CHANGED when it holds none) and ending in $1: why the cut is refused.
+add_freeze_problems() {
+	while IFS= read -r freeze_line; do
+		[ -n "${freeze_line}" ] || continue
+		split_freeze_token "${freeze_line}"
+		add_context_problem "${freeze_rest}; $1" "${freeze_token} "
+	done <<EOF
+${freeze_errors}
+EOF
+}
+
+# Sets freeze_token to the first freeze token in line $1 and freeze_rest to
+# the text after it and its colon; with no token, CONTEXT-CHANGED and the
+# whole line.
+split_freeze_token() {
+	for freeze_token in "${NO_SPEC_TOKEN}" "${CONTEXT_CHANGED_TOKEN}" "${DOCS_NAME_TOKEN}" "${DOCS_SIZE_TOKEN}"; do
+		case $1 in
+			*"${freeze_token}"*)
+				freeze_rest=${1#*"${freeze_token}"}
+				freeze_rest=${freeze_rest#:}
+				freeze_rest=${freeze_rest# }
+				return 0
+				;;
+			*) ;;
+		esac
+	done
+	freeze_token=${CONTEXT_CHANGED_TOKEN} freeze_rest=$1
+}
+
+# Adds problem $1 of the plan's context, led by token $2 and its space when
+# given.
 add_context_problem() {
-	add_problem --plan-sha256 "${plan_sha256}" "${2-}the plan's context file ${context_path}: $1"
+	add_problem --plan-sha256 "${plan_sha256}" "${2-}the plan's context: $1"
 }
 
 # Sets plugin_paths and labels_line for the plan's loaded plugins,
@@ -766,7 +838,7 @@ run_dispatch_jq() {
 		--arg agent "${agent}" --arg seat "${seat}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" \
-		--arg context_path "${context_path}" --arg context_sha256 "${plan_context_sha256}" \
+		--arg context_path "${context_path}" --arg context_sha256 "${context_sha256}" \
 		--arg task "${task}" --arg task_number "${task_number}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		--arg plan_known "${plan_ok}" --arg task_known "${task_known}" \
@@ -811,6 +883,73 @@ require_open_effort() {
 			;;
 		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
 	esac
+}
+
+# Cuts the plan's version with context.sh freeze --expect, or takes the one
+# already cut for that fingerprint, and sets context_path and context_sha256
+# to it once it passes the shared checks; a refusal exits 3, nothing written,
+# and any other failure exits as context.sh's exit says.
+cut_context() {
+	run_freeze --expect "${plan_fingerprint}"
+	case ${freeze_status} in
+		0) ;;
+		"${FREEZE_REFUSED_EXIT}")
+			add_freeze_problems "${CONTEXT_PROCEDURE}'s context.sh freeze --expect refused the cut; nothing was written"
+			printf '%s' "${problems}" >&2
+			exit 3
+			;;
+		"${NOT_OPEN_EXIT}") die "${NOT_OPEN_EXIT}" "context.sh freeze --expect refused: the effort is not open (its stderr is above); nothing was written; expected an open effort; ask the human to check the effort" ;;
+		5) die 5 "context.sh freeze --expect names a missing dependency above; nothing was written; expected the ${CONTEXT_PROCEDURE} skill working; install what it names, then rerun" ;;
+		*) die 1 "context.sh freeze --expect failed (exit ${freeze_status}; its stderr is above); no dispatch was written; expected exit 0 with the version cut; fix what it names, then rerun" ;;
+	esac
+	context_path=$(freeze_value CONTEXT_FILE)
+	context_sha256=$(freeze_value CONTEXT_SHA256)
+	check_cut_version
+	[ -z "${problems}" ] || {
+		printf '%s' "${problems}" >&2
+		exit 3
+	}
+}
+
+# Adds a CONTEXT-CHANGED problem unless the cut version is a version file in
+# effort_dir's context/ that passes the shared path and read checks and
+# hashes to the CONTEXT_SHA256 context.sh printed.
+check_cut_version() {
+	# shellcheck disable=SC2310 # its status is the test result; the problem is read below
+	if ! crucible_check_effort_item "${context_path}" context || [ "${crucible_effort}" != "${effort_dir}" ]; then
+		add_cut_problem "not a version file in ${effort_dir}/context/"
+		return 0
+	fi
+	path_problem=$(context_path_problem "${context_path}")
+	if [ -n "${path_problem}" ]; then
+		add_cut_problem "${path_problem}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${context_path}" ||
+		die 5 'a tool failed on the context read checks (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	case ${context_read_fault} in
+		'') ;;
+		no-spec)
+			add_cut_problem "${context_read_text#"${NO_SPEC_TOKEN}: "}" "${NO_SPEC_TOKEN}"
+			return 0
+			;;
+		*)
+			add_cut_problem "${context_read_text#"${CONTEXT_CHANGED_TOKEN}: "}"
+			return 0
+			;;
+	esac
+	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
+	compute_context_digest "${context_path}" ||
+		die 5 "${context_digest_tool} could not hash ${context_path}; check the tool, then rerun"
+	[ "${context_digest}" = "${context_sha256}" ] ||
+		add_cut_problem "sha256 $(printf '%.12s' "${context_digest}"), not the $(printf '%.12s' "${context_sha256}") context.sh printed"
+}
+
+# Adds problem $1 of the cut version, led by token $2 (CONTEXT-CHANGED when
+# not given): the version stays, and a re-plan takes a fresh fingerprint.
+add_cut_problem() {
+	add_context_problem "the cut version ${context_path}: $1; expected a version passing ${CONTEXT_PROCEDURE}'s checks; show the plan again with a fresh fingerprint" "${2:-${CONTEXT_CHANGED_TOKEN}} "
 }
 
 # Removes the files this run made, names them, and exits 1 with $1.
@@ -917,7 +1056,7 @@ seed_dispatch() {
 	esac
 }
 
-temp_file=''
+temp_file='' freeze_err_file=''
 created_files='' created_dirs=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files go on every path.
@@ -964,7 +1103,9 @@ check_plan_sha256
 check_task_number
 # Stand-ins for what the plan gives, so the dispatch check still reports the
 # options' own problems when the plan is not found or not valid.
-agent=code-developer mode=BUILD plugin_paths='' labels_line='' title_line='' context_path=/ plan_context_sha256=''
+agent=code-developer mode=BUILD plugin_paths='' labels_line='' title_line=''
+plan_context_effort='' plan_fingerprint=''
+context_path="/${PLACEHOLDER_VERSION}" context_sha256=${PLACEHOLDER_SHA256}
 task=${TASK_STAND_IN} task_known=false
 record_path=''
 check_effort_option
@@ -985,5 +1126,6 @@ if [ -n "${problems}" ]; then
 	exit 3
 fi
 require_open_effort
+cut_context
 write_dispatch "$@"
 printf 'DISPATCH: %s\n%s\n%s\n' "${dispatch_path}" "${labels_line}" "${title_line}"

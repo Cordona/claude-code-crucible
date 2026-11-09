@@ -44,7 +44,7 @@ def classify:
 # shellcheck disable=SC2016
 readonly CONTEXT_LINK_JQ='
 ($n | tonumber) as $index
-| if length != 1 or (.[0] | type) != "object" then bad("the file holds no single JSON object; expected one object with paths, links and notes; try the file the human approved")
+| if length != 1 or (.[0] | type) != "object" then bad("the file holds no single JSON object; expected one object with paths, links and spec; try the file the human approved")
   elif (.[0] | has("links")) and (.[0].links | type) != "array" then bad("the file has no links array; expected links as an array; try the file the human approved")
   else (.[0].links // []) as $links
 	| if ($links | length) == 0 then bad("no link \($n); the file has 0; expected at least one link; try none, as the file lists no links")

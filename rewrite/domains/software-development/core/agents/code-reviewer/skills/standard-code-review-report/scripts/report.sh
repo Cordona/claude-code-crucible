@@ -295,7 +295,14 @@ def not_reviewed_problems($loc):
 	end;
 
 def found_location_expected:
-	"a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>], links[<n>] or notes[<n>], counted from 1, or its URL), a URL, or commit <sha>, \(one_line_expected)";
+	"a repo-relative path:line, message: <FIELD>, a plugin name and file, a context entry (paths[<n>] or links[<n>], counted from 1, or its URL), a line of a docs folder file (paths[<n>]/<file>:<line>), a URL, or commit <sha>, \(one_line_expected)";
+# A context entry the version has no such list for, or a docs folder line not
+# in the paths[<n>]/<file>:<line> form.
+def context_locator_problem:
+	if test("\\Anotes\\[") then "\(shown) names a note; the context has no notes"
+	elif test("\\Apaths\\[[^]]*\\]/") | not then empty
+	elif test("\\Apaths\\[[1-9][0-9]{0,8}\\]/[^/[:cntrl:]]+:[1-9][0-9]{0,8}\\z") and (test("\\]/\\.\\.?:") | not) then empty
+	else "\(shown) is not paths[<n>]/<file>:<line>, n and line from 1, <file> a name in the folder" end;
 def found_problems($loc):
 	if type != "object" then "\($loc): a JSON \(type); expected an object with \(found_keys | names)"
 	else . as $item
@@ -305,7 +312,7 @@ def found_problems($loc):
 				elif $key == "location" then found_location_expected
 				else one_line_expected end)),
 		  (select(has("kind")) | .kind | enum_problem(["instruction", "secret"]) | "\($loc).kind: \(.); expected instruction or secret"),
-		  (select(has("location")) | .location | one_line_problem | "\($loc).location: \(.); expected \(found_location_expected)"),
+		  (select(has("location")) | .location | (one_line_problem // context_locator_problem) | "\($loc).location: \(.); expected \(found_location_expected)"),
 		  (select(has("text")) | .text | one_line_problem | "\($loc).text: \(.); expected what the text says, or the kind of secret with a masked preview, \(one_line_expected)")
 	end;
 

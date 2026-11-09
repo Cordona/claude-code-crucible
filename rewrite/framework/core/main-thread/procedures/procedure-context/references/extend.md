@@ -1,8 +1,10 @@
-# Extend
+# Add to the context
 
-How SKILL.md step 5 writes the next context version. Read it when a new entry enters a running effort after v1, a contradiction found after a version was written is settled, a grill ends after v1, The spec records an outcome after v1, or step 4 exits 3 for an effort whose context already holds a version.
+How SKILL.md step 5 adds to the context once the spec is approved, before or after a cut. Read it when a new entry enters a running effort, a contradiction found then is settled, a grill ends, or the spec changes.
 
-Read the new entries in full and weigh them against the latest version, as SKILL.md steps 2 and 3 set, before anything is written. Then run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" extend --from '<the latest version>'` with the new entries, written as SKILL.md step 4 sets. To retire an entry, add `--retire '<list>:<n>'` and a `--note` saying why: `<list>` is `paths`, `links` or `notes`, and `<n>` is the entry's position, from 1, in the version extended. After a grill, the grill's file is the new entry, with its why as SKILL.md step 1 sets; retire each note a settled answer replaced. Act on its exit as SKILL.md step 4 sets, with these changes:
+Everything new goes into the docs folder, and the next dispatch the human approves cuts it; nothing is cut here. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" docs --effort '<effort folder>'` and keep its `DOCS_FOLDER:` path: before the first cut it is the folder discovery wrote, after a cut a new one.
 
-- 0 with a `CONTEXT_FILE:` line: that path replaces the old one as the latest version; read any new tracker link with `read-link.sh`'s `--context-file` form.
-- 3 naming another version as the latest: weigh the new entries against that version, and extend from it, at most twice; then show the human the stderr, and stop as SKILL.md step 8 sets.
+1. **Read the new entries in full** and weigh them against the latest version, if any, and the docs folder, as SKILL.md steps 2 and 3 set, before anything is written.
+2. **Write them as SKILL.md step 1 sets:** `add` each new outside path or link, `drop` one the human takes back (one in the latest version too), with the human's reason, and write a short `<name>.md` in the docs folder for new research or a note. An ended grill is already in the docs folder as `grill-<ID>.json`.
+3. **A settled answer, or anything that changes the approved spec's goal, done-when or scope:** run SKILL.md's The spec, for its revision; its approval replaces the docs folder's `spec.md`.
+4. **Hand over** as SKILL.md step 8 sets, telling the calling flow the context changed; or, as SKILL.md step 7 sets, ask what next.

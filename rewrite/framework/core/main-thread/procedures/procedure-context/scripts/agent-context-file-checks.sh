@@ -1,13 +1,19 @@
-# The context file's path checks, read checks and digest, and the loader of
-# what the read checks need: the one definition context.sh and every script
-# that reads a context file share.
+# The context version's path checks, read checks and digest, the docs folder
+# checks and digest, and the loader of what the read checks need: the one
+# definition context.sh and every script that reads a context version share.
 # Sourced, so it sets no shell option; its variables start with context_.
 # shellcheck shell=sh source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 
-# The context file's size cap, the one prepare-agent-prompt.sh applies:
-# references and a few notes fit far below it.
+# The context version's size cap, the one prepare-agent-prompt.sh applies:
+# references fit far below it.
 # shellcheck disable=SC2034 # read by the scripts that source this file
 context_max_bytes=65536
+# A docs folder's files together, checked at freeze: what an agent reads in a
+# few calls.
+# shellcheck disable=SC2034 # read by the scripts that source this file
+context_docs_max_bytes=1048576
+context_newline='
+'
 
 # The basenames of key and credential files, as lowercase globs matched in any
 # letter case, separated by single spaces: the one list the path check, the
@@ -143,19 +149,27 @@ context_config_path_problem() {
 # Sets context_read_text to the first problem a reader finds in context file
 # $1 as one "<what>; expected <x>" line, and context_read_fault to its kind,
 # both empty when the file may be used: the read checks of every script that
-# reads a context file, the one copy. It must be a readable regular file, not
-# a symlink (fault unusable), at most context_max_bytes (size), valid JSON
-# (json), one object passing agent-context-validator.jq (shape), and, when it
-# is a version file in an effort's context/, that effort's latest version
+# reads a context version, the one copy. It must be a version file in an
+# effort's context/ (fault location), a readable regular file, not a symlink
+# (unusable), at most context_max_bytes (size), valid JSON (json), one object
+# passing agent-context-validator.jq (shape; no-spec when the spec is one of
+# its problems), its spec an existing spec.md (no-spec), each docs folder
+# holding what its digest says (changed), and that effort's latest version
 # (stale; context_read_latest then names the latest version, empty
-# otherwise). Callers branch on the fault, never on the text. The caller applies
-# context_path_problem first where it needs it (a writer checks its own path)
-# and runs context_load_checks first. With a copy path $2, the file is read
-# once into $2 (at most one byte over the cap) and the later checks read the
-# copy, so what the caller hashes and sends is what passed. Fails, its cause
-# on stderr, only when a tool fails.
+# otherwise). The no-spec text leads with NO-SPEC and the changed text with
+# CONTEXT-CHANGED. Callers branch on the fault, never on the text. The caller
+# applies context_path_problem first where it needs it (a writer checks its
+# own path) and runs context_load_checks first. With a copy path $2, the file
+# is read once into $2 (at most one byte over the cap) and the later checks
+# read the copy, so what the caller hashes and sends is what passed. Fails,
+# its cause on stderr, only when a tool fails.
 context_read_problem() {
 	context_read_fault='' context_read_text='' context_read_latest=''
+	context_version_location_problem "$1"
+	if [ -n "${context_version_location}" ]; then
+		context_read_found location "${context_version_location}"
+		return 0
+	fi
 	context_read_unusable='file is missing, unreadable, a symlink or not a regular file; expected a readable regular file'
 	if [ -L "$1" ] || [ ! -f "$1" ] || [ ! -r "$1" ]; then
 		context_read_found unusable "${context_read_unusable}"
@@ -185,13 +199,27 @@ context_read_problem() {
 	fi
 	context_read_shape=$(jq -rs --arg context_path "$1" -f "${context_validator}" "${context_read_file}" </dev/null) || return 1
 	if [ -n "${context_read_shape}" ]; then
-		context_read_joined=''
+		context_read_joined='' context_read_shape_fault=shape context_read_lead=''
 		while IFS= read -r context_read_line; do
+			case ${context_read_line} in
+				'spec NO-SPEC:'*) context_read_shape_fault=no-spec context_read_lead='NO-SPEC: ' ;;
+				*) ;;
+			esac
 			context_read_joined="${context_read_joined}${context_read_joined:+; }${context_read_line}"
 		done <<EOF
 ${context_read_shape}
 EOF
-		context_read_found shape "file does not have the context shape (${context_read_joined}); expected the shape agent-context-validator.jq checks"
+		context_read_found "${context_read_shape_fault}" "${context_read_lead}file does not have the context shape (${context_read_joined}); expected the shape agent-context-validator.jq checks"
+		return 0
+	fi
+	context_read_spec=$(jq -r '.spec' "${context_read_file}" </dev/null) || return 1
+	if [ -L "${context_read_spec}" ] || [ ! -f "${context_read_spec}" ] || [ ! -r "${context_read_spec}" ]; then
+		context_read_found no-spec "NO-SPEC: spec ${context_read_spec} is missing, unreadable, a symlink or not a regular file; expected the spec.md the version names"
+		return 0
+	fi
+	context_docs_changed_problem "${context_read_file}" || return 1
+	if [ -n "${context_docs_changed}" ]; then
+		context_read_found changed "CONTEXT-CHANGED: ${context_docs_changed}; expected each docs folder as its version's digest says"
 		return 0
 	fi
 	context_stale_version_problem "$1"
@@ -205,6 +233,148 @@ EOF
 context_read_found() {
 	context_read_fault=$1
 	context_read_text=$2
+}
+
+# Sets context_version_location to why path $1 is not a version file in an
+# effort's context/ (<...>/efforts/<effort>/context/<id>-v<N>.json), by its
+# text alone; empty when it is one.
+context_version_location_problem() {
+	context_version_location='not <efforts folder>/<effort>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json; expected a version file context.sh freeze wrote'
+	# shellcheck disable=SC2310 # its status says whether the name is a version's
+	context_version_of_name "${1##*/}" || return 0
+	context_location_dir=${1%/*}
+	[ "${context_location_dir##*/}" = context ] || return 0
+	context_location_effort=${context_location_dir%/*}
+	# shellcheck disable=SC2310 # its status says whether the folder is an effort's
+	crucible_is_effort_name "${context_location_effort##*/}" || return 0
+	context_location_efforts=${context_location_effort%/*}
+	[ "${context_location_efforts##*/}" = efforts ] || return 0
+	context_version_location=''
+}
+
+# Sets context_docs_changed to the first docs folder of version file $1 (a
+# paths entry with a sha256) whose files no longer give that digest, or to
+# empty. Fails only when a tool fails.
+context_docs_changed_problem() {
+	context_docs_changed=''
+	# shellcheck disable=SC2016 # the program is jq's
+	context_docs_listed=$(jq -r '.paths[] | select(has("sha256")) | "\(.sha256) \(.path)"' "$1" </dev/null) || return 1
+	while IFS=' ' read -r context_docs_expected_digest context_docs_folder; do
+		[ -n "${context_docs_folder}" ] || continue
+		if [ -L "${context_docs_folder}" ] || [ ! -d "${context_docs_folder}" ]; then
+			context_docs_changed="docs folder ${context_docs_folder} is missing, a symlink or not a folder"
+			return 0
+		fi
+		# shellcheck disable=SC2310 # its status is a tool's; the caller reports it
+		context_docs_scan "${context_docs_folder}" || return 1
+		if [ -n "${context_docs_problem}" ]; then
+			context_docs_changed="docs folder ${context_docs_folder}: ${context_docs_problem}"
+			return 0
+		fi
+		[ "${context_docs_digest}" = "${context_docs_expected_digest}" ] || {
+			context_docs_changed="docs folder ${context_docs_folder} changed since its version was cut (digest $(printf '%.12s' "${context_docs_expected_digest}") cut, $(printf '%.12s' "${context_docs_digest:-none}") now)"
+			return 0
+		}
+	done <<EOF
+${context_docs_listed}
+EOF
+}
+
+# What a docs folder may hold, for the scripts' "expected" texts.
+# shellcheck disable=SC2034 # read by the scripts that source this file
+context_docs_expected='only regular files spec.md, grill-<ID>.json, <name>.md, diff-<sha>.patch and diff-<sha>..<sha>.patch, <ID> a grill'\''s ID (<YYYYMMDDTHHMMSS>-<4 lowercase hex>), <name> of A-Z a-z 0-9 . _ - starting with a letter or digit, <sha> 7 to 40 lowercase hex digits'
+
+# Prints why file name $1 can't be in a docs folder (context_docs_expected,
+# and context_path_problem's refusals of the name), or nothing. Run
+# context_load_checks first: the ID rule is the space rules'.
+context_docs_name_problem() {
+	case $1 in
+		spec.md) ;;
+		grill-*.json)
+			context_docs_grill_id=${1#grill-}
+			# shellcheck disable=SC2310 # a pure test; its status is the answer
+			crucible_is_id "${context_docs_grill_id%.json}" || printf 'is not grill-<ID>.json'
+			;;
+		diff-*.patch) context_docs_patch_name_problem "${1#diff-}" ;;
+		[A-Za-z0-9]*.md)
+			case ${1%.md} in
+				*[!A-Za-z0-9._-]*) printf 'holds a character outside A-Z a-z 0-9 . _ -' ;;
+				*)
+					context_docs_refused=$(context_path_problem "/$1")
+					[ -z "${context_docs_refused}" ] || printf '%s' "${context_docs_refused#path }"
+					;;
+			esac
+			;;
+		*) printf 'is not spec.md, grill-<ID>.json, a .md or a diff patch' ;;
+	esac
+}
+
+# Prints why "$1" (a patch name after diff-) is not <sha>.patch or
+# <sha>..<sha>.patch, or nothing.
+context_docs_patch_name_problem() {
+	context_docs_shas=${1%.patch}
+	case ${context_docs_shas} in
+		*..*..*) set -- '' ;;
+		*..*) set -- "${context_docs_shas%%..*}" "${context_docs_shas#*..}" ;;
+		*) set -- "${context_docs_shas}" ;;
+	esac
+	for context_docs_sha do
+		case ${context_docs_sha} in
+			'' | *[!0-9a-f]*) ;;
+			*) [ "${#context_docs_sha}" -lt 7 ] || [ "${#context_docs_sha}" -gt 40 ] || continue ;;
+		esac
+		printf 'is not diff-<sha>.patch or diff-<sha>..<sha>.patch'
+		return 0
+	done
+}
+
+# Sets context_docs_digest to the digest of docs folder $1, the sha256 of the
+# lines "<file name> <file sha256>" in byte order, context_docs_bytes to the
+# total bytes of its files and context_docs_count to how many there are; or
+# sets context_docs_problem to "DOCS-NAME: <name> <problem>; expected
+# <context_docs_expected>" for the first entry that is no docs file, the
+# digest then empty. A name starting with . is skipped, as a file manager
+# leaves a .DS_Store in any folder it shows. Fails only when a tool fails.
+# Run context_load_checks first; the sourcing script's LC_ALL=C orders the
+# glob byte-wise.
+context_docs_scan() {
+	context_docs_digest='' context_docs_problem='' context_docs_bytes=0 context_docs_count=0
+	context_docs_dir=$1
+	set --
+	for context_docs_entry in "${context_docs_dir}"/*; do
+		[ -e "${context_docs_entry}" ] || [ -L "${context_docs_entry}" ] || continue
+		context_docs_name=${context_docs_entry##*/}
+		if [ -L "${context_docs_entry}" ] || [ ! -f "${context_docs_entry}" ]; then
+			context_docs_why='is a symlink or not a regular file'
+		else
+			context_docs_why=$(context_docs_name_problem "${context_docs_name}")
+		fi
+		if [ -n "${context_docs_why}" ]; then
+			context_docs_name_text=$(printf '%s' "${context_docs_name}" | LC_ALL=C tr '[:cntrl:]' '?')
+			context_docs_problem="DOCS-NAME: ${context_docs_name_text} ${context_docs_why}; expected ${context_docs_expected}"
+			return 0
+		fi
+		set -- "$@" "${context_docs_entry}"
+	done
+	context_docs_count=$#
+	[ "$#" -gt 0 ] || return 0
+	if [ "${context_digest_tool}" = shasum ]; then
+		context_docs_sums=$(shasum -a 256 -- "$@") || return 1
+	else
+		context_docs_sums=$(sha256sum -- "$@") || return 1
+	fi
+	# Each name passed context_docs_name_problem, so a sums line splits on its
+	# first space and the path holds no escape the tools would add.
+	context_docs_lines=''
+	while IFS=' ' read -r context_docs_sum context_docs_path; do
+		context_docs_path=${context_docs_path#'*'}
+		context_docs_lines="${context_docs_lines}${context_docs_path##*/} ${context_docs_sum}${context_newline}"
+	done <<EOF
+${context_docs_sums}
+EOF
+	context_docs_digest=$(printf '%s' "${context_docs_lines}" | context_print_stdin_digest) || return 1
+	context_docs_bytes=$(cat -- "$@" | wc -c) || return 1
+	context_docs_bytes=${context_docs_bytes##* }
 }
 
 # Sources the crucible skill's space rules and context-versions.sh, sets
@@ -279,4 +449,13 @@ compute_stdin_digest() {
 		*[!0-9a-f]*) return 1 ;;
 		*) ;;
 	esac
+}
+
+# Prints the sha256 of stdin as compute_stdin_digest finds it, for a caller
+# that pipes into it: a pipeline's last command runs in a subshell, so a
+# variable it sets is lost. Fails as compute_stdin_digest does.
+context_print_stdin_digest() {
+	# shellcheck disable=SC2310 # its status is the tool's; the caller reports it
+	compute_stdin_digest || return 1
+	printf '%s' "${context_digest}"
 }

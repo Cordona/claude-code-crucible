@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
-# Renders the "what next?" gate, asked once an effort's context is ready, so
+# Renders the "what next?" gate, asked once an effort's spec is approved, so
 # the main thread never hand-formats it. The title is fixed; its input is a
-# plan file naming the context version and, after a grill, the grill file;
-# both paths print whole, so the human can open either.
+# plan file naming the effort's next version's docs folder and, after a
+# grill, the grill file; both paths print whole, so the human can open either.
 # Pipe its stdout into procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
@@ -19,15 +19,15 @@ readonly RENDER_JQ='include "view";
 def decisions: if . == 1 then "1 decision" else "\(.) decisions" end;
 [status_line("decision"; "Decision needed · the context is ready: what next?"),
  (if $settled == null or $settled == 0 then "" else section("Settled"; [$settled | decisions]) end),
- data_section([["Context", $context]] + (if $grill == "" then [] else [["Grill", $grill]] end))]
+ data_section([["Docs", $docs]] + (if $grill == "" then [] else [["Grill", $grill]] end))]
 | blocks
 '
 
 # Prints one line per problem of the slurped plan file; nothing when it is one
-# object with a context path and, at most, a grill path.
+# object with a docs path and, at most, a grill path.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly PLAN_CHECK_JQ='
-def expected_plan: "expected one JSON object {\"context\": PATH[, \"grill\": PATH]}";
+def expected_plan: "expected one JSON object {\"docs\": PATH[, \"grill\": PATH]}";
 def path_problem($name):
 	if (.[$name] | type) != "string" then "\($name) is a JSON \(.[$name] | type); expected a string holding an absolute path"
 	elif .[$name] == "" then "\($name) is empty; expected an absolute path"
@@ -35,8 +35,8 @@ def path_problem($name):
 if length != 1 then "the plan file holds \(length) JSON values; \(expected_plan)"
 elif (.[0] | type) != "object" then "the plan file holds a JSON \(.[0] | type); \(expected_plan)"
 else .[0]
-	| ((keys - ["context", "grill"])[] | "\(tojson) is an unknown field; expected only context and grill"),
-	  (if has("context") then path_problem("context") else "context missing; expected the absolute path of the context version" end),
+	| ((keys - ["docs", "grill"])[] | "\(tojson) is an unknown field; expected only docs and grill"),
+	  (if has("docs") then path_problem("docs") else "docs missing; expected the absolute path of the effort'\''s next version'\''s docs folder" end),
 	  (if has("grill") then path_problem("grill") else empty end)
 end
 '
@@ -67,16 +67,16 @@ usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts
        sh ${PROG} --help | -h
 
 Prints the "what next?" gate, asking the human what follows a ready context,
-as Markdown naming the context version. stdin and the context file are never
-read, the plan file and the grill file only read; no file is written.
+as Markdown naming the next version's docs folder. stdin and the folder's
+files are never read, the plan file and the grill file only read; no file is
+written.
 
 Options:
-  --plan-file PATH    one JSON object, {"context": PATH, "grill": PATH}, no
+  --plan-file PATH    one JSON object, {"docs": PATH, "grill": PATH}, no
                       other field; grill only when a grill ran:
-                      context: the absolute path of an existing regular file,
-                        not a symbolic link, named as a context version
-                        (<YYYYMMDDTHHMMSS>-<4 lowercase hex>-v<N>.json), with
-                        no control character
+                      docs: the effort's next version's docs folder, as
+                        context.sh docs printed it: an existing folder, not
+                        a symbolic link, with no control character
                       grill: the absolute path of an existing regular file,
                         not a symbolic link, with no control character,
                         holding one JSON object whose questions, when
@@ -86,7 +86,7 @@ Options:
 stdout on exit 0 only: the gate's Markdown, with no gate marker
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a plan field is
-  named context or grill
+  named docs or grill
 stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
   prints; tell the human what it names to install, and stop
 
@@ -102,7 +102,7 @@ Exit codes:
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
   distro's jq package), the ${RENDER_LIB} skill's view.jq and the crucible
   skill's scripts/lib/crucible-space.sh in the skills, context-versions.sh
-  beside this script.
+  beside this script; CRUCIBLE_HOME, the space (default \$HOME/.crucible).
 EOF
 }
 
@@ -207,34 +207,55 @@ plan_field() {
 	field_value=${field_value%.}
 }
 
-# Sets context and grill from the plan file, or exits 2 on a shape problem.
+# Sets docs and grill from the plan file, or exits 2 on a shape problem.
 load_plan() {
 	read_plan
 	shape_problems=$(printf '%s' "${slurped}" | jq -r "${PLAN_CHECK_JQ}") ||
 		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
 	refuse_problems "${shape_problems}"
-	plan_field context
-	context=${field_value}
+	plan_field docs
+	docs=${field_value}
 	plan_field grill
 	grill=${field_value}
 }
 
-# Prints one line per problem of the context path; nothing when it names a
-# context version.
-context_problems() {
-	case ${context} in
+# Prints one line per problem of the docs path; nothing when it names the
+# next version's docs folder of an effort of the space: <effort>/context/docs/
+# v<N+1>, v<N> its latest version (v1 before any), an existing folder, none
+# of its folders a symbolic link.
+docs_problems() {
+	case ${docs} in
 		*[[:cntrl:]]*)
-			printf '%s\n' 'context holds a control character (such as a line break or tab); expected one path on one line'
+			printf '%s\n' 'docs holds a control character (such as a line break or tab); expected one path on one line'
 			return 0
 			;;
 		/*) ;;
-		*) printf '%s\n' "context is not absolute: ${context}; expected an absolute path" ;;
+		*)
+			printf '%s\n' "docs is not absolute: ${docs}; expected the absolute path context.sh docs printed"
+			return 0
+			;;
 	esac
-	[ -f "${context}" ] && [ ! -L "${context}" ] ||
-		printf '%s\n' "context is not a regular file, or is a symbolic link: ${context}; expected an existing context version file"
-	# shellcheck disable=SC2310 # its status says whether the name is a version's
-	context_version_of_name "${context##*/}" ||
-		printf '%s\n' "context is not named as a context version: ${context##*/}; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>-v<N>.json, N from 1 with no leading zero"
+	# shellcheck disable=SC2310 # its status says whether the space is usable; the problem is printed
+	if ! crucible_resolve_root; then
+		printf '%s\n' "CRUCIBLE_HOME: ${crucible_root_problem}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status says whether the path lies in an effort
+	if ! crucible_effort_of "${docs}"; then
+		printf '%s\n' "docs is not in an effort folder of ${crucible_root}/efforts/: ${docs}; expected the folder context.sh docs printed"
+		return 0
+	fi
+	context_dir="${crucible_effort}/context"
+	context_find_latest_version "${context_dir}"
+	next_folder="${context_dir}/docs/v$((${context_version_latest_number:-0} + 1))"
+	if [ "${docs}" != "${next_folder}" ]; then
+		printf '%s\n' "docs is not the effort's next version's folder: ${docs}; expected ${next_folder}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status says whether every folder is real
+	if [ ! -d "${docs}" ] || [ -L "${docs}" ] || ! crucible_real_folders_of "${docs}/."; then
+		printf '%s\n' "docs is not an existing folder, or it or a folder above it is a symbolic link: ${docs}; expected the folder context.sh docs created"
+	fi
 }
 
 # Prints one line per problem of the grill path; nothing when it names a
@@ -287,11 +308,11 @@ load_grill() {
 parse_args "$@"
 load_dependencies
 load_plan
-problems=$(context_problems)
+problems=$(docs_problems)
 settled=null
 [ -z "${grill}" ] || load_grill
 refuse_problems "${problems}"
-view=$(jq -n -r -L "${render_lib_dir}" --arg context "${context}" --arg grill "${grill}" --argjson settled "${settled}" "${RENDER_JQ}" </dev/null) ||
+view=$(jq -n -r -L "${render_lib_dir}" --arg docs "${docs}" --arg grill "${grill}" --argjson settled "${settled}" "${RENDER_JQ}" </dev/null) ||
 	install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
 # Ignoring SIGPIPE turns a closed reader into a failed write this script can
 # tell apart from a jq fault, rather than a silent kill.

@@ -7,7 +7,7 @@ Step 7's results other than the ones its sub-steps go on from. Step numbers are 
 - That `open-gate.sh` failure: show the human its output and exit code, and hand this part back as `stopped: plan not shown`.
 - Generator exit 0 without any of its three lines (`PLAN_FILE:`, `PLAN_SHA256:`, `PLAN_RECORD:`): as any other exit.
 - Generator exit 2 whose stderr names `CLAUDE_CODE_SESSION_ID`: show the human the stderr, rerun nothing, and hand this part back as `stopped: plan not shown`.
-- Any other generator exit 2 or 3: fix the options stderr names and run it again, at most twice as SKILL.md's Never sets (a problem led by the token `CONTEXT-STALE`: the context handed in is no longer the effort's latest version; rerun with the latest as SKILL.md's step 3 takes it as `--context-file`); then show the human the stderr, and hand this part back as `stopped: plan not shown`.
+- Any other generator exit 2 or 3: fix the options stderr names and run it again, at most twice as SKILL.md's Never sets (a problem naming `--fingerprint`: rerun with the fingerprint, as SKILL.md's step 3 takes it); then show the human the stderr, and hand this part back as `stopped: plan not shown`.
 - Any other generator exit: show the human the stdout, stderr and exit code, and hand this part back as `stopped: plan not shown`.
 
 ## 7.2 Show it

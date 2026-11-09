@@ -1,17 +1,11 @@
 #!/usr/bin/env sh
-# Writes an effort's context versions and diff files, so the context JSON is
-# never typed by hand. new writes v1; extend writes the next version as a
-# complete copy of the latest one, minus the entries it retires, plus the new
-# ones; diff writes a local commit or range as a file; latest prints the
-# absolute path and sha256 of the effort's latest version and writes nothing.
-# Every input is checked first and every problem reported before any file is
-# created: the JSON is built with stand-in paths and checked by
-# agent-context-validator.jq and agent-context-file-checks.sh, each problem
-# named by the option behind it.
-# The approved spec's entry and a spec skip note this call adds must each match
-# a gate record in the effort's cache/gates, as the human answered at the gate.
-# Only then is each file written atomically into the file crucible.sh new
-# --effort hands out, and checked again as prepare-agent-prompt.sh checks it.
+# Keeps an effort's context: the next version's docs folder, the pending
+# outside entries, the approved spec and the diff files, and cuts a version
+# from them only when the fingerprint a plan pinned still matches. The
+# version JSON is never typed by hand: freeze builds it from the latest
+# version, the folder and the pending entries, checks it as every reader does
+# (agent-context-validator.jq and agent-context-file-checks.sh), and writes it
+# whole under the effort's context lock.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
@@ -20,226 +14,465 @@ readonly PROG='context.sh'
 readonly PROCEDURE='procedure-context'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
-# The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
-readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
-readonly TEXT_LABEL_SUFFIX='-text'
-readonly DIFF_LABEL_PREFIX='diff-'
-# The --text-file content and a diff are read by the agent with Read, never
-# injected; the cap keeps either to what an agent can read in a few calls.
-readonly TEXT_MAX_BYTES=1048576
-# Stands for the part of an item's name only crucible.sh new knows, so the
-# JSON can be checked at its final length before any file exists.
+readonly DOCS_EXIT=7
+readonly LOCKED_EXIT=8
+readonly REQUIRED_TOOLS='cat chmod ln mkdir mktemp mv rm rmdir sleep tr wc'
+readonly ENTRIES_NAME='next-entries.json'
+# The why of each path add --docs-of puts in, before the file name.
+readonly DOCS_OF_WHY='documents'
+readonly LOCK_NAME='.lock'
+# A second writer waits this many seconds for the lock: a cut takes well under
+# one, so a longer hold is a killed run's lock.
+readonly LOCK_WAIT_SECONDS=10
+# Stands for the ID of the version a freeze would write, so the would-be
+# version is checked at its final path's length before the ID is minted.
 readonly PLACEHOLDER_ID='00000000T000000-0000'
-# Stands for the effort folder when --from names none, so the entries are
-# still checked.
-readonly PLACEHOLDER_EFFORT='00000000T000000-0000-effort'
-readonly EMPTY_BASE='{}'
-# The spec's entries and the gate records that prove them: the approval gate
-# records the draft's path and sha256, the offer gate its case. A record
-# expires with the cache, so only the entries a call adds are checked.
 readonly GATE_RECORD_KIND='cache/gates'
 readonly SPEC_APPROVAL_LABEL='spec-approval'
-readonly SPEC_OFFER_LABEL='spec-offer'
-readonly APPROVED_SPEC_WHY='the approved spec'
-readonly SPEC_APPROVED_PREFIX='Spec approved:'
-readonly SPEC_SKIPPED_PREFIX='Spec skipped:'
-# Leads a missing gate's problem, so a caller matches the token, never the
-# sentence after it.
+readonly SPEC_LABEL='spec'
+# The tokens a caller matches, never the sentence after them.
+readonly NO_SPEC_TOKEN='NO-SPEC'
 readonly NO_SPEC_GATE_TOKEN='NO-SPEC-GATE'
-# A problem line shows a value whole up to 80 characters, enough to tell one
-# path or URL from another by eye; a longer one keeps its first 40 and last 39
-# around a "…", as a path or URL differs most at its start and end.
+readonly CHANGED_TOKEN='CONTEXT-CHANGED'
+readonly DOCS_NAME_TOKEN='DOCS-NAME'
+readonly DOCS_SIZE_TOKEN='DOCS-SIZE'
+readonly NONE_TOKEN='CONTEXT-NONE'
+# A problem line shows a value whole up to 80 characters; a longer one keeps
+# its first 40 and last 39 around a "…", as a path or URL differs most at its
+# start and end.
 readonly SHOWN_MAX_CHARS=80
-readonly SHOWN_HEAD_CHARS=$((SHOWN_MAX_CHARS / 2))
-readonly SHOWN_TAIL_CHARS=$((SHOWN_MAX_CHARS - SHOWN_HEAD_CHARS - 1))
-# Shows a value as a JSON string on one line, cut as above; every jq program
-# here that names a value starts with it.
-readonly SHOWN_JQ="def shown: tojson | gsub(\"[[:cntrl:]]\"; \"?\") | if length > ${SHOWN_MAX_CHARS} then .[:${SHOWN_HEAD_CHARS}] + \"…\" + .[-${SHOWN_TAIL_CHARS}:] else . end;"
-TAB=$(printf '\t')
-readonly TAB
 NL='
 '
 readonly NL
-# The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
+# The C locale keeps the shell's pattern checks and globs byte-wise on macOS
+# and Linux.
 LC_ALL=C
 export LC_ALL
 
-# Builds the context JSON from the base ($base: the version extended, its
-# retired entries left out, or an empty context for new) and the entries
-# (mode "context"), or names each problem found in it by its option (mode
-# "report": one stderr line each). The entries arrive as positional triples:
-# kind (path, link, note, text or retire), value, why ("" for a note or a
-# retire). The problems are the validator's, as JSON lines, and the file
-# checks', as "<entry index>\t<problem>" lines. The context goes through
-# crucible's prune, so a list with no entry is left out; run_context_jq
-# puts the include before SHOWN_JQ, as jq takes an include only first.
+# Prints the pending entries after an add or a drop of one entry, or the
+# problem that refuses it, as one JSON object {outcome, entries} or
+# {problem}. $entries is next-entries.json ({} when absent), $latest the
+# latest version ({} when none); an entry is the same entry when its path or
+# URL is. A docs folder is never a pending entry, so it is never matched.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
-readonly CONTEXT_JQ='
-def entries: $ARGS.positional | [range(0; length / 3) as $n
-	| {index: $n, kind: .[$n * 3], value: .[$n * 3 + 1], why: .[$n * 3 + 2]}];
-def base_entries($list; $field): ($base[$list] // []) | map({index: -1, kind: "base", value: (if $field == "" then . else .[$field] end), why: (.why? // "")});
-# The entries in the order of the context lists they fill: the base first.
-def listed($entries): {
-	paths: (base_entries("paths"; "path") + [$entries[] | select(.kind == "path")] + [$entries[] | select(.kind == "text")]),
-	links: (base_entries("links"; "url") + [$entries[] | select(.kind == "link")]),
-	notes: (base_entries("notes"; "") + [$entries[] | select(.kind == "note")])};
-def context: listed(entries) as $listed | {
-	claude_session_id: $session_id,
-	paths: ($listed.paths | map({path: (if .kind == "text" then $text_path else .value end), why})),
-	links: ($listed.links | map({url: .value, why})),
-	notes: ($listed.notes | map(.value))}
-	| prune;
-
-def option: {path: "--path", link: "--link", note: "--note", text: "--text-file"}[.];
-# Problems of the Crucible space sort after those of the entries.
-def space_order: 1e9;
-def problem_line($order; $option; $value; $problem): {order: $order, text: "\($prog): \($option) \($value | shown): \($problem)"};
-def space_line($problem): problem_line(space_order; "CRUCIBLE_HOME"; $space_root; $problem + $space_source);
-def file_problems: [$file_problem_lines | split("\n")[] | select(. != "") | split("\t") | {index: (.[0] | tonumber), problem: .[1]}];
-def validator_problems: [$validator_problem_lines | split("\n")[] | select(. != "") | fromjson];
-# Names validator problem . by the option behind its field. A path field the
-# file checks already refused is left out; the path of the text entry belongs
-# to the Crucible space; a base entry was checked when its version was written.
-def validator_line($listed; $refused):
-	.at as $at | .problem as $problem
-	| (if ($at | type) == "array" and ($at | length) >= 2 then $listed[$at[0]][$at[1]] else null end) as $entry
-	| if $entry == null or $entry.kind == "base" then {order: -1, text: "\($prog): context file: \($at | tojson) \($problem)"}
-	  elif $at[2] == "why" then problem_line($entry.index; "--why"; $entry.why; $problem)
-	  elif $entry.kind == "text" then space_line($problem)
-	  elif $at[0] == "paths" and ($refused | index([$entry.index])) != null then empty
-	  else problem_line($entry.index; $entry.kind | option; $entry.value; $problem) end;
-def report: entries as $entries | file_problems as $files
-	| [($files[] | .problem as $problem | $entries[.index] | problem_line(.index; .kind | option; .value; $problem)),
-	   (validator_problems[] | validator_line(listed($entries); $files | map(.index))),
-	   (if $space_problem == "" then empty else space_line($space_problem) end)]
-	| reduce .[] as $line ([]; if any(.[]; .text == $line.text) then . else . + [$line] end)
-	| sort_by(.order)[].text;
-
-if $mode == "report" then report else context end
+readonly ENTRY_JQ='
+def list: if $kind == "path" then "paths" else "links" end;
+def field: if $kind == "path" then "path" else "url" end;
+{paths: ($entries.paths // []), links: ($entries.links // []), retire: ($entries.retire // [])} as $e
+| [($latest[list] // [])[] | select(has("sha256") | not) | .[field]] as $in_latest
+| ($e[list] | map(.[field] == $value) | index(true)) as $pending_at
+| ($e.retire | map(.[$kind] == $value) | index(true)) as $retire_at
+| if $command == "add" then
+	if $retire_at != null then {outcome: "retirement undone", entries: ($e | .retire |= del(.[$retire_at]))}
+	elif ($in_latest | index([$value])) != null then {outcome: "already in v\($latest_number)", entries: $e}
+	elif $pending_at == null then {outcome: "added", entries: ($e | .[list] += [{(field): $value, why: $why}])}
+	elif $e[list][$pending_at].why == $why then {outcome: "already pending", entries: $e}
+	else {problem: "is pending already with another why; expected the same --why, or a drop of it first"} end
+  elif $pending_at != null then {outcome: "dropped", entries: ($e | .[list] |= del(.[$pending_at]))}
+  elif $retire_at != null then {outcome: "retired already", entries: $e}
+  elif ($in_latest | index([$value])) != null then {outcome: "retired", entries: ($e | .retire += [{($kind): $value, why: $why}])}
+  else {problem: "is neither pending nor in the latest version; expected an entry add put in, or one of the latest version'\''s outside paths and links"} end
+| if has("entries") then .entries |= with_entries(select(.value | length > 0)) else . end
 '
 
-# Applies the --retire values ($ARGS.positional, in order) to the version
-# read on stdin: prints the version without the retired entries as one JSON
-# line, then one problem line per --retire that names no entry of it or names
-# one twice, its value shown as SHOWN_JQ shows a value.
+# Prints one problem line per break of the pending entries read on stdin
+# (slurped): one object of paths [{path, why}], links [{url, why}] and retire
+# [{path, why} or {link, why}], each list optional; nothing when it fits.
 # shellcheck disable=SC2016
-readonly RETIRE_JQ='
-def target: (capture("^(?<list>paths|links|notes):(?<n>[1-9][0-9]{0,8})$") | .n |= tonumber) // null;
-. as $version
-| [$ARGS.positional | to_entries[] | {order: .key, value: .value, target: (.value | target)}] as $retires
-| def gone($list): [$retires[].target | select(. != null and .list == $list) | .n - 1];
-{problems: [$retires[] | . as $retire
-	| (($version[.target.list // "notes"] // []) | length) as $count
-	| if .target == null then {value, problem: "not <list>:<n>; expected paths:<n>, links:<n> or notes:<n>, n a position from 1 without a leading zero"}
-	  elif $count < .target.n then {value, problem: "the version has \($count) \(.target.list) entr\(if $count == 1 then "y" else "ies" end); expected \(if $count == 0 then "no --retire of \(.target.list)" else "\(.target.list):1 to \(.target.list):\($count)" end)"}
-	  elif any($retires[]; .order < $retire.order and .target == $retire.target) then {value, problem: "names the same entry as an earlier --retire; expected each entry retired once"}
-	  else empty end],
- base: (reduce ("paths", "links", "notes") as $list ($version;
-	gone($list) as $gone
-	| if (.[$list] | type) == "array" then .[$list] |= [to_entries[] | select(.key as $key | $gone | any(. == $key) | not) | .value] else . end))}
-| (.base | tojson), (.problems[] | "\($prog): --retire \(.value | shown): \(.problem)")
+readonly ENTRIES_CHECK_JQ='include "agent-context-url";
+def one_line: type == "string" and test("[[:cntrl:]]") == false and test("[^[:space:]]");
+def entry_ok($field; field_ok): type == "object" and (keys | sort) == ([$field, "why"] | sort) and (.[$field] | field_ok) and (.why | one_line);
+def absolute: type == "string" and startswith("/") and test("[[:cntrl:]]") == false;
+if length != 1 or (.[0] | type) != "object" then "is not one JSON object"
+else .[0]
+	| ((keys - ["paths", "links", "retire"])[] | "holds the unknown field \(tojson)"),
+	  (if has("paths") and ((.paths | type) != "array" or (.paths | all(entry_ok("path"; absolute)) | not)) then "paths is not an array of {path, why}" else empty end),
+	  (if has("links") and ((.links | type) != "array" or (.links | all(entry_ok("url"; http_url)) | not)) then "links is not an array of {url, why}" else empty end),
+	  (if has("retire") and ((.retire | type) != "array" or (.retire | all(entry_ok("path"; absolute) or entry_ok("link"; http_url)) | not)) then "retire is not an array of {path, why} or {link, why}" else empty end)
+end
 '
 
-# The --help page: the caller's whole contract.
+# Builds the would-be version: the latest version's paths and links minus
+# the ones pending retirement, then the next version's folder with its digest
+# when it holds files, then the pending paths and links not in it yet, then
+# the spec; links left out when there is none.
+# shellcheck disable=SC2016
+readonly CANDIDATE_JQ='
+[($entries.retire // [])[] | {kind: (if has("path") then "path" else "link" end), value: (.path // .link)}] as $gone
+| def retired($kind; $value): any($gone[]; .kind == $kind and .value == $value);
+(($latest.paths // []) | map(select(has("sha256") or (retired("path"; .path) | not)))) as $kept_paths
+| (($latest.links // []) | map(select(retired("link"; .url) | not))) as $kept_links
+| ($kept_paths + (if $folder == "" then [] else [{path: $folder, sha256: $digest, why: $folder_why}] end)) as $listed
+| ($listed + [($entries.paths // [])[] | select(.path as $path | $listed | any(.path == $path) | not)]) as $paths
+| ($kept_links + [($entries.links // [])[] | select(.url as $url | $kept_links | any(.url == $url) | not)]) as $links
+| {claude_session_id: $session_id, paths: $paths} + (if $links == [] then {} else {links: $links} end) + {spec: $spec}
+'
+
+# Shows a value as a JSON string on one line, cut as SHOWN_MAX_CHARS says.
+readonly SHOWN_JQ="def shown: tojson | gsub(\"[[:cntrl:]]\"; \"?\") | if length > ${SHOWN_MAX_CHARS} then .[:$((SHOWN_MAX_CHARS / 2))] + \"…\" + .[-$((SHOWN_MAX_CHARS - SHOWN_MAX_CHARS / 2 - 1)):] else . end;"
+
+# The top --help page: every usage line, the commands and what no single
+# command owns. Each command's own contract is its `<command> --help` page.
 usage() {
-	context_cap='the size cap of agent-context-file-checks.sh'
-	sensitive_names='the list in agent-context-file-checks.sh'
-	# shellcheck disable=SC2310 # its status says whether the lib was found; errexit adds nothing
-	if load_context_lib; then
-		[ -z "${context_max_bytes:-}" ] || context_cap="${context_max_bytes} bytes"
-		[ -z "${context_sensitive_names_text:-}" ] || sensitive_names=${context_sensitive_names_text}
-	fi
-	# Mirrors context_path_problem in agent-context-file-checks.sh; procedure-context step 1 picks paths by this list.
+	usage_prefix='usage: '
+	usage_lines docs add drop spec freeze latest diff
+	usage_line "sh ${PROG} <command> --help"
+	usage_line "sh ${PROG} --help | -h"
 	print_page <<EOF
-usage: sh ${PROG} new --effort FOLDER [ENTRY]... --note TEXT [--note TEXT]...
-       sh ${PROG} extend --from VERSION [ENTRY]... [--retire LIST:N]...
-       sh ${PROG} diff --effort FOLDER --repo ROOT --ref REF
-       sh ${PROG} latest --effort FOLDER
-       sh ${PROG} --help | -h
-  ENTRY: --path ABS --why LINE | --link URL --why LINE
-         | --text-file FILE --why LINE | --note TEXT
 
-Writes only into the effort's context/ (a SIGKILL aside).
+Keeps an effort's context in its context/: the next version's docs folder
+(context/docs/v<N>/), the pending outside paths and links (${ENTRIES_NAME}),
+and the versions, each cut by freeze only while the fingerprint a plan
+pinned still matches. A version and the docs folder files it was cut with
+are never changed by this script.
 
-Commands:
-  new     writes v1, the effort's first version
-  extend  writes v<N+1>: VERSION's entries minus the retired ones, then the
-      new ones in order (the --text-file entry last in paths)
-  diff    writes a commit or range of ROOT as a file for a --path; a rerun on
-      the same diff prints the same file
-  latest  prints the latest version's absolute path and sha256
+Commands (each page holds its options, output and exit codes):
+  docs    prints the next version's folder, creating it
+  add     puts an outside path or link into the pending entries
+  drop    takes one out, or retires one of the latest version's
+  spec    copies an approved spec draft into the folder, or says whether
+          the folder holds one
+  freeze  prints the fingerprint of the would-be version, or cuts it
+  latest  prints the latest version and whether anything is pending
+  diff    writes a commit or range of a local repository into the folder
+EOF
+	help_shared environment
+}
 
-Options (only a note may hold a control character):
-  --effort FOLDER   the effort folder, as effort.sh start printed it
-  --from VERSION    the effort's latest version, a CONTEXT_FILE path
-  --retire LIST:N   drops entry N (from 1) of VERSION's paths, links or notes;
-      needs a new --note saying why
-  --path ABS        an existing readable file or folder, absolute, not a
-      symlink, with no control character, quote or .. segment; in any letter
-      case not a sensitive name (below), a .git or .ssh component,
-      .docker/config.json, CLAUDE.md, SKILL.md, settings.local.json, or
-      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}'s settings.json, skills/ or agents/
-      or anything under them
-  --link URL        an http(s) URL; rules: agent-context-url.jq
-  --text-file FILE  the human's long text: a file --path takes, UTF-8, at most
-      ${TEXT_MAX_BYTES} bytes, one per call
-  --why LINE        one line: why the agent needs the entry just before it;
-      '${APPROVED_SPEC_WHY}' needs the effort's ${SPEC_APPROVAL_LABEL} gate record of
-      that --path at its current sha256
-  --note TEXT       any text; new needs one. '${SPEC_SKIPPED_PREFIX}' at its start needs a
-      ${SPEC_OFFER_LABEL} gate record of case offer in the effort; '${SPEC_APPROVED_PREFIX}' needs
-      the approved spec's --path entry in the same call
-  --repo ROOT       the git work-tree root, absolute
-  --ref REF         a commit or a range A..B of 0-9 A-Z a-z . _ / ^ ~ - only,
-      no part starting with -; its diff non-empty, UTF-8, at most ${TEXT_MAX_BYTES} bytes
-Sensitive names, basename globs:
-  ${sensitive_names}
+# The `<command> --help` page of command $1.
+command_help() {
+	usage_prefix='usage: '
+	usage_lines "$1"
+	case $1 in
+		docs)
+			print_page <<'EOF'
 
-A version is at most ${context_cap}; shape: agent-context-validator.jq.
+Prints the next version's folder, creating it when missing. Nothing else is
+left behind.
 
-stdout on exit 0 (none otherwise):
-  new, extend, latest: CONTEXT_FILE: <absolute path>, then
-  CONTEXT_SHA256: <its sha256>; diff: DIFF_FILE: <absolute path>
-stderr on exit 3: one line per problem, either
-  "${PROG}: <option> <value>: <problem>; expected <x>" or, for the version
-  as a whole, "${PROG}: context file: <problem>"
+Options:
+EOF
+			help_shared effort
+			print_page <<'EOF'
 
-Each file is written whole or not at all; a version never changes; a diff
-leaves out what --path refuses; ROOT is only read. One run at a time per
-effort.
+stdout on exit 0: DOCS_FOLDER: <the folder, absolute>
+EOF
+			help_shared exits write
+			;;
+		add | drop) entry_help "$1" ;;
+		spec) spec_help ;;
+		freeze) freeze_help ;;
+		latest) latest_help ;;
+		*) diff_help ;;
+	esac
+	help_shared environment
+	help_shared dependencies "$1"
+}
+
+# The add and drop page, command $1.
+entry_help() {
+	if [ "$1" = add ]; then
+		print_page <<EOF
+
+Puts one outside path or link into ${ENTRIES_NAME}, for the next cut, or,
+with --docs-of or --docs-of-file, every file of ROOT naming FILE or a name
+in NAMES. The same entry again
+changes nothing; one pending retirement is undone instead. The file is
+replaced whole or not at all.
+
+Options:
+EOF
+	else
+		print_page <<EOF
+
+Takes a pending entry out of ${ENTRIES_NAME}, or records the retirement of
+one of the latest version's outside paths and links, so the next cut leaves
+it out. A docs folder is never dropped. The file is replaced whole or not at
+all, and removed when it holds nothing.
+
+Options:
+EOF
+	fi
+	help_shared effort
+	print_page <<EOF
+  --path ABS             an existing readable file or folder (drop: by its
+                         text only) outside the effort's context/, not a
+                         symlink, nor a path agent-context-file-checks.sh
+                         refuses
+  --link URL             an http(s) URL; rules: agent-context-url.jq
+  --why LINE             one line: why the agent needs it (add), or the
+                         human's reason (drop)
+  one of --path and --link
+EOF
+	[ "$1" != add ] || print_page <<EOF
+  --docs-of FILE         in place of those three: a file name, no /; each
+                         file git grep --untracked -lF finds naming it in
+                         ROOT's README* and docs/ is added as a --path, its
+                         why "${DOCS_OF_WHY} FILE"; a match --path refuses
+                         is left out and named on stderr
+  --docs-of-file NAMES   in place of those three: the absolute path of a
+                         file of names, one per line, each data, checked
+                         and searched as --docs-of FILE; an empty line is
+                         skipped, one --docs-of refuses named on stderr
+  --repo ROOT            with --docs-of or --docs-of-file: the git
+                         work-tree root, absolute
+EOF
+	print_page <<EOF
+
+stdout on exit 0: ENTRY: <added | already pending | already in v<N> |
+  retirement undone | dropped | retired | retired already>
+EOF
+	if [ "$1" = add ]; then
+		print_page <<'EOF'
+  --docs-of, --docs-of-file: ADDED: <the path, absolute>, one line per new
+  entry; none when nothing is new
+EOF
+		help_shared exits write '' "  1  a write failed, or git grep did (--docs-of, --docs-of-file), nothing
+     of it left; show the human stderr, and stop"
+	else
+		help_shared exits write
+	fi
+}
+
+spec_help() {
+	print_page <<EOF
+
+--approved copies DRAFT into the next version's folder as spec.md,
+replacing an earlier one there, once the effort's ${SPEC_APPROVAL_LABEL} gate
+record names DRAFT at its current sha256 (the record expires with the
+cache). --status reads the docs folders only.
+
+Options:
+EOF
+	help_shared effort
+	print_page <<EOF
+  --approved DRAFT       the draft: <effort>/drafts/<ID>-${SPEC_LABEL}.md, a regular
+                         file, UTF-8, at most ${docs_cap} bytes
+  --status               print whether a docs folder holds a spec
+  one of --approved and --status
+
+stdout on exit 0:
+  --approved: SPEC_FILE: <the folder's spec.md, absolute>
+  --status: SPEC: approved | none; after approved, SPEC_FILE: <the newest
+    spec.md, absolute>: the one in the docs folder of the highest v<N>
+EOF
+	help_shared exits write "     ${NO_SPEC_GATE_TOKEN}  no gate record approves DRAFT as it is now; open
+       the spec's approval gate again"
+}
+
+freeze_help() {
+	print_page <<EOF
+
+--dry-run builds the version a cut would write and prints its fingerprint,
+the sha256 of the version as jq -cS 'del(.claude_session_id)' prints it;
+with no file in the next version's folder and nothing pending, the latest
+version's. It writes nothing. --expect cuts it, under the effort's context
+lock, only when its fingerprint is HEX: it writes v<N>, makes the folder's
+files and the version read-only (0444) and removes ${ENTRIES_NAME}. With
+nothing new it returns the latest version. A second call with the same HEX
+waits for the first and gets the version it cut. A version is at most
+${context_cap} bytes; shape: agent-context-validator.jq.
+
+Options:
+EOF
+	help_shared effort
+	print_page <<'EOF'
+  --dry-run              print the fingerprint
+  --expect HEX           cut when the fingerprint is HEX, 64 lowercase hex
+                         digits, as --dry-run printed it
+  one of --dry-run and --expect
+
+stdout on exit 0:
+  --dry-run: FINGERPRINT: <64 lowercase hex digits>
+  --expect: CONTEXT_FILE: <the version, absolute>, then
+    CONTEXT_SHA256: <its sha256>
+EOF
+	help_shared exits write "     ${NO_SPEC_TOKEN}  no docs folder holds a spec.md; approve the spec, then rerun
+     ${DOCS_NAME_TOKEN}  a file the docs folder may not hold; rename or remove it
+     ${DOCS_SIZE_TOKEN}  the folder's files are over ${docs_cap} bytes; shorten them
+     ${CHANGED_TOKEN}  --expect's HEX is not the fingerprint now, or a minted
+       docs folder changed; fix what stderr names (a new fingerprint: show
+       the plan again)"
+}
+
+latest_help() {
+	print_page <<'EOF'
+
+Prints the latest version, and the next version's folder when a cut would
+add something. Reads only.
+
+Options:
+EOF
+	help_shared effort
+	print_page <<EOF
+
+stdout on exits 0 and ${DOCS_EXIT}, in order:
+  DOCS_FOLDER: <the next version's folder, absolute>  exit ${DOCS_EXIT} only; it
+    may not exist yet when only entries are pending
+  CONTEXT_FILE: <the latest version, absolute>  when there is one
+  CONTEXT_SHA256: <its sha256>  with CONTEXT_FILE
+stderr on exit 1: ${PROG}: ${NONE_TOKEN}: ...
+EOF
+	help_shared exits read '' "  1  ${NONE_TOKEN}: no version, no file in the folder, nothing pending;
+     start from discovery" "  ${DOCS_EXIT}  CONTEXT-DOCS: the folder holds files or entries are pending; read
+     stdout"
+}
+
+diff_help() {
+	print_page <<'EOF'
+
+Writes a commit or range of ROOT into the next version's folder as
+diff-<sha>.patch (a range: diff-<sha>..<sha>.patch), replacing one of the
+same name, and leaves out every file --path refuses. ROOT is only read.
+
+Options:
+EOF
+	help_shared effort
+	print_page <<EOF
+  --repo ROOT            the git work-tree root, absolute
+  --ref REF              a commit or a range A..B of 0-9 A-Z a-z . _ / ^ ~ -
+                         only, no part starting with -; its diff non-empty,
+                         UTF-8, at most ${docs_cap} bytes
+
+stdout on exit 0: DIFF_FILE: <the patch, absolute>
+EOF
+	help_shared exits write
+}
+
+# Prints the usage lines of each command named, the first after usage_prefix.
+usage_lines() {
+	for usage_command in "$@"; do
+		case ${usage_command} in
+			docs) usage_line "sh ${PROG} docs --effort FOLDER" ;;
+			add)
+				usage_line "sh ${PROG} add --effort FOLDER (--path ABS | --link URL) --why LINE"
+				usage_line "sh ${PROG} add --effort FOLDER --docs-of FILE --repo ROOT"
+				usage_line "sh ${PROG} add --effort FOLDER --docs-of-file NAMES --repo ROOT"
+				;;
+			drop) usage_line "sh ${PROG} drop --effort FOLDER (--path ABS | --link URL) --why LINE" ;;
+			spec) usage_line "sh ${PROG} spec --effort FOLDER (--approved DRAFT | --status)" ;;
+			freeze) usage_line "sh ${PROG} freeze --effort FOLDER (--dry-run | --expect HEX)" ;;
+			latest) usage_line "sh ${PROG} latest --effort FOLDER" ;;
+			*) usage_line "sh ${PROG} diff --effort FOLDER --repo ROOT --ref REF" ;;
+		esac
+	done
+}
+
+usage_line() {
+	printf '%s%s\n' "${usage_prefix}" "$1"
+	usage_prefix='       '
+}
+
+# The help text more than one page prints, item $1, written once. exits
+# takes the command's kind $2 (write or read), the sub-lines under exit 3 $3,
+# exit 1's line $4 in place of the write failure's, and exit DOCS_EXIT's $5.
+help_shared() {
+	case $1 in
+		effort)
+			print_page <<'EOF'
+  --effort FOLDER        the effort folder, as effort.sh start printed it
+EOF
+			;;
+		environment)
+			print_page <<'EOF'
 
 Environment:
-  CRUCIBLE_HOME     the space (default \$HOME/.crucible)
-  CLAUDE_CODE_SESSION_ID  required except for latest; a lowercase UUID
+  CRUCIBLE_HOME          the space (default $HOME/.crucible)
+  CLAUDE_CODE_SESSION_ID freeze: required, the session ID Claude Code sets,
+                         a lowercase UUID; other commands: not read
+  CLAUDE_CONFIG_DIR      the skills are in
+                         ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+EOF
+			;;
+		exits) help_exits "$2" "${3:-}" "${4:-}" "${5:-}" ;;
+		*) help_dependencies "$2" ;;
+	esac
+}
 
-Exit codes (1 on a failed write, 2, 4-6, a signal: show the human stderr; stop):
+# Prints a command page's stderr lines and exit codes: kind $1 (write or
+# read), the sub-lines under exit 3 $2, exit 1's line $3 and exit
+# DOCS_EXIT's $4.
+help_exits() {
+	print_page <<EOF
+
+stderr on exits 2, 3: one line per problem,
+  "${PROG}: <option> <value>: <problem>; expected <x>", or
+  "${PROG}: context file: <problem>" for the version as a whole; a refusal
+  a caller branches on is "${PROG}: <TOKEN>: <the line>"
+
+Exit codes:
   0  done; read stdout
-  1  latest: no version yet; run new. Else a write failed
-  2  usage error, or CLAUDE_CODE_SESSION_ID bad or naming no session transcript
-  3  invalid input, nothing written; fix what stderr names, rerun
-     "--effort <folder>: its context already holds"  new: extend that version
-     "--from <file>: is version ... not the latest"  extend the one named
-     "${NO_SPEC_GATE_TOKEN}"  the spec's gate holds no record for the entry; open that gate
-  4  the space is unusable
-  5  install fault
-  ${NOT_OPEN_EXIT}  the effort is not open or its state unknown; nothing written
-  129, 130, 143  stopped by HUP, INT or TERM
+EOF
+	if [ -n "$3" ]; then
+		print_page <<EOF
+$3
+EOF
+	elif [ "$1" = write ]; then
+		print_page <<'EOF'
+  1  a write failed, nothing of it left; show the human stderr, and stop
+EOF
+	fi
+	print_page <<'EOF'
+  2  usage error, or CLAUDE_CODE_SESSION_ID bad or naming no session
+     transcript; show the human stderr, and stop
+  3  refused input, nothing written; fix what stderr names, and rerun
+EOF
+	[ -z "$2" ] || print_page <<EOF
+$2
+EOF
+	print_page <<EOF
+  4  the space is unusable; show the human stderr, and stop
+  5  install fault; show the human stderr, and stop
+EOF
+	[ -z "$4" ] || print_page <<EOF
+$4
+EOF
+	[ "$1" = read ] || print_page <<EOF
+  ${NOT_OPEN_EXIT}  the effort is not open or its state unknown, nothing written; show
+     the human stderr, and stop
+  ${LOCKED_EXIT}  another call held the effort's context lock for ${LOCK_WAIT_SECONDS} seconds, nothing
+     written; rerun once, else show the human stderr (it names the lock)
+EOF
+	if [ "$1" = write ]; then
+		print_page <<'EOF'
+  129, 130, 143  stopped by HUP, INT or TERM, nothing of the write left;
+     show the human the exit code, and stop
+EOF
+	else
+		print_page <<'EOF'
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code,
+     and stop
+EOF
+	fi
+}
+
+# Prints the Dependencies lines of command $1.
+help_dependencies() {
+	print_page <<EOF
 
 Dependencies:
-  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); cat,
-    mktemp, mv, rm, tr, wc; sha256sum or shasum (macOS: built in)
-  the ${CRUCIBLE_SKILL} skill: crucible.sh (not for latest),
-    scripts/lib/crucible-space.sh; new, extend: scripts/lib/prune.jq
-  ${EFFORT_SKILL}: effort.sh (not for latest)
-  diff: git (macOS: xcode-select --install; Linux: the distro's)
+  POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq);
+    ${REQUIRED_TOOLS};
+    sha256sum or shasum (macOS: built in)
+  the ${CRUCIBLE_SKILL} skill: scripts/lib/crucible-space.sh; for a write,
+    crucible.sh; ${EFFORT_SKILL}: effort.sh, for a write
   beside this script: agent-context-file-checks.sh, agent-context-validator.jq,
     agent-context-url.jq, context-versions.sh
 EOF
+	case $1 in
+		diff | add)
+			print_page <<'EOF'
+  git, for diff and add --docs-of or --docs-of-file (macOS: xcode-select
+    --install; Linux: the distro's)
+EOF
+			;;
+		*) ;;
+	esac
 }
 
-# Prints stdin with builtins only, so the page prints with cat missing.
+# Prints stdin with builtins only, so a page prints with cat missing.
 print_page() {
 	while IFS= read -r page_line; do
 		printf '%s\n' "${page_line}"
@@ -257,148 +490,161 @@ die() {
 
 usage_error() {
 	warn "$1"
-	printf "Try '%s --help'.\n" "${PROG}" >&2
+	printf "Try '%s%s --help'.\n" "${PROG}" "${command:+ ${command}}" >&2
 	exit 2
 }
 
-# Prints $1 with each control character as "?", so a value can't split a stderr line.
-# A usage error can reach it before the tool check, so it checks the tools first.
+# Prints $1 with each control character as "?", so a value can't split a
+# stderr line; tr is checked first, as a usage error can come before the
+# tool check.
 printable() {
 	require_tools
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
-# Removes the temp files; on a failing exit, a signal included, also the
-# files this run made, so no partial context file is left behind.
+# Sets the caps a page prints, from the shared checks when they load, else
+# to where they live.
+load_help_values() {
+	context_cap='the cap of agent-context-file-checks.sh'
+	docs_cap=${context_cap}
+	# shellcheck disable=SC2310 # its status says whether the lib was found; errexit adds nothing
+	load_context_lib || return 0
+	context_cap=${context_max_bytes:-${context_cap}}
+	docs_cap=${context_docs_max_bytes:-${docs_cap}}
+}
+
+# Removes the temp files and, on a failing exit, a signal included, the
+# version this run made and the read-only mode it set; then the lock.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
 	[ -z "${diff_temp}" ] || rm -f "${diff_temp}"
-	[ "${exit_status}" -eq 0 ] || remove_created_files
+	if [ "${exit_status}" -ne 0 ]; then
+		[ -z "${created_file}" ] || { rm -f "${created_file}" && warn "removed ${created_file}, made by this run"; }
+		unlock_files
+	fi
+	[ -z "${lock_dir}" ] || rmdir "${lock_dir}" 2>/dev/null ||
+		warn "could not remove the lock ${lock_dir}; expected it gone; try rmdir '${lock_dir}'"
 }
 
-# Removes and names the files this run made.
-remove_created_files() {
-	[ -n "${created_files}" ] || return 0
-	while IFS= read -r created_file; do
-		rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
+# Gives each file in locked_files its write bit back.
+unlock_files() {
+	[ -n "${locked_files}" ] || return 0
+	while IFS= read -r locked_file; do
+		[ -z "${locked_file}" ] || chmod 600 "${locked_file}" 2>/dev/null || true
 	done <<EOF
-${created_files}
+${locked_files}
 EOF
-	created_files=''
+	locked_files=''
 }
 
-# Handles option $1 when no option value is awaited: sets awaited_option, or exits 2.
-take_option() {
+# Sets command and the option values from the arguments; exits 2 on an
+# unknown option, a missing value, an option given twice or a missing one.
+parse_args() {
+	[ "$#" -gt 0 ] || {
+		usage >&2
+		exit 2
+	}
 	case $1 in
 		--help | -h)
+			load_help_values
 			usage
 			exit 0
 			;;
-		--why)
-			[ -n "${entry_kind}" ] ||
-				usage_error '--why without an entry before it; expected each --why right after a --path, --link or --text-file value'
-			;;
+		docs | add | drop | spec | freeze | latest | diff) command=$1 ;;
 		*)
-			[ -z "${entry_kind}" ] || missing_why_error
-			# shellcheck disable=SC2310 # a pure test; its status is the answer
-			is_command_option "$1" || {
-				shown_option=$(printable "$1")
-				expected_options=$(command_options)
-				usage_error "unknown option for ${command}: ${shown_option}; expected ${expected_options}"
-			}
+			shown_command=$(printable "$1")
+			usage_error "unknown command: ${shown_command}; expected docs, add, drop, spec, freeze, latest, diff or --help"
 			;;
 	esac
-	awaited_option=$1
+	shift
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			--help | -h)
+				load_help_values
+				command_help "${command}"
+				exit 0
+				;;
+			--dry-run | --status)
+				check_option "$1"
+				set_flag "$1"
+				shift
+				continue
+				;;
+			*) ;;
+		esac
+		check_option "$1"
+		[ "$#" -ge 2 ] || usage_error "$1 needs a value; expected $1 VALUE"
+		[ -n "$2" ] || usage_error "$1 is empty; expected $1 VALUE"
+		set_value "$1" "$2"
+		shift 2
+	done
+	require_options
 }
 
-# Succeeds when option $1 is taken by the command (--why and --help aside).
-is_command_option() {
+# Exits 2 unless option $1 is taken by the command, or when it was given before.
+check_option() {
 	case ${command}:$1 in
-		new:--effort | extend:--from | extend:--retire | diff:--effort | diff:--repo | diff:--ref | latest:--effort) return 0 ;;
-		new:--path | new:--link | new:--text-file | new:--note) return 0 ;;
-		extend:--path | extend:--link | extend:--text-file | extend:--note) return 0 ;;
-		*) return 1 ;;
+		*:--effort) ;;
+		add:--path | add:--link | add:--why | add:--docs-of | add:--docs-of-file | add:--repo | drop:--path | drop:--link | drop:--why) ;;
+		spec:--approved | spec:--status | freeze:--dry-run | freeze:--expect | diff:--repo | diff:--ref) ;;
+		*)
+			shown_option=$(printable "$1")
+			expected_options=$(command_options)
+			usage_error "unknown option for ${command}: ${shown_option}; expected ${expected_options} or --help"
+			;;
 	esac
-}
-
-command_options() {
-	case ${command} in
-		new) printf '%s' '--effort, --path, --link, --text-file, --why, --note or --help' ;;
-		extend) printf '%s' '--from, --path, --link, --text-file, --why, --note, --retire or --help' ;;
-		latest) printf '%s' '--effort or --help' ;;
-		*) printf '%s' '--effort, --repo, --ref or --help' ;;
-	esac
-}
-
-# Exits 2 naming the pending entry, which has no --why.
-missing_why_error() {
-	case ${entry_kind} in
-		text) entry_option='--text-file' ;;
-		*) entry_option="--${entry_kind}" ;;
-	esac
-	shown_entry=$(printable "${entry_value}")
-	usage_error "${entry_option} ${shown_entry} has no --why; expected --why LINE right after it"
-}
-
-# Takes value $2 of option $1. Sets is_entry_complete=true when the value
-# completes an entry (a --why, a --note or a --retire), with entry_kind,
-# entry_value and entry_why holding it.
-take_value() {
-	is_entry_complete=false
-	case $1 in
-		--effort | --from | --repo | --ref)
-			mark_seen "$1"
-			[ -n "$2" ] || usage_error "$1 is empty; expected $1 VALUE"
-			case $1 in
-				--effort) effort_dir=$(without_trailing_slashes "$2") ;;
-				--from) version_path=$2 ;;
-				--repo) repo_root=$(without_trailing_slashes "$2") ;;
-				*) ref=$2 ;;
-			esac
-			;;
-		--path)
-			trimmed_path=$(without_trailing_slashes "$2")
-			start_entry path "${trimmed_path}"
-			;;
-		--link) start_entry link "$2" ;;
-		--text-file)
-			[ "${text_file_count}" -eq 0 ] || usage_error '--text-file given twice; expected at most one --text-file'
-			text_file_count=1
-			start_entry text "$2"
-			;;
-		--note)
-			note_count=$((note_count + 1))
-			finish_entry note "$2" ''
-			;;
-		--retire)
-			[ "${retire_count}" -gt 0 ] || first_retire=$2
-			retire_count=$((retire_count + 1))
-			finish_entry retire "$2" ''
-			;;
-		*) finish_entry "${entry_kind}" "${entry_value}" "$2" ;;
-	esac
-}
-
-# Records option $1 in seen_options, or exits 2 when it is there already.
-mark_seen() {
 	case " ${seen_options} " in
 		*" $1 "*) usage_error "$1 given twice; expected at most one $1" ;;
 		*) seen_options="${seen_options} $1" ;;
 	esac
 }
 
-start_entry() {
-	entry_kind=$1
-	entry_value=$2
+command_options() {
+	case ${command} in
+		add) printf '%s' '--effort, --path, --link, --why, --docs-of, --docs-of-file, --repo' ;;
+		drop) printf '%s' '--effort, --path, --link, --why' ;;
+		spec) printf '%s' '--effort, --approved, --status' ;;
+		freeze) printf '%s' '--effort, --dry-run, --expect' ;;
+		diff) printf '%s' '--effort, --repo, --ref' ;;
+		*) printf '%s' '--effort' ;;
+	esac
 }
 
-finish_entry() {
-	entry_kind=$1
-	entry_value=$2
-	entry_why=$3
-	is_entry_complete=true
+set_flag() {
+	case $1 in
+		--dry-run) mode=dry-run ;;
+		*) mode=status ;;
+	esac
+}
+
+# Takes value $2 of option $1.
+set_value() {
+	case $1 in
+		--effort) effort_dir=$(without_trailing_slashes "$2") ;;
+		--path)
+			entry_kind='path'
+			entry_value=$(without_trailing_slashes "$2")
+			;;
+		--link)
+			entry_kind='link'
+			entry_value=$2
+			;;
+		--why) entry_why=$2 ;;
+		--docs-of) docs_of=$2 ;;
+		--docs-of-file) docs_of_file=$2 ;;
+		--approved)
+			mode=approved
+			draft=$2
+			;;
+		--expect)
+			mode=expect
+			expected_fingerprint=$2
+			;;
+		--repo) repo_root=$(without_trailing_slashes "$2") ;;
+		*) ref=$2 ;;
+	esac
 }
 
 # Prints path $1 without trailing slashes ("/" stays "/").
@@ -410,32 +656,86 @@ without_trailing_slashes() {
 	printf '%s' "${trimmed}"
 }
 
-# Exits 2 on an option left without its value or its --why, or a required
-# option missing.
-finish_parse() {
-	[ -z "${awaited_option}" ] || usage_error "${awaited_option} needs a value; expected ${awaited_option} VALUE"
-	[ -z "${entry_kind}" ] || missing_why_error
+# Exits 2 when an option the command needs is missing, or two that exclude
+# each other are given.
+require_options() {
+	require_option --effort FOLDER
 	case ${command} in
-		new)
-			require_option --effort FOLDER
-			[ "${note_count}" -gt 0 ] || usage_error '--note missing; expected at least one --note TEXT: the human'\''s request or a note'
+		add) require_add_options ;;
+		drop) require_entry_options ;;
+		spec) require_either --approved --status 'DRAFT' '' ;;
+		freeze)
+			require_either --dry-run --expect '' 'HEX'
+			[ "${mode}" != expect ] || require_fingerprint_option
 			;;
-		extend) require_option --from VERSION ;;
-		latest) require_option --effort FOLDER ;;
-		*)
-			require_option --effort FOLDER
+		diff)
 			require_option --repo ROOT
 			require_option --ref REF
 			;;
+		*) ;;
 	esac
 }
 
-# Exits 2 unless option $1 (value name $2) was given.
-require_option() {
+# add takes an entry's options, or one of --docs-of and --docs-of-file with
+# --repo, never two of these forms.
+require_add_options() {
+	# shellcheck disable=SC2310 # pure tests; their status is the answer
+	if ! is_option_seen --docs-of && ! is_option_seen --docs-of-file; then
+		require_entry_options
+		refuse_option_with --repo '--docs-of FILE or --docs-of-file NAMES'
+		return 0
+	fi
+	require_either --docs-of --docs-of-file 'FILE' 'NAMES'
+	for docs_of_excluded in --path --link --why; do
+		refuse_option_with "${docs_of_excluded}" '(--path ABS | --link URL) --why LINE'
+	done
+	require_option --repo ROOT
+}
+
+require_entry_options() {
+	require_either --path --link 'ABS' 'URL'
+	require_option --why LINE
+}
+
+# Exits 2 when option $1 was given, as it goes only with options $2.
+refuse_option_with() {
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	! is_option_seen "$1" || usage_error "$1 goes only with $2; expected one of the add forms"
+}
+
+# Succeeds when option $1 was given.
+is_option_seen() {
 	case " ${seen_options} " in
-		*" $1 "*) ;;
-		*) usage_error "$1 missing; expected $1 $2" ;;
+		*" $1 "*) return 0 ;;
+		*) return 1 ;;
 	esac
+}
+
+require_option() {
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	is_option_seen "$1" || usage_error "$1 missing; expected $1 $2"
+}
+
+# Exits 2 unless exactly one of options $1 and $2 (values $3 and $4) was given.
+require_either() {
+	either_count=0
+	for either_option in "$1" "$2"; do
+		case " ${seen_options} " in
+			*" ${either_option} "*) either_count=$((either_count + 1)) ;;
+			*) ;;
+		esac
+	done
+	[ "${either_count}" -eq 1 ] ||
+		usage_error "expected exactly one of $1${3:+ $3} and $2${4:+ $4}"
+}
+
+# Exits 2 unless --expect is 64 lowercase hex digits.
+require_fingerprint_option() {
+	case ${expected_fingerprint} in
+		*[!0-9a-f]*) ;;
+		*) [ "${#expected_fingerprint}" -ne 64 ] || return 0 ;;
+	esac
+	usage_error '--expect is not 64 lowercase hex digits; expected the FINGERPRINT freeze --dry-run printed'
 }
 
 # Exits 5 naming the first of REQUIRED_TOOLS missing from PATH; checks once.
@@ -448,51 +748,29 @@ require_tools() {
 	tools_checked=true
 }
 
-# new, extend and diff: sets session_id from CLAUDE_CODE_SESSION_ID by the space
-# rules, or exits 2 before any file is made.
-require_session() {
-	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
-	crucible_check_session || usage_error "${crucible_session_problem}"
-	session_id=${crucible_session_id}
-}
-
-# Exits 5 unless jq, a sha256 tool, crucible.sh, agent-context-file-checks.sh
-# beside this script, the read checks' files and, for new and extend,
-# crucible's prune module are in place; sources the checks and sets
-# crucible_script, validator and prune_lib_dir.
+# Exits 5 unless jq, the shared checks and what they load, and, for every
+# command but latest, crucible.sh and effort.sh are in place.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
 	# shellcheck disable=SC2310 # its status says whether the lib was found; errexit adds nothing
 	load_context_lib ||
-		die 5 "context path check missing; expected ${context_lib}; reinstall the ${PROCEDURE} skill"
-	case ${context_max_bytes:-} in
-		'' | *[!0-9]*) die 5 "context size cap unset or not a number in ${context_lib}; expected context_max_bytes as digits; reinstall the ${PROCEDURE} skill" ;;
-		*) ;;
-	esac
-	[ -n "${context_sensitive_names:-}" ] ||
-		die 5 "sensitive names unset in ${context_lib}; expected context_sensitive_names; reinstall the ${PROCEDURE} skill"
+		die 5 "context checks missing; expected ${context_lib}; reinstall the ${PROCEDURE} skill"
 	own_scripts_dir=$(script_dir)
+	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
-	context_load_checks "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills" "${own_scripts_dir}" || die 5 "${context_load_problem}"
-	validator=${context_validator}
-	if [ "${command}" != latest ]; then
-		crucible_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/crucible.sh"
-		[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-			die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
-		effort_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${EFFORT_SKILL}/scripts/effort.sh"
-		[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
-			die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill"
-	fi
-	case ${command} in
-		new | extend)
-			prune_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib"
-			[ -f "${prune_lib_dir}/prune.jq" ] && [ -r "${prune_lib_dir}/prune.jq" ] ||
-				die 5 "prune module missing; expected ${prune_lib_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill"
-			;;
+	context_load_checks "${skills_dir}" "${own_scripts_dir}" || die 5 "${context_load_problem}"
+	case ${command}:${mode} in
+		latest: | spec:status | freeze:dry-run) return 0 ;;
 		*) ;;
 	esac
-	if [ "${command}" = diff ]; then
+	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
+	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
+		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
+	effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
+	[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
+		die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill"
+	if [ "${command}" = diff ] || [ -n "${docs_of}${docs_of_file}" ]; then
 		command -v git >/dev/null 2>&1 ||
 			die 5 "git missing; expected it on PATH; install it (macOS: xcode-select --install; Linux: the distro's git package)"
 	fi
@@ -514,312 +792,58 @@ script_dir() {
 	esac
 }
 
-# Sets space_root by the space rules, and space_source, which a space problem
-# line ends with: when the space comes from HOME, HOME is the part to fix, not
-# CRUCIBLE_HOME. A space the rules refuse exits 4 with its CRUCIBLE_HOME line.
-resolve_space_root() {
-	space_source=''
-	[ -n "${CRUCIBLE_HOME:-}" ] ||
-		space_source="; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix HOME, or set CRUCIBLE_HOME to a folder that passes"
-	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read below
-	if ! crucible_resolve_root; then
-		add_problem CRUCIBLE_HOME "${CRUCIBLE_HOME:-${HOME:-}/.crucible}" "${crucible_root_problem}${space_source}"
-		exit_on_problems "${rule_problems}"
-	fi
-	space_root=${crucible_root}
+# freeze: sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or
+# exits 2.
+require_session() {
+	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
+	crucible_check_session || usage_error "${crucible_session_problem}"
+	session_id=${crucible_session_id}
 }
 
-# Appends a problem line for option $1, value $2 and problem $3 to rule_problems.
-add_problem() {
-	# shellcheck disable=SC2016 # the $ names after SHOWN_JQ are jq's
-	problem_line=$(jq -nr --arg prog "${PROG}" --arg option "$1" --arg value "$2" --arg problem "$3" \
-		"${SHOWN_JQ}"'"\($prog): \($option) \($value | shown): \($problem)"' </dev/null) ||
-		die 5 'jq failed formatting a problem; expected jq 1.6+; try jq --version, then rerun'
-	rule_problems="${rule_problems}${problem_line}${NL}"
-}
-
-# Prints the problem of effort folder $1 (no trailing slash), or nothing:
-# the space rules' effort folder check, then a context/ that is a symlink.
-effort_folder_problem() {
-	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is printed
-	if ! crucible_check_effort_folder "$1"; then
-		printf '%s' "${crucible_effort_problem}"
-		return 0
-	fi
-	[ ! -L "$1/context" ] || printf 'its context/ is a symlink; expected a real folder'
-}
-
-# Adds a problem when --effort is no effort folder, and then sets effort_dir
-# to a stand-in in the space, so the entries are still checked.
-check_effort_option() {
-	found_problem=$(effort_folder_problem "${effort_dir}")
-	[ -n "${found_problem}" ] || return 0
-	add_problem --effort "${effort_dir}" "${found_problem}"
-	effort_dir="${space_root}/efforts/${PLACEHOLDER_EFFORT}"
-	return 1
-}
-
-# new: adds a problem when --effort is no effort folder, or its context/
-# already holds a version.
-check_new_effort() {
-	# shellcheck disable=SC2310 # its status says whether to go on; it reports its own problem
-	check_effort_option || return 0
-	context_find_latest_version "${effort_dir}/context"
-	[ -n "${context_version_latest}" ] || return 0
-	add_problem --effort "${effort_dir}" "its context already holds v${context_version_latest_number} (${context_version_latest}); expected an effort with no context version; extend --from it instead"
-}
-
-
-# extend: checks VERSION; when it is the effort's latest valid version, sets
-# effort_dir, next_number and base_json (VERSION's entries without the
-# retired ones) and adds the --retire problems; else adds VERSION's problem
-# and keeps the stand-ins. The entry triples are in "$@".
-check_from_version() {
-	base_json=${EMPTY_BASE}
-	next_number=1
-	effort_dir="${space_root}/efforts/${PLACEHOLDER_EFFORT}"
-	found_problem=$(version_file_problem "${version_path}")
-	if [ -n "${found_problem}" ]; then
-		add_problem --from "${version_path}" "${found_problem}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # version_file_problem passed, so the name is a version's
-	context_version_of_name "${version_path##*/}" || true
-	next_number=$((context_version_number + 1))
-	effort_dir=${version_path%/*}
-	effort_dir=${effort_dir%/*}
-	retire_entries "$@"
-}
-
-# Prints the problem of version file $1 (--from, or the latest for latest)
-# by the read checks, or nothing. The write rules are left out, so a version
-# written before a write rule tightened stays readable: a new rule goes into
-# the write rules, never into the validator, and holds for new entries only.
-version_file_problem() {
-	case $1 in
-		*[[:cntrl:]]* | *\'* | *'"'*)
-			printf 'path holds a control character or a quote; expected a version file context.sh wrote'
-			return 0
-			;;
-		*) ;;
-	esac
-	version_dir=${1%/*}
-	# shellcheck disable=SC2310 # its status says whether the name is a version's
-	if ! context_version_of_name "${1##*/}" || [ "${version_dir##*/}" != context ]; then
-		printf 'not <effort folder>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json; expected a version file context.sh wrote'
-		return 0
-	fi
-	folder_problem=$(effort_folder_problem "${version_dir%/*}")
-	if [ -n "${folder_problem}" ]; then
-		printf 'its effort folder: %s' "${folder_problem}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "$1" ||
-		die 5 'a tool failed reading the version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
-	printf '%s' "${context_read_text}"
-}
-
-# Sets base_json to VERSION without the retired entries, and adds RETIRE_JQ's
-# problem lines. The entry triples are in "$@"; their --retire values are
-# passed to RETIRE_JQ in order.
-retire_entries() {
-	argument_count=$#
-	position=0
-	# "for" walks the triples given; the --retire values are appended after them.
-	for argument do
-		case $((position % 3)) in
-			0) argument_kind=${argument} ;;
-			1) [ "${argument_kind}" != retire ] || set -- "$@" "${argument}" ;;
-			*) ;;
-		esac
-		position=$((position + 1))
-	done
-	shift "${argument_count}"
-	retire_output=$(jq -r --arg prog "${PROG}" "${SHOWN_JQ}${RETIRE_JQ}" --args -- "$@" <"${version_path}") ||
-		die 5 "jq failed applying the --retire values; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
-	{
-		IFS= read -r base_json
-		retire_problems=$(cat)
-	} <<EOF
-${retire_output}
-EOF
-	[ -z "${retire_problems}" ] || rule_problems="${rule_problems}${retire_problems}${NL}"
-}
-
-# extend: adds a problem for a --retire without a new --note, and for a call
-# with nothing to add or retire; the entry triples are in "$@".
-check_extend_rules() {
-	if [ "${retire_count}" -gt 0 ] && [ "${note_count}" -eq 0 ]; then
-		add_problem --retire "${first_retire}" 'no new --note; expected at least one --note saying why the entry is retired'
-	fi
-	[ "$#" -eq 0 ] || return 0
-	add_problem --from "${version_path}" 'nothing to add or retire; expected at least one --path, --link, --text-file, --note or --retire'
-}
-
-# Sets file_problems to one "<entry index>\t<problem>" line per --path or
-# --text-file entry that fails a file check; the entries are the triples in "$@".
-collect_file_problems() {
-	file_problems=''
-	entry_index=0
-	while [ "$#" -gt 0 ]; do
-		case $1 in
-			path) found_problem=$(path_entry_problem "$2") ;;
-			text) found_problem=$(text_file_problem "$2") ;;
-			*) found_problem='' ;;
-		esac
-		[ -z "${found_problem}" ] || file_problems="${file_problems}${entry_index}${TAB}${found_problem}${NL}"
-		entry_index=$((entry_index + 1))
-		shift 3
-	done
-}
-
-# Prints the first problem of --path value $1, or nothing.
-path_entry_problem() {
-	# shellcheck disable=SC2310 # its status says whether it printed a problem
-	shared_path_problem "$1" && return 0
-	if [ -d "$1" ]; then
-		[ -r "$1" ] && [ -x "$1" ] || printf 'folder is unreadable; expected a folder the agent can list'
-	elif [ -f "$1" ]; then
-		[ -r "$1" ] || printf 'file is unreadable; expected a file the agent can read'
-	elif [ -e "$1" ]; then
-		printf 'path is not a regular file or a folder; expected an existing file or folder'
-	else
-		printf 'path does not exist; expected an existing file or folder'
-	fi
-}
-
-# Prints the first problem of --text-file value $1, or nothing.
-text_file_problem() {
-	# shellcheck disable=SC2310 # its status says whether it printed a problem
-	shared_path_problem "$1" && return 0
-	[ -f "$1" ] && [ -r "$1" ] || {
-		printf 'file is missing, unreadable or not a regular file; expected a readable regular file'
-		return 0
+# Checks the space and --effort, then sets the effort's context paths;
+# exits 4 on a space fault and 3 on a refused --effort.
+resolve_effort() {
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the problem is read here
+	crucible_resolve_root || {
+		space_source=''
+		[ -n "${CRUCIBLE_HOME:-}" ] ||
+			space_source="; CRUCIBLE_HOME is unset or empty, so this is \$HOME/.crucible: fix HOME, or set CRUCIBLE_HOME"
+		die 4 "CRUCIBLE_HOME: ${crucible_root_problem}${space_source}"
 	}
-	# shellcheck disable=SC2310 # it prints the problem; its status only says whether there was one
-	long_text_problem "$1" 'the human'\''s text' || true
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is read here
+	crucible_check_effort_folder "${effort_dir}" || refuse "${crucible_effort_refusal}"
+	effort_dir=${crucible_effort}
+	context_dir="${effort_dir}/context"
+	docs_root="${context_dir}/docs"
+	entries_file="${context_dir}/${ENTRIES_NAME}"
+	for layout_dir in "${context_dir}" "${docs_root}"; do
+		[ ! -L "${layout_dir}" ] || refuse "--effort ${effort_dir}: ${layout_dir} is a symlink; expected a real folder"
+		[ ! -e "${layout_dir}" ] || [ -d "${layout_dir}" ] || refuse "--effort ${effort_dir}: ${layout_dir} is not a folder; expected a real folder"
+	done
+	[ ! -L "${entries_file}" ] || refuse "--effort ${effort_dir}: ${entries_file} is a symlink; expected the file add and drop write"
 }
 
-# Prints the problem of long-text file $1, the agent's $2, against the cap and
-# UTF-8, and succeeds; fails, printing nothing, when it fits.
-long_text_problem() {
-	text_bytes=$(wc -c <"$1") ||
-		die 5 "wc could not count the bytes of $1; expected a byte count; try wc -c on it, then rerun"
-	text_bytes=${text_bytes##* }
-	if [ "${text_bytes}" -gt "${TEXT_MAX_BYTES}" ]; then
-		printf '%s is %s bytes; expected at most %s bytes' "$2" "${text_bytes}" "${TEXT_MAX_BYTES}"
-		return 0
+# Sets latest_path and latest_number (0 when none) to the effort's latest
+# version, and next_number and next_folder to the next version's.
+read_versions() {
+	latest_path='' latest_number=0
+	if [ -d "${context_dir}" ]; then
+		context_find_latest_version "${context_dir}"
+		latest_path=${context_version_latest}
+		latest_number=${context_version_latest_number:-0}
 	fi
-	# shellcheck disable=SC2310 # its status is the check result; errexit adds nothing
-	text_is_utf8 "$1" && return 1
-	printf '%s is not valid UTF-8; expected %s as UTF-8' "$2" "$2"
+	next_number=$((latest_number + 1))
+	next_folder="${docs_root}/v${next_number}"
+	[ ! -L "${next_folder}" ] || refuse "--effort ${effort_dir}: ${next_folder} is a symlink; expected a real folder"
+	[ ! -e "${next_folder}" ] || [ -d "${next_folder}" ] || refuse "--effort ${effort_dir}: ${next_folder} is not a folder; expected a real folder"
 }
 
-# Prints the problem of path $1 that agent-context-file-checks.sh or a symlink check
-# finds and succeeds, or prints nothing and fails.
-shared_path_problem() {
-	shared_problem=$(context_path_problem "$1")
-	if [ -n "${shared_problem}" ]; then
-		printf '%s; expected %s' "${shared_problem}" "${context_path_expected}"
-		return 0
-	fi
-	[ -L "$1" ] || return 1
-	printf 'path is a symlink; expected the real file or folder it points to'
+# Prints problem line $1 and exits 3.
+refuse() {
+	die 3 "$1"
 }
 
-# Succeeds when file $1 reads back unchanged through jq --rawfile, which turns
-# invalid UTF-8 into U+FFFD, so the bytes it would write are the file's bytes.
-text_is_utf8() {
-	# shellcheck disable=SC2310 # the caller reports a failure; errexit adds nothing
-	file_digest=$(digest_stdin <"$1") || return 1
-	# shellcheck disable=SC2310 # the caller reports a failure; errexit adds nothing
-	text_digest=$(jq -nj --rawfile text "$1" '$text' </dev/null | digest_stdin) || return 1
-	[ "${file_digest%% *}" = "${text_digest%% *}" ]
-}
-
-digest_stdin() {
-	if [ "${context_digest_tool}" = shasum ]; then
-		shasum -a 256
-	else
-		sha256sum
-	fi
-}
-
-# Runs CONTEXT_JQ in mode $1 with text path $2 over the entry triples after them.
-run_context_jq() {
-	run_mode=$1
-	run_text_path=$2
-	shift 2
-	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --arg text_path "${run_text_path}" \
-		--argjson base "${base_json}" \
-		--arg file_problem_lines "${file_problems}" --arg validator_problem_lines "${validator_problems}" \
-		--arg space_root "${space_root}" --arg space_problem "${space_problem}" --arg space_source "${space_source}" \
-		--arg session_id "${session_id}" \
-		"include \"prune\";${SHOWN_JQ}${CONTEXT_JQ}" --args -- "$@" </dev/null
-}
-
-# Sets version_label, the placeholder paths of the files to write, and
-# space_problem, the version placeholder's problem as
-# agent-context-file-checks.sh finds it.
-plan_space_paths() {
-	version_label="v${next_number}"
-	placeholder_context="${effort_dir}/context/${PLACEHOLDER_ID}-${version_label}.json"
-	placeholder_text="${effort_dir}/context/${PLACEHOLDER_ID}-${version_label}${TEXT_LABEL_SUFFIX}.json"
-	space_problem=$(context_path_problem "${placeholder_context}")
-	[ -z "${space_problem}" ] || space_problem="${space_problem}; expected ${context_path_expected}"
-}
-
-# Exits 3, or 4 when one is the Crucible space's, after printing the rule
-# problems and every problem the file checks, the validator and the size cap
-# find in the context the base and the entries in "$@" make, built with the
-# placeholder paths before any file exists.
-report_input_problems() {
-	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	planned_json=$(run_context_jq context "${placeholder_text}" "$@") ||
-		die 5 "jq failed building the context; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
-	validator_problems=$(printf '%s\n' "${planned_json}" |
-		jq -cs --arg format json -f "${validator}") ||
-		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
-	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	problems=$(run_context_jq report '' "$@") ||
-		die 5 "jq failed reporting the inputs' problems; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
-	# shellcheck disable=SC2310 # a failure has printed its cause; this passes its exit on
-	size_problem=$(context_size_problem "${planned_json}") || exit "$?"
-	[ -z "${size_problem}" ] || problems="${problems}${problems:+${NL}}${PROG}: context file: ${size_problem}"
-	exit_on_problems "${rule_problems}${problems}"
-}
-
-# Prints the problem lines $1, if any, and exits 4 when one is the Crucible
-# space's (no change to the inputs fixes it), else 3.
-exit_on_problems() {
-	[ -n "$1" ] || return 0
-	printf '%s\n' "${1%"${NL}"}" >&2
-	case ${NL}$1 in
-		*"${NL}${PROG}: CRUCIBLE_HOME "*) exit 4 ;;
-		*) exit 3 ;;
-	esac
-}
-
-# Prints the size cap's problem of the context JSON $1, or nothing.
-context_size_problem() {
-	json_bytes=$(printf '%s\n' "$1" | wc -c) ||
-		die 5 'wc could not count the context bytes; expected a byte count; try wc -c on a small file, then rerun'
-	json_bytes=${json_bytes##* }
-	[ "${json_bytes}" -le "${context_max_bytes}" ] ||
-		printf 'the context JSON is %s bytes; expected at most %s bytes: references and short notes, long text in --text-file\n' "${json_bytes}" "${context_max_bytes}"
-}
-
-# Prints the problems the size cap and the validator find in the context JSON
-# $1 when it sits at path $2; prints nothing when it fits.
-context_json_problems() {
-	# shellcheck disable=SC2310 # a failure has printed its cause; this passes its exit on
-	context_size_problem "$1" || exit "$?"
-	printf '%s\n' "$1" | jq -rs --arg context_path "$2" -f "${validator}" ||
-		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
-}
-
-# Exits NOT_OPEN_EXIT unless effort_dir is open, as effort.sh state, the one
+# Exits NOT_OPEN_EXIT unless the effort is open, as effort.sh state, the one
 # owner of the state rule, reads it; a state it cannot read refuses too.
 require_open_effort() {
 	if effort_state_out=$(sh "${effort_script}" state --effort "${effort_dir}" </dev/null); then
@@ -835,96 +859,367 @@ require_open_effort() {
 		5) die 5 "effort.sh state names a missing dependency above; expected the ${EFFORT_SKILL} skill working; install what it names, then rerun" ;;
 		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state exited ${effort_state_status}; its stderr is above); expected an open effort; ask the human to check the effort" ;;
 	esac
-	effort_state=${effort_state_out%%"${NL}"*}
-	case ${effort_state} in
+	case ${effort_state_out%%"${NL}"*} in
 		'STATE: open') ;;
 		'STATE: paused' | 'STATE: completed' | 'STATE: dropped')
+			effort_state=${effort_state_out%%"${NL}"*}
 			die "${NOT_OPEN_EXIT}" "effort ${effort_name} is ${effort_state#STATE: }; expected an open effort; ask the human to reopen it"
 			;;
 		*) die "${NOT_OPEN_EXIT}" "effort ${effort_name}'s state is unknown (effort.sh state printed no known state); expected an open effort; ask the human to check the effort" ;;
 	esac
 }
 
-# Sets created_path to a new empty file crucible.sh made in the effort's
-# context/ with label $1, or fails the run.
-create_item() {
-	created_path=$(sh "${crucible_script}" new --kind context --label "$1" --effort "${effort_dir}" </dev/null) ||
-		fail_run "crucible.sh new --label $1 failed; its stderr is above; expected a new empty file in ${effort_dir}/context/; try the fix crucible.sh names, then rerun"
-	shown_path=$(printable "${created_path}")
-	case ${created_path} in
-		"${effort_dir}/context/"*) ;;
-		*) fail_run "crucible.sh new printed ${shown_path}, which is not in ${effort_dir}/context/; expected a new file there; try reinstalling the crucible skill, then rerun" ;;
-	esac
-	created_files="${created_files}${created_files:+${NL}}${created_path}"
-	[ -f "${created_path}" ] && [ ! -L "${created_path}" ] ||
-		fail_run "crucible.sh new printed ${shown_path}, which is not a regular file; expected a new empty regular file; try reinstalling the crucible skill, then rerun"
+# Takes the effort's context lock, a folder in context/ only one call can
+# create, waiting up to LOCK_WAIT_SECONDS; creates context/ first when
+# missing. clean_up removes the lock; a killed run leaves it, and the
+# refusal says how to remove it.
+take_lock() {
+	[ -d "${context_dir}" ] || mkdir "${context_dir}" 2>/dev/null || [ -d "${context_dir}" ] ||
+		die 1 "mkdir could not create ${context_dir}; expected a writable effort folder; try checking its permissions, then rerun"
+	lock_path="${context_dir}/${LOCK_NAME}"
+	lock_tries=0
+	until mkdir "${lock_path}" 2>/dev/null; do
+		[ -d "${lock_path}" ] ||
+			die 1 "mkdir could not create the lock ${lock_path}; expected a writable ${context_dir}; try checking its permissions, then rerun"
+		[ "${lock_tries}" -lt "${LOCK_WAIT_SECONDS}" ] ||
+			die "${LOCKED_EXIT}" "--effort ${effort_dir}: its context is locked by ${lock_path}; expected one writer at a time; try again once the other call has ended; if none is running, a killed run left the lock: remove it with rmdir '${lock_path}', then rerun"
+		sleep 1
+		lock_tries=$((lock_tries + 1))
+	done
+	lock_dir=${lock_path}
 }
 
-# Removes the files this run made, names them, and exits 1 with $1.
-fail_run() {
-	remove_created_files
-	die 1 "$1"
+# Creates the next version's folder (and docs/) when missing.
+ensure_next_folder() {
+	for needed_dir in "${docs_root}" "${next_folder}"; do
+		[ -d "${needed_dir}" ] || mkdir "${needed_dir}" ||
+			die 1 "mkdir could not create ${needed_dir}; expected a writable ${needed_dir%/*}; try checking its permissions, then rerun"
+	done
 }
 
-# Sets temp_file to a new temp file beside path $1, or fails the run.
-make_temp_beside() {
-	temp_file=$(mktemp "${1%/*}/.${1##*/}.XXXXXX") ||
-		fail_run "mktemp could not create a temp file beside $1; expected a writable ${1%/*}; try checking its permissions and free space, then rerun"
+# Sets temp_file to a new temp file in context/, the folder every write here
+# moves from, so a docs folder never holds a temp file; or exits 1.
+make_temp() {
+	temp_file=$(mktemp "${context_dir}/.$1.XXXXXX") ||
+		die 1 "mktemp could not create a temp file in ${context_dir}; expected a writable folder; try checking its permissions and free space, then rerun"
 }
 
-# Moves temp_file onto path $1, or fails the run.
+# Moves temp_file onto path $1, replacing it, or exits 1.
 commit_temp() {
 	mv -f "${temp_file}" "$1" ||
-		fail_run "mv could not move the temp file onto $1; expected the file in place; try checking the permissions and free space of ${1%/*}, then rerun"
+		die 1 "mv could not move the temp file onto $1; expected the file in place; try checking the permissions and free space of ${1%/*}, then rerun"
 	temp_file=''
 }
 
-# Writes {"text": <the content of file $2>} into a new crucible file labelled
-# $1; sets written_path.
-write_text_item() {
-	create_item "$1"
-	written_path=${created_path}
-	make_temp_beside "${written_path}"
-	jq -n --rawfile text "$2" '{text: $text}' </dev/null >"${temp_file}" ||
-		fail_run "jq could not write the content of $2 into ${written_path}; expected {\"text\": <the content>} written; try checking free space and jq --version, then rerun"
-	commit_temp "${written_path}"
+# Sets digest to the sha256 of file $1, or exits 5.
+file_digest() {
+	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
+	compute_context_digest "$1" ||
+		die 5 "${context_digest_tool} could not hash $1; expected its sha256; try ${context_digest_tool} on it, then rerun"
+	digest=${context_digest}
 }
 
-# Writes the context JSON into a new crucible file, checked before and after; sets context_path.
-write_context_file() {
-	create_item "${version_label}"
-	context_path=${created_path}
-	path_problem=$(context_path_problem "${context_path}")
-	[ -z "${path_problem}" ] ||
-		fail_run "context file ${context_path}: ${path_problem}; expected ${context_path_expected}; try setting CRUCIBLE_HOME to a folder that passes, then rerun"
+# docs: prints the next version's folder, creating it.
+docs_command() {
+	require_open_effort
+	take_lock
+	read_versions
+	ensure_next_folder
+	printf 'DOCS_FOLDER: %s\n' "${next_folder}"
+}
+
+# add and drop: checks the entry, then rewrites the pending entries under the
+# lock and prints the outcome.
+entry_command() {
+	entry_problems=$(entry_input_problems)
+	if [ -n "${entry_problems}" ]; then
+		printf '%s\n' "${entry_problems}" >&2
+		exit 3
+	fi
+	require_open_effort
+	if [ "${command}" = drop ] && [ ! -d "${context_dir}" ]; then
+		show_entry
+		refuse "${entry_option} ${shown_entry}: is neither pending nor in the latest version; expected an entry add put in"
+	fi
+	take_lock
+	read_versions
+	load_entries
+	check_latest
+	apply_entry
+	if [ -n "${entry_refusal}" ]; then
+		show_entry
+		refuse "${entry_option} ${shown_entry}: ${entry_refusal}"
+	fi
+	write_entries
+	printf 'ENTRY: %s\n' "${entry_outcome}"
+}
+
+# Runs ENTRY_JQ for the entry on entries_json and sets entry_refusal (empty
+# when it passes), and else new_entries and entry_outcome.
+apply_entry() {
+	# shellcheck disable=SC2016 # the program is jq's
+	entry_result=$(jq -c --arg command "${command}" --arg kind "${entry_kind}" --arg value "${entry_value}" \
+		--arg why "${entry_why}" --argjson entries "${entries_json}" --argjson latest "${latest_json}" \
+		--arg latest_number "${latest_number}" -n "${ENTRY_JQ}" </dev/null) ||
+		die 5 'jq failed on the pending entries; expected jq 1.6+; try jq --version, then rerun'
+	entry_refusal=$(printf '%s' "${entry_result}" | jq -r '.problem // ""') ||
+		die 5 'jq failed reading the outcome; expected jq 1.6+; try jq --version, then rerun'
+	[ -z "${entry_refusal}" ] || return 0
+	new_entries=$(printf '%s' "${entry_result}" | jq '.entries') ||
+		die 5 'jq failed reading the entries; expected jq 1.6+; try jq --version, then rerun'
+	entry_outcome=$(printf '%s' "${entry_result}" | jq -r '.outcome') ||
+		die 5 'jq failed reading the outcome; expected jq 1.6+; try jq --version, then rerun'
+}
+
+# Sets entry_option and shown_entry for a problem line about the entry.
+show_entry() {
+	entry_option="--${entry_kind}"
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	context_json=$(run_context_jq context "${text_path}" "$@") ||
-		fail_run "jq failed building the context; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
-	# shellcheck disable=SC2310 # a failure has printed its cause; this passes its exit on
-	final_problems=$(context_json_problems "${context_json}" "${context_path}") || exit "$?"
-	[ -z "${final_problems}" ] || fail_validation "not written, it would fail the validator" "${final_problems}"
-	make_temp_beside "${context_path}"
-	printf '%s\n' "${context_json}" >"${temp_file}" ||
-		fail_run "could not write the temp file ${temp_file}; expected the context JSON written; try checking free space, then rerun"
-	commit_temp "${context_path}"
-	# shellcheck disable=SC2310 # a failure has printed its cause; this passes its exit on
-	written_problems=$(written_file_problems "${context_path}") || exit "$?"
-	[ -z "${written_problems}" ] || fail_validation "fails the validator as written" "${written_problems}"
+	shown_entry=$(shown_text "${entry_value}") ||
+		die 5 'jq failed formatting a value; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Fails the run for the context file, with what $1 says and the problem lines $2 joined.
-fail_validation() {
-	joined_problems=$(join_lines "$2")
-	fail_run "context file ${context_path} $1: ${joined_problems}; expected a context that passes the checks it passed before writing; try rerunning, and on a second failure reinstall the ${PROCEDURE} skill"
+# Prints value $1 as SHOWN_JQ shows it.
+shown_text() {
+	# shellcheck disable=SC2016 # the program is jq's
+	jq -nr --arg value "$1" "${SHOWN_JQ}"'$value | shown' </dev/null
 }
 
-# Prints the problem of the context file $1 just written, checked by the read
-# checks every reader applies (context_read_problem), the size cap included.
-written_file_problems() {
-	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "$1" ||
-		die 5 'a tool failed reading the written version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
-	printf '%s' "${context_read_text}"
+# Prints the problem lines of the entry and its --why, or nothing.
+entry_input_problems() {
+	show_entry
+	case ${entry_why} in
+		*[[:cntrl:]]*) printf '%s: --why: holds a control character; expected one line of text\n' "${PROG}" ;;
+		*[![:space:]]*) ;;
+		*) printf '%s: --why: is blank; expected one line of text\n' "${PROG}" ;;
+	esac
+	if [ "${entry_kind}" = link ]; then
+		# shellcheck disable=SC2016 # the program is jq's
+		jq -ne -L "${own_scripts_dir}" --arg url "${entry_value}" 'include "agent-context-url"; $url | http_url' </dev/null >/dev/null 2>&1 ||
+			printf '%s: --link %s: is not an http(s) URL; expected the rules of agent-context-url.jq\n' "${PROG}" "${shown_entry}"
+		return 0
+	fi
+	path_problem=$(path_entry_problem "${entry_value}")
+	[ -z "${path_problem}" ] || printf '%s: --path %s: %s\n' "${PROG}" "${shown_entry}" "${path_problem}"
+}
+
+# Prints the first problem of --path value $1, or nothing. A drop takes a
+# path that no longer exists, so it is checked by its text only.
+path_entry_problem() {
+	shared_problem=$(context_path_problem "$1")
+	if [ -n "${shared_problem}" ]; then
+		printf '%s; expected %s' "${shared_problem}" "${context_path_expected}"
+		return 0
+	fi
+	case $1/ in
+		"${context_dir}"/*)
+			printf 'is in the effort'\''s context/; expected an outside path: the effort'\''s own docs go into its docs folder'
+			return 0
+			;;
+		*) ;;
+	esac
+	[ "${command}" = add ] || return 0
+	if [ -L "$1" ]; then
+		printf 'path is a symlink; expected the real file or folder it points to'
+	elif [ -d "$1" ]; then
+		[ -r "$1" ] && [ -x "$1" ] || printf 'folder is unreadable; expected a folder the agent can list'
+	elif [ -f "$1" ]; then
+		[ -r "$1" ] || printf 'file is unreadable; expected a file the agent can read'
+	elif [ -e "$1" ]; then
+		printf 'path is not a regular file or a folder; expected an existing file or folder'
+	else
+		printf 'path does not exist; expected an existing file or folder'
+	fi
+}
+
+# add --docs-of and --docs-of-file: finds the files of ROOT's README* and
+# docs/ that name each file name, then puts each into the pending entries
+# under the lock through the checks --path takes, and prints an ADDED line per
+# new one. A match those checks refuse, or one pending with another why, is
+# named on stderr and left out.
+docs_of_command() {
+	if [ -n "${docs_of_file}" ]; then
+		docs_of_option=--docs-of-file
+		read_docs_names_file
+	else
+		docs_of_option=--docs-of
+		take_docs_of_name
+	fi
+	repo_problem=$(repo_root_problem)
+	[ -z "${repo_problem}" ] || refuse "--repo ${repo_root}: ${repo_problem}"
+	require_open_effort
+	find_all_documenting_files
+	[ -n "${documenting_pairs}" ] || return 0
+	take_lock
+	read_versions
+	load_entries
+	check_latest
+	entry_kind=path added_lines='' is_entries_changed=false
+	while IFS= read -r documenting_pair; do
+		[ -n "${documenting_pair}" ] || continue
+		docs_of=${documenting_pair%%/*}
+		entry_why="${DOCS_OF_WHY} ${docs_of}"
+		add_documenting_file "${repo_root}/${documenting_pair#*/}"
+	done <<EOF
+${documenting_pairs}
+EOF
+	[ "${is_entries_changed}" = false ] || {
+		new_entries=${entries_json}
+		write_entries
+	}
+	[ -z "${added_lines}" ] || printf '%s' "${added_lines}"
+}
+
+# Sets docs_names to --docs-of, or exits 3 when docs_name_problem refuses it.
+take_docs_of_name() {
+	docs_of_problem=$(docs_name_problem "${docs_of}")
+	if [ -n "${docs_of_problem}" ]; then
+		show_value "${docs_of}"
+		refuse "--docs-of ${shown_value}: ${docs_of_problem}"
+	fi
+	docs_names=${docs_of}
+}
+
+# Sets docs_names to the lines of --docs-of-file that docs_name_problem
+# passes, one per line and each once, read as data only: an empty line is
+# skipped, a refused one named on stderr with its line number and skipped.
+# Exits 3 when the file is not an absolute path of a readable regular file.
+read_docs_names_file() {
+	case ${docs_of_file} in
+		/*) docs_file_problem='' ;;
+		*) docs_file_problem='is not an absolute path' ;;
+	esac
+	if [ -z "${docs_file_problem}" ] &&
+		{ [ -L "${docs_of_file}" ] || [ ! -f "${docs_of_file}" ] || [ ! -r "${docs_of_file}" ]; }; then
+		docs_file_problem='is missing, unreadable, a symlink or not a regular file'
+	fi
+	if [ -n "${docs_file_problem}" ]; then
+		show_value "${docs_of_file}"
+		refuse "--docs-of-file ${shown_value}: ${docs_file_problem}; expected the absolute path of a file of names, one per line"
+	fi
+	docs_names='' docs_names_line=0
+	while IFS= read -r docs_name || [ -n "${docs_name}" ]; do
+		docs_names_line=$((docs_names_line + 1))
+		[ -n "${docs_name}" ] || continue
+		docs_of_problem=$(docs_name_problem "${docs_name}")
+		if [ -n "${docs_of_problem}" ]; then
+			show_value "${docs_name}"
+			warn "--docs-of-file line ${docs_names_line} ${shown_value}: ${docs_of_problem}; left out"
+			continue
+		fi
+		case ${NL}${docs_names} in
+			*"${NL}${docs_name}${NL}"*) ;;
+			*) docs_names="${docs_names}${docs_name}${NL}" ;;
+		esac
+	done <"${docs_of_file}"
+}
+
+# Sets shown_value to value $1 as SHOWN_JQ shows it, or exits 5.
+show_value() {
+	# shellcheck disable=SC2310 # its status is jq's; a failure exits
+	shown_value=$(shown_text "$1") ||
+		die 5 'jq failed formatting a value; expected jq 1.6+; try jq --version, then rerun'
+}
+
+# Prints the problem of file name $1, as --docs-of and --docs-of-file take
+# it, or nothing when it is a file name.
+docs_name_problem() {
+	case $1 in
+		*[[:cntrl:]]*) printf 'holds a control character; expected a file name on one line' ;;
+		*/*) printf 'holds a /; expected a file name alone, such as auth.sh' ;;
+		*) ;;
+	esac
+}
+
+# Sets documenting_pairs to one "<name>/<match>" line per file of ROOT's
+# README* and docs/ naming a name of docs_names, <match> relative to ROOT;
+# a name holds no /, so a line splits at its first one.
+find_all_documenting_files() {
+	documenting_pairs=''
+	while IFS= read -r docs_of; do
+		[ -n "${docs_of}" ] || continue
+		find_documenting_files
+		while IFS= read -r docs_of_match; do
+			[ -z "${docs_of_match}" ] || documenting_pairs="${documenting_pairs}${docs_of}/${docs_of_match}${NL}"
+		done <<EOF
+${docs_of_matches}
+EOF
+	done <<EOF
+${docs_names}
+EOF
+}
+
+# Sets docs_of_matches to the paths, relative to ROOT and one per line, of
+# the files in ROOT's README* and docs/, untracked ones included, whose text
+# holds file name docs_of; empty on no match (git grep's exit 1), or exits 1.
+# core.quotePath=false prints a UTF-8 name as it is; a name git still quotes
+# keeps its double quotes, which the --path checks refuse.
+find_documenting_files() {
+	# shellcheck disable=SC2310 # its status is git's; it is read below
+	if docs_of_matches=$(run_git -c core.quotePath=false grep --untracked -lF -e "${docs_of}" -- 'README*' 'docs/'); then
+		return 0
+	else
+		grep_status=$?
+	fi
+	docs_of_matches=''
+	[ "${grep_status}" -eq 1 ] ||
+		die 1 "git grep failed in ${repo_root} (exit ${grep_status}); its stderr is above; expected the files that name ${docs_of}; try the fix git names, then rerun"
+}
+
+# Puts path $1 into entries_json as add --path would, through the same
+# checks, and adds its ADDED line to added_lines when it is new.
+add_documenting_file() {
+	entry_value=$1
+	show_entry
+	path_problem=$(path_entry_problem "$1")
+	if [ -n "${path_problem}" ]; then
+		warn "${docs_of_option} ${docs_of}: left out ${shown_entry}: ${path_problem}"
+		return 0
+	fi
+	apply_entry
+	if [ -n "${entry_refusal}" ]; then
+		warn "${docs_of_option} ${docs_of}: left out ${shown_entry}: ${entry_refusal}"
+		return 0
+	fi
+	case ${entry_outcome} in
+		added) added_lines="${added_lines}ADDED: $1${NL}" ;;
+		'retirement undone') ;;
+		*) return 0 ;;
+	esac
+	entries_json=${new_entries}
+	is_entries_changed=true
+}
+
+# Sets entries_json to the pending entries ({} when none), or exits 3 when
+# the file is not as add and drop write it.
+load_entries() {
+	entries_json='{}'
+	[ -e "${entries_file}" ] || return 0
+	[ -f "${entries_file}" ] && [ -r "${entries_file}" ] ||
+		refuse "--effort ${effort_dir}: ${entries_file} is not a readable regular file; expected the file add and drop write"
+	entries_problems=$(jq -rs -L "${own_scripts_dir}" "${ENTRIES_CHECK_JQ}" "${entries_file}" </dev/null 2>/dev/null) ||
+		refuse "--effort ${effort_dir}: ${entries_file} is not valid JSON; expected the file add and drop write; ask the human, as only add and drop write it"
+	[ -n "${entries_problems}" ] || {
+		entries_json=$(jq -c . "${entries_file}") ||
+			die 5 'jq failed reading the pending entries; expected jq 1.6+; try jq --version, then rerun'
+		return 0
+	}
+	joined_problems=$(join_lines "${entries_problems}")
+	refuse "--effort ${effort_dir}: ${entries_file} ${joined_problems}; expected the file add and drop write; ask the human, as only add and drop write it"
+}
+
+# Writes new_entries over the pending entries, or removes the file when they
+# hold nothing.
+write_entries() {
+	if [ "${new_entries}" = '{}' ]; then
+		rm -f "${entries_file}" ||
+			die 1 "rm could not remove ${entries_file}; expected it gone; try checking the permissions of ${context_dir}, then rerun"
+		return 0
+	fi
+	make_temp "${ENTRIES_NAME}"
+	printf '%s\n' "${new_entries}" >"${temp_file}" ||
+		die 1 "could not write the temp file ${temp_file}; expected the entries written; try checking free space, then rerun"
+	commit_temp "${entries_file}"
 }
 
 # Prints the lines of $1 joined by "; ".
@@ -938,87 +1233,106 @@ EOF
 	printf '%s' "${joined}"
 }
 
-# Prints the text file of the entries in "$@", or nothing.
-text_file_of() {
-	while [ "$#" -gt 0 ]; do
-		[ "$1" != text ] || printf '%s' "$2"
-		shift 3
-	done
-}
-
-# Checks every input of new or extend, then writes the text file (when one
-# is given) and the version, and prints its path and sha256. The entry
-# triples are in "$@".
-write_version() {
-	collect_file_problems "$@"
-	check_spec_entries "$@"
-	plan_space_paths
-	report_input_problems "$@"
-	require_open_effort
-	text_file=$(text_file_of "$@")
-	text_path=''
-	if [ -n "${text_file}" ]; then
-		write_text_item "${version_label}${TEXT_LABEL_SUFFIX}" "${text_file}"
-		text_path=${written_path}
-	fi
-	write_context_file "$@"
-	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_context_digest "${context_path}" ||
-		fail_run "${context_digest_tool} could not hash ${context_path}; expected its sha256; try ${context_digest_tool} on it, then rerun"
-	printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "${context_path}" "${context_digest}"
-}
-
-# Adds a problem for each spec entry the call adds, the entry triples in "$@",
-# that no gate record of the effort proves: the approved spec's --path, a
-# skip note, and an approval note with no approved spec beside it. A stand-in
-# effort has its own problem already, so its records are not looked up.
-check_spec_entries() {
-	has_approved_spec=false has_approval_note=false has_skip_note=false
-	is_real_effort=true
-	[ "${effort_dir##*/}" != "${PLACEHOLDER_EFFORT}" ] || is_real_effort=false
-	while [ "$#" -gt 0 ]; do
-		case $1:$3 in
-			"path:${APPROVED_SPEC_WHY}")
-				has_approved_spec=true
-				[ "${is_real_effort}" = false ] || check_approved_spec "$2"
-				;;
-			note:*)
-				case $2 in
-					"${SPEC_APPROVED_PREFIX}"*) has_approval_note=true ;;
-					"${SPEC_SKIPPED_PREFIX}"*) has_skip_note=true ;;
-					*) ;;
-				esac
-				;;
-			*) ;;
-		esac
-		shift 3
-	done
-	if [ "${has_approval_note}" = true ] && [ "${has_approved_spec}" = false ]; then
-		rule_problems="${rule_problems}${PROG}: --note: an approval note needs the approved spec's --path entry in the same call${NL}"
-	fi
-	[ "${has_skip_note}" = true ] && [ "${is_real_effort}" = true ] || return 0
-	# shellcheck disable=SC2310 # its status says whether a record matched
-	find_gate_record "${SPEC_OFFER_LABEL}" '.case == "offer"' && return 0
-	rule_problems="${rule_problems}${PROG}: --note: ${NO_SPEC_GATE_TOKEN}: no spec offer gate record in this effort; expected the skip chosen at the spec offer gate${NL}"
-}
-
-# Adds a problem unless a spec approval record of the effort names draft $1
-# at its current sha256.
-check_approved_spec() {
-	spec_digest=''
-	if [ -f "$1" ] && [ -r "$1" ] && [ ! -L "$1" ]; then
-		# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-		compute_context_digest "$1" ||
-			die 5 "${context_digest_tool} could not hash $1; expected its sha256; try ${context_digest_tool} on it, then rerun"
-		spec_digest=${context_digest}
-	fi
-	# shellcheck disable=SC2016,SC2310 # $spec and $sha256 are jq's; its status says whether a record matched
-	if [ -n "${spec_digest}" ] &&
-		find_gate_record "${SPEC_APPROVAL_LABEL}" '.case == "approval" and .spec == $spec and .sha256 == $sha256' "$1" "${spec_digest}"; then
+# spec: --status or --approved.
+spec_command() {
+	if [ "${mode}" = status ]; then
+		print_spec_status
 		return 0
 	fi
-	shown_spec=$(printable "$1")
-	rule_problems="${rule_problems}${PROG}: --path ${shown_spec}: ${NO_SPEC_GATE_TOKEN}: no approval gate record for this draft as it is now; expected the spec approved at its gate (procedure-context references/spec.md)${NL}"
+	draft_problem=$(draft_path_problem)
+	[ -z "${draft_problem}" ] || refuse "--approved ${draft}: ${draft_problem}"
+	file_digest "${draft}"
+	approved_digest=${digest}
+	# shellcheck disable=SC2016,SC2310 # $spec and $sha256 are jq's; its status says whether a record matched
+	find_gate_record "${SPEC_APPROVAL_LABEL}" '.case == "approval" and .spec == $spec and .sha256 == $sha256' "${draft}" "${approved_digest}" ||
+		refuse "${NO_SPEC_GATE_TOKEN}: --approved ${draft}: no ${SPEC_APPROVAL_LABEL} gate record approves this draft as it is now; expected the spec approved at its gate"
+	require_open_effort
+	take_lock
+	read_versions
+	ensure_next_folder
+	make_temp spec.md
+	cat "${draft}" >"${temp_file}" ||
+		die 1 "could not copy ${draft} into the temp file ${temp_file}; expected the copy written; try checking free space, then rerun"
+	file_digest "${temp_file}"
+	[ "${digest}" = "${approved_digest}" ] ||
+		refuse "--approved ${draft}: changed while it was copied; expected the draft as its gate approved it; approve the draft as it is now at its gate"
+	commit_temp "${next_folder}/spec.md"
+	printf 'SPEC_FILE: %s\n' "${next_folder}/spec.md"
+}
+
+# spec --status: prints whether a docs folder holds a spec.md and, when one
+# does, the newest: the one in the folder of the highest version number.
+print_spec_status() {
+	newest_spec='' newest_number=0
+	if [ -d "${docs_root}" ]; then
+		for spec_candidate in "${docs_root}"/v*/spec.md; do
+			[ -f "${spec_candidate}" ] && [ ! -L "${spec_candidate}" ] || continue
+			spec_folder=${spec_candidate%/spec.md}
+			spec_number=${spec_folder##*/v}
+			case ${spec_number} in
+				'' | 0* | *[!0-9]*) continue ;;
+				*) ;;
+			esac
+			[ "${#spec_number}" -le "${context_version_max_digits}" ] || continue
+			[ "${spec_number}" -gt "${newest_number}" ] || continue
+			newest_spec=${spec_candidate} newest_number=${spec_number}
+		done
+	fi
+	if [ -z "${newest_spec}" ]; then
+		printf 'SPEC: none\n'
+		return 0
+	fi
+	printf 'SPEC: approved\nSPEC_FILE: %s\n' "${newest_spec}"
+}
+
+# Prints the problem of the --approved draft, or nothing: a path --path
+# takes, named as a spec draft of this effort, a readable regular file,
+# UTF-8 and under the cap.
+draft_path_problem() {
+	shared_problem=$(context_path_problem "${draft}")
+	if [ -n "${shared_problem}" ]; then
+		printf '%s; expected %s' "${shared_problem}" "${context_path_expected}"
+		return 0
+	fi
+	draft_dir=${draft%/*}
+	# shellcheck disable=SC2310 # pure tests; their status is the answer
+	if ! crucible_split_id "${draft##*/}" || [ "${crucible_name_rest}" != "${SPEC_LABEL}.md" ] ||
+		[ "${draft_dir}" != "${effort_dir}/drafts" ]; then
+		printf 'is not a spec draft of this effort; expected %s/drafts/<ID>-%s.md' "${effort_dir}" "${SPEC_LABEL}"
+		return 0
+	fi
+	if [ -L "${draft}" ] || [ ! -f "${draft}" ] || [ ! -r "${draft}" ]; then
+		printf 'is missing, unreadable, a symlink or not a regular file; expected the draft the approval gate showed'
+		return 0
+	fi
+	# shellcheck disable=SC2310 # it prints the problem; its status only says whether there was one
+	long_text_problem "${draft}" 'the draft' || true
+}
+
+# Prints the problem of text file $1, the agent's $2, against the docs cap
+# and UTF-8, and succeeds; fails, printing nothing, when it fits.
+long_text_problem() {
+	text_bytes=$(wc -c <"$1") ||
+		die 5 "wc could not count the bytes of $1; expected a byte count; try wc -c on it, then rerun"
+	text_bytes=${text_bytes##* }
+	if [ "${text_bytes}" -gt "${context_docs_max_bytes}" ]; then
+		printf '%s is %s bytes; expected at most %s bytes' "$2" "${text_bytes}" "${context_docs_max_bytes}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status is the check result; errexit adds nothing
+	text_is_utf8 "$1" && return 1
+	printf '%s is not valid UTF-8; expected %s as UTF-8' "$2" "$2"
+}
+
+# Succeeds when file $1 reads back unchanged through jq --rawfile, which turns
+# invalid UTF-8 into U+FFFD, so its bytes are valid UTF-8.
+text_is_utf8() {
+	# shellcheck disable=SC2310 # the caller reports a failure; errexit adds nothing
+	compute_context_digest "$1" || return 1
+	utf8_file_digest=${context_digest}
+	# shellcheck disable=SC2016,SC2310 # $text is jq's; the caller reports a failure
+	utf8_text_digest=$(jq -nj --rawfile text "$1" '$text' </dev/null | context_print_stdin_digest) || return 1
+	[ "${utf8_file_digest}" = "${utf8_text_digest}" ]
 }
 
 # Succeeds when a gate record of the effort labelled $1 passes jq test $2,
@@ -1039,11 +1353,215 @@ find_gate_record() {
 	esac
 	while IFS= read -r gate_record; do
 		[ -n "${gate_record}" ] || continue
-		jq -e --arg spec "${3:-}" --arg sha256 "${4:-}" "$2" "${gate_record}" </dev/null >/dev/null 2>&1 && return 0
+		jq -e --arg spec "$3" --arg sha256 "$4" "$2" "${gate_record}" </dev/null >/dev/null 2>&1 && return 0
 	done <<EOF
 ${gate_records}
 EOF
 	return 1
+}
+
+# freeze: --dry-run prints the fingerprint; --expect cuts the version when it
+# matches, under the lock.
+freeze_command() {
+	require_session
+	if [ "${mode}" = dry-run ]; then
+		read_versions
+		build_candidate
+		printf 'FINGERPRINT: %s\n' "${fingerprint}"
+		return 0
+	fi
+	require_open_effort
+	[ -d "${context_dir}" ] || refuse_no_spec
+	take_lock
+	read_versions
+	build_candidate
+	[ "${fingerprint}" = "${expected_fingerprint}" ] ||
+		refuse "${CHANGED_TOKEN}: --expect ${expected_fingerprint}: the context's fingerprint is ${fingerprint} now; expected the inputs as the plan pinned them; take a fresh fingerprint with freeze --dry-run and show the plan again"
+	if [ "${is_nothing_new}" = true ]; then
+		print_version "${latest_path}"
+		return 0
+	fi
+	cut_version
+}
+
+# Exits 3 with the NO-SPEC refusal.
+refuse_no_spec() {
+	refuse "${NO_SPEC_TOKEN}: --effort ${effort_dir}: no docs folder up to v${next_number:-1} holds a spec.md; expected an approved spec (${PROG} spec --approved) before a cut"
+}
+
+# Sets is_nothing_new and fingerprint, and, when something is new,
+# candidate_json, the would-be version; exits 3 on every refusal of the cut.
+build_candidate() {
+	check_latest
+	scan_next_folder
+	load_entries
+	is_nothing_new=false
+	if [ "${next_count}" -eq 0 ] && [ ! -e "${entries_file}" ]; then
+		[ -n "${latest_path}" ] || refuse_no_spec
+		is_nothing_new=true
+		# shellcheck disable=SC2310 # its status is a tool's; a failure exits
+		fingerprint_of "${latest_json}" || die 5 'jq or the sha256 tool failed on the latest version; expected jq 1.6+; try jq --version, then rerun'
+		return 0
+	fi
+	folder_entry='' candidate_spec=''
+	if [ "${next_count}" -gt 0 ]; then
+		folder_entry=${next_folder}
+		[ ! -f "${next_folder}/spec.md" ] || candidate_spec="${next_folder}/spec.md"
+	fi
+	if [ -z "${candidate_spec}" ] && [ -n "${latest_path}" ]; then
+		candidate_spec=$(jq -r '.spec // ""' "${latest_path}" </dev/null) ||
+			die 5 'jq failed reading the latest version; expected jq 1.6+; try jq --version, then rerun'
+	fi
+	[ -n "${candidate_spec}" ] || refuse_no_spec
+	# shellcheck disable=SC2016 # the program is jq's
+	candidate_json=$(jq -n --argjson latest "${latest_json}" --argjson entries "${entries_json}" \
+		--arg folder "${folder_entry}" --arg digest "${next_digest}" --arg folder_why "the effort's docs for v${next_number}" \
+		--arg spec "${candidate_spec}" --arg session_id "${session_id}" "${CANDIDATE_JQ}" </dev/null) ||
+		die 5 'jq failed building the version; expected jq 1.6+; try jq --version, then rerun'
+	check_candidate
+	# shellcheck disable=SC2310 # its status is a tool's; a failure exits
+	fingerprint_of "${candidate_json}" || die 5 'jq or the sha256 tool failed on the would-be version; expected jq 1.6+; try jq --version, then rerun'
+}
+
+# Sets latest_json to the latest version ({} when none), or exits 3 when it
+# fails the read checks: a minted docs folder changed leads with
+# CONTEXT-CHANGED.
+check_latest() {
+	latest_json='{}'
+	[ -n "${latest_path}" ] || return 0
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${latest_path}" ||
+		die 5 'a tool failed reading the latest version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	latest_shown="--effort ${effort_dir}: its latest version v${latest_number} (${latest_path})"
+	case ${context_read_fault} in
+		'') ;;
+		changed) refuse "${CHANGED_TOKEN}: ${latest_shown}: ${context_read_text#"${CHANGED_TOKEN}: "}" ;;
+		no-spec) refuse "${NO_SPEC_TOKEN}: ${latest_shown}: ${context_read_text#"${NO_SPEC_TOKEN}: "}" ;;
+		*) refuse "${latest_shown}: ${context_read_text}" ;;
+	esac
+	latest_json=$(jq -c . "${latest_path}") ||
+		die 5 'jq failed reading the latest version; expected jq 1.6+; try jq --version, then rerun'
+}
+
+# Sets next_count and next_digest for the next version's folder (0 and empty
+# when it holds no file), or exits 3 on a file it may not hold (DOCS-NAME) or
+# its files over the cap (DOCS-SIZE).
+scan_next_folder() {
+	next_count=0 next_digest=''
+	[ -d "${next_folder}" ] || return 0
+	# shellcheck disable=SC2310 # its status is a tool's; a failure exits
+	context_docs_scan "${next_folder}" ||
+		die 5 "a tool failed hashing ${next_folder} (its stderr is above); expected sha256sum or shasum, cat and wc; rerun"
+	[ -z "${context_docs_problem}" ] ||
+		refuse "${DOCS_NAME_TOKEN}: --effort ${effort_dir}: ${next_folder}/${context_docs_problem#"${DOCS_NAME_TOKEN}: "}"
+	[ "${context_docs_bytes}" -le "${context_docs_max_bytes}" ] ||
+		refuse "${DOCS_SIZE_TOKEN}: --effort ${effort_dir}: ${next_folder}: its files are ${context_docs_bytes} bytes; expected at most ${context_docs_max_bytes} bytes: short notes naming their sources"
+	next_count=${context_docs_count}
+	next_digest=${context_docs_digest}
+}
+
+# Exits 3 on what the validator, at the version's final path, and the size
+# cap find in candidate_json.
+check_candidate() {
+	placeholder_path="${context_dir}/${PLACEHOLDER_ID}-v${next_number}.json"
+	candidate_problems=$(printf '%s\n' "${candidate_json}" | jq -rs --arg context_path "${placeholder_path}" -f "${context_validator}") ||
+		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
+	candidate_bytes=$(printf '%s\n' "${candidate_json}" | wc -c) ||
+		die 5 'wc could not count the version bytes; expected a byte count; rerun'
+	candidate_bytes=${candidate_bytes##* }
+	[ "${candidate_bytes}" -le "${context_max_bytes}" ] ||
+		candidate_problems="${candidate_problems}${candidate_problems:+${NL}}the would-be version is ${candidate_bytes} bytes; expected at most ${context_max_bytes} bytes: fewer outside entries"
+	[ -n "${candidate_problems}" ] || return 0
+	while IFS= read -r candidate_problem; do
+		warn "context file: ${candidate_problem}"
+	done <<EOF
+${candidate_problems}
+EOF
+	exit 3
+}
+
+# Sets fingerprint to the sha256 of version JSON $1 as
+# jq -cS 'del(.claude_session_id)' prints it.
+fingerprint_of() {
+	normalized=$(printf '%s\n' "$1" | jq -cS 'del(.claude_session_id)') || return 1
+	# shellcheck disable=SC2310 # the caller reports a failure
+	fingerprint=$(printf '%s\n' "${normalized}" | context_print_stdin_digest) || return 1
+}
+
+# Writes candidate_json as v<next_number> under a fresh ID, makes it and
+# the folder's files read-only, checks it as a reader does, removes the
+# pending entries and prints it. The version appears whole, so a reader never
+# sees a part of it.
+cut_version() {
+	version_id=$(sh "${crucible_script}" id --effort "${effort_dir}" </dev/null) ||
+		die 1 "crucible.sh id failed (its stderr is above); expected a fresh ID; try the fix it names, then rerun"
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_id "${version_id}" ||
+		die 1 "crucible.sh id printed no ID; expected <YYYYMMDDTHHMMSS>-<hex>; try reinstalling the ${CRUCIBLE_SKILL} skill, then rerun"
+	crucible_name_item "${version_id}" "v${next_number}"
+	version_path="${context_dir}/${crucible_item_file_name}"
+	make_temp "v${next_number}"
+	printf '%s\n' "${candidate_json}" >"${temp_file}" ||
+		die 1 "could not write the temp file ${temp_file}; expected the version written; try checking free space, then rerun"
+	lock_folder_files
+	ln "${temp_file}" "${version_path}" 2>/dev/null ||
+		die 1 "ln could not put the version at ${version_path}; expected a new file there; try checking the permissions of ${context_dir}, then rerun"
+	created_file=${version_path}
+	rm -f "${temp_file}"
+	temp_file=''
+	chmod 444 "${version_path}" ||
+		die 1 "chmod could not make ${version_path} read-only; expected mode 0444; try checking its owner, then rerun"
+	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
+	context_read_problem "${version_path}" ||
+		die 5 'a tool failed reading the written version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
+	[ -z "${context_read_fault}" ] ||
+		die 1 "context file ${version_path} fails the read checks as written: ${context_read_text}; expected a version that passes; rerun, and on a second failure reinstall the ${PROCEDURE} skill"
+	rm -f "${entries_file}" ||
+		die 1 "rm could not remove ${entries_file}; expected the entries cut into the version gone; try checking the permissions of ${context_dir}, then rerun"
+	created_file='' locked_files=''
+	[ "${next_count}" -gt 0 ] || [ ! -d "${next_folder}" ] || rmdir "${next_folder}" 2>/dev/null || true
+	print_version "${version_path}"
+}
+
+# Makes every file of the next version's folder read-only, recording each in
+# locked_files so a failing exit gives the write bit back.
+lock_folder_files() {
+	[ "${next_count}" -gt 0 ] || return 0
+	for folder_file in "${next_folder}"/*; do
+		[ -f "${folder_file}" ] || continue
+		chmod 444 "${folder_file}" ||
+			die 1 "chmod could not make ${folder_file} read-only; expected mode 0444; try checking its owner, then rerun"
+		locked_files="${locked_files}${folder_file}${NL}"
+	done
+}
+
+# Prints version file $1's path and sha256.
+print_version() {
+	file_digest "$1"
+	printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "$1" "${digest}"
+}
+
+# latest: prints the latest version and, when a cut would add something, the
+# next version's folder (exit DOCS_EXIT); exits 1 with nothing at all. A name
+# starting with . counts for nothing, as context_docs_scan skips it.
+latest_command() {
+	read_versions
+	check_latest
+	is_pending=false
+	[ ! -e "${entries_file}" ] || is_pending=true
+	if [ -d "${next_folder}" ]; then
+		for next_entry in "${next_folder}"/*; do
+			[ -e "${next_entry}" ] || [ -L "${next_entry}" ] || continue
+			is_pending=true
+			break
+		done
+	fi
+	if [ "${is_pending}" = false ] && [ -z "${latest_path}" ]; then
+		die 1 "${NONE_TOKEN}: --effort ${effort_dir}: no context version, no file in ${next_folder} and nothing pending yet"
+	fi
+	[ "${is_pending}" = false ] || printf 'DOCS_FOLDER: %s\n' "${next_folder}"
+	[ -z "${latest_path}" ] || print_version "${latest_path}"
+	[ "${is_pending}" = false ] || exit "${DOCS_EXIT}"
 }
 
 # Runs git read-only in repo_root with the arguments given. Pathspec magic
@@ -1089,60 +1607,26 @@ find_config_settings_exclude() {
 	esac
 }
 
-# diff: adds a problem when --repo is not an absolute, existing git
-# work-tree root; sets repo_ok=true when it is.
-check_repo_root() {
-	repo_ok=false
+# Prints the problem of --repo, or nothing when it is an absolute, existing
+# git work-tree root.
+repo_root_problem() {
 	case ${repo_root} in
 		/*) ;;
 		*)
-			add_problem --repo "${repo_root}" 'not an absolute path; expected the repository'\''s git work-tree root'
+			printf 'not an absolute path; expected the repository'\''s git work-tree root'
 			return 0
 			;;
 	esac
 	if [ ! -d "${repo_root}" ]; then
-		add_problem --repo "${repo_root}" 'not an existing folder; expected the repository'\''s git work-tree root'
+		printf 'not an existing folder; expected the repository'\''s git work-tree root'
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is git's answer; a failure is reported
 	if ! git_root=$(run_git rev-parse --show-toplevel 2>/dev/null); then
-		add_problem --repo "${repo_root}" 'not in a git work tree; expected the repository'\''s git work-tree root'
+		printf 'not in a git work tree; expected the repository'\''s git work-tree root'
 		return 0
 	fi
-	if [ "${git_root}" != "${repo_root}" ]; then
-		add_problem --repo "${repo_root}" "not the git work-tree root; expected ${git_root}"
-		return 0
-	fi
-	repo_ok=true
-}
-
-# diff: adds a problem when --ref breaks its rule or a part does not resolve
-# to a commit; sets from_sha (empty for a single commit), to_sha and short_sha.
-check_ref() {
-	from_sha='' to_sha='' short_sha=''
-	ref_problem=$(ref_syntax_problem)
-	if [ -n "${ref_problem}" ]; then
-		add_problem --ref "${ref}" "${ref_problem}"
-		return 0
-	fi
-	[ "${repo_ok}" = true ] || return 0
-	case ${ref} in
-		*..*)
-			# shellcheck disable=SC2310 # its status says whether it resolved; a failure is reported
-			resolve_commit "${ref%%..*}" || return 0
-			from_sha=${resolved_sha}
-			# shellcheck disable=SC2310 # its status says whether it resolved; a failure is reported
-			resolve_commit "${ref#*..}" || return 0
-			;;
-		*)
-			# shellcheck disable=SC2310 # its status says whether it resolved; a failure is reported
-			resolve_commit "${ref}" || return 0
-			;;
-	esac
-	to_sha=${resolved_sha}
-	# shellcheck disable=SC2310 # its status is git's; a failure exits
-	short_sha=$(run_git rev-parse --short "${to_sha}") ||
-		die 5 "git rev-parse --short failed in ${repo_root}; expected a short sha; try git --version, then rerun"
+	[ "${git_root}" = "${repo_root}" ] || printf 'not the git work-tree root; expected %s' "${git_root}"
 }
 
 # Prints why --ref breaks its rule, or nothing.
@@ -1158,172 +1642,93 @@ ref_syntax_problem() {
 	esac
 }
 
-# Sets resolved_sha to the full sha of commit $1 in repo_root, or adds a
-# problem and fails.
+# Sets resolved_sha and resolved_short to commit $1 of repo_root, or exits 3.
 resolve_commit() {
 	# shellcheck disable=SC2310 # its status is git's answer; a failure is reported
 	if resolved_sha=$(run_git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null); then
 		case ${resolved_sha} in
 			'' | *[!0-9a-f]*) ;;
-			*) return 0 ;;
+			*)
+				resolved_short=$(run_git rev-parse --short "${resolved_sha}") ||
+					die 5 "git rev-parse --short failed in ${repo_root}; expected a short sha; try git --version, then rerun"
+				return 0
+				;;
 		esac
 	fi
-	add_problem --ref "${ref}" "$1 does not resolve to a commit in ${repo_root}; expected a commit of that repository"
-	return 1
+	refuse "--ref ${ref}: $1 does not resolve to a commit in ${repo_root}; expected a commit of that repository"
 }
 
 # diff: checks the inputs, writes the diff git prints into a temp file,
-# checks it, then writes it into the effort's context/ and prints its path.
-run_diff() {
-	# shellcheck disable=SC2310 # its status says whether the folder passed; it reports its own problem
-	check_effort_option || true
-	check_repo_root
-	check_ref
-	placeholder_diff="${effort_dir}/context/${PLACEHOLDER_ID}-${DIFF_LABEL_PREFIX}${short_sha:-0000000}.json"
-	space_problem=$(context_path_problem "${placeholder_diff}")
-	[ -z "${space_problem}" ] ||
-		add_problem CRUCIBLE_HOME "${space_root}" "${space_problem}; expected ${context_path_expected}${space_source}"
-	exit_on_problems "${rule_problems}"
+# checks it, then moves it into the next version's folder under the lock.
+diff_command() {
+	repo_problem=$(repo_root_problem)
+	[ -z "${repo_problem}" ] || refuse "--repo ${repo_root}: ${repo_problem}"
+	ref_problem=$(ref_syntax_problem)
+	[ -z "${ref_problem}" ] || refuse "--ref ${ref}: ${ref_problem}"
+	from_sha=''
+	case ${ref} in
+		*..*)
+			resolve_commit "${ref%%..*}"
+			from_sha=${resolved_sha} from_short=${resolved_short}
+			resolve_commit "${ref#*..}"
+			patch_name="diff-${from_short}..${resolved_short}.patch"
+			;;
+		*)
+			resolve_commit "${ref}"
+			patch_name="diff-${resolved_short}.patch"
+			;;
+	esac
 	require_open_effort
 	diff_temp=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
-		die 1 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; no file was created; expected a writable temp folder; try setting TMPDIR to one, then rerun"
+		die 1 "mktemp could not create a temp file in \${TMPDIR:-/tmp}; expected a writable temp folder; try setting TMPDIR to one, then rerun"
 	# shellcheck disable=SC2310 # their status is git's; a failure exits
 	if [ -n "${from_sha}" ]; then
-		git_without_sensitive_files diff --no-color --no-ext-diff --no-textconv "${from_sha}..${to_sha}" >"${diff_temp}" ||
-			die 1 "git diff failed in ${repo_root}; its stderr is above; no file was created; expected the range's diff; try the fix git names, then rerun"
+		git_without_sensitive_files diff --no-color --no-ext-diff --no-textconv "${from_sha}..${resolved_sha}" >"${diff_temp}" ||
+			die 1 "git diff failed in ${repo_root}; its stderr is above; expected the range's diff; try the fix git names, then rerun"
 	else
 		# shellcheck disable=SC2310 # its status is git's; a failure exits
-		git_without_sensitive_files show --no-color --no-ext-diff --no-textconv --no-show-signature "${to_sha}" >"${diff_temp}" ||
-			die 1 "git show failed in ${repo_root}; its stderr is above; no file was created; expected the commit's diff; try the fix git names, then rerun"
+		git_without_sensitive_files show --no-color --no-ext-diff --no-textconv --no-show-signature "${resolved_sha}" >"${diff_temp}" ||
+			die 1 "git show failed in ${repo_root}; its stderr is above; expected the commit's diff; try the fix git names, then rerun"
 	fi
-	check_diff_text
-	find_same_diff
-	if [ -n "${same_diff}" ]; then
-		printf 'DIFF_FILE: %s\n' "${same_diff}"
-		return 0
-	fi
-	write_text_item "${DIFF_LABEL_PREFIX}${short_sha}" "${diff_temp}"
-	printf 'DIFF_FILE: %s\n' "${written_path}"
+	[ -s "${diff_temp}" ] || refuse "--ref ${ref}: the diff is empty; expected a commit or range that changes something"
+	# shellcheck disable=SC2310 # it prints the problem; its status only says whether there was one
+	diff_problem=$(long_text_problem "${diff_temp}" 'the diff') || true
+	[ -z "${diff_problem}" ] || refuse "--ref ${ref}: ${diff_problem}"
+	take_lock
+	read_versions
+	ensure_next_folder
+	make_temp "${patch_name}"
+	cat "${diff_temp}" >"${temp_file}" ||
+		die 1 "could not write the temp file ${temp_file}; expected the diff written; try checking free space, then rerun"
+	commit_temp "${next_folder}/${patch_name}"
+	printf 'DIFF_FILE: %s\n' "${next_folder}/${patch_name}"
 }
 
-# Sets same_diff to the effort's diff file of the same short sha whose text is
-# exactly the diff in diff_temp, or to empty, so a rerun writes no second file.
-find_same_diff() {
-	same_diff=''
-	diff_name_rest="${DIFF_LABEL_PREFIX}${short_sha}.json"
-	for diff_candidate in "${effort_dir}/context/"*-"${diff_name_rest}"; do
-		[ -f "${diff_candidate}" ] && [ ! -L "${diff_candidate}" ] || continue
-		# shellcheck disable=SC2310 # a pure test; its status is the answer
-		crucible_split_id "${diff_candidate##*/}" && [ "${crucible_name_rest}" = "${diff_name_rest}" ] || continue
-		# shellcheck disable=SC2016 # $text is jq's
-		jq -e --rawfile text "${diff_temp}" '.text == $text' "${diff_candidate}" </dev/null >/dev/null 2>&1 || continue
-		same_diff=${diff_candidate}
-		return 0
-	done
-}
-
-# latest: checks --effort and the effort's latest version, then prints its
-# path and sha256; exits 1 when the effort has no version yet.
-print_latest_version() {
-	# shellcheck disable=SC2310 # its status says whether the folder passed; it reports its own problem
-	check_effort_option || exit_on_problems "${rule_problems}"
-	context_find_latest_version "${effort_dir}/context"
-	if [ -z "${context_version_latest}" ]; then
-		add_problem --effort "${effort_dir}" "no context version yet; expected v1 from ${PROG} new first"
-		printf '%s' "${rule_problems}" >&2
-		exit 1
-	fi
-	latest_path=${context_version_latest}
-	latest_problem=$(version_file_problem "${latest_path}")
-	if [ -n "${latest_problem}" ]; then
-		shown_latest=$(printable "${latest_path}")
-		add_problem --effort "${effort_dir}" "its latest version v${context_version_latest_number} (${shown_latest}) ${latest_problem}"
-		exit_on_problems "${rule_problems}"
-	fi
-	# shellcheck disable=SC2310 # its status is the tool's; a failure exits
-	compute_context_digest "${latest_path}" ||
-		die 5 "${context_digest_tool} could not hash ${latest_path}; expected its sha256; try ${context_digest_tool} on it, then rerun"
-	printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "${latest_path}" "${context_digest}"
-}
-
-# Exits 3 when the diff in diff_temp is empty, over the cap or not UTF-8.
-check_diff_text() {
-	if [ ! -s "${diff_temp}" ]; then
-		add_problem --ref "${ref}" 'the diff is empty; expected a commit or range that changes something'
-	else
-		diff_status=0
-		# shellcheck disable=SC2310 # its status: 0 a problem printed, 1 none, else a fault that has printed its cause
-		diff_problem=$(long_text_problem "${diff_temp}" 'the diff') || diff_status=$?
-		case ${diff_status} in
-			0) add_problem --ref "${ref}" "${diff_problem}" ;;
-			1) ;;
-			*) exit "${diff_status}" ;;
-		esac
-	fi
-	exit_on_problems "${rule_problems}"
-}
-
-temp_file='' diff_temp='' created_files='' tools_checked='' session_id=''
+command='' mode='' effort_dir='' entry_kind='' entry_value='' entry_why='' docs_of='' docs_of_file='' draft='' expected_fingerprint=''
+repo_root='' ref='' seen_options='' tools_checked='' session_id=''
+temp_file='' diff_temp='' created_file='' locked_files='' lock_dir=''
 trap clean_up EXIT
-# A signal exits through the EXIT trap, so the temp files and the files this
-# run made go on every path.
+# A signal exits through the EXIT trap, so the temp files, the version this
+# run made and the lock go on every path.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-[ "$#" -gt 0 ] || {
-	usage >&2
-	exit 2
-}
-case $1 in
-	--help | -h)
-		usage
-		exit 0
-		;;
-	new | extend | diff | latest) command=$1 ;;
-	*)
-		shown_command=$(printable "$1")
-		usage_error "unknown command: ${shown_command}; expected new, extend, diff, latest or --help"
-		;;
-esac
-shift
-effort_dir='' version_path='' repo_root='' ref='' seen_options='' rule_problems='' validator_problems=''
-awaited_option='' entry_kind='' entry_value='' entry_why='' first_retire=''
-note_count=0 text_file_count=0 retire_count=0
-# Each completed entry is appended to the positional parameters as a triple
-# (kind, value, why); "for" walks the original arguments only, which are
-# shifted away after the loop.
-argument_count=$#
-for argument do
-	if [ -z "${awaited_option}" ]; then
-		take_option "${argument}"
-		continue
-	fi
-	take_value "${awaited_option}" "${argument}"
-	awaited_option=''
-	[ "${is_entry_complete}" = true ] || continue
-	set -- "$@" "${entry_kind}" "${entry_value}" "${entry_why}"
-	entry_kind='' entry_value='' entry_why=''
-done
-finish_parse
-shift "${argument_count}"
-
+parse_args "$@"
 require_tools
 load_dependencies
-[ "${command}" = latest ] || require_session
-resolve_space_root
+resolve_effort
 case ${command} in
-	new)
-		check_new_effort
-		next_number=1
-		base_json=${EMPTY_BASE}
-		write_version "$@"
+	docs) docs_command ;;
+	add | drop)
+		if [ -n "${docs_of}${docs_of_file}" ]; then
+			docs_of_command
+		else
+			entry_command
+		fi
 		;;
-	extend)
-		check_from_version "$@"
-		check_extend_rules "$@"
-		write_version "$@"
-		;;
-	latest) print_latest_version ;;
-	*) run_diff ;;
+	spec) spec_command ;;
+	freeze) freeze_command ;;
+	latest) latest_command ;;
+	*) diff_command ;;
 esac
