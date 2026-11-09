@@ -2,8 +2,9 @@
 # Prints the human's compact card for one developer commit the stop hook made
 # in a worktree. Everything comes from the commit: the subject gives the kind,
 # the trailers the count, the seat, the plugins and the report's path, the
-# committed report its counts and gates, and the commit's diff the files.
-# card.jq lays it out with human-view.
+# committed report its counts and gates, and the commit's diff the files;
+# its signature and the branch's upstream say whether it is signed and
+# pushed, as the effort's settings ask. card.jq lays it out with human-view.
 # Read-only on the repo: no git command here takes the index lock or writes it.
 set -eu
 umask 077
@@ -13,6 +14,10 @@ readonly MODULE='card'
 readonly VIEW_LIB='human-view'
 # Its seats.jq holds the one seat-name check.
 readonly SEATS_LIB='procedure-git-worktree/scripts/seats'
+readonly SETTINGS='procedure-git-setup/scripts/settings.sh'
+# A worktree <effort>/worktrees/<letter> belongs to the effort folder.
+readonly WORKTREES_FOLDER='worktrees'
+readonly FAULTS='stop-hook-faults.log'
 # Every seat's own folder, its report included, lies in this folder of the
 # worktree; the files the card counts are those outside it.
 readonly SEATS_FOLDER='.crucible/seats'
@@ -32,7 +37,8 @@ readonly CARD_JQ='include "card";
 | input
 | card({language: $names[0], frameworks: $names[1:] | map(select(. != ""))};
 	{total: $total, new: $new};
-	{seat: $seat, count: "\($count_label) \($count)", short: $short, report_path: $report_path})'
+	{seat: $seat, count: "\($count_label) \($count)", short: $short, report_path: $report_path,
+	 warnings: ($warnings | split("\n") | map(select(. != "")))})'
 
 # Prints a plugin SKILL.md's metadata.label by flow-code-agent-dispatch's
 # list-plugins.sh rules: the frontmatter opens on line 1 and is closed by
@@ -74,9 +80,16 @@ The report is the file the commit's Report: trailer names, in the commit.
                   commit whose Report: trailer names a file in
                   ${SEATS_FOLDER}/<its Agent-Seat>/
 --skills-dir DIR  absolute; default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
-                  holds ${VIEW_LIB}, procedure-git-worktree (its seats.jq) and
-                  each plugin, whose metadata.label titles the card (the
-                  plugin name when it has none)
+                  holds ${VIEW_LIB}, procedure-git-worktree (its seats.jq),
+                  ${SETTINGS%%/*} (its settings.sh) and each plugin, whose
+                  metadata.label titles the card (the plugin name when it
+                  has none)
+
+Two warning lines, read from git, only when needed: "commit not signed"
+when settings.sh get --effort <the worktree's effort folder> names a
+signing key and the commit has no signature; "not pushed to <remote>"
+when it says AUTO_PUSH=yes and the worktree branch's upstream lacks the
+commit. Without the effort's settings neither shows and stderr says why.
 
 last line: **Developer report:** the short sha and the report's path: the
 worktree's file when it still holds the committed report, else a new temp
@@ -90,8 +103,9 @@ exit codes:
      commit, has no single valid count, Agent-Seat or Report: trailer, or
      its report is missing or not one JSON object; one stderr line
   4  environment: git or jq missing or failed, ${MODULE}.jq not beside
-     ${PROG}, ${VIEW_LIB} or ${SEATS_LIB}/seats.jq not in the
-     skills dir, or the temp file failed
+     ${PROG}, ${VIEW_LIB}, ${SEATS_LIB}/seats.jq or
+     ${SETTINGS} not in the skills dir, or the temp file
+     failed
 
 needs: POSIX sh, awk, git 2.26+, jq 1.6+
 EOF
@@ -204,6 +218,11 @@ load_dependencies() {
 	[ -f "${seats_dir}/seats.jq" ] || {
 		shown_seats_dir=$(printable "${seats_dir}")
 		die 4 "seats.jq not found in ${shown_seats_dir}; install procedure-git-worktree or pass --skills-dir"
+	}
+	settings_script="${skills_dir%/}/${SETTINGS}"
+	[ -f "${settings_script}" ] || {
+		shown_settings=$(printable "${settings_script}")
+		die 4 "settings.sh not found at ${shown_settings}; install ${SETTINGS%%/*} or pass --skills-dir"
 	}
 }
 
@@ -357,12 +376,59 @@ plugin_label() {
 	printf '%s' "${label:-$1}" | tr '[:cntrl:]' ' '
 }
 
+# Sets warnings: one line per thing gone wrong that the effort's settings
+# ask for, read from git; none, with a stderr line, when they can't be read.
+read_warnings() {
+	warnings=''
+	read_settings
+	[ "${settings_found}" = yes ] || return 0
+	# The commit's own signature header, not %G?: that says N for an ssh
+	# signature whenever no allowed-signers file is configured.
+	if [ -n "${signing_key}" ]; then
+		signature_lines=$(git -c core.fsmonitor=false cat-file commit "${sha}" | sed -n '1,/^$/p' | grep -c '^gpgsig' || :)
+		[ "${signature_lines}" -gt 0 ] || warnings="⚠️ commit not signed (see ${FAULTS})"
+	fi
+	[ "${auto_push}" = yes ] || return 0
+	upstream=$(git -c core.fsmonitor=false rev-parse --verify --quiet '@{upstream}' 2>/dev/null) || upstream=''
+	if [ -z "${upstream}" ] || ! git -c core.fsmonitor=false merge-base --is-ancestor "${sha}" "${upstream}" 2>/dev/null; then
+		warnings="${warnings}${newline}⚠️ not pushed to ${remote} (see ${FAULTS})"
+	fi
+}
+
+# Sets signing_key, auto_push and remote from settings.sh get for the
+# effort folder above the worktree, and settings_found; says why on stderr
+# when there are none.
+read_settings() {
+	settings_found=no
+	worktrees_dir=${worktree_root%/*}
+	if [ "${worktrees_dir##*/}" != "${WORKTREES_FOLDER}" ]; then
+		warn "--worktree ${shown_worktree} is not in an effort's ${WORKTREES_FOLDER} folder; the card does not say whether the commit is signed or pushed"
+		return 0
+	fi
+	settings=$(sh "${settings_script}" get --effort "${worktrees_dir%/*}" 2>/dev/null) || {
+		warn "settings.sh get found no git setup for the worktree's effort; the card does not say whether the commit is signed or pushed"
+		return 0
+	}
+	settings_found=yes
+	signing_key='' auto_push='' remote=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			SIGNING_KEY=*) signing_key=${setting#SIGNING_KEY=} ;;
+			AUTO_PUSH=*) auto_push=${setting#AUTO_PUSH=} ;;
+			REMOTE=*) remote=$(printable "${setting#REMOTE=}") ;;
+			*) ;;
+		esac
+	done <<EOF
+${settings}
+EOF
+}
+
 print_card() {
 	short=$(printf '%s' "${sha}" | cut -c "1-${SHORT_SHA_LENGTH}")
 	printf '%s' "${report_text}" | jq -nr -L "${own_dir}" -L "${view_dir}" \
 		--arg labels "${labels}" --argjson total "${files_total}" --argjson new "${files_new}" \
 		--arg seat "${seat}" --arg count_label "${count_label}" --arg count "${count}" \
-		--arg short "${short}" --arg report_path "${report_path}" \
+		--arg short "${short}" --arg report_path "${report_path}" --arg warnings "${warnings}" \
 		"${CARD_JQ}" || die 4 "jq could not render the card; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and ${VIEW_LIB} in the skills dir"
 }
 
@@ -374,4 +440,5 @@ read_report
 count_files
 read_labels
 place_report
+read_warnings
 print_card

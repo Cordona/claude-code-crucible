@@ -8,8 +8,6 @@ umask 077
 
 readonly PROG='effort-commits.sh'
 readonly SNAPSHOT_MESSAGE='crucible(snapshot): uncommitted changes'
-readonly SNAPSHOT_AUTHOR='crucible'
-readonly SNAPSHOT_EMAIL='crucible@crucible.invalid'
 readonly EFFORT_TRAILER='Effort'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
@@ -23,19 +21,22 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --repo DIR --effort-id ID --from SHA --to SHA
+usage: sh ${PROG} --repo DIR --effort-id ID --identity-name N
+          --identity-email E --from SHA --to SHA
        sh ${PROG} --help | -h
 
 Checks that --to holds only effort work on top of --from: --from is --to
 or an ancestor of it, and every commit of from..to carries the trailer
 "${EFFORT_TRAILER}: ID" or is a snapshot commit (subject "${SNAPSHOT_MESSAGE}",
-author ${SNAPSHOT_AUTHOR} <${SNAPSHOT_EMAIL}>, one parent: --from).
-Several snapshots must share one tree. Reads only.
+author the identity, one parent: --from). Several snapshots must share
+one tree. Reads only.
 
---repo DIR      absolute path of a folder of the repository
---effort-id ID  the effort id the commits' ${EFFORT_TRAILER} trailer holds
---from SHA      the commit the effort work must start on
---to SHA        the commit to check
+--repo DIR          absolute path of a folder of the repository
+--effort-id ID      the effort id the commits' ${EFFORT_TRAILER} trailer holds
+--identity-name N   the effort's identity, snapshot.sh's author
+--identity-email E  (settings.sh get's NAME and EMAIL)
+--from SHA          the commit the effort work must start on
+--to SHA            the commit to check
 
 stdout, one JSON line:
   {"ok":true,"from":<sha>,"start":<sha>,"commits":N}
@@ -49,8 +50,8 @@ exit codes:
   0  the range is the effort's work
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a value that is not absolute, no commit in DIR or a bad
-     effort id
+  3  input: a value that is not absolute, no commit in DIR, or a bad
+     effort id or identity
   4  environment: git or jq missing or failed
   5  refused: the range holds other work
 
@@ -86,7 +87,7 @@ take_value() {
 }
 
 parse_args() {
-	repo='' effort_id='' from='' to=''
+	repo='' effort_id='' identity_name='' identity_email='' from='' to=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -101,6 +102,14 @@ parse_args() {
 				take_value "$1" "${effort_id}" "${2-}" ID
 				effort_id=${option_value}
 				;;
+			--identity-name)
+				take_value "$1" "${identity_name}" "${2-}" N
+				identity_name=${option_value}
+				;;
+			--identity-email)
+				take_value "$1" "${identity_email}" "${2-}" E
+				identity_email=${option_value}
+				;;
 			--from)
 				take_value "$1" "${from}" "${2-}" SHA
 				from=${option_value}
@@ -111,13 +120,15 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --repo, --effort-id, --from, --to or --help"
+				usage_error "unknown option: ${shown_option}; expected --repo, --effort-id, --identity-name, --identity-email, --from, --to or --help"
 				;;
 		esac
 		shift 2
 	done
 	[ -n "${repo}" ] || usage_error '--repo missing; expected --repo DIR'
 	[ -n "${effort_id}" ] || usage_error '--effort-id missing; expected --effort-id ID'
+	[ -n "${identity_name}" ] || usage_error '--identity-name missing; expected --identity-name N'
+	[ -n "${identity_email}" ] || usage_error '--identity-email missing; expected --identity-email E'
 	[ -n "${from}" ] || usage_error '--from missing; expected --from SHA'
 	[ -n "${to}" ] || usage_error '--to missing; expected --to SHA'
 }
@@ -141,6 +152,10 @@ check_inputs() {
 			shown_id=$(printable "${effort_id}")
 			die 3 "--effort-id ${shown_id} holds a control character; expected the effort id"
 			;;
+		*) ;;
+	esac
+	case ${identity_name}${identity_email} in
+		*[[:cntrl:]]*) die 3 '--identity-name or --identity-email holds a control character; expected one line each' ;;
 		*) ;;
 	esac
 	resolve --from "${from}"
@@ -188,7 +203,7 @@ read_range() {
 judge_range() {
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	verdict=$(jq -c --arg effort "${effort_id}" --arg from "${from_sha}" --arg message "${SNAPSHOT_MESSAGE}" \
-		--arg name "${SNAPSHOT_AUTHOR}" --arg email "${SNAPSHOT_EMAIL}" '
+		--arg name "${identity_name}" --arg email "${identity_email}" '
 		def snapshot: .subject == $message and .name == $name and .email == $email and .parents == [$from];
 		reduce .[] as $commit ({commits: length, snapshot: null, refusal: null};
 			if .refusal != null then .

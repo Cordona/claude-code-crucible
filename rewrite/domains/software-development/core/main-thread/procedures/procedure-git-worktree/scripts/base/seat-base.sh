@@ -11,11 +11,11 @@ readonly PROG='seat-base.sh'
 readonly tab='	'
 readonly EFFORT_TRAILER='Effort'
 readonly SNAPSHOT_MESSAGE='crucible(snapshot): uncommitted changes'
-readonly SNAPSHOT_AUTHOR='crucible'
-readonly SNAPSHOT_EMAIL='crucible@crucible.invalid'
 readonly VIEW_LIB='human-view'
 # The line shows this many characters of the base's sha.
 readonly SHORT_SHA_LENGTH=7
+# From this folder to the effort settings' reader.
+readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -43,12 +43,16 @@ Prints the base for ../seats/seats.sh choose's --base and --base-seat.
                 developer seat of --repo whose HEAD is neither its base
                 nor in the checkout's HEAD is listed in unmerged
 --snapshot SHA  snapshot.sh's commit of the checkout (its subject
-                "${SNAPSHOT_MESSAGE}", author ${SNAPSHOT_AUTHOR}
-                <${SNAPSHOT_EMAIL}>, one parent: HEAD); --independent only
+                "${SNAPSHOT_MESSAGE}", author the identity
+                settings.sh get --effort DIR prints, one parent: HEAD);
+                --independent only
 --on S          an idle developer seat of --repo; repeatable, each once.
                 base: the one seat's HEAD, or ../merge/tips-merge.sh's
                 merge of every seat's HEAD (message "crucible(merge): S +
-                S", trailer ${EFFORT_TRAILER}: seats.json's effort)
+                S", trailer ${EFFORT_TRAILER}: seats.json's effort) as the
+                identity settings.sh get --effort DIR prints, signed with
+                its key when it has one, tips-merge.sh's UNSIGNED: line
+                passing through
 
 stdout, one JSON line:
   {"base":<sha>,"base_seats":[S...],"unmerged":[S...],"line":L}
@@ -65,14 +69,17 @@ exit codes:
      value, --independent with --on or neither, or --snapshot with --on
   3  input: a bad option value, --seat also given as --on, an --on seat
      not in seats.json, seats.json does not fit (seats.sh's own lines
-     first), or --snapshot is no snapshot of HEAD
+     first), --snapshot is no snapshot of HEAD, or a snapshot or a merge
+     is given or needed and the effort has no git setup (settings.sh's
+     own line first)
   4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed
   5  refused by state, no file or ref written: an --on seat is no developer,
      of another repo, chosen (no worktree yet) or not idle, or the HEADs
      conflict (tips-merge.sh's line)
 
 needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq and
-../merge/tips-merge.sh from this script's folder; ${VIEW_LIB}'s title.jq in
+../merge/tips-merge.sh from this script's folder; procedure-git-setup's
+settings.sh beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -207,7 +214,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh; do
+	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -242,11 +249,13 @@ check_inputs() {
 		die 3 "--repo ${shown_repo} has no HEAD commit; expected a main checkout on a commit"
 }
 
-# Refuses a --snapshot that is not snapshot.sh's commit on HEAD; sets base.
+# Refuses a --snapshot that is not snapshot.sh's commit on HEAD by the
+# effort's identity; sets base.
 check_snapshot() {
 	shown_snapshot=$(printable "${snapshot}")
 	base=$(git -C "${repo_dir}" -c core.fsmonitor=false rev-parse --verify --quiet --end-of-options "${snapshot}^{commit}" 2>/dev/null) ||
 		die 3 "--snapshot ${shown_snapshot} is not a commit in ${shown_repo}; expected snapshot.sh's sha"
+	read_identity
 	snapshot_info=$(git -C "${repo_dir}" -c core.fsmonitor=false log -1 --no-show-signature --format='%an%n%ae%n%P%n%s' "${base}" -- \
 		2>"${work_dir}/stderr") || git_failed "git log of the snapshot ${base}"
 	snapshot_name='' snapshot_email='' snapshot_parents='' snapshot_subject=''
@@ -258,9 +267,9 @@ check_snapshot() {
 	} <<EOF
 ${snapshot_info}
 EOF
-	[ "${snapshot_subject}" = "${SNAPSHOT_MESSAGE}" ] && [ "${snapshot_name}" = "${SNAPSHOT_AUTHOR}" ] &&
-		[ "${snapshot_email}" = "${SNAPSHOT_EMAIL}" ] && [ "${snapshot_parents}" = "${head}" ] ||
-		die 3 "--snapshot ${base} is not a snapshot of HEAD ${head}; expected snapshot.sh's sha for --repo"
+	[ "${snapshot_subject}" = "${SNAPSHOT_MESSAGE}" ] && [ "${snapshot_name}" = "${identity_name}" ] &&
+		[ "${snapshot_email}" = "${identity_email}" ] && [ "${snapshot_parents}" = "${head}" ] ||
+		die 3 "--snapshot ${base} is not a snapshot of HEAD ${head} by the effort's identity; expected snapshot.sh's sha for --repo, made with settings.sh get's NAME and EMAIL"
 }
 
 # Writes work_dir/unmerged, one seat per idle developer seat of the repo
@@ -405,6 +414,9 @@ EOF
 	merge_message="${work_dir}/merge-message"
 	printf 'crucible(merge): %s\n\n%s: %s\n' "${joined_seats}" "${EFFORT_TRAILER}" "${effort_id}" >"${merge_message}" ||
 		die 4 'could not write the merge message in the work folder'
+	read_identity
+	set -- "$@" --identity-name "${identity_name}" --identity-email "${identity_email}"
+	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
 	step_rc=0
 	step_out=$(sh "${own_dir}/../merge/tips-merge.sh" --repo "${repo_dir}" "$@" --message-file "${merge_message}") || step_rc=$?
 	case ${step_rc} in
@@ -414,6 +426,32 @@ EOF
 		*) die 4 "tips-merge.sh failed (exit ${step_rc})" ;;
 	esac
 	base=$(printf '%s\n' "${step_out}" | jq -r '.commit') || die 4 'jq could not read what tips-merge.sh printed'
+}
+
+# Sets the identity_* and signing_* variables from settings.sh get for the
+# effort; its own lines say why it refused.
+read_identity() {
+	settings_rc=0
+	settings_out=$(sh "${own_dir}/${SETTINGS}" get --effort "${effort_dir}") || settings_rc=$?
+	case ${settings_rc} in
+		0) ;;
+		3 | 5) die 3 "settings.sh get refused the effort (exit ${settings_rc}); expected its git setup" ;;
+		*) die 4 "settings.sh get failed (exit ${settings_rc})" ;;
+	esac
+	identity_name='' identity_email='' signing_format='' signing_key=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			NAME=*) identity_name=${setting#NAME=} ;;
+			EMAIL=*) identity_email=${setting#EMAIL=} ;;
+			SIGNING_FORMAT=*) signing_format=${setting#SIGNING_FORMAT=} ;;
+			SIGNING_KEY=*) signing_key=${setting#SIGNING_KEY=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${settings_out}
+EOF
+	[ -n "${identity_name}" ] && [ -n "${identity_email}" ] ||
+		die 4 'settings.sh get printed no NAME or EMAIL line; expected both'
 }
 
 # Sets effort_id from seats.json's effort, the value of the seats' Effort

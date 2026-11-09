@@ -52,7 +52,7 @@ $dirty | rtrimstr("\n") | split("\n") | map(split("\t"))
 	| {question: "\($name) has uncommitted changes: \([counted($staged; "staged"), counted($unstaged; "unstaged"), counted($untracked; "untracked")] | join(", ")). Where should its developers start?",
 	   header: ($name | header_of($header_max)),
 	   options: [
-		{label: "Include my changes (Recommended)", description: "They start from your last commit plus these changes, taken as a snapshot. Your checkout is not touched."},
+		{label: "Include my changes (Recommended)", description: "They start from your last commit plus these changes, taken as a snapshot. Your checkout is not touched; with auto-push on, these changes are pushed to the remote with the seat'\''s first commit."},
 		{label: "Last commit only", description: "They start from your last commit. Your uncommitted changes stay out of their worktrees."},
 		{label: "Stop", description: "Nothing is dispatched for this repository."}],
 	   multiSelect: false})}'

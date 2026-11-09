@@ -187,6 +187,8 @@ stdout on exit 0, in order:
   TITLE: <title>  the agent's title, relayed as printed
 stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
+stderr on exit 0: may hold seed-commit.sh's "UNSIGNED: <reason>" line as
+  it printed it; the dispatch was committed unsigned
 
 Writes only the dispatch file, whole, in the seat's folder of its worktree
 (made if missing), then commits it on the seat's worktree with

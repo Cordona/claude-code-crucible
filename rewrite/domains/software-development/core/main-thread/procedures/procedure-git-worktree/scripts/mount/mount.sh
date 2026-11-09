@@ -14,6 +14,8 @@ umask 077
 readonly PROG='mount.sh'
 readonly EFFORT_TRAILER='Effort'
 readonly VIEW_LIB='human-view'
+# From this folder to the effort settings' reader.
+readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 # The C locale keeps the shell, sed and awk byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -36,7 +38,8 @@ working tree: the diff from the start to the target, .crucible/seats left
 out. The target is the one seat's HEAD, or ../merge/tips-merge.sh's merge
 of every seat's HEAD; effort-commits.sh proves every commit from HEAD to
 the target is the effort's (seats.json's effort) and gives the start: HEAD,
-or the snapshot the seats were cut from. Never touches the index, a ref, a
+or the snapshot the seats were cut from, by the identity settings.sh get
+--effort DIR prints. Never touches the index, a ref, a
 seat's worktree or a path outside the patch. A success leaves
 crucible/mount.json (version 2), crucible/mount.patch and crucible/before/
 (raw copies of the files the patch replaced or deleted) in the checkout's
@@ -44,8 +47,9 @@ git folder; a refusal writes no file, index or ref (tips-merge.sh may
 leave git objects); a failed check after applying reverses the patch.
 
 --effort DIR  absolute path of the effort folder (it holds seats.json)
---seat S      a developer seat, status idle, clean worktree; repeatable,
-              each once; every seat of one repo
+--seat S      a developer seat, status idle, clean worktree (changes to
+              its own fault logs, ../worktree/uncommitted.jq's, aside);
+              repeatable, each once; every seat of one repo
 
 A finished mount's record (HEAD moved and holds every mounted path, as
 mount-status.sh says) is removed first, with one stderr line.
@@ -72,15 +76,17 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: a bad option value, seats.json or a seat does not fit
-     (seats.sh's own lines first), or the record is unreadable
+     (seats.sh's own lines first), the record is unreadable, or the
+     effort has no git setup (settings.sh's own line first)
   4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, a
      write failed, or the applied paths did not verify (the patch was
      reversed)
   5  refused by state; no file, index or ref is written
 
 needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq,
-../merge/tips-merge.sh, effort-commits.sh and mount-lib.sh from this
-script's folder; ${VIEW_LIB}'s title.jq in
+../merge/tips-merge.sh, ../worktree/uncommitted.jq, effort-commits.sh and
+mount-lib.sh from this script's folder; procedure-git-setup's settings.sh
+beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -151,7 +157,8 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh effort-commits.sh mount-lib.sh; do
+	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh ../worktree/uncommitted.jq \
+		effort-commits.sh mount-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -300,20 +307,19 @@ check_seat_repo() {
 	refuse "seat ${shown_seat}'s repo ${shown_seat_repo} is not the other seats' repo ${shown_repo}; expected seats of one repo"
 }
 
-# Lists at most MAX_LISTED of the seat worktree's uncommitted paths; a
-# rename's source path is skipped.
+# Lists at most MAX_LISTED of the seat worktree's uncommitted paths, as
+# uncommitted.jq gives them.
 check_seat_clean() {
 	[ "${mountable}" = yes ] || return 0
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all >"${work_dir}/seat-status" 2>"${work_dir}/stderr" ||
 		git_failed "git status in the seat's worktree"
-	[ -s "${work_dir}/seat-status" ] || return 0
-	jq -Rsr --argjson max "${MAX_LISTED}" '[split("\u0000")[] | select(. != "")]
-		| reduce .[] as $entry ({paths: [], source_next: false};
-			if .source_next then .source_next = false
-			else .paths += [$entry[3:]] | .source_next = ($entry[0:2] | test("[RC]")) end)
-		| .paths | (.[:$max][] | gsub("[\u0000-\u001f\u007f]"; "?")), (length - $max | select(. > 0) | "... and \(.) more")' \
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+	jq -Rsr -L "${own_dir}/../worktree" --arg seat "${seat}" --argjson max "${MAX_LISTED}" 'include "uncommitted";
+		[uncommitted_paths($seat)]
+		| (.[:$max][] | gsub("[\u0000-\u001f\u007f]"; "?")), (length - $max | select(. > 0) | "... and \(.) more")' \
 		"${work_dir}/seat-status" >"${work_dir}/seat-dirty" 2>"${work_dir}/stderr" ||
 		git_failed "jq reading the seat's status"
+	[ -s "${work_dir}/seat-dirty" ] || return 0
 	refuse "seat ${shown_seat}'s worktree ${shown_worktree} has uncommitted changes: the last stop did not commit; expected a clean worktree"
 	while IFS= read -r dirty_path; do
 		warn "  ${dirty_path}"
@@ -384,7 +390,9 @@ find_target() {
 # Sets start (HEAD, or the snapshot the seats were cut from) and
 # start_is_snapshot from effort-commits.sh; its line is the refusal.
 check_range() {
-	run_step effort-commits.sh --repo "${checkout_dir}" --effort-id "${effort_id}" --from "${head}" --to "${target}"
+	read_identity
+	run_step effort-commits.sh --repo "${checkout_dir}" --effort-id "${effort_id}" \
+		--identity-name "${identity_name}" --identity-email "${identity_email}" --from "${head}" --to "${target}"
 	case ${step_rc} in
 		0) start=$(printf '%s\n' "${step_out}" | jq -r '.start') || die 4 'jq could not read what effort-commits.sh printed' ;;
 		5) problems=$((problems + 1)) ;;
@@ -392,6 +400,31 @@ check_range() {
 	esac
 	start_is_snapshot=false
 	[ -z "${start}" ] || [ "${start}" = "${head}" ] || start_is_snapshot=true
+}
+
+# Sets identity_name and identity_email from settings.sh get for the effort,
+# the author of the snapshot the seats may be cut from; its own lines say
+# why it refused.
+read_identity() {
+	settings_rc=0
+	settings_out=$(sh "${own_dir}/${SETTINGS}" get --effort "${effort_dir}") || settings_rc=$?
+	case ${settings_rc} in
+		0) ;;
+		3 | 5) die 3 "settings.sh get refused the effort (exit ${settings_rc}); expected its git setup" ;;
+		*) die 4 "settings.sh get failed (exit ${settings_rc})" ;;
+	esac
+	identity_name='' identity_email=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			NAME=*) identity_name=${setting#NAME=} ;;
+			EMAIL=*) identity_email=${setting#EMAIL=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${settings_out}
+EOF
+	[ -n "${identity_name}" ] && [ -n "${identity_email}" ] ||
+		die 4 'settings.sh get printed no NAME or EMAIL line; expected both'
 }
 
 # Runs neighbour $1, a path from this script's folder, with the rest as

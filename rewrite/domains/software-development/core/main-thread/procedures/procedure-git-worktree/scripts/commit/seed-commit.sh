@@ -1,15 +1,16 @@
 #!/usr/bin/env sh
 # Commits a seat's freshly written dispatch file, alone, on the seat's
 # worktree before its agent launches, so the history shows what each agent
-# was given. It checks the seat and the path, then only runs
-# commit-message.sh and commit.sh.
+# was given. It checks the seat and the path, reads the effort's identity
+# with procedure-git-setup's settings.sh, then only runs commit-message.sh
+# and commit.sh.
 set -eu
 umask 077
 
 readonly PROG='seed-commit.sh'
 readonly SEATS_DIR='.crucible/seats'
-readonly AUTHOR_NAME='main-thread'
-readonly AUTHOR_EMAIL='main-thread@crucible.invalid'
+# From this folder to the effort settings' reader.
+readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 # The C locale keeps the shell byte-wise; jq writes the JSON as UTF-8.
 LC_ALL=C
 export LC_ALL
@@ -25,8 +26,9 @@ usage: sh ${PROG} --seats FILE --seat S --dispatch FILE
        sh ${PROG} --help | -h
 
 Commits exactly --dispatch, and nothing else, on seat S's worktree, through
-commit-message.sh and commit.sh: author ${AUTHOR_NAME} <${AUTHOR_EMAIL}>,
-the committer commit.sh sets, the message
+commit-message.sh and commit.sh: author and committer the identity that
+settings.sh get --effort <the folder of --seats> prints, signed with its key
+when it has one (commit.sh's UNSIGNED: line passes through), the message
 
   crucible(dispatch): seat <S>[, handover]
 
@@ -50,16 +52,18 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: no such seat, no worktree, the path outside the seat folder,
-     the file missing or already committed, or commit-message.sh or
-     commit.sh refused its input (their own stderr lines first)
-  4  environment: git or jq missing, or seats.sh, commit-message.sh or
-     commit.sh missing or failed otherwise, a commit.sh exit 7 with the
+     the file missing or already committed, no git setup for the effort,
+     or settings.sh, commit-message.sh or commit.sh refused its input
+     (their own stderr lines first)
+  4  environment: git or jq missing, or seats.sh, settings.sh,
+     commit-message.sh or commit.sh missing or failed otherwise, a commit.sh exit 7 with the
      worktree's HEAD unmoved included; nothing was committed
   5  commit.sh made a commit it could not verify (its exit 7, HEAD moved):
      the commit stays, SEED names the worktree's HEAD and stderr says so
 
-needs: POSIX sh, git 2.26+, jq 1.6+; ../seats/seats.sh, commit-message.sh and
-commit.sh from this script's folder
+needs: POSIX sh, git 2.26+, jq 1.6+; ../seats/seats.sh, commit-message.sh
+and commit.sh from this script's folder; procedure-git-setup's settings.sh
+beside procedure-git-worktree
 EOF
 }
 
@@ -134,7 +138,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh commit-message.sh commit.sh; do
+	for neighbour in ../seats/seats.sh commit-message.sh commit.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -169,6 +173,34 @@ EOF
 	shown_worktree=$(printable "${worktree}")
 	real_worktree=$(cd -P -- "${worktree}" 2>/dev/null && pwd -P) ||
 		die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected the seat opened"
+}
+
+# Sets the identity_* variables from settings.sh get for the effort folder
+# holding --seats; its own lines say why it refused.
+read_identity() {
+	effort_dir=$(cd -P -- "${seats_file%/*}" 2>/dev/null && pwd -P) ||
+		die 3 '--seats is not in a folder that can be entered; expected the effort folder'
+	step_rc=0
+	settings=$(sh "${own_dir}/${SETTINGS}" get --effort "${effort_dir}") || step_rc=$?
+	case ${step_rc} in
+		0) ;;
+		3 | 5) die 3 "settings.sh get refused the effort (exit ${step_rc}); expected its git setup; nothing was committed" ;;
+		*) die 4 "settings.sh get failed (exit ${step_rc}); nothing was committed" ;;
+	esac
+	identity_name='' identity_email='' signing_format='' signing_key=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			NAME=*) identity_name=${setting#NAME=} ;;
+			EMAIL=*) identity_email=${setting#EMAIL=} ;;
+			SIGNING_FORMAT=*) signing_format=${setting#SIGNING_FORMAT=} ;;
+			SIGNING_KEY=*) signing_key=${setting#SIGNING_KEY=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${settings}
+EOF
+	[ -n "${identity_name}" ] && [ -n "${identity_email}" ] ||
+		die 4 'settings.sh get printed no NAME or EMAIL line; expected both'
 }
 
 # Sets dispatch_id and relative_path, refusing a file that is not S's own,
@@ -213,8 +245,10 @@ commit_dispatch() {
 	printf '%s\n' "${relative_path}" >"${work_dir}/paths" || die 4 'could not write the paths file'
 	head_before=$(worktree_head)
 	step_rc=0
+	set -- --identity-name "${identity_name}" --identity-email "${identity_email}"
+	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
 	sha=$(sh "${own_dir}/commit.sh" --worktree "${real_worktree}" --message-file "${work_dir}/message" \
-		--author-name "${AUTHOR_NAME}" --author-email "${AUTHOR_EMAIL}" --paths-file "${work_dir}/paths") || step_rc=$?
+		"$@" --paths-file "${work_dir}/paths") || step_rc=$?
 	[ "${step_rc}" -ne 7 ] || unverified_commit
 	step_exit commit.sh
 	printf 'SEED: %s\n' "${sha}"
@@ -261,6 +295,7 @@ parse_args "$@"
 load_dependencies
 read_seat
 check_dispatch
+read_identity
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-seed-commit.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 write_message

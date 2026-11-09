@@ -39,12 +39,12 @@ def card_gates:
 
 # Input: the parsed report. $labels: {language, frameworks} labels for title;
 # $files: {total, new}; $commit: {seat, count ("build iteration 2"), short,
-# report_path}.
+# report_path, warnings (lines shown after the counts)}.
 def card($labels; $files; $commit):
 	(if card_count("blockers") > 0 then "blocked" else "done" end) as $state
 	| ["### \($labels | seat_title("developer"; $commit.seat)) · \($commit.count) · \($state)",
 	   "Task: \(.summary | card_text)",
-	   (card_count_lines($files) | card_dash_list),
+	   (card_count_lines($files) + ($commit.warnings // []) | card_dash_list),
 	   card_gates,
 	   "**Developer report:** `\($commit.short)` in \($commit.report_path | path_text)"]
 	| blocks;

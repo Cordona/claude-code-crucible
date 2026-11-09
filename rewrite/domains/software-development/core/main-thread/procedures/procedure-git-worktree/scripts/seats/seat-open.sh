@@ -1,16 +1,18 @@
 #!/usr/bin/env sh
-# Opens one chosen writer seat: a detached worktree of the main checkout at
-# the seat's base, at the path seats.json records, the checkout's dependency
-# folders copied into it, and the seat's status set to open. It only runs
-# seats.sh, worktree-create.sh and worktree-setup.sh in order; a failure after
-# the worktree exists removes it again and leaves the seat chosen, so a rerun
-# starts clean.
+# Opens one chosen writer seat: a worktree of the main checkout on its own
+# branch at the seat's base, at the path seats.json records, the checkout's
+# dependency folders copied into it, and the seat's status set to open. It
+# only runs seats.sh, worktree-create.sh and worktree-setup.sh in order; a
+# failure after the worktree exists removes it and its branch again and
+# leaves the seat chosen, so a rerun starts clean.
 set -eu
 # worktree-create.sh checks the worktree out under the caller's umask.
 caller_umask=$(umask)
 umask 077
 
 readonly PROG='seat-open.sh'
+# Every worker branch is crucible/<effort folder name>/<worktree letter>.
+readonly BRANCH_PREFIX='crucible'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -25,11 +27,12 @@ usage: sh ${PROG} --effort DIR --seat S
 Opens a chosen developer seat, stopping at the first failing step:
   seats.sh get --seats <effort>/seats.json --seat S   (its repo, base and worktree)
   ../worktree/worktree-create.sh --repo <repo> --base <base> --path <worktree>
+      --branch ${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>
   ../worktree/worktree-setup.sh --from <repo> --to <worktree>
   seats.sh opened --seats <effort>/seats.json --seat S
 and prints the seat as seats.sh get does. A failure after the worktree
-exists removes it (git worktree remove --force), says so, and leaves the
-seat chosen.
+exists removes it (git worktree remove --force) and its branch, says so,
+and leaves the seat chosen.
 
 --effort DIR  absolute path of the effort folder (it holds seats.json)
 --seat S      a seat seats.sh choose recorded, status chosen; a developer
@@ -193,23 +196,32 @@ step_failed() {
 	die "${step_exit}" "$1 failed (exit ${step_rc}); expected it to succeed${removal_note}"
 }
 
-# Removes the worktree this run created, if any, and sets removal_note.
+# Removes the worktree and the branch this run created, if any, and sets
+# removal_note.
 remove_worktree() {
 	removal_note=''
 	[ "${created}" = yes ] || return 0
 	shown_worktree=$(printable "${worktree}")
-	if git -C "${repo}" worktree remove --force "${worktree}" >/dev/null 2>&1; then
-		removal_note="; removed the worktree ${shown_worktree} so a rerun starts clean; the seat is still chosen"
+	if git -C "${repo}" worktree remove --force "${worktree}" >/dev/null 2>&1 &&
+		git -C "${repo}" -c core.hooksPath=/dev/null update-ref -d "refs/heads/${branch}" >/dev/null 2>&1; then
+		removal_note="; removed the worktree ${shown_worktree} and its branch ${branch} so a rerun starts clean; the seat is still chosen"
 	else
-		removal_note="; could not remove the worktree ${shown_worktree}: remove it with git worktree remove --force; the seat is still chosen"
+		removal_note="; could not remove the worktree ${shown_worktree} and its branch ${branch}: remove them with git worktree remove --force and git branch -D; the seat is still chosen"
 	fi
 	created=no
 }
 
+# Sets branch from the effort folder's name and the worktree folder's name.
+name_branch() {
+	worktree_letter=${worktree##*/}
+	branch="${BRANCH_PREFIX}/${effort_dir##*/}/${worktree_letter}"
+}
+
 create_worktree() {
 	mkdir -p -- "${worktree%/*}" || die 4 "could not create the worktrees folder in ${shown_effort}"
+	name_branch
 	umask "${caller_umask}"
-	run_step ../worktree/worktree-create.sh --repo "${repo}" --base "${base}" --path "${worktree}"
+	run_step ../worktree/worktree-create.sh --repo "${repo}" --base "${base}" --path "${worktree}" --branch "${branch}"
 	umask 077
 	[ "${step_rc}" -eq 0 ] || step_failed 'worktree-create.sh'
 	created=yes

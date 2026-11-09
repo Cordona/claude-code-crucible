@@ -2,7 +2,9 @@
 # Claude Code's SubagentStop hook for an effort's developers. It finds the
 # stopping agent's working seat, checks the agent's report and, when the
 # report fits, commits every change in the worktree but other seats' folders
-# as the seat's next iteration and sets the seat idle. A report that does not fit blocks the stop with the checker's
+# as the seat's next iteration, as the effort's identity, pushes the
+# worktree's branch when the effort's settings ask for it, and sets the seat
+# idle. A report that does not fit blocks the stop with the checker's
 # lines, MAX_BLOCKS times at most, and records why in the iteration's
 # rejections file in the seat folder, which block-relay-hook.sh reads and
 # which also holds the block count. A fault allows the stop and goes to the
@@ -22,8 +24,16 @@ readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
 readonly CHECKER_DIR='../../../../../agents/code-developer/skills/standard-code-development-report/scripts'
 readonly CHECKER='dev-report-check.sh'
 readonly PRUNER='dev-report-prune.sh'
+# From this folder to the effort settings' reader.
+readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 # A fault line quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
+# Claude Code stops this hook after HOOK_LIMIT seconds (its settings.json
+# timeout). The push gets what is left but PUSH_MARGIN, kept for setting the
+# seat idle; with less than MIN_PUSH_SECONDS left it could not finish.
+readonly HOOK_LIMIT=30
+readonly PUSH_MARGIN=5
+readonly MIN_PUSH_SECONDS=3
 readonly newline='
 '
 # The C locale keeps the shell byte-wise; jq reads the JSON as UTF-8.
@@ -45,14 +55,17 @@ The seat folder is <worktree>/${SEATS_DIR}/<seat>/; iteration N's report
 is its iterations/N/<build or test>-report.json.
 
 A working seat's stop, whatever its iteration:
-  report fits     commits with commit.sh --seat <seat>: every change in
-                  the worktree but other seats' folders, so the report
-                  and the iteration's rejections file too (the seat's own
-                  folder even where a repo ignore rule covers it); a report with
-                  no code change commits alone (the message from
-                  commit-input.sh and commit-message.sh: the seat's next
-                  build or test iteration); sets the seat idle; nothing
-                  for git to commit: no commit, seat idle
+  report fits     commits with commit.sh --seat <seat> as the identity of
+                  settings.sh get --effort <the seats.json folder>: every
+                  change but other seats' folders, the report and the
+                  rejections file too (the seat's folder even where an
+                  ignore rule covers it); a report with no code change
+                  commits alone (commit-input.sh and commit-message.sh
+                  write the message); with AUTO_PUSH=yes runs
+                  ../push/push.sh for the worktree, --timeout the
+                  seconds left of ${HOOK_LIMIT} from the hook's start but
+                  ${PUSH_MARGIN} (under ${MIN_PUSH_SECONDS}: no push, a fault line); sets the seat idle;
+                  nothing to commit: no commit, no push, seat idle
   report misfits  blocks the stop with the checker's lines (a missing
                   report too: they name its path); the misfit after
                   ${MAX_BLOCKS} blocks of this agent on this report since its
@@ -74,8 +87,9 @@ writes, failures only:
     agent is sent; committed
     with the iteration
   ${FAULTS} in the seat folder, one line per fault: UTC time, agent_id,
-    event id, fault: <what failed>; to stderr before the seat is known or
-    when the file can't be written
+    event id, fault: <what failed>, a commit made unsigned and a failed or
+    skipped push included (neither blocks the stop); to stderr before the
+    seat is known or when the file can't be written
 Nothing is written through a symbolic link: a link at the file, or at a
 folder from the worktree's .crucible down to it, is named on stderr and is a
 fault; a block that can't be recorded lets the stop go ahead, and a report
@@ -91,8 +105,9 @@ exit codes:
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
 needs: POSIX sh, jq 1.6+, git 2.26+; ../seats/seats.sh, ../seats/iteration.sh,
-../commit/commit-input.sh, ../commit/commit-message.sh and ../commit/commit.sh
-from this script's folder,
+../commit/commit-input.sh, ../commit/commit-message.sh, ../commit/commit.sh
+and ../push/push.sh from this script's folder, procedure-git-setup's
+settings.sh beside procedure-git-worktree,
 ${PRUNER} and ${CHECKER} at ${CHECKER_DIR}
 EOF
 }
@@ -429,22 +444,85 @@ reject() {
 	rejected=yes
 }
 
+# Sets the identity_* variables, auto_push and remote from settings.sh get
+# for the effort folder holding seats.json; no git setup is a fault.
+read_settings() {
+	run sh "${own_dir}/${SETTINGS}" get --effort "${seats_file%/seats.json}"
+	[ "${child_rc}" -eq 0 ] || child_fault 'settings.sh get'
+	identity_name='' identity_email='' signing_format='' signing_key='' auto_push='' remote=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			NAME=*) identity_name=${setting#NAME=} ;;
+			EMAIL=*) identity_email=${setting#EMAIL=} ;;
+			SIGNING_FORMAT=*) signing_format=${setting#SIGNING_FORMAT=} ;;
+			SIGNING_KEY=*) signing_key=${setting#SIGNING_KEY=} ;;
+			AUTO_PUSH=*) auto_push=${setting#AUTO_PUSH=} ;;
+			REMOTE=*) remote=${setting#REMOTE=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${child_out}
+EOF
+	[ -n "${identity_name}" ] && [ -n "${identity_email}" ] ||
+		fault 'settings.sh get printed no NAME or EMAIL line; expected both'
+}
+
 # Builds the commit-message input, writes the message, commits every change
-# but other seats' folders and sets the seat idle; commit.sh's exit 5,
-# nothing staged, leaves no commit and the seat goes idle too.
+# but other seats' folders, pushes the commit when the effort asks for it
+# and sets the seat idle; commit.sh's exit 5, nothing staged, leaves no
+# commit and the seat goes idle too. The push comes first, so the card main
+# shows once the seat is idle already knows whether it reached the remote.
 commit_work() {
+	read_settings
 	run sh "${own_dir}/../commit/commit-input.sh" --seats "${seats_file}" --seat "${seat}" --out "${work_dir}/message.json"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-input.sh'
 	run sh "${own_dir}/../commit/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-message.sh'
-	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" \
-		--author-name "${seat}" --author-email "${seat}@crucible.invalid" --seat "${seat}"
+	set -- --identity-name "${identity_name}" --identity-email "${identity_email}"
+	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
+	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" "$@" --seat "${seat}"
 	case ${child_rc} in
-		0 | 5) ;;
+		0)
+			log_unsigned
+			[ "${auto_push}" != yes ] || push_branch
+			;;
+		5) ;;
 		*) child_fault 'commit.sh' ;;
 	esac
 	run sh "${own_dir}/../seats/seats.sh" status --seats "${seats_file}" --seat "${seat}" --status idle
 	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh status idle'
+}
+
+# Logs commit.sh's UNSIGNED: line, when it made the commit unsigned.
+log_unsigned() {
+	unsigned_reason=$(sed -n 's/^UNSIGNED: //p' "${work_dir}/stderr" | head -n 1 | cut -c "1-${MAX_QUOTE_BYTES}") || unsigned_reason=''
+	[ -z "${unsigned_reason}" ] || log_fault "commit.sh committed unsigned: ${unsigned_reason}"
+}
+
+# A failed or skipped push is logged and never blocks the stop; the next one
+# carries this commit along.
+push_branch() {
+	push_budget
+	if [ "${push_seconds}" -lt "${MIN_PUSH_SECONDS}" ]; then
+		log_fault "push.sh skipped: ${push_seconds} s left of the hook's ${HOOK_LIMIT} s after a ${PUSH_MARGIN} s margin; expected at least ${MIN_PUSH_SECONDS} s"
+		return 0
+	fi
+	run sh "${own_dir}/../push/push.sh" --worktree "${worktree}" --remote "${remote}" --timeout "${push_seconds}"
+	[ "${child_rc}" -eq 0 ] || log_child_fault 'push.sh'
+}
+
+# Sets push_seconds to what is left of HOOK_LIMIT since the hook started but
+# PUSH_MARGIN; 0 when the clock can't be read.
+push_budget() {
+	push_seconds=0
+	now_seconds=$(date '+%s' 2>/dev/null) || now_seconds=''
+	case ${started_seconds}${now_seconds} in
+		'' | *[!0-9]*) return 0 ;;
+		*) ;;
+	esac
+	[ -n "${started_seconds}" ] && [ -n "${now_seconds}" ] || return 0
+	push_seconds=$((HOOK_LIMIT - (now_seconds - started_seconds) - PUSH_MARGIN))
+	[ "${push_seconds}" -ge 0 ] || push_seconds=0
 }
 
 # An unexpected failure lets the stop go ahead too, logged.
@@ -458,6 +536,7 @@ on_exit() {
 	exit 0
 }
 
+started_seconds=$(date '+%s' 2>/dev/null) || started_seconds=''
 work_dir='' usage_failed=no worktree_root='' seat_dir='' seat='' agent_id='' event_id=''
 trap on_exit EXIT
 trap 'exit 129' HUP

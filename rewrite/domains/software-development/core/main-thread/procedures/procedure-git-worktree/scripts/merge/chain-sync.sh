@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Brings an idle developer seat up to date with the seats it was cut from:
 # when chain.sh says one of them moved on, the seat's HEAD and every moved
-# seat's HEAD are merged by tips-merge.sh, and the seat's clean worktree is
-# checked out at the merge. A conflict writes no file, index or ref.
+# seat's HEAD are merged by tips-merge.sh as the effort's identity, and the
+# seat's branch moves on to the merge in its clean worktree, a fast-forward.
+# A conflict writes no file, index or ref.
 set -eu
 # The checkout writes the seat's files under the caller's own umask.
 inherited_umask=$(umask)
@@ -12,7 +13,8 @@ readonly PROG='chain-sync.sh'
 readonly tab='	'
 readonly EFFORT_TRAILER='Effort'
 readonly SYNCED_TRAILER='Synced-From'
-readonly AUTHOR_DOMAIN='crucible.invalid'
+# From this folder to the effort settings' reader.
+readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 readonly VIEW_LIB='human-view'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
@@ -31,15 +33,18 @@ usage: sh ${PROG} --effort DIR --seat S
        sh ${PROG} --help | -h
 
 Runs chain.sh for seat S; when a seat S was cut from moved on (at any
-level), merges S's HEAD with every moved seat's HEAD (tips-merge.sh,
-author S <S@${AUTHOR_DOMAIN}>, message "crucible(sync): S takes P <short
-sha>, ...", trailers ${EFFORT_TRAILER} (seats.json's effort) and ${SYNCED_TRAILER},
-no Agent-Seat, so iteration.sh does not count it) and checks S's
-worktree out, detached, at the merge, with no hook run.
+level), merges S's HEAD with every moved seat's HEAD (tips-merge.sh, as
+the identity settings.sh get --effort DIR prints, signed with its key when
+it has one, tips-merge.sh's UNSIGNED: line passing through; message
+"crucible(sync): S takes P <short sha>, ...", trailers ${EFFORT_TRAILER}
+(seats.json's effort) and ${SYNCED_TRAILER}, no Agent-Seat, so iteration.sh
+does not count it) and fast-forwards S's branch to the merge in S's
+worktree, with no hook run.
 
 --effort DIR  absolute path of the effort folder (it holds seats.json)
 --seat S      a developer seat, status idle (not chosen), whose worktree
-              holds no uncommitted change
+              holds no uncommitted change (changes to its own fault logs,
+              ../worktree/uncommitted.jq's, aside) and has HEAD on a branch
 
 stdout, one JSON line:
   {"synced":false,"seat":S,"reason":"in_sync","line":null}   nothing moved
@@ -57,16 +62,18 @@ exit codes:
   0  synced, or nothing to sync
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a bad option value, seats.json or a seat does not fit
+  3  input: a bad option value, seats.json or a seat does not fit, S's
+     worktree has a detached HEAD, or the effort has no git setup
      (seats.sh's or a neighbour's own lines first)
   4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, or
-     the worktree is not clean at the merge after the checkout
+     the worktree is not clean on its branch at the merge afterwards
   5  refused by state, no file, index or ref written: S is not an idle
      developer (a chosen seat has no worktree yet) or is dirty, a moved
      seat is not idle, or the HEADs conflict (tips-merge.sh's line)
 
-needs: POSIX sh, git 2.38+, jq 1.6+; chain.sh, tips-merge.sh and
-../seats/seats.sh from this script's folder; ${VIEW_LIB}'s title.jq in
+needs: POSIX sh, git 2.38+, jq 1.6+; chain.sh, tips-merge.sh,
+../seats/seats.sh and ../worktree/uncommitted.jq from this script's folder; procedure-git-setup's
+settings.sh beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -137,7 +144,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in chain.sh tips-merge.sh ../seats/seats.sh; do
+	for neighbour in chain.sh tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -200,11 +207,22 @@ check_seat() {
 	seat_worktree=${worktree}
 	shown_worktree=$(printable "${seat_worktree}")
 	[ -d "${seat_worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
+	seat_ref=$(git -C "${seat_worktree}" symbolic-ref -q HEAD 2>/dev/null) ||
+		die 3 "seat ${shown_seat}'s worktree ${shown_worktree} has a detached HEAD; expected HEAD on its branch"
 	check_idle
+	list_uncommitted
+	[ ! -s "${work_dir}/seat-dirty" ] ||
+		refuse "seat ${shown_seat}'s worktree ${shown_worktree} has uncommitted changes; expected a clean worktree"
+}
+
+# Writes to work_dir/seat-dirty the seat worktree's uncommitted paths, one
+# per line, as uncommitted.jq gives them.
+list_uncommitted() {
 	git -C "${seat_worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all \
 		>"${work_dir}/seat-status" 2>"${work_dir}/stderr" || git_failed "git status in the seat's worktree"
-	[ ! -s "${work_dir}/seat-status" ] ||
-		refuse "seat ${shown_seat}'s worktree ${shown_worktree} has uncommitted changes; expected a clean worktree"
+	jq -Rsr -L "${own_dir}/../worktree" --arg seat "${seat}" 'include "uncommitted"; uncommitted_paths($seat)' \
+		"${work_dir}/seat-status" >"${work_dir}/seat-dirty" 2>"${work_dir}/stderr" ||
+		git_failed "jq reading the seat's status"
 }
 
 # Refuses the seat read_seat read last when it is not idle.
@@ -243,6 +261,31 @@ read_effort_id() {
 	[ -n "${effort_id}" ] || die 3 "${shown_seats} has no effort; expected a non-empty effort string"
 }
 
+# Sets the identity_* variables from settings.sh get for the effort; its
+# own lines say why it refused.
+read_identity() {
+	run_step "${SETTINGS}" get --effort "${effort_dir}"
+	case ${step_rc} in
+		0) ;;
+		3 | 5) die 3 "settings.sh get refused the effort (exit ${step_rc}); expected its git setup" ;;
+		*) die 4 "settings.sh get failed (exit ${step_rc})" ;;
+	esac
+	identity_name='' identity_email='' signing_format='' signing_key=''
+	while IFS= read -r setting; do
+		case ${setting} in
+			NAME=*) identity_name=${setting#NAME=} ;;
+			EMAIL=*) identity_email=${setting#EMAIL=} ;;
+			SIGNING_FORMAT=*) signing_format=${setting#SIGNING_FORMAT=} ;;
+			SIGNING_KEY=*) signing_key=${setting#SIGNING_KEY=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${step_out}
+EOF
+	[ -n "${identity_name}" ] && [ -n "${identity_email}" ] ||
+		die 4 'settings.sh get printed no NAME or EMAIL line; expected both'
+}
+
 # Merges the seat's HEAD with every moved seat's HEAD; sets merge_commit.
 merge_moved() {
 	seat_head=$(printf '%s\n' "${chain}" | jq -r '.head') || die 4 'jq could not read what chain.sh printed'
@@ -259,7 +302,9 @@ merge_moved() {
 	printf 'crucible(sync): %s takes %s\n\n%s: %s\n%s: %s\n' "${seat}" "${takes}" \
 		"${EFFORT_TRAILER}" "${effort_id}" "${SYNCED_TRAILER}" "${synced_from}" >"${merge_message}" ||
 		die 4 'could not write the merge message in the work folder'
-	run_step tips-merge.sh "$@" --message-file "${merge_message}" --author-name "${seat}" --author-email "${seat}@${AUTHOR_DOMAIN}"
+	set -- "$@" --identity-name "${identity_name}" --identity-email "${identity_email}"
+	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
+	run_step tips-merge.sh "$@" --message-file "${merge_message}"
 	case ${step_rc} in
 		0) ;;
 		5) exit 5 ;;
@@ -275,19 +320,22 @@ short_sha() {
 		git_failed 'git rev-parse --short'
 }
 
-# Checks the seat's worktree out at the merge, then proves HEAD is the merge
-# and the worktree clean.
-check_out_merge() {
+# Fast-forwards the seat's branch to the merge in its worktree, then proves
+# HEAD is still on that branch, at the merge, and the worktree clean.
+move_branch() {
 	(umask "${inherited_umask}" && exec git -C "${seat_worktree}" -c core.hooksPath=/dev/null -c core.fsmonitor=false \
-		checkout --detach --quiet "${merge_commit}") 2>"${work_dir}/stderr" ||
-		git_failed "git checkout of the merge in the seat's worktree"
+		merge --ff-only --quiet --no-verify-signatures --no-autostash "${merge_commit}" </dev/null) \
+		>/dev/null 2>"${work_dir}/stderr" ||
+		git_failed "the fast-forward of the seat's branch to the merge"
+	now_ref=$(git -C "${seat_worktree}" symbolic-ref -q HEAD 2>/dev/null) || now_ref=''
+	[ "${now_ref}" = "${seat_ref}" ] ||
+		die 4 "seat ${seat}'s worktree HEAD left its branch ${seat_ref#refs/heads/} during the fast-forward"
 	now_head=$(git -C "${seat_worktree}" -c core.fsmonitor=false rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null) || now_head=''
 	[ "${now_head}" = "${merge_commit}" ] ||
-		die 4 "seat ${seat}'s worktree HEAD is ${now_head:-none} after the checkout, not the merge ${merge_commit}"
-	git -C "${seat_worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all \
-		>"${work_dir}/seat-status" 2>"${work_dir}/stderr" || git_failed "git status in the seat's worktree"
-	[ ! -s "${work_dir}/seat-status" ] ||
-		die 4 "seat ${seat}'s worktree is not clean after the checkout of the merge ${merge_commit}"
+		die 4 "seat ${seat}'s branch is at ${now_head:-none} after the fast-forward, not the merge ${merge_commit}"
+	list_uncommitted
+	[ ! -s "${work_dir}/seat-dirty" ] ||
+		die 4 "seat ${seat}'s worktree is not clean after the fast-forward to the merge ${merge_commit}"
 }
 
 # Runs neighbour $1, a path from this script's folder, with the rest as
@@ -346,8 +394,9 @@ fi
 check_moved
 [ "${problems}" -eq 0 ] || exit 5
 read_effort_id
+read_identity
 merge_moved
-check_out_merge
+move_branch
 short_sha "${merge_commit}"
 jq -nc -L "${view_dir}" --arg seat "${seat}" --arg commit "${merge_commit}" --arg synced_from "${synced_from}" --arg short "${short}" \
 	--argjson new "${merge_new}" \

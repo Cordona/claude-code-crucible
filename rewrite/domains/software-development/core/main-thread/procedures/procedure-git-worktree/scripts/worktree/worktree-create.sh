@@ -1,8 +1,11 @@
 #!/usr/bin/env sh
-# Creates one agent's detached linked worktree of a main checkout at a base
-# commit, then proves it is that commit, clean, and that the main checkout's
-# refs and config did not change. It never picks the base, copies
-# dependencies, sets config, or creates a branch or ref. It refuses before
+# Creates one agent's linked worktree of a main checkout on a new branch at a
+# base commit, then proves HEAD is on that branch at that commit, the
+# worktree clean, and that the main checkout's refs changed by that one
+# branch alone and its config not at all; the refs and upstreams other
+# working seats and their pushes move meanwhile are left out of that proof.
+# It never picks the base or the
+# branch name, copies dependencies or sets config. It refuses before
 # touching anything, and rolls back what it created when anything fails.
 set -eu
 # The checkout gets the caller's file modes, as a plain clone would.
@@ -12,6 +15,15 @@ umask 077
 readonly PROG='worktree-create.sh'
 # Bounds stderr so a refusal stays readable; the last line counts the rest.
 readonly MAX_PROBLEMS=20
+readonly newline='
+'
+# Refs under these move while a seat is made: other seats' own branches as
+# they commit, and remote-tracking refs as they push.
+readonly SEAT_BRANCHES='refs/heads/crucible/'
+readonly REMOTE_REFS='refs/remotes/'
+# Local config keys under this move too: a worktree branch's upstream, which
+# its first push writes.
+readonly SEAT_UPSTREAMS='branch.crucible/'
 # The C locale keeps the shell and its pattern classes byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -24,10 +36,15 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --repo DIR --base COMMIT --path DIR
+                          --branch NAME
        sh ${PROG} --help | -h
 
-Creates a detached linked git worktree of a main checkout at one commit.
-Runs no repository hook; creates no branch or ref; sets no config.
+Creates a linked git worktree of a main checkout on a new branch at one
+commit. Runs no repository hook; creates no other ref; sets no config.
+Refs under ${SEAT_BRANCHES} and ${REMOTE_REFS} other than the new branch, and
+local config keys under ${SEAT_UPSTREAMS}, may move meanwhile (other seats
+commit and push); any other ref or config entry that changes fails the
+verification.
 
 --repo DIR     absolute path of the main checkout's top folder; not a linked
                worktree and not a bare repository
@@ -38,6 +55,8 @@ Runs no repository hook; creates no branch or ref; sets no config.
                lie outside --repo's work tree, and it must not already be
                registered as a worktree of --repo (prune a stale entry
                yourself)
+--branch NAME  the new branch's name, as git check-ref-format --branch takes
+               it; not starting with -; no branch of that name exists yet
 
 output on success, exactly two stdout lines:
   worktree <the new worktree's absolute physical path>
@@ -46,8 +65,8 @@ output on success, exactly two stdout lines:
 exit codes:
   0  created and verified
   2  wrong command line: a missing, repeated or unknown option, or a missing value
-  3  invalid input: --repo, --base or --path; each problem is one stderr line
-     (at most ${MAX_PROBLEMS}); nothing was touched
+  3  invalid input: --repo, --base, --path or --branch; each problem is one
+     stderr line (at most ${MAX_PROBLEMS}); nothing was touched
   4  git is missing, or git failed reading --repo before anything was created
   6  creation or verification failed; the worktree was rolled back and each
      problem, then each rollback step, is one stderr line
@@ -108,7 +127,7 @@ take_value() {
 }
 
 parse_args() {
-	repo='' base='' path=''
+	repo='' base='' path='' branch=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -127,9 +146,13 @@ parse_args() {
 				take_value "$1" "${path}" "${2-}"
 				path=${option_value}
 				;;
+			--branch)
+				take_value "$1" "${branch}" "${2-}"
+				branch=${option_value}
+				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --repo, --base, --path or --help"
+				usage_error "unknown option: ${shown_option}; expected --repo, --base, --path, --branch or --help"
 				;;
 		esac
 		shift 2
@@ -137,6 +160,7 @@ parse_args() {
 	[ -n "${repo}" ] || usage_error '--repo missing; expected --repo DIR'
 	[ -n "${base}" ] || usage_error '--base missing; expected --base COMMIT'
 	[ -n "${path}" ] || usage_error '--path missing; expected --path DIR'
+	[ -n "${branch}" ] || usage_error '--branch missing; expected --branch NAME'
 }
 
 check_inputs() {
@@ -144,9 +168,11 @@ check_inputs() {
 	shown_repo=$(printable "${repo}")
 	shown_base=$(printable "${base}")
 	shown_path=$(printable "${path}")
+	shown_branch=$(printable "${branch}")
 	repo_root='' repo_common='' base_sha='' physical_path=''
 	check_repo
 	[ -z "${repo_root}" ] || check_base
+	[ -z "${repo_root}" ] || check_branch
 	check_path
 	[ -z "${repo_root}" ] || [ -z "${physical_path}" ] || check_not_registered
 }
@@ -210,6 +236,23 @@ check_base() {
 	base_sha=$(git -C "${repo_root}" rev-parse --verify --quiet "${base}^{commit}" 2>/dev/null) || base_sha=''
 	[ -n "${base_sha}" ] ||
 		add_problem "--base ${shown_base} does not resolve to a commit in --repo; expected a commit name"
+}
+
+# Refuses a branch name git would not take, or one that exists already.
+check_branch() {
+	case ${branch} in
+		-*)
+			add_problem "--branch ${shown_branch} starts with -; expected a branch name"
+			return 0
+			;;
+		*) ;;
+	esac
+	if ! git -C "${repo_root}" check-ref-format --branch "${branch}" >/dev/null 2>&1 ||
+		! git check-ref-format "refs/heads/${branch}" >/dev/null 2>&1; then
+		add_problem "--branch ${shown_branch} is not a valid branch name; expected a name git check-ref-format --branch takes"
+	elif git -C "${repo_root}" show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+		add_problem "--branch ${shown_branch} exists already in --repo; expected a new branch name"
+	fi
 }
 
 # Sets physical_path (the parent's physical path plus the name) when --path
@@ -288,7 +331,11 @@ EOF
 snapshot_main() {
 	snapshot_ok=yes
 	main_refs=$(git -C "${repo_root}" for-each-ref 2>/dev/null) || snapshot_ok=no
-	main_config=$(git -C "${repo_root}" config --local --list 2>/dev/null) || snapshot_ok=no
+	main_config=$(stable_config)
+	case ${main_config} in
+		ok | *"${newline}ok") ;;
+		*) snapshot_ok=no ;;
+	esac
 	main_head="$(git -C "${repo_root}" symbolic-ref -q HEAD 2>/dev/null || :) $(git -C "${repo_root}" rev-parse -q --verify HEAD 2>/dev/null || :)"
 }
 
@@ -300,14 +347,23 @@ record_main_before() {
 	head_before=${main_head}
 }
 
+# Prints the main checkout's local config entries outside SEAT_UPSTREAMS, one
+# per line, a unit separator between key and value and for each newline in a
+# value, then a last line "ok" when git read the config; a key holds a dot
+# and no newline, so no entry reads as that line.
+stable_config() {
+	{ git -C "${repo_root}" config --local --list -z 2>/dev/null && printf 'ok'; } |
+		tr '\n\000' '\037\n' | awk -v upstreams="${SEAT_UPSTREAMS}" 'index($0, upstreams) != 1'
+}
+
 # Runs git worktree add with the repository's hooks and fsmonitor off, under
 # the caller's umask; git's own output goes to stderr so stdout stays the two
-# result lines.
+# result lines. --no-track: the base is a commit, so no upstream is set.
 create_worktree() {
 	add_started=yes
 	(umask "${checkout_umask}" && git -C "${repo_root}" -c core.hooksPath=/dev/null -c core.fsmonitor=false \
-		worktree add --detach --quiet "${path}" "${base_sha}" >&2) ||
-		fail_rolled_back 'git worktree add failed; expected a new detached worktree'
+		worktree add --no-track --quiet -b "${branch}" "${path}" "${base_sha}" >&2) ||
+		fail_rolled_back "git worktree add failed; expected a new worktree on branch ${shown_branch}"
 }
 
 verify_worktree() {
@@ -325,9 +381,9 @@ verify_worktree() {
 }
 
 verify_head() {
-	if git -C "${path}" symbolic-ref -q HEAD >/dev/null 2>&1; then
-		add_problem 'the new worktree has HEAD on a branch; expected a detached HEAD'
-	fi
+	created_ref=$(git -C "${path}" symbolic-ref -q HEAD 2>/dev/null) || created_ref=''
+	[ "${created_ref}" = "refs/heads/${branch}" ] ||
+		add_problem "the new worktree's HEAD is not on branch ${shown_branch}; expected that branch checked out"
 	created_head=$(git -C "${path}" rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null) || created_head=''
 	[ "${created_head}" = "${base_sha}" ] ||
 		add_problem "the new worktree's HEAD is not ${base_sha}; expected the base commit"
@@ -359,12 +415,35 @@ verify_main_unchanged() {
 		add_problem 'git failed reading the refs or config of --repo after creation; expected a readable repository'
 		return 0
 	fi
-	[ "${main_refs}" = "${refs_before}" ] ||
-		add_problem "--repo's refs changed during creation; expected no new branch or ref"
+	verify_refs
 	[ "${main_config}" = "${config_before}" ] ||
-		add_problem "--repo's local config changed during creation; expected it untouched"
+		add_problem "--repo's local config changed during creation; expected it untouched outside ${SEAT_UPSTREAMS}"
 	[ "${main_head}" = "${head_before}" ] ||
 		add_problem "--repo's HEAD changed during creation; expected it untouched"
+}
+
+# The refs after creation are the refs before plus the new branch at the
+# base, those other seats move aside.
+verify_refs() {
+	new_branch_line="${base_sha} commit	refs/heads/${branch}"
+	refs_without_branch=$(printf '%s\n' "${main_refs}" | awk -v line="${new_branch_line}" '
+		$0 == line { found++; next }
+		{ print }
+		END { if (found != 1) exit 1 }') || {
+		add_problem "--repo has no branch ${shown_branch} at the base after creation; expected that one new branch"
+		return 0
+	}
+	stable_after=$(printf '%s\n' "${refs_without_branch}" | stable_refs)
+	stable_before=$(printf '%s\n' "${refs_before}" | stable_refs)
+	[ "${stable_after}" = "${stable_before}" ] ||
+		add_problem "--repo's refs changed beyond the new branch ${shown_branch}; expected no other ref changed outside ${SEAT_BRANCHES} and ${REMOTE_REFS}"
+}
+
+# Passes the for-each-ref lines (<sha> <type><tab><ref>) of refs outside
+# SEAT_BRANCHES and REMOTE_REFS.
+stable_refs() {
+	awk -F '\t' -v seats="${SEAT_BRANCHES}" -v remotes="${REMOTE_REFS}" \
+		'index($2, seats) != 1 && index($2, remotes) != 1'
 }
 
 # Adds problem $1, rolls back, prints every problem and exits 6.
@@ -376,7 +455,8 @@ fail_rolled_back() {
 }
 
 # Removes what this run created: the path did not exist and was not
-# registered before, so a folder or worktree entry there is this run's.
+# registered before, and the branch did not exist, so a folder, worktree
+# entry or branch there is this run's.
 roll_back() {
 	[ "${rolled_back}" = no ] || return 0
 	rolled_back=yes
@@ -385,7 +465,17 @@ roll_back() {
 	else
 		remove_leftovers
 	fi
+	remove_own_branch
 	check_rolled_back
+}
+
+remove_own_branch() {
+	git -C "${repo_root}" show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null || return 0
+	if git -C "${repo_root}" -c core.hooksPath=/dev/null update-ref -d "refs/heads/${branch}" >/dev/null 2>&1; then
+		add_problem "rollback: deleted the branch ${shown_branch} this run created"
+	else
+		add_problem "rollback: could not delete the branch ${shown_branch}; delete it with git branch -D"
+	fi
 }
 
 # Used when git worktree remove fails. git worktree prune would also drop
@@ -438,6 +528,8 @@ worktree ${physical_path}
 "*) add_problem "rollback incomplete: ${shown_path} is still registered as a worktree of --repo" ;;
 		*) ;;
 	esac
+	! git -C "${repo_root}" show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null ||
+		add_problem "rollback incomplete: the branch ${shown_branch} still exists"
 }
 
 # Rolls back a creation cut short by a signal or an unexpected exit.
