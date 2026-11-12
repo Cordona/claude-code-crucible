@@ -31,31 +31,21 @@ usage: sh ${PROG} --input FILE --out FILE
 Writes one Crucible commit message; runs no git.
 
 --input FILE  a JSON object, no other fields:
-                kind      build, test, fix, review, aggregated-review,
-                          fix-choice or import
+                kind      build
                 text      the subject's text: one line; the whole subject
                           "crucible(<kind>): <text>" at most 72 characters
                 trailers  an object; the count a whole number of 1 or more,
-                          frameworks and standards arrays of strings, every
-                          other trailer a string; each string one line, at
-                          most 200 characters; an array item holds no comma
-                          or whitespace, joined at most 500 characters
+                          every other trailer a string of one line, at most
+                          200 characters
 --out FILE    the message file, written whole through a temp file beside it;
               its folder must exist
 
-kinds and their trailers, in message order (all required but frameworks):
-  build                          iteration, effort, agent-seat
-  test                           iteration, build-seat, effort, agent-seat
-  fix, review                    review-round, then the agent trailers
-  aggregated-review, fix-choice  review-round, effort
-  import                         effort, imported-from (no count)
-  agent trailers:  effort, dispatch, agent-seat, agent-id, language,
-                   frameworks, standards
-A count trailer of another kind is refused.
+kinds and their trailers, in message order (all required):
+  build  iteration, effort, agent-seat
 
 output: crucible(<kind>): <text>
         then a blank line and one "Key-Name: value" line per trailer given,
-        in the order above; an array is one line, items joined by ", "
+        in the order above
 
 exit codes:
   0  the message file is written; nothing is printed

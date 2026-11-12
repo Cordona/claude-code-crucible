@@ -18,10 +18,6 @@ crucible_label_rule="lowercase a-z, 0-9 and -, 1 to ${crucible_label_max_chars} 
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
 crucible_max_create_attempts=5
-# The extension crucible_name_item gives when its caller names none, as for
-# the gate records gate-question-hook.sh claims; a drafts item is Markdown.
-crucible_item_extension=json
-crucible_draft_kind=drafts
 crucible_draft_extension=md
 # The session ID Claude Code sets in CLAUDE_CODE_SESSION_ID, which every file
 # a session writes into an effort names as claude_session_id.
@@ -173,19 +169,10 @@ crucible_is_label() {
 	return 1
 }
 
-# Sets crucible_kind_extension to the file extension of kind $1's items.
-crucible_extension_of_kind() {
-	if [ "$1" = "${crucible_draft_kind}" ]; then
-		crucible_kind_extension=${crucible_draft_extension}
-	else
-		crucible_kind_extension=${crucible_item_extension}
-	fi
-}
-
 # Sets crucible_item_file_name to the file name of an item of ID $1 and label
-# $2: <ID>-<label>.<extension $3, by default crucible_item_extension>.
+# $2: <ID>-<label>.<extension $3>.
 crucible_name_item() {
-	crucible_item_file_name="$1-$2.${3:-${crucible_item_extension}}"
+	crucible_item_file_name="$1-$2.$3"
 }
 
 # Sets crucible_id to a fresh <YYYYMMDDTHHMMSS>-<hex>: the local time and 4
@@ -289,7 +276,7 @@ crucible_claim_item_file() {
 			crucible_claim_problem=${crucible_id_problem}
 			return 1
 		fi
-		crucible_name_item "${crucible_id}" "$2" "${4:-}"
+		crucible_name_item "${crucible_id}" "$2" "$4"
 		crucible_claim_path="$1/${crucible_item_file_name}"
 		if (
 			set -C

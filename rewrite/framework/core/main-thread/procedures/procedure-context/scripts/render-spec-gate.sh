@@ -423,7 +423,7 @@ file_sha256() {
 
 # Prints one line per problem of draft path $2, named $1 (--spec or spec);
 # nothing when it names a readable spec draft of an effort in the one form
-# context.sh's --path takes and its record check matches.
+# context.sh's --path takes and its gate.spec-approval.answered event matches.
 spec_problems() {
 	shared_problem=$(context_path_problem "$2")
 	if [ -n "${shared_problem}" ]; then

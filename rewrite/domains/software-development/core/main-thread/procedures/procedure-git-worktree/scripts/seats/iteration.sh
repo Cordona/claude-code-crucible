@@ -1,9 +1,8 @@
 #!/usr/bin/env sh
-# Prints the iteration a writer seat is working on, where its report draft
-# goes and the event of its newest recorded report. An iteration belongs to a
-# build seat and is derived from git: a developer's next build is 1 + its own
-# build commits since its base; a tester's work belongs to the build it
-# tests, the newest build commit its worktree holds. It reads only.
+# Prints the iteration a seat is working on, where its report draft goes and
+# the event of its newest recorded report. The iteration is derived from git:
+# the seat's next build is 1 + its own build commits since its base. It reads
+# only.
 set -eu
 
 readonly PROG='iteration.sh'
@@ -27,21 +26,17 @@ Prints the iteration seat S is working on, its report draft's path and
 its newest recorded report; reads only.
 
 --effort FOLDER  the effort folder, absolute
---seat S      a developer (mode BUILD) or tester (mode TEST) seat with a
-              worktree; it may be open or bound, not chosen (no worktree yet)
+--seat S      a seat with a worktree; it may be open or bound, not chosen
+              (no worktree yet)
 
-stdout, four lines:
-  ITERATION: <N>   BUILD: 1 + the crucible(build) commits in <base>..HEAD
-                   of the worktree whose Agent-Seat trailer is S, the
-                   iteration its next build commit opens. TEST: the
-                   Iteration trailer of the newest crucible(build) commit in
-                   HEAD, 0 when there is none
-  BUILD_SEAT: <seat>  the build seat that iteration belongs to: S for BUILD,
-                   that commit's Agent-Seat for TEST (none when 0)
+stdout, three lines:
+  ITERATION: <N>   1 + the crucible(build) commits in <base>..HEAD of the
+                   worktree whose Agent-Seat trailer is S, the iteration its
+                   next build commit opens
   REPORT: <path>   <effort>/drafts/agents/<S>/report.json, absolute
   LAST_REPORT: <path> | none
-                   the seat's newest build.committed or test.committed
-                   event, absolute; none when there is none
+                   the seat's newest build.committed event, absolute; none
+                   when there is none
 
 exit codes:
   0  printed
@@ -130,7 +125,7 @@ load_dependencies() {
 	[ -f "${events_script}" ] || die 4 "events.sh not found; expected the ${CRUCIBLE_SKILL} skill installed"
 }
 
-# Sets kind, worktree and base from seats.sh get, refusing a chosen seat;
+# Sets worktree and base from seats.sh get, refusing a chosen seat;
 # seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
@@ -141,66 +136,48 @@ read_seat() {
 		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .status // "", .worktree // "", .base // ""') ||
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .worktree // "", .base // ""') ||
 		die 4 'jq could not read the seat seats.sh get printed'
-	mode='' status='' worktree='' base=''
+	status='' worktree='' base=''
 	{
-		IFS= read -r mode || :
 		IFS= read -r status || :
 		IFS= read -r worktree || :
 		IFS= read -r base || :
 	} <<EOF
 ${fields}
 EOF
-	case ${mode} in
-		BUILD) kind='build' ;;
-		TEST) kind='test' ;;
-		*) die 3 "seat ${shown_seat} has no mode; expected a developer or tester seat" ;;
-	esac
 	[ "${status}" != chosen ] || die 3 "seat ${shown_seat} is chosen: its worktree is not made yet; expected an open or bound seat"
-	[ -n "${worktree}" ] || die 3 "seat ${shown_seat} has no worktree; expected a developer or tester seat"
+	[ -n "${worktree}" ] || die 3 "seat ${shown_seat} has no worktree; expected a seat with a worktree"
 }
 
-# Sets iteration and build_seat from the worktree's commits in base..HEAD,
-# newest first (git log lists each commit before its parents).
+# Sets iteration from the seat's own build commits in the worktree's
+# base..HEAD.
 count_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
 	git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify --quiet "${base}^{commit}" >/dev/null ||
 		die 3 "seat ${shown_seat}'s base ${base} is not a commit in ${shown_worktree}; expected the seat's base"
-	build_lines=$(git -c core.fsmonitor=false -C "${worktree}" log --topo-order \
-		--format='%s%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)%x09%(trailers:key=Iteration,valueonly,separator=%x2C)' \
-		"${base}..HEAD") ||
+	build_lines=$(git -c core.fsmonitor=false -C "${worktree}" log \
+		--format='%s%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "${base}..HEAD") ||
 		die 4 "git log failed in ${shown_worktree}"
-	own_builds=0 newest_iteration=0 newest_seat=none
+	own_builds=0
 	tab=$(printf '\t')
 	while IFS= read -r line; do
 		case ${line} in
 			"crucible(build): "*) ;;
 			*) continue ;;
 		esac
-		rest=${line#*"${tab}"}
-		line_seat=${rest%%"${tab}"*}
-		line_iteration=${rest#*"${tab}"}
-		if [ "${newest_seat}" = none ]; then
-			newest_seat=${line_seat}
-			newest_iteration=${line_iteration}
-		fi
-		[ "${line_seat}" != "${seat}" ] || own_builds=$((own_builds + 1))
+		[ "${line#*"${tab}"}" != "${seat}" ] || own_builds=$((own_builds + 1))
 	done <<EOF
 ${build_lines}
 EOF
-	if [ "${kind}" = build ]; then
-		iteration=$((own_builds + 1)) build_seat=${seat}
-	else
-		iteration=${newest_iteration} build_seat=${newest_seat}
-	fi
+	iteration=$((own_builds + 1))
 }
 
-# Sets last_report to the seat's newest build.committed or test.committed event.
+# Sets last_report to the seat's newest build.committed event.
 find_last_report() {
-	last_report=$(sh "${events_script}" latest --effort "${effort_folder}" --type '*.committed' \
-		--where "(.type == \"build.committed\" or .type == \"test.committed\") and .seat == \"${seat}\"" </dev/null) ||
+	last_report=$(sh "${events_script}" latest --effort "${effort_folder}" --type build.committed \
+		--where ".seat == \"${seat}\"" </dev/null) ||
 		die 4 'events.sh latest failed (its stderr is above)'
 }
 
@@ -209,6 +186,6 @@ load_dependencies
 read_seat
 count_iteration
 find_last_report
-printf 'ITERATION: %s\nBUILD_SEAT: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
-	"${iteration}" "${build_seat}" "${effort_folder}" "${seat}"
+printf 'ITERATION: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
+	"${iteration}" "${effort_folder}" "${seat}"
 printf 'LAST_REPORT: %s\n' "${last_report:-none}"

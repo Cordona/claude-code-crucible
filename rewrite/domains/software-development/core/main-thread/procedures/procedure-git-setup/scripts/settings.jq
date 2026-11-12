@@ -1,6 +1,7 @@
-# An effort's git settings, settings.json: the identity its worker commits
-# are authored and signed with, whether the stop hook pushes them, and the
-# remote. A module: load it with jq -L <this folder> and include "settings".
+# An effort's git settings, kept as settings.set events: the identity its
+# worker commits are authored and signed with, whether the stop hook pushes
+# them, and the remote. A module: load it with jq -L <this folder> and
+# include "settings".
 # Each *_problems def prints a list of "<field> <problem>; expected <x>"
 # lines, empty when its input fits. $names maps each field to the name a
 # problem calls it by (settings_file_names for the file, or a caller's own,

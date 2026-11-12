@@ -8,7 +8,7 @@ umask 077
 readonly PROG='crucible.sh'
 # The one kind: main's drafts, kept in drafts/main-thread/ of an effort
 # folder. Everything else of an effort is an event (events.sh).
-readonly KIND_LIST='drafts'
+readonly DRAFTS_KIND='drafts'
 readonly DRAFTS_DIR='drafts/main-thread'
 # Bounds the --older-than value handed to find -mtime, far past any real age.
 readonly MAX_PRUNE_DAYS_DIGITS=5
@@ -235,24 +235,8 @@ run_new() {
 }
 
 check_kind() {
-	set_kinds_text
-	[ -n "${kind}" ] || usage_error "--kind missing; expected one of ${kinds_text}"
-	for known_kind in ${KIND_LIST}; do
-		[ "${kind}" != "${known_kind}" ] || return 0
-	done
-	usage_error "unknown kind: ${kind}; expected one of ${kinds_text}"
-}
-
-# Sets kinds_text to KIND_LIST as text: "a, b or c".
-set_kinds_text() {
-	kinds_text=''
-	for known_kind in ${KIND_LIST}; do
-		kinds_text="${kinds_text:+${kinds_text}, }${known_kind}"
-	done
-	case ${kinds_text} in
-		*", "*) kinds_text="${kinds_text%, *} or ${kinds_text##*, }" ;;
-		*) ;;
-	esac
+	[ -n "${kind}" ] || usage_error "--kind missing; expected ${DRAFTS_KIND}"
+	[ "${kind}" = "${DRAFTS_KIND}" ] || usage_error "unknown kind: ${kind}; expected ${DRAFTS_KIND}"
 }
 
 check_label() {
@@ -275,7 +259,7 @@ check_effort() {
 	effort=${crucible_effort}
 }
 
-# Sets item_file to a new empty file in effort/kind/.
+# Sets item_file to a new empty file in the effort's drafts folder.
 create_item() {
 	kind_dir="${effort}/${DRAFTS_DIR}"
 	ensure_dir "${effort}/${DRAFTS_DIR%%/*}"
@@ -294,9 +278,8 @@ ensure_dir() {
 # Sets name for a file created in kind_dir whose ID no other item of the
 # effort holds; exits 5 when no ID can be minted, 4 when no file can be made.
 claim_item_file() {
-	crucible_extension_of_kind "${kind}"
 	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
-	if crucible_claim_item_file "${kind_dir}" "${label}" id_is_unique "${crucible_kind_extension}"; then
+	if crucible_claim_item_file "${kind_dir}" "${label}" id_is_unique "${crucible_draft_extension}"; then
 		name=${crucible_claimed_file##*/}
 		return 0
 	fi
@@ -304,19 +287,18 @@ claim_item_file() {
 	space_fault "${crucible_claim_problem}"
 }
 
-# True when the file just created is the only one with this ID in any kind
-# folder of the effort. Each caller counts after its own create, so of two
+# True when the file just created is the only one with this ID in the
+# effort's drafts folder. Each caller counts after its own create, so of two
 # racing for one ID at most one sees itself alone.
 id_is_unique() {
 	count_id_holders "$1"
 	[ "${holders}" -eq 1 ]
 }
 
-# Sets holders to the number of files with ID $1 in any kind folder of the
-# effort, one or two levels down.
+# Sets holders to the number of files with ID $1 in the effort's drafts folder.
 count_id_holders() {
 	holders=0
-	for holder in "${effort}"/*/"$1"-* "${effort}"/*/*/"$1"-*; do
+	for holder in "${effort}/${DRAFTS_DIR}/$1"-*; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
 	done
@@ -453,13 +435,12 @@ warn_cut() {
 }
 
 # Sets parsed_id and parsed_label when file name $1 is an item name of the
-# current kind, as crucible_name_item names one; fails otherwise.
+# draft, as crucible_name_item names one; fails otherwise.
 parse_item_name() {
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_split_id "$1" || return 1
 	parsed_id=${crucible_name_id}
-	crucible_extension_of_kind "${kind}"
-	parsed_label=${crucible_name_rest%".${crucible_kind_extension}"}
+	parsed_label=${crucible_name_rest%".${crucible_draft_extension}"}
 	[ "${parsed_label}" != "${crucible_name_rest}" ] || return 1
 	crucible_is_label "${parsed_label}"
 }
@@ -489,14 +470,11 @@ collect_matches() {
 		# shellcheck disable=SC2310 # a pure test; its status is the answer
 		crucible_is_effort_name "${effort_dir##*/}" || continue
 		[ -d "${effort_dir}" ] && [ ! -L "${effort_dir}" ] || continue
-		for kind in ${KIND_LIST}; do
-			match_in_kind "${effort_dir}" "$1"
-		done
+		match_in_kind "${effort_dir}" "$1"
 	done
 }
 
-# Adds the items of kind folder kind of effort folder $1 whose ID, or the
-# ID's hex, is $2.
+# Adds the drafts of effort folder $1 whose ID, or the ID's hex, is $2.
 match_in_kind() {
 	kind_dir="$1/${DRAFTS_DIR}"
 	[ ! -L "$1/${DRAFTS_DIR%%/*}" ] && [ ! -L "${kind_dir}" ] && [ -d "${kind_dir}" ] || return 0

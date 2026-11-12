@@ -5,34 +5,21 @@
 # "<field> <problem>; expected <x>" lines, empty when it fits; commit_message
 # builds the message of an input that fits.
 
-def commit_agent_trailers: ["effort", "dispatch", "agent-seat", "agent-id", "language", "frameworks", "standards"];
-# Each kind: its count trailer (null for none), its other trailers in the
-# order the message lists them after the count, and those that may be left out.
+# Each kind: its count trailer and its other trailers in the order the
+# message lists them after the count; every trailer is required.
 def commit_kinds: {
-	"build": {count: "iteration", trailers: ["effort", "agent-seat"], optional: []},
-	"test": {count: "iteration", trailers: ["build-seat", "effort", "agent-seat"], optional: []},
-	"fix": {count: "review-round", trailers: commit_agent_trailers, optional: ["frameworks"]},
-	"review": {count: "review-round", trailers: commit_agent_trailers, optional: ["frameworks"]},
-	"aggregated-review": {count: "review-round", trailers: ["effort"], optional: []},
-	"fix-choice": {count: "review-round", trailers: ["effort"], optional: []},
-	"import": {count: null, trailers: ["effort", "imported-from"], optional: []}
+	"build": {count: "iteration", trailers: ["effort", "agent-seat"]}
 };
-def commit_count_trailers: ["iteration", "review-round"];
-# Written on one line, items joined by ", "; an item holds no comma or
-# whitespace, so splitting the line on ", " gives the items back exactly.
-def commit_array_trailers: ["frameworks", "standards"];
+def commit_count_trailers: ["iteration"];
 def commit_fields: ["kind", "text", "trailers"];
 # Characters (Unicode code points): 72 keeps the subject whole in git's one-line views.
 def commit_subject_max: 72;
 def commit_trailer_max: 200;
-# A joined array line: room for about 15 plugin names of 30 characters.
-def commit_array_trailer_max: 500;
 # The largest count a JSON number holds exactly.
 def commit_count_max: 9007199254740991;
 
 def commit_subject_prefix($kind): "crucible(\($kind)): ";
-def commit_kind_trailers($rule): [$rule.count // empty] + $rule.trailers;
-def commit_kinds_of_count($key): [commit_kinds | to_entries[] | select(.value.count == $key) | .key];
+def commit_kind_trailers($rule): [$rule.count] + $rule.trailers;
 def commit_trim: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
 def commit_list: if length == 0 then "none" else join(", ") end;
 
@@ -63,28 +50,8 @@ def commit_subject_problem($kind; $rule):
 		end
 	end;
 
-# The problem lines of an array trailer named $name: each item one word, the
-# joined line at most commit_array_trailer_max characters.
-def commit_array_problems($name):
-	if type != "array" then "\($name) is a JSON \(type); expected an array of strings"
-	elif length == 0 then "\($name) is an empty array; expected at least one item, or the trailer left out when optional"
-	else
-		(to_entries[] | .key as $index | .value
-			| (commit_line_problem(commit_trailer_max)
-				// if test(",") then "holds a comma; expected no comma in an item"
-				elif test("[[:space:]]") then "holds whitespace; expected no whitespace in an item"
-				else empty
-				end)
-			| "\($name)[\($index)] \(.)"),
-		(if all(.[]; type == "string") and (join(", ") | length) > commit_array_trailer_max
-		then "\($name) joins to \(join(", ") | length) characters; expected at most \(commit_array_trailer_max)"
-		else empty
-		end)
-	end;
-
 def commit_trailer_value_problems($key; $name):
-	if IN($key; commit_array_trailers[]) then commit_array_problems($name)
-	elif IN($key; commit_count_trailers[]) then commit_count_problem | "\($name) \(.)"
+	if IN($key; commit_count_trailers[]) then commit_count_problem | "\($name) \(.)"
 	else commit_line_problem(commit_trailer_max) | "\($name) \(.)"
 	end;
 
@@ -97,11 +64,8 @@ def commit_trailer_problems($kind; $rule):
 		($rule // empty
 			| commit_kind_trailers($rule) as $allowed
 			| ($trailers | keys_unsorted[] | select(IN($allowed[]) | not)
-				| if IN(commit_count_trailers[]) then
-					"trailers[\(@json)] is the count of kind \(commit_kinds_of_count(.) | commit_list); expected \($rule.count | if . == null then "no count" else "trailers[\(@json)]" end) for kind \($kind)"
-				else "trailers[\(@json)] is not a trailer of kind \($kind); expected \($allowed | commit_list)"
-				end),
-			($allowed[] | select(IN($rule.optional[]) | not) | select(. as $key | $trailers | has($key) | not)
+				| "trailers[\(@json)] is not a trailer of kind \($kind); expected \($allowed | commit_list)"),
+			($allowed[] | select(. as $key | $trailers | has($key) | not)
 				| "trailers[\(@json)] is missing; expected it for kind \($kind)"))
 	end;
 
@@ -127,7 +91,7 @@ def commit_problems:
 def commit_trailer_key: split("-") | map((.[:1] | ascii_upcase) + .[1:]) | join("-");
 
 def commit_trailer_text:
-	if type == "array" then join(", ") elif type == "number" then floor | tostring else commit_trim end;
+	if type == "number" then floor | tostring else commit_trim end;
 
 def commit_message:
 	commit_kinds[.kind] as $rule

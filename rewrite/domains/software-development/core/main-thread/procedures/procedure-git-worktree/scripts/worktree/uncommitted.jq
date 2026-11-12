@@ -3,8 +3,7 @@
 # uncommitted_paths reads `git status --porcelain=v1 -z` of the seat's
 # worktree (jq -R -s) and gives each path with an uncommitted change, a
 # rename or copy by its new path. The worktree holds code only, so every
-# change counts; uncommitted_paths($seat) is the same, kept for callers that
-# name the seat.
+# change counts.
 
 def uncommitted_paths:
 	reduce (split("\u0000")[] | select(. != "")) as $entry ({paths: [], source_next: false};
@@ -12,5 +11,3 @@ def uncommitted_paths:
 		else .source_next = ($entry[0:2] | test("[RC]")) | .paths += [$entry[3:]]
 		end)
 	| .paths[];
-
-def uncommitted_paths($seat): uncommitted_paths;

@@ -43,18 +43,17 @@ $ARGS.named as $given
 | {problems: [$file | settings_problems($names)], file: $file,
    saved: "Git setup saved: \($file.identity + {fingerprint: $given.fingerprint} | settings_identity_text); auto-push \(if $file.auto_push then "on" else "off" end)."}'
 
-# Prints the identity --pick or --pick-label names, {"pick": <identity or
-# null>, "count": <identities>}, from $copy (the kept copy, slurped) and
-# $fresh (a listing made now), by number $pick or, when $label is not null,
-# by its option label; or one "PROBLEM <problem>" line when the copy is no
-# array, the listing changed since it was kept, or no identity has $label.
+# Prints the identity --pick-label names, {"pick": <identity or null>,
+# "count": <identities>}, from $copy (the kept copy, slurped) and $fresh (a
+# listing made now), by its option label $label; or one "PROBLEM <problem>"
+# line when the copy is no array, the listing changed since it was kept, or
+# no identity has $label.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly PICK_JQ='include "settings";
 ($fresh | length) as $count
 | if ($copy | length) != 1 or ($copy[0] | type) != "array"
 then "PROBLEM \($at) is not one JSON array; expected the identities the card showed; try the gate again from its plan"
 elif $copy[0] != $fresh then "PROBLEM the signing identities on this machine changed since the card was shown; expected the list it showed; try the gate again from its plan"
-elif $label == null then {pick: $fresh[$pick - 1], count: $count}
 else [$fresh[] | select(settings_identity_text == $label)][0] as $match
 	| if $match == null and $count > 0
 	then "PROBLEM no identity the card showed is labelled \($label | tojson); expected one of its option labels as it showed them; try the gate again from its plan"
@@ -73,7 +72,6 @@ end'
 usage() {
 	cat <<EOF
 usage: sh ${PROG} write --effort DIR --name N --email E [--signing-format F --signing-key K] [--auto-push yes|no] [--repo DIR]
-       sh ${PROG} write --effort DIR --pick N [--auto-push yes|no] [--repo DIR]
        sh ${PROG} write --effort DIR --pick-label LABEL [--auto-push yes|no] [--repo DIR]
        sh ${PROG} get --effort DIR
        sh ${PROG} --help | -h
@@ -87,15 +85,11 @@ length caps.
 --effort DIR          absolute path of the effort folder
 --name N              the author and committer name
 --email E             the author and committer email
---pick N              write identity N, counted from 1, of those the card
-                      showed, kept in <effort>/${COPY_PATH};
-                      refused when ${CANDIDATES} now lists others; not with
-                      --pick-label, --name, --email or --signing-*
---pick-label LABEL    write the identity of those the card showed whose
-                      option label, as render-git-setup.sh --question
-                      labels it, is LABEL exactly; refused when none is,
-                      and as --pick is; not with --pick, --name, --email or
-                      --signing-*
+--pick-label LABEL    write the identity of those the card showed, kept in
+                      <effort>/${COPY_PATH}, whose option label, as
+                      render-git-setup.sh --question labels it, is LABEL
+                      exactly; refused when none is or ${CANDIDATES} now
+                      lists others; not with --name, --email or --signing-*
 --signing-format F    openpgp or ssh, as git's gpg.format; with --signing-key
 --signing-key K       the key git's user.signingkey takes; with
                       --signing-format; checked by ${RESOLVER} with the
@@ -121,7 +115,7 @@ stdout, get: these lines, in this order; a value holds no control character
 exit codes:
   0  done; relay write's line, read get's
   2  wrong command line; fix the call
-  3  refused: a value, the effort folder, --repo, --pick, a typed key
+  3  refused: a value, the effort folder, --repo, a typed key
      ${RESOLVER} refused or failed on, --pick-label, or (get) a file that breaks ${MODULE}.jq;
      stderr names each problem; show the human stderr, then (write) ask
      again from the gate, (get) stop
@@ -132,7 +126,7 @@ exit codes:
 
 needs: POSIX sh, jq 1.6+, git (with --repo or --signing-key); the crucible
 skill's events.sh; ${MODULE}.jq,
-origin-lib.sh, ${CANDIDATES} (with --pick or --pick-label) and ${RESOLVER} (with
+origin-lib.sh, ${CANDIDATES} (with --pick-label) and ${RESOLVER} (with
 --signing-key) beside this script
 EOF
 }
@@ -176,7 +170,7 @@ parse_args() {
 			exit 0
 			;;
 		'') usage_error "command missing; expected one of ${COMMANDS}" ;;
-		write) allowed='--effort --pick --pick-label --name --email --signing-format --signing-key --auto-push --repo' ;;
+		write) allowed='--effort --pick-label --name --email --signing-format --signing-key --auto-push --repo' ;;
 		get) allowed='--effort' ;;
 		*)
 			shown_command=$(printable "$1")
@@ -185,8 +179,8 @@ parse_args() {
 	esac
 	command=$1
 	shift
-	effort='' pick='' pick_label='' name='' email='' format='' key='' auto_push='' repo=''
-	seen_effort='' seen_pick='' seen_pick_label='' seen_name='' seen_email='' seen_format='' seen_key='' seen_auto_push='' seen_repo=''
+	effort='' pick_label='' name='' email='' format='' key='' auto_push='' repo=''
+	seen_effort='' seen_pick_label='' seen_name='' seen_email='' seen_format='' seen_key='' seen_auto_push='' seen_repo=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -196,10 +190,6 @@ parse_args() {
 			--effort)
 				check_option "$1" "${seen_effort}" "$#"
 				effort=$2 seen_effort=yes
-				;;
-			--pick)
-				check_option "$1" "${seen_pick}" "$#"
-				pick=$2 seen_pick=yes
 				;;
 			--pick-label)
 				check_option "$1" "${seen_pick_label}" "$#"
@@ -244,11 +234,9 @@ parse_args() {
 require_options() {
 	[ -n "${seen_effort}" ] || usage_error '--effort missing; expected --effort DIR'
 	[ "${command}" = write ] || return 0
-	[ -z "${seen_pick}" ] || [ -z "${seen_pick_label}" ] ||
-		usage_error '--pick and --pick-label given together; expected one of them'
-	picked="${seen_pick}${seen_pick_label}"
+	picked=${seen_pick_label}
 	[ -z "${picked}" ] || [ -z "${seen_name}${seen_email}${seen_format}${seen_key}" ] ||
-		usage_error '--pick and --pick-label take no --name, --email or --signing-*; expected --pick N, --pick-label LABEL or a typed identity'
+		usage_error '--pick-label takes no --name, --email or --signing-*; expected --pick-label LABEL or a typed identity'
 	[ -z "${seen_repo}" ] || [ -n "${seen_auto_push}" ] ||
 		usage_error '--repo needs --auto-push; expected --auto-push yes or --auto-push no'
 	[ -n "${seen_auto_push}" ] || auto_push=no
@@ -319,22 +307,10 @@ EOF
 }
 
 # Sets name, email, fingerprint and (when it signs) format and key to the
-# identity of those the card showed that --pick numbers or --pick-label
-# labels, refusing a number or label it has no entry for or a listing that
-# changed since the card.
+# identity of those the card showed that --pick-label labels, refusing a
+# label it has no entry for or a listing that changed since the card.
 pick_identity() {
-	if [ -n "${seen_pick}" ]; then
-		shown_number=$(printable "${pick}")
-		shown_pick="--pick ${shown_number}"
-		case ${pick} in
-			'' | *[!0-9]* | 0*) die 3 "--pick is ${shown_number}; expected a number from 1" ;;
-			*) ;;
-		esac
-		set -- --argjson pick "${pick}" --argjson label null
-	else
-		shown_pick="--pick-label $(printable "${pick_label}")"
-		set -- --argjson pick null --arg label "${pick_label}"
-	fi
+	shown_pick="--pick-label $(printable "${pick_label}")"
 	copy_file="${effort_dir}/${COPY_PATH}"
 	shown_copy=$(printable "${copy_file}")
 	[ -f "${copy_file}" ] && [ ! -L "${copy_file}" ] ||
@@ -345,7 +321,7 @@ pick_identity() {
 	fresh=$(sh "${own_dir}/${CANDIDATES}") || candidates_rc=$?
 	[ "${candidates_rc}" -eq 0 ] ||
 		die 4 "${CANDIDATES} failed (exit ${candidates_rc}); its own lines above say why; try running it by hand"
-	result=$(jq -nc -L "${own_dir}" --slurpfile copy "${copy_file}" --argjson fresh "${fresh}" "$@" \
+	result=$(jq -nc -L "${own_dir}" --slurpfile copy "${copy_file}" --argjson fresh "${fresh}" --arg label "${pick_label}" \
 		--arg at "${shown_copy}" "${PICK_JQ}") ||
 		die 4 "jq could not compare ${shown_copy} with what ${CANDIDATES} printed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version"
 	case ${result} in
@@ -359,9 +335,6 @@ pick_identity() {
 	count=$(picked_field '.count')
 	[ "${count}" -gt 0 ] ||
 		die 3 "${shown_pick} refused: the card showed no signing identity; expected --name and --email typed"
-	signs=$(picked_field '.pick != null')
-	[ "${signs}" = true ] ||
-		die 3 "${shown_pick} is past the ${count} identities the card showed; expected a number from 1 to ${count}"
 	name=$(picked_field '.pick.name') seen_name=yes
 	email=$(picked_field '.pick.email') seen_email=yes
 	fingerprint=$(picked_field '.pick.fingerprint')

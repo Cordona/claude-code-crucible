@@ -7,19 +7,18 @@ set -eu
 
 readonly PROG='seat-name.sh'
 readonly MODULE='seats'
-# The C locale keeps the shell byte-wise; jq reads the file as UTF-8.
+# The C locale keeps the shell byte-wise; jq reads UTF-8.
 LC_ALL=C
 export LC_ALL
 
 # Prints {exit, problems, out}, as seats.sh's program does.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly NAME_JQ='include "seats";
-seats_name_run($role; $lens; if $exists == "yes" then $current else null end)'
+seats_name_run($role; if $exists == "yes" then $current else null end)'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort FOLDER --role developer|tester
-       sh ${PROG} --effort FOLDER --role reviewer --lens L
+usage: sh ${PROG} --effort FOLDER --role developer
        sh ${PROG} --help | -h
 
 Prints the next free seat name of the role: its prefix, a dash and the
@@ -28,19 +27,15 @@ alpha, beta ... omega, then alpha-2 ... omega-2, alpha-3 and on, with no
 limit. Reads only.
 
 --effort FOLDER  the effort folder, absolute
---role ROLE   developer (build-agent-...), tester (test-agent-...) or
-              reviewer (<L>-reviewer-agent-...)
---lens L      the reviewer's lens, lowercase words joined by dashes, like
-              security; a reviewer only
+--role ROLE   developer (build-agent-...)
 
-stdout: the name, like build-agent-alpha, build-agent-alpha-2 or
-        security-reviewer-agent-alpha
+stdout: the name, like build-agent-alpha or build-agent-alpha-2
 
 exit codes:
   0  printed
-  2  wrong command line: a missing, repeated or unknown option, a missing
-     value, --lens without --role reviewer or missing with it
-  3  input: a bad --effort folder, role or lens, or the seat list does not
+  2  wrong command line: a missing, repeated or unknown option, or a
+     missing value
+  3  input: a bad --effort folder or role, or the seat list does not
      fit (one stderr line per problem)
   4  environment: jq missing or failed, or seats.sh or ${MODULE}.jq not
      beside ${PROG}
@@ -77,7 +72,7 @@ take_value() {
 }
 
 parse_args() {
-	effort_folder='' role='' lens=''
+	effort_folder='' role=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -89,27 +84,18 @@ parse_args() {
 				effort_folder=${option_value}
 				;;
 			--role)
-				take_value "$1" "${role}" "${2-}" 'developer|tester|reviewer'
+				take_value "$1" "${role}" "${2-}" developer
 				role=${option_value}
-				;;
-			--lens)
-				take_value "$1" "${lens}" "${2-}" L
-				lens=${option_value}
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --role, --lens or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --role or --help"
 				;;
 		esac
 		shift 2
 	done
 	[ -n "${effort_folder}" ] || usage_error '--effort missing; expected --effort FOLDER'
-	[ -n "${role}" ] || usage_error '--role missing; expected --role developer|tester|reviewer'
-	if [ "${role}" = reviewer ]; then
-		[ -n "${lens}" ] || usage_error '--lens missing; expected --lens L for a reviewer'
-	else
-		[ -z "${lens}" ] || usage_error '--lens is given without --role reviewer; expected it only for a reviewer'
-	fi
+	[ -n "${role}" ] || usage_error '--role missing; expected --role developer'
 }
 
 script_dir() {
@@ -146,8 +132,8 @@ read_seats() {
 
 # Prints the problems to stderr and the name to stdout; exits with the code.
 print_name() {
-	result=$(jq -nc -L "${own_dir}" --arg current "${current}" --arg exists "${exists}" \
-		--arg role "${role}" --arg lens "${lens}" "${NAME_JQ}") ||
+	result=$(jq -nc -L "${own_dir}" --argjson current "${current}" --arg exists "${exists}" \
+		--arg role "${role}" "${NAME_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}"
 	outcome=$(printf '%s\n' "${result}" | jq -r '.exit') || die 4 'jq failed reading the result; expected jq 1.6+'
 	problems=$(printf '%s\n' "${result}" | jq -r '.problems[]') || die 4 'jq failed reading the problems; expected jq 1.6+'

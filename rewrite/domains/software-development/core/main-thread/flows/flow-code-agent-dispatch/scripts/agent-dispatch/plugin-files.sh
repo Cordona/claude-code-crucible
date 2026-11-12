@@ -14,9 +14,9 @@
 # · Standards: <labels> · Procedures: <labels>", a kind with no loaded plugin
 # left out ("LABELS:" alone when none is loaded); each list is in plugin-line
 # order, joined by ", ". The plugin rules (at most one language, frameworks
-# with a language, standard-testing by mode) are the plan validator's, checked
-# before this runs. A plugin line is <kind> <name> <label> <description>
-# <paths...>, so the paths start at field 5. The names are taken out of ARGV,
+# with a language, standard-testing never loaded) are the plan validator's,
+# checked before this runs. A plugin line is <kind> <name> <label>
+# <description> <paths...>, so the paths start at field 5. The names are taken out of ARGV,
 # each operand split on whitespace, so awk reads stdin.
 # The program is single-quoted on purpose: its $ signs are awk's.
 # shellcheck disable=SC2016,SC2034 # read by select_plugin_lines below

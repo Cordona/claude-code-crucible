@@ -9,9 +9,9 @@
 # The agents a dispatch file is written for: the one list of dispatched
 # agents. A new agent goes here.
 def dispatched_agents: ["code-developer", "code-reviewer"];
-# The agents prepare-agent-prompt.sh acts on as a PreToolUse hook: every
-# dispatched agent.
-def listed_agents: dispatched_agents;
+# The agents prepare-agent-prompt.sh acts on as a PreToolUse hook. No
+# code-reviewer: no review seat exists to dispatch it into.
+def listed_agents: ["code-developer"];
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
 def sha256_pattern: "\\A[0-9a-f]{64}\\z";
 # A Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>, the shape crucible_is_id
@@ -22,6 +22,4 @@ def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
 # lowercase words joined by dashes, then a letter of alpha ... omega and, from
 # the second round, -2, -3 ..., like build-agent-alpha or build-agent-alpha-2.
 def seat_pattern: "\\A[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*-(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(-[2-9]|-[1-9][0-9]+)?\\z";
-# A local time with its offset, YYYY-MM-DDTHH:MM:SS+HH:MM.
-def local_time_pattern: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\z";
 

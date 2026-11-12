@@ -30,8 +30,6 @@ aside).
 
 --repo DIR  absolute path of the main checkout's top folder
 
-A record of version 1 (one seat) or 2 (one or more seats) is read.
-
 stdout, one JSON line:
   {"mounted":false,"line":L}   nothing is mounted
   {"mounted":true,"effort":<dir>,"seats":[{"seat":S,"seat_commit":<sha>,
@@ -57,7 +55,7 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
-     unreadable or not version 1 or 2
+     unreadable or not version 2
   4  environment: git, jq or ${VIEW_LIB} missing or failed
 
 needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh, ../merge/chain.jq,

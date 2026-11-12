@@ -39,8 +39,6 @@ left there.
 
 --repo DIR  absolute path of the main checkout's top folder
 
-A record of version 1 (one seat) or 2 (one or more seats) is read.
-
 stdout, one JSON line:
   {"unmounted":true,"seats":[S...],"paths":N,"line":L}           reversed
   {"unmounted":false,"forgotten":true,"seats":[S...],"line":L}   finished:
@@ -55,7 +53,7 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
-     unreadable or not version 1 or 2
+     unreadable or not version 2
   4  environment: git, jq or ${VIEW_LIB} missing or failed, a write
      failed, or the reversed paths or their bytes did not verify (the
      record is kept)

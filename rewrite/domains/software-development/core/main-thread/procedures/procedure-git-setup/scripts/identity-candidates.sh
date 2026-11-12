@@ -58,7 +58,7 @@ list-identities.sh does.
                  with --effort
 --effort DIR     the absolute effort folder: also keep the array, as the card
                  shows it, in DIR/drafts/main-thread/${COPY_NAME}, for
-                 settings.sh write --pick; with --plan-out
+                 settings.sh write --pick-label; with --plan-out
 Each file is replaced whole or left as it was; on exit 4 one may be written
 and the other not. Nothing else is left behind (a SIGKILL aside).
 
@@ -174,14 +174,14 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder effort.sh start printed"
-	cache_dir="${effort_dir}/drafts/main-thread"
-	shown_cache=$(printable "${cache_dir}")
-	if [ -L "${effort_dir}/drafts" ] || [ -L "${cache_dir}" ] || { [ -e "${cache_dir}" ] && [ ! -d "${cache_dir}" ]; }; then
-		die 3 "${shown_cache} is a symbolic link or no folder; expected the effort's main-thread drafts folder"
+	drafts_dir="${effort_dir}/drafts/main-thread"
+	shown_drafts=$(printable "${drafts_dir}")
+	if [ -L "${effort_dir}/drafts" ] || [ -L "${drafts_dir}" ] || { [ -e "${drafts_dir}" ] && [ ! -d "${drafts_dir}" ]; }; then
+		die 3 "${shown_drafts} is a symbolic link or no folder; expected the effort's main-thread drafts folder"
 	fi
-	[ -d "${cache_dir}" ] || mkdir -p "${cache_dir}" ||
-		die 4 "mkdir could not create ${shown_cache}; expected a writable effort folder; try ls -ld on it"
-	copy_file="${cache_dir}/${COPY_NAME}"
+	[ -d "${drafts_dir}" ] || mkdir -p "${drafts_dir}" ||
+		die 4 "mkdir could not create ${shown_drafts}; expected a writable effort folder; try ls -ld on it"
+	copy_file="${drafts_dir}/${COPY_NAME}"
 	shown_copy=$(printable "${copy_file}")
 	[ ! -L "${copy_file}" ] && [ ! -d "${copy_file}" ] ||
 		die 3 "${shown_copy} is a folder or a symbolic link; expected a plain file path; try removing it"

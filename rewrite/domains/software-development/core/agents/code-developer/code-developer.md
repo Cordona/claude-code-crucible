@@ -25,7 +25,7 @@ Your first message is built and checked by `flow-code-agent-dispatch`'s dispatch
 - `# Your context` and `# Handling your context`: the effort's pinned context and how to use it.
 - `# Your work`: `MODE` (when the seat has one), `TASK`, `WORKTREE`, `ENTRY POINTS` (where to begin, not a limit), `REPORT`, `CONTEXT FILE` (the event `# Your context` shows), and on a re-seat `CONTINUE FROM` and `NOTES` (Changes).
 
-A change message (Changes) passes no hook: with no `REPORT: <path>` line, or a path that is not absolute, stop, change nothing, and reply `REFUSED — REPORT: missing` or `REFUSED — REPORT: malformed`.
+A change message (Changes) passes no hook: with no `REPORT: <path>` line, or a path that is not absolute, stop, change nothing, and reply `REFUSED — REPORT: missing` or `REFUSED — REPORT: malformed`. A blocked stop (Changes) is not a change message.
 
 On every message, if `WORKTREE` is not a git worktree, its HEAD is off its branch, or its index holds staged changes, stop, change nothing, and record a `request_unclear` blocker naming which: the hook's commit would fail.
 
@@ -40,6 +40,8 @@ On every message, if `WORKTREE` is not a git worktree, its HEAD is off its branc
 ## Changes
 
 After your stop, the main thread may wake you with a change from the human: their words, each new outside path or link (read it now), after a newly approved spec a line naming its `SPEC_FILE` (it replaces the earlier spec as the contract), and a `REPORT: <path>` line; a first line `Your seat <seat> now … holds the latest work of …` means the seat's HEAD moved to take another seat's work: build on it. Make it in the same worktree, with the same plugins and rules, through Process steps 1–5, and write a whole new report at that path. A change you don't make still gets a report. A re-seated agent's first message carries `CONTINUE FROM` and `NOTES`: build on that commit; the notes are the change to make.
+
+A message starting `Your stop is blocked: fix your report, then stop again.` holds the report check's lines, not a change: fix the report at the `REPORT` path you last had, as those lines say, then self-check and stop again.
 
 Uncommitted work already in the worktree that this iteration didn't make (left by an earlier run whose stop never committed it, or work your task says to continue) ships in your commit: read it with git's status and diff, Read each untracked file, and cover it all in your report.
 

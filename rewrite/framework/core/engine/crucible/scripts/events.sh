@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 # The only writer of an effort's events: appends one event under the effort's
-# lock, runs a read-then-write under it, writes a fault without it, and reads
-# the events back.
+# lock, writes a fault without it, and reads the events back.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
@@ -12,7 +11,7 @@ readonly PROG='events.sh'
 readonly FORMAT=1
 # Event types taken after effort.completed or effort.dropped: a reopen, work
 # that lands late, and the final harvest.
-readonly AFTER_END_TYPES='effort.reopened build.committed test.committed metrics.harvested'
+readonly AFTER_END_TYPES='effort.reopened build.committed metrics.harvested'
 # An append holds the lock for a few jq runs, well under a second, so a wait
 # this long means a stuck holder, not a busy one.
 readonly DEFAULT_WAIT_SECONDS=5
@@ -27,10 +26,9 @@ usage() {
 	cat <<EOF
 usage: events.sh append --effort FOLDER --type TYPE --by NAME --body-file FILE
        [--facts JSON] [--iteration SEAT:N] [--guard FILE] [--session ID]
-       [--wait N] [--locked]
+       [--wait N]
        events.sh fault --effort FOLDER --by NAME --body-file FILE
        [--iteration SEAT:N] [--session ID]
-       events.sh with-lock --effort FOLDER [--wait N] -- CMD [ARG...]
        events.sh list --effort FOLDER [--type PATTERN] [--max N]
        events.sh latest --effort FOLDER --type PATTERN [--where JQ]
        events.sh slurp --effort FOLDER [--type PATTERN] [--faults] [--max N]
@@ -46,7 +44,8 @@ while held; readers write nothing. A refused --type, --by, --body-file,
 --facts, --iteration or event, or a lock timeout, writes only its fault, by
 design (none for a bad --effort): body {"refused": PATH, "rule": RULE},
 never the input, kept in <effort>/events/faults/ as the rejection log, for
-audit, read by no script. Nothing else is left behind (a SIGKILL aside).
+audit; slurp --faults reads faults/. Nothing else is left behind (a SIGKILL
+aside).
 
 TYPE: subject[.qualifier].past-verb, parts of a-z, 0-9 and -. PATTERN: a sh
 glob over TYPE.
@@ -58,7 +57,6 @@ append  writes {type, seq, at, by, claude_session_id, iteration?, <facts>,
   stdout: its absolute path.
 fault   writes a fault.raised event; a stuck lock never stops it.
   stdout: its absolute path.
-with-lock  runs CMD holding the lock; exit: CMD's.
 list    stdout: each event's absolute path, in seq order.
 latest  stdout: the absolute path of the newest PATTERN event where JQ is
   true; nothing when none.
@@ -78,7 +76,6 @@ Options:
                     each string it prints refuses
   --session ID      Claude Code's session (default CLAUDE_CODE_SESSION_ID)
   --wait N          lock wait in seconds (default ${DEFAULT_WAIT_SECONDS})
-  --locked          inside with-lock: the lock is held
   --where JQ        a jq filter per event (default true)
   --faults          slurp: faults too, all ordered by at
   --max N           list, slurp: at most N (default 0, all); stderr notes a cut
@@ -171,8 +168,8 @@ main() {
 			usage
 			exit 0
 			;;
-		append | fault | with-lock | list | latest | slurp | find-agent) ;;
-		*) usage_error "unknown command: ${command}; expected append, fault, with-lock, list, latest, slurp, find-agent or --help" ;;
+		append | fault | list | latest | slurp | find-agent) ;;
+		*) usage_error "unknown command: ${command}; expected append, fault, list, latest, slurp, find-agent or --help" ;;
 	esac
 	load_space_lib
 	check_jq
@@ -186,7 +183,6 @@ main() {
 	case ${command} in
 		append) run_append "$@" ;;
 		fault) run_fault "$@" ;;
-		with-lock) run_with_lock "$@" ;;
 		list) run_list "$@" ;;
 		latest) run_latest "$@" ;;
 		slurp) run_slurp "$@" ;;
@@ -313,16 +309,11 @@ random_hex() {
 }
 
 run_append() {
-	effort='' type='' by='' body_file='' facts='' iteration='' guard='' session='' wait_seconds=${DEFAULT_WAIT_SECONDS} locked=no
+	effort='' type='' by='' body_file='' facts='' iteration='' guard='' session='' wait_seconds=${DEFAULT_WAIT_SECONDS}
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--locked)
-				locked=yes
-				shift
-				continue
-				;;
 			--effort | --type | --by | --body-file | --facts | --iteration | --guard | --session | --wait) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for append: $1; expected --effort, --type, --by, --body-file, --facts, --iteration, --guard, --session, --wait or --locked" ;;
+			*) usage_error "unknown argument for append: $1; expected --effort, --type, --by, --body-file, --facts, --iteration, --guard, --session or --wait" ;;
 		esac
 		case $1 in
 			--effort) effort=$2 ;;
@@ -347,14 +338,9 @@ run_append() {
 	check_iteration
 	check_wait
 	[ -z "${guard}" ] || [ -f "${guard}" ] || usage_error "--guard ${guard}: not a file; expected a jq program file; try checking the path"
-	if [ "${locked}" = yes ]; then
-		check_held_lock
-		append_locked
-	else
-		take_lock
-		append_locked
-		release_lock
-	fi
+	take_lock
+	append_locked
+	release_lock
 	printf '%s\n' "${event_file}"
 }
 
@@ -520,40 +506,6 @@ record_lock_timeout() {
 release_lock() {
 	holder=$(readlink "${lock}" 2>/dev/null) || return 0
 	[ "${holder}" != "$$" ] || rm -f "${lock}"
-}
-
-# Checks that the lock is held by the with-lock run above this one.
-check_held_lock() {
-	holder=$(readlink "${lock}" 2>/dev/null) || holder=''
-	[ -n "${holder}" ] && [ "${holder}" = "${CRUCIBLE_EVENTS_LOCK_HOLDER:-}" ] ||
-		usage_error "--locked outside with-lock for ${effort}; expected events.sh with-lock --effort ${effort} -- ..."
-}
-
-run_with_lock() {
-	effort='' session='' wait_seconds=${DEFAULT_WAIT_SECONDS}
-	while [ "$#" -gt 0 ]; do
-		case $1 in
-			--)
-				shift
-				break
-				;;
-			--effort | --wait) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for with-lock: $1; expected --effort, --wait, then -- CMD" ;;
-		esac
-		case $1 in
-			--effort) effort=$2 ;;
-			*) wait_seconds=$2 ;;
-		esac
-		shift 2
-	done
-	[ "$#" -gt 0 ] || usage_error 'with-lock needs a command after --; expected events.sh with-lock --effort FOLDER -- CMD [ARG...]'
-	check_effort
-	check_wait
-	take_lock
-	cmd_status=0
-	CRUCIBLE_EVENTS_LOCK_HOLDER=$$ "$@" || cmd_status=$?
-	release_lock
-	exit "${cmd_status}"
 }
 
 run_fault() {

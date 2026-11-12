@@ -396,10 +396,10 @@ EOF
 # procedure-context's own files from folder $2, by default
 # <$1>/procedure-context/scripts: a caller that is this procedure's own script
 # passes the folder it runs from, so it loads every file of the procedure from
-# one copy. Fails with context_load_fault install (a file missing) or host (no
-# sha256 tool) and context_load_problem "<what>; expected <x>; <the fix>".
+# one copy. Fails with context_load_problem "<what>; expected <x>; <the fix>"
+# when a file or the sha256 tool is missing.
 context_load_checks() {
-	context_load_fault=install context_load_problem=''
+	context_load_problem=''
 	context_scripts_dir=${2:-$1/procedure-context/scripts}
 	context_validator="${context_scripts_dir}/agent-context-validator.jq"
 	# The validator includes it; a missing copy would read as a jq fault.
@@ -422,11 +422,9 @@ context_load_checks() {
 	# shellcheck source=context-versions.sh
 	. "${context_versions_lib}"
 	if ! find_context_digest_tool; then
-		context_load_fault=host
 		context_load_problem='sha256sum and shasum missing; expected one of them on PATH; install coreutils (Linux) or use the system shasum (macOS)'
 		return 1
 	fi
-	context_load_fault=''
 }
 
 # Sets context_digest_tool to the sha256 command on PATH (sha256sum on Linux and

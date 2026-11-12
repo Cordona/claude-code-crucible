@@ -40,13 +40,14 @@ def classify:
 		"jira\t" + $parts.authority + "\t" + ($parts.path | capture("^/browse/(?<key>[^/]+)").key)
 	  else "other\t" + $parts.authority end;
 '
-# Checks the file and link n. Input: the file slurped (jq -s); --arg n.
+# Checks the context.cut event and its body's link n. Input: the file slurped
+# (jq -s); --arg n.
 # shellcheck disable=SC2016
 readonly CONTEXT_LINK_JQ='
 ($n | tonumber) as $index
-| if length != 1 or (.[0] | type) != "object" then bad("the file holds no single JSON object; expected one object with paths, links and spec; try the file the human approved")
-  elif (.[0] | has("links")) and (.[0].links | type) != "array" then bad("the file has no links array; expected links as an array; try the file the human approved")
-  else (.[0].links // []) as $links
+| if length != 1 or (.[0] | type) != "object" or (.[0].body | type) != "object" then bad("the file holds no context.cut event; expected one object whose body holds paths, links and spec; try the file the human approved")
+  elif (.[0].body | has("links")) and (.[0].body.links | type) != "array" then bad("the file has no links array; expected body.links as an array; try the file the human approved")
+  else (.[0].body.links // []) as $links
 	| if ($links | length) == 0 then bad("no link \($n); the file has 0; expected at least one link; try none, as the file lists no links")
 	  elif $index > ($links | length) then bad("no link \($n); the file has \($links | length); try a --link from 1 to \($links | length)")
 	  elif ($links[$index - 1] | type) != "object" or ($links[$index - 1].url | http_url | not) then bad("link \($n) has no URL of the accepted form; expected an object whose \"url\" is an http(s) URL of letters, digits and . _ ~ / ? # = % : + , @ - only; try the file the human approved")
@@ -80,14 +81,15 @@ usage: read-link.sh --context-file <absolute path> --link <n>
        read-link.sh --url <link>
        read-link.sh --help | -h
 
-Reads link <n> of a context file, or the one link given, through its
+Reads link <n> of a context.cut event, or the one link given, through its
 tracker's issue view.
 
 Options:
   --context-file <absolute path>
-                  one JSON object whose links array holds objects with a
-                  "url" (no links key: no link); no other key is read
-  --link <n>      the link's place in links: a whole number from 1, no
+                  a context.cut event: one JSON object whose body's links
+                  array holds objects with a "url" (no links key: no
+                  link); nothing else is read
+  --link <n>      the link's place in body.links: a whole number from 1, no
                   leading zero
   --url <link>    one link, given directly; not with --context-file or
                   --link

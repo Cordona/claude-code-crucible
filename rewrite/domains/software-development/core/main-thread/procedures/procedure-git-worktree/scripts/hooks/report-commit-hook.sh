@@ -4,7 +4,7 @@
 # the report fits, commits the worktree's changes as the seat's next
 # iteration, as the effort's identity, pushes the worktree's branch when the
 # effort's settings ask for it, and records the report as one
-# build.committed or test.committed event, which also sets the seat idle.
+# build.committed event, which also sets the seat idle.
 # The draft is renamed to report.committing.json while it is committed, so a
 # run that dies part way is finished or undone by the next one. A report
 # that does not fit blocks the stop with the checker's lines, MAX_BLOCKS
@@ -49,61 +49,57 @@ GIT_OPTIONAL_LOCKS=0
 GIT_TERMINAL_PROMPT=0
 export GIT_OPTIONAL_LOCKS GIT_TERMINAL_PROMPT
 
-# The blocks of agent $agent since its seat's last build.committed or
-# test.committed, or its own last stop.gave-up. Input: every event.
+# The blocks of agent $agent since its seat's last build.committed or its
+# own last stop.gave-up. Input: every event.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly BLOCKS_JQ='. as $all
 | ([range(length) | select($all[.] as $e
-	| ($e.type | IN("build.committed", "test.committed")) and $e.seat == $seat
+	| $e.type == "build.committed" and $e.seat == $seat
 	  or ($e.type == "stop.gave-up" and $e.body.agent_id == $agent))] | last) as $cut
 | $all[(if $cut == null then 0 else $cut + 1 end):]
 | map(select(.type == "stop.blocked" and .body.agent_id == $agent)) | length'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} [--efforts DIR]
+usage: sh ${PROG}
        sh ${PROG} --help | -h
 
 Claude Code's SubagentStop hook for effort developers. Reads the event JSON
 on stdin (agent_id, session_id); finds the agent's seat with events.sh
 find-agent and seats.sh get. Only a working developer seat that holds the
-agent, awaiting no round, goes on; every other stop goes ahead.
+agent goes on; every other stop goes ahead.
 
 The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
 (iteration.sh's REPORT); C is ${COMMITTING_FILE} beside it.
   1 recover  C left by a run that died: an event whose draft is C's
-             sha256 exists: C goes; a crucible(build|test) commit of the
+             sha256 exists: C goes; a crucible(build) commit of the
              seat on its branch that no event's commit holds: its event is
              written from C (step 6), C goes, and with no D the stop goes
              ahead; else C moves back to D (a D already there is kept)
   2 check    ${PRUNER} --apply, then ${CHECKER}; a misfit appends
              stop.blocked {seat, agent_id, hook_event, block, reason} and
              blocks; the misfit after ${MAX_BLOCKS} blocks of this agent since its
-             seat's last build.committed or test.committed or its last
-             stop.gave-up appends stop.gave-up and sets the seat gave-up
+             seat's last build.committed or its last stop.gave-up
+             appends stop.gave-up and sets the seat gave-up
   3 rename   D to C
   4 stage    the worktree's changes, .gitignore applied; none: no commit
   5 commit   commit-input.sh --report C, commit-message.sh, commit.sh
-             --seat as settings.sh get's identity, signed with its key;
+             as settings.sh get's identity, signed with its key;
              with AUTO_PUSH=yes push.sh --timeout the seconds left of
              ${HOOK_LIMIT} but ${PUSH_MARGIN} (under ${MIN_PUSH_SECONDS}: no push, a fault)
-  6 record   build.committed or test.committed: body C's JSON, facts
-             seat, dispatch (seats.sh get's), commit (sha or null), draft
-             (C's sha256); iteration: the commit's Iteration with its
-             Agent-Seat (build) or Build-Seat (test), else the seat's
-             current one; then C goes
+  6 record   build.committed: body C's JSON, facts seat, dispatch
+             (seats.sh get's), commit (sha or null), draft (C's sha256);
+             iteration: the commit's Iteration with its Agent-Seat, else
+             the seat's current one; then C goes
 
 The hook_event is the cksum of the event JSON, the same for every hook
 Claude Code gives that event. stop.* and the seat's faults carry the
-seat's current iteration: iteration.sh's ITERATION less one for a build,
-ITERATION for a test, none when that is 0. Every fault, a commit made
+seat's current iteration: iteration.sh's ITERATION less one, none when
+that is 0. Every fault, a commit made
 unsigned and a failed or skipped push included, is a fault.raised by
 events.sh fault {seat, agent_id, hook_event, what}, on stderr before the
 effort is known or when it can't be written. Nothing is read or moved
 through a symbolic link at the draft or a folder from the effort to it.
-
---efforts DIR  absolute path of the space's efforts folder, <space>/efforts;
-               default \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
 stdout: {"decision":"block","reason":"<text>"} to block the stop; nothing
 to let it go ahead.
@@ -138,36 +134,18 @@ printable() {
 }
 
 parse_args() {
-	efforts=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--efforts)
-				[ -n "${2-}" ] || usage_error '--efforts needs a value; expected --efforts DIR'
-				[ -z "${efforts}" ] || usage_error '--efforts given twice; expected one'
-				efforts=$2
-				shift 2
-				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --efforts or --help"
+				usage_error "unknown option: ${shown_option}; expected --help"
 				;;
 		esac
 	done
-	[ -n "${efforts}" ] || return 0
-	while [ "${efforts}" != "${efforts%/}" ]; do efforts=${efforts%/}; done
-	shown_efforts=$(printable "${efforts}")
-	case ${efforts} in
-		/*/efforts) ;;
-		/*) usage_error "--efforts ${shown_efforts} is not a space's efforts folder; expected <space>/efforts" ;;
-		*) usage_error "--efforts ${shown_efforts} is not absolute; expected an absolute path" ;;
-	esac
-	# events.sh names the space by CRUCIBLE_HOME.
-	CRUCIBLE_HOME=${efforts%/efforts}
-	export CRUCIBLE_HOME
 }
 
 # Lets the stop go ahead.
@@ -302,26 +280,23 @@ find_seat() {
 	esac
 }
 
-# Sets role, status, worktree, base, dispatch, mode, bound_agent and
-# awaiting_round from seats.sh get.
+# Sets role, status, worktree, base, dispatch and bound_agent from seats.sh
+# get.
 read_seat() {
 	run sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh get'
 	fields=$(printf '%s\n' "${child_out}" |
-		jq -r '.role // "", .status // "", .worktree // "", .base // "", .dispatch // "", .mode // "", .agent_id // "",
-			(.awaiting_round // "" | tostring)') ||
+		jq -r '.role // "", .status // "", .worktree // "", .base // "", .dispatch // "", .agent_id // ""') ||
 		fault 'jq could not read the seat seats.sh get printed'
 	# $( ) drops trailing empty lines, so a read past them finds the end: empty.
-	role='' status='' worktree='' base='' dispatch='' mode='' bound_agent='' awaiting_round=''
+	role='' status='' worktree='' base='' dispatch='' bound_agent=''
 	{
 		IFS= read -r role || :
 		IFS= read -r status || :
 		IFS= read -r worktree || :
 		IFS= read -r base || :
 		IFS= read -r dispatch || :
-		IFS= read -r mode || :
 		IFS= read -r bound_agent || :
-		IFS= read -r awaiting_round || :
 	} <<EOF
 ${fields}
 EOF
@@ -338,8 +313,8 @@ find_checker() {
 	[ -f "${pruner}" ] || fault "${pruner} is missing; expected the code-developer agent's report skill"
 }
 
-# Sets report, committing, iteration and build_seat from iteration.sh, and
-# stamp, the seat's current iteration.
+# Sets report, committing and iteration from iteration.sh, and stamp, the
+# seat's current iteration.
 read_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -n "${worktree}" ] && [ -d "${worktree}" ] || fault "seat ${seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
@@ -347,7 +322,6 @@ read_iteration() {
 	[ "${child_rc}" -eq 0 ] || child_fault 'iteration.sh'
 	report=$(printf '%s\n' "${child_out}" | sed -n 's/^REPORT: //p')
 	iteration=$(printf '%s\n' "${child_out}" | sed -n 's/^ITERATION: //p')
-	build_seat=$(printf '%s\n' "${child_out}" | sed -n 's/^BUILD_SEAT: //p')
 	[ -n "${report}" ] || fault 'iteration.sh printed no REPORT line'
 	case ${iteration} in
 		'' | *[!0-9]*)
@@ -357,9 +331,8 @@ read_iteration() {
 		*) ;;
 	esac
 	committing="${report%/*}/${COMMITTING_FILE}"
-	current=${iteration}
-	[ "${kind}" = test ] || current=$((iteration - 1))
-	[ "${current}" -lt 1 ] || stamp="${build_seat}:${current}"
+	current=$((iteration - 1))
+	[ "${current}" -lt 1 ] || stamp="${seat}:${current}"
 	shown_report=$(printable "${report}")
 	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
 	no_link_below "${effort}" "${report}" ||
@@ -427,7 +400,7 @@ recover() {
 	hash_committing
 	slurp_events
 	recorded=$(printf '%s\n' "${events_json}" | jq -r --arg draft "${draft}" \
-		'[.[] | select((.type | IN("build.committed", "test.committed")) and .draft == $draft)] | length') ||
+		'[.[] | select(.type == "build.committed" and .draft == $draft)] | length') ||
 		fault 'jq could not read the events events.sh slurp printed'
 	if [ "${recorded}" -gt 0 ]; then
 		rm -f -- "${committing}" || fault "could not remove ${committing}"
@@ -435,7 +408,7 @@ recover() {
 	fi
 	find_unrecorded_commit
 	if [ -n "${unrecorded_commit}" ]; then
-		record "${unrecorded_commit}" "${unrecorded_kind}"
+		record "${unrecorded_commit}"
 		[ -f "${report}" ] || allow
 		return 0
 	fi
@@ -446,12 +419,12 @@ recover() {
 	fi
 }
 
-# Sets unrecorded_commit and unrecorded_kind to the newest crucible(build)
-# or crucible(test) commit of the seat on its branch that no event holds.
+# Sets unrecorded_commit to the newest crucible(build) commit of the seat on
+# its branch that no event holds.
 find_unrecorded_commit() {
-	unrecorded_commit='' unrecorded_kind=''
+	unrecorded_commit=''
 	held=$(printf '%s\n' "${events_json}" |
-		jq -r '.[] | select(.type | IN("build.committed", "test.committed")) | .commit | strings') ||
+		jq -r '.[] | select(.type == "build.committed") | .commit | strings') ||
 		fault 'jq could not read the events events.sh slurp printed'
 	range=HEAD
 	[ -z "${base}" ] || range="${base}..HEAD"
@@ -461,15 +434,14 @@ find_unrecorded_commit() {
 	while IFS="${tab}" read -r commit_sha subject commit_seat; do
 		[ "${commit_seat}" = "${seat}" ] || continue
 		case ${subject} in
-			'crucible(build): '*) commit_kind=build ;;
-			'crucible(test): '*) commit_kind='test' ;;
+			'crucible(build): '*) ;;
 			*) continue ;;
 		esac
 		case "${newline}${held}${newline}" in
 			*"${newline}${commit_sha}${newline}"*) continue ;;
 			*) ;;
 		esac
-		unrecorded_commit=${commit_sha} unrecorded_kind=${commit_kind}
+		unrecorded_commit=${commit_sha}
 		return 0
 	done <<EOF
 ${child_out}
@@ -578,12 +550,12 @@ commit_work() {
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-message.sh'
 	set -- --identity-name "${identity_name}" --identity-email "${identity_email}"
 	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
-	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" "$@" --seat "${seat}"
+	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" "$@"
 	case ${child_rc} in
 		0)
 			new_commit=$(printf '%s\n' "${child_out}" | tail -n 1)
 			# The commit opened its iteration: what follows belongs to it.
-			commit_stamp "${new_commit}" "${kind}"
+			commit_stamp "${new_commit}"
 			stamp=${event_stamp}
 			log_unsigned
 			[ "${auto_push}" != yes ] || push_branch
@@ -636,46 +608,43 @@ push_branch() {
 	[ "${child_rc}" -eq 0 ] || log_child_fault 'push.sh'
 }
 
-# Step 6: records the committing file as the event of commit $1 (empty: none)
-# of kind $2, then removes the file. A record that fails keeps the file, so
-# the next run's recovery writes it.
+# Step 6: records the committing file as the build.committed event of commit
+# $1 (empty: none), then removes the file. A record that fails keeps the
+# file, so the next run's recovery writes it.
 record() {
 	[ -n "${draft}" ] || hash_committing
 	event_stamp=${stamp}
-	[ -z "$1" ] || commit_stamp "$1" "$2"
+	[ -z "$1" ] || commit_stamp "$1"
 	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "$1" --arg draft "${draft}" \
 		'{seat: $seat, dispatch: $dispatch, commit: (if $commit == "" then null else $commit end), draft: $draft}') ||
 		fault 'jq could not build the event facts'
-	set -- --type "$2.committed" --body-file "${committing}" --facts "${facts}"
+	set -- --type build.committed --body-file "${committing}" --facts "${facts}"
 	[ -z "${event_stamp}" ] || set -- "$@" --iteration "${event_stamp}"
 	append "$@"
 	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
 	rm -f -- "${committing}" || fault "could not remove ${committing} after recording it"
 }
 
-# Sets event_stamp from commit $1's Iteration trailer and, for kind $2, its
-# Agent-Seat (build) or Build-Seat (test).
+# Sets event_stamp from commit $1's Iteration and Agent-Seat trailers.
 commit_stamp() {
-	seat_key=Agent-Seat
-	[ "$2" = build ] || seat_key=Build-Seat
 	run git -c core.fsmonitor=false -C "${worktree}" log -1 \
-		--format="%(trailers:key=Iteration,valueonly,separator=%x2C)%x09%(trailers:key=${seat_key},valueonly,separator=%x2C)" "$1"
+		--format='%(trailers:key=Iteration,valueonly,separator=%x2C)%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "$1"
 	[ "${child_rc}" -eq 0 ] || child_fault 'git log'
 	commit_iteration=${child_out%%"${tab}"*}
-	commit_build_seat=${child_out#*"${tab}"}
-	event_stamp="${commit_build_seat}:${commit_iteration}"
+	commit_seat=${child_out#*"${tab}"}
+	event_stamp="${commit_seat}:${commit_iteration}"
 	case ${commit_iteration} in
 		'' | 0* | *[!0-9]*) event_stamp='' ;;
 		*) ;;
 	esac
-	case ${commit_build_seat} in
+	case ${commit_seat} in
 		'' | *[!a-z0-9-]*) event_stamp='' ;;
 		*) ;;
 	esac
 	[ -z "${event_stamp}" ] || return 0
 	shown_iteration=$(printable "${commit_iteration}")
-	shown_seat=$(printable "${commit_build_seat}")
-	log_fault "commit $1 has Iteration ${shown_iteration} and ${seat_key} ${shown_seat}; expected a number from 1 and a seat; the event has no iteration"
+	shown_seat=$(printable "${commit_seat}")
+	log_fault "commit $1 has Iteration ${shown_iteration} and Agent-Seat ${shown_seat}; expected a number from 1 and a seat; the event has no iteration"
 }
 
 # An unexpected failure lets the stop go ahead too, logged.
@@ -714,18 +683,12 @@ find_seat
 read_seat
 [ "${role}" = developer ] || allow
 [ "${bound_agent}" = "${agent_id}" ] || allow
-# A fix round is not handled yet.
-[ -z "${awaiting_round}" ] || allow
 # Only a working seat's stop is checked; nobody woke an idle or gave-up seat.
 [ "${status}" = working ] || allow
-case ${mode} in
-	TEST) kind='test' ;;
-	*) kind=build ;;
-esac
 find_checker
 read_iteration
 recover
 check_report
 rename_report
 commit_work
-record "${new_commit}" "${kind}"
+record "${new_commit}"

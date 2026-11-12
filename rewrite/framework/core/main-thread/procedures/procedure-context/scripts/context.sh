@@ -57,7 +57,7 @@ export LC_ALL
 
 # Prints the pending entries after an add or a drop of one entry, or the
 # problem that refuses it, as one JSON object {outcome, entries} or
-# {problem}. $entries is next-entries.json ({} when absent), $latest the
+# {problem}. $entries is entries.json ({} when absent), $latest the
 # latest version ({} when none); an entry is the same entry when its path or
 # URL is. A docs folder is never a pending entry, so it is never matched.
 # The program is single-quoted on purpose: its $ signs are jq's.

@@ -1,13 +1,13 @@
 #!/usr/bin/env sh
 # Prints the human's compact card for one developer report the stop hook
-# recorded. Everything comes from the seat's build.committed or
-# test.committed event: its type gives the kind, its iteration the count,
-# its body the report's counts and gates, its dispatch (through the
-# dispatch.made event) the plugins, and its commit's diff the files; the
-# seat's fault.raised events since its last report, the commit's signature
-# and the branch's upstream say what went wrong, as the effort's settings
-# ask. card.jq lays it out with human-view. Read-only: no git command here
-# takes the index lock or writes it, and nothing is written to the effort.
+# recorded. Everything comes from the seat's build.committed event: its type
+# gives the kind, its iteration the count, its body the report's counts and
+# gates, its dispatch (through the dispatch.made event) the plugins, and its
+# commit's diff the files; the seat's fault.raised events since its last
+# report, the commit's signature and the branch's upstream say what went
+# wrong, as the effort's settings ask. card.jq lays it out with human-view.
+# Read-only: no git command here takes the index lock or writes it, and
+# nothing is written to the effort.
 set -eu
 umask 077
 
@@ -39,7 +39,7 @@ readonly CARD_JQ='include "card";
 	 warnings: ($warnings | split("\n") | map(select(. != "")))})'
 
 # The seat's report event: seq $seq, or the newest. Input: the seat's
-# build.committed and test.committed events, oldest first.
+# build.committed events, oldest first.
 # shellcheck disable=SC2016
 readonly EVENT_JQ='map(select(.seat == $seat and ($seq == "" or .seq == ($seq | tonumber)))) | last // empty'
 
@@ -47,7 +47,7 @@ readonly EVENT_JQ='map(select(.seat == $seat and ($seq == "" or .seq == ($seq | 
 # time, one "⚠️ <what>" line each. Input: every event and fault by time.
 # shellcheck disable=SC2016
 readonly FAULTS_JQ='($event | fromjson) as $this
-| ([.[] | select((.type | IN("build.committed", "test.committed")) and .seat == $this.seat and .seq < $this.seq)]
+| ([.[] | select(.type == "build.committed" and .seat == $this.seat and .seq < $this.seq)]
 	| last | .at // "") as $since
 | .[] | select(.type == "fault.raised" and .body.seat == $this.seat and .at > $since and .at <= $this.at)
 | "⚠️ " + (.body.what // "a fault" | tostring | gsub("[[:cntrl:]]+"; " "))'
@@ -90,8 +90,7 @@ usage: sh ${PROG} --effort FOLDER --seat S [--seq N] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
 Prints the compact Markdown card of one developer report: seat S's newest
-build.committed or test.committed event, or the one with seq N. Writes
-nothing.
+build.committed event, or the one with seq N. Writes nothing.
 
 --effort FOLDER   absolute path of the effort folder
 --seat S          the seat, a seat name by seats.jq
@@ -264,12 +263,11 @@ slurp() {
 # Sets event, the report event, and from it kind_label, count, commit,
 # dispatch and event_path.
 read_event() {
-	committed=$(slurp --type '*.committed')
+	committed=$(slurp --type build.committed)
 	event=$(printf '%s\n' "${committed}" |
-		jq -c --arg seat "${seat}" --arg seq "${seq}" \
-			"map(select(.type | IN(\"build.committed\", \"test.committed\"))) | ${EVENT_JQ}") ||
+		jq -c --arg seat "${seat}" --arg seq "${seq}" "${EVENT_JQ}") ||
 		die 4 'jq could not read the events events.sh slurp printed'
-	[ -n "${event}" ] || die 3 "seat ${seat} has no build.committed or test.committed event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
+	[ -n "${event}" ] || die 3 "seat ${seat} has no build.committed event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
 	fields=$(printf '%s\n' "${event}" |
 		jq -r '.type, .seq, (.iteration.number // "" | tostring), (.commit // ""), (.dispatch // "" | tostring),
 			(.body | type)') || die 4 'jq could not read the report event'

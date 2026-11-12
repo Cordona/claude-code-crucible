@@ -2,12 +2,11 @@
 # Claude Code PreToolUse hook (matcher AskUserQuestion) for approval gates. It
 # denies the question while this session's gate is pending, so the plan is
 # relayed before it is asked about, and clears any other gate as its question
-# goes out, saving a relayed gate's plan as a gate record first: in an effort,
-# a hand-off under the question's tool_use_id, from which gate-answer-hook.sh
-# writes the gate.<label>.answered event once the human answers; before any
-# effort, in the session's gate folder. The record is the plan the human was
-# shown, so a relayed gate whose record can't be saved denies the question and
-# stays open. A fault allows the question, except once a
+# goes out, first saving an effort's relayed gate's plan as a gate record: a
+# hand-off under the question's tool_use_id, from which gate-answer-hook.sh
+# writes the gate.<label>.answered event once the human answers. The record is
+# the plan the human was shown, so a relayed gate whose record can't be saved
+# denies the question and stays open. A fault allows the question, except once a
 # pending gate is loaded, or when jq is missing and any session has a live
 # pending gate: then it fails closed, since that block is confined to an open
 # gate and ends when the gate goes stale.
@@ -42,7 +41,7 @@ usage: sh ${PROG} < pre-tool-use-input.json
 A Claude Code PreToolUse hook for AskUserQuestion: denies the main thread's
 question while this session's approval gate is pending, and closes this
 session's gate in any other state as its question goes out, first saving a
-relayed gate's plan as the gate record.
+relayed gate's plan as the gate record when the gate has an effort.
 On a fault the question is allowed, with two exceptions: while a pending gate
   is open (with jq missing: any session's), exit 2; when a relayed gate's
   record could not be saved, the deny on stdout.
@@ -66,17 +65,15 @@ stderr on exit 0: notes on a removed gate, an unsaved record or a missing jq,
   or a failing command's own message
 
 Writes, in this session's gate folder and the record's folder only:
-  a relayed gate's record, as its target file says: with an effort,
+  a relayed gate's record, when its target file names an effort:
     answers/<tool_use_id>.json in the gate folder, {label, effort, plan},
-    for gate-answer-hook.sh; without one, its plan.json with "v": 1 set, a
-    new file in the gate folder's records/; never in the Crucible space
-  closing a gate (relayed once its record is saved, shown or failed): removes
-    gate.md, state, target and plan.json, then the gate folder once empty;
-    records/ stays
+    for gate-answer-hook.sh; a gate without an effort saves nothing
+  closing a gate (relayed once any record is saved, shown or failed): removes
+    gate.md, state, target and plan.json, then the gate folder once empty
   a malformed gate, one over ${STALE_MINUTES} minutes old, or a folder with no state and
-    nothing changed for ${STALE_MINUTES} minutes: removed with its folder, records/
-    included; a plan.json changed within ${STALE_MINUTES} minutes stays, and then only
-    gate.md and state are removed
+    nothing changed for ${STALE_MINUTES} minutes: removed with its folder; a
+    plan.json changed within ${STALE_MINUTES} minutes stays, and then only gate.md and
+    state are removed
 
 Exit codes:
   0  allowed; or denied by the decision on stdout, which Claude Code applies,
@@ -89,9 +86,9 @@ Dependencies:
   POSIX sh; cat, date, find (with -mmin, as on macOS and Linux), rm, rmdir
     (every macOS and Linux base system)
   jq 1.6+ (macOS: brew install jq; Linux: the distro's jq package)
-  for a relayed gate's record: mktemp, mv, the crucible skill's space rules,
+  for a relayed gate: the crucible skill's space rules,
     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
-    and mkdir, od (without an effort)
+    and mkdir, mktemp, mv (with an effort)
 
 Environment:
   CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
@@ -156,28 +153,22 @@ handle_jq_missing() {
 	exit 0
 }
 
-# Saves the relayed gate's plan.json as a gate record where the gate's target
-# file says, or denies the question (deny_record exits) naming the cause and
-# the fix.
+# Saves the relayed gate's plan.json as the hand-off when the gate's target
+# file names an effort, or denies the question (deny_record exits) naming the
+# cause and the fix.
 save_gate_record() {
 	load_space_lib
 	read_target
+	[ -n "${record_effort}" ] || return 0
 	plan_file="${gate_dir}/plan.json"
 	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] ||
 		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer'
 	jq -se 'length == 1 and (.[0] | type) == "object"' "${plan_file}" >/dev/null 2>&1 ||
 		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
-	# del(.v) so a plan's own v never overrides the record version; v stays first.
-	record=$(jq -c '{v: 1} + del(.v)' "${plan_file}" 2>/dev/null) ||
-		deny_record "jq could not read ${plan_file}" 'check jq 1.6+ and the plan file'
-	if [ -n "${record_effort}" ]; then
-		make_effort_record
-		record=$(printf '%s\n' "${record}" | jq -c --arg label "${record_label}" --arg effort "${record_effort}" \
-			'{label: $label, effort: $effort, plan: del(.v)}' 2>/dev/null) ||
-			deny_record "jq could not build the hand-off for ${record_path}" 'check jq 1.6+'
-	else
-		make_session_record
-	fi
+	make_effort_record
+	record=$(jq -c --arg label "${record_label}" --arg effort "${record_effort}" \
+		'{label: $label, effort: $effort, plan: .}' "${plan_file}" 2>/dev/null) ||
+		deny_record "jq could not build the hand-off for ${record_path}" 'check jq 1.6+ and the plan file'
 	# Written beside the record and moved onto it, so a record is never half
 	# written.
 	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) ||
@@ -231,25 +222,8 @@ make_effort_record() {
 	record_path="${answers_dir}/${tool_use_id}.json"
 }
 
-# Sets record_path to a new empty file in the session's gate folder,
-# records/, named as a Crucible item, or denies. Like crucible.sh new, the
-# space rules create it without overwriting and mint a fresh ID on a clash.
-make_session_record() {
-	records_dir="${gate_dir}/records"
-	[ ! -L "${records_dir}" ] || deny_record "${records_dir} is a symbolic link" 'remove the link'
-	mkdir -p "${records_dir}" 2>/dev/null && [ ! -L "${records_dir}" ] ||
-		deny_record "cannot create ${records_dir}" 'make the gate folder writable'
-	# shellcheck disable=SC2310 # its status says whether a file was made; the fault is read below
-	if crucible_claim_item_file "${records_dir}" "${record_label}"; then
-		record_path=${crucible_claimed_file}
-		return 0
-	fi
-	[ "${crucible_claim_fault}" != id ] || deny_record "no record ID: ${crucible_claim_problem}" 'fix the tool it names'
-	deny_record "no record file: ${crucible_claim_problem}" 'make the gate folder writable'
-}
-
 # Removes the gate's own files, and its folder once nothing else is left in
-# it; records/ stays.
+# it.
 clear_gate() {
 	rm -f "${gate_dir}/state" "${gate_dir}/gate.md" "${gate_dir}/target" "${gate_dir}/plan.json"
 	rmdir "${gate_dir}" 2>/dev/null || true

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Opens one chosen writer seat: a worktree of the main checkout on its own
+# Opens one chosen developer seat: a worktree of the main checkout on its own
 # branch at the seat's base, at the path its seat.chosen event records, the checkout's
 # dependency folders copied into it, and the seat's status set to open. It
 # only runs seats.sh, worktree-create.sh and worktree-setup.sh in order; a
@@ -35,9 +35,7 @@ exists removes it (git worktree remove --force) and its branch, says so,
 and leaves the seat chosen.
 
 --effort DIR  absolute path of the effort folder
---seat S      a seat seats.sh choose recorded, status chosen; a developer
-              (a tester shares a developer's worktree: not yet supported
-              and refused)
+--seat S      a seat seats.sh choose recorded, status chosen
 
 The steps' own stderr lines come first; this script adds one line saying
 which step failed.
@@ -46,9 +44,8 @@ exit codes:
   0  the seat is open; its JSON line is printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a refused option, the seat not in the effort, a seat that is
-     no developer's (checked before its status), or a step refused its
-     input (exit 3)
+  3  input: a refused option, the seat not in the effort, or a step
+     refused its input (exit 3)
   4  a step failed otherwise, or a dependency is missing
   5  the seat is not chosen: it is open already or has an agent
 
@@ -144,7 +141,7 @@ check_inputs() {
 	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
 }
 
-# Sets role, repo, base and worktree from the chosen seat, before anything is
+# Sets repo, base and worktree from the chosen seat, before anything is
 # created; seats.sh's own lines say why it refused.
 read_chosen_seat() {
 	step_rc=0
@@ -156,11 +153,10 @@ read_chosen_seat() {
 		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_effort}" ;;
 		*) die 4 "seats.sh get failed (exit ${step_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .repo // "", .base // "", .worktree // ""') ||
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .base // "", .worktree // ""') ||
 		die 4 'jq could not read the seat seats.sh get printed'
-	role='' status='' repo='' base='' worktree=''
+	status='' repo='' base='' worktree=''
 	{
-		IFS= read -r role || :
 		IFS= read -r status || :
 		IFS= read -r repo || :
 		IFS= read -r base || :
@@ -168,11 +164,6 @@ read_chosen_seat() {
 	} <<EOF
 ${fields}
 EOF
-	case ${role} in
-		developer) ;;
-		tester) die 3 "seat ${shown_seat} is a tester seat, not yet supported: a tester shares a developer's worktree; expected a developer seat" ;;
-		*) die 3 "seat ${shown_seat} is a ${role} seat; expected a developer seat" ;;
-	esac
 	[ "${status}" = chosen ] || die 5 "seat ${shown_seat} is ${status}; expected a chosen seat: only a chosen seat has no worktree yet"
 }
 

@@ -16,8 +16,7 @@ Route by the token a stderr problem leads with, right after its `generate-agent-
 The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-code-agent-dispatch:`, in the shape `prepare-agent-prompt.sh --help` sets. Route by the KIND word that starts each problem, right after its list number or `**Problem:** `: `DISPATCH`, `AGENT`, `CONTEXT`, `CONTEXT-STALE`, `PLUGIN`, `SEAT`, `BACKGROUND` or `SKILL`, never by the text after it. Relay the reason to the human word for word, as printed, only on a bullet that stops the dispatch; a re-plan or a new step-8 run relays none of it:
 
 - `SKILL`, whatever else the reason names: a skill the agent file's frontmatter preloads is not installed: hand it back as SKILL.md's Never sets; installing it is the human's.
-- `PLUGIN`, with no `CONTEXT` or `CONTEXT-STALE`: an approved plugin uninstalled, invalid or with faulty files. Run step 2 again (here an exit 3 naming only that plugin goes on), then:
-  - **`faulty files`** (step 2's re-run still lists it), whatever the plugin's kind: show the line `⛔ Stopped · the <name> plugin's files changed after approval: this part was not dispatched.` word for word without its backticks and as a message of its own, then hand it back as SKILL.md's Never sets.
+- `PLUGIN`, with no `CONTEXT` or `CONTEXT-STALE`: an approved plugin uninstalled or invalid. Run step 2 again (here an exit 3 naming only that plugin goes on), then:
   - **A language plugin,** uninstalled or invalid: the part stops, its frameworks with it; show step 5's stop line, then hand it back as SKILL.md's Never sets.
   - **Any other plugin:** re-plan at step 7 as Step-10 re-plans below sets; on Approve, steps 8–9 for it.
   - **`<name>`** in these lines is the plugin's install name, copied from the problem, never typed: the name after the words `plugin folder` in step 8's problem (`PLUGIN plugin folder language-shell uninstalled: …`) or the hook's, never from a path.
@@ -36,7 +35,6 @@ A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the reason s
 - **A framework plugin named `invalid`:** it stays as `--framework <name> --reason invalid`, with `--replan invalid`.
 - **A framework plugin `uninstalled after approval`:** re-plan the part at step 7 without it, as step 10's `PLUGIN` bullet above sets for a dropped plugin, its language plugin's reason saying the framework has no installed plugin (step 5).
 - **A language plugin:** never re-planned; step 10's `PLUGIN` bullet above stops the part, its frameworks dropped with it.
-- **A plugin with `faulty files`, of any kind:** never re-planned; step 10's `PLUGIN` bullet above stops the part.
 
 Then, by the plan's step-10 reasons:
 

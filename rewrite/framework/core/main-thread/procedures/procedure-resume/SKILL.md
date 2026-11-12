@@ -46,10 +46,10 @@ Run by the main thread. After a compaction, an interruption or a new session, th
 
    Then take the first line below that fits, checking "Can't tell" first:
    - **Can't tell:** a `grill.sh list` line that isn't a `GRILL:` line naming an absolute path inside the effort folder, a `seats.sh list` that exits non-zero, or the conversation and the disk disagreeing. Ask with one AskUserQuestion which to resume: the lines below that the conversation or the disk point to, each option naming the skill it loads and what points to it, the likeliest first and marked (Recommended), then "Stop". Run no step before the answer; take the line picked, or on "Stop" resume nothing.
-   - **An open grill:** load `procedure-grill` (step 3). It resumes the grill in progress, or hands back that none is in progress: then take the next line that fits.
+   - **An open grill:** load `procedure-grill` (step 3). It resumes the grill in progress.
    - **A plan made:** load `flow-code-development` (step 3).
-   - **Neither, or the grill handed back and no plan made:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-development` for code in an effort (step 3).
-3. **Hand over** the effort folder's absolute path to the skill step 2 loads, as you load it. That skill's own Resume rules take the work from there; this procedure does nothing more, except step 2's next line when `procedure-grill` hands back.
+   - **Neither:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-development` for code in an effort (step 3).
+3. **Hand over** the effort folder's absolute path to the skill step 2 loads, as you load it. That skill's own Resume rules take the work from there; this procedure does nothing more.
 
 ## Dependencies
 

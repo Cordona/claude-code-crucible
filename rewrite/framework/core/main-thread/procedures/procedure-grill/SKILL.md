@@ -9,7 +9,7 @@ user-invocable: false
 Run by the main thread. A **grill** helps the human decide what they want when they don't know yet what they don't know: you ask, they decide, until both share one understanding.
 
 - **Not an effort of its own:** it opens or joins the work's one effort; `grill.sh end` copies its file into that effort's docs folder (`procedure-context`), for the next cut.
-- **The grill file:** the open grill's draft, `<effort folder>/drafts/main-thread/grill-<n>.json`, `<n>` its number in the effort, written only by `grill.sh`. Its end copies it as `grill-<n>.json`, appends one `grill.ended` event and removes the draft. Questions are `q1`, `q2`, …; each answer change is a new revision, the last one current. Cite a question by the grill's path plus `q3`, a revision as `q1 r2`: the draft's while it is open, its `DOCS_FILE:` copy's once it has ended.
+- **The grill file:** the open grill's draft, `<effort folder>/drafts/main-thread/grill-<n>.json`, `<n>` its number in the effort, written only by `grill.sh`. Its end copies it as `grill-<n>.json`, appends one `grill.ended` event and removes the draft. Questions are `q1`, `q2`, …; each answer change is a new revision, the last one current. Cite a question by the grill's path plus `q3`, a revision as `q1 r2`: the draft's while it is open, its `DOCS_FILE:` copy's once it has ended. That copy stays only until the next context cut moves it; after a cut, cite the grill by its `EVENT:` line or its frozen copy `<effort folder>/files/context/v<N>/grill-<n>.json`, in the docs folder the `context.cut` event's `paths` name.
 
 ## When to use it
 
@@ -37,7 +37,7 @@ Run by the main thread. A **grill** helps the human decide what they want when t
 ## Always
 
 - **Relay last:** run every `grill.sh` call the reply needs first (`answer`, `status`, `end`, `ask`). The turn's last message then holds, word for word, every acknowledgement `answer` and `status` printed this turn. After them comes either the explanation the human asked for (no round that turn) or the next round, never both. Nothing else: no summary in your own words.
-- **On the turn the grill ends,** relay that turn's `answer` and `status` acknowledgements in a message of their own before going back to `procedure-context`, whose discovery talk, spec gate or "what next?" gate stays the turn's last message. `end`'s lines are for you: read them, never relay them, and cite the grill by its `DOCS_FILE:` copy (step 10).
+- **On the turn the grill ends,** relay that turn's `answer` and `status` acknowledgements in a message of their own before going back to `procedure-context`, whose discovery talk, spec gate or "what next?" gate stays the turn's last message. `end`'s lines are for you: read them, never relay them, and cite the grill as The grill file sets (step 10).
 - **One `grill.sh` call at a time, never parallel Bash calls:** each write replaces the draft whole and takes no lock, so a parallel call can lose the other's change.
 - **Pass every value to `grill.sh` in single quotes,** as CLAUDE.md sets.
 - **Writes only through `grill.sh`** (the grill's draft, its docs copy and its `grill.ended` event) **and the offer's plan file,** at the path `procedure-approval-gate` gives; the context version is `procedure-context`'s, and you never touch another effort's files or the repository.
@@ -54,7 +54,8 @@ Steps 1–2 start a grill, 3–4 open its file, 5–9 repeat a round at a time, 
    - Outside one: load `procedure-effort` with the Skill tool and run only its steps 3–4 (name, start), with no offer: the human's ask or their yes is the effort yes. Keep the folder it prints; then step 3. If it stops, no grill runs.
 3. **Understand first.** In an effort the grill joined, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" latest --effort '<effort folder>'` (its `latest --help` once, before the first use of `latest` in a session), and act on its output:
    - **A version (exit 0 or 7 with a `CONTEXT_FILE:` line):** Read that file in full (a failed Read: show the human the Read error, and stop; the grill stays as its file holds it, for Resume).
-   - **No version yet (exit 1, or 7 without that line):** nothing to read.
+   - **Exit 7:** also Read each file in the folder its `DOCS_FOLDER:` line names (the approved spec, earlier grills), with the same failed-Read rule.
+   - **No version yet (exit 1):** nothing to read.
    - **Any other exit, or 0 without that line:** show the human stdout, stderr and exit code, and stop.
 
    Then read what the conversation, the code and the docs can answer, so no question asks a fact.
@@ -68,8 +69,8 @@ Steps 1–2 start a grill, 3–4 open its file, 5–9 repeat a round at a time, 
 7. **Explain on ask.** When the human asks for simpler or more detail, explain the same question in the turn's last message, as Always sets; the stored question never changes. When the explanation shows the question was wrong, drop it (step 9) and add the corrected one with `--parent` on the dropped id, in the next round.
 8. **Change an answer.** When the human changes a settled answer, give its group in step 6's call a `--change-reason` too, as `answer --help` sets; the next round checks every question it sends back to open.
 9. **Drop or defer.** A question no longer relevant is dropped; one that needs someone else is deferred; one that matters again is reopened: run `<grill.sh> status --grill '<grill file>' --id '<id>' --to dropped|deferred|open --reason '<why>'`.
-10. **End** when the human says the understanding is shared, or asks at any point to end or stop the grill: run `<grill.sh> end --grill '<grill file>'`; its `GRILL_ENDED:` line names the draft, which `end` has just removed, so from here on cite the grill by its `DOCS_FILE:` copy (or its `EVENT:`); keep that `DOCS_FILE:` line. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" spec --effort '<effort folder>' --status` (its `spec --help` once, before its first use in a session), then go back to `procedure-context` (load it with the Skill tool if it isn't in context), with the effort folder and the `DOCS_FILE:` path:
-    - **`SPEC: none`:** the grill hands back to the discovery talk (`procedure-context` step 1), which goes on to the spec and "what next?". For an effort this grill started, that discovery starts now, as `procedure-context`'s When to use it sets. This holds only for a grill that ends live; a resume goes as Resume sets.
+10. **End** when the human says the understanding is shared, or asks at any point to end or stop the grill: run `<grill.sh> end --grill '<grill file>'`; its `GRILL_ENDED:` line names the draft, which `end` has just removed, so from here on cite the grill by its `DOCS_FILE:` copy until the next context cut, and by its `EVENT:` or frozen copy after one (The grill file); keep the `DOCS_FILE:` and `EVENT:` lines. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh" spec --effort '<effort folder>' --status` (its `spec --help` once, before its first use in a session), then go back to `procedure-context` (load it with the Skill tool if it isn't in context), with the effort folder and the `DOCS_FILE:` path:
+    - **`SPEC: none`:** the grill hands back to the discovery talk (`procedure-context` step 1), which goes on to the spec and "what next?". For an effort this grill started, that discovery starts now, as `procedure-context`'s When to use it sets.
     - **`SPEC: approved`,** before or after a cut: add the ended grill (`procedure-context` step 5), then "what next?" (its step 7).
     - **Any other exit, or 0 without a `SPEC:` line:** show the human stdout, stderr and exit code, and stop; the ended grill's copy waits in the docs folder.
 
@@ -87,6 +88,6 @@ After a compaction, an interruption or a new session, load `procedure-resume` fi
 - **Skills,** each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
   - `procedure-approval-gate`, which shows the offer (step 1); missing: as `references/offer.md` sets for an offer that can't be shown.
   - `procedure-effort`, for steps 1–2 and the `effort.sh state` `grill.sh` runs; missing: tell the human to install it, and stop: no grill runs outside an effort.
-  - `procedure-context`, for its `context.sh` (steps 3 and 10, `references/resume.md`) and the hand-back (step 10); missing: tell the human to install it, and stop; an ended grill stays in the effort.
+  - `procedure-context`, for its `context.sh` (steps 3 and 10) and the hand-back (step 10); missing: tell the human to install it, and stop; an ended grill stays in the effort.
   - `procedure-resume`, which finds the effort and hands it over on Resume; missing: tell the human to install it, and stop; the grill stays as its file holds it.
 - **Tools:** Skill, Read, Write, Glob, Bash and AskUserQuestion.

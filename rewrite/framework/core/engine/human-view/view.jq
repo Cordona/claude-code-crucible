@@ -61,13 +61,6 @@ def field_lines($pairs):
 		| "\(.[0]): \(.[1])" + (if (.[2] // "") == "" then "" else " · \(.[2])" end))
 	| join("  \n");
 
-# field_section($heading; $pairs)
-#   input:  ignored
-#   output: $heading, a hard break, then field_lines($pairs); "" when every count is zero
-def field_section($heading; $pairs):
-	field_lines($pairs) as $lines
-	| if $lines == "" then "" else "\($heading)  \n\($lines)" end;
-
 # data_section($pairs)
 #   input:  ignored
 #   $pairs: array of [kind, path]

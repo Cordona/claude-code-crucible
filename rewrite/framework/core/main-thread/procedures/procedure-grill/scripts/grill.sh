@@ -420,7 +420,7 @@ EOF
 			help_shared exits 'relay stdout word for word' write
 			;;
 		list)
-			print_page <<'EOF'
+			print_page <<EOF
 
 Prints the effort's grills, newest first by number: the open ones' drafts
 and the ended ones' ${ENDED_TYPE} events, each checked against

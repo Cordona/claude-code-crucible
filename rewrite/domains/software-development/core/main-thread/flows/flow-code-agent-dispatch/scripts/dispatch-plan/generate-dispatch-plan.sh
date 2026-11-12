@@ -91,7 +91,7 @@ if $mode == "report" then report else plan end
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --effort FOLDER
+usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD --effort FOLDER
            --fingerprint HEX --task TEXT [--task TEXT]... [--language NAME --reason LINE]
            [--framework NAME --reason LINE]... [--load NAME --reason LINE]...
            [--skip NAME --reason LINE]... [--load-reason LINE]
@@ -109,7 +109,7 @@ code-developer: a --language and a standard --load.
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
-  --mode BUILD|TEST   the mode
+  --mode BUILD        the mode
   --effort FOLDER     the effort folder, as effort.sh start printed it
   --fingerprint HEX   the FINGERPRINT ${CONTEXT_PROCEDURE}'s context.sh freeze
       --dry-run printed for the effort; the dispatch cuts that version
@@ -155,7 +155,7 @@ Dependencies (skills in --skills-dir):
   this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
     installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
   ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh and what it loads
-  ${CRUCIBLE_SKILL}: crucible.sh, events.sh, lib/crucible-space.sh, lib/prune.jq
+  ${CRUCIBLE_SKILL}: events.sh, lib/crucible-space.sh, lib/prune.jq
   ${EFFORT_SKILL}: effort.sh
 EOF
 }
@@ -308,7 +308,7 @@ finish_parse() {
 	esac
 	case " ${seen_options} " in
 		*' --mode '*) ;;
-		*) usage_error '--mode missing; expected --mode BUILD or --mode TEST' ;;
+		*) usage_error '--mode missing; expected --mode BUILD' ;;
 	esac
 	[ -n "${given_effort}" ] || usage_error '--effort missing; expected --effort FOLDER, the effort folder'
 	[ -n "${fingerprint}" ] || usage_error '--fingerprint missing; expected --fingerprint HEX, the FINGERPRINT context.sh freeze --dry-run printed'
@@ -509,8 +509,7 @@ write_record() {
 }
 
 # Sets context_digest to the sha256 of the written plan in canonical form, the
-# one line jq -cS . prints for it, its newline included; or exits 1. The gate
-# record is the plan with "v": 1 added, so jq -cS 'del(.v)' of it hashes the same.
+# one line jq -cS . prints for it, its newline included; or exits 1.
 digest_written_plan() {
 	canonical_plan=$(jq -cS . "${plan_file}" </dev/null) ||
 		die 1 "jq could not read the written plan ${plan_file}; it is written, but its digest is not printed; expected the JSON this run wrote; check that nothing else writes to ${plan_folder}, then rerun"

@@ -20,7 +20,7 @@ export LC_ALL
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} [--efforts DIR]
+usage: sh ${PROG}
        sh ${PROG} --help | -h
 
 Claude Code's SubagentStop hook, registered async with asyncRewake, beside
@@ -40,9 +40,6 @@ gave-up), reading the events once more.
   gave-up     prints to stderr the line to show the human; exits ${WAKE_EXIT}
   no line     once the seat is not working, or at the end of the wait (any
               fault): exits 0, silent
-
---efforts DIR  absolute path of the space's efforts folder, <space>/efforts;
-               default \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
 writes: nothing
 
@@ -67,35 +64,18 @@ usage_error() {
 }
 
 parse_args() {
-	efforts=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--efforts)
-				[ -n "${2-}" ] || usage_error '--efforts needs a value; expected --efforts DIR'
-				[ -z "${efforts}" ] || usage_error '--efforts given twice; expected one'
-				efforts=$2
-				shift 2
-				;;
 			*)
 				shown_option=$(printf '%s' "$1" | tr '[:cntrl:]' '?')
-				usage_error "unknown option: ${shown_option}; expected --efforts or --help"
+				usage_error "unknown option: ${shown_option}; expected --help"
 				;;
 		esac
 	done
-	[ -n "${efforts}" ] || return 0
-	while [ "${efforts}" != "${efforts%/}" ]; do efforts=${efforts%/}; done
-	case ${efforts} in
-		/*/efforts) ;;
-		/*) usage_error '--efforts is not a space'\''s efforts folder; expected <space>/efforts' ;;
-		*) usage_error '--efforts is not absolute; expected an absolute path' ;;
-	esac
-	# events.sh names the space by CRUCIBLE_HOME.
-	CRUCIBLE_HOME=${efforts%/efforts}
-	export CRUCIBLE_HOME
 }
 
 # Nothing for the main thread.

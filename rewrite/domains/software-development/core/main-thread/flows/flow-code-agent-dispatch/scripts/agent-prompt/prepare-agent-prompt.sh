@@ -36,7 +36,7 @@ readonly REASON_PREFIX='flow-code-agent-dispatch:'
 # The agents whose dispatches carry a DISPATCH line. The no-jq path needs them
 # without jq, so they stay here; the hook faults unless they match the listed
 # agents of the shared names module, the list to edit first.
-readonly LISTED_AGENTS='code-developer code-reviewer'
+readonly LISTED_AGENTS='code-developer'
 readonly NAMES_MODULE='dispatch-names'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
@@ -878,7 +878,7 @@ check_seat() {
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem SEAT "seat ${dispatch_seat} is not a seat of the effort; expected a seat procedure-git-worktree's seats.sh choose or add made" "${dispatch_effort}"
+			add_problem SEAT "seat ${dispatch_seat} is not a seat of the effort; expected a seat procedure-git-worktree's seats.sh choose made" "${dispatch_effort}"
 			return 0
 			;;
 		3)
@@ -904,7 +904,7 @@ EOF
 	fi
 	worktrees_dir="${real_root}/efforts/${place_effort_name}/worktrees"
 	case ${seat_worktree} in
-		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer or tester seat" "${dispatch_effort}" ;;
+		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer seat" "${dispatch_effort}" ;;
 		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${dispatch_effort}" ;;
 		*)
 			# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
@@ -918,8 +918,8 @@ EOF
 }
 
 # Sets report_path from iteration.sh's REPORT line for the seat. A seat whose
-# mode, worktree or base does not fit (exit 3) is a SEAT problem; any other
-# failure is a fault.
+# worktree or base does not fit, or a chosen seat (exit 3), is a SEAT problem;
+# any other failure is a fault.
 read_report_path() {
 	iteration_script="${skills_dir}/${ITERATION_SCRIPT}"
 	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
@@ -930,7 +930,7 @@ read_report_path() {
 	case ${iteration_status} in
 		0) ;;
 		3)
-			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${dispatch_effort}"
+			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer seat whose base is a commit in its worktree" "${dispatch_effort}"
 			return 0
 			;;
 		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;

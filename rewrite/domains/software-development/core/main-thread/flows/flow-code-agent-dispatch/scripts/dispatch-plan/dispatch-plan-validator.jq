@@ -57,7 +57,7 @@ def field_problems:
 	(if .agent | text_ok | not then problem(["agent"]; " "; "missing or empty; expected a non-empty string")
 	 elif .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
-	(if .mode == "BUILD" or .mode == "TEST" then empty else problem(["mode"]; " "; "missing or unknown; expected \"BUILD\" or \"TEST\"") end);
+	(if .mode == "BUILD" then empty else problem(["mode"]; " "; "missing or unknown; expected \"BUILD\"") end);
 
 def tasks_problems:
 	if (.tasks | type) != "array" or (.tasks | length) == 0 then problem(["tasks"]; " "; "missing or empty; expected an array of one or more strings")
@@ -206,12 +206,8 @@ def developer_problems($plan; $items):
 
 def testing_problems($plan; $items):
 	if ($plan.plugins | type) != "object" then empty
-	else [$items[] | select(.list == "load" and .plugin == testing_plugin)] as $testing
-		| if $plan.mode == "TEST" and ($testing | length) == 0 then
-			problem(["mode"]; " "; "\"TEST\" without \(testing_plugin) loaded; expected \(testing_plugin) in plugins.load.standards")
-		  elif $plan.mode == "BUILD" then
-			($testing[] | problem(.at; " "; "\(testing_plugin | tojson) in a mode \"BUILD\" plan; expected it only in a TEST plan, under plugins.skip.standards here"))
-		  else empty end
+	else $items[] | select(.list == "load" and .plugin == testing_plugin)
+		| problem(.at; " "; "\(testing_plugin | tojson) in a mode \"BUILD\" plan; expected it under plugins.skip.standards: a developer writes no tests")
 	end;
 
 def installed_problems:

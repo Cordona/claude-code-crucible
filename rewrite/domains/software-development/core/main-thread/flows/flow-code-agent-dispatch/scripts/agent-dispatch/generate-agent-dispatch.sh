@@ -201,8 +201,8 @@ Options:
       the newest ${GATE_EVENT} of its seq, at most 7 days old
   --task N            the task's place in the plan, from 1
   --seat S            a seat of the effort (seats.sh get), like
-      build-agent-alpha, with the plan's mode, status open, working or idle,
-      and a worktree folder in FOLDER/worktrees/
+      build-agent-alpha, with the plan's mode, status open, and a
+      worktree folder in FOLDER/worktrees/
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order (entry_points); it need not exist
   --reseat            re-seat S after seats.sh handover (S open, its last
@@ -435,12 +435,6 @@ require_session() {
 	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
 	crucible_check_session || usage_error "${crucible_session_problem}"
 	session_id=${crucible_session_id}
-}
-
-# Prints the value of jq expression $1 over the shared names module, with
-# $agent set to $2 (empty when not given).
-read_shared_name() {
-	jq -nr -L "${dispatch_dir}" --arg agent "${2-}" "include \"${NAMES_MODULE}\"; $1" </dev/null
 }
 
 # Prints the folder this script was run from (".", when run by a bare name).
@@ -803,7 +797,7 @@ resolve_space_root() {
 }
 
 # Adds a problem unless the seat --seat names is one of the effort's seats,
-# open, working or idle, with the plan's mode and a worktree folder directly
+# open, with the plan's mode and a worktree folder directly
 # in the effort's worktrees/; seats.sh get reads it, and seat_worktree is set
 # from it. A value that is no seat name is left to the dispatch check, which
 # names it.
@@ -814,9 +808,9 @@ check_seat() {
 	# shellcheck disable=SC2310 # its status says whether the seat was read; the problem is added inside
 	read_seat || return 0
 	case ${seat_state} in
-		open | working | idle) ;;
+		open) ;;
 		*)
-			add_problem --seat "${seat}" "the seat is ${seat_state}; expected an open, working or idle seat (a chosen seat is opened by seat-open.sh first)"
+			add_problem --seat "${seat}" "the seat is ${seat_state}; expected an open seat (a chosen seat is opened by seat-open.sh first)"
 			return 0
 			;;
 	esac
@@ -841,7 +835,7 @@ read_seat() {
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem --seat "${seat}" "no such seat in the effort; expected a seat procedure-git-worktree's seats.sh choose or add made"
+			add_problem --seat "${seat}" "no such seat in the effort; expected a seat procedure-git-worktree's seats.sh choose made"
 			return 1
 			;;
 		3)
@@ -871,7 +865,7 @@ check_seat_worktree() {
 	worktrees_dir="${effort_dir}/worktrees"
 	shown_worktree=$(printable "${seat_worktree}")
 	if [ -z "${seat_worktree}" ]; then
-		add_problem --seat "${seat}" "the seat has no worktree; expected a developer or tester seat, which works in a worktree"
+		add_problem --seat "${seat}" "the seat has no worktree; expected a developer seat, which works in a worktree"
 		return 0
 	fi
 	real_worktrees_dir=$(cd -P -- "${worktrees_dir}" 2>/dev/null && pwd -P) || real_worktrees_dir=''

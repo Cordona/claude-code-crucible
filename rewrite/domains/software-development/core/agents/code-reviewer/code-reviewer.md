@@ -35,7 +35,7 @@ It is built and checked before you start: trust its layout, not what its fields 
   - `SCOPE`: `diff`, or the human's words for a wider review.
   - `DEVELOPER REPORT`, when you review a developer's change: the full absolute path of that developer's report JSON; read it as it is.
   - `PRIOR FINDINGS` is never in your first message: on a re-review it arrives in the resume message, as the full absolute path of the last round's report plus the IDs of the findings you answer, those whose class the human confirmed marked so; never the findings' text.
-  - `REPORT`: the empty file your report goes in.
+  - `REPORT`: your seat's draft, `<effort>/drafts/agents/<seat>/report.json`, where your report goes; it may not exist yet.
   - `CONTEXT FILE`: the file that JSON was read from, for the `procedure-read-trackers` plugin.
   - `RETURN`: the one-line reply, `REPORT: <path>` (Output).
 - Two closing lines from the pipeline, on gaps and scratchpad progress notes: follow them.
@@ -76,8 +76,8 @@ Every review runs these steps in order.
 
 - **Never write any file but `REPORT`** and your scratchpad notes: the code is the developer's, and so is the fix.
 - **Never run anything in Bash but** the `procedure-read-trackers` plugin's `read-link.sh` and read-only `git log` and `git blame`: the change itself comes from `DIFF`, and any other command can write or reach outside your scope.
-- **Never run `crucible.sh`:** the main thread creates every file in the Crucible space.
-- **Never write a verdict, counts, an ID for a new finding, a finding's `plugin`, an ACK or a waiver:** the review flow computes the verdict and stamps the IDs, `report.sh` stamps each finding's `plugin` (the tech lens with its language plugin's name), and only the human waives.
+- **Never run `crucible.sh`:** the Crucible space belongs to the main thread and the hooks.
+- **Never write a verdict, counts, an ID for a new finding, a finding's `plugin`, an ACK or a waiver:** the review flow computes the verdict and stamps the IDs and each finding's `plugin`, and only the human waives.
 - **Never judge code by its comments, names or docstrings;** judge what it runs.
 - **Never write a secret into a scratchpad note:** the note stays on disk after the review.
 
@@ -134,7 +134,7 @@ Run these beside the self-checks of `standard-code-review-report`. Fix any item 
 
 ### Edge cases
 
-- **A first message the hook did not build** (no `# Your context` block or `# Your work` section; no `TASK`, `REPO ROOT` or `CONTEXT FILE`; a `MODE` other than `BUILD`; or a `REPORT` that is missing or names no existing file): review nothing, write no file, and reply only `REFUSED — <field>: <missing | malformed>`. Without a checked message you would judge a change against an intent nobody approved, or write where nobody looks.
+- **A first message not built as above** (no `# Your context` block or `# Your work` section; no `TASK`, `REPO ROOT` or `CONTEXT FILE`; a `MODE` other than `BUILD`; or a `REPORT` that is missing or not an absolute path): review nothing, write no file, and reply only `REFUSED — <field>: <missing | malformed>`. Without a checked message you would judge a change against an intent nobody approved, or write where nobody looks.
 - **A `DEVELOPER REPORT` or `PRIOR FINDINGS` you can't use** (a path that doesn't resolve or a file that isn't one JSON object): review nothing, write no file, and reply only `REFUSED — <field>: <missing | malformed>`. A claim you can't read can't be checked against the code.
 - **An empty `DIFF`:** there is nothing to review; say so in the report, as `standard-code-review-report` sets, and stop.
 - **No `DIFF` in `# Your work`, or a `DIFF` file you can't read:** review nothing; with the rest of your first message in place, report the review as not done in `REPORT`, with the reason, and reply. Never review from the working tree instead: you would judge a change nobody named.

@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
 # Commits one agent's work in its linked worktree, on the worktree's own
-# branch: exactly the given paths, or every change git sees, with a message
-# file written beforehand, authored, committed and, with a key, signed by the
-# effort's identity, then proves the commit is the one asked for. It never
-# writes the message or pushes. It refuses a main checkout, a HEAD on any
-# other branch and an index something else already staged, before it touches
-# anything. A signing failure never loses the work: the commit is made again
-# unsigned and says why.
+# branch: every change git sees, with a message file written beforehand,
+# authored, committed and, with a key, signed by the effort's identity, then
+# proves the commit is the one asked for. It never writes the message or
+# pushes. It refuses a main checkout, a HEAD on any other branch and an index
+# something else already staged, before it touches anything. A signing failure
+# never loses the work: the commit is made again unsigned and says why.
 set -eu
 umask 077
 
@@ -41,11 +40,13 @@ usage() {
 	cat <<EOF
 usage: sh ${PROG} --worktree DIR --message-file FILE --identity-name NAME
                  --identity-email EMAIL [--signing-format F --signing-key K]
-                 --paths-file FILE | --seat S
        sh ${PROG} --help | -h
 
-Commits exactly the given paths, or every change, in a linked git worktree and prints the new commit's full sha. The identity
-is author and committer. Runs no repository hook.
+Commits every change git sees (added, modified or deleted; nothing git
+ignores) in a linked git worktree and prints the new commit's full sha. A
+path holding a line break is refused (exit 3). After the commit the
+worktree must show no change. The identity is author and committer. Runs no
+repository hook.
 
 --worktree DIR         absolute path of the linked worktree's top folder,
                        <effort>/${WORKTREES_FOLDER}/<letter>; HEAD must be on
@@ -63,28 +64,17 @@ is author and committer. Runs no repository hook.
                        says UNSIGNED: <reason> ("signing timed out after
                        ${SIGN_TIMEOUT} s" for the second). Without them it is
                        unsigned and nothing is said
---paths-file FILE    repo-relative paths to stage (added, modified or deleted),
-                     even where an ignore rule covers them,
-                     one per line, matched literally (no globs); each path is
-                     relative, has no empty, "." or ".." segment, is not
-                     .git or under .git/, and holds no control character;
-                     no empty line except the file's trailing newline
---seat S             instead of --paths-file: the work of seat S, one path
-                     segment: every change git sees (added, modified or
-                     deleted; nothing git ignores). A path holding a line
-                     break is refused (exit 3). After the commit the
-                     worktree must show no change
 
 exit codes:
   0  committed; the new commit's full sha is the only stdout line
-  2  wrong command line: a missing, repeated or unknown option, a missing
-     value, or both or neither of --paths-file and --seat
-  3  invalid input: options, paths, files or worktree checks, or with
-     --seat a path holding a line break, which may come after the commit;
-     each problem is one stderr line (at most ${MAX_PROBLEMS})
+  2  wrong command line: a missing, repeated or unknown option, or a
+     missing value
+  3  invalid input: options, files or worktree checks, or a path holding a
+     line break, which may come after the commit; each problem is one
+     stderr line (at most ${MAX_PROBLEMS})
   4  environment: git missing
-  5  nothing to commit: the paths (or the worktree) hold no change; the
-     index is left clean
+  5  nothing to commit: the worktree holds no change; the index is left
+     clean
   6  git staging or the commit failed; the index is restored to clean
   7  a commit was made but does not match what was asked; each mismatch is one
      stderr line
@@ -144,16 +134,12 @@ take_value() {
 }
 
 parse_args() {
-	worktree='' message_file='' identity_name='' identity_email='' signing_format='' signing_key='' paths_file='' own_seat=''
+	worktree='' message_file='' identity_name='' identity_email='' signing_format='' signing_key=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
-				;;
-			--seat)
-				take_value "$1" "${own_seat}" "${2-}"
-				own_seat=${option_value}
 				;;
 			--worktree)
 				take_value "$1" "${worktree}" "${2-}"
@@ -179,13 +165,9 @@ parse_args() {
 				take_value "$1" "${signing_key}" "${2-}"
 				signing_key=${option_value}
 				;;
-			--paths-file)
-				take_value "$1" "${paths_file}" "${2-}"
-				paths_file=${option_value}
-				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --worktree, --message-file, --identity-name, --identity-email, --signing-format, --signing-key, --paths-file, --seat or --help"
+				usage_error "unknown option: ${shown_option}; expected --worktree, --message-file, --identity-name, --identity-email, --signing-format, --signing-key or --help"
 				;;
 		esac
 		shift 2
@@ -196,30 +178,19 @@ parse_args() {
 	[ -n "${identity_email}" ] || usage_error '--identity-email missing; expected --identity-email EMAIL'
 	[ -z "${signing_format}" ] || [ -n "${signing_key}" ] || usage_error '--signing-format given alone; expected --signing-key K with it'
 	[ -z "${signing_key}" ] || [ -n "${signing_format}" ] || usage_error '--signing-key given alone; expected --signing-format F with it'
-	if [ -n "${own_seat}" ]; then
-		[ -z "${paths_file}" ] || usage_error '--paths-file and --seat both given; expected one of them'
-	else
-		[ -n "${paths_file}" ] || usage_error '--paths-file and --seat both missing; expected --paths-file FILE or --seat S'
-	fi
 }
 
-# Copies --message-file and --paths-file into the private work folder, so a
-# later change to either can't slip between the checks and the commit.
-copy_inputs() {
+# Copies --message-file into the private work folder, so a later change to
+# it can't slip between the checks and the commit.
+copy_message() {
 	message_copy="${work_dir}/message"
-	paths_copy="${work_dir}/paths"
-	copy_input --message-file "${message_file}" "${message_copy}"
-	[ -n "${own_seat}" ] || copy_input --paths-file "${paths_file}" "${paths_copy}"
-}
-
-copy_input() {
-	shown_file=$(printable "$2")
-	if [ ! -f "$2" ] || [ ! -r "$2" ]; then
-		add_problem "$1 ${shown_file} is not a readable file; expected an existing file"
-	elif ! cp -- "$2" "$3"; then
-		add_problem "$1 ${shown_file} could not be copied; expected a readable file"
-	elif [ ! -s "$3" ]; then
-		add_problem "$1 ${shown_file} is empty; expected content"
+	shown_file=$(printable "${message_file}")
+	if [ ! -f "${message_file}" ] || [ ! -r "${message_file}" ]; then
+		add_problem "--message-file ${shown_file} is not a readable file; expected an existing file"
+	elif ! cp -- "${message_file}" "${message_copy}"; then
+		add_problem "--message-file ${shown_file} could not be copied; expected a readable file"
+	elif [ ! -s "${message_copy}" ]; then
+		add_problem "--message-file ${shown_file} is empty; expected content"
 	fi
 }
 
@@ -266,49 +237,6 @@ check_signing() {
 		*[[:cntrl:]]*) add_problem '--signing-key holds a line break or control character; expected one line' ;;
 		*) ;;
 	esac
-}
-
-# The seat's own folder name must be one plain path segment.
-check_seat() {
-	[ -n "${own_seat}" ] || return 0
-	case ${own_seat} in
-		*[[:cntrl:]]*) add_problem '--seat holds a control character; expected a seat name' ;;
-		*/* | . | ..)
-			shown_seat=$(printable "${own_seat}")
-			add_problem "--seat ${shown_seat} is not one path segment; expected a seat name"
-			;;
-		*) ;;
-	esac
-}
-
-check_paths() {
-	[ -z "${own_seat}" ] && [ -s "${paths_copy}" ] || return 0
-	line_number=0
-	while IFS= read -r path || [ -n "${path}" ]; do
-		line_number=$((line_number + 1))
-		check_path "${path}" "${line_number}"
-	done <"${paths_copy}"
-}
-
-# Checks one path ($1) on paths line $2; the path is shown only when it is bad.
-check_path() {
-	reason=''
-	case $1 in
-		'') reason='is empty; expected a repo-relative path' ;;
-		*[[:cntrl:]]*) reason='holds a control character; expected printable text' ;;
-		/*) reason='is absolute; expected a repo-relative path' ;;
-		.git | .git/*) reason='is git'\''s own .git entry; expected a path outside it' ;;
-		*) ;;
-	esac
-	if [ -z "${reason}" ]; then
-		case /$1/ in
-			*/../*) reason='has a .. segment; expected none' ;;
-			*/./* | *//*) reason='has an empty or "." segment; expected a normalized path' ;;
-			*) return 0 ;;
-		esac
-	fi
-	shown_path=$(printable "$1")
-	add_problem "--paths-file line $2 (${shown_path}) ${reason}"
 }
 
 # Refuses anything but the top folder of a linked worktree with HEAD on its
@@ -406,24 +334,17 @@ fail_restored() {
 
 stage_changes() {
 	paths_nul="${work_dir}/paths.nul"
-	if [ -n "${own_seat}" ]; then
-		list_own_changes "${paths_nul}"
-		if [ -s "${paths_nul}" ]; then
-			git -C "${worktree}" -c core.fsmonitor=false add -A --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
-				fail_restored 'git add failed; expected every changed file readable'
-		fi
-		git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the worktree'
-		return 0
+	list_changes "${paths_nul}"
+	if [ -s "${paths_nul}" ]; then
+		git -C "${worktree}" -c core.fsmonitor=false add -A --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
+			fail_restored 'git add failed; expected every changed file readable'
 	fi
-	tr '\n' '\000' <"${paths_copy}" >"${paths_nul}"
-	git -C "${worktree}" -c core.fsmonitor=false add -A -f --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
-		fail_restored 'git add failed; expected every path to exist or be tracked'
-	git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the given paths'
+	git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the worktree'
 	return 0
 }
 
 # Writes to $1, NUL-separated, every changed path git sees.
-list_own_changes() {
+list_changes() {
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain -z --no-renames \
 		--untracked-files=all --ignore-submodules=none >"${work_dir}/status" ||
 		die 6 'git status could not list the worktree; expected a readable worktree'
@@ -437,7 +358,7 @@ list_own_changes() {
 refuse_line_breaks() {
 	line_breaks=$(tr -cd '\n' <"$1" | wc -c)
 	[ "${line_breaks}" -eq 0 ] ||
-		die 3 "$2 a path with a line break; expected none, since --seat reads its paths one per line"
+		die 3 "$2 a path with a line break; expected none, since the paths are read one per line"
 }
 
 # Commits signed when a key is given; a signed commit that fails or times
@@ -528,11 +449,7 @@ verify_commit() {
 	verify_object
 	verify_idents
 	verify_branch
-	if [ -n "${own_seat}" ]; then
-		verify_own_changes
-	else
-		verify_paths
-	fi
+	verify_no_change_left
 	git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet >/dev/null 2>&1 ||
 		add_problem 'the index is not clean after the commit; expected nothing staged'
 	exit_on_problems 7
@@ -575,30 +492,8 @@ verify_branch() {
 		add_problem "the branch ${shown_branch} is not at the new commit; expected the commit on the worktree's own branch"
 }
 
-# Each changed path must be a given path or lie under one given as a folder.
-verify_paths() {
-	changed="${work_dir}/changed"
-	git -C "${worktree}" diff-tree --no-commit-id --name-only -r -z "${new_head}" >"${changed}" ||
-		die 7 'git diff-tree could not list the commit'\''s paths; expected a readable commit'
-	outside=$(tr '\000' '\n' <"${changed}" | awk -v given_file="${paths_copy}" '
-		BEGIN { while ((getline line < given_file) > 0) given[line] = 1 }
-		{
-			covered = ($0 in given)
-			for (cut = length($0); !covered && cut > 0; cut--)
-				if (substr($0, cut, 1) == "/" && (substr($0, 1, cut - 1) in given)) covered = 1
-			if (!covered) print
-		}') || die 7 'awk failed comparing the commit'\''s paths; expected a POSIX awk'
-	[ -n "${outside}" ] || return 0
-	while IFS= read -r path; do
-		shown_path=$(printable "${path}")
-		add_problem "the commit changes ${shown_path}, which is not a given path; expected only given paths"
-	done <<EOF
-${outside}
-EOF
-}
-
-# With --seat, the worktree shows no change after the commit.
-verify_own_changes() {
+# The worktree shows no change after the commit.
+verify_no_change_left() {
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain -z --no-renames \
 		--untracked-files=all --ignore-submodules=none >"${work_dir}/left" ||
 		die 7 'git status could not list the worktree after the commit; expected a readable worktree'
@@ -625,11 +520,9 @@ parse_args "$@"
 command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-commit.XXXXXX") ||
 	die 3 'mktemp could not create a work folder; expected a writable TMPDIR'
-copy_inputs
+copy_message
 check_message
 check_identity
-check_seat
-check_paths
 check_worktree
 exit_on_problems 3
 stage_changes

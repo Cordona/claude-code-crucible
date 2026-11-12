@@ -19,11 +19,12 @@ export LC_ALL
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} [--efforts DIR]
+usage: sh ${PROG}
        sh ${PROG} --help | -h
 
 Claude Code's PostToolUse hook on Agent. Reads the event JSON on stdin; with
-a tool_response.agentId and an effort in DIR holding a ${ALLOWED_EVENT} event
+a tool_response.agentId and an effort of the space
+\${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts holding a ${ALLOWED_EVENT} event
 whose body.tool_use_id is the call's (the crucible skill's events.sh latest),
 reads that event's dispatch id and seq, then the ${DISPATCH_EVENT} event of
 that seq, and runs
@@ -33,10 +34,6 @@ No agentId or no such event: not an effort dispatch, nothing done.
 
 The dispatch is accepted only when the ${DISPATCH_EVENT} event of that seq is
 in the same effort and its body.id is the ${ALLOWED_EVENT} event's dispatch.
-
---efforts DIR  absolute path of the efforts folder; default
-               \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts, the space
-               events.sh reads
 
 writes, faults only: a fault.raised event of the effort (events.sh fault)
 {what, tool_use_id, agent_id, dispatch}; a fault before the effort is known,
@@ -70,32 +67,18 @@ printable() {
 }
 
 parse_args() {
-	efforts=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--efforts)
-				[ -n "${2-}" ] || usage_error '--efforts needs a value; expected --efforts DIR'
-				[ -z "${efforts}" ] || usage_error '--efforts given twice; expected one'
-				efforts=$2
-				shift 2
-				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --efforts or --help"
+				usage_error "unknown option: ${shown_option}; expected --help"
 				;;
 		esac
 	done
-	case ${efforts} in
-		'' | /*) ;;
-		*)
-			shown_efforts=$(printable "${efforts}")
-			usage_error "--efforts ${shown_efforts} is not absolute; expected an absolute path"
-			;;
-	esac
 }
 
 # Lets the call go on.
@@ -192,10 +175,9 @@ stamp_session() {
 	export CLAUDE_CODE_SESSION_ID
 }
 
-# Sets efforts to the default when --efforts is not given; a space that can't
-# be named holds no effort dispatch.
+# Sets efforts to the space's efforts folder; a space that can't be named
+# holds no effort dispatch.
 resolve_efforts() {
-	[ -z "${efforts}" ] || return 0
 	if [ -n "${CRUCIBLE_HOME:-}" ]; then
 		root=${CRUCIBLE_HOME}
 	elif [ -n "${HOME:-}" ]; then

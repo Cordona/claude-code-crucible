@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Prints the commit-message.sh input for one writer seat's current work: the
+# Prints the commit-message.sh input for one developer seat's current work: the
 # kind from the seat's mode, the iteration from iteration.sh, the text from
 # the seat's report, and the trailers. It reads only; commit-message.sh
 # checks what it prints.
@@ -13,9 +13,7 @@ export LC_ALL
 
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly INPUT_JQ='{kind: $kind, text: $report[0].summary,
-	trailers: ({iteration: $count, "build-seat": (if $kind == "test" then $build_seat else null end),
-		effort: $effort, "agent-seat": $seat.seat}
-		| with_entries(select(.value != null)))}'
+	trailers: {iteration: $count, effort: $effort, "agent-seat": $seat.seat}}'
 
 usage() {
 	cat <<EOF
@@ -26,16 +24,16 @@ Prints the commit-message.sh input JSON for seat S's current work. Reads
 only; checks no value commit-message.sh checks.
 
 --effort FOLDER  the effort folder, absolute
---seat S       a developer or tester seat with an agent bound
+--seat S       a developer seat with an agent bound
 --report FILE  the report to take the text from; default iteration.sh's REPORT
 --out FILE     write the JSON there, whole through a temp file beside it,
                instead of printing it
 
 the input:
-  kind      build for mode BUILD, test for mode TEST
+  kind      build for mode BUILD
   text      the summary of the report, one JSON object
-  trailers  iteration: iteration.sh's ITERATION; build-seat (test only):
-            its BUILD_SEAT; effort: the effort folder's name; agent-seat
+  trailers  iteration: iteration.sh's ITERATION; effort: the effort
+            folder's name; agent-seat
 
 exit codes:
   0  printed (or written); with --out nothing is printed
@@ -166,14 +164,13 @@ ${fields}
 EOF
 	case ${mode} in
 		BUILD) kind='build' ;;
-		TEST) kind='test' ;;
-		*) die 3 "seat ${seat} has no mode; expected a developer or tester seat" ;;
+		*) die 3 "seat ${seat} has no mode; expected a developer seat" ;;
 	esac
 	[ -n "${dispatch}" ] || die 3 "seat ${seat} is ${status}; expected an agent and its dispatch bound"
-	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a developer or tester seat"
+	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a developer seat"
 }
 
-# Sets count, build_seat and, without --report, report from iteration.sh;
+# Sets count and, without --report, report from iteration.sh;
 # iteration.sh's own lines say why it refused.
 read_iteration() {
 	iteration_rc=0
@@ -183,11 +180,10 @@ read_iteration() {
 		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base" ;;
 		*) die 4 "iteration.sh failed (exit ${iteration_rc})" ;;
 	esac
-	count='' build_seat='' printed_report=''
+	count='' printed_report=''
 	while IFS= read -r line; do
 		case ${line} in
 			'ITERATION: '*) count=${line#ITERATION: } ;;
-			'BUILD_SEAT: '*) build_seat=${line#BUILD_SEAT: } ;;
 			'REPORT: '*) printed_report=${line#REPORT: } ;;
 			*) ;;
 		esac
@@ -196,7 +192,6 @@ ${iteration_out}
 EOF
 	[ -n "${count}" ] && [ -n "${printed_report}" ] || die 4 'iteration.sh printed no ITERATION or REPORT line'
 	[ -n "${report}" ] || report=${printed_report}
-	[ "${kind}" = build ] || [ "${count}" -ge 1 ] || die 3 "seat ${seat} tests no build: its worktree holds no crucible(build) commit"
 }
 
 check_report() {
@@ -208,7 +203,7 @@ check_report() {
 
 build_input() {
 	input=$(jq -nc --slurpfile report "${report}" --argjson seat "${seat_json}" --arg kind "${kind}" \
-		--argjson count "${count}" --arg build_seat "${build_seat}" --arg effort "${effort}" "${INPUT_JQ}" 2>/dev/null) ||
+		--argjson count "${count}" --arg effort "${effort}" "${INPUT_JQ}" 2>/dev/null) ||
 		die 4 'jq failed building the commit input; expected jq 1.6+'
 }
 

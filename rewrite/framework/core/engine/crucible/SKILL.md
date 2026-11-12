@@ -40,7 +40,7 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 
 ## Rules
 
-- **An effort folder holds only** `events/` (its events), `drafts/main-thread/` and `drafts/agents/<seat>/` (drafts), `files/context/v<N>/` (frozen files), `worktrees/` (code), `cache/` (views) and, while a writer holds it, `.events.lock`.
+- **An effort folder holds only** `events/` (its events), `drafts/main-thread/` and `drafts/agents/<seat>/` (drafts), `files/context/v<N>/` (frozen files), `worktrees/` (code) and, while a writer holds it, `.events.lock`.
 - **Nothing else belongs in it:** no `states/`, `seats.json`, `settings.json`, `context/`, `grills/`, `plans/`, `metrics/` or `pending/` at its top level, no `cache/gates/` or `cache/denials/`, and no `.crucible/` in a worktree. Those mark an effort from before events.
 - **Events:** each fact of an effort is one JSON file, `events/<seq>-<type>.json`, mode 0444, written once and never changed or removed until `prune` removes the whole effort folder; the one exception is a failed `effort.sh start`, which removes its new folder's `events/`, faults included.
 - **Only `events.sh` writes events,** called by the scripts and hooks that own each fact.
@@ -57,7 +57,7 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 - **Frozen files:** `files/context/v<N>/` holds context version N's docs, mode 0444, written once by its cut (`context.sh`).
 - **Worktrees hold code only:** `worktrees/` holds `procedure-git-worktree`'s git working trees, their writers' own; no framework file goes in them.
 - **`prune` removes the worktrees with the effort:** their registrations and local branches stay in the repository; `git worktree prune` there drops the registrations, and nothing in this skill runs it.
-- **A gate before any effort,** such as the effort offer, keeps its record in the session's gate folder, never in the space.
+- **A gate before any effort,** such as the effort offer, saves no record.
 - **A gate answered inside an effort becomes a `gate.<label>.answered` event.**
 
 ## The script

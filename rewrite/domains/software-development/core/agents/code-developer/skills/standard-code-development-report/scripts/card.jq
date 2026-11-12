@@ -16,12 +16,8 @@ def card_counted($count; $one; $many): "\($count) \(if $count == 1 then $one els
 def card_dash_list: map("- " + .) | join("\n");
 
 def card_count_lines($files):
-	(card_items("answers") | map(objects | .status)) as $statuses
-	| [card_count("security") | select(. > 0) | "⚠️ " + card_counted(.; "security warning"; "security warnings")]
+	[card_count("security") | select(. > 0) | "⚠️ " + card_counted(.; "security warning"; "security warnings")]
 	+ [if $files == null then "no code change" else "\(card_counted($files.total; "file"; "files")) changed, \($files.new) new" end]
-	+ (if $statuses == [] then [] else
-		["\(card_counted($statuses | length; "concern"; "concerns")) answered: \([$statuses[] | select(. == "fixed")] | length) fixed, \([$statuses[] | select(. == "blocked")] | length) blocked"]
-	  end)
 	+ [card_count("blockers") | select(. > 0) | card_counted(.; "blocker"; "blockers")]
 	+ [card_count("deviations") | select(. > 0) | card_counted(.; "deviation"; "deviations") + " to confirm"]
 	+ [card_count("open") | select(. > 0) | card_counted(.; "open item"; "open items")]

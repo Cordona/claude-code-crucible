@@ -26,11 +26,11 @@ readonly LOCATIONS_JQ='include "dev-report-check";
 # Prints the problem lines, at most $max and one counting the rest.
 # shellcheck disable=SC2016
 readonly CHECK_JQ='include "dev-report-check";
-report_check($report; $round; $chosen_text; $files_text; $hint; $max)[]'
+report_check($report; $files_text; $hint; $max)[]'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --report FILE --worktree DIR [--chosen FILE]
+usage: sh ${PROG} --report FILE --worktree DIR
        sh ${PROG} --help | -h
 
 Checks a developer's BUILD report; changes nothing, prints nothing on stdout.
@@ -39,26 +39,21 @@ Checks a developer's BUILD report; changes nothing, prints nothing on stdout.
                  draft <effort>/drafts/agents/<seat>/report.json
 --worktree DIR   absolute path of the developer's worktree; every path:line
                  in the report resolves against it
---chosen FILE    absolute path of a text file, one chosen concern id per
-                 line, blank lines ignored. Given: a fix round, whose answers
-                 hold exactly these ids. Absent: an iteration, no answers.
 
 the report: summary (one line, not starting with a word: or word(word):
 prefix) and verification (at least one gate) are required; deviations,
-decisions, noticed, security, open and blockers are optional; answers only
-in a fix round. Every text is one line; no value is null, [] or {}; a
-path:line is relative to the worktree and names a line of a file in it.
+decisions, noticed, security, open and blockers are optional. Every text is
+one line; no value is null, [] or {}; a path:line is relative to the
+worktree and names a line of a file in it.
 The caps and allowed values: sh report-limits.sh prints them.
-The shape is set out in the ${SKILL} skill's SKILL.md,
-references/report-iteration.json and references/report-fix-round.json;
-where they differ, this check wins.
+The shape is set out in the ${SKILL} skill's SKILL.md and
+references/report-iteration.json; where they differ, this check wins.
 
 exit codes:
   0  the report fits; nothing is printed
   2  wrong command line: a missing, repeated or unknown option, a path that
-     is not absolute, a --worktree that is no folder or can't be entered,
-     or a --chosen file that is missing, unreadable or holds no id; fix the
-     call
+     is not absolute, or a --worktree that is no folder or can't be
+     entered; fix the call
   3  the report does not fit, is missing, empty, a folder or not a readable
      file, or is not one JSON object; each problem is one stderr line saying
      how to fix it (at most ${MAX_PROBLEMS}, then one counting the rest): fix
@@ -99,7 +94,7 @@ take_value() {
 }
 
 parse_args() {
-	report='' worktree='' chosen=''
+	report='' worktree=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -114,13 +109,9 @@ parse_args() {
 				take_value "$1" "${worktree}" "${2-}" DIR
 				worktree=${option_value}
 				;;
-			--chosen)
-				take_value "$1" "${chosen}" "${2-}" FILE
-				chosen=${option_value}
-				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --report, --worktree, --chosen or --help"
+				usage_error "unknown option: ${shown_option}; expected --report, --worktree or --help"
 				;;
 		esac
 		shift 2
@@ -150,26 +141,15 @@ check_worktree() {
 	worktree_prefix="${physical%/}/"
 }
 
-# Sets round, chosen_file and hint (where and in what shape the report goes):
-# the report's own path, outside the worktree.
-check_chosen() {
-	if [ -z "${chosen}" ]; then
-		round=first chosen_file=/dev/null example=report-iteration.json
-	else
-		require_absolute --chosen "${chosen}"
-		shown_chosen=$(printable "${chosen}")
-		[ -f "${chosen}" ] && [ -r "${chosen}" ] ||
-			usage_error "--chosen ${shown_chosen} is not a readable file; expected the chosen ids, one per line"
-		grep -q '[^[:space:]]' "${chosen}" ||
-			usage_error "--chosen ${shown_chosen} holds no id; expected the chosen ids, one per line"
-		round=fix chosen_file=${chosen} example=report-fix-round.json
-	fi
+# Sets hint (where and in what shape the report goes): the report's own
+# path, outside the worktree.
+set_hint() {
 	report_place=$(printable "${report}")
 	# Resolved physically, so the path holds when the skill is installed through a link.
 	scripts=$(script_dir)
 	references=$(cd -P -- "${scripts}/../references" 2>/dev/null && pwd -P) ||
 		die 4 "the ${SKILL} skill's references folder is not beside scripts/; expected the skill installed whole"
-	shown_example=$(printable "${references}/${example}")
+	shown_example=$(printable "${references}/report-iteration.json")
 	hint="write it to ${report_place} as one JSON object shaped like ${shown_example}"
 }
 
@@ -242,8 +222,8 @@ EOF
 }
 
 check_report() {
-	problems=$(jq -nr -L "${own_dir}" --rawfile report "${report}" --rawfile chosen_text "${chosen_file}" \
-		--arg round "${round}" --arg files_text "${files_text}" --arg hint "${hint}" \
+	problems=$(jq -nr -L "${own_dir}" --rawfile report "${report}" \
+		--arg files_text "${files_text}" --arg hint "${hint}" \
 		--argjson max "${MAX_PROBLEMS}" "${CHECK_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}"
 	[ -n "${problems}" ] || return 0
@@ -257,7 +237,7 @@ EOF
 
 parse_args "$@"
 check_worktree
-check_chosen
+set_hint
 load_dependencies
 check_report_file
 look_up_locations

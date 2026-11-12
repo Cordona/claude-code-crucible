@@ -27,7 +27,7 @@ Every view a renderer prints for the human follows these; the def named after a 
 6. **Data last:** a view built from JSON in the Crucible space ends with that JSON's paths: one as `**Data · <Kind>:** <path>`, two or more as `**Data**` and a numbered `<Kind>: <path>` list (`data_section`). A view with no JSON behind it has no Data section. Three exceptions: a view repeated through one run (such as a grill round) shows its Data only on its last view, or in the view that follows the run (what-next after a grill); a one-line view carries its path inline, after its title; a status view ends with its folder's bare path.
 7. **No constants:** a value that is the same on every view (a single agent, a single mode) is not shown, until a second value exists.
 8. **Gates keep their `_Crucible gate_` marker,** which `open-gate.sh` adds; a renderer never prints it.
-9. **The script prints, the model relays:** every view is printed by a script and relayed word for word; the model composes only the fixed one-line notices its skill spells out word for word, and lines it writes to a file that the script checks for shape and prints inside its view (a report card's Do and Decide lines).
+9. **The script prints, the model relays:** every view is printed by a script and relayed word for word; the model composes only the fixed one-line notices its skill spells out word for word.
 
 Blocks of a view are joined by one blank line (`blocks`).
 
@@ -65,7 +65,6 @@ include "paths";
 | `status_line($status; $title; $tail)`, `status_line($status; $title)` | ignored; `$status` (`decision`, `done`, `attention` or `blocked`) prints nothing | `**<title>**`, then ` · <tail>` when `$tail` is neither `""` nor null |
 | `section($name; $plural; $items)`, `section($name; $items)` | ignored | `""` for no items; `**<name>:** <item>` for one; `**<plural>**` and a numbered list for two or more (`$plural` defaults to `$name`) |
 | `field_lines($pairs)` | ignored; `$pairs` an array of `[name, count]` or `[name, count, tail]` | one `<name>: <count>` line per non-zero count, with ` · <tail>` when given, joined by a two-space hard break; `""` when every count is zero |
-| `field_section($heading; $pairs)` | ignored | `$heading`, a hard break, then `field_lines($pairs)`; `""` when every count is zero |
 | `data_section($pairs)` | ignored; `$pairs` an array of `[kind, path]` | `""` for no pairs; `**Data · <kind>:** <path>` for one; `**Data**` and a numbered `<kind>: <path>` list for two or more; paths through `path_text` |
 | `blocks` | array of blocks, `""` or null for one with nothing to show | the non-empty blocks joined by one blank line |
 
@@ -80,10 +79,8 @@ include "paths";
 | `code_span` | string | the input capped and in backticks, each backtick in it shown as `'` |
 | `link_span` | string | the input whole in backticks, never `~`-shortened or cut, each backtick in it shown as `'`: for a path shown as a link |
 | `base_name` | string | the text after the last `/` |
-| `dir_segments` | absolute path | array: its folders, without the leading `/` or the basename |
 | `home_form($home)` | string | the input with a leading `$home` folder written as `~`; unchanged when `$home` is empty or isn't its start |
 | `short_path($home)` | string | `home_form`, then capped, with the basename kept whole when it is at most `span_cap - 2` characters |
-| `shared_start($next)` | array | the longest start it shares with array `$next` |
 
 `title.jq`'s public defs:
 

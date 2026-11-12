@@ -17,14 +17,10 @@ readonly RECORD_FOLDER='crucible'
 readonly MAX_LISTED=20
 readonly tab='	'
 
-# A version 1 record holds one seat (slot, worktree, seat_commit) and its
-# base, the seat's field and name in the form of its time (slot, like dev-1);
-# it reads as version 2 with that one seat, start = base and target =
-# seat_commit. A version 2 seat is {seat, worktree, seat_commit}, the name
-# seats.jq's; one written before seats were named so holds slot (like dev-1)
-# instead of seat, and reads as seat. The first output line is "ok", then the
-# record's fields, or "bad", then one "<field path>: <problem>; expected <x>"
-# line per failed check.
+# A record is version 2; each seat is {seat, worktree, seat_commit}, the name
+# seats.jq's. The first output line is "ok", then the record's fields, or
+# "bad", then one "<field path>: <problem>; expected <x>" line per failed
+# check.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly RECORD_JQ='include "seats";
 def sha: type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$");
@@ -32,7 +28,6 @@ def state: type == "string" and test("^(absent|(100644|100755|120000) ([0-9a-f]{
 def folder: type == "string" and startswith("/") and (test("[\u0000-\u001f\u007f]") | not);
 def relative: type == "string" and length > 0 and (test("[\u0000\n]") | not)
 	and (split("/") | all(. != "" and . != "." and . != ".." and . != ".git"));
-def v1_slot_name: type == "string" and test("^[a-z][a-z0-9]*-[1-9][0-9]*$");
 def seat_name: type == "string" and test(seats_name_pattern);
 def sha_text: "a 40- or 64-character hex sha";
 def folder_text: "an absolute path printable on one line";
@@ -60,18 +55,11 @@ def common_problems:
 	(.mounted_at | check("mounted_at"; type == "string"; "the mount time as a string")),
 	(.paths | if type == "array" and length > 0 then to_entries[] | .key as $index | .value | path_problems("paths[\($index)]")
 		else check("paths"; false; "a non-empty array of paths") end);
-def v1_problems:
-	(.worktree | check("worktree"; folder; folder_text)),
-	(.slot | check("slot"; v1_slot_name; "a slot name like dev-1")),
-	(.base | check("base"; sha; sha_text)),
-	(.seat_commit | check("seat_commit"; sha; sha_text)),
-	(.base_is_snapshot | check("base_is_snapshot"; type == "boolean"; "true or false"));
 def seat_problems($where):
 	if type != "object" then check($where; false; "an object of seat, worktree and seat_commit")
 	else (.worktree | check("\($where).worktree"; folder; folder_text)),
 		(.seat_commit | check("\($where).seat_commit"; sha; sha_text)),
-		(if has("seat") then .seat | check("\($where).seat"; seat_name; "a seat name as seats.jq names it")
-		else .slot | check("\($where).slot"; v1_slot_name; "a seat, or a slot like dev-1 from before seats were named") end)
+		(.seat | check("\($where).seat"; seat_name; "a seat name as seats.jq names it"))
 	end;
 def v2_problems:
 	(.start | check("start"; sha; sha_text)),
@@ -79,7 +67,7 @@ def v2_problems:
 	(.start_is_snapshot | check("start_is_snapshot"; type == "boolean"; "true or false")),
 	(.seats | if type == "array" and length > 0 then
 		(to_entries[] | .key as $index | .value | seat_problems("seats[\($index)]")),
-		(map(objects | .seat // .slot) | group_by(.)[] | select(length > 1)[0]
+		(map(objects | .seat) | group_by(.)[] | select(length > 1)[0]
 			| "seats: \(shown) is named more than once; expected each seat once")
 	else check("seats"; false; "a non-empty array of seats") end),
 	(if (.seats | type == "array" and length == 1) and (.seats[0] | type == "object") and .seats[0].seat_commit != .target then
@@ -87,16 +75,13 @@ def v2_problems:
 	else empty end);
 def record_problems:
 	if type != "object" then "record: a JSON \(type) is not allowed; expected an object"
-	elif .version == 1 then common_problems, v1_problems
 	elif .version == 2 then common_problems, v2_problems
-	else .version | check("version"; false; "1 or 2")
+	else .version | check("version"; false; "2")
 	end;
 [record_problems] as $problems
 | if $problems != [] then "bad", $problems[]
 else "ok",
-	(if .version == 1 then {effort, repo, start: .base, target: .seat_commit, head, seats: [{seat: .slot, worktree, seat_commit}], paths}
-	else .seats |= map({seat: (.seat // .slot), worktree, seat_commit}) end
-	| .effort, .repo, .start, .target, .head, (.seats | length), (.seats[] | "\(.seat)\t\(.worktree)\t\(.seat_commit)"),
+	(.effort, .repo, .start, .target, .head, (.seats | length), (.seats[] | "\(.seat)\t\(.worktree)\t\(.seat_commit)"),
 		(.paths[] | "\(.before)\t\(.after)\t\(.path)"))
 end'
 
@@ -211,7 +196,7 @@ reject_record() {
 		warn "${record_problem}"
 	done <"${work_dir}/record-problems"
 	[ "${problem_count}" -le "${MAX_LISTED}" ] || warn "... and $((problem_count - MAX_LISTED)) more problems"
-	die 3 "the mount record ${shown_record} is not a version 1 or 2 mount record; expected mount.sh's record"
+	die 3 "the mount record ${shown_record} is not a version 2 mount record; expected mount.sh's record"
 }
 
 # Writes to $2 the checkout state of each path in spec file $1, one per line.

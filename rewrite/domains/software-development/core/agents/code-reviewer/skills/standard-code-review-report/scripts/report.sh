@@ -1,19 +1,10 @@
 #!/usr/bin/env sh
-# Checks the reviewer's per-round report JSON and, on a pass with --dispatch,
-# stamps the dispatch's lens on every finding and the dispatch keys at the top
-# level. The jq validator below owns the report's shape (there is no schema
-# file): the report standard's field table documents it, and the validator
-# wins where they differ.
+# Checks the reviewer's per-round report JSON. The jq validator below owns the
+# report's shape (there is no schema file): the report standard's field table
+# documents it, and the validator wins where they differ.
 set -eu
 
 readonly PROG='report.sh'
-readonly DISPATCH_DIR='flow-code-agent-dispatch/scripts/agent-dispatch'
-readonly CRUCIBLE_SKILL='crucible'
-# The lens a dispatch that loads no language, framework or standard reviews
-# through.
-readonly NO_LENS='correctness'
-# The one agent whose report this script checks and stamps.
-readonly REVIEWER_AGENT='code-reviewer'
 
 # The shape check: the count line, then one "<field>: <what>; expected <x>" line
 # per problem. Every value taken from the report goes through `shown`, so a
@@ -207,7 +198,7 @@ def finding_problems($loc; $files):
 	else . as $finding
 		| ((keys - finding_required - finding_optional)[] as $key
 			| if $key == "id" then "\($loc).id: written into the report; expected it left out: the review record stamps it"
-			  elif $key == "plugin" then "\($loc).plugin: written into the report; expected it left out: report.sh check --dispatch stamps the lens"
+			  elif $key == "plugin" then "\($loc).plugin: written into the report; expected it left out: the review flow stamps the lens"
 			  elif $key | among(never_written_keys) then "\($loc).\($key): written into the report; expected it left out: \(never_written_reason)"
 			  else "\($loc).\($key | shown): unknown key; expected only \(finding_required + finding_optional | names)" end),
 		  (finding_required[] as $key | select($finding | has($key) | not)
@@ -318,7 +309,7 @@ def found_problems($loc):
 
 def key_problems:
 	(keys - list_keys)[] as $key
-	| if $key | among(stamp_keys) then "\($key): written into the report; expected it left out: report.sh check --dispatch stamps \(stamp_keys | names) on a pass, and a stamped report is never checked again"
+	| if $key | among(stamp_keys) then "\($key): written into the report; expected it left out: the review flow stamps \(stamp_keys | names)"
 	  elif $key | among(never_written_keys) then "\($key): written into the report; expected it left out: \(never_written_reason)"
 	  else "\($key | shown): unknown key; expected only \(list_keys | names)" end;
 def item_problems($key; $loc; $files):
@@ -350,83 +341,41 @@ def problems:
 $report[0] | count_line, problems[]
 '
 
-# The stamps, on a passing check --dispatch: the lens first on every finding,
-# and dispatch, started, finished, mode and plugins at the top level, before
-# the report's lists in list order (a key the validator does not know, which a
-# passing report never holds, after them); every key holding nothing is left
-# out. dispatch-names.jq (-L its folder) holds the stamp shapes; a stamp of
-# another shape stops the write.
-# shellcheck disable=SC2016
-readonly STAMP_JQ='
-include "dispatch-names";
-include "prune";
-def key_order: ["dispatch", "started", "finished", "mode", "plugins", "findings", "previous_findings", "flags", "not_reviewed", "found"];
-if ($stamps.dispatch | test(crucible_id_pattern)) and ($stamps.started | test(local_time_pattern)) and ($finished | test(local_time_pattern))
-then (if has("findings") then .findings |= map({plugin: $lens} + .) else . end) + $stamps + {finished: $finished}
-	| . as $report
-	| reduce (key_order[], ($report | keys_unsorted[] | select(IN(key_order[]) | not))) as $key
-		({}; if $report | has($key) then .[$key] = $report[$key] else . end)
-	| prune
-else error("a stamp has the wrong shape: dispatch \($stamps.dispatch | tojson), started \($stamps.started | tojson), finished \($finished | tojson)") end
-'
-
 # The one --help page.
 usage() {
 	cat <<'EOF'
-usage: report.sh check --dispatch FILE --diff FILE [--report PATH] [--prior FILE] [--skills-dir DIR]
-       report.sh check --report PATH --diff FILE [--prior FILE] [--skills-dir DIR]
+usage: report.sh check --report PATH --diff FILE [--prior FILE]
        report.sh --help | -h
 
-Checks the reviewer's report for one review round, one JSON object in PATH;
-with --dispatch, stamps the lens and the dispatch keys into it on a pass.
+Checks the reviewer's report for one review round, one JSON object in PATH.
 stdin is never read. With no arguments, prints this page on stderr and exits 2.
 shape: see this skill's SKILL.md field table; the validator here wins where
-they differ. A stamped report is refused: it is never checked again.
+they differ.
 
 Options (every FILE and PATH absolute):
-  --dispatch FILE     a code-reviewer dispatch file holding one lens: a
-                      language with zero or more frameworks and no standard
-                      (the lens is the language plugin's name), one standard
-                      and no language (the standard's name), or neither
-                      (correctness); a procedure is no lens. Supplies
-                      --report: leave it out, or give the same text
   --report PATH       the report file
   --diff FILE         the unified git diff the reviewer was given; each
                       location is checked against the files it changes
   --prior FILE        a re-review's prior finding IDs, one per line; without
                       it, previous_findings is refused
-  --skills-dir DIR    default ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills; read,
-                      and held to absolute, only with --dispatch
 
-stdout on exits 0, 3 and 6: one count line, <kind>=<n> per kind
+stdout on exits 0 and 3: one count line, <kind>=<n> per kind
 stderr on exit 3: one "<field>: <what>; expected <x>" line per problem, at
   most 30, then a count of the rest.
 
-Writes: with --dispatch, on exit 0 only, the report into PATH with the lens
-as the first key of each finding (plugin) and the top-level stamps dispatch,
-started, finished, mode and plugins (the dispatch's plugin names by kind:
-language, frameworks, standards, procedures) first, then findings,
-previous_findings, flags, not_reviewed, found; a key holding nothing (null,
-[] or {}) is left out. Any other exit leaves PATH byte for byte as it was.
-Nothing else is left behind (a SIGKILL aside).
+Writes nothing; PATH is only read. Nothing is left behind (a SIGKILL aside).
 
 Exit codes:
-  0  valid (stamped, with --dispatch); go on
-  2  usage error; fix the command; stderr starting "report.sh: dispatch:":
-     a dispatch fault, stop
+  0  valid; go on
+  2  usage error; fix the command
   3  invalid; have the fields stderr names fixed, check again
   4  not a report (PATH not one JSON object); write the report again
   5  install fault; install what stderr names
-  6  --dispatch: valid, but the stamp step failed; fix the step stderr names,
-     check again
   129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
 
 Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  cat, cp, date, grep, mktemp, mv, rm, sed (every macOS and Linux base system)
-  with --dispatch: the flow-code-agent-dispatch skill in --skills-dir (its
-    dispatch validator and dispatch-names.jq), and the crucible skill there
-    (its scripts/lib/prune.jq)
+  cat, grep, mktemp, rm, sed (every macOS and Linux base system)
 EOF
 }
 
@@ -440,11 +389,6 @@ usage_error() {
 	exit 2
 }
 
-dispatch_fault() {
-	warn "dispatch: $1"
-	exit 2
-}
-
 not_a_report() {
 	warn "not a report: $1"
 	exit 4
@@ -453,11 +397,6 @@ not_a_report() {
 install_fault() {
 	warn "install: $1"
 	exit 5
-}
-
-stamp_fault() {
-	warn "stamps not written, the report unchanged: $1"
-	exit 6
 }
 
 # Sets the option values from the arguments; exits 0 on --help, 2 on a usage
@@ -476,20 +415,19 @@ parse_args() {
 		*) usage_error "unknown command: $1; expected check or --help" ;;
 	esac
 	shift
-	report='' dispatch_file='' diff_file='' prior_file=''
-	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills"
+	report='' diff_file='' prior_file=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
 				usage
 				exit 0
 				;;
-			--report | --dispatch | --diff | --prior | --skills-dir)
+			--report | --diff | --prior)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
 				set_option "$1" "$2"
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --dispatch, --report, --diff, --prior or --skills-dir" ;;
+			*) usage_error "unknown argument: $1; expected --report, --diff or --prior" ;;
 		esac
 	done
 }
@@ -497,10 +435,8 @@ parse_args() {
 set_option() {
 	case $1 in
 		--report) report=$2 ;;
-		--dispatch) dispatch_file=$2 ;;
 		--diff) diff_file=$2 ;;
-		--prior) prior_file=$2 ;;
-		*) skills_dir=$2 ;;
+		*) prior_file=$2 ;;
 	esac
 }
 
@@ -513,15 +449,12 @@ require_absolute() {
 }
 
 check_paths() {
-	[ -z "${dispatch_file}" ] || require_absolute --dispatch "${dispatch_file}"
-	[ -z "${report}" ] || require_absolute --report "${report}"
+	[ -n "${report}" ] ||
+		usage_error '--report PATH missing; expected the absolute path of the report file'
+	require_absolute --report "${report}"
 	[ -z "${prior_file}" ] || require_absolute --prior "${prior_file}"
-	# Only --dispatch reads DIR, so only it holds DIR (default included) to absolute.
-	[ -z "${dispatch_file}" ] || require_absolute --skills-dir "${skills_dir}"
-	[ -n "${report}" ] || [ -n "${dispatch_file}" ] ||
-		usage_error '--report PATH missing; expected the absolute path of the report file, or --dispatch FILE'
 	[ -n "${diff_file}" ] ||
-		usage_error '--diff FILE missing; expected the DIFF the reviewer was given (the dispatch does not carry it yet)'
+		usage_error '--diff FILE missing; expected the DIFF the reviewer was given'
 	require_absolute --diff "${diff_file}"
 	[ -f "${diff_file}" ] && [ -r "${diff_file}" ] ||
 		usage_error "--diff file not readable: ${diff_file}; expected the unified diff the reviewer was given, a regular file"
@@ -545,7 +478,7 @@ check_jq() {
 }
 
 check_base_tools() {
-	for tool in cat cp date grep mktemp mv rm sed; do
+	for tool in cat grep mktemp rm sed; do
 		command -v "${tool}" >/dev/null 2>&1 && continue
 		case ${tool} in
 			grep | sed) package=${tool} ;;
@@ -555,100 +488,19 @@ check_base_tools() {
 	done
 }
 
-# Sets names_dir to the folder of the dispatch validator and dispatch-names.jq,
-# and prune_dir to crucible's scripts/lib, which holds prune.jq; exits 5 when
-# one is missing.
-locate_dispatch_modules() {
-	names_dir="${skills_dir}/${DISPATCH_DIR}"
-	validator="${names_dir}/agent-dispatch-validator.jq"
-	[ -f "${validator}" ] && [ -r "${validator}" ] ||
-		install_fault "dispatch validator missing; expected ${validator}; install the flow-code-agent-dispatch skill in ${skills_dir}"
-	[ -f "${names_dir}/dispatch-names.jq" ] && [ -r "${names_dir}/dispatch-names.jq" ] ||
-		install_fault "the shared dispatch names are missing; expected ${names_dir}/dispatch-names.jq; install the flow-code-agent-dispatch skill in ${skills_dir}"
-	prune_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
-	[ -f "${prune_dir}/prune.jq" ] && [ -r "${prune_dir}/prune.jq" ] ||
-		install_fault "${CRUCIBLE_SKILL}'s prune.jq missing; expected ${prune_dir}/prune.jq; install the ${CRUCIBLE_SKILL} skill in ${skills_dir}"
-}
-
-# Checks the --dispatch file, takes --report from it and sets lens and stamps
-# (the stamps it supplies, plugins by kind with names only; finished comes at
-# the pass). Exits 2 on a bad
-# file, another agent's dispatch or a conflicting --report, 5 when the
-# validator fails to run.
-read_dispatch() {
-	dispatch_expected='expected the dispatch file generate-agent-dispatch.sh wrote'
-	[ ! -L "${dispatch_file}" ] || dispatch_fault "${dispatch_file} is a symlink; ${dispatch_expected}, not a link to it"
-	[ -f "${dispatch_file}" ] && [ -r "${dispatch_file}" ] ||
-		dispatch_fault "${dispatch_file} is missing, unreadable or not a regular file; ${dispatch_expected}"
-	jq -s 'length' "${dispatch_file}" </dev/null >/dev/null 2>&1 ||
-		dispatch_fault "${dispatch_file} is not JSON; ${dispatch_expected}"
-	dispatch_problems=$(jq -rs -f "${validator}" "${dispatch_file}" </dev/null) ||
-		install_fault "the dispatch validator failed to run: ${validator}; expected jq 1.6+ and dispatch-names.jq beside it; try reinstalling flow-code-agent-dispatch"
-	if [ -n "${dispatch_problems}" ]; then
-		printf '%s\n' "${dispatch_problems}" | sed "s/^/${PROG}: dispatch: /" >&2
-		dispatch_fault "${dispatch_file} fails the dispatch validator, each problem above; ${dispatch_expected}, unchanged since"
-	fi
-	# The validator holds agent to a known agent name, so it prints on one line.
-	dispatch_agent=$(jq -r '.agent' "${dispatch_file}" </dev/null) ||
-		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
-	[ "${dispatch_agent}" = "${REVIEWER_AGENT}" ] ||
-		dispatch_fault "${dispatch_file} is a dispatch of agent ${dispatch_agent}; expected a ${REVIEWER_AGENT} dispatch, whose report this checks; try the ${dispatch_agent}'s own report.sh"
-	# The validator holds report to an absolute path without a control character.
-	dispatch_report=$(jq -r '.report' "${dispatch_file}" </dev/null) ||
-		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
-	[ -z "${report}" ] || [ "${report}" = "${dispatch_report}" ] ||
-		usage_error "--report ${report} differs from the dispatch's report ${dispatch_report}; expected --report left out, or the same text"
-	report=${dispatch_report}
-	read_lens
-	# shellcheck disable=SC2016 # jq variables, not shell ones
-	stamps=$(jq -c '(.plugins // {}) as $plugins
-		| {dispatch: .id, started, mode,
-		   plugins: {language: $plugins.language.name, frameworks: [$plugins.frameworks[]?.name],
-			standards: [$plugins.standards[]?.name], procedures: [$plugins.procedures[]?.name]}}' "${dispatch_file}" </dev/null) ||
-		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
-}
-
-# Sets lens to the dispatch's one lens: the language plugin's name for a
-# language with zero or more frameworks and no standard, the standard's name
-# for one standard and no language, NO_LENS for neither. Exits 2 on any other
-# set, a framework without a language or two standards among them.
-read_lens() {
-	# shellcheck disable=SC2016 # jq variables, not shell ones
-	lens_line=$(jq -r --arg no_lens "${NO_LENS}" '(.plugins // {}) as $plugins
-		| ($plugins.language.name // null) as $language
-		| [$plugins.frameworks[]?.name] as $frameworks
-		| [$plugins.standards[]?.name] as $standards
-		| if $language != null and ($standards | length) == 0 then "lens \($language)"
-		  elif $language == null and ($frameworks | length) == 0 and ($standards | length) == 1 then "lens \($standards[0])"
-		  elif $language == null and ($frameworks | length) == 0 and ($standards | length) == 0 then "lens \($no_lens)"
-		  else "fault " + ([(if $language != null then "language \($language | tojson)" else empty end),
-			(if ($frameworks | length) > 0 then "frameworks \($frameworks | map(tojson) | join(", "))" else empty end),
-			(if ($standards | length) > 0 then "standards \($standards | map(tojson) | join(", "))" else empty end)] | join("; ")) end' \
-		"${dispatch_file}" </dev/null) ||
-		dispatch_fault "${dispatch_file} cannot be read; ${dispatch_expected}"
-	case ${lens_line} in
-		lens\ *) lens=${lens_line#lens } ;;
-		*) dispatch_fault "${dispatch_file} loads ${lens_line#fault }; expected one lens per review dispatch: a language with its frameworks and no standard, one standard and no language, or neither for the correctness seat" ;;
-	esac
-}
-
-# Makes the temp folder the run uses, removed on exit with any stamp temp file.
+# Makes the temp folder the run uses, removed on exit.
 make_work_dir() {
-	stamp_tmp=''
 	work_dir=$(mktemp -d "${TMPDIR:-/tmp}/report-sh.XXXXXX") || install_fault 'mktemp -d failed; expected a writable TMPDIR'
-	trap 'rm -rf "${work_dir}"; [ -z "${stamp_tmp}" ] || rm -f "${stamp_tmp}"' EXIT
+	trap 'rm -rf "${work_dir}"' EXIT
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
 }
 
-# Copies the report file once to report_copy, which the check and the stamps
-# both read, so what is stamped is what was checked. Exits 4 unless it holds
-# exactly one JSON object (or, with --dispatch, when it is a symlink).
+# Copies the report file once to report_copy, which the check reads. Exits 4
+# unless it holds exactly one JSON object.
 check_report() {
 	report_expected='expected the file the first message'"'"'s REPORT names'
-	[ -z "${dispatch_file}" ] || [ ! -L "${report}" ] ||
-		not_a_report "${report} is a symlink; expected the report file itself, which check --dispatch stamps"
 	[ -f "${report}" ] && [ -r "${report}" ] ||
 		not_a_report "${report} is missing, unreadable or not a regular file; ${report_expected}"
 	report_copy="${work_dir}/report"
@@ -659,7 +511,7 @@ check_report() {
 }
 
 # Prints the count line on stdout and the problems on stderr; exits 3 on a
-# problem, else stamps when --dispatch was given.
+# problem.
 run_check() {
 	if [ -n "${prior_file}" ]; then
 		set -- --rawfile prior_text "${prior_file}" --arg prior_mode given
@@ -675,39 +527,12 @@ run_check() {
 		printf '%s\n' "${problems}" >&2
 		exit 3
 	fi
-	[ -z "${dispatch_file}" ] || write_stamps
-}
-
-# Writes report_copy plus the stamps onto the report file through a temp file
-# beside it, its permissions copied. Exits 6 when a step fails, the report
-# unchanged; a failing tool may print its own stderr line first.
-write_stamps() {
-	date_expected='expected date +%Y-%m-%dT%H:%M:%S%z to print the local time; try it by hand'
-	raw_time=$(date +%Y-%m-%dT%H:%M:%S%z) || stamp_fault "date failed; ${date_expected}"
-	case ${raw_time} in
-		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9][+-][0-9][0-9][0-9][0-9]) ;;
-		*) stamp_fault "date printed ${raw_time}; ${date_expected}" ;;
-	esac
-	# The dispatch's started form: the offset as +HH:MM.
-	finished="${raw_time%??}:${raw_time#"${raw_time%??}"}"
-	report_dir=${report%/*}
-	stamp_tmp=$(mktemp "${report_dir:-/}/.report-stamps.XXXXXX") ||
-		stamp_fault "mktemp failed in ${report_dir:-/}; expected the report's folder writable"
-	cp -p "${report}" "${stamp_tmp}" || stamp_fault "cp -p ${report} failed; expected the report's permissions copied to ${stamp_tmp}"
-	jq -L "${names_dir}" -L "${prune_dir}" --argjson stamps "${stamps}" --arg lens "${lens}" --arg finished "${finished}" "${STAMP_JQ}" "${report_copy}" </dev/null >"${stamp_tmp}" ||
-		stamp_fault "jq failed writing ${stamp_tmp}; expected the stamped report written; try jq --version"
-	mv -f "${stamp_tmp}" "${report}" || stamp_fault "mv onto ${report} failed; expected the stamped report moved into place"
-	stamp_tmp=''
 }
 
 parse_args "$@"
 check_jq
 check_base_tools
 check_paths
-if [ -n "${dispatch_file}" ]; then
-	locate_dispatch_modules
-	read_dispatch
-fi
 make_work_dir
 check_report
 run_check

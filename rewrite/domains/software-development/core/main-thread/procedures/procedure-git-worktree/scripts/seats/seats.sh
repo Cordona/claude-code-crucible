@@ -14,8 +14,8 @@ readonly CRUCIBLE_SKILL='crucible'
 # Bounds stderr so a refusal stays readable; the last line counts the rest.
 readonly MAX_PROBLEMS=20
 readonly LOCK_WAIT_SECONDS=5
-readonly COMMANDS='choose opened drop add bind status handover get find busy list'
-# The C locale keeps the shell byte-wise; jq writes the file as UTF-8.
+readonly COMMANDS='choose opened drop bind status handover get find busy list'
+# The C locale keeps the shell byte-wise; jq reads and writes UTF-8.
 LC_ALL=C
 export LC_ALL
 
@@ -30,9 +30,8 @@ readonly RUN_JQ='include "seats";
 include "prune";
 ([$ARGS.named | to_entries[] | select(.key | startswith("base_seat_"))
 	| {place: (.key | ltrimstr("base_seat_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_seats
-| {seat: $seat, role: $role, repo: $repo, base: $base, lens: $lens,
-	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "awaiting-round": $awaiting_round,
-	"base-seat": $base_seats} as $given
+| {seat: $seat, role: $role, repo: $repo, base: $base,
+	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "base-seat": $base_seats} as $given
 | ($given | with_entries(select(.value != "" and .value != []))) as $options
 | seats_run($command; $options; $effort; $seats_dir;
 	if $exists == "yes" then $current else null end)
@@ -47,9 +46,8 @@ usage: sh ${PROG} choose --effort FOLDER --seat S --role developer --repo DIR --
            [--base-seat S]...
        sh ${PROG} opened --effort FOLDER --seat S
        sh ${PROG} drop --effort FOLDER --seat S
-       sh ${PROG} add --effort FOLDER --seat S --role reviewer --lens L
        sh ${PROG} bind --effort FOLDER --seat S --agent-id ID --dispatch ID
-       sh ${PROG} status --effort FOLDER --seat S --status working|idle|gave-up [--awaiting-round N|none]
+       sh ${PROG} status --effort FOLDER --seat S --status working|idle|gave-up
        sh ${PROG} handover --effort FOLDER --seat S
        sh ${PROG} get --effort FOLDER --seat S
        sh ${PROG} find --effort FOLDER --agent-id ID
@@ -59,41 +57,36 @@ usage: sh ${PROG} choose --effort FOLDER --seat S --role developer --repo DIR --
 
 Keeps an effort's seat list as seat.* events, one per change, appended
 under the events lock when the list after it fits the contract. A seat's
-build.committed or test.committed makes it idle. No value is null, [] or
-{}: an empty key is left out.
+build.committed makes it idle. No value is null, [] or {}: an empty key is
+left out.
 
 --effort FOLDER  the effort folder, absolute
 
-choose    a writer seat with no worktree yet: status chosen, mode BUILD,
+choose    a seat with no worktree yet: status chosen, mode BUILD,
           worktree <effort, symlinks resolved>/worktrees/<letter>, each
-          --base-seat in base_seats; S build-agent-<letter>; no tester
+          --base-seat in base_seats; S build-agent-<letter>
 opened    sets a chosen seat open; seat-open.sh runs it once the worktree exists
 drop      removes a chosen seat; others refused
-add       a reviewer seat, S <L>-reviewer-agent-<letter>: status open
 bind      seats an agent and its dispatch on an open seat: status working;
           the same agent and dispatch again changes nothing; refused for
           an agent handed out of the seat
-status    sets working, idle or gave-up on a bound seat, and with
-          --awaiting-round its awaiting_round (writers only; none removes it)
+status    sets working, idle or gave-up on a bound seat
 handover  frees a bound seat: the agent moves to the end of
           previous_agent_ids, agent_id and dispatch go, status open
 get       prints the seat as one line of JSON; find: the seat of agent ID
 list      prints the seat list {effort, seats} as one line of JSON
-busy      prints "seat<TAB>status<TAB>awaiting_round" per seat that is
-          working, gave-up or awaits a round N (N, else "none")
+busy      prints "seat<TAB>status" per seat that is working or gave-up
 
 the list: {"effort": string, "seats": [seat, ...]}, seat names unique
-  every seat   seat (dash-joined lowercase words ending in alpha ...
-               omega, alpha-2 ... omega-2, alpha-3 ...), role,
-               status (chosen, open, working, idle or gave-up), agent_id
-               and dispatch (letters, digits, _ and -; absent when chosen or
-               open, present otherwise), previous_agent_ids (optional, not
-               when chosen: agents handed out, oldest first, no repeats)
-  developer    mode BUILD, worktree, repo (absolute paths), base (40 hex),
-  tester       mode TEST,  awaiting_round (optional, a whole number >= 1),
-               base_seats (optional, set by choose only: other developer
-               seats, none chosen, no repeats)
-  reviewer     lens (lowercase words joined by dashes); never chosen
+  each seat    seat (dash-joined lowercase words ending in alpha ...
+               omega, alpha-2 ... omega-2, alpha-3 ...), role developer,
+               mode BUILD, status (chosen, open, working, idle or gave-up),
+               agent_id and dispatch (letters, digits, _ and -; absent when
+               chosen or open, present otherwise), previous_agent_ids
+               (optional, not when chosen: agents handed out, oldest first,
+               no repeats), worktree, repo (absolute paths), base (40 hex),
+               base_seats (optional, set by choose only: other seats, none
+               chosen, no repeats)
 
 needs: POSIX sh, jq 1.6+; the ${CRUCIBLE_SKILL} skill's events.sh and lib/prune.jq,
 in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CRUCIBLE_SKILL}/scripts
@@ -106,7 +99,7 @@ exit codes:
      stderr line (at most ${MAX_PROBLEMS}); also a --role or --seat name the
      command does not take
   4  jq, prune.jq or events.sh is missing or failed, or no event was written
-  5  refused by the seat's state: it exists (choose, add), another agent
+  5  refused by the seat's state: it exists (choose), another agent
      or dispatch holds it, the agent was handed out of it, it is chosen
      (bind, status, handover), open (status, handover) or not chosen
      (opened, drop), find found ID in more than one seat, or another call
@@ -141,10 +134,9 @@ printable() {
 command_options() {
 	case $1 in
 		choose) printf -- '--effort --seat --role --repo --base --base-seat' ;;
-		add) printf -- '--effort --seat --role --lens' ;;
 		bind) printf -- '--effort --seat --agent-id --dispatch' ;;
 		find) printf -- '--effort --agent-id' ;;
-		status) printf -- '--effort --seat --status --awaiting-round' ;;
+		status) printf -- '--effort --seat --status' ;;
 		busy | list) printf -- '--effort' ;;
 		*) printf -- '--effort --seat' ;;
 	esac
@@ -175,7 +167,7 @@ parse_args() {
 			exit 0
 			;;
 		'') usage_error "command missing; expected one of ${COMMANDS}" ;;
-		choose | opened | drop | add | bind | status | handover | get | find | busy | list) command=$1 ;;
+		choose | opened | drop | bind | status | handover | get | find | busy | list) command=$1 ;;
 		*)
 			shown_command=$(printable "$1")
 			usage_error "unknown command: ${shown_command}; expected one of ${COMMANDS}"
@@ -183,7 +175,7 @@ parse_args() {
 	esac
 	shift
 	allowed=$(command_options "${command}")
-	effort_folder='' seat='' role='' repo='' base='' lens='' agent_id='' dispatch='' status='' awaiting_round=''
+	effort_folder='' seat='' role='' repo='' base='' agent_id='' dispatch='' status=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -214,10 +206,6 @@ parse_args() {
 				# run_command reads each value from the command line, in order.
 				take_repeated "$1" "${2-}"
 				;;
-			--lens)
-				take_value "$1" "${lens}" "${2-}"
-				lens=${option_value}
-				;;
 			--agent-id)
 				take_value "$1" "${agent_id}" "${2-}"
 				agent_id=${option_value}
@@ -229,10 +217,6 @@ parse_args() {
 			--status)
 				take_value "$1" "${status}" "${2-}"
 				status=${option_value}
-				;;
-			--awaiting-round)
-				take_value "$1" "${awaiting_round}" "${2-}"
-				awaiting_round=${option_value}
 				;;
 			*)
 				shown_option=$(printable "$1")
@@ -256,11 +240,6 @@ require_options() {
 			require --role "${role}" developer
 			require --repo "${repo}" DIR
 			require --base "${base}" SHA
-			;;
-		add)
-			require --role "${role}" reviewer
-			# Another role is seats.jq's refusal, which names choose.
-			[ "${role}" != reviewer ] || require --lens "${lens}" L
 			;;
 		bind)
 			require --agent-id "${agent_id}" ID
@@ -323,7 +302,7 @@ read_seats() {
 	events_json=$(sh "${events_script}" slurp --effort "${effort_folder}" </dev/null) ||
 		die 4 "events.sh slurp failed for ${shown_effort} (its stderr is above); expected the effort's events"
 	current=$(printf '%s\n' "${events_json}" | jq -c -L "${own_dir}" --arg effort "${effort}" \
-		'include "seats-events"; [.[] | select((.type | startswith("seat.")) or .type == "build.committed" or .type == "test.committed")] | seats_fold($effort)') ||
+		'include "seats-events"; [.[] | select((.type | startswith("seat.")) or .type == "build.committed")] | seats_fold($effort)') ||
 		die 4 "jq failed replaying the seat events; expected jq 1.6+ and seats-events.jq beside ${PROG}"
 	seat_count=$(printf '%s\n' "${current}" | jq '.seats | length') ||
 		die 4 'jq failed counting the seats; expected jq 1.6+'
@@ -331,7 +310,7 @@ read_seats() {
 	[ "${seat_count}" -ne 0 ] || exists=no
 }
 
-# Sets result to RUN_JQ's output over the file as it is now; the arguments
+# Sets result to RUN_JQ's output over the seat list as it is now; the arguments
 # are the checked command line after the command, read for --base-seat.
 run_command() {
 	place=0 left=$#
@@ -344,11 +323,11 @@ run_command() {
 		left=$((left - 2))
 	done
 	read_seats
-	result=$(jq -nc -L "${own_dir}" -L "${crucible_lib_dir}" --arg current "${current}" --arg exists "${exists}" \
+	result=$(jq -nc -L "${own_dir}" -L "${crucible_lib_dir}" --argjson current "${current}" --arg exists "${exists}" \
 		--arg command "${command}" --arg effort "${effort}" --arg seats_dir "${physical_dir}" --argjson max "${MAX_PROBLEMS}" \
 		--arg seat "${seat}" --arg role "${role}" --arg repo "${repo}" \
-		--arg base "${base}" --arg lens "${lens}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
-		--arg status "${status}" --arg awaiting_round "${awaiting_round}" "$@" "${RUN_JQ}") ||
+		--arg base "${base}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
+		--arg status "${status}" "$@" "${RUN_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and prune.jq in ${shown_lib_dir}"
 }
 

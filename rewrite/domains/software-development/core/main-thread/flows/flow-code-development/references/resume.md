@@ -10,5 +10,5 @@ Its terms and steps are SKILL.md's.
    - **`working`:** its todo item records `not committed`, or no send since its last result: SKILL.md step 4's `working` line. Otherwise, after a compaction in the same session, its run may still end: wait for it (SKILL.md step 4). In a new session, or when you can't tell, ask the human whether its agent may still run: "it may" records it `not checked`; "it doesn't": SKILL.md step 4's `working` line, its run ended.
    - **`idle`:** show the line `Checked earlier, <done or blocked>: <task> · <short sha of its worktree's HEAD>`, done or blocked by SKILL.md Terms' done test, `<task>` the seat's name when step 2 found none; its card only when the human asks.
    - **`gave-up`:** SKILL.md step 4's `gave-up` line.
-4. **Parts with no seat:** a part the conversation still shows `waiting for <task>` goes on once that part is done (SKILL.md 2.4); in a new session the human may name such parts (SKILL.md Terms, held parts).
+4. **Parts with no seat:** a part the conversation still shows `waiting for <task>` goes on once that part is done (SKILL.md 2.4); in a new session the human may name such parts (SKILL.md Terms, a part's record).
 5. **Then** go on from SKILL.md step 5.

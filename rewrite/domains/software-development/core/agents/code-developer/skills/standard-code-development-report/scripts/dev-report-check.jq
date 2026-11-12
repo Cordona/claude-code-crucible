@@ -7,7 +7,7 @@
 # empty when the report fits. Each line is all the developer sees, so it
 # names the field, the fault and the repair.
 
-def report_keys: ["summary", "verification", "deviations", "decisions", "noticed", "security", "open", "blockers", "answers"];
+def report_keys: ["summary", "verification", "deviations", "decisions", "noticed", "security", "open", "blockers"];
 # Keys another report or an earlier contract had, and why they are not written.
 def report_derived_keys: {
 	"files": "git gives the files",
@@ -24,8 +24,7 @@ def report_derived_keys: {
 	"agent-id": "the seat gives it",
 	"base": "the seat gives it",
 	"behavior": "dropped from the contract",
-	"focus": "dropped from the contract",
-	"review_responses": "a fix round answers in answers"
+	"focus": "dropped from the contract"
 };
 # Each list's item keys, those always required, and the shape a line shows.
 def report_lists: {
@@ -35,22 +34,19 @@ def report_lists: {
 	"noticed": {keys: ["at", "text"], required: ["at", "text"], shape: "{at, text}"},
 	"security": {keys: ["kind", "at", "text"], required: ["kind", "at", "text"], shape: "{kind, at, text}"},
 	"open": {keys: ["text", "at", "ref"], required: ["text"], shape: "{text, at, ref}"},
-	"blockers": {keys: ["kind", "location", "detail"], required: ["kind", "location", "detail"], shape: "{kind, location, detail}"},
-	"answers": {keys: ["id", "status", "notes"], required: ["id", "status", "notes"], shape: "{id, status, notes}"}
+	"blockers": {keys: ["kind", "location", "detail"], required: ["kind", "location", "detail"], shape: "{kind, location, detail}"}
 };
 # Item keys an earlier contract had, and what to do instead.
 def report_dropped_item_keys: {
 	"open.kind": "refusing part of the task is a deviation; an open item has no kind",
-	"decisions.commit": "the commit records itself",
-	"answers.note": "the key is notes"
+	"decisions.commit": "the commit records itself"
 };
 def report_gates: ["format", "lint", "typecheck", "test", "build", "scan", "manual"];
 def report_results: ["pass", "fail", "not_run", "narrowed"];
 def report_blocker_kinds: ["gate_red", "request_unclear", "test_compile_broken"];
 def report_security_kinds: ["secret", "instruction"];
-def report_answer_statuses: ["fixed", "blocked"];
 # Characters (Unicode code points): the summary is the commit subject's text,
-# and 55 keeps "crucible(build): " and "crucible(test): " plus the summary within 72, whole in git's one-line views.
+# and 55 keeps "crucible(build): " plus the summary within 72, whole in git's one-line views.
 def report_summary_max: 55;
 def report_text_max: 200;
 def report_open_max: 8;
@@ -179,10 +175,7 @@ def report_hint($list; $key; $item):
 		"open.text": "add what you need, in one line",
 		"blockers.kind": "add the kind: one of \(report_blocker_kinds | report_list)",
 		"blockers.location": "add where: path:line from the worktree root, message: TASK, a docs folder line paths[<n>]/<file>:<line>, or a URL",
-		"blockers.detail": "add what stops the work, in one line",
-		"answers.id": "add the chosen concern id this answers",
-		"answers.status": "add the status: fixed or blocked",
-		"answers.notes": "add notes saying what you did or why not"
+		"blockers.detail": "add what stops the work, in one line"
 	}["\($list).\($key)"];
 
 # The keys an item must hold: verification's command and note follow its result.
@@ -202,7 +195,6 @@ def report_value_problems($list; $key; $files):
 	elif $key == "result" then report_enum_problem(report_results; "result")
 	elif $key == "kind" and $list == "security" then report_enum_problem(report_security_kinds; "security kind")
 	elif $key == "kind" then report_enum_problem(report_blocker_kinds; "blocker kind")
-	elif $key == "status" then report_enum_problem(report_answer_statuses; "status")
 	elif $key == "command" then report_command_problem
 	elif $key == "at" then
 		(if report_is_location then report_shown else report_echo end) as $shown
@@ -247,30 +239,21 @@ def report_item_problems($list; $rule; $files):
 			end)
 	end;
 
-def report_answer_shape($id): "{\"id\": \($id | tojson), \"status\": \"fixed\" or \"blocked\", \"notes\": \"<what you did or why not>\"}";
-
 # A gate that did not run is still listed, so no made-up gate stands in for it.
 def report_verification_fix:
 	"add one item per gate, e.g. {\"gate\": \"test\", \"result\": \"pass\", \"command\": \"<the command>\"}; if none ran, add each that applies as {\"gate\": \"typecheck\", \"result\": \"not_run\", \"note\": \"the task said not to run commands\"}";
 
-def report_chosen_list: report_list | if length > 100 then .[:97] + "..." else . end;
-
-# The list $key as a whole: absent, empty, wrong type or round-refused, else each item.
-def report_list_problems($key; $chosen; $files):
+# The list $key as a whole: absent, empty or wrong type, else each item.
+def report_list_problems($key; $files):
 	report_lists[$key] as $rule
 	| if has($key) | not then
 		(if $key == "verification" then
 			"verification is missing; \(report_verification_fix)"
-		elif $key == "answers" and $chosen != null then
-			"answers is missing; this is a fix round: add one \(report_answer_shape("<id>")) per chosen id: \($chosen | map(report_name) | report_chosen_list)"
 		else empty
 		end)
-	elif $key == "answers" and $chosen == null then "answers belong only to a fix round; remove it"
 	elif .[$key] | report_is_empty then
 		(if $key == "verification" then
 			"verification is \(.[$key] | tojson); \(report_verification_fix)"
-		elif $key == "answers" then
-			"answers is \(.[$key] | tojson); add one \(report_answer_shape("<id>")) per chosen id: \($chosen | map(report_name) | report_chosen_list)"
 		else "\($key) is \(.[$key] | tojson); leave the key out when there is nothing to say"
 		end)
 	elif (.[$key] | type) != "array" then "\($key) is a JSON \(.[$key] | type); write it as a list of \($rule.shape) objects"
@@ -310,38 +293,17 @@ def report_gate_pairing_problems:
 	else empty
 	end;
 
-# A fix round's answers hold each chosen id exactly once and nothing else.
-def report_answer_id_problems($chosen):
-	if $chosen == null or (.answers | type) != "array" or (.answers | length) == 0 then empty
-	else
-		[.answers | to_entries[] | select(.value | type == "object")
-			| {index: .key, id: (.value.id | strings | select(report_text_fits) | report_trim)}] as $given
-		| ($given | map(.id)) as $ids
-		| ($chosen[] | select(IN($ids[]) | not) | "answers lacks \(report_name); add \(report_answer_shape(.))"),
-		($given[] | select(.id | IN($chosen[]) | not)
-			| "answers[\(.index)].id \(.id | report_echo) was not chosen for this seat; remove that answer, and if you changed code for it, report that change in deviations with from \"message: FINDINGS\""),
-		($ids | group_by(.) | map(select(length > 1))[] | "answers holds \(.[0] | report_name) \(length) times; keep one answer per id")
-	end;
-
-# $chosen: the fix round's chosen ids, or null on an iteration. $hint: where
-# and in what shape the report is written, for a report that is no object.
-def report_problems($chosen; $files; $hint):
+# $hint: where and in what shape the report is written, for a report that is
+# no object.
+def report_problems($files; $hint):
 	if type != "object" then ["the report is a JSON \(type); \($hint)"]
 	else [
 		(keys_unsorted[] | select(IN(report_keys[]) | not) | report_unknown_key),
 		report_summary_problems,
-		(report_keys[1:][] as $key | report_list_problems($key; $chosen; $files)),
+		(report_keys[1:][] as $key | report_list_problems($key; $files)),
 		report_open_cap_problems,
-		report_gate_pairing_problems,
-		report_answer_id_problems($chosen)
+		report_gate_pairing_problems
 	]
-	end;
-
-# $chosen_text: the --chosen file's text, one id per line; empty on an iteration.
-def report_chosen($round; $chosen_text):
-	if $round != "fix" then null
-	else $chosen_text | split("\n") | map(report_trim | select(length > 0))
-		| reduce .[] as $id ([]; if any(.[]; . == $id) then . else . + [$id] end)
 	end;
 
 # $files_text: one "status<TAB>lines<TAB>path" line per looked-up path.
@@ -351,12 +313,12 @@ def report_files($files_text):
 	| from_entries;
 
 # The problem lines of the raw report text, at most $max and a count of the rest.
-def report_check($text; $round; $chosen_text; $files_text; $hint; $max):
+def report_check($text; $files_text; $hint; $max):
 	[$text | try fromjson] as $parsed
 	| (if $parsed == [] then
 		[if ($text | test("^[[:space:]]*$")) then "the report is empty; \($hint)"
 		else "the report is not one valid JSON value; \($hint)"
 		end]
-	else $parsed[0] | report_problems(report_chosen($round; $chosen_text); report_files($files_text); $hint)
+	else $parsed[0] | report_problems(report_files($files_text); $hint)
 	end)
 	| if length > $max then .[:$max] + ["\(length - $max) more problems not shown; fix the ones above and the check lists the rest"] else . end;
