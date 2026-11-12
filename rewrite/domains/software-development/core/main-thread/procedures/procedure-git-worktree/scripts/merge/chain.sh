@@ -21,16 +21,17 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --seat S
+usage: sh ${PROG} --effort FOLDER --seat S
        sh ${PROG} --help | -h
 
 Lists every seat that developer seat S was cut from: the seats its base_seats
-name in seats.json, theirs, and so on, each once (a cycle ends the walk).
+name in the effort's seat list, theirs, and so on, each once (a cycle ends
+the walk).
 For each, its worktree HEAD now and whether S's worktree HEAD holds it.
 Reads only.
 
---effort DIR  absolute path of the effort folder (it holds seats.json)
---seat S      a developer seat with a worktree (not chosen)
+--effort FOLDER  the effort folder, absolute
+--seat S         a developer seat with a worktree (not chosen)
 
 stdout, one JSON line:
   {"seat":S,"head":<sha>,"parents":[{"seat":P,"via":V,"head":<sha>|null,
@@ -43,7 +44,7 @@ exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a bad option value, seats.json or the seat does not fit
+  3  input: a bad option value, the effort or the seat does not fit
      (seats.sh's own lines first), or the seat is no developer with a
      worktree (a chosen seat has none yet)
   4  environment: git, jq or seats.sh missing or failed
@@ -89,7 +90,7 @@ parse_args() {
 				exit 0
 				;;
 			--effort)
-				take_value "$1" "${effort}" "${2-}" DIR
+				take_value "$1" "${effort}" "${2-}" FOLDER
 				effort=${option_value}
 				;;
 			--seat)
@@ -103,7 +104,7 @@ parse_args() {
 		esac
 		shift 2
 	done
-	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
@@ -127,7 +128,7 @@ load_dependencies() {
 	done
 }
 
-# Sets effort_dir (physical) and seats_file.
+# Sets effort_dir (physical).
 check_effort() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -136,18 +137,17 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	seats_file="${effort_dir}/seats.json"
 }
 
-# Sets worktree and seat_head from seats.sh get, which also checks the whole
-# file against its contract; seats.sh's own lines say why it refused.
+# Sets worktree and seat_head from seats.sh get; seats.sh's own lines say
+# why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "${seat}") || seat_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .worktree // ""') ||
@@ -171,9 +171,11 @@ EOF
 # Writes work_dir/parents, "<seat><TAB><via><TAB><head><TAB><in seat>" per
 # seat the seat was cut from; head is empty when it has no worktree or HEAD.
 list_parents() {
+	sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seats" ||
+		die 4 'seats.sh list failed (its stderr is above)'
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r -L "${own_dir}" --arg seat "${seat}" 'include "chain"; ancestors($seat) | [.seat, .via, .worktree] | join("\t")' \
-		"${seats_file}" >"${work_dir}/ancestors" 2>"${work_dir}/stderr" || git_failed 'jq walking the base seats of seats.json'
+		"${work_dir}/seats" >"${work_dir}/ancestors" 2>"${work_dir}/stderr" || git_failed 'jq walking the base seats of the seat list'
 	while IFS= read -r ancestor_line; do
 		parent=${ancestor_line%%"${tab}"*}
 		ancestor_rest=${ancestor_line#*"${tab}"}

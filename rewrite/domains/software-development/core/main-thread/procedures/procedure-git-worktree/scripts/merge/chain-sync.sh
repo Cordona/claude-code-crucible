@@ -29,22 +29,21 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --seat S
+usage: sh ${PROG} --effort FOLDER --seat S
        sh ${PROG} --help | -h
 
 Runs chain.sh for seat S; when a seat S was cut from moved on (at any
 level), merges S's HEAD with every moved seat's HEAD (tips-merge.sh, as
-the identity settings.sh get --effort DIR prints, signed with its key when
+the identity settings.sh get --effort FOLDER prints, signed with its key when
 it has one, tips-merge.sh's UNSIGNED: line passing through; message
 "crucible(sync): S takes P <short sha>, ...", trailers ${EFFORT_TRAILER}
-(seats.json's effort) and ${SYNCED_TRAILER}, no Agent-Seat, so iteration.sh
+(the effort folder's name) and ${SYNCED_TRAILER}, no Agent-Seat, so iteration.sh
 does not count it) and fast-forwards S's branch to the merge in S's
 worktree, with no hook run.
 
---effort DIR  absolute path of the effort folder (it holds seats.json)
---seat S      a developer seat, status idle (not chosen), whose worktree
-              holds no uncommitted change (changes to its own fault logs,
-              ../worktree/uncommitted.jq's, aside) and has HEAD on a branch
+--effort FOLDER  the effort folder, absolute
+--seat S         a developer seat, status idle (not chosen), whose worktree
+                 holds no uncommitted change and has HEAD on a branch
 
 stdout, one JSON line:
   {"synced":false,"seat":S,"reason":"in_sync","line":null}   nothing moved
@@ -62,7 +61,7 @@ exit codes:
   0  synced, or nothing to sync
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a bad option value, seats.json or a seat does not fit, S's
+  3  input: a bad option value, the effort or a seat does not fit, S's
      worktree has a detached HEAD, or the effort has no git setup
      (seats.sh's or a neighbour's own lines first)
   4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, or
@@ -114,7 +113,7 @@ parse_args() {
 				exit 0
 				;;
 			--effort)
-				take_value "$1" "${effort}" "${2-}" DIR
+				take_value "$1" "${effort}" "${2-}" FOLDER
 				effort=${option_value}
 				;;
 			--seat)
@@ -128,7 +127,7 @@ parse_args() {
 		esac
 		shift 2
 	done
-	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
@@ -157,7 +156,7 @@ load_dependencies() {
 	}
 }
 
-# Sets effort_dir (physical) and seats_file.
+# Sets effort_dir (physical).
 check_effort() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -166,19 +165,17 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	seats_file="${effort_dir}/seats.json"
-	shown_seats=$(printable "${seats_file}")
 }
 
 # Sets role, status and worktree of seat $1 from seats.sh get; seats.sh's
 # own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "$1") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "$1") || seat_rc=$?
 	shown_seat=$(printable "$1")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .worktree // ""') ||
@@ -220,7 +217,7 @@ check_seat() {
 list_uncommitted() {
 	git -C "${seat_worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all \
 		>"${work_dir}/seat-status" 2>"${work_dir}/stderr" || git_failed "git status in the seat's worktree"
-	jq -Rsr -L "${own_dir}/../worktree" --arg seat "${seat}" 'include "uncommitted"; uncommitted_paths($seat)' \
+	jq -Rsr -L "${own_dir}/../worktree" 'include "uncommitted"; uncommitted_paths' \
 		"${work_dir}/seat-status" >"${work_dir}/seat-dirty" 2>"${work_dir}/stderr" ||
 		git_failed "jq reading the seat's status"
 }
@@ -253,12 +250,14 @@ check_moved() {
 	done <"${work_dir}/moved"
 }
 
-# Sets effort_id from seats.json's effort, the value of the seats' Effort
+# Sets effort_id from the seat list's effort, the value of the seats' Effort
 # trailer.
 read_effort_id() {
-	effort_id=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
-		die 3 "${shown_seats} is not JSON; expected the effort's seats.json"
-	[ -n "${effort_id}" ] || die 3 "${shown_seats} has no effort; expected a non-empty effort string"
+	seat_list=$(sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}") ||
+		die 4 'seats.sh list failed (its stderr is above); expected the seat list'
+	effort_id=$(printf '%s\n' "${seat_list}" | jq -r '.effort | strings') ||
+		die 4 'jq could not read the seat list seats.sh list printed'
+	[ -n "${effort_id}" ] || die 4 'seats.sh list printed no effort; expected a non-empty effort string'
 }
 
 # Sets the identity_* variables from settings.sh get for the effort; its

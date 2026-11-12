@@ -149,14 +149,14 @@ context_config_path_problem() {
 # Sets context_read_text to the first problem a reader finds in context file
 # $1 as one "<what>; expected <x>" line, and context_read_fault to its kind,
 # both empty when the file may be used: the read checks of every script that
-# reads a context version, the one copy. It must be a version file in an
-# effort's context/ (fault location), a readable regular file, not a symlink
-# (unusable), at most context_max_bytes (size), valid JSON (json), one object
-# passing agent-context-validator.jq (shape; no-spec when the spec is one of
-# its problems), its spec an existing spec.md (no-spec), each docs folder
-# holding what its digest says (changed), and that effort's latest version
-# (stale; context_read_latest then names the latest version, empty
-# otherwise). The no-spec text leads with NO-SPEC and the changed text with
+# reads a context version, the one copy. It must be a context.cut event in an
+# effort's events/ (fault location), a readable regular file, not a symlink
+# (unusable), at most context_max_bytes (size), valid JSON (json), a
+# context.cut event whose body passes agent-context-validator.jq for that
+# effort (shape; no-spec when the spec is one of its problems), its spec an
+# existing spec.md (no-spec), each docs folder holding what its digest says
+# (changed), and that effort's newest context.cut event (stale;
+# context_read_latest then names the newest, empty otherwise). The no-spec text leads with NO-SPEC and the changed text with
 # CONTEXT-CHANGED. Callers branch on the fault, never on the text. The caller
 # applies context_path_problem first where it needs it (a writer checks its
 # own path) and runs context_load_checks first. With a copy path $2, the file
@@ -197,7 +197,13 @@ context_read_problem() {
 		context_read_found json 'file is not valid JSON; expected one JSON object'
 		return 0
 	fi
-	context_read_shape=$(jq -rs --arg context_path "$1" -f "${context_validator}" "${context_read_file}" </dev/null) || return 1
+	context_read_type=$(jq -r 'if type == "object" and .type == "context.cut" and (.body | type) == "object" then "" else "not a context.cut event with a body object" end' "${context_read_file}" </dev/null) || return 1
+	if [ -n "${context_read_type}" ]; then
+		context_read_found shape "file is ${context_read_type}; expected the event context.sh freeze appended"
+		return 0
+	fi
+	context_read_body=$(jq -c '.body' "${context_read_file}" </dev/null) || return 1
+	context_read_shape=$(printf '%s\n' "${context_read_body}" | jq -rs --arg effort "${context_location_effort}" -f "${context_validator}") || return 1
 	if [ -n "${context_read_shape}" ]; then
 		context_read_joined='' context_read_shape_fault=shape context_read_lead=''
 		while IFS= read -r context_read_line; do
@@ -212,7 +218,7 @@ EOF
 		context_read_found "${context_read_shape_fault}" "${context_read_lead}file does not have the context shape (${context_read_joined}); expected the shape agent-context-validator.jq checks"
 		return 0
 	fi
-	context_read_spec=$(jq -r '.spec' "${context_read_file}" </dev/null) || return 1
+	context_read_spec=$(jq -r '.body.spec' "${context_read_file}" </dev/null) || return 1
 	if [ -L "${context_read_spec}" ] || [ ! -f "${context_read_spec}" ] || [ ! -r "${context_read_spec}" ]; then
 		context_read_found no-spec "NO-SPEC: spec ${context_read_spec} is missing, unreadable, a symlink or not a regular file; expected the spec.md the version names"
 		return 0
@@ -235,15 +241,17 @@ context_read_found() {
 	context_read_text=$2
 }
 
-# Sets context_version_location to why path $1 is not a version file in an
-# effort's context/ (<...>/efforts/<effort>/context/<id>-v<N>.json), by its
-# text alone; empty when it is one.
+# Sets context_version_location to why path $1 is not a context.cut event in
+# an effort's events/ (<...>/efforts/<effort>/events/<seq>-context.cut.json),
+# by its text alone, and context_location_effort to that effort; the first
+# empty when it is one.
 context_version_location_problem() {
-	context_version_location='not <efforts folder>/<effort>/context/<YYYYMMDDTHHMMSS>-<hex>-v<N>.json; expected a version file context.sh freeze wrote'
+	context_version_location='not <efforts folder>/<effort>/events/<seq>-context.cut.json; expected a context.cut event context.sh freeze appended'
+	context_location_effort=''
 	# shellcheck disable=SC2310 # its status says whether the name is a version's
 	context_version_of_name "${1##*/}" || return 0
 	context_location_dir=${1%/*}
-	[ "${context_location_dir##*/}" = context ] || return 0
+	[ "${context_location_dir##*/}" = events ] || return 0
 	context_location_effort=${context_location_dir%/*}
 	# shellcheck disable=SC2310 # its status says whether the folder is an effort's
 	crucible_is_effort_name "${context_location_effort##*/}" || return 0
@@ -252,13 +260,13 @@ context_version_location_problem() {
 	context_version_location=''
 }
 
-# Sets context_docs_changed to the first docs folder of version file $1 (a
-# paths entry with a sha256) whose files no longer give that digest, or to
-# empty. Fails only when a tool fails.
+# Sets context_docs_changed to the first docs folder of context event $1 (a
+# body.paths entry with a sha256) whose files no longer give that digest, or
+# to empty. Fails only when a tool fails.
 context_docs_changed_problem() {
 	context_docs_changed=''
 	# shellcheck disable=SC2016 # the program is jq's
-	context_docs_listed=$(jq -r '.paths[] | select(has("sha256")) | "\(.sha256) \(.path)"' "$1" </dev/null) || return 1
+	context_docs_listed=$(jq -r '.body.paths[] | select(has("sha256")) | "\(.sha256) \(.path)"' "$1" </dev/null) || return 1
 	while IFS=' ' read -r context_docs_expected_digest context_docs_folder; do
 		[ -n "${context_docs_folder}" ] || continue
 		if [ -L "${context_docs_folder}" ] || [ ! -d "${context_docs_folder}" ]; then
@@ -282,7 +290,7 @@ EOF
 
 # What a docs folder may hold, for the scripts' "expected" texts.
 # shellcheck disable=SC2034 # read by the scripts that source this file
-context_docs_expected='only regular files spec.md, grill-<ID>.json, <name>.md, diff-<sha>.patch and diff-<sha>..<sha>.patch, <ID> a grill'\''s ID (<YYYYMMDDTHHMMSS>-<4 lowercase hex>), <name> of A-Z a-z 0-9 . _ - starting with a letter or digit, <sha> 7 to 40 lowercase hex digits'
+context_docs_expected='only regular files spec.md, grill-<N>.json, <name>.md, diff-<sha>.patch and diff-<sha>..<sha>.patch, <N> a grill'\''s number, <name> of A-Z a-z 0-9 . _ - starting with a letter or digit, <sha> 7 to 40 lowercase hex digits'
 
 # Prints why file name $1 can't be in a docs folder (context_docs_expected,
 # and context_path_problem's refusals of the name), or nothing. Run
@@ -291,9 +299,13 @@ context_docs_name_problem() {
 	case $1 in
 		spec.md) ;;
 		grill-*.json)
-			context_docs_grill_id=${1#grill-}
-			# shellcheck disable=SC2310 # a pure test; its status is the answer
-			crucible_is_id "${context_docs_grill_id%.json}" || printf 'is not grill-<ID>.json'
+			# A grill's number in its effort, as grill.sh end names the copy.
+			context_docs_grill_number=${1#grill-}
+			context_docs_grill_number=${context_docs_grill_number%.json}
+			case ${context_docs_grill_number} in
+				'' | 0* | *[!0123456789]*) printf 'is not grill-<N>.json' ;;
+				*) ;;
+			esac
 			;;
 		diff-*.patch) context_docs_patch_name_problem "${1#diff-}" ;;
 		[A-Za-z0-9]*.md)
@@ -305,7 +317,7 @@ context_docs_name_problem() {
 					;;
 			esac
 			;;
-		*) printf 'is not spec.md, grill-<ID>.json, a .md or a diff patch' ;;
+		*) printf 'is not spec.md, grill-<N>.json, a .md or a diff patch' ;;
 	esac
 }
 

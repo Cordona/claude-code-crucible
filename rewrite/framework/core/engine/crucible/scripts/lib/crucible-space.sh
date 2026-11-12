@@ -18,8 +18,8 @@ crucible_label_rule="lowercase a-z, 0-9 and -, 1 to ${crucible_label_max_chars} 
 # A clash needs the same second, label and 4 random hex digits; a handful of
 # fresh draws makes a repeat practically impossible.
 crucible_max_create_attempts=5
-# An item file is JSON, but for a drafts item: every Markdown artifact the main
-# thread writes inside an effort, read as written.
+# The extension crucible_name_item gives when its caller names none, as for
+# the gate records gate-question-hook.sh claims; a drafts item is Markdown.
 crucible_item_extension=json
 crucible_draft_kind=drafts
 crucible_draft_extension=md
@@ -245,28 +245,28 @@ crucible_effort_check() {
 	case ${crucible_effort} in
 		/*) ;;
 		*)
-			crucible_effort_problem='not an absolute path; expected the absolute path of an effort folder effort.sh start printed'
+			crucible_effort_problem='not an absolute path; expected the absolute path of an effort folder effort.sh start printed; try the folder effort.sh path prints'
 			return 1
 			;;
 	esac
 	case ${crucible_effort_name} in
 		"${crucible_effort}" | '' | */*)
-			crucible_effort_problem="not directly in ${crucible_efforts_dir}/; expected ${crucible_efforts_dir}/<id>-<name>, an effort folder of this Crucible space"
+			crucible_effort_problem="not directly in ${crucible_efforts_dir}/; expected ${crucible_efforts_dir}/<id>-<name>, an effort folder of this Crucible space; try the path effort.sh start printed"
 			return 1
 			;;
 		*) ;;
 	esac
 	if ! crucible_is_effort_name "${crucible_effort_name}"; then
-		crucible_effort_problem="its name breaks the effort folder name rule; expected ${crucible_effort_name_rule}"
+		crucible_effort_problem="its name breaks the effort folder name rule; expected ${crucible_effort_name_rule}; try the path effort.sh start printed"
 		return 1
 	fi
 	crucible_effort_fault=space
 	if [ -L "${crucible_efforts_dir}" ] || [ ! -d "${crucible_efforts_dir}" ]; then
-		crucible_effort_problem="${crucible_efforts_dir} is missing, not a folder or a symbolic link; expected the real efforts folder effort.sh start creates"
+		crucible_effort_problem="${crucible_efforts_dir} is missing, not a folder or a symbolic link; expected the real efforts folder effort.sh start creates; try effort.sh start, which creates it"
 		return 1
 	fi
 	if [ -L "${crucible_effort}" ] || [ ! -d "${crucible_effort}" ]; then
-		crucible_effort_problem='missing, not a folder or a symbolic link; expected the real effort folder effort.sh start created'
+		crucible_effort_problem='missing, not a folder or a symbolic link; expected the real effort folder effort.sh start created; try the path effort.sh start printed'
 		return 1
 	fi
 	crucible_effort_fault=''
@@ -302,7 +302,7 @@ crucible_claim_item_file() {
 			rm -f "${crucible_claim_path}"
 		elif [ ! -L "${crucible_claim_path}" ] && [ ! -e "${crucible_claim_path}" ]; then
 			crucible_claim_fault=create
-			crucible_claim_problem="cannot create a file in $1; expected a writable folder"
+			crucible_claim_problem="cannot create a file in $1; expected a writable folder; try checking its permissions"
 			return 1
 		fi
 		if [ "${crucible_claim_try}" -ge "${crucible_max_create_attempts}" ]; then
@@ -330,11 +330,11 @@ crucible_effort_of() {
 }
 
 # Succeeds when path $1 names a file directly in kind folder $2 (such as
-# context or cache/gates) of an effort folder of the space, and the space,
-# efforts/, the effort folder and every level of the kind folder are real
-# folders, none a symbolic link; sets crucible_effort. Fails with
-# crucible_item_problem ("<what>; expected <x>") otherwise. The file itself is
-# not checked. Run crucible_resolve_root first.
+# drafts/main-thread or drafts/main-thread/context/docs) of an effort folder
+# of the space, and the space, efforts/, the effort folder and every level of
+# the kind folder are real folders, none a symbolic link; sets crucible_effort.
+# Fails with crucible_item_problem ("<what>; expected <x>") otherwise. The file
+# itself is not checked. Run crucible_resolve_root first.
 crucible_check_effort_item() {
 	crucible_item_problem="not a file directly in <effort>/$2/ of an effort folder of ${crucible_root}/efforts/; expected a path ${crucible_root}/efforts/<effort>/$2/<name>, no folder of it a symbolic link"
 	crucible_effort_of "$1" || return 1

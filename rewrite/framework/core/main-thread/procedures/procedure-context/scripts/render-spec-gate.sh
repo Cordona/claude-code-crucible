@@ -201,21 +201,16 @@ only to --plan-out.
 
 Options:
   --plan-file PATH  one JSON object, no other field:
-                    {"case": "revision", "reasons": [str, ...]}:
-                      1 to ${MAX_REASONS} reasons, each not blank, with no control
-                      character (line break, tab) or U+2028/U+2029, at most
-                      ${MAX_REASON_CHARS} characters (code points, as written); written
-                      with the Write tool
+                    {"case": "revision", "reasons": [str, ...]}: 1 to
+                      ${MAX_REASONS} one-line reasons, not blank, at most ${MAX_REASON_CHARS}
+                      characters; written with the Write tool
                     {"case": "approval", "spec": PATH, "sha256": HEX}: only
                       as --approval-plan writes it
   --question        print the gate's question instead of the gate
   --approval-plan   write the approval plan of the draft --spec names, with
                     its current sha256, to --plan-out
-  --spec PATH       the draft: an existing readable regular file, not a
-                    symbolic link, named as a Crucible drafts item labelled
-                    ${SPEC_LABEL}: <effort folder>/drafts/<ID>-${SPEC_LABEL}.md; a path
-                    context.sh --path takes (agent-context-file-checks.sh),
-                    with no // or /./ segment
+  --spec PATH       the draft, a regular file, no symbolic link, no // or
+                    /./: <effort>/drafts/main-thread/<ID>-${SPEC_LABEL}.md
   --plan-out PATH   absolute, not a folder or a symbolic link, in an existing
                     folder: the path open-gate.sh --plan-path printed
   CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
@@ -226,15 +221,11 @@ words after the name) to the next "# " or "## " heading; a line inside a
 code fence (three backticks or tildes) is never a heading.
   ## Goal         required; its first non-blank line, trimmed, at most
                   ${MAX_LINE_CHARS} characters, is the Goal line
-  ## Open points  each top-level list item (-, *, + or 1. in the first or
-                  second column) is one open point, not empty, of at most
-                  ${MAX_LINE_CHARS} characters, at most ${MAX_OPEN_POINTS} of them; the lines right after
-                  it, and indented lines (a tab, or two spaces or more)
-                  after a blank line, sub-bullets included, are joined in;
-                  no section, an empty one, or one holding only "None" (any
-                  case, an optional ".", as a line or a single item) is
-                  none; refused: a code fence, text with no list item, and
-                  other text before, between or after the items
+  ## Open points  each top-level list item (-, *, + or 1.) is one point, at
+                  most ${MAX_LINE_CHARS} characters, at most ${MAX_OPEN_POINTS}; its following and
+                  indented lines are joined in; none: no section, an empty
+                  one or only "None"; refused: a code fence or text outside
+                  the items
 No line is ever cut: a longer one is refused, and the draft is rewritten.
 
 stdout on exit 0 only:
@@ -265,12 +256,9 @@ Exit codes:
   5  an install fault
   129, 130, 143  stopped by HUP, INT or TERM; nothing written
 
-Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package); to print a gate, the ${RENDER_LIB} skill's view.jq in
-  the skills; for a draft, the ${CRUCIBLE_SKILL} skill's
-  scripts/lib/crucible-space.sh in the skills, agent-context-file-checks.sh
-  beside this script, tr, and sha256sum or shasum (macOS: built in); for
-  --approval-plan, mktemp and mv.
+Dependencies: POSIX sh, jq 1.6+; a gate: ${RENDER_LIB}'s view.jq; a draft:
+  ${CRUCIBLE_SKILL}'s lib/crucible-space.sh, agent-context-file-checks.sh beside
+  this script, tr, sha256sum or shasum; --approval-plan: mktemp, mv.
 EOF
 }
 
@@ -456,11 +444,11 @@ spec_problems() {
 		printf '%s\n' "$1 is not readable: $2; expected a readable spec draft"
 	fi
 	draft_dir=${2%/*}
-	effort_folder=${draft_dir%/*}
+	effort_folder=${draft_dir%/drafts/main-thread}
 	# shellcheck disable=SC2310 # pure tests; their status is the answer
 	if ! crucible_split_id "${2##*/}" || [ "${crucible_name_rest}" != "${SPEC_LABEL}.md" ] ||
-		[ "${draft_dir##*/}" != drafts ] || ! crucible_is_effort_name "${effort_folder##*/}"; then
-		printf '%s\n' "$1 is not named as a spec draft: $2; expected <effort folder>/drafts/<ID>-${SPEC_LABEL}.md, ID <YYYYMMDDTHHMMSS>-<4 lowercase hex>"
+		[ "${effort_folder}" = "${draft_dir}" ] || ! crucible_is_effort_name "${effort_folder##*/}"; then
+		printf '%s\n' "$1 is not named as a spec draft: $2; expected <effort folder>/drafts/main-thread/<ID>-${SPEC_LABEL}.md, ID <YYYYMMDDTHHMMSS>-<4 lowercase hex>"
 	fi
 }
 

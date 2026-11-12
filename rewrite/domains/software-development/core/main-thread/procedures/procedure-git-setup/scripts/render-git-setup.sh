@@ -68,7 +68,7 @@ def option($label; $description): {label: $label, description: $description};
 	 options: ($identities | map(option(settings_identity_text; "")))
 		+ [option("No, set up git first"; "Nothing is dispatched until you set up the identity you want and ask me to go on")]}
    end) as $identity
-| ("After each commit, everything on its worktree'\''s branch is pushed to `origin`, the seat'\''s `.crucible/` files included"
+| ("After each commit, everything on its worktree'\''s branch is pushed to `origin`"
 	+ (if ($identities | length) == 0 then "; a remote that requires signed commits will refuse these pushes" else "" end)) as $yes
 | {questions: [$identity]
 	+ (if $has_origin == "yes" then
@@ -241,7 +241,11 @@ run_jq() {
 repo_has_origin=none
 parse_args "$@"
 load_dependencies
-[ -z "${repo}" ] || check_repo_origin "${repo}"
+if [ -n "${repo}" ]; then
+	remote=$(jq -nr -L "${own_dir}" 'include "settings"; settings_remote') ||
+		install_fault "jq failed reading the remote; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version, then rerun"
+	check_repo_origin "${repo}" "${remote}"
+fi
 load_plan
 if [ "${want_question}" = true ]; then
 	output=$(run_jq "${QUESTION_JQ}")

@@ -80,6 +80,8 @@ exit codes:
      more than ${MAX_REPOS} repos
   3  a --repo is refused; one stderr line per problem
   4  git or jq is missing or failed
+
+needs: POSIX sh, git 2.26+, jq 1.6+
 EOF
 }
 

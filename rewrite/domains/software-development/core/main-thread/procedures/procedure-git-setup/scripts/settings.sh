@@ -1,22 +1,23 @@
 #!/usr/bin/env sh
-# The only writer and reader of an effort's settings.json: the identity its
+# The only writer and reader of an effort's git settings: the identity its
 # worker commits are authored and signed with, and whether they are pushed.
-# settings.jq owns the file's shape and checks every value, so the shell
-# never edits JSON. write replaces the file through a temp file beside it,
-# so it is whole or unchanged.
+# Each write is one settings.set event, through the crucible skill's
+# events.sh, and the newest is the settings. settings.jq owns the shape and
+# checks every value, so the shell never edits JSON.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='settings.sh'
 readonly MODULE='settings'
-readonly SETTINGS_NAME='settings.json'
+readonly EVENT_TYPE='settings.set'
+readonly EVENTS_SCRIPT="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/crucible/scripts/events.sh"
 readonly COMMANDS='write get'
 readonly CANDIDATES='identity-candidates.sh'
 readonly RESOLVER='resolve-identity.sh'
 # Where identity-candidates.sh --effort keeps the identities the card showed.
-readonly COPY_PATH='cache/git-setup-identities.json'
-# get's exit code when the effort has no settings.json yet.
+readonly COPY_PATH='drafts/main-thread/git-setup-identities.json'
+# get's exit code when the effort has no settings.set event yet.
 readonly EXIT_NO_SETUP=5
 # The C locale keeps the shell byte-wise; jq reads and writes UTF-8.
 LC_ALL=C
@@ -77,11 +78,11 @@ usage: sh ${PROG} write --effort DIR --name N --email E [--signing-format F --si
        sh ${PROG} get --effort DIR
        sh ${PROG} --help | -h
 
-Keeps an effort's git settings, <effort>/${SETTINGS_NAME}, its shape and value
-rules in ${MODULE}.jq. write replaces the file whole, mode 600, only when every
-value fits; a refused write leaves it as it was. get only reads, and checks
-the file's shape, not write's length caps. Nothing else is left behind (a
-SIGKILL aside).
+Keeps an effort's git settings as ${EVENT_TYPE} events, the newest one the
+settings; their shape and value rules are in ${MODULE}.jq. write appends one
+only when every value fits (needs CLAUDE_CODE_SESSION_ID); a refused write
+appends none. get only reads the newest, and checks its shape, not write's
+length caps.
 
 --effort DIR          absolute path of the effort folder
 --name N              the author and committer name
@@ -129,7 +130,8 @@ exit codes:
   ${EXIT_NO_SETUP}  (get) no git setup for this effort yet; run the git setup
      gate
 
-needs: POSIX sh, jq 1.6+, git (with --repo or --signing-key); ${MODULE}.jq,
+needs: POSIX sh, jq 1.6+, git (with --repo or --signing-key); the crucible
+skill's events.sh; ${MODULE}.jq,
 origin-lib.sh, ${CANDIDATES} (with --pick or --pick-label) and ${RESOLVER} (with
 --signing-key) beside this script
 EOF
@@ -290,8 +292,8 @@ load_dependencies() {
 	. "${own_dir}/origin-lib.sh"
 }
 
-# Sets settings_file in the physical effort folder, refusing a path that is
-# no effort folder or a settings path that is no plain file.
+# Sets effort_dir, the physical effort folder, and effort without trailing
+# slashes, as events.sh takes it; refuses a path that is no effort folder.
 check_effort() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -301,11 +303,8 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	settings_file="${effort_dir}/${SETTINGS_NAME}"
-	shown_settings=$(printable "${settings_file}")
-	if [ -L "${settings_file}" ] || { [ -e "${settings_file}" ] && [ ! -f "${settings_file}" ]; }; then
-		die 3 "${shown_settings} is a symbolic link or no plain file; expected the file ${PROG} write saves; try removing it"
-	fi
+	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
+	[ -f "${EVENTS_SCRIPT}" ] || die 4 "events.sh not found at ${EVENTS_SCRIPT}; expected the crucible skill installed"
 }
 
 # Prints problem lines $1, when any, to stderr and exits 3.
@@ -459,9 +458,13 @@ refuse_typed_key() {
 # Checks every value and writes the file, then prints the saved line.
 run_write() {
 	[ -z "${picked}" ] || pick_identity
-	[ -z "${seen_repo}" ] || check_repo_origin "${repo}"
+	if [ -n "${seen_repo}" ]; then
+		remote=$(jq -nr -L "${own_dir}" 'include "settings"; settings_remote') ||
+			die 4 "jq failed reading the remote; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version"
+		check_repo_origin "${repo}" "${remote}"
+	fi
 	[ "${auto_push}" != yes ] || [ "${repo_has_origin}" = yes ] ||
-		die 3 "--auto-push yes refused: ${shown_repo} has no origin remote; expected --auto-push no, or an origin remote added first"
+		die 3 "--auto-push yes refused: ${shown_repo} has no ${remote} remote; expected --auto-push no, or an ${remote} remote added first"
 	set -- --arg auto_push "${auto_push}"
 	[ -z "${seen_name}" ] || set -- "$@" --arg name "${name}"
 	[ -z "${seen_email}" ] || set -- "$@" --arg email "${email}"
@@ -477,25 +480,23 @@ run_write() {
 		result=$(jq -nc -L "${own_dir}" "$@" --arg fingerprint "${fingerprint}" "${WRITE_JQ}") ||
 			die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version"
 	fi
-	temp_file=$(mktemp "${effort_dir}/.${SETTINGS_NAME}.XXXXXX") ||
-		die 4 "mktemp could not create a temp file beside ${shown_settings}; expected a writable effort folder; try ls -ld on it"
+	temp_file=$(mktemp) || die 4 'mktemp could not create a temp file; expected a writable TMPDIR'
 	printf '%s\n' "${result}" | jq '.file' >"${temp_file}" ||
-		die 4 "could not write the temp file beside ${shown_settings}; expected free space; try df on it"
-	chmod 600 "${temp_file}" ||
-		die 4 "chmod could not set mode 600 beside ${shown_settings}; expected a file your user owns; try ls -l on it"
-	mv -f "${temp_file}" "${settings_file}" ||
-		die 4 "mv could not move the temp file onto ${shown_settings}; expected a writable effort folder; try ls -ld on it"
-	temp_file=''
+		die 4 'could not write the settings temp file; expected free space'
+	sh "${EVENTS_SCRIPT}" append --effort "${effort}" --type "${EVENT_TYPE}" --by "${PROG}" --body-file "${temp_file}" >/dev/null </dev/null ||
+		die 4 "events.sh append ${EVENT_TYPE} failed (its stderr is above); nothing was saved"
 	printf '%s\n' "${result}" | jq -r '.saved' || die 4 'jq failed reading the saved line; expected jq 1.6+; try jq --version'
 }
 
 # Prints the get lines, or refuses a missing or broken file.
 run_get() {
-	[ -e "${settings_file}" ] ||
-		die "${EXIT_NO_SETUP}" "no git setup for this effort: ${shown_settings} is missing; expected ${PROG} write to have saved it"
-	[ -r "${settings_file}" ] || die 3 "${shown_settings} is not readable; expected a file your user owns; try ls -l on it"
-	slurped=$(jq -sc '.' "${settings_file}" 2>/dev/null) ||
-		die 3 "${shown_settings} is not valid JSON; expected the file ${PROG} write saves; try the git setup gate again"
+	settings_file=$(sh "${EVENTS_SCRIPT}" latest --effort "${effort}" --type "${EVENT_TYPE}" </dev/null) ||
+		die 4 'events.sh latest failed (its stderr is above)'
+	[ -n "${settings_file}" ] ||
+		die "${EXIT_NO_SETUP}" "no git setup for this effort: no ${EVENT_TYPE} event; expected ${PROG} write to have saved it"
+	shown_settings=$(printable "${settings_file}")
+	slurped=$(jq -c '[.body]' "${settings_file}" 2>/dev/null) ||
+		die 3 "${shown_settings} is not valid JSON; expected the event ${PROG} write appends; try the git setup gate again"
 	lines=$(printf '%s\n' "${slurped}" | jq -r -L "${own_dir}" --arg at "${shown_settings}" "${GET_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version"
 	case ${lines} in
@@ -518,7 +519,7 @@ clean_up() {
 	[ -z "${temp_dir}" ] || rm -rf "${temp_dir}"
 }
 
-temp_file='' temp_dir='' fingerprint='' picked='' repo_has_origin='' shown_repo=''
+temp_file='' temp_dir='' fingerprint='' picked='' repo_has_origin='' shown_repo='' remote=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp file goes on every path.
 trap 'exit 129' HUP

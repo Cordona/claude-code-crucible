@@ -143,7 +143,9 @@ usage: sh ${PROG} --from DIR --to DIR [--data FILE]
 
 Copies, copy-on-write, the untracked dependency folders and local config of
 a main checkout into a fresh linked worktree. Installs nothing; runs no
-build; never copies a tracked file, overwrites, or reads a config file.
+build; never copies a tracked file, overwrites, or reads a config file. A
+.env, .env.*, auth.json, .npmrc or local.properties is copied only when
+git ignores it in --to.
 
 --from DIR   absolute path of the main checkout's top folder
 --to DIR     absolute path of the worktree's top folder; not --from
@@ -174,6 +176,8 @@ output: one stdout line per event
   copied <path>
   exists <path>            skipped: already in --to
   tracked <path>           skipped: tracked in --from
+  unignored <path>         skipped: a .env*, auth.json, .npmrc or
+                           local.properties git does not ignore
   repointed <n> <folder>   n launchers rewritten in the copy
   flag symlink <path> -> <target>  an absolute link into --from, kept as is
 
@@ -184,6 +188,8 @@ exit codes:
      problem is one stderr line (at most ${MAX_PROBLEMS})
   4  a copy or repoint failed, or git or jq is missing or failed; each problem
      is one stderr line (at most ${MAX_PROBLEMS}); remove the worktree
+
+needs: POSIX sh, git 2.26+, jq 1.6+
 EOF
 }
 
@@ -504,10 +510,28 @@ apply_decisions() {
 	while IFS="${TAB}" read -r decision first rest; do
 		case ${decision} in
 			tracked) printf 'tracked %s\n' "${first}" ;;
-			copy) copy_item "${first}" "${rest}" ;;
+			copy)
+				check_secret "${rest}"
+				if [ "${secret_unignored}" = yes ]; then
+					printf 'unignored %s\n' "${rest}"
+				else
+					copy_item "${first}" "${rest}"
+				fi
+				;;
 			*) add_problem "${first} was not copied: its name holds a control character; expected printable names" ;;
 		esac
 	done <"${decisions_file}"
+}
+
+# Sets secret_unignored to yes when path $1 is secret-shaped and git does not
+# confirm the worktree ignores it: a seat's commit stages every file git sees.
+check_secret() {
+	secret_unignored=no
+	case ${1##*/} in
+		.env | .env.* | auth.json | .npmrc | local.properties) ;;
+		*) return 0 ;;
+	esac
+	git -C "${to_root}" check-ignore -q -- "$1" 2>/dev/null || secret_unignored=yes
 }
 
 # Copies path $2 found for technology $1 ("-" for a copy entry), then flags

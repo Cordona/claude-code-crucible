@@ -1,6 +1,7 @@
-# The agent dispatch file's shape, the one definition generate-agent-dispatch.sh
-# checks a dispatch with. Input: the dispatch slurped (jq -s), so an empty file
-# or several values show as a count.
+# The agent dispatch's shape, the body of a dispatch.made event: the one
+# definition generate-agent-dispatch.sh and the Agent hook check a dispatch
+# with. Input: the dispatch slurped (jq -s), so an empty file or several
+# values show as a count.
 # Output: one "<where> <problem>; expected <x>" line per problem, nothing when
 # the dispatch fits. With --arg format json: one {"at": <the field's path, []
 # for the dispatch itself>, "problem": "<problem>; expected <x>"} per problem.
@@ -9,15 +10,19 @@
 # the flow's step 8.
 # The shape, keys in this order; a key whose value would be null, [] or {} is
 # left out, so entry_points and plugins, and each plugins kind, may be absent:
-#   {"id", "claude_session_id", "agent", "seat", "task",
+#   {"id", "agent", "seat", "task",
 #    "entry_points": [repo-relative path, ...],
-#    "context": {"path", "sha256"}, "plan": {"sha256"},
+#    "context": {"seq", "path"}, "plan": {"seq"},
 #    "plugins": {"language": {"name": "language-<n>", "paths": [...]},
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
 #                "standards": [{"name": "standard-<n>", ...}, ...],
-#                "procedures": [{"name": "procedure-<n>", ...}, ...]}}
-# seat names the seat in the effort's seats.json; the seat holds the mode and
-# the worktree.
+#                "procedures": [{"name": "procedure-<n>", ...}, ...]},
+#    "reseat_of", "continue_from", "notes": [str, ...]}
+# context is the context.cut event the dispatch pins, plan the plan.made
+# event it was approved as, each by its seq. A re-seat holds all three last
+# keys: reseat_of the seq of the dispatch.made it repeats, continue_from the
+# worktree's HEAD commit, notes its lines for the agent (left out when none).
+# seat names a seat of the effort; the seat holds the mode and the worktree.
 # The plugin rules: frameworks need a language; a name starts with its kind's
 # prefix and is listed once; a code-reviewer dispatch holds one lens: the
 # language with its frameworks and no standard, or one standard and no
@@ -27,9 +32,9 @@ include "dispatch-names" {search: "./"};
 
 # The agents are dispatch-names.jq's dispatched_agents.
 def lens_agent: "code-reviewer";
-def top_keys: ["id", "claude_session_id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins"];
+def top_keys: ["id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins", "reseat_of", "continue_from", "notes"];
 # The keys left out when they hold nothing; every other key is required.
-def optional_keys: ["entry_points", "plugins"];
+def optional_keys: ["entry_points", "plugins", "reseat_of", "continue_from", "notes"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
 # The name prefix of each plugins kind.
 def kind_prefixes: {language: "language-", frameworks: "framework-", standards: "standard-", procedures: "procedure-"};
@@ -38,7 +43,8 @@ def plugin_shape: "{\"name\": str, \"paths\": [absolute path, ...]}";
 def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
 def has_control: test("[[:cntrl:]]");
 def absolute_path: type == "string" and startswith("/") and (has_control | not);
-def sha256_hex: type == "string" and test(sha256_pattern);
+def seq_number: type == "number" and . >= 1 and floor == .;
+def commit_hex: type == "string" and test("\\A[0-9a-f]{40}\\z");
 # A repo-relative path: not empty, not absolute, no .. segment, no control character.
 def relative_path: type == "string" and length > 0 and (startswith("/") | not) and (has_control | not)
 	and (split("/") | index([".."]) == null);
@@ -61,30 +67,42 @@ def keys_problems:
 def field_problems:
 	(if (.id | type) == "string" and (.id | test(crucible_id_pattern)) then empty
 	 else problem(["id"]; " "; "is not a Crucible ID; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>") end),
-	(if (.claude_session_id | type) == "string" and (.claude_session_id | test(claude_session_id_pattern)) then empty
-	 else problem(["claude_session_id"]; " "; "is not a session ID; expected a lowercase UUID, the session that wrote the dispatch") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
 	(if (.seat | type) == "string" and (.seat | test(seat_pattern)) then empty
 	 else problem(["seat"]; " "; "is not a seat name; expected lowercase words joined by dashes, then one of alpha, beta ... omega and, from the second round, -2, -3 ..., like build-agent-alpha") end),
 	(if .task | text_ok then empty else problem(["task"]; " "; "is not a non-empty string; expected the task text") end);
 
-# The plan a dispatch came from, by its digest alone: its gate record expires,
-# so the dispatch keeps no path to it.
+# The plan a dispatch came from: its plan.made event, by seq.
 def plan_problems:
-	if (.plan | type) != "object" then problem(["plan"]; " "; "is not an object; expected {\"sha256\": 64 lowercase hex}")
+	if (.plan | type) != "object" then problem(["plan"]; " "; "is not an object; expected {\"seq\": a whole number from 1}")
 	else .plan
-		| ((keys - ["sha256"])[] | problem(["plan", .]; ": "; "unknown field; expected only sha256")),
-		  (if .sha256 | sha256_hex then empty else problem(["plan", "sha256"]; " "; "is not 64 lowercase hex digits; expected the plan's PLAN_SHA256") end)
+		| ((keys - ["seq"])[] | problem(["plan", .]; ": "; "unknown field; expected only seq")),
+		  (if .seq | seq_number then empty else problem(["plan", "seq"]; " "; "is not a whole number from 1; expected the seq of the plan.made event") end)
 	end;
 
-def pinned_file_problems($key; $what):
-	if (.[$key] | type) != "object" then problem([$key]; " "; "is not an object; expected {\"path\": absolute path, \"sha256\": 64 lowercase hex}")
-	else .[$key]
-		| ((keys - ["path", "sha256"])[] | problem([$key, .]; ": "; "unknown field; expected only path and sha256")),
-		  (if .path | absolute_path then empty else problem([$key, "path"]; " "; "is not an absolute path; expected the \($what)'s path") end),
-		  (if .sha256 | sha256_hex then empty else problem([$key, "sha256"]; " "; "is not 64 lowercase hex digits; expected the \($what)'s sha256") end)
+# The context version a dispatch pins: its context.cut event, by seq and path.
+def context_problems:
+	if (.context | type) != "object" then problem(["context"]; " "; "is not an object; expected {\"seq\": a whole number from 1, \"path\": absolute path}")
+	else .context
+		| ((keys - ["seq", "path"])[] | problem(["context", .]; ": "; "unknown field; expected only seq and path")),
+		  (if .seq | seq_number then empty else problem(["context", "seq"]; " "; "is not a whole number from 1; expected the seq of the context.cut event") end),
+		  (if .path | absolute_path then empty else problem(["context", "path"]; " "; "is not an absolute path; expected the context.cut event's path") end)
 	end;
+
+# A re-seat holds reseat_of and continue_from together; notes only with them.
+def reseat_problems:
+	if has("reseat_of") or has("continue_from") or has("notes") then
+		(if .reseat_of | seq_number then empty
+		 else problem(["reseat_of"]; " "; "is missing or not a whole number from 1; expected the seq of the dispatch.made a re-seat repeats") end),
+		(if .continue_from | commit_hex then empty
+		 else problem(["continue_from"]; " "; "is missing or not 40 lowercase hex digits; expected the worktree's HEAD commit") end),
+		(if has("notes") | not then empty
+		 elif .notes | is_empty then empty_problem(["notes"])
+		 elif (.notes | type) != "array" then problem(["notes"]; " "; "is not an array; expected [line, ...]")
+		 else .notes | to_entries[] | select(.value | text_ok | not)
+			| problem(["notes", .key]; " "; "is not a non-empty string; expected a line for the agent") end)
+	else empty end;
 
 # The problems of plugin entry . at path $at, a $kind entry.
 def plugin_problems($at; $kind):
@@ -151,7 +169,7 @@ def entry_points_problems:
 
 # Every path the agent's message prints in a code span: a backtick would end
 # the span, so a path holding one is refused rather than printed altered.
-def is_printed_path: . == ["context", "path"]
+def is_printed_path: . == ["context", "path"] or . == ["continue_from"]
 	or .[0] == "entry_points" or (.[0] == "plugins" and index(["paths"]) != null);
 def backtick_problems:
 	paths(type == "string") as $at | select($at | is_printed_path) | select(getpath($at) | contains("`"))
@@ -160,7 +178,7 @@ def backtick_problems:
 (if length != 1 then problem([]; " "; "is \(length) JSON values; expected exactly one object")
  elif (.[0] | type) != "object" then problem([]; " "; "is a JSON \(.[0] | type); expected an object")
  else .[0] | keys_problems, field_problems, plan_problems,
-	pinned_file_problems("context"; "context file"), plugins_problems,
-	entry_points_problems, backtick_problems
+	context_problems, plugins_problems,
+	entry_points_problems, reseat_problems, backtick_problems
  end)
 | if $ARGS.named.format == "json" then {at, problem} else .line end

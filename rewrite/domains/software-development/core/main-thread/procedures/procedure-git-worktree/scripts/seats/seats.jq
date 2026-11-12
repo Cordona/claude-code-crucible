@@ -259,6 +259,7 @@ def seats_prefix_problem($options):
 	end;
 
 # A reviewer seat: open from the start, since it has no worktree to open.
+# lens is kept for audit: no script reads it, the seat name holds it.
 def seats_add($options):
 	if $options.role != "reviewer" then
 		seats_refused(3; "--role \($options.role) is not added; expected reviewer: a writer seat is chosen with choose and opened by seat-open.sh")
@@ -338,10 +339,11 @@ def seats_handover($index):
 	else .seats[$index] |= (.previous_agent_ids = (.previous_agent_ids // []) + [.agent_id] | del(.agent_id, .dispatch) | .status = "open") | seats_changed
 	end;
 
-# One "seat<TAB>status<TAB>awaiting_round" line per seat that is open,
-# working, or awaits a round; a chosen seat is none of these.
+# One "seat<TAB>status<TAB>awaiting_round" line per seat with open work:
+# working, gave-up, or awaiting a round. status drops awaiting_round on
+# "none", so a seat awaits a round exactly when it holds one.
 def seats_busy:
-	[.seats[] | select(.status == "open" or .status == "working" or has("awaiting_round"))
+	[.seats[] | select(.status == "working" or .status == "gave-up" or has("awaiting_round"))
 		| "\(.seat)\t\(.status)\t\(.awaiting_round // "none")"] as $lines
 	| seats_result(if $lines == [] then 0 else 8 end; []; null; $lines | join("\n"));
 

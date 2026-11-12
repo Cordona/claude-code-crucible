@@ -28,29 +28,28 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --repo DIR --seat S --independent [--snapshot SHA]
-       sh ${PROG} --effort DIR --repo DIR --seat S --on S [--on S]...
+usage: sh ${PROG} --effort FOLDER --repo DIR --seat S --independent [--snapshot SHA]
+       sh ${PROG} --effort FOLDER --repo DIR --seat S --on S [--on S]...
        sh ${PROG} --help | -h
 
 Prints the base for ../seats/seats.sh choose's --base and --base-seat.
 
---effort DIR    absolute path of the effort folder (its seats.json may not
-                exist yet)
+--effort FOLDER the effort folder, absolute (it may have no seat yet)
 --repo DIR      absolute path of the main checkout's top folder
 --seat S        the seat this base is for, as ../seats/seat-name.sh named
-                it; it need not be in seats.json yet and is no --on seat
+                it; it need not be a seat yet and is no --on seat
 --independent   base: --snapshot, else the checkout's HEAD; every idle
                 developer seat of --repo whose HEAD is neither its base
                 nor in the checkout's HEAD is listed in unmerged
 --snapshot SHA  snapshot.sh's commit of the checkout (its subject
                 "${SNAPSHOT_MESSAGE}", author the identity
-                settings.sh get --effort DIR prints, one parent: HEAD);
+                settings.sh get --effort FOLDER prints, one parent: HEAD);
                 --independent only
 --on S          an idle developer seat of --repo; repeatable, each once.
                 base: the one seat's HEAD, or ../merge/tips-merge.sh's
                 merge of every seat's HEAD (message "crucible(merge): S +
-                S", trailer ${EFFORT_TRAILER}: seats.json's effort) as the
-                identity settings.sh get --effort DIR prints, signed with
+                S", trailer ${EFFORT_TRAILER}: the effort folder's name) as
+                the identity settings.sh get --effort FOLDER prints, signed with
                 its key when it has one, tips-merge.sh's UNSIGNED: line
                 passing through
 
@@ -68,7 +67,7 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, a missing
      value, --independent with --on or neither, or --snapshot with --on
   3  input: a bad option value, --seat also given as --on, an --on seat
-     not in seats.json, seats.json does not fit (seats.sh's own lines
+     not a seat of --effort, the effort does not fit (seats.sh's own lines
      first), --snapshot is no snapshot of HEAD, or a snapshot or a merge
      is given or needed and the effort has no git setup (settings.sh's
      own line first)
@@ -126,7 +125,7 @@ parse_args() {
 				continue
 				;;
 			--effort)
-				take_value "$1" "${effort}" "${2-}" DIR
+				take_value "$1" "${effort}" "${2-}" FOLDER
 				effort=${option_value}
 				;;
 			--repo)
@@ -152,7 +151,7 @@ parse_args() {
 		esac
 		shift 2
 	done
-	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ -n "${repo}" ] || usage_error '--repo missing; expected --repo DIR'
 	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 	if [ "${independent}" = yes ]; then
@@ -227,7 +226,7 @@ load_dependencies() {
 	}
 }
 
-# Sets effort_dir (physical), seats_file, repo_dir (physical) and head.
+# Sets effort_dir (physical), repo_dir (physical) and head.
 check_inputs() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -236,8 +235,6 @@ check_inputs() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	seats_file="${effort_dir}/seats.json"
-	shown_seats=$(printable "${seats_file}")
 	shown_repo=$(printable "${repo}")
 	case ${repo} in
 		/*) ;;
@@ -276,11 +273,11 @@ EOF
 # whose HEAD is neither its base nor in the checkout's HEAD.
 list_unmerged() {
 	: >"${work_dir}/unmerged"
-	[ -e "${seats_file}" ] || return 0
+	read_seat_list
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r '.seats[] | select(.role == "developer" and .status == "idle")
-		| [.seat, .worktree, .repo, .base] | map(strings) | select(length == 4) | join("\t")' "${seats_file}" \
-		>"${work_dir}/idle" 2>/dev/null || die 3 "${shown_seats} is not the effort's seats.json; expected its seats"
+		| [.seat, .worktree, .repo, .base] | map(strings) | select(length == 4) | join("\t")' "${work_dir}/seat-list" \
+		>"${work_dir}/idle" 2>/dev/null || die 4 'jq could not read the seat list seats.sh list printed'
 	while IFS= read -r idle_line; do
 		idle_seat=${idle_line%%"${tab}"*}
 		idle_rest=${idle_line#*"${tab}"}
@@ -334,14 +331,14 @@ EOF
 
 read_on_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
-		6) die 3 "--on $1 is not in ${shown_seats}; expected an existing developer seat" ;;
+		6) die 3 "--on $1 is not a seat of --effort; expected an existing developer seat" ;;
 		*)
 			cat -- "${work_dir}/get-stderr" >&2 || :
 			case ${seat_rc} in
-				2 | 3) die 3 "seats.sh get refused seat $1 (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+				2 | 3) die 3 "seats.sh get refused seat $1 (exit ${seat_rc}); expected a seat of --effort" ;;
 				*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 			esac
 			;;
@@ -404,7 +401,7 @@ merge_on_seats() {
 		base=$2
 		return 0
 	fi
-	read_effort_id
+	read_seat_list
 	joined_seats=''
 	while IFS= read -r on_seat; do
 		joined_seats="${joined_seats:+${joined_seats} + }${on_seat}"
@@ -454,12 +451,20 @@ EOF
 		die 4 'settings.sh get printed no NAME or EMAIL line; expected both'
 }
 
-# Sets effort_id from seats.json's effort, the value of the seats' Effort
-# trailer.
-read_effort_id() {
-	effort_id=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
-		die 3 "${shown_seats} is not JSON; expected the effort's seats.json"
-	[ -n "${effort_id}" ] || die 3 "${shown_seats} has no effort; expected a non-empty effort string"
+# Writes work_dir/seat-list, the effort's seat list from seats.sh list, and
+# sets effort_id from its effort, the value of the seats' Effort trailer;
+# seats.sh's own lines say why it refused.
+read_seat_list() {
+	list_rc=0
+	sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seat-list" </dev/null || list_rc=$?
+	case ${list_rc} in
+		0) ;;
+		2 | 3) die 3 "seats.sh list refused the effort (exit ${list_rc}); expected the effort folder" ;;
+		*) die 4 "seats.sh list failed (exit ${list_rc})" ;;
+	esac
+	effort_id=$(jq -r '.effort | strings' "${work_dir}/seat-list") ||
+		die 4 'jq could not read the seat list seats.sh list printed'
+	[ -n "${effort_id}" ] || die 4 'seats.sh list printed no effort; expected a non-empty effort string'
 }
 
 # Exits 4 naming step $1 and the first line of work_dir/stderr.

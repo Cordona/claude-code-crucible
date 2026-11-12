@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Drops the empty keys from a developer's report before the stop hook checks
-# it, so a stray "noticed": [] costs the developer no block. crucible's prune
-# does the dropping. A file that holds no one JSON value is left for
+# it, so a stray "noticed": [] costs the developer no block; without --apply
+# it only lists them. crucible's prune does the dropping. A file that holds no one JSON value is left for
 # dev-report-check.sh to report; a report with nothing to drop is not touched.
 # A change goes in place through a temp file beside the report, so the report
 # is whole or unchanged.
@@ -19,16 +19,36 @@ export LC_ALL
 readonly PRUNE_JQ='include "prune";
 prune as $pruned | if $pruned == . then empty else $pruned end'
 
+# Prints the path of each key prune would drop, outermost only, one JSON array
+# per line.
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+readonly DROPPED_JQ='include "prune";
+def empty_value: . == null or . == [] or . == {};
+def dropped($path):
+	if type == "object" then
+		keys_unsorted[] as $key | .[$key] as $value
+		| if ($value | prune | empty_value) then $path + [$key]
+		else $value | dropped($path + [$key]) end
+	elif type == "array" then
+		range(length) as $index | .[$index] | dropped($path + [$index])
+	else empty end;
+dropped([])'
+
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --report FILE
+usage: sh ${PROG} --report FILE [--apply]
        sh ${PROG} --help | -h
 
 Drops every key whose value is null, [] or {} from a developer's report,
 inner keys first, so a key left holding only empty keys goes too; array
-items, false, 0 and "" stay. Prints nothing on stdout.
+items, false, 0 and "" stay. report-commit-hook.sh, its only caller,
+passes --apply.
 
 --report FILE  absolute path of the report
+--apply        write the pruned report; without it, print the path of each
+               key it would drop, one per line as a JSON array such as
+               ["noticed"], nothing when none, and write nothing; with it,
+               print nothing on stdout
 
 A file that is missing, empty, unreadable or not one JSON value is left
 as it is; dev-report-check.sh reports it. A report with nothing to drop
@@ -72,11 +92,17 @@ printable() {
 
 parse_args() {
 	report=''
+	apply=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
+				;;
+			--apply)
+				[ -z "${apply}" ] || usage_error '--apply given twice; expected one'
+				apply=yes
+				shift
 				;;
 			--report)
 				[ -n "${2-}" ] || usage_error '--report needs a value; expected --report FILE'
@@ -86,7 +112,7 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --report or --help"
+				usage_error "unknown option: ${shown_option}; expected --report, --apply or --help"
 				;;
 		esac
 	done
@@ -130,6 +156,11 @@ prune_report() {
 	temp_file=''
 }
 
+list_dropped_keys() {
+	jq -c -L "${crucible_lib_dir}" "${DROPPED_JQ}" "${report}" ||
+		die 4 "jq failed; expected jq 1.6+ and prune.jq in ${shown_lib_dir}"
+}
+
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 on_exit() {
 	[ -z "${temp_file}" ] || rm -f -- "${temp_file}"
@@ -144,4 +175,8 @@ trap 'exit 143' TERM
 parse_args "$@"
 load_dependencies
 require_one_json_value
-prune_report
+if [ -n "${apply}" ]; then
+	prune_report
+else
+	list_dropped_keys
+fi

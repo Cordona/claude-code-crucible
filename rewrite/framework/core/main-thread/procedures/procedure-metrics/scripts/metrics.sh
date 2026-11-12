@@ -1,22 +1,20 @@
 #!/usr/bin/env sh
 # Counts the tokens an effort's Claude Code sessions spent, from their
-# transcripts, into one file per session in the effort's metrics/ folder, and
-# prints a view of them. An effort is a folder whose JSON files may name the
-# sessions that worked in it as claude_session_id; metrics/ is this script's
-# own, and nothing else in the folder is written.
+# transcripts, into one metrics.harvested event per session, written through
+# the crucible skill's events.sh, and prints a view of them. The sessions are
+# those the effort's events name as claude_session_id, this script's own
+# events aside; nothing in the effort is written but through events.sh.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='metrics.sh'
-readonly METRICS_FOLDER='metrics'
-readonly REJECTIONS_LOG='.rejections.log'
+readonly CRUCIBLE_SKILL='crucible'
+readonly HARVESTED_TYPE='metrics.harvested'
+readonly EVENTS_FORMAT=1
 readonly VIEW_SKILL='human-view'
-# The exit when another harvest of the same effort holds the lock.
+# The exit when the events lock stayed held past events.sh's wait.
 readonly LOCKED_EXIT=6
-# A live lock is waited on this many times one second before giving up; a
-# harvest of a normal effort ends well within it.
-readonly LOCK_WAIT_SECONDS=5
 # Unknown arguments are echoed back only up to this length, so a long or
 # hostile value never floods a diagnostic.
 readonly MAX_SHOWN_CHARS=40
@@ -182,9 +180,9 @@ def agent_entries($running):
 	| if any($read.launched | to_entries[]; .key as $id | ($read.files | has($id) | not) and launched_before_grace(.value))
 	  then .[$session].partly_expired = true else . end)'
 
-# Prints the view from the $count session files passed as $ARGS.named pairs
-# p<n> (the path) and f<n> (its text), and the ids of sessions expired before
-# any harvest in $missing.
+# Prints the view from the $count session figures passed as $ARGS.named pairs
+# p<n> (the metrics.harvested event's path) and f<n> (its body's text), and
+# the ids of sessions expired before any harvest in $missing.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly VIEW_JQ='include "view";
 def tenths($unit): (. / $unit * 10 + 0.5 | floor) as $tenths | "\($tenths / 10 | floor).\($tenths % 10)";
@@ -255,43 +253,49 @@ help_text() {
 	usage
 	print_block <<'EOF'
 
-Counts the tokens of every Claude Code session an effort folder names (each
-distinct claude_session_id in its JSON files, metrics/ aside) from the
-session transcripts, and writes one file per session:
-FOLDER/metrics/<claude_session_id>.json, shape: metrics-validator.jq.
+Counts the tokens of every Claude Code session an effort names (each
+distinct claude_session_id in FOLDER/events/, metrics.sh's own events
+aside) from the session transcripts, and appends one metrics.harvested
+event per session through the crucible skill's events.sh, also after
+the effort ended. Its body, shape metrics-validator.jq, holds the counted
+session's claude_session_id; the newest per session is its figure.
 Not counted: compaction, title generation, prompt suggestions and /btw.
 
-  harvest          rewrite the session files
-  show             harvest, then print the view
-  --effort FOLDER  the effort folder, absolute
+  harvest          append the session figures
+  show             harvest, then print the view from the newest figures
+  --effort FOLDER  an effort folder of the space, absolute
+  CRUCIBLE_HOME    the space; default $HOME/.crucible
   CLAUDE_CONFIG_DIR  holds projects/, the transcripts, and skills/;
                    default $HOME/.claude
 
 stdout on exit 0: harvest nothing; show the view, Markdown, to relay.
 stderr: "metrics.sh:" lines to show the human.
 
-Session files are replaced atomically, mode 600, by one harvest of an
-effort at a time. Each problem of a file metrics-validator.jq rejects is
-also appended to FOLDER/metrics/.rejections.log. Transcripts and
-everything outside FOLDER/metrics/ are never written.
-A harvest rewrites FOLDER/metrics/, so Crucible's prune age check sees
+A session whose transcript is gone keeps its newest figures, marked
+expired: true, appended again only when not marked yet. A body
+metrics-validator.jq rejects becomes one fault.raised event, {what: its
+problem lines}. Two harvests at once are harmless: the newest wins.
+Transcripts are never written; temp files go in mktemp's default place.
+Each harvest adds to FOLDER/events/, so Crucible's prune age check sees
 the effort as recently active.
 
 Exit codes:
   0  done; harvest: go on; show: relay stdout as printed
   2  refused call; nothing written; show the human stderr, and stop
-  4  a file it reads or writes is unusable; show the human stderr, and stop
+  4  the effort or a file it reads is unusable, or the effort has no
+     format 1 events/000001-effort.opened.json; show the human stderr,
+     and stop
   5  install fault; show the human stderr, and stop
-  6  another harvest of this effort is running; no session file written;
-     rerun once, else show the human stderr, and stop
+  6  the events lock stayed held; a figure is not written; rerun once,
+     else show the human stderr, and stop
   129, 130, 143  stopped by a signal; tell the human it was stopped, show
                  the exit code, and stop
 
 Dependencies:
-  POSIX sh; awk, date, find, grep, sed, sort, mkdir, chmod, rmdir, mktemp,
-    mv, rm, sleep; jq 1.6+ (macOS: brew install jq; Linux: the distro's
-    jq package)
+  POSIX sh; awk, date, find, grep, sed, sort, mktemp, rm; jq 1.6+
+    (macOS: brew install jq; Linux: the distro's jq package)
   metrics-validator.jq beside this script
+  the crucible skill's events.sh and lib/crucible-space.sh
   show only: the human-view skill's view.jq, in CLAUDE_CONFIG_DIR's skills/
 EOF
 }
@@ -349,8 +353,7 @@ main() {
 	parse_effort_option "$@"
 	resolve_projects
 	[ "${command}" = harvest ] || load_view_helpers
-	open_metrics_folder
-	take_lock
+	check_space_effort
 	harvest
 	[ "${command}" = harvest ] || show_view
 }
@@ -372,7 +375,7 @@ show_safely() {
 }
 
 check_tools() {
-	for tool in awk date find grep sed sort mkdir chmod rmdir mktemp mv rm sleep; do
+	for tool in awk date find grep sed sort mktemp rm; do
 		command -v "${tool}" >/dev/null 2>&1 ||
 			install_fault "${tool} missing; expected it on PATH; try installing the base-system tools (coreutils on Linux)"
 	done
@@ -385,14 +388,26 @@ check_tools() {
 	esac
 }
 
-# Sets own_dir, the folder of this script and its validator, or exits 5.
+# Sources the crucible skill's space rules and sets own_dir, the folder of
+# this script and its validator, and events_script, or exits 5.
 load_dependencies() {
 	case $0 in
 		*/*) own_dir=${0%/*} ;;
 		*) own_dir=. ;;
 	esac
-	[ -f "${own_dir}/metrics-validator.jq" ] && [ -r "${own_dir}/metrics-validator.jq" ] ||
-		install_fault "session file shape missing; expected ${own_dir}/metrics-validator.jq; try reinstalling procedure-metrics"
+	require_file "${own_dir}/metrics-validator.jq" 'session figures shape' 'try reinstalling procedure-metrics'
+	crucible_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts"
+	space_lib="${crucible_dir}/lib/crucible-space.sh"
+	events_script="${crucible_dir}/events.sh"
+	require_file "${space_lib}" 'space rules' "try installing the ${CRUCIBLE_SKILL} skill"
+	require_file "${events_script}" 'events.sh' "try installing the ${CRUCIBLE_SKILL} skill"
+	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
+	. "${space_lib}"
+}
+
+# Exits 5 unless file $1, named $2, is readable; $3 is the fix.
+require_file() {
+	[ -f "$1" ] && [ -r "$1" ] || install_fault "$2 missing; expected $1; $3"
 }
 
 # Sets effort (no trailing slash), effort_real (its physical path),
@@ -465,83 +480,36 @@ load_view_helpers() {
 		install_fault "layout module missing; expected ${view_dir}/view.jq; try installing the ${VIEW_SKILL} skill"
 }
 
-# Creates the effort's metrics/ folder, mode 700, when it is missing.
-open_metrics_folder() {
-	metrics_dir="${effort}/${METRICS_FOLDER}"
-	[ ! -L "${metrics_dir}" ] || folder_fault "${metrics_dir} is a symbolic link; expected a real folder; try moving it aside"
-	if [ ! -d "${metrics_dir}" ]; then
-		[ ! -e "${metrics_dir}" ] || folder_fault "${metrics_dir} exists and is not a folder; expected the metrics folder; try moving it aside"
-		mkdir "${metrics_dir}" 2>/dev/null || [ -d "${metrics_dir}" ] ||
-			folder_fault "cannot create ${metrics_dir}; expected a writable effort folder; try checking its permissions"
+# Exits unless effort is an effort folder of the space whose first event is
+# a known format's effort.opened, so an older or newer effort is never
+# misread; sets events_dir.
+check_space_effort() {
+	# shellcheck disable=SC2310 # its status says whether the root is usable; the fault is read below
+	if ! crucible_resolve_root; then
+		[ "${crucible_root_fault}" != usage ] || usage_error "${crucible_root_problem}"
+		folder_fault "${crucible_root_problem}"
 	fi
-	[ ! -L "${metrics_dir}" ] || folder_fault "${metrics_dir} is a symbolic link; expected a real folder; try moving it aside"
-	chmod 700 "${metrics_dir}" ||
-		folder_fault "cannot set mode 700 on ${metrics_dir}; expected a folder it owns; try checking its owner"
-}
-
-# Takes metrics/.lock, a folder only one harvest can create, and writes its
-# PID in it. A lock whose PID is gone is broken; a live one is waited on.
-take_lock() {
-	lock_path="${metrics_dir}/.lock"
-	waited=0
-	while :; do
-		if mkdir "${lock_path}" 2>/dev/null; then
-			lock_dir=${lock_path}
-			printf '%s\n' "$$" >"${lock_dir}/pid" ||
-				folder_fault "cannot write ${lock_dir}/pid; expected a writable metrics folder; try checking free space"
-			return 0
-		fi
-		[ -d "${lock_path}" ] && [ ! -L "${lock_path}" ] ||
-			folder_fault "cannot create the lock ${lock_path}; expected a writable metrics folder; try checking its permissions"
-		read_lock_pid
-		# shellcheck disable=SC2310 # its status says whether the holder is gone
-		if [ -n "${lock_pid}" ] && ! pid_alive "${lock_pid}"; then
-			break_lock
-			continue
-		fi
-		[ "${waited}" -lt "${LOCK_WAIT_SECONDS}" ] || {
-			warn "${metrics_dir} is locked by ${lock_path}${lock_pid:+ (PID ${lock_pid})}; expected one harvest at a time; try again once it has ended; if none is running, remove the lock with rm -rf '${lock_path}'"
-			exit "${LOCKED_EXIT}"
-		}
-		sleep 1
-		waited=$((waited + 1))
-	done
-}
-
-# Sets lock_pid to the PID in the lock, empty when it holds none yet.
-read_lock_pid() {
-	lock_pid=''
-	[ -f "${lock_path}/pid" ] || return 0
-	IFS= read -r lock_pid <"${lock_path}/pid" 2>/dev/null || true
-	case ${lock_pid} in
-		'' | *[!0-9]*) lock_pid='' ;;
-		*) ;;
-	esac
-}
-
-pid_alive() {
-	kill -0 "$1" 2>/dev/null
-}
-
-# Moves the dead harvest's lock aside under a name of its own, so a second
-# breaker cannot remove a lock taken meanwhile, then removes it.
-break_lock() {
-	broken="${metrics_dir}/.lock.broken.$$"
-	mv "${lock_path}" "${broken}" 2>/dev/null || return 0
-	rm -f "${broken}/pid"
-	rmdir "${broken}" 2>/dev/null || warn "could not remove the broken lock ${broken}; remove it by hand"
-	warn "broke the lock of PID ${lock_pid}, which is no longer running"
+	# shellcheck disable=SC2310 # its status says whether the folder passed; the fault is read below
+	if ! crucible_check_effort_folder "${effort}"; then
+		[ "${crucible_effort_fault}" = space ] || bad_value "${crucible_effort_refusal}"
+		folder_fault "${crucible_effort_refusal}"
+	fi
+	events_dir="${effort}/events"
+	jq -e --argjson format "${EVENTS_FORMAT}" '.type == "effort.opened" and .body.format == $format' \
+		"${events_dir}/000001-effort.opened.json" >/dev/null 2>&1 </dev/null ||
+		folder_fault "${effort} has no format ${EVENTS_FORMAT} events/000001-effort.opened.json; expected an effort this version of Crucible started; an older or newer effort cannot be counted"
 }
 
 harvest() {
 	harvested_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || install_fault 'date failed; expected the UTC time; try date -u'
 	collect_sessions
-	new_temp_file events
+	new_temp_file
 	events_file=${made}
-	new_temp_file results
+	new_temp_file
 	results_file=${made}
-	new_temp_file status
+	new_temp_file
 	status_file=${made}
+	read_newest_figures
 	expired_unseen=''
 	present_sessions=''
 	expired_sessions=''
@@ -567,21 +535,42 @@ EOF
 }
 
 # Sets sessions to every distinct claude_session_id value in the effort's
-# JSON files, metrics/ aside, one per line, sorted.
+# events and faults, one per line, sorted. This script's own events name the
+# session that ran it, which did not work in the effort for that, so they
+# are left out.
 collect_sessions() {
-	key_pattern="\"claude_session_id\"[[:space:]]*:[[:space:]]*\"${SESSION_ID_ERE}\""
-	found=$(cd -P -- "${effort}" && LC_ALL=C find . -path "./${METRICS_FOLDER}" -prune -o -type f -name '*.json' \
-		-exec sh -c 'grep -hoE "$0" "$@" || [ "$?" -eq 1 ]' "${key_pattern}" {} +) ||
-		folder_fault "cannot read the JSON files of ${effort}; expected readable files; try checking their permissions"
-	sessions=$(printf '%s\n' "${found}" | LC_ALL=C sed -n -E "s/.*\"(${SESSION_ID_ERE})\"\$/\\1/p" | LC_ALL=C sort -u) ||
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+	found=$(LC_ALL=C find "${events_dir}" -type f -name '*.json' ! -name '.*' -exec jq -r --arg prog "${PROG}" \
+		'select(.by != $prog) | .. | objects | .claude_session_id? | strings' {} + </dev/null) ||
+		folder_fault "cannot read the events of ${effort}; expected readable JSON files in ${events_dir}; try checking their permissions"
+	sessions=$(printf '%s\n' "${found}" | LC_ALL=C sed -n -E "/^${SESSION_ID_ERE}\$/p" | LC_ALL=C sort -u) ||
 		install_fault 'sed or sort failed on the session ids; expected POSIX tools; try a POSIX sed and sort on PATH'
 }
 
-# Sets made to a new empty temp file in metrics/, $1 naming its use, and adds
-# it to the temp files clean_up removes.
+# Sets newest_file to a temp file of {<session id>: {path, body}}, each
+# session's newest metrics.harvested event, as events.sh lists them now.
+read_newest_figures() {
+	harvested_list=$(sh "${events_script}" list --effort "${effort}" --type "${HARVESTED_TYPE}" </dev/null) ||
+		folder_fault "events.sh could not list the ${HARVESTED_TYPE} events of ${effort} (its stderr is above); expected readable events"
+	set --
+	while IFS= read -r listed; do
+		[ -z "${listed}" ] || set -- "$@" "${listed}"
+	done <<EOF
+${harvested_list}
+EOF
+	new_temp_file
+	newest_file=${made}
+	jq -n 'reduce inputs as $event ({};
+		if ($event.body | type) == "object" and ($event.body.claude_session_id | type) == "string"
+		then .[$event.body.claude_session_id] = {path: input_filename, body: $event.body} else . end)' \
+		"$@" </dev/null >"${newest_file}" ||
+		folder_fault "cannot read the ${HARVESTED_TYPE} events of ${effort}; expected JSON files events.sh wrote"
+}
+
+# Sets made to a new empty temp file and adds it to the temp files clean_up
+# removes.
 new_temp_file() {
-	made=$(mktemp "${metrics_dir}/.$1.XXXXXX") ||
-		folder_fault "cannot create a temp file in ${metrics_dir}; expected a writable folder; try checking its permissions and free space"
+	made=$(mktemp) || install_fault 'mktemp failed; expected a temp file in its default place; try checking TMPDIR'
 	temp_files="${temp_files}${made}
 "
 }
@@ -601,7 +590,7 @@ find_transcript() {
 # batch however many subagents there are.
 session_events() {
 	printf '["S","%s"]\n' "$1" >>"${events_file}" ||
-		folder_fault "cannot write ${events_file}; expected free space in ${metrics_dir}"
+		install_fault "cannot write ${events_file}; expected free space in its folder"
 	produce grep_lines -e "${USAGE_MARK}" -e "${AGENT_ID_MARK}" -- "${transcript}" | line_events false true
 	check_produced "${transcript}"
 	subagents_dir="${transcript%.jsonl}/subagents"
@@ -661,120 +650,158 @@ line_events() {
 		install_fault 'jq failed reading a transcript; expected jq 1.6+; try jq --version'
 }
 
-# Writes each session with a transcript from results_file. A session that
-# launched a subagent whose transcript is gone is partly expired: its file
-# keeps its figures, marked expired, since a new count would be lower; with
-# no file yet, the partial figures are written, marked expired.
+# Appends the figures of each session with a transcript from results_file. A
+# session that launched a subagent whose transcript is gone is partly
+# expired: its newest figures are kept, marked expired, since a new count
+# would be lower; with none yet, the partial figures are appended, marked
+# expired.
 write_present_sessions() {
 	while IFS= read -r session; do
 		[ -n "${session}" ] || continue
 		partly_expired=$(jq -r --arg session "${session}" '.[$session].partly_expired // false' "${results_file}") ||
 			install_fault 'jq failed reading the counts; expected jq 1.6+; try jq --version'
-		# shellcheck disable=SC2310 # its status says whether a file was there to keep
-		if [ "${partly_expired}" = true ] && keep_expired_file "${session}"; then
+		# shellcheck disable=SC2310 # its status says whether figures were there to keep
+		if [ "${partly_expired}" = true ] && keep_expired_figures "${session}"; then
 			continue
 		fi
-		new_temp_file "${session}"
-		temp_file=${made}
+		new_temp_file
+		body_file=${made}
 		jq --arg session "${session}" --arg at "${harvested_at}" \
 			'{claude_session_id: $session, harvested_at: $at}
 			+ (.[$session] // {main_thread: [], subagents: [], outside: []} | del(.partly_expired))
 			+ (if .[$session].partly_expired then {expired: true} else {} end)' \
-			"${results_file}" >"${temp_file}" ||
-			folder_fault "cannot write the temp file ${temp_file}; expected free space in ${metrics_dir}"
-		place_session_file "${session}" install
+			"${results_file}" >"${body_file}" ||
+			install_fault "cannot write the temp file ${body_file}; expected free space in its folder"
+		record_figures "${session}" install "the ${HARVESTED_TYPE} body built for session ${session}"
 	done <<EOF
 ${present_sessions}
 EOF
 }
 
-# Keeps the last figures of each session whose transcript is gone and marks
-# them expired; a session with no file yet is only listed by the view.
+# Keeps the newest figures of each session whose transcript is gone and
+# marks them expired; a session with none yet is only listed by the view.
 mark_expired_sessions() {
 	while IFS= read -r session; do
 		[ -n "${session}" ] || continue
-		# shellcheck disable=SC2310 # its status says whether a file was there to keep
-		keep_expired_file "${session}" || expired_unseen="${expired_unseen} ${session}"
+		# shellcheck disable=SC2310 # its status says whether figures were there to keep
+		keep_expired_figures "${session}" || expired_unseen="${expired_unseen} ${session}"
 	done <<EOF
 ${expired_sessions}
 EOF
 }
 
-# Marks session $1's file expired, its figures kept; fails when it has no file.
-keep_expired_file() {
-	session_file="${metrics_dir}/$1.json"
-	[ -f "${session_file}" ] && [ ! -L "${session_file}" ] || return 1
-	new_temp_file "$1"
-	temp_file=${made}
-	if ! jq '.expired = true' "${session_file}" >"${temp_file}" 2>/dev/null; then
-		log_rejection "${session_file}: is not JSON; expected the session file metrics.sh writes"
-		warn "${session_file} is left as it is"
-		return 0
-	fi
-	place_session_file "$1" kept
+# Marks session $1's newest figures expired and appends them again, unless
+# they are marked already; fails when the session has none.
+keep_expired_figures() {
+	newest_figures "$1"
+	[ -n "${newest_path}" ] || return 1
+	marked=$(jq -r '.expired == true' "${body_file}" </dev/null) ||
+		install_fault 'jq failed on a figures body; expected jq 1.6+; try jq --version'
+	[ "${marked}" != true ] || return 0
+	new_temp_file
+	jq '.expired = true' "${body_file}" </dev/null >"${made}" ||
+		install_fault "cannot write the temp file ${made}; expected free space in its folder"
+	body_file=${made}
+	record_figures "$1" kept "${newest_path}"
 }
 
-# Moves temp_file onto session $1's file once it passes the validator. $2
-# says what the file is: install (a file built here) must meet every rule,
-# and a problem exits 5; kept (a file read back and marked expired) must
-# keep its shape, and a problem leaves it as it is.
-place_session_file() {
-	session_file="${metrics_dir}/$1.json"
+# Sets newest_path to session $1's newest metrics.harvested event, empty when
+# it has none, and body_file to a temp file of its body.
+newest_figures() {
+	newest_path=$(jq -r --arg session "$1" '.[$session].path // empty' "${newest_file}" </dev/null) ||
+		install_fault 'jq failed reading the newest figures; expected jq 1.6+; try jq --version'
+	[ -n "${newest_path}" ] || return 0
+	new_temp_file
+	body_file=${made}
+	jq --arg session "$1" '.[$session].body' "${newest_file}" </dev/null >"${body_file}" ||
+		install_fault "cannot write the temp file ${body_file}; expected free space in its folder"
+}
+
+# Appends body_file as session $1's metrics.harvested event once it passes the
+# validator; $3 names it in a rejection. $2 says what the body is: install
+# (built here) must meet every rule, and a problem exits 5; kept (read back
+# and marked expired) must keep its shape, and a problem appends nothing.
+record_figures() {
 	case $2 in
 		install) check='metrics_session_problems' ;;
 		*) check='metrics_session_shape_problems' ;;
 	esac
-	problems=$(jq -r -L "${own_dir}" "include \"metrics-validator\"; ${check}" "${temp_file}" </dev/null) ||
-		install_fault 'jq failed on a session file; expected jq 1.6+ and metrics-validator.jq; try jq --version'
+	problems=$(jq -r -L "${own_dir}" "include \"metrics-validator\"; ${check}" "${body_file}" </dev/null) ||
+		install_fault 'jq failed on a figures body; expected jq 1.6+ and metrics-validator.jq; try jq --version'
 	if [ -n "${problems}" ]; then
-		report_problems "${session_file}" "${problems}"
-		[ "$2" = kept ] || install_fault 'a session file built breaks metrics-validator.jq; expected matching metrics.sh and validator; try reinstalling procedure-metrics'
-		warn "${session_file} is left as it is"
+		report_problems "$3" "${problems}"
+		[ "$2" = kept ] || install_fault "a ${HARVESTED_TYPE} body built breaks metrics-validator.jq; expected matching metrics.sh and validator; try reinstalling procedure-metrics"
+		warn "session $1's figures are left as they are"
 		return 0
 	fi
-	chmod 600 "${temp_file}" ||
-		folder_fault "cannot set mode 600 on ${temp_file}; expected a file it owns"
-	mv -f "${temp_file}" "${session_file}" ||
-		folder_fault "cannot move ${temp_file} onto ${session_file}; expected a writable ${metrics_dir}"
+	append_figures "$1"
 }
 
-# Reports the problems $2 of file $1, one line each, at most MAX_PROBLEMS.
+# Appends body_file as a metrics.harvested event of counted session $1.
+append_figures() {
+	if sh "${events_script}" append --effort "${effort}" --type "${HARVESTED_TYPE}" --by "${PROG}" \
+		--body-file "${body_file}" --session "$1" </dev/null >/dev/null; then
+		return 0
+	else
+		append_status=$?
+	fi
+	case ${append_status} in
+		6) exit "${LOCKED_EXIT}" ;;
+		3 | 4) folder_fault "events.sh could not write session $1's figures (its stderr is above); expected a writable ${events_dir}" ;;
+		*) install_fault "events.sh exited ${append_status} (its stderr is above); expected exit 0; try reinstalling the ${CRUCIBLE_SKILL} skill" ;;
+	esac
+}
+
+# Warns the problems $2 of what $1 names, one line each, at most
+# MAX_PROBLEMS, and records them as one fault.raised event.
 report_problems() {
-	reported=0
+	reported=0 rejection=''
 	while IFS= read -r problem; do
 		reported=$((reported + 1))
-		[ "${reported}" -gt "${MAX_PROBLEMS}" ] || log_rejection "$1: ${problem}"
+		[ "${reported}" -le "${MAX_PROBLEMS}" ] || continue
+		warn "$1: ${problem}"
+		rejection="${rejection}${rejection:+
+}$1: ${problem}"
 	done <<EOF
 $2
 EOF
-	[ "${reported}" -le "${MAX_PROBLEMS}" ] || log_rejection "$1: ${reported} problems, showing ${MAX_PROBLEMS}"
+	if [ "${reported}" -gt "${MAX_PROBLEMS}" ]; then
+		warn "$1: ${reported} problems, showing ${MAX_PROBLEMS}"
+		rejection="${rejection}
+$1: ${reported} problems, showing ${MAX_PROBLEMS}"
+	fi
+	raise_fault "${rejection}"
 }
 
-# Warns rejection line $1 and appends it, after the harvest time, to the
-# rejection log, so the rules a file keeps breaking can be told apart.
-log_rejection() {
-	warn "$1"
-	rejections_log="${metrics_dir}/${REJECTIONS_LOG}"
-	printf '%s %s\n' "${harvested_at}" "$1" 2>/dev/null >>"${rejections_log}" ||
-		warn "cannot append to ${rejections_log}; expected a writable metrics folder; try checking its permissions"
+# Records rejection text $1 as a fault.raised event {what: $1}; a fault that
+# cannot be written is warned, since the rejection itself is warned already.
+raise_fault() {
+	new_temp_file
+	fault_body=${made}
+	jq -n --arg what "$1" '{what: $what}' </dev/null >"${fault_body}" ||
+		install_fault "cannot write the temp file ${fault_body}; expected free space in its folder"
+	sh "${events_script}" fault --effort "${effort}" --by "${PROG}" --body-file "${fault_body}" </dev/null >/dev/null ||
+		warn "events.sh could not record the rejection as a fault (its stderr is above)"
 }
 
-# Prints the view from the session files whose shape passes the validator.
+# Prints the view from each session's newest figures whose shape passes the
+# validator, as events.sh lists them after this harvest.
 show_view() {
+	read_newest_figures
 	file_count=0
 	set --
 	while IFS= read -r session; do
 		[ -n "${session}" ] || continue
-		session_file="${metrics_dir}/${session}.json"
-		[ -f "${session_file}" ] && [ ! -L "${session_file}" ] || continue
-		problems=$(jq -r -L "${own_dir}" 'include "metrics-validator"; metrics_session_shape_problems' "${session_file}" </dev/null 2>/dev/null) ||
-			problems='is not JSON; expected the session file metrics.sh writes'
+		newest_figures "${session}"
+		[ -n "${newest_path}" ] || continue
+		problems=$(jq -r -L "${own_dir}" 'include "metrics-validator"; metrics_session_shape_problems' "${body_file}" </dev/null 2>/dev/null) ||
+			problems='is not JSON; expected the body metrics.sh writes'
 		if [ -n "${problems}" ]; then
-			report_problems "${session_file}" "${problems}"
-			warn "${session_file} is left out of the view"
+			report_problems "${newest_path}" "${problems}"
+			warn "${newest_path} is left out of the view"
 			continue
 		fi
-		set -- "$@" --arg "p${file_count}" "${session_file}" --rawfile "f${file_count}" "${session_file}"
+		set -- "$@" --arg "p${file_count}" "${newest_path}" --rawfile "f${file_count}" "${body_file}"
 		file_count=$((file_count + 1))
 	done <<EOF
 ${sessions}
@@ -784,7 +811,7 @@ EOF
 		install_fault "jq failed printing the view; expected jq 1.6+ and the ${VIEW_SKILL} skill's view.jq; try jq --version"
 }
 
-# Removes this run's temp files and, last, the lock it took.
+# Removes this run's temp files.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	while IFS= read -r leftover; do
@@ -792,14 +819,9 @@ clean_up() {
 	done <<EOF
 ${temp_files}
 EOF
-	if [ -n "${lock_dir}" ]; then
-		rm -f "${lock_dir}/pid"
-		rmdir "${lock_dir}" 2>/dev/null ||
-			warn "could not remove the lock ${lock_dir}; expected it gone; try rm -rf '${lock_dir}'"
-	fi
 }
 
-temp_files='' lock_dir=''
+temp_files=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

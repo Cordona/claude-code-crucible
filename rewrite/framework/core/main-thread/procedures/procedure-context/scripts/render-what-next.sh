@@ -1,16 +1,17 @@
 #!/usr/bin/env sh
 # Renders the "what next?" gate, asked once an effort's spec is approved, so
 # the main thread never hand-formats it. The title is fixed; its input is a
-# plan file naming the effort's next version's docs folder and, after a
+# plan file naming the effort's draft docs folder and, after a
 # grill, the grill file; both paths print whole, so the human can open either.
 # Pipe its stdout into procedure-approval-gate's open-gate.sh.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 
 readonly PROG='render-what-next.sh'
-readonly PROCEDURE='procedure-context'
 readonly RENDER_LIB='human-view'
-# context-versions.sh's patterns are byte-wise only in the C locale.
+# The draft's docs folder of an effort, the one context.sh docs prints.
+readonly DOCS_PATH='drafts/main-thread/context/docs'
+# The shell's pattern checks stay byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
 
@@ -67,16 +68,17 @@ usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts
        sh ${PROG} --help | -h
 
 Prints the "what next?" gate, asking the human what follows a ready context,
-as Markdown naming the next version's docs folder. stdin and the folder's
+as Markdown naming the draft's docs folder. stdin and the folder's
 files are never read, the plan file and the grill file only read; no file is
 written.
 
 Options:
   --plan-file PATH    one JSON object, {"docs": PATH, "grill": PATH}, no
                       other field; grill only when a grill ran:
-                      docs: the effort's next version's docs folder, as
-                        context.sh docs printed it: an existing folder, not
-                        a symbolic link, with no control character
+                      docs: the effort's draft docs folder, as context.sh
+                        docs printed it (<effort>/${DOCS_PATH}): an
+                        existing folder, not a symbolic link, with no
+                        control character
                       grill: the absolute path of an existing regular file,
                         not a symbolic link, with no control character,
                         holding one JSON object whose questions, when
@@ -101,8 +103,8 @@ Exit codes:
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
   distro's jq package), the ${RENDER_LIB} skill's view.jq and the crucible
-  skill's scripts/lib/crucible-space.sh in the skills, context-versions.sh
-  beside this script; CRUCIBLE_HOME, the space (default \$HOME/.crucible).
+  skill's scripts/lib/crucible-space.sh in the skills; CRUCIBLE_HOME, the
+  space (default \$HOME/.crucible).
 EOF
 }
 
@@ -150,21 +152,13 @@ parse_args() {
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
 }
 
-script_dir() {
-	case $0 in
-		*/*) printf '%s' "${0%/*}" ;;
-		*) printf '.' ;;
-	esac
-}
-
 # Exits 5 unless file $1 is readable, naming skill $2 to install.
 require_skill_file() {
 	[ -f "$1" ] && [ -r "$1" ] ||
 		install_fault 5 "$3 missing; expected $1; install the $2 skill"
 }
 
-# Sets render_lib_dir and sources the version naming rule, with the space
-# rules it is built on.
+# Sets render_lib_dir and sources the space rules.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -173,12 +167,8 @@ load_dependencies() {
 	require_skill_file "${render_lib_dir}/view.jq" "${RENDER_LIB}" 'layout module'
 	space_lib="${skills_dir}/crucible/scripts/lib/crucible-space.sh"
 	require_skill_file "${space_lib}" crucible 'space rules'
-	versions_lib="$(script_dir)/context-versions.sh"
-	require_skill_file "${versions_lib}" "${PROCEDURE}" 'context version rule'
 	# shellcheck source=crucible-space.sh
 	. "${space_lib}"
-	# shellcheck source=context-versions.sh
-	. "${versions_lib}"
 }
 
 # Sets slurped to the plan file read into one array, so an empty file and
@@ -220,9 +210,8 @@ load_plan() {
 }
 
 # Prints one line per problem of the docs path; nothing when it names the
-# next version's docs folder of an effort of the space: <effort>/context/docs/
-# v<N+1>, v<N> its latest version (v1 before any), an existing folder, none
-# of its folders a symbolic link.
+# draft's docs folder of an effort of the space, <effort>/DOCS_PATH, an
+# existing folder, none of its folders a symbolic link.
 docs_problems() {
 	case ${docs} in
 		*[[:cntrl:]]*)
@@ -245,11 +234,9 @@ docs_problems() {
 		printf '%s\n' "docs is not in an effort folder of ${crucible_root}/efforts/: ${docs}; expected the folder context.sh docs printed"
 		return 0
 	fi
-	context_dir="${crucible_effort}/context"
-	context_find_latest_version "${context_dir}"
-	next_folder="${context_dir}/docs/v$((${context_version_latest_number:-0} + 1))"
+	next_folder="${crucible_effort}/${DOCS_PATH}"
 	if [ "${docs}" != "${next_folder}" ]; then
-		printf '%s\n' "docs is not the effort's next version's folder: ${docs}; expected ${next_folder}"
+		printf '%s\n' "docs is not the effort's draft docs folder: ${docs}; expected ${next_folder}"
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status says whether every folder is real

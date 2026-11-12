@@ -4,12 +4,12 @@
 # count. --argjson installed: the installed plugins, installed-plugins.jq's
 # {"<name>": {"kind": "language"|"framework"|"standard"|"procedure", "label":
 # str}, ...}.
-# The plan: {claude_session_id, agent, mode, tasks, plugins: {load: {language,
-# frameworks, standards, procedures}, skip: {standards, procedures},
-# load_reason}, replan, context: {effort, sha256}}, claude_session_id the
-# session that wrote it;
+# The plan: {agent, mode, tasks, plugins: {load: {language, frameworks,
+# standards, procedures}, skip: {standards, procedures}, load_reason}, replan,
+# context: {sha256}}; the session that wrote it is its event's;
 # each plugin entry {"plugin": str, "reason": str}; a key holding
-# nothing is left out, never null, [] or {}.
+# nothing is left out, never null, [] or {}. Each reason and load_reason are
+# kept in the plan for audit and not rendered.
 # Plugin rules: at most one language; a framework only with a language; skip
 # holds standards and procedures only; every installed standard and procedure
 # is in load or skip, once; load_reason only when nothing is loaded; a
@@ -31,7 +31,7 @@ def testing_plugin: "standard-testing";
 def lens_agent: "code-reviewer";
 # A step-10 re-plan may list, under skip, a plugin list-plugins.sh no longer prints.
 def dropped_reasons: "invalid", "uninstalled after approval";
-def top_keys: ["claude_session_id", "agent", "mode", "tasks", "plugins", "replan", "context"];
+def top_keys: ["agent", "mode", "tasks", "plugins", "replan", "context"];
 def plugins_keys: ["load", "skip", "load_reason"];
 def load_keys: ["language", "frameworks", "standards", "procedures"];
 def skip_keys: ["standards", "procedures"];
@@ -54,8 +54,6 @@ def empty_problem($at): problem($at; " "; "is empty; expected the key left out w
 
 def field_problems:
 	((keys - top_keys)[] | problem([.]; ": "; "unknown field; expected only \(top_keys | join(", "))")),
-	(if (.claude_session_id | type) == "string" and (.claude_session_id | test(claude_session_id_pattern)) then empty
-	 else problem(["claude_session_id"]; " "; "missing or not a session ID; expected a lowercase UUID, the session that wrote the plan") end),
 	(if .agent | text_ok | not then problem(["agent"]; " "; "missing or empty; expected a non-empty string")
 	 elif .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
@@ -124,15 +122,12 @@ def replan_problems:
 	elif .replan == "invalid" or .replan == "stop-recommended" then empty
 	else problem(["replan"]; " "; "unknown; expected \"invalid\" or \"stop-recommended\", or no replan field") end;
 
-# The context the plan pins: the effort whose next context version the
-# dispatch cuts, and the fingerprint procedure-context's context.sh freeze
-# --dry-run printed for it.
+# The context the plan pins: the fingerprint procedure-context's context.sh
+# freeze --dry-run printed for the effort's next context version.
 def context_problems:
-	if (.context | type) != "object" then problem(["context"]; " "; "missing or not an object; expected {\"effort\": absolute path, \"sha256\": 64 lowercase hex}")
+	if (.context | type) != "object" then problem(["context"]; " "; "missing or not an object; expected {\"sha256\": 64 lowercase hex}")
 	else .context
-		| ((keys - ["effort", "sha256"])[] | problem(["context", .]; ": "; "unknown field; expected only effort and sha256")),
-		  (if (.effort | type) == "string" and (.effort | startswith("/")) and (.effort | test("[[:cntrl:]]") | not) then empty
-		   else problem(["context", "effort"]; " "; "missing or not an absolute path; expected the effort folder's absolute path") end),
+		| ((keys - ["sha256"])[] | problem(["context", .]; ": "; "unknown field; expected only sha256")),
 		  (if (.sha256 | type) == "string" and (.sha256 | test(sha256_pattern)) then empty
 		   else problem(["context", "sha256"]; " "; "missing or not 64 lowercase hex digits; expected the fingerprint context.sh freeze --dry-run printed") end)
 	end;

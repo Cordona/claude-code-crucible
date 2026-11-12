@@ -8,7 +8,7 @@ Route by the token a stderr problem leads with, right after its `generate-agent-
 
 - **A problem led by `CONTEXT-CHANGED`:** the docs or pending entries changed since the plan was shown; take that plan back to step 7 with the fingerprint, as step 3 takes it, then run step 8 for it again. With a `PLUGIN` problem as well: one re-plan for both, as the `PLUGIN` bullet below sets for its plugin.
 - **A problem led by `NO-SPEC`, `DOCS-NAME` or `DOCS-SIZE`,** once per plan: run step 3, whose route settles it; take that plan back to step 7 with the fingerprint step 3 takes, then run step 8 for it again. A second one for that plan, or a stop at step 3: as SKILL.md step 8's any other exit.
-- **A problem led by `NO-GATE-RECORD`:** the approval is lost (its gate record expired or is gone); take that plan back to step 7 to ask it again, then run step 8 for it again.
+- **A problem led by `NO-GATE-RECORD`:** the plan's approval is not on record (`generate-agent-dispatch.sh --help`); take that plan back to step 7 to ask it again, then run step 8 for it again.
 - **A problem led by `PLUGIN`:** a plugin the plan approved is now uninstalled or invalid. Run step 2 again, then re-plan that plan as step 10's `PLUGIN` bullet below sets, with its stop lines and hand-backs; on Approve, run step 8 for it again.
 
 ## Step 10: hook denial
@@ -23,7 +23,7 @@ The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `fl
   - **`<name>`** in these lines is the plugin's install name, copied from the problem, never typed: the name after the words `plugin folder` in step 8's problem (`PLUGIN plugin folder language-shell uninstalled: …`) or the hook's, never from a path.
 - `CONTEXT-STALE`, with no `CONTEXT`: the context got a new version after the dispatch was written; take its plan back to step 7 with the fingerprint, as step 3 takes it, with any `PLUGIN` problem handled in the same re-plan as the bullet above sets; on Approve, steps 8–9 for it.
 - `CONTEXT`, alone or with `CONTEXT-STALE` or `PLUGIN`: hand it back as SKILL.md's Never sets; the human adds to the context through `procedure-context`.
-- `SEAT`, the dispatch's seat missing from `seats.json`, unreadable, not open or with no worktree: hand it back as SKILL.md's Never sets; the seats are the calling flow's.
+- `SEAT`, the dispatch's seat, as `seats.sh get` gives it, missing, not open or with no worktree: hand it back as SKILL.md's Never sets; the seats are the calling flow's.
 - Only `BACKGROUND`: the calling flow called Agent in the foreground; hand back the same `DISPATCH:` line, unchanged, for the calling flow to call again in the background.
 - Only `DISPATCH` or `AGENT`: run step 8 once more for that dispatch, and hand back its new `DISPATCH:` line.
 - A reason with no KIND (a fault of the hook, its install or the host): hand it back as SKILL.md's Never sets.
@@ -40,7 +40,7 @@ A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the reason s
 
 Then, by the plan's step-10 reasons:
 
-- **`invalid`:** add `--replan invalid` and pipe its renderer into `open-gate.sh --show-only` (SKILL.md's 7.2), with no note above it. Ask nothing. The show-only gate ends the turn, so hand the dispatch back as `stopped` at the human's next message.
+- **`invalid`:** add `--replan invalid` and pipe its renderer into `open-gate.sh --show-only` (SKILL.md's 7.2), with no note above it; then as SKILL.md's Never (a `--replan invalid` plan) sets.
 - **`uninstalled after approval`, for a dropped standard or procedure plugin whose description still matches the task** (as step 5 sets): add `--replan stop-recommended`. Never for a framework plugin: one dropped as `uninstalled after approval` is re-planned under its language plugin as step 5 sets, with no stop recommended.
 - **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; step 10's `CONTEXT` bullet above stops that dispatch. A `CONTEXT-STALE` denial with no `CONTEXT` is re-planned with the fingerprint, as step 10's `CONTEXT-STALE` bullet above sets.
 - **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

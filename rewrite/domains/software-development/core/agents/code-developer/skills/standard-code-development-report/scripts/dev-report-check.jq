@@ -12,17 +12,17 @@ def report_keys: ["summary", "verification", "deviations", "decisions", "noticed
 def report_derived_keys: {
 	"files": "git gives the files",
 	"toolchain": "the build files give it",
-	"plugins": "the commit trailers give them",
+	"plugins": "the dispatch gives them",
 	"mode": "the commit kind gives it",
 	"round": "the commit subject gives it",
 	"dispatch": "the dispatch gives it",
 	"started": "the dispatch gives it",
 	"finished": "the commit date gives it",
-	"effort": "seats.json gives it",
-	"seat": "seats.json gives it",
-	"agent_id": "seats.json gives it",
-	"agent-id": "seats.json gives it",
-	"base": "seats.json gives it",
+	"effort": "the seat gives it",
+	"seat": "the seat gives it",
+	"agent_id": "the seat gives it",
+	"agent-id": "the seat gives it",
+	"base": "the seat gives it",
 	"behavior": "dropped from the contract",
 	"focus": "dropped from the contract",
 	"review_responses": "a fix round answers in answers"
@@ -99,14 +99,14 @@ def report_is_url: test("^[A-Za-z][A-Za-z0-9+.-]*://");
 # points into the context, never into the worktree.
 def report_is_context_entry: test("\\A(paths|links|notes)\\[");
 def report_is_location: (report_is_url | not) and (report_is_context_entry | not) and test(":-?[0-9]+$");
-# The problem of a context entry: a note, which a context version never holds, or a
-# docs folder line not in the paths[<n>]/<file>:<line> form.
+# The problem of a context entry: a note, which a context version never holds, or an
+# entry not in the paths[<n>], links[<n>] or paths[<n>]/<file>:<line> form.
 def report_context_entry_problem:
 	if report_is_context_entry | not then empty
 	elif test("\\Anotes\\[") then "names a note; the context has no notes: point into a docs folder as paths[<n>]/<file>:<line>"
-	elif test("\\Apaths\\[[^]]*\\]/") | not then empty
+	elif test("\\A(paths|links)\\[[1-9][0-9]{0,8}\\]\\z") then empty
 	elif test("\\Apaths\\[[1-9][0-9]{0,8}\\]/[^/[:cntrl:]]+:[1-9][0-9]{0,8}\\z") and (test("\\]/\\.\\.?:") | not) then empty
-	else "is not paths[<n>]/<file>:<line>; n and line count from 1, <file> a name in that docs folder, e.g. paths[1]/spec.md:12"
+	else "is not paths[<n>], links[<n>] or paths[<n>]/<file>:<line>; n and line count from 1, <file> a name in that docs folder, e.g. paths[1] or paths[1]/spec.md:12"
 	end;
 def report_split_location: capture("^(?<path>.*):(?<line>-?[0-9]+)$") | .line |= tonumber;
 
@@ -209,6 +209,8 @@ def report_value_problems($list; $key; $files):
 		| report_at_problem($files) | "\($shown) \(.)\($or_drop)"
 	elif $key == "from" or $key == "location" then
 		report_shown as $shown | (report_context_entry_problem // report_maybe_location_problem($files)) | "\($shown) \(.)"
+	elif $key == "ref" then
+		report_shown as $shown | report_context_entry_problem | "\($shown) \(.)"
 	else empty
 	end;
 
@@ -239,6 +241,8 @@ def report_item_problems($list; $rule; $files):
 				(if $key | IN($required[]) then empty
 				else "\($where).\($key) is \(tojson); leave the key out when there is nothing to say"
 				end)
+			elif $list == "verification" and $key == "command" and $item.result == "not_run" then
+				"\($where).command is set but result is not_run; leave command out when nothing ran"
 			else report_value_line("\($where).\($key)"; $list; $key; $files)
 			end)
 	end;

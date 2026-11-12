@@ -1,15 +1,14 @@
 #!/usr/bin/env sh
 # Starts, lists and finds the effort folders of the Crucible space, one folder
 # per effort, <space>/efforts/<id>-<name>/, and keeps each effort's state as
-# write-once items in its states/ folder. It never deletes or renames anything
-# in an effort folder, except that start removes what it just made when it
-# fails, and a state change removes its own empty item when it cannot fill it.
+# effort.* events, written through the crucible skill's events.sh. It never
+# deletes or renames anything in an effort folder, except that start removes
+# the folder it just made when it fails.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='effort.sh'
-readonly KIND='states'
 readonly CRUCIBLE_SKILL='crucible'
 readonly METRICS_SKILL='procedure-metrics'
 # The default list keeps the newest efforts on one screen; --all lifts it.
@@ -20,72 +19,13 @@ readonly MAX_START_ATTEMPTS=5
 # Unknown arguments are echoed back only up to this length, so a long or
 # hostile value never floods a diagnostic.
 readonly MAX_SHOWN_CHARS=40
-# The exit of a state change refused because another call holds the lock.
+# The exit of a state change refused because the events lock was held too long.
 readonly LOCKED_EXIT=6
 # The exit of a state change the moves do not allow.
 readonly BAD_MOVE_EXIT=7
-# Item IDs carry the second only, so a new item waits until the clock is past
-# the newest one's second; a clock still behind after this many seconds was
-# set back, and waiting longer would not help.
-readonly MAX_CLOCK_WAIT_SECONDS=2
-# A reader that finds the newest item still empty while a writer holds the
-# lock waits this many times one second for the writer to fill it.
-readonly MAX_EMPTY_ITEM_WAITS=3
-# Bounds stderr so a fault stays readable; the rest is counted.
-readonly MAX_PROBLEMS=20
 # Claude Code writes the transcript line of the API call that ran this script
 # only after the call returns; the harvest waits this long so it counts it.
 readonly HARVEST_DELAY_SECONDS=10
-
-# Reads the $count items passed as $ARGS.named pairs p<n> (the path) and
-# i<n> (its text) into $items, each {path, parsed, problems}: its problems
-# against effort-state-validator.jq, plus a state other than its file name's.
-# The head of ITEMS_JQ and LIST_JQ; the program is single-quoted on purpose:
-# its $ signs are jq's.
-# shellcheck disable=SC2016
-readonly READ_ITEMS_JQ='include "effort-state-validator";
-$ARGS.named as $named
-| [range(0; $count) | {path: $named["p\(.)"], parsed: [$named["i\(.)"] | try fromjson]}
-	| .path as $path
-	| ($path | sub("^.*/[0-9]{8}T[0-9]{6}-[0-9a-f]{4}-"; "") | sub("[.]json$"; "")) as $label
-	| .problems = [if (.parsed | length) == 0 then "is not one JSON value; expected a state item effort.sh writes"
-		else .parsed[0]
-			| (effort_state_item_problems),
-			  (if (.state | effort_is_state) and .state != $label then "holds state \(.state) under the name \($label); expected the state its file name holds" else empty end)
-		end]] as $items'
-
-# Prints each item's state, one per line in order; or, when any item is
-# broken, a "!" line and then one "<path>: <problem>" line per problem.
-# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly ITEMS_JQ="${READ_ITEMS_JQ}"'
-| [$items[] | .path as $path | .problems[] | "\($path): \(.)"] as $problems
-| if ($problems | length) == 0 then $items[].parsed[0].state
-  else "!", $problems[:$max][],
-	(if ($problems | length) > $max then "\($problems | length) problems, showing \($max)" else empty end)
-  end'
-
-# list: prints one line per item in order: its state; or, for a broken item,
-# "unknown" and then one line naming it and its first problem.
-# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly LIST_JQ="${READ_ITEMS_JQ}"'
-| $items[]
-| if (.problems | length) == 0 then .parsed[0].state
-  else "unknown",
-	"\(.path): \(.problems[0])\(if (.problems | length) > 1 then " (and \(.problems | length - 1) more)" else "" end)"
-  end'
-
-# Prints {item} for the move from $from ("" for the first item, which start
-# writes) to $to, pruned so an empty from is left out, its at left for the
-# write to set; or {refusal} when the moves do not allow it.
-# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly MOVE_JQ='include "effort-state-validator";
-include "prune";
-{open: "reopen", paused: "pause", completed: "complete", dropped: "drop"} as $commands
-| if $from == "" or effort_move_ok($from; $to) then
-	{item: ({state: $to, from: (if $from == "" then null else $from end), at: "", claude_session_id: $session_id} | prune)}
-  elif $from == $to then {refusal: "bad move: \($from) -> \($to); the effort is already \($to)"}
-  else {refusal: "bad move: \($from) -> \($to); a \($from) effort can only move to \(effort_moves[$from] | map("\(.) (\($commands[.]))") | join(" or "))"}
-  end'
 
 usage() {
 	print_block <<'EOF'
@@ -99,18 +39,17 @@ EOF
 }
 
 # NAME's rule and its 40 mirror crucible_effort_name_max_chars and
-# crucible_effort_name_rule (lib/crucible-space.sh), and the moves mirror
-# effort_moves (effort-state-validator.jq), which callers pick a move from;
-# --help prints before either loads, so update this when they change.
+# crucible_effort_name_rule (lib/crucible-space.sh); --help prints before it
+# loads, so update this when they change.
 help_text() {
 	usage
 	print_block <<'EOF'
 
 Starts, lists and finds the Crucible space's effort folders,
-<space>/efforts/<id>-<name>/, and keeps each effort's state: open, paused,
-completed or dropped. One item per change in the effort's states/ folder; the
-newest is the state, none is open. Moves: open -> paused|completed|dropped,
-paused -> open|completed|dropped, completed|dropped -> open.
+<space>/efforts/<id>-<name>/, and keeps each effort's state, one of
+effort_states in effort-state-validator.jq. Each change is one effort.* event
+in the effort's events/; the newest is the state. Event types and moves: see
+effort-state-validator.jq (effort_type_states, effort_moves).
 
   ID      <YYYYMMDDTHHMMSS>-<hex>: the local start time and 4 random lowercase
           hex digits
@@ -121,55 +60,51 @@ paused -> open|completed|dropped, completed|dropped -> open.
   --all            list: every effort, not only the newest 20
   VALUE            path: a full ID, its 4 hex digits or an exact NAME
   CLAUDE_CODE_SESSION_ID  start and the moves: required; the session ID
-                   Claude Code sets, a lowercase UUID, stored as each new
-                   item's claude_session_id; list, path, state: not read
+                   Claude Code sets, a lowercase UUID
   CRUCIBLE_HOME    the space; default $HOME/.crucible
   CLAUDE_CONFIG_DIR  holds skills/ and projects/; default $HOME/.claude
 
 stdout on exit 0, in order:
   EFFORT: <folder>  start only: the new effort folder, absolute
-  STATE: <state>    start, the moves and state: the effort's state after the
-                    call (start: open)
-  ITEM: <path>      a state item, absolute: start and the moves print the new
-                    one; state one per item, oldest first, none when none
+  STATE: <state>    start, the moves and state: the state after the call
+  EVENT: <path>     start and the moves: the new event; state: each effort.*
+                    event, oldest first
   list:  one "<id>-<name> <state>" per line, newest first; <state> unknown
-         when its state items are broken
+         for a folder with no events (an effort from before events)
   path:  the matching effort's folder, absolute, one line
 stderr: "effort.sh:" lines to show the human, except:
-  list, over 20 and no --all: "effort.sh: showing 20 of <N>; add --all for
-    every effort"
+  list, over 20 and no --all:
+    "effort.sh: showing 20 of <N>; add --all for every effort"
   path, exit 1 with matches: each <id>-<name>, unprefixed, newest first
-  list, per unknown effort: "effort.sh: space: <file>: <why>", exit 0
 
-pause, complete and drop start procedure-metrics' harvest, detached.
-start creates the effort folder, and the space and efforts/ when
-missing; a failed start leaves no new folder unless stderr names it. A state
-change adds one item, whole; refused or failed, it adds none. list,
-path and state write nothing.
+pause, complete and drop start procedure-metrics' harvest, detached, when
+procedure-metrics is installed and nohup is on PATH.
+start creates the effort folder, and the space and efforts/ when missing; a
+failed start removes its new folder unless that removal fails (stderr then
+names the folder). Nothing else is left behind but, after a move, a fault in
+events/faults/ when events.sh refuses or times out (exits 5, 6, 7) (a SIGKILL
+aside); no existing event or fault is ever deleted, renamed or rewritten.
+list, path and state write nothing.
 
 Exit codes:
   0  done; read stdout
-  1  path: no effort matches VALUE, or several do; with matches on stderr,
-     ask which one is meant; with none, run list
-  2  usage error, or an unusable CRUCIBLE_HOME or HOME, or (start and the
-     moves) CLAUDE_CODE_SESSION_ID unset, empty, not a lowercase UUID or
-     naming no session transcript; nothing written; show the human stderr,
-     and stop
-     effort.sh: bad name:  start: NAME breaks the rule; pick another name
-  4  the space, an effort folder or a state item is unusable; show the human
-     stderr, and stop
+  1  path: not exactly one effort matches VALUE; with efforts on stderr, ask
+     which one is meant; with none, run list
+  2  usage error; nothing written; show the human stderr, and stop
+     effort.sh: bad name  start: NAME breaks the NAME rule; pick another NAME
+       and rerun once, else show the human stderr
+  4  the space or the effort can't be used; show the human stderr, and stop
   5  install fault; show the human stderr, and stop
-  6  another call is changing the effort's state, or a killed run left its
-     lock; nothing written; rerun once, else show the human stderr
-  7  the move is not allowed; nothing written; show the human stderr
+  6  the events lock stayed held; no event written; rerun once, else show the
+     human stderr
+  7  the move is not allowed; no event written; show the human stderr, and stop
   129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
 
-Dependencies (a missing one exits 5):
+Dependencies:
   POSIX sh; date, od (with /dev/urandom), mkdir, chmod, rmdir, ls, sort,
-    mktemp, mv, rm, sleep; jq 1.6+ but for path
-  in the skills: the crucible skill's
-    crucible.sh, lib/crucible-space.sh and lib/prune.jq;
-    effort-state-validator.jq beside this script
+    mktemp, rm, sleep; jq 1.6+ but for path; nohup for the harvest
+  the crucible skill's scripts/events.sh and scripts/lib/crucible-space.sh;
+    effort-state-validator.jq and effort-move-guard.jq beside this script
 EOF
 }
 
@@ -221,26 +156,23 @@ main() {
 			usage_error "unknown command: ${shown}; expected start, pause, complete, drop, reopen, state, list, path or --help"
 			;;
 	esac
-	# Checked before a command's arguments, so a missing tool or space rules
-	# exit 5 ahead of any usage error in them.
 	check_tools
 	load_dependencies
 	resolve_root
 	efforts_dir="${root}/efforts"
 	case ${command} in
 		start) run_start "$@" ;;
-		pause) run_move paused "$@" ;;
-		complete) run_move completed "$@" ;;
-		drop) run_move dropped "$@" ;;
-		reopen) run_move open "$@" ;;
+		pause) run_move effort.paused "$@" ;;
+		complete) run_move effort.completed "$@" ;;
+		drop) run_move effort.dropped "$@" ;;
+		reopen) run_move effort.reopened "$@" ;;
 		state) run_state "$@" ;;
 		list) run_list "$@" ;;
 		*) run_path "$@" ;;
 	esac
 }
 
-# Sets shown to a value fit to echo in a diagnostic: the value itself when it
-# is short and plain, else a description, so no control character reaches a log.
+# Sets shown to a value fit to echo in a diagnostic.
 show_safely() {
 	case $1 in
 		'') shown="''" ;;
@@ -256,39 +188,49 @@ show_safely() {
 }
 
 check_tools() {
-	for tool in date od mkdir chmod rmdir ls sort mktemp mv rm sleep; do
+	for tool in date od mkdir chmod rmdir ls sort mktemp rm sleep; do
 		command -v "${tool}" >/dev/null 2>&1 ||
 			install_fault "${tool} missing; expected it on PATH; try installing the base-system tools (coreutils on Linux)"
 	done
 	[ "${command}" != path ] || return 0
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 'jq missing; expected jq 1.6+ on PATH; try brew install jq (macOS) or the distro jq package'
-	jq_version=$(jq --version 2>/dev/null) || install_fault 'jq --version failed; expected jq 1.6+; try reinstalling jq'
-	case ${jq_version} in
-		jq-1.[6-9]* | jq-1.[1-9][0-9]* | jq-[2-9]*) ;;
-		*) install_fault "jq is ${jq_version}; expected jq 1.6+; try upgrading jq" ;;
+}
+
+# Sources the crucible skill's space rules and sets own_dir and events_script,
+# or exits 5.
+load_dependencies() {
+	crucible_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts"
+	space_lib="${crucible_dir}/lib/crucible-space.sh"
+	events_script="${crucible_dir}/events.sh"
+	require_file "${space_lib}" 'space rules' "try installing the ${CRUCIBLE_SKILL} skill"
+	case $0 in
+		*/*) own_dir=${0%/*} ;;
+		*) own_dir=. ;;
+	esac
+	case ${command} in
+		path) ;;
+		list) require_file "${own_dir}/effort-state-validator.jq" 'state rules' 'try reinstalling procedure-effort' ;;
+		*)
+			require_file "${own_dir}/effort-state-validator.jq" 'state rules' 'try reinstalling procedure-effort'
+			require_file "${own_dir}/effort-move-guard.jq" 'move guard' 'try reinstalling procedure-effort'
+			require_file "${events_script}" 'events.sh' "try installing the ${CRUCIBLE_SKILL} skill"
+			;;
+	esac
+	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
+	. "${space_lib}"
+	case ${command} in
+		path | start) ;;
+		*) load_type_states ;;
 	esac
 }
 
-# Sources the crucible skill's space rules and sets own_dir (the validator),
-# crucible_lib_dir (prune.jq) and crucible_script, or exits 5.
-load_dependencies() {
-	crucible_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts"
-	crucible_lib_dir="${crucible_dir}/lib"
-	crucible_script="${crucible_dir}/crucible.sh"
-	space_lib="${crucible_lib_dir}/crucible-space.sh"
-	require_file "${space_lib}" 'space rules' "try installing the ${CRUCIBLE_SKILL} skill"
-	if [ "${command}" != path ]; then
-		case $0 in
-			*/*) own_dir=${0%/*} ;;
-			*) own_dir=. ;;
-		esac
-		require_file "${own_dir}/effort-state-validator.jq" 'state item shape' 'try reinstalling procedure-effort'
-		require_file "${crucible_lib_dir}/prune.jq" 'prune module' "try installing the ${CRUCIBLE_SKILL} skill"
-		require_file "${crucible_script}" 'crucible.sh' "try installing the ${CRUCIBLE_SKILL} skill"
-	fi
-	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
-	. "${space_lib}"
+# Sets type_states to effort_type_states of effort-state-validator.jq, one
+# "<type> <state>" per line, so every state read uses that one definition.
+load_type_states() {
+	type_states=$(jq -nr -L "${own_dir}" \
+		'include "effort-state-validator"; effort_type_states | to_entries[] | "\(.key) \(.value)"' </dev/null) ||
+		install_fault 'jq failed on the state rules; expected jq 1.6+ and effort-state-validator.jq; try reinstalling procedure-effort'
 }
 
 # Exits 5 unless file $1, named $2, is readable; $3 is the fix.
@@ -296,7 +238,6 @@ require_file() {
 	[ -f "$1" ] && [ -r "$1" ] || install_fault "$2 missing; expected $1; $3"
 }
 
-# Sets root from the space rules, or exits 2 or 4 with their problem.
 resolve_root() {
 	# shellcheck disable=SC2310 # its status says whether the root is usable; the fault is read below
 	if ! crucible_resolve_root; then
@@ -334,18 +275,16 @@ run_start() {
 	create_space_folder "${efforts_dir}"
 	start_effort
 	effort=${folder}
-	states_dir="${effort}/${KIND}"
 	started_folder=${folder}
-	take_lock
-	collect_items
-	write_item open ''
+	body_file=$(mktemp) || install_fault 'mktemp failed; expected a writable temp folder; try checking TMPDIR'
+	printf '{"format":1}\n' >"${body_file}"
+	append_event effort.opened
 	started_folder=''
 	printf 'EFFORT: %s\n' "${folder}"
-	printf 'STATE: open\nITEM: %s\n' "${item_file}"
+	printf 'STATE: open\nEVENT: %s\n' "${event_file}"
 }
 
-# Exits 2 unless name keeps the space rules' effort NAME rule; the checks
-# after the rule's own test only say why it failed.
+# Exits 2 unless name keeps the space rules' effort NAME rule.
 check_name() {
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_is_effort_words "${name}" && return 0
@@ -365,16 +304,13 @@ check_name() {
 	bad_value "bad name: it breaks the effort name rule; expected the NAME of ${crucible_effort_name_rule}; try a slug such as prune-dry-run"
 }
 
-# Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
-# before anything is created.
+# Sets session_id from CLAUDE_CODE_SESSION_ID, or exits 2 before anything is created.
 check_session() {
 	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
 	crucible_check_session || bad_value "${crucible_session_problem}"
 	session_id=${crucible_session_id}
 }
 
-# Sets dash_fault to why the dashes of $1 break the word rule (words joined by
-# single dashes), or to empty when they keep it.
 describe_dash_fault() {
 	case $1 in
 		-*) dash_fault='it starts with -' ;;
@@ -384,7 +320,6 @@ describe_dash_fault() {
 	esac
 }
 
-# Sets bad_char to a description of the name's first character outside the rule.
 describe_first_bad_char() {
 	valid_prefix=${name%%[!abcdefghijklmnopqrstuvwxyz0123456789-]*}
 	from_bad=${name#"${valid_prefix}"}
@@ -397,8 +332,7 @@ describe_first_bad_char() {
 	esac
 }
 
-# Creates a folder of the space, and any missing parent, when it is missing;
-# the umask makes each mode 700.
+# Creates a folder of the space, and any missing parent, when it is missing.
 create_space_folder() {
 	refuse_link "$1"
 	if [ -e "$1" ] && [ ! -d "$1" ]; then
@@ -436,9 +370,7 @@ start_effort() {
 	done
 }
 
-# Sets id_holders to the number of entries in efforts/ that carry the ID. Each
-# start counts after its own mkdir, so of two racing for one ID at most one
-# sees itself alone.
+# Sets id_holders to the number of entries in efforts/ that carry the ID.
 count_id_holders() {
 	id_holders=0
 	for holder in "${efforts_dir}/${id}"-*; do
@@ -447,33 +379,73 @@ count_id_holders() {
 	done
 }
 
-# pause, complete, drop and reopen: moves the effort to state $1 under its lock.
+# pause, complete, drop and reopen: moves the effort with event type $1 to
+# the state effort_type_states gives it. The move is checked here for a clear
+# refusal, and again by the guard under the events lock, so two moves never
+# race.
 run_move() {
-	target=$1
+	event_type=$1
 	shift
+	state_of_type "${event_type}"
+	[ -n "${type_state}" ] ||
+		install_fault "the state rules give ${event_type} no state; expected it in effort_type_states of effort-state-validator.jq; try reinstalling procedure-effort"
+	target=${type_state}
 	parse_effort_option "$@"
 	check_session
-	take_lock
-	read_newest_state
-	write_item "${target}" "${current_state}"
-	printf 'STATE: %s\nITEM: %s\n' "${target}" "${item_file}"
+	read_state
+	refusal=$(jq -nr -L "${own_dir}" --arg from "${current_state}" --arg to "${target}" \
+		'include "effort-state-validator"; effort_move_refusal($from; $to)' </dev/null) ||
+		install_fault 'jq failed on the move rules; expected jq 1.6+ and effort-state-validator.jq; try reinstalling procedure-effort'
+	if [ -n "${refusal}" ]; then
+		warn "${refusal}"
+		exit "${BAD_MOVE_EXIT}"
+	fi
+	body_file=$(mktemp) || install_fault 'mktemp failed; expected a writable temp folder; try checking TMPDIR'
+	jq -nc --arg from "${current_state}" '{from: $from}' >"${body_file}" </dev/null ||
+		install_fault 'jq failed building the move; expected jq 1.6+; try brew install jq (macOS) or the distro jq package'
+	append_event "${event_type}"
+	printf 'STATE: %s\nEVENT: %s\n' "${target}" "${event_file}"
 	[ "${target}" = open ] || start_metrics_harvest
 }
 
+# Appends an event of type $1 with body_file through events.sh; sets event_file.
+append_event() {
+	if event_file=$(sh "${events_script}" append --effort "${effort}" --type "$1" --by "${PROG}" \
+		--body-file "${body_file}" --session "${session_id}" --guard "${own_dir}/effort-move-guard.jq" </dev/null); then
+		append_status=0
+	else
+		append_status=$?
+	fi
+	rm -f "${body_file}"
+	body_file=''
+	case ${append_status} in
+		0) ;;
+		3)
+			warn 'the move was refused under the events lock (events.sh stderr above); expected a move the effort state allows; try effort.sh state for the state now'
+			exit "${BAD_MOVE_EXIT}"
+			;;
+		6) exit "${LOCKED_EXIT}" ;;
+		4) space_fault "events.sh could not write the event (its stderr is above); expected a writable ${effort}/events/; try checking its permissions" ;;
+		*) install_fault "events.sh exited ${append_status} (its stderr is above); expected exit 0; try reinstalling the ${CRUCIBLE_SKILL} skill" ;;
+	esac
+}
+
 # Starts procedure-metrics' harvest of the effort detached, when it is
-# installed, so the token figures follow the state change; nothing waits for
-# it, and its output and exit never reach this call's. The harvest waits
-# HARVEST_DELAY_SECONDS first; the paths reach the inner sh as arguments.
+# installed; nothing waits for it. The harvest waits HARVEST_DELAY_SECONDS first.
 start_metrics_harvest() {
 	metrics_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${METRICS_SKILL}/scripts/metrics.sh"
 	[ -f "${metrics_script}" ] && [ -r "${metrics_script}" ] || return 0
+	if ! command -v nohup >/dev/null 2>&1; then
+		warn "nohup missing, so the ${METRICS_SKILL} harvest did not start; expected nohup on PATH; try installing the base-system tools (coreutils on Linux)"
+		return 0
+	fi
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are the inner sh's
 	nohup sh -c 'sleep "$1"; exec sh "$2" harvest --effort "$3"' metrics-harvest \
 		"${HARVEST_DELAY_SECONDS}" "${metrics_script}" "${effort}" </dev/null >/dev/null 2>&1 &
 }
 
 # Sets effort from the one --effort FOLDER option once it names an effort
-# folder of the space, and states_dir to its states/ folder.
+# folder of the space.
 parse_effort_option() {
 	effort='' effort_given=false
 	while [ "$#" -gt 0 ]; do
@@ -492,7 +464,7 @@ parse_effort_option() {
 	done
 	[ "${effort_given}" = true ] || usage_error "--effort missing; expected ${command} --effort FOLDER"
 	case ${effort} in
-		*[[:cntrl:]]*) bad_value '--effort holds a control character; expected the effort folder effort.sh start printed' ;;
+		*[[:cntrl:]]*) bad_value '--effort holds a control character; expected the effort folder effort.sh start printed; try the folder effort.sh path prints' ;;
 		*) ;;
 	esac
 	# shellcheck disable=SC2310 # its status says whether the folder passed; the fault is read below
@@ -501,220 +473,47 @@ parse_effort_option() {
 		space_fault "${crucible_effort_refusal}"
 	fi
 	effort=${crucible_effort}
-	states_dir="${effort}/${KIND}"
 }
 
-# Takes the effort's lock, a folder only one call can create, so one state
-# change at a time reads the newest item and adds the next. clean_up removes
-# it; a killed run leaves it, and the refusal says how to remove it.
-take_lock() {
-	lock_path="${effort}/.${KIND}.lock"
-	if mkdir "${lock_path}" 2>/dev/null; then
-		lock_dir=${lock_path}
-		return 0
-	fi
-	[ -d "${lock_path}" ] && [ ! -L "${lock_path}" ] ||
-		space_fault "cannot create the lock ${lock_path}; expected a writable effort folder; try checking its permissions"
-	warn "${effort} is locked by ${lock_path}; expected one state change at a time; try again once the other call has ended; if none is running, a killed run left the lock: remove it with rmdir '${lock_path}', then rerun"
-	exit "${LOCKED_EXIT}"
-}
-
-# Sets newest_item (empty for none), newest_digits and newest_id from the
-# effort's state items, and items to every item's file name, one per line, in
-# folder order. Exits 4 on a states/ that is not a readable real folder or
-# holds anything but items; dot entries (temp files) are skipped.
-collect_items() {
-	newest_item='' newest_digits=0 newest_hex=0 newest_id='' items=''
-	refuse_link "${states_dir}"
-	[ -e "${states_dir}" ] || return 0
-	[ -d "${states_dir}" ] && [ -r "${states_dir}" ] && [ -x "${states_dir}" ] ||
-		space_fault "${states_dir} is not a readable folder; expected the states folder effort.sh writes; try checking its permissions"
-	for item_path in "${states_dir}"/*; do
-		[ -e "${item_path}" ] || [ -L "${item_path}" ] || continue
-		item_name=${item_path##*/}
-		# shellcheck disable=SC2310 # a pure test; its status is the answer
-		if ! is_item_name "${item_name}" || [ -L "${item_path}" ] || [ ! -f "${item_path}" ] || [ ! -r "${item_path}" ]; then
-			space_fault "${item_path} is not a readable state item named <ID>-<state>.json, or is a symbolic link; expected only the items effort.sh writes in ${states_dir}; try moving it aside"
-		fi
-		items="${items}${item_name}
+# Sets effort_events to the effort's effort.* event paths, oldest first, one
+# per line, and current_state to the newest one's state; exits 4 for an
+# effort with no events, one from before events.
+read_state() {
+	events_dir="${effort}/events"
+	[ -f "${events_dir}/000001-effort.opened.json" ] ||
+		space_fault "${effort} has no events/000001-effort.opened.json; expected an effort this version of Crucible started; an effort from before events cannot be used; try another effort, or start a new one"
+	effort_events='' newest_type=''
+	for named in "${events_dir}"/[0-9][0-9][0-9][0-9][0-9][0-9]-effort.*.json; do
+		[ -f "${named}" ] || continue
+		effort_events="${effort_events}${named}
 "
-		keep_if_newest
+		newest_type=${named##*/}
+		newest_type=${newest_type#*-}
+		newest_type=${newest_type%.json}
 	done
+	state_of_type "${newest_type}"
+	[ -n "${type_state}" ] ||
+		space_fault "no effort.* event names a known state in ${effort}/events; expected effort.opened first; try showing the human the event files in events/, which only events.sh writes"
+	current_state=${type_state}
 }
 
-# Succeeds when file name $1 is a state item's, <ID>-<label>.json, and sets
-# name_id to its ID.
-is_item_name() {
-	# shellcheck disable=SC2310 # pure tests; their status is the answer
-	crucible_split_id "$1" && [ "${crucible_name_rest%.json}" != "${crucible_name_rest}" ] &&
-		crucible_is_label "${crucible_name_rest%.json}" || return 1
-	name_id=${crucible_name_id}
-}
-
-# Makes item_path the newest item when its ID is later than the newest so
-# far. IDs are local time then hex, compared as numbers so the newest needs
-# no sort.
-keep_if_newest() {
-	id_stamp=${name_id%-*}
-	id_digits=${id_stamp%T*}${id_stamp#*T}
-	id_hex=$((0x${name_id#*-}))
-	if [ -z "${newest_item}" ] || [ $((id_digits > newest_digits)) -eq 1 ] ||
-		{ [ $((id_digits == newest_digits)) -eq 1 ] && [ $((id_hex > newest_hex)) -eq 1 ]; }; then
-		newest_item=${item_path} newest_digits=${id_digits} newest_hex=${id_hex} newest_id=${name_id}
-	fi
-}
-
-# Sets current_state from the effort's newest item, open when it has none;
-# exits 4 when the item is empty or breaks the item shape.
-read_newest_state() {
-	read_newest_item
-	current_state=open
-	[ -n "${newest_item}" ] || return 0
-	item_states "${newest_item}"
-	current_state=${states_read}
-}
-
-# Sets states_read to the state of each item path given, one per line, in
-# order, each checked against effort-state-validator.jq; exits 4 naming the
-# items that break it.
-item_states() {
-	item_count=0
-	for read_path do
-		set -- "$@" --arg "p${item_count}" "${read_path}" --rawfile "i${item_count}" "${read_path}"
-		shift
-		item_count=$((item_count + 1))
-	done
-	states_read=$(jq -n -r -L "${own_dir}" --argjson count "${item_count}" --argjson max "${MAX_PROBLEMS}" "$@" "${ITEMS_JQ}" </dev/null) ||
-		install_fault 'jq failed on the state items; expected jq 1.6+ and effort-state-validator.jq; try jq --version, then rerun'
-	case ${states_read} in
-		'!'*) ;;
-		*) return 0 ;;
-	esac
-	while IFS= read -r problem; do
-		[ "${problem}" = '!' ] || warn "space: ${problem}"
+# Sets type_state to the state effort.* event type $1 records, or to empty
+# for a type type_states does not hold.
+state_of_type() {
+	type_state=''
+	while IFS=' ' read -r known_type known_state; do
+		[ "${known_type}" != "$1" ] || type_state=${known_state}
 	done <<EOF
-${states_read}
+${type_states}
 EOF
-	space_fault 'a state item is broken (named above); expected the items effort.sh writes; check them by hand; no state is guessed'
-}
-
-# Adds the item for the move from $2 ("" for the first) to $1, under the lock:
-# waits until the clock is past the newest item's second, has crucible.sh
-# allocate the file, and fills it through a temp file beside it once the
-# content passes the validator. Exits 7 on a move the moves do not allow.
-write_item() {
-	move=$(jq -n -c -L "${own_dir}" -L "${crucible_lib_dir}" --arg from "$2" --arg to "$1" \
-		--arg session_id "${session_id}" "${MOVE_JQ}" </dev/null) ||
-		install_fault 'jq failed building the state item; expected jq 1.6+, prune.jq and effort-state-validator.jq; try jq --version'
-	refusal=$(printf '%s\n' "${move}" | jq -r '.refusal // empty') ||
-		install_fault 'jq failed reading the move; expected jq 1.6+; try jq --version'
-	if [ -n "${refusal}" ]; then
-		warn "${refusal}"
-		exit "${BAD_MOVE_EXIT}"
-	fi
-	wait_past_newest
-	allocate_item "$1"
-	at=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || install_fault 'date failed; expected the UTC time; try date -u'
-	temp_file=$(mktemp "${states_dir}/.${item_file##*/}.XXXXXX") ||
-		space_fault "cannot create a temp file in ${states_dir}; expected a writable folder; try checking its permissions and free space"
-	printf '%s\n' "${move}" | jq --arg at "${at}" '.item | .at = $at' >"${temp_file}" ||
-		space_fault "cannot write the temp file ${temp_file}; expected the item written; try checking free space"
-	check_written_item
-	mv -f "${temp_file}" "${item_file}" ||
-		space_fault "cannot move the temp file onto ${item_file}; expected the item in place; try checking the permissions of ${states_dir}"
-	temp_file='' allocated_item=''
-}
-
-# Waits, at most MAX_CLOCK_WAIT_SECONDS, until the local time is past the
-# newest item's second, so the new item's ID sorts after it.
-wait_past_newest() {
-	[ -n "${newest_item}" ] || return 0
-	waited=0
-	while :; do
-		set_clock_digits
-		[ $((clock_digits > newest_digits)) -eq 0 ] || return 0
-		[ "${waited}" -lt "${MAX_CLOCK_WAIT_SECONDS}" ] ||
-			space_fault "the local clock reads ${clock_stamp}, not past the newest state item ${newest_item}; expected a later time; try again once the clock has passed ${newest_id%-*}"
-		sleep 1
-		waited=$((waited + 1))
-	done
-}
-
-# Sets clock_stamp to the local time as an ID holds it and clock_digits to its digits.
-set_clock_digits() {
-	clock_stamp=$(date '+%Y%m%dT%H%M%S') || install_fault 'date failed; expected the local time; try a POSIX date on PATH'
-	case ${clock_stamp} in
-		[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]) ;;
-		*) install_fault 'date printed no YYYYMMDDTHHMMSS time; expected a POSIX date; try a POSIX date on PATH' ;;
-	esac
-	clock_digits=${clock_stamp%T*}${clock_stamp#*T}
-}
-
-# Sets item_file to a new empty item of state $1 that crucible.sh new creates
-# in states/, and checks its ID is later than the newest item's.
-allocate_item() {
-	if item_file=$(sh "${crucible_script}" new --kind "${KIND}" --effort "${effort}" --label "$1" </dev/null); then
-		crucible_status=0
-	else
-		crucible_status=$?
-	fi
-	case ${crucible_status} in
-		0) ;;
-		2 | 5) install_fault "crucible.sh new refused the states kind (its stderr is above); expected a crucible skill that knows it; try reinstalling the ${CRUCIBLE_SKILL} skill" ;;
-		*) space_fault "crucible.sh new failed (its stderr is above); expected a new empty item in ${states_dir}/; try the fix it names, then rerun" ;;
-	esac
-	# shellcheck disable=SC2310 # a pure test; its status is the answer
-	case ${item_file} in
-		"${states_dir}/"*.json) is_item_name "${item_file##*/}" || item_file='' ;;
-		*) item_file='' ;;
-	esac
-	[ -n "${item_file}" ] ||
-		install_fault "crucible.sh new printed no item in ${states_dir}/; expected the path of a new item; try reinstalling the ${CRUCIBLE_SKILL} skill"
-	allocated_item=${item_file}
-	[ -n "${newest_item}" ] || return 0
-	previous_item=${newest_item}
-	item_path=${item_file}
-	keep_if_newest
-	[ "${newest_item}" = "${item_file}" ] ||
-		space_fault "the new item ${item_file} sorts before the newest ${previous_item}; expected a later ID; the clock was set back: try again once it has passed ${newest_id%-*}"
-}
-
-# Exits 5 when the temp file breaks the item shape: the item is built from
-# checked values, so a problem is a fault of the installed scripts.
-check_written_item() {
-	written_problems=$(jq -r -L "${own_dir}" 'include "effort-state-validator"; effort_state_item_problems' "${temp_file}" </dev/null) ||
-		install_fault 'jq failed on the state item written; expected jq 1.6+ and effort-state-validator.jq; try jq --version'
-	[ -n "${written_problems}" ] || return 0
-	while IFS= read -r problem; do
-		warn "install: the item built: ${problem}"
-	done <<EOF
-${written_problems}
-EOF
-	install_fault 'the state item built breaks effort-state-validator.jq; expected matching effort.sh and validator; try reinstalling procedure-effort'
 }
 
 run_state() {
 	parse_effort_option "$@"
-	read_newest_item
-	[ -n "${newest_item}" ] || {
-		printf 'STATE: open\n'
-		return 0
-	}
-	# Item names lead with their ID and hold no newline, so a byte-order sort
-	# is oldest first.
-	sorted_items=$(printf '%s' "${items}" | LC_ALL=C sort) ||
-		install_fault 'sort failed; expected a POSIX sort; try a POSIX sort on PATH'
-	set --
-	while IFS= read -r item_name; do
-		set -- "$@" "${states_dir}/${item_name}"
-	done <<EOF
-${sorted_items}
-EOF
-	item_states "$@"
-	printf 'STATE: %s\n' "${states_read##*
-}"
-	for listed_item do
-		printf 'ITEM: %s\n' "${listed_item}"
+	read_state
+	printf 'STATE: %s\n' "${current_state}"
+	printf '%s' "${effort_events}" | while IFS= read -r listed; do
+		printf 'EVENT: %s\n' "${listed}"
 	done
 }
 
@@ -735,121 +534,31 @@ run_list() {
 	done
 	collect_efforts
 	[ -n "${efforts_found}" ] || return 0
-	total=0 shown_efforts=''
+	total=0
 	while IFS= read -r entry; do
 		total=$((total + 1))
-		if [ "${show_all}" = true ] || [ "${total}" -le "${LIST_LIMIT}" ]; then
-			shown_efforts="${shown_efforts}${entry}
-"
+		[ "${show_all}" = true ] || [ "${total}" -le "${LIST_LIMIT}" ] || continue
+		effort="${efforts_dir}/${entry}"
+		if [ -f "${effort}/events/000001-effort.opened.json" ]; then
+			newest_type=''
+			for named in "${effort}"/events/[0-9][0-9][0-9][0-9][0-9][0-9]-effort.*.json; do
+				[ -f "${named}" ] || continue
+				newest_type=${named##*/}
+				newest_type=${newest_type#*-}
+				newest_type=${newest_type%.json}
+			done
+			state_of_type "${newest_type}"
+			listed_state=${type_state:-unknown}
+		else
+			listed_state=unknown
 		fi
+		printf '%s %s\n' "${entry}" "${listed_state}"
 	done <<EOF
 ${efforts_found}
 EOF
-	print_efforts
 	if [ "${show_all}" = false ] && [ "${total}" -gt "${LIST_LIMIT}" ]; then
 		warn "showing ${LIST_LIMIT} of ${total}; add --all for every effort"
 	fi
-}
-
-# Prints each shown effort with its state, read in one pass over the newest
-# item of every effort that has one. An effort whose states/ or newest item
-# is broken lists as unknown, with one stderr line naming it; a broken space
-# or efforts/ still exits.
-print_efforts() {
-	newest_items=''
-	set --
-	while IFS= read -r entry; do
-		[ -n "${entry}" ] || continue
-		effort="${efforts_dir}/${entry}"
-		states_dir="${effort}/${KIND}"
-		# shellcheck disable=SC2310 # its exit 4 marks this effort unknown; its stderr line names why
-		if newest_item=$(newest_item_alone); then
-			[ -z "${newest_item}" ] || set -- "$@" "${newest_item}"
-		else
-			read_status=$?
-			[ "${read_status}" -eq 4 ] || exit "${read_status}"
-			newest_item=unknown
-		fi
-		newest_items="${newest_items}${newest_item}
-"
-	done <<EOF
-${shown_efforts}
-EOF
-	states_read=''
-	[ "$#" -eq 0 ] || list_states "$@"
-	# The states are single words of the validator's list, so splitting them
-	# is safe.
-	set -f
-	# shellcheck disable=SC2086 # split on purpose: one word per state
-	set -- ${states_read}
-	set +f
-	while IFS= read -r entry <&3 && IFS= read -r listed_item; do
-		[ -n "${entry}" ] || continue
-		case ${listed_item} in
-			'') listed_state=open ;;
-			unknown) listed_state=unknown ;;
-			*)
-				listed_state=$1
-				shift
-				;;
-		esac
-		printf '%s %s\n' "${entry}" "${listed_state}"
-	done 3<<EOF3 <<EOF
-${shown_efforts}
-EOF3
-${newest_items}
-EOF
-}
-
-# list: prints the effort's newest item path, nothing when it has none, in a
-# subshell, so a broken states/ or item exits 4 for this effort alone.
-newest_item_alone() {
-	(
-		read_newest_item
-		printf '%s' "${newest_item}"
-	)
-}
-
-# list: sets states_read to one word per item path given, in order: its state,
-# or unknown with a stderr line naming it and why.
-list_states() {
-	item_count=0
-	for read_path do
-		set -- "$@" --arg "p${item_count}" "${read_path}" --rawfile "i${item_count}" "${read_path}"
-		shift
-		item_count=$((item_count + 1))
-	done
-	list_out=$(jq -n -r -L "${own_dir}" --argjson count "${item_count}" "$@" "${LIST_JQ}" </dev/null) ||
-		install_fault 'jq failed on the state items; expected jq 1.6+ and effort-state-validator.jq; try jq --version, then rerun'
-	states_read='' problem_next=false
-	while IFS= read -r list_line; do
-		if [ "${problem_next}" = true ]; then
-			warn "space: ${list_line}"
-			problem_next=false
-			continue
-		fi
-		[ "${list_line}" != unknown ] || problem_next=true
-		states_read="${states_read} ${list_line}"
-	done <<EOF
-${list_out}
-EOF
-}
-
-# Sets newest_item and the rest collect_items sets for effort, exiting 4 when
-# the newest item is empty. Outside the lock an empty newest item may be one a
-# writer is filling, so it is read again while that writer holds the lock.
-read_newest_item() {
-	waits=0
-	while :; do
-		collect_items
-		[ -n "${newest_item}" ] && [ ! -s "${newest_item}" ] || return 0
-		if [ -z "${lock_dir}" ] && [ -d "${effort}/.${KIND}.lock" ] && [ "${waits}" -lt "${MAX_EMPTY_ITEM_WAITS}" ]; then
-			sleep 1
-			waits=$((waits + 1))
-			continue
-		fi
-		space_fault "${newest_item} is empty; expected the newest state item, whole; a killed state change can leave one: check the effort and remove it, then rerun"
-	done
 }
 
 run_path() {
@@ -897,8 +606,7 @@ ${efforts_found}
 EOF
 }
 
-# Sets efforts_found to the effort folder names, newest first, one per line;
-# empty when the space or efforts/ does not exist yet.
+# Sets efforts_found to the effort folder names, newest first, one per line.
 collect_efforts() {
 	efforts_found=''
 	[ -e "${root}" ] || return 0
@@ -908,26 +616,23 @@ collect_efforts() {
 	[ -d "${efforts_dir}" ] || space_fault "${efforts_dir} is not a folder; expected the efforts folder; try moving it aside"
 	entries=$(ls "${efforts_dir}" 2>/dev/null) ||
 		space_fault "cannot read ${efforts_dir}; expected a readable folder; try checking its permissions"
-	newline='
-'
 	accepted=''
 	while IFS= read -r entry; do
 		split_entry "${entry}"
 		[ -n "${entry_id}" ] || continue
 		[ -d "${efforts_dir}/${entry}" ] && [ ! -L "${efforts_dir}/${entry}" ] || continue
-		accepted="${accepted}${entry}${newline}"
+		accepted="${accepted}${entry}
+"
 	done <<EOF
 ${entries}
 EOF
 	[ -n "${accepted}" ] || return 0
-	# Effort names are ASCII and lead with their timestamp, so a byte-order
-	# sort, reversed, is newest first.
+	# Effort names lead with their timestamp, so a reversed byte sort is newest first.
 	efforts_found=$(printf '%s' "${accepted}" | LC_ALL=C sort -r) ||
 		install_fault 'sort failed; expected a POSIX sort; try a POSIX sort on PATH'
 }
 
-# Sets entry_id, entry_hex and entry_name from an effort folder name
-# <id>-<name>; all empty when the entry is not shaped like one.
+# Sets entry_id, entry_hex and entry_name from an effort folder name <id>-<name>.
 split_entry() {
 	entry_id='' entry_hex='' entry_name=''
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
@@ -937,31 +642,22 @@ split_entry() {
 	entry_name=${crucible_name_rest}
 }
 
-# Removes this run's temp file and, on a failing exit, the empty item it
-# allocated and, for start, what start made; last the lock it took. Only
-# rmdir removes a folder, so nothing it did not make goes.
+# Removes a temp body file and, on a failing start, the folder start made.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	exit_status=$?
-	[ -z "${temp_file}" ] || rm -f "${temp_file}"
-	if [ "${exit_status}" -ne 0 ] && [ -n "${allocated_item}" ]; then
-		rm -f "${allocated_item}" || warn "could not remove the empty item ${allocated_item}, made by this run; remove it by hand"
-	fi
-	if [ -n "${lock_dir}" ]; then
-		rmdir "${lock_dir}" 2>/dev/null ||
-			warn "could not remove the lock ${lock_dir}; expected it gone; try rmdir '${lock_dir}'"
-	fi
+	[ -z "${body_file}" ] || rm -f "${body_file}"
 	if [ "${exit_status}" -ne 0 ] && [ -n "${started_folder}" ]; then
-		rmdir "${started_folder}/${KIND}" 2>/dev/null || true
+		rm -rf "${started_folder}/events" 2>/dev/null || true
 		if rmdir "${started_folder}" 2>/dev/null; then
 			warn "removed ${started_folder}, made by this run"
 		else
-			warn "left ${started_folder}, made by this run with no state item; it reads as open"
+			warn "left ${started_folder}, made by this run; remove it by hand"
 		fi
 	fi
 }
 
-temp_file='' allocated_item='' lock_dir='' started_folder='' session_id=''
+body_file='' started_folder='' session_id=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

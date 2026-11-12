@@ -1,0 +1,1 @@
+- REF-07: a reference's opening read-at line repeats the trigger; the rulebook will exempt it (owner, D30) (owner)

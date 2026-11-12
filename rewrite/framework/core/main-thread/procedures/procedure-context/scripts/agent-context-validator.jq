@@ -1,12 +1,13 @@
 # The context version's shape, the one definition context.sh and every script
-# that reads a context version check. Input: the file slurped (jq -s), so an
-# empty file or several values show as a count.
-# With --arg context_path PATH, the version's own path: its docs folders must
-# be in its effort's context/docs/, none past its own version number.
-# Output: one "<what>; expected <x>" line per problem, nothing when the file fits;
+# that reads a context version check: the body of a context.cut event.
+# Input: the body slurped (jq -s), so an empty input or several values show
+# as a count.
+# With --arg effort FOLDER, the version's effort: its docs folders must be in
+# that effort's files/context/, none past its own version number.
+# Output: one "<what>; expected <x>" line per problem, nothing when the body fits;
 # positions in a line, such as paths[0].why, are counted (from 0).
 # With --arg format json: one {"at": <the field's path, such as ["paths", 2,
-# "why"]; [] for the file>, "problem": "<problem>;
+# "why"]; [] for the body>, "problem": "<problem>;
 # expected <x>"} object per problem, every problem, none counted away.
 # A spec problem leads with NO-SPEC, so a reader matches the token.
 
@@ -21,26 +22,24 @@ def quoted_name: tojson | if length > 60 then .[:60] + "…" else . end;
 def has_control: test("[[:cntrl:]]");
 def one_line_text: type == "string" and (has_control | not) and test("[^[:space:]]");
 def absolute_path: type == "string" and startswith("/") and (has_control | not);
-# A docs folder: <effort>/context/docs/v<N>, N from 1 with no leading zero and
-# at most 9 digits, as context-versions.sh numbers a version.
-def docs_pattern: "^(?<parent>/.+/context/docs)/v(?<n>[1-9][0-9]{0,8})$";
+# A docs folder: <effort>/files/context/v<N>, N from 1 with no leading zero
+# and at most 9 digits, as context-versions.sh numbers a version.
+def docs_pattern: "^(?<parent>/.+/files/context)/v(?<n>[1-9][0-9]{0,8})$";
 def docs_folder: if absolute_path then (capture(docs_pattern) // null) else null end;
 def sha256_hex: type == "string" and test("^[0-9a-f]{64}$");
-# The session that wrote the file: CLAUDE_CODE_SESSION_ID, as context.sh
-# takes it by the crucible skill's crucible_session_rule.
-def session_id_ok: type == "string" and test("\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z");
+def version_ok: type == "number" and . == floor and . >= 1 and . <= 999999999;
 # One problem: the field's path, and its line, the field's location then the problem.
 def problem($at; $location; $separator; $problem): {at: $at, problem: $problem, line: "\($location)\($separator)\($problem)"};
 def why_problem($at; $location):
 	if has("why") and (.why | one_line_text) then empty
 	else problem($at + ["why"]; "\($location).why"; " "; "missing or not one line of text; expected a non-empty string without control characters") end;
 
-# The version's own context/ folder and number, from --arg context_path when
-# it names a version file; null otherwise.
+# The version's own docs folder parent and number: --arg effort's
+# files/context and .version, when both are known; null otherwise.
 def own_version:
-	($ARGS.named.context_path // "")
-	| capture("^(?<context>/.+/context)/[^/]+-v(?<n>[1-9][0-9]{0,8})\\.json$") // null
-	| if . == null then null else .n |= tonumber end;
+	($ARGS.named.effort // "") as $effort
+	| if $effort == "" or (.version | version_ok | not) then null
+	  else {files: "\($effort)/files/context", n: .version} end;
 
 # Problems of one paths[] entry $entry at $index: {path, why} for an outside
 # file or folder, {path, sha256, why} for a docs folder.
@@ -55,23 +54,23 @@ def path_entry_problems($index):
 			(if .sha256 | sha256_hex then empty
 			 else problem(["paths", $index, "sha256"]; "\($location).sha256"; " "; "is not 64 lowercase hex digits; expected the docs folder's digest") end),
 			(if (.path | docs_folder) != null then empty
-			 else problem(["paths", $index, "path"]; "\($location).path"; " "; "has a sha256 but is not a docs folder; expected <effort>/context/docs/v<N>, or no sha256 for an outside path") end)
+			 else problem(["paths", $index, "path"]; "\($location).path"; " "; "has a sha256 but is not a docs folder; expected <effort>/files/context/v<N>, or no sha256 for an outside path") end)
 		 elif (.path | docs_folder) != null then problem(["paths", $index, "sha256"]; "\($location).sha256"; " "; "missing for a docs folder; expected the folder's digest, as context.sh freeze writes it")
 		 else empty end),
 		why_problem(["paths", $index]; $location)
 	  end;
 
 # Problems of the docs folders together: one parent, in order, and, when the
-# version's own path is known, in its effort and none past its number.
+# version's effort is known, in it and none past its number.
 def docs_problems:
 	[(.paths // []) | if type == "array" then to_entries[] else empty end
 		| select((.value | type) == "object" and (.value | has("sha256")))
 		| {index: .key, folder: (.value.path | docs_folder)} | select(.folder != null)] as $docs
 	| own_version as $own
 	| ($docs | to_entries[] | .key as $k | .value
-		| (if $k > 0 and .folder.parent != $docs[0].folder.parent then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is in another docs folder parent than paths[\($docs[0].index)]; expected every docs folder in one effort's context/docs/") else empty end),
+		| (if $k > 0 and .folder.parent != $docs[0].folder.parent then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is in another docs folder parent than paths[\($docs[0].index)]; expected every docs folder in one effort's files/context/") else empty end),
 		  (if $k > 0 and (.folder.n | tonumber) <= ($docs[$k - 1].folder.n | tonumber) then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is not after the docs folder before it; expected docs folders in order, each once") else empty end),
-		  (if $own != null and .folder.parent != "\($own.context)/docs" then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is not in this version's effort; expected \($own.context)/docs/v<N>") else empty end),
+		  (if $own != null and .folder.parent != $own.files then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is not in this version's effort; expected \($own.files)/v<N>") else empty end),
 		  (if $own != null and (.folder.n | tonumber) > $own.n then problem(["paths", .index, "path"]; "paths[\(.index)].path"; " "; "is past this version (v\($own.n)); expected docs folders up to v\($own.n)") else empty end));
 
 # The spec: the spec.md of one of the version's docs folders.
@@ -100,16 +99,16 @@ def paths_problems:
 	elif (.paths | type) != "array" then problem(["paths"]; "paths"; " "; "is a JSON \(.paths | type); expected an array of path entries")
 	else (.paths | to_entries[] | .key as $index | .value | path_entry_problems($index)), docs_problems end;
 
-def session_problems:
-	if has("claude_session_id") and (.claude_session_id | session_id_ok) then empty
-	else problem(["claude_session_id"]; "claude_session_id"; " "; "missing or not a session ID; expected a lowercase UUID, the session that wrote the file") end;
+def version_problems:
+	if has("version") and (.version | version_ok) then empty
+	else problem(["version"]; "version"; " "; "missing or not a version number; expected a whole number from 1, the number of context.cut events up to this one") end;
 
 def context_problems:
-	if length != 1 then problem([]; "the file"; " "; "holds \(length) JSON values; expected exactly one object")
-	elif (.[0] | type) != "object" then problem([]; "the file"; " "; "holds a JSON \(.[0] | type); expected an object")
+	if length != 1 then problem([]; "the body"; " "; "holds \(length) JSON values; expected exactly one object")
+	elif (.[0] | type) != "object" then problem([]; "the body"; " "; "holds a JSON \(.[0] | type); expected an object")
 	else .[0]
-		| ((keys - ["claude_session_id", "paths", "links", "spec"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only claude_session_id, paths, links and spec")),
-		  session_problems,
+		| ((keys - ["version", "paths", "links", "spec"])[] | problem([.]; quoted_name; ": "; "unknown field; expected only version, paths, links and spec")),
+		  version_problems,
 		  paths_problems,
 		  links_problems,
 		  spec_problems

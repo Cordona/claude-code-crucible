@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Prints the commit-message.sh input for one writer seat's current work: the
-# kind from the seat's mode, the count and the report from iteration.sh, the
-# text from that report, the trailers from seats.json, the seat and its
-# dispatch file. It reads only; commit-message.sh checks what it prints.
+# kind from the seat's mode, the iteration from iteration.sh, the text from
+# the seat's report, and the trailers. It reads only; commit-message.sh
+# checks what it prints.
 set -eu
 umask 077
 
@@ -12,42 +12,37 @@ LC_ALL=C
 export LC_ALL
 
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly INPUT_JQ='$dispatch_json[0].plugins as $plugins
-| {kind: $kind, text: $report[0].summary,
-	trailers: ({($count_key): $count, effort: $effort, dispatch: $seat.dispatch, "agent-seat": $seat.seat,
-		"agent-id": $seat.agent_id, report: $report_path, language: $plugins.language.name?,
-		frameworks: [$plugins.frameworks[]?.name], standards: [$plugins.standards[]?.name]}
-		| with_entries(select(.value != null and .value != [])))}'
+readonly INPUT_JQ='{kind: $kind, text: $report[0].summary,
+	trailers: ({iteration: $count, "build-seat": (if $kind == "test" then $build_seat else null end),
+		effort: $effort, "agent-seat": $seat.seat}
+		| with_entries(select(.value != null)))}'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --seats FILE --seat S [--out FILE]
+usage: sh ${PROG} --effort FOLDER --seat S [--report FILE] [--out FILE]
        sh ${PROG} --help | -h
 
 Prints the commit-message.sh input JSON for seat S's current work. Reads
 only; checks no value commit-message.sh checks.
 
---seats FILE   absolute path of the effort's seats.json
+--effort FOLDER  the effort folder, absolute
 --seat S       a developer or tester seat with an agent bound
+--report FILE  the report to take the text from; default iteration.sh's REPORT
 --out FILE     write the JSON there, whole through a temp file beside it,
                instead of printing it
 
 the input:
   kind      build for mode BUILD, test for mode TEST
-  text      the summary of iteration.sh's REPORT file, one JSON object
-  trailers  build-iteration (build) or test-iteration (test): iteration.sh's
-            ITERATION; effort (seats.json's effort), dispatch, agent-seat,
-            agent-id (the seat's); report (iteration.sh's REPORT, relative
-            to the seat's worktree); language, frameworks (left out when
-            none) and standards: the plugin names in the seat's dispatch
-            file, <worktree>/.crucible/seats/<S>/dispatch-<dispatch>.json
+  text      the summary of the report, one JSON object
+  trailers  iteration: iteration.sh's ITERATION; build-seat (test only):
+            its BUILD_SEAT; effort: the effort folder's name; agent-seat
 
 exit codes:
   0  printed (or written); with --out nothing is printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: seats.json, the seat, the report, the dispatch file or the
-     worktree does not fit; one stderr line per problem (seats.sh's or
+  3  input: the effort, the seat or the report does not fit; one stderr
+     line per problem (seats.sh's or
      iteration.sh's own lines first when it refused)
   4  environment: jq, seats.sh or iteration.sh missing or failed, or --out
      could not be written
@@ -85,16 +80,20 @@ take_value() {
 }
 
 parse_args() {
-	seats_file='' seat='' out=''
+	effort_folder='' seat='' out='' report=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--seats)
-				take_value "$1" "${seats_file}" "${2-}" FILE
-				seats_file=${option_value}
+			--effort)
+				take_value "$1" "${effort_folder}" "${2-}" FOLDER
+				effort_folder=${option_value}
+				;;
+			--report)
+				take_value "$1" "${report}" "${2-}" FILE
+				report=${option_value}
 				;;
 			--seat)
 				take_value "$1" "${seat}" "${2-}" S
@@ -106,12 +105,12 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --seats, --seat, --out or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat, --report, --out or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${seats_file}" ] || usage_error '--seats missing; expected --seats FILE'
+	[ -n "${effort_folder}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
@@ -134,29 +133,23 @@ load_dependencies() {
 	done
 }
 
-# Sets effort from seats.json.
+# Sets effort, the effort folder's name.
 read_effort() {
-	shown_seats=$(printable "${seats_file}")
-	case ${seats_file} in
-		/*) ;;
-		*) die 3 "--seats ${shown_seats} is not absolute; expected an absolute path" ;;
-	esac
-	[ -f "${seats_file}" ] && [ -r "${seats_file}" ] || die 3 "--seats ${shown_seats} is not a readable file; expected the effort's seats.json"
-	effort=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
-		die 3 "--seats ${shown_seats} is not JSON; expected the effort's seats.json"
-	[ -n "${effort}" ] || die 3 "--seats ${shown_seats} has no effort; expected a non-empty effort string"
+	while [ "${effort_folder}" != "${effort_folder%/}" ]; do effort_folder=${effort_folder%/}; done
+	effort=${effort_folder##*/}
+	[ -n "${effort}" ] || die 3 '--effort names no folder; expected the effort folder'
 }
 
-# Sets seat_json, kind, count_key, dispatch and worktree from seats.sh get;
+# Sets seat_json, kind, dispatch and worktree from seats.sh get;
 # seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_folder}" --seat "${seat}") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		2 | 3 | 6)
 			shown_seat=$(printable "${seat}")
-			die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --seats"
+			die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort"
 			;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
@@ -172,45 +165,38 @@ read_seat() {
 ${fields}
 EOF
 	case ${mode} in
-		BUILD) kind=build count_key=build-iteration ;;
-		TEST) kind=test count_key=test-iteration ;;
+		BUILD) kind='build' ;;
+		TEST) kind='test' ;;
 		*) die 3 "seat ${seat} has no mode; expected a developer or tester seat" ;;
 	esac
 	[ -n "${dispatch}" ] || die 3 "seat ${seat} is ${status}; expected an agent and its dispatch bound"
 	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a developer or tester seat"
 }
 
-# Sets dispatch_file to the seat's dispatch file in its seat folder.
-find_dispatch_file() {
-	dispatch_file="${worktree%/}/.crucible/seats/${seat}/dispatch-${dispatch}.json"
-	shown_dispatch=$(printable "${dispatch_file}")
-	[ -f "${dispatch_file}" ] && [ -r "${dispatch_file}" ] ||
-		die 3 "the dispatch file ${shown_dispatch} is not a readable file; expected the seat's dispatch ${dispatch} in its seat folder"
-}
-
-# Sets count, report and report_path (report relative to the worktree) from
-# iteration.sh; iteration.sh's own lines say why it refused.
+# Sets count, build_seat and, without --report, report from iteration.sh;
+# iteration.sh's own lines say why it refused.
 read_iteration() {
 	iteration_rc=0
-	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --seats "${seats_file}" --seat "${seat}") || iteration_rc=$?
+	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --effort "${effort_folder}" --seat "${seat}") || iteration_rc=$?
 	case ${iteration_rc} in
 		0) ;;
 		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base" ;;
 		*) die 4 "iteration.sh failed (exit ${iteration_rc})" ;;
 	esac
-	count='' report=''
+	count='' build_seat='' printed_report=''
 	while IFS= read -r line; do
 		case ${line} in
 			'ITERATION: '*) count=${line#ITERATION: } ;;
-			'REPORT: '*) report=${line#REPORT: } ;;
+			'BUILD_SEAT: '*) build_seat=${line#BUILD_SEAT: } ;;
+			'REPORT: '*) printed_report=${line#REPORT: } ;;
 			*) ;;
 		esac
 	done <<EOF
 ${iteration_out}
 EOF
-	[ -n "${count}" ] && [ -n "${report}" ] || die 4 'iteration.sh printed no ITERATION or REPORT line'
-	report_path=${report#"${worktree%/}/"}
-	[ "${report_path}" != "${report}" ] || die 4 'iteration.sh printed a REPORT outside the seat worktree'
+	[ -n "${count}" ] && [ -n "${printed_report}" ] || die 4 'iteration.sh printed no ITERATION or REPORT line'
+	[ -n "${report}" ] || report=${printed_report}
+	[ "${kind}" = build ] || [ "${count}" -ge 1 ] || die 3 "seat ${seat} tests no build: its worktree holds no crucible(build) commit"
 }
 
 check_report() {
@@ -221,11 +207,9 @@ check_report() {
 }
 
 build_input() {
-	shown_dispatch=$(printable "${dispatch_file}")
-	input=$(jq -nc --slurpfile report "${report}" --slurpfile dispatch_json "${dispatch_file}" \
-		--argjson seat "${seat_json}" --arg kind "${kind}" --arg count_key "${count_key}" \
-		--argjson count "${count}" --arg effort "${effort}" --arg report_path "${report_path}" "${INPUT_JQ}" 2>/dev/null) ||
-		die 3 "the dispatch file ${shown_dispatch} is not one JSON object; expected the seat's dispatch"
+	input=$(jq -nc --slurpfile report "${report}" --argjson seat "${seat_json}" --arg kind "${kind}" \
+		--argjson count "${count}" --arg build_seat "${build_seat}" --arg effort "${effort}" "${INPUT_JQ}" 2>/dev/null) ||
+		die 4 'jq failed building the commit input; expected jq 1.6+'
 }
 
 write_input() {
@@ -264,7 +248,6 @@ parse_args "$@"
 load_dependencies
 read_effort
 read_seat
-find_dispatch_file
 read_iteration
 check_report
 build_input

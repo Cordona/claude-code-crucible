@@ -31,8 +31,8 @@ usage: sh ${PROG} --input FILE --out FILE
 Writes one Crucible commit message; runs no git.
 
 --input FILE  a JSON object, no other fields:
-                kind      build, test, dispatch, fix, review,
-                          aggregated-review, fix-choice or import
+                kind      build, test, fix, review, aggregated-review,
+                          fix-choice or import
                 text      the subject's text: one line; the whole subject
                           "crucible(<kind>): <text>" at most 72 characters
                 trailers  an object; the count a whole number of 1 or more,
@@ -44,16 +44,13 @@ Writes one Crucible commit message; runs no git.
               its folder must exist
 
 kinds and their trailers, in message order (all required but frameworks):
-  build                          build-iteration, then the report trailers
-  test                           test-iteration, then the report trailers
-  dispatch                       effort, agent-seat, dispatch (no count)
+  build                          iteration, effort, agent-seat
+  test                           iteration, build-seat, effort, agent-seat
   fix, review                    review-round, then the agent trailers
   aggregated-review, fix-choice  review-round, effort
   import                         effort, imported-from (no count)
   agent trailers:  effort, dispatch, agent-seat, agent-id, language,
                    frameworks, standards
-  report trailers: the agent trailers with report (the report's path,
-                   relative to the worktree) after agent-id
 A count trailer of another kind is refused.
 
 output: crucible(<kind>): <text>
@@ -65,6 +62,8 @@ exit codes:
   2  wrong command line: a missing or unknown option, or a missing value
   3  the input is invalid; each problem is one stderr line (at most ${MAX_PROBLEMS})
   4  the message file could not be written, or jq is missing or failed
+
+needs: POSIX sh, jq 1.6+
 EOF
 }
 
@@ -129,7 +128,6 @@ build_message() {
 	shown_input=$(printable "${input}")
 	[ -f "${input}" ] && [ -r "${input}" ] ||
 		die 3 "--input ${shown_input} is not a readable file; expected the input JSON file"
-	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_dir=$(script_dir)
 	result=$(jq -Rsc -L "${own_dir}" --argjson max "${MAX_PROBLEMS}" "${MESSAGE_JQ}" <"${input}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}"
@@ -177,5 +175,6 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 parse_args "$@"
+command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 build_message
 write_message

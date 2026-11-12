@@ -1,26 +1,27 @@
 #!/usr/bin/env sh
 # PreToolUse hook on Agent. A dispatch of a listed agent must carry, as its
-# whole prompt, the one line "DISPATCH: <path>" naming a dispatch file that
-# generate-agent-dispatch.sh wrote into its seat's folder of the seat's
-# worktree; the hook checks that file, the context file
-# and the plugin files it names, and replaces the prompt with the agent's
-# message built from them, the seat the dispatch's seat field names and
-# procedure-context's context-handling template, sent word for word. Any
-# problem denies the dispatch. Every other Agent call passes untouched. The
+# whole prompt, the one line "DISPATCH: <path>" naming the dispatch.made event
+# generate-agent-dispatch.sh appended to its effort; the hook checks that
+# event, the context.cut event and the plugin files it names, and replaces
+# the prompt with the agent's message built from them, the seat the
+# dispatch's seat field names and procedure-context's context-handling
+# template, sent word for word. Any problem denies the dispatch, recorded as
+# a dispatch.denied event. Every other Agent call passes untouched. The
 # decision is the only output, so a listed agent is denied on any unexpected
 # exit (fail closed).
 # A listed agent runs in the background only: procedure-git-worktree's seat bind hook
 # links it to its seat from PostToolUse, which for a foreground agent comes
-# only after it has finished. Once every check passes, the hook writes
-# <effort>/pending/<tool_use_id> holding the dispatch path, the link the bind
-# hook reads, since both events of one Agent call carry that id.
+# only after it has finished. Once every check passes, the hook appends a
+# dispatch.allowed event holding the dispatch and the call's tool_use_id, the
+# link the bind hook reads, since both events of one Agent call carry that id.
 # Each checked file is read once, into a private temp copy that the checks and
 # the message all read, so the checked bytes are the sent bytes.
 # Known gap: the path checks (not a symlink or resolving inside its plugin
 # folder, regular, readable) run on the path just before the copy, since POSIX
 # sh can't test an open file, so a path swapped in between (such as for a
 # symlink or a FIFO) is copied unchecked, or blocks until the hook times out.
-# Swapping it takes write access to the plugin folder or the Crucible space.
+# Swapping it takes write access to the plugin folder or the Crucible space;
+# an event itself is read-only once written.
 # No crucible-context or crucible-plugin marker is stripped from the message,
 # because everything it embeds is trusted: the human's request, the context
 # version naming the spec the human approved and the whys, as
@@ -45,8 +46,11 @@ readonly PRUNE_NAME='prune'
 # skills folder.
 readonly SEATS_SCRIPT='procedure-git-worktree/scripts/seats/seats.sh'
 readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/seats/iteration.sh'
-# Every seat's own folder in a worktree lies in this folder of it.
-readonly SEATS_FOLDER='.crucible/seats'
+readonly EVENTS_SCRIPT='crucible/scripts/events.sh'
+readonly DISPATCH_EVENT='dispatch.made'
+readonly DISPATCH_WRITER='generate-agent-dispatch.sh'
+readonly ALLOWED_EVENT='dispatch.allowed'
+readonly DENIED_EVENT='dispatch.denied'
 # The skill that owns the context: its validator, its path checks and the file
 # sent under "# Handling your context" (TEMPLATE_FILE, relative to its folder).
 readonly CONTEXT_PROCEDURE='procedure-context'
@@ -54,17 +58,15 @@ readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # Bounds the symlink chain followed for one file, so a link loop ends in a deny.
 readonly MAX_LINK_HOPS=40
 readonly DISPATCH_HINT='The expected prompt is exactly one line "DISPATCH: <absolute path>", the DISPATCH line generate-agent-dispatch.sh printed for this dispatch (flow-code-agent-dispatch).'
-# The cache kind and label of the file a deny's Data · Denial line names.
-readonly DENIAL_KIND='cache/denials'
-readonly DENIAL_LABEL='denial'
 # A deny shows this many problems at most, each cut to this many characters,
-# so the reason stays a short view; the details file holds them all.
+# so the reason stays a short view; the dispatch.denied event holds them all.
 readonly DENIAL_MAX_SHOWN=8
 readonly DENIAL_LINE_CAP=200
 # Ends every CONTEXT problem's text, before its path: the flow stops on one.
 readonly CONTEXT_TAIL="; the human changes the context through ${CONTEXT_PROCEDURE}"
 # The words that start a problem; the flow's step 10 routes on them.
-# CONTEXT-STALE is a context version no longer its effort's latest, every
+# CONTEXT-STALE is a context version no longer its effort's latest (a
+# re-seat dispatch keeps its own and is never stale), every
 # other context problem CONTEXT; BACKGROUND is a dispatch not run in the
 # background; SEAT is a seat missing, unreadable or not open; SKILL is a
 # skill the agent's frontmatter preloads that is not installed, which Claude
@@ -216,8 +218,9 @@ END { finish_file() }
 '
 
 # Renders the deny reason from $problems (one per line, KIND first), the KIND
-# words $kinds, the reason prefix $prefix, the details file $details ("" for
-# none) and the bounds $max_shown and $line_cap, with human-view's view module.
+# words $kinds, the reason prefix $prefix, the dispatch.denied event $details
+# ("" for none) and the bounds $max_shown and $line_cap, with human-view's view
+# module.
 # The first problem of each KIND is always shown (there are fewer KINDs than
 # $max_shown), so the reason names every KIND found; the others follow in
 # order up to $max_shown, and the rest become "+N more". A line over
@@ -249,8 +252,8 @@ def cut: if length <= $line_cap then .
 	(if $more > 0 then "+\($more) more" else "" end),
 	data_section(if $details == "" then [] else [["Denial", $details]] end)]
 | blocks'
-# Builds the details file: every problem in full, its KIND, the dispatch file
-# and the hint; prune leaves out a missing KIND and an empty hint.
+# Builds the dispatch.denied body: every problem in full, its KIND, the
+# dispatch path and the hint; prune leaves out a missing KIND and an empty hint.
 # shellcheck disable=SC2016
 readonly DENIAL_DETAILS_JQ='
 ($kinds | split(" ")) as $kind_list
@@ -260,8 +263,9 @@ readonly DENIAL_DETAILS_JQ='
 		| {kind: (if ($kind_list | any(. == $word)) then $word else null end), problem: .}))}
 | prune'
 
-# Builds the agent's message from the dispatch copy ($dispatch), the
-# pretty-printed context copy ($context), the template copy ($template), the
+# Builds the agent's message from the dispatch copy ($dispatch, the event's
+# body), the pretty-printed body of the context copy ($context), the template
+# copy ($template), the
 # seat's $mode ("" for none) and $worktree, the $report path and the plugin
 # files, the item list build_message puts between the two halves:
 # [plugin name, "skill"|"reference", file text] triples in the dispatch's
@@ -296,6 +300,10 @@ def work($dispatch):
 	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_tree($worktree) | code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($report | code)\n"
 	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
+	+ (if $dispatch.continue_from == null then ""
+	   else "- **CONTINUE FROM:** \($dispatch.continue_from | code), the worktree HEAD when the last agent of this seat was handed out: the work so far, yours to continue\n" end)
+	+ (if ($dispatch.notes // []) == [] then ""
+	   else "- **NOTES:**\n" + ($dispatch.notes | map("  - \(.)\n") | join("")) end)
 	+ "\nA marked gap beats a papered-over one: report what you could not read, run or decide.\n"
 	+ "Save your plan and progress as you go, in your scratchpad, so a cut-off run leaves them; write the REPORT file last, as your report skill sets, and fix it when your stop is blocked.\n";
 ($dispatch | fromjson) as $parsed
@@ -383,7 +391,7 @@ run_hook() {
 		'{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "allow",
 			updatedInput: (.tool_input + {prompt: $message})}}') ||
 		fault "jq could not build the allow decision; the hook needs jq 1.6+ (--rawfile); the cause is on the hook's stderr."
-	write_pending_link
+	write_allowed_event
 	emit "${decision}"
 }
 
@@ -400,15 +408,14 @@ call: no output. A closed or unreadable stdin denies every call.
 A listed agent's call is allowed only when all of these hold:
   it runs in the background (tool_input.run_in_background not false; an
   interactive session sends no such field and always runs in the background);
-  its prompt is exactly one line "DISPATCH: <absolute path>" naming a dispatch
-  file generate-agent-dispatch.sh wrote for that agent, at
-  <effort>/worktrees/*/${SEATS_FOLDER}/<seat>/dispatch-<ID>.json (symlinks
-  resolved), <seat> and <ID> the dispatch's own;
-  the dispatch, its context file (its effort's latest version, matching
-  context.sha256, passing ${CONTEXT_PROCEDURE}'s checks), its plugin files (each SKILL.md frontmatter valid as
-  list-plugins.sh --help sets, the description aside) and its seat (the seat
-  in <effort>/seats.json, read with seats.sh get: open, its worktree the one
-  the dispatch is in) pass every check.
+  its prompt is exactly one line "DISPATCH: <absolute path>" naming the
+  ${DISPATCH_EVENT} event ${DISPATCH_WRITER} appended for that agent,
+  <effort>/events/<seq>-${DISPATCH_EVENT}.json (symlinks resolved);
+  its body (agent-dispatch-validator.jq), its context.cut event (the
+  effort's, of the seq it pins, passing ${CONTEXT_PROCEDURE}'s checks; the
+  latest, but for a re-seat), its plugin files (SKILL.md frontmatter as
+  list-plugins.sh --help sets) and its seat (seats.sh get: open, its
+  worktree in <effort>/worktrees/) pass every check.
 Known gap: a path swapped after its check, by someone who can write to the
   plugin folder or the Crucible space, is copied unchecked, or hangs until
   the hook times out.
@@ -421,7 +428,7 @@ stdout (one JSON line):
          dispatch was denied: <N> problem(s)**", "**Problem:** <p>" or
          "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
          cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, when the effort is known,
-         "**Data · Denial:** <path>" (absolute, all as JSON). <p>:
+         "**Data · Denial:** <path>" (the ${DENIED_EVENT} event, all as JSON). <p>:
          "<KIND> <problem>; expected <x>", most ending ": <path>" (a cut CONTEXT
          <p> keeps its end); KIND:
          DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
@@ -430,15 +437,16 @@ stdout (one JSON line):
 The message, built from the checked bytes: # Your plugins, # Your context,
   # Handling your context, # Your work (MODE, from the seat, left out when it
   has none; TASK; WORKTREE; ENTRY POINTS, joined to the worktree; REPORT,
-  iteration.sh's REPORT path for the seat; CONTEXT FILE), then two closing
-  lines. # Your plugins: one block per plugin, in the order language,
+  iteration.sh's REPORT path; CONTEXT FILE, the context.cut event, whose
+  body # Your context shows; a re-seat's CONTINUE FROM and NOTES), then two
+  closing lines. # Your plugins: one block per plugin, in the order language,
   frameworks, standards, procedures, as the dispatch lists them; none when no
   plugin. ENTRY POINTS: none when none. Paths are absolute, in code spans.
 
-Leaves only (a SIGKILL aside): once every check passes,
-<effort>/pending/<tool_use_id>, holding the dispatch path and a newline, written
-atomically, for procedure-git-worktree's seat bind hook; on a deny, the Denial file.
-The repository and seats.json are only read.
+Writes only events (events.sh): once every check passes, ${ALLOWED_EVENT}
+{dispatch: <id>, seq: <its seq>, tool_use_id} for the seat bind hook (a
+failed write denies); on a deny of a known effort, ${DENIED_EVENT}
+{dispatch: <path>, hint, problems}.
 
 Exit codes:
   0  a decision, or none; read stdout
@@ -449,14 +457,14 @@ Exit codes:
 
 Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
-  awk, cat, date, dd, grep, mkdir, mktemp, mv, readlink, rm, tr, wc, and
+  awk, cat, dd, grep, mktemp, readlink, rm, tr, wc, and
     sha256sum or shasum (base system)
   procedure-git-worktree: scripts/seats/seats.sh, scripts/seats/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
   ${CRUCIBLE_SKILL}: scripts/lib/crucible-space.sh, scripts/lib/${PRUNE_NAME}.jq,
-    scripts/crucible.sh
+    scripts/events.sh
   ${RENDER_LIB}: ${VIEW_NAME}.jq
   this skill: scripts/agent-dispatch/agent-dispatch-validator.jq,
     ${NAMES_MODULE}.jq
@@ -531,7 +539,6 @@ prepare_message() {
 	resolve_space_root
 	check_dispatch_file
 	read_dispatch_fields
-	check_dispatch_place_fields
 	[ "${dispatch_agent}" = "${expected_agent}" ] ||
 		add_problem AGENT "the dispatch is for \"${dispatch_agent}\"; expected \"${expected_agent}\"" "${dispatch_path}"
 	check_context
@@ -557,7 +564,7 @@ load_dependencies() {
 
 # Faults unless every base tool the checks and the message use is on PATH.
 check_base_tools() {
-	for tool in awk cat date dd grep mkdir mktemp mv readlink rm tr wc; do
+	for tool in awk cat dd grep mktemp readlink rm tr wc; do
 		command -v "${tool}" >/dev/null 2>&1 ||
 			fault "${tool} missing from PATH; expected it on PATH; the fault is in the host, not in the dispatch."
 	done
@@ -648,94 +655,92 @@ resolve_space_root() {
 		fault "the Crucible space is unusable (${crucible_root_problem}); the fault is in CRUCIBLE_HOME or HOME, not in the dispatch."
 }
 
-# Refuses unless dispatch_path is a regular file in a seat's folder of an
-# effort's worktree, as check_dispatch_place sets, holding a valid dispatch;
-# sets dispatch_copy, dispatch_effort, place_worktree, place_seat and place_id.
+# Refuses unless dispatch_path is a dispatch.made event of an effort, as
+# check_dispatch_place sets, that generate-agent-dispatch.sh wrote and whose
+# body is a valid dispatch; sets dispatch_event_copy, dispatch_copy (its
+# body), dispatch_effort, dispatch_seq and real_root.
 check_dispatch_file() {
 	path_problem=$(context_path_problem "${dispatch_path}")
 	[ -z "${path_problem}" ] || refuse_now "DISPATCH ${path_problem}; expected ${context_path_expected}: ${dispatch_path}"
 	# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
 	check_dispatch_place ||
-		refuse_now "DISPATCH path is not a dispatch-<ID>.json file in a seat's folder of an effort's worktree; expected ${crucible_root}/efforts/<effort>/worktrees/<worktree>/${SEATS_FOLDER}/<seat>/dispatch-<ID>.json, symlinks resolved: ${dispatch_path}"
+		refuse_now "DISPATCH path is not a ${DISPATCH_EVENT} event of an effort; expected ${crucible_root}/efforts/<effort>/events/<seq>-${DISPATCH_EVENT}.json, symlinks resolved: ${dispatch_path}"
 	[ ! -L "${dispatch_path}" ] || refuse_now "DISPATCH file is a symlink; expected a regular file: ${dispatch_path}"
 	[ -f "${dispatch_path}" ] && [ -r "${dispatch_path}" ] ||
 		refuse_now "DISPATCH file is missing, unreadable or not a regular file; expected a readable regular file: ${dispatch_path}"
-	dispatch_copy="${snapshot_dir}/dispatch"
-	cat -- "${dispatch_path}" >"${dispatch_copy}" ||
+	dispatch_event_copy="${snapshot_dir}/dispatch-event"
+	cat -- "${dispatch_path}" >"${dispatch_event_copy}" ||
 		refuse_now "DISPATCH file is missing, unreadable or not a regular file; expected a readable regular file: ${dispatch_path}"
-	jq empty "${dispatch_copy}" </dev/null >/dev/null 2>&1 || refuse_now "DISPATCH file is not valid JSON; expected one JSON object: ${dispatch_path}"
+	jq empty "${dispatch_event_copy}" </dev/null >/dev/null 2>&1 || refuse_now "DISPATCH file is not valid JSON; expected one JSON object: ${dispatch_path}"
+	envelope_problem=$(jq -r --arg type "${DISPATCH_EVENT}" --arg by "${DISPATCH_WRITER}" --argjson seq "${dispatch_seq}" '
+		if type != "object" then "is not a JSON object"
+		elif .type != $type then "is not a \($type) event"
+		elif .seq != $seq then "holds seq \(.seq | tojson), not the \($seq) its name holds"
+		elif .by != $by then "was not written by \($by)"
+		elif (.body | type) != "object" then "has no body object"
+		else "" end' "${dispatch_event_copy}" </dev/null) ||
+		fault "jq could not read the dispatch event copy; the hook needs jq 1.6+; the cause is on stderr."
+	[ -z "${envelope_problem}" ] ||
+		refuse_now "DISPATCH event ${envelope_problem}; expected the ${DISPATCH_EVENT} event ${DISPATCH_WRITER} appended: ${dispatch_path}"
+	dispatch_copy="${snapshot_dir}/dispatch"
+	jq '.body' "${dispatch_event_copy}" </dev/null >"${dispatch_copy}" ||
+		fault "jq could not read the dispatch event copy; the hook needs jq 1.6+; the cause is on stderr."
 	shape_report=$(jq -rs -f "${dispatch_validator}" "${dispatch_copy}" </dev/null) ||
 		fault "jq could not run the dispatch check ${dispatch_validator}; the hook needs jq 1.6+; the cause is on stderr."
 	[ -n "${shape_report}" ] || return 0
 	shape_problems=$(join_lines "${shape_report}")
-	refuse_now "DISPATCH file does not have the dispatch shape (${shape_problems}); expected the shape agent-dispatch-validator.jq checks; the flow's step 8 writes a new dispatch file: ${dispatch_path}"
+	refuse_now "DISPATCH event does not have the dispatch shape (${shape_problems}); expected the shape agent-dispatch-validator.jq checks; the flow's step 8 writes a new dispatch: ${dispatch_path}"
 }
 
 # Succeeds when dispatch_path's folder and the space, both with symlinks
-# resolved, read <space>/efforts/<effort>/worktrees/<worktree>/SEATS_FOLDER/<seat>/
-# and the file is dispatch-<ID>.json, so it resolves inside that seat's
-# folder whatever linked parent either path runs through (/tmp on macOS);
-# sets dispatch_effort (the effort under the space as the space rules name
-# it), place_worktree (the worktree's resolved path), place_seat and place_id.
+# resolved, read <space>/efforts/<effort>/events/ and the file is
+# <seq>-dispatch.made.json, so it resolves inside that effort's events
+# whatever linked parent either path runs through (/tmp on macOS); sets
+# dispatch_effort (the effort under the space as the space rules name it),
+# place_effort_name, real_root and dispatch_seq.
 check_dispatch_place() {
 	place_file=${dispatch_path##*/}
 	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
 	resolve_dir "${dispatch_path%/*}/" 2>/dev/null || return 1
-	place_dir=${resolved_dir}
+	place_dir=${resolved_dir%/}
 	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
 	resolve_dir "${crucible_root}" 2>/dev/null || return 1
 	real_root=${resolved_dir%/}
 	place_rest=${place_dir#"${real_root}/efforts/"}
 	[ "${place_rest}" != "${place_dir}" ] || return 1
-	place_effort_name=${place_rest%%/*}
-	place_worktrees_rest=${place_rest#"${place_effort_name}/worktrees/"}
-	[ "${place_worktrees_rest}" != "${place_rest}" ] || return 1
-	place_worktree_name=${place_worktrees_rest%%/*}
-	place_seat=${place_worktrees_rest#"${place_worktree_name}/${SEATS_FOLDER}/"}
-	[ "${place_seat}" != "${place_worktrees_rest}" ] || return 1
-	case ${place_worktree_name} in
-		'' | . | ..) return 1 ;;
-		*) ;;
-	esac
-	case ${place_seat} in
-		'' | . | .. | */*) return 1 ;;
+	place_effort_name=${place_rest%/events}
+	[ "${place_effort_name}" != "${place_rest}" ] || return 1
+	case ${place_effort_name} in
+		'' | */*) return 1 ;;
 		*) ;;
 	esac
 	case ${place_file} in
-		dispatch-*.json) ;;
+		[0-9][0-9][0-9][0-9][0-9][0-9]-"${DISPATCH_EVENT}".json) ;;
 		*) return 1 ;;
 	esac
-	place_id=${place_file#dispatch-}
-	place_id=${place_id%.json}
-	# shellcheck disable=SC2310 # pure tests; their status is the answer
-	crucible_is_effort_name "${place_effort_name}" && crucible_is_id "${place_id}" || return 1
+	dispatch_seq=${place_file%%-*}
+	while [ "${dispatch_seq#0}" != "${dispatch_seq}" ]; do dispatch_seq=${dispatch_seq#0}; done
+	[ -n "${dispatch_seq}" ] || return 1
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	crucible_is_effort_name "${place_effort_name}" || return 1
 	dispatch_effort="${crucible_root}/efforts/${place_effort_name}"
-	place_worktree="${real_root}/efforts/${place_effort_name}/worktrees/${place_worktree_name}"
 }
 
-# Adds a DISPATCH problem unless the dispatch's own seat and id are the seat
-# folder and the file name it lies in.
-check_dispatch_place_fields() {
-	[ "${dispatch_seat}" = "${place_seat}" ] ||
-		add_problem DISPATCH "file lies in seat ${place_seat}'s folder but is for seat ${dispatch_seat}; expected it in its own seat's folder" "${dispatch_path}"
-	[ "${dispatch_id}" = "${place_id}" ] ||
-		add_problem DISPATCH "file is named for id ${place_id} but holds id ${dispatch_id}; expected the name generate-agent-dispatch.sh gave it" "${dispatch_path}"
-}
-
-# Sets dispatch_id, dispatch_agent, dispatch_context, dispatch_context_sha256,
-# dispatch_seat and plugin_entries
+# Sets dispatch_id, dispatch_agent, dispatch_context, dispatch_context_seq,
+# dispatch_seat, dispatch_reseat (yes for a re-seat) and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.sha256, .seat' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.seq, .seat, (if has("reseat_of") then "yes" else "no" end)' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
 		IFS= read -r dispatch_id
 		IFS= read -r dispatch_agent
 		IFS= read -r dispatch_context
-		IFS= read -r dispatch_context_sha256
+		IFS= read -r dispatch_context_seq
 		IFS= read -r dispatch_seat
+		IFS= read -r dispatch_reseat
 	} <<EOF
 ${dispatch_fields}
 EOF
@@ -744,10 +749,12 @@ EOF
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
-# Adds a problem for the first failing check of the context file, and sets
-# context_pretty to its pretty-printed copy when every check passes. The
-# read checks copy the file once (one byte over the cap at most, so an
-# oversized file is never read whole); the digest and the message read that copy.
+# Adds a problem for the first failing check of the context.cut event, and
+# sets context_pretty to its body, pretty-printed, when every check passes.
+# The read checks copy the file once (one byte over the cap at most, so an
+# oversized file is never read whole); the seq check and the message read
+# that copy. A re-seat keeps the version it was approved with, so a newer
+# version is no problem for it.
 check_context() {
 	context_path=${dispatch_context}
 	path_problem=$(context_path_problem "${context_path}")
@@ -759,23 +766,27 @@ check_context() {
 	# shellcheck disable=SC2310 # its status is a tool's; a failure faults
 	context_read_problem "${context_path}" "${context_copy}" ||
 		fault "a tool failed on the context read checks (jq or wc); the fault is in the host, not in the dispatch; the cause is on stderr."
-	if [ "${context_read_fault}" = stale ]; then
+	if [ "${context_read_fault}" = stale ] && [ "${dispatch_reseat}" = no ]; then
 		add_stale_problem
 		return 0
 	fi
-	if [ -n "${context_read_fault}" ]; then
+	if [ -n "${context_read_fault}" ] && [ "${context_read_fault}" != stale ]; then
 		add_context_problem "${context_read_text}"
 		return 0
 	fi
-	# shellcheck disable=SC2310 # its status is the tool's; a failure faults
-	compute_context_digest "${context_copy}" ||
-		fault "${context_digest_tool} could not hash the temp copy; the fault is in the host, not in the dispatch; the cause is on stderr."
-	if [ "${context_digest}" != "${dispatch_context_sha256}" ]; then
-		add_context_problem "file changed since the dispatch was written (sha256 $(printf '%.12s' "${dispatch_context_sha256}") written, $(printf '%.12s' "${context_digest}") now); expected the sha256 the dispatch holds, since a cut version never changes"
+	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
+	if ! resolve_dir "${context_location_effort}" 2>/dev/null || [ "${resolved_dir%/}" != "${real_root}/efforts/${place_effort_name}" ]; then
+		add_context_problem "file is a version of another effort; expected a context.cut event of the dispatch's effort ${dispatch_effort}"
+		return 0
+	fi
+	context_seq=$(jq -r '.seq' "${context_copy}" </dev/null) ||
+		fault "jq could not read the context copy; the hook needs jq 1.6+; the cause is on stderr."
+	if [ "${context_seq}" != "${dispatch_context_seq}" ]; then
+		add_context_problem "file holds seq ${context_seq}, not the ${dispatch_context_seq} the dispatch pins; expected the context.cut event the dispatch names, since an event never changes"
 		return 0
 	fi
 	context_pretty="${snapshot_dir}/context.pretty"
-	jq . "${context_copy}" </dev/null >"${context_pretty}" ||
+	jq '.body' "${context_copy}" </dev/null >"${context_pretty}" ||
 		fault "jq could not print the context copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
@@ -852,31 +863,26 @@ is_skill_installed() {
 	[ -n "${project_claude_dir}" ] && [ -f "${project_claude_dir}/skills/$1/SKILL.md" ]
 }
 
-# Adds a SEAT problem unless the dispatch's seat field names an open seat in its
-# effort's seats.json, read with seats.sh get, whose worktree is the one the
-# dispatch lies in; sets
-# seat_mode and seat_worktree from it, and report_path with read_report_path.
+# Adds a SEAT problem unless the dispatch's seat field names an open seat of its
+# effort, read with seats.sh get, whose worktree is a folder directly in the
+# effort's worktrees/; sets seat_mode and seat_worktree from it, and
+# report_path with read_report_path.
 check_seat() {
 	seats_script="${skills_dir}/${SEATS_SCRIPT}"
 	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
 		fault "the seat reader ${seats_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
-	seats_file="${dispatch_effort}/seats.json"
-	if [ ! -f "${seats_file}" ]; then
-		add_problem SEAT "the effort has no seats.json; expected the seat list procedure-git-worktree's seats.sh writes" "${seats_file}"
-		return 0
-	fi
 	# On exit 0 seats.sh prints only the seat; otherwise only its stderr lines.
 	seat_status=0
-	seat_out=$(sh "${seats_script}" get --seats "${seats_file}" --seat "${dispatch_seat}" </dev/null 2>&1) || seat_status=$?
+	seat_out=$(sh "${seats_script}" get --effort "${dispatch_effort}" --seat "${dispatch_seat}" </dev/null 2>&1) || seat_status=$?
 	seat_line=$(printf '%s' "${seat_out%%"${NL}"*}" | tr '[:cntrl:]' '?')
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem SEAT "seat ${dispatch_seat} is not in seats.json; expected a seat procedure-git-worktree's seats.sh choose or add made" "${seats_file}"
+			add_problem SEAT "seat ${dispatch_seat} is not a seat of the effort; expected a seat procedure-git-worktree's seats.sh choose or add made" "${dispatch_effort}"
 			return 0
 			;;
 		3)
-			add_problem SEAT "seats.json can't be read (${seat_line}); expected the effort's seat list as seats.sh --help sets" "${seats_file}"
+			add_problem SEAT "the effort's seats can't be read (${seat_line}); expected the effort's seat list as seats.sh --help sets" "${dispatch_effort}"
 			return 0
 			;;
 		*) fault "seats.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
@@ -893,18 +899,19 @@ check_seat() {
 ${seat_fields}
 EOF
 	if [ "${seat_state}" != open ]; then
-		add_problem SEAT "seat ${dispatch_seat} is ${seat_state}; expected an open seat" "${seats_file}"
+		add_problem SEAT "seat ${dispatch_seat} is ${seat_state}; expected an open seat" "${dispatch_effort}"
 		return 0
 	fi
+	worktrees_dir="${real_root}/efforts/${place_effort_name}/worktrees"
 	case ${seat_worktree} in
-		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer or tester seat" "${seats_file}" ;;
-		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${seats_file}" ;;
+		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer or tester seat" "${dispatch_effort}" ;;
+		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${dispatch_effort}" ;;
 		*)
 			# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
-			if resolve_dir "${seat_worktree}" 2>/dev/null && [ "${resolved_dir%/}" = "${place_worktree}" ]; then
+			if resolve_dir "${seat_worktree}" 2>/dev/null && [ "${resolved_dir%/*}" = "${worktrees_dir}" ] && [ ! -L "${seat_worktree}" ]; then
 				read_report_path
 			else
-				add_problem SEAT "seat ${dispatch_seat}'s worktree is not ${place_worktree}, the one the dispatch lies in (symlinks resolved); expected the dispatch in its seat's own worktree" "${seats_file}"
+				add_problem SEAT "seat ${dispatch_seat}'s worktree is not a folder directly in ${worktrees_dir} (symlinks resolved); expected the worktree seat-open.sh made" "${dispatch_effort}"
 			fi
 			;;
 	esac
@@ -918,12 +925,12 @@ read_report_path() {
 	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
 		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
 	iteration_status=0
-	iteration_out=$(sh "${iteration_script}" --seats "${seats_file}" --seat "${dispatch_seat}" </dev/null 2>&1) || iteration_status=$?
+	iteration_out=$(sh "${iteration_script}" --effort "${dispatch_effort}" --seat "${dispatch_seat}" </dev/null 2>&1) || iteration_status=$?
 	iteration_line=$(printf '%s' "${iteration_out##*"${NL}"}" | tr '[:cntrl:]' '?')
 	case ${iteration_status} in
 		0) ;;
 		3)
-			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${seats_file}"
+			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer or tester seat whose base is a commit in its worktree" "${dispatch_effort}"
 			return 0
 			;;
 		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
@@ -1229,25 +1236,40 @@ EOF
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
 }
 
-# Writes <effort>/pending/<tool_use_id> holding the dispatch path, through a
-# temp file in that folder moved onto it, for the seat bind hook.
-write_pending_link() {
-	pending_dir="${dispatch_effort}/pending"
-	mkdir -p -- "${pending_dir}" || link_failed "mkdir could not create ${pending_dir}"
-	temp_file=$(mktemp "${pending_dir}/.${tool_use_id}.XXXXXX") || {
+# Appends the dispatch.allowed event {dispatch, seq, tool_use_id} to the
+# dispatch's effort, for the seat bind hook.
+write_allowed_event() {
+	temp_file=$(mktemp "${snapshot_dir}/allowed.XXXXXX") || {
 		temp_file=''
-		link_failed "mktemp could not create a temp file in ${pending_dir}"
+		link_failed "mktemp could not create a temp file in ${snapshot_dir}"
 	}
-	printf '%s\n' "${dispatch_path}" >"${temp_file}" || link_failed "could not write ${temp_file}"
-	mv -f -- "${temp_file}" "${pending_dir}/${tool_use_id}" ||
-		link_failed "mv could not move ${temp_file} onto ${pending_dir}/${tool_use_id}"
+	jq -n --arg dispatch "${dispatch_id}" --argjson seq "${dispatch_seq}" --arg tool_use_id "${tool_use_id}" \
+		'{dispatch: $dispatch, seq: $seq, tool_use_id: $tool_use_id}' </dev/null >"${temp_file}" ||
+		link_failed "jq could not build the ${ALLOWED_EVENT} body"
+	# shellcheck disable=SC2310 # its status is events.sh's; a failure denies
+	append_event "${ALLOWED_EVENT}" "${temp_file}" >/dev/null || link_failed "events.sh append ${ALLOWED_EVENT} failed (its stderr is on the hook's stderr)"
 	temp_file=''
 }
 
-# The pending link can't be written ($1): a deny, since the seat bind hook could
-# not link the agent to its seat.
+# Appends an event of type $1, body file $2, to the dispatch's effort through
+# events.sh, with the session of the hook input when it names one; prints
+# the event's path.
+append_event() {
+	events_script="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${EVENTS_SCRIPT}"
+	[ -f "${events_script}" ] && [ -r "${events_script}" ] || {
+		printf '%s: events.sh missing; expected %s\n' "${PROG}" "${events_script}" >&2
+		return 1
+	}
+	hook_session=$(printf '%s' "${hook_input}" | jq -r '.session_id // "" | strings') || hook_session=''
+	set -- --effort "${dispatch_effort}" --type "$1" --by "${PROG}" --body-file "$2"
+	[ -z "${hook_session}" ] || set -- "$@" --session "${hook_session}"
+	sh "${events_script}" append "$@" </dev/null
+}
+
+# The dispatch.allowed event can't be written ($1): a deny, since the seat
+# bind hook could not link the agent to its seat.
 link_failed() {
-	fault "$1, so the seat bind hook could not link the agent to its seat; expected a writable effort folder; the dispatch can be sent again once it is."
+	fault "$1, so the seat bind hook could not link the agent to its seat; expected a writable effort; the dispatch can be sent again once it is."
 }
 
 # Refuses with problem $1 alone, when the later checks can't run without it passing.
@@ -1262,8 +1284,8 @@ refuse_all() {
 }
 
 # Denies with every problem, the compact reason DENIAL_JQ renders, after
-# writing them in full with hint $1 ("" for none) to the details file when the
-# dispatch's effort is known.
+# writing them in full with hint $1 ("" for none) as a dispatch.denied event
+# when the dispatch's effort is known.
 deny_problems() {
 	view_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${RENDER_LIB}"
 	prune_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib"
@@ -1284,46 +1306,35 @@ require_denial_module() {
 		fault "the $2 module $1 is missing or unreadable; ${PROG} needs it; the fault is in the $2 install, not in the dispatch."
 }
 
-# Sets details_path to a new file in the dispatch's effort's cache/denials
-# holding every problem in full, with hint $1; leaves it empty, a line on
-# stderr, when no effort is known or the file can't be written.
+# Sets details_path to the dispatch.denied event appended to the dispatch's
+# effort, holding every problem in full, with hint $1; leaves it empty, a
+# line on stderr, when no effort is known or the event can't be written.
 write_denial_details() {
 	details_path=''
 	[ -n "${dispatch_effort}" ] || return 0
-	denial_crucible="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/crucible.sh"
-	if [ ! -f "${denial_crucible}" ] || [ ! -r "${denial_crucible}" ]; then
-		details_failed "crucible.sh missing; expected ${denial_crucible}"
-		return 0
-	fi
-	if ! new_path=$(sh "${denial_crucible}" new --kind "${DENIAL_KIND}" --label "${DENIAL_LABEL}" --effort "${dispatch_effort}" </dev/null); then
-		details_failed 'crucible.sh new failed; its stderr is above'
-		return 0
-	fi
-	case ${new_path} in
-		/*.json) ;;
-		*)
-			details_failed 'crucible.sh new printed no file path; expected one absolute path ending in .json'
-			return 0
-			;;
-	esac
-	if ! temp_file=$(mktemp "${new_path%/*}/.${new_path##*/}.XXXXXX"); then
+	if ! temp_file=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX"); then
 		temp_file=''
-		details_failed "mktemp could not create a temp file beside ${new_path}"
+		details_failed "mktemp could not create a temp file in \${TMPDIR:-/tmp}"
 		return 0
 	fi
-	if jq -n -L "${prune_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg dispatch "${dispatch_path}" \
-		--arg hint "$1" "include \"${PRUNE_NAME}\"; ${DENIAL_DETAILS_JQ}" </dev/null >"${temp_file}" &&
-		mv -f -- "${temp_file}" "${new_path}"; then
-		temp_file=''
-		details_path=${new_path}
+	if ! jq -n -L "${prune_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg dispatch "${dispatch_path}" \
+		--arg hint "$1" "include \"${PRUNE_NAME}\"; ${DENIAL_DETAILS_JQ}" </dev/null >"${temp_file}"; then
+		details_failed "jq could not build the ${DENIED_EVENT} body"
 		return 0
 	fi
-	details_failed "could not write ${new_path}"
+	# shellcheck disable=SC2310 # its status is events.sh's; a failure is reported below
+	if denied_path=$(append_event "${DENIED_EVENT}" "${temp_file}"); then
+		details_path=${denied_path}
+	else
+		details_failed "events.sh append ${DENIED_EVENT} failed; its stderr is above"
+	fi
+	rm -f -- "${temp_file}"
+	temp_file=''
 }
 
-# Writes why the details file is missing to stderr; the deny goes on without it.
+# Writes why the dispatch.denied event is missing to stderr; the deny goes on without it.
 details_failed() {
-	printf '%s: %s; the deny names no details file\n' "${PROG}" "$1" >&2
+	printf '%s: %s; the deny names no %s event\n' "${PROG}" "$1" "${DENIED_EVENT}" >&2
 }
 
 # A fault of this script, its install or the host: a deny.

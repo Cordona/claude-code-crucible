@@ -23,6 +23,9 @@ SKILL.md steps 5–7, which find an effort.
    - **`STATE: open`:** keep the path.
    - **Any other state, when `procedure-resume` runs this:** ask with one AskUserQuestion, header "Reopen", question "`<name>` is <state>. Reopen it?", options "Reopen it (Recommended)" (description "it opens again and the work resumes") and "Leave it <state>" (description "nothing resumes").
    - **Any other state, from SKILL.md step 9 or 11:** keep the path, with no reopen question; that step decides.
-   - **On "Reopen it (Recommended)":** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" reopen --effort '<that path>'`; exit 0 with a `STATE: open` line: keep the path. Any other exit or output of `reopen`: show the stderr and exit code, and stop.
+   - **On "Reopen it (Recommended)":** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" reopen --effort '<that path>'`.
+   - **`reopen` exits 0 with a `STATE: open` line:** keep the path.
+   - **`reopen` exits 6:** run it once more.
+   - **Any other exit or output of `reopen`, or a second 6:** show the stderr and exit code, and stop.
    - **On "Leave it <state>"** or a typed answer: show the line `` `<name>` stays <state>. ``, and stop.
    - `state` exits non-zero, or prints no `STATE:` line: show the stderr and exit code, and stop.

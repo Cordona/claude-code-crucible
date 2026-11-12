@@ -8,9 +8,10 @@ user-invocable: false
 
 An effort's **context** is what its work starts from: the spec the human approved, short docs written for the work, and references to what exists elsewhere (paths, links), each reference with a one-line why.
 
-- **Docs folder:** `<effort folder>/context/docs/v<N>/`, the material of the next version; `context.sh docs` prints it. It holds `spec.md`, a `grill-<ID>.json` per ended grill, short `<name>.md` files and diff patches, nothing else.
-- **Pending entries:** `<effort folder>/context/next-entries.json`, the outside paths and links waiting for the next cut.
-- **Versions:** `context/<ID>-v<N>.json`, each a complete copy (every docs folder up to it, the outside entries, the spec), so an agent reads one file.
+The next version is a draft, `<effort folder>/drafts/main-thread/context/`, until its cut:
+- **Docs folder:** its `docs/`, the material of the next version; `context.sh docs` prints it. It holds `spec.md`, a `grill-<n>.json` per ended grill (`<n>` the grill's number in the effort), short `<name>.md` files and diff patches, nothing else.
+- **Pending entries:** its `entries.json`, the outside paths and links waiting for the next cut.
+- **Versions:** each cut version is one `context.cut` event in the effort's `events/`, a complete copy (every docs folder up to it, the outside entries, the spec), so an agent reads one file; the cut moves the docs to `files/context/v<N>/`, read-only.
 
 ## When to use it
 
@@ -24,8 +25,8 @@ An effort's **context** is what its work starts from: the spec the human approve
 - **A version and the files of a cut docs folder never change:** new material goes into the next version's docs folder, since a sent dispatch pinned its version by digest.
 - **Never cut a version:** `context.sh freeze --expect` runs only inside the dispatch generator, after the human approved the plan.
 - **You write only** `<name>.md` docs into the folder `context.sh docs` printed, spec drafts (The spec) and the gates' plan files, at the paths `procedure-approval-gate` gives.
-- **`spec.md`, the `grill-<ID>.json` files, the patch files and `next-entries.json` are the scripts' only** (`context.sh spec`, `grill.sh end`, `context.sh diff`, `context.sh add` and `drop`); never assemble a version or its JSON by hand.
-- **A refused docs file** (`DOCS-NAME`, `DOCS-SIZE`) **is never changed unasked:** show the human the path and the refusal stderr names, ask one AskUserQuestion (`Rename it`, `Remove it`, `Stop`), and do only what the answer picks, to the refused file alone: for `DOCS-SIZE`, ask which file to remove, and remove the one the human names, a patch file included; a refused non-`.md` file may be renamed to a `<name>.md`. Never touch `spec.md` or a `grill-<ID>.json` file. `Stop`: step 8's stop, `stopped: docs file refused`.
+- **`spec.md`, the `grill-<n>.json` files, the patch files and `entries.json` are the scripts' only** (`context.sh spec`, `grill.sh end`, `context.sh diff`, `context.sh add` and `drop`); never assemble a version or its JSON by hand.
+- **A refused docs file** (`DOCS-NAME`, `DOCS-SIZE`) **is never changed unasked:** show the human the path and the refusal stderr names, ask one AskUserQuestion (`Rename it`, `Remove it`, `Stop`), and do only what the answer picks, to the refused file alone: for `DOCS-SIZE`, ask which file to remove, and remove the one the human names, a patch file included; a refused non-`.md` file may be renamed to a `<name>.md`. Never touch `spec.md` or a `grill-<n>.json` file. `Stop`: step 8's stop, `stopped: docs file refused`.
 - **No spec gate opens while another gate waits.**
 - **A docs file never pastes a source's text** (repository text, a web page, a ticket or an agent's output): it names the source by path or URL.
 - **A why holds only the human's words and what you write from them.**
@@ -92,7 +93,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
    - **A typed answer:** a reply, not a choice: answer it as the turn's last message and hand nothing over, since the question closed the gate; at the human's next message, ask again from "To ask", unless their reply chose an option: take it.
 8. **Hand over, or report the stop,** to the calling flow:
    - **Complete first:** before handing over, every file, link and path the human gave for the work, outside a change to a dispatched part, is added, and every doc it needs is written. One missing: add it or write it as step 1 sets, then this step again.
-   - **Which line:** run `<context.sh> latest --effort '<effort folder>'`. A `CONTEXT_FILE:` line: one line, `CONTEXT_FILE: <path> · v<N>`. No `CONTEXT_FILE:` line, no version cut yet: one line, `CONTEXT_DOCS: <the docs folder>`. Each path absolute, exactly as `context.sh` printed it, never shortened with `…` or `~`; never a copy of the entries. After an addition, also tell it the context changed.
+   - **Which line:** run `<context.sh> latest --effort '<effort folder>'`. A `CONTEXT_FILE:` line: one line, `CONTEXT_FILE: <path>`. No `CONTEXT_FILE:` line, no version cut yet: one line, `CONTEXT_DOCS: <the docs folder>`. Each path absolute, exactly as `context.sh` printed it, never shortened with `…` or `~`; never a copy of the entries. After an addition, also tell it the context changed.
    - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; each reason as its step names it, a step of The spec named `The spec step <n>`, one of its branches `references/settle-spec.md` step `<n>`.
 
 ## The spec
@@ -136,7 +137,8 @@ After a compaction, an interruption or a new session, load this skill again with
   - `standard-spec` (The spec step 2); missing: as that step sets.
   - `crucible`, not loaded: only its scripts run (The spec steps 1 and 3, `references/resume.md`; and what `context.sh --help` names); missing, `context.sh` exits 5: tell the human to install it, and stop as step 8 sets.
   - `procedure-approval-gate`, which shows the gates (step 7, The spec); missing: as each sets.
-  - `procedure-grill` (step 1).
+  - `procedure-grill` (step 1); on Resume, only its `grill.sh list` runs (`references/resume.md`).
+  - `procedure-git-setup` and `procedure-git-worktree`, not loaded: only `settings.sh get` and `seats.sh list` run (`references/resume.md` step 2); missing: as that step sets.
   - `procedure-read-trackers`, not loaded: only its `read-link.sh` runs (steps 1 and 5); missing: a tracker link is not read, as `references/tracker-links.md` sets.
   - `procedure-jira-auth`, for a Jira link (step 1); missing: as `references/entry-kinds.md` sets.
 - **Tools:** Read, Write, WebFetch, Bash, Skill and AskUserQuestion.

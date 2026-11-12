@@ -1,53 +1,26 @@
-# The state item's shape and the moves between states: the one definition
-# effort.sh checks every item against before it writes it and after it reads
-# it, and render-effort-state.sh checks every item it reads. A module: load it
-# with jq -L <this folder> and include "effort-state-validator".
-# effort_state_item_problems reads the parsed item and prints one
-# "<field> <problem>; expected <x>" line per problem, nothing when it fits.
+# An effort's states, the moves between them and the effort.* events that
+# record them: the one definition effort.sh, its move guard and
+# render-effort-state.sh read. A module: load it with jq -L <this folder> and
+# include "effort-state-validator".
 
 def effort_states: ["open", "paused", "completed", "dropped"];
 # The states each state may change to; the move back to open is a reopen.
 def effort_moves: {open: ["paused", "completed", "dropped"], paused: ["open", "completed", "dropped"], completed: ["open"], dropped: ["open"]};
-# claude_session_id: the Claude Code session that wrote the item.
-def effort_item_fields: ["state", "from", "at", "claude_session_id"];
-def effort_required_fields: ["state", "at", "claude_session_id"];
-def effort_utc_pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
-def effort_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
+# The state each effort.* event type records.
+def effort_type_states: {"effort.opened": "open", "effort.reopened": "open", "effort.paused": "paused", "effort.completed": "completed", "effort.dropped": "dropped"};
 
 def effort_is_state: type == "string" and (. as $state | effort_states | index([$state]) != null);
 def effort_move_ok($from; $to): ($from | effort_is_state) and (effort_moves[$from] | index([$to]) != null);
 
-# A value from the item quoted as JSON and cut, so a problem stays one short line.
-def effort_shown: tojson | if length > 60 then .[:60] + "…" else . end;
+# The effort's state after an array of events: the newest effort.* event's,
+# "none" when there is none, which is no state, so every move but the first
+# is refused.
+def effort_state_of: [.[] | select(.type | startswith("effort."))] | if length == 0 then "none" else effort_type_states[.[-1].type] end;
 
-def effort_state_problem($field):
-	if effort_is_state then empty
-	else "\($field) is \(effort_shown); expected one of \(effort_states | join(", "))" end;
-
-# The move rule: an item with from records a move effort_moves allows; the
-# only item without from is the first, which effort.sh start writes open.
-def effort_move_problem:
-	if (.state | effort_is_state) | not then empty
-	elif has("from") | not then
-		if .state == "open" then empty
-		else "from is missing on a \(.state) item; expected from on every item but the first, which is open" end
-	elif (.from | effort_is_state) | not then empty
-	elif effort_move_ok(.from; .state) then empty
-	else "from \(.from) to state \(.state) is not a move; expected from \(.from) to \(effort_moves[.from] | join(" or "))" end;
-
-def effort_session_problem:
-	if type == "string" and test(effort_session_pattern) then empty
-	else "claude_session_id is \(effort_shown); expected a lowercase UUID, the session that wrote the item" end;
-
-def effort_state_item_problems:
-	if type != "object" then "the item is a JSON \(type); expected an object"
-	else ((keys_unsorted - effort_item_fields)[] | "\(effort_shown) is an unknown field; expected only \(effort_item_fields | join(", "))"),
-		((effort_required_fields - keys_unsorted)[] | "\(.) is missing; expected the fields \(effort_required_fields | join(", ")), and from on every item but the first"),
-		(if has("state") then .state | effort_state_problem("state") else empty end),
-		(if has("from") then .from | effort_state_problem("from") else empty end),
-		(if has("state") then effort_move_problem else empty end),
-		(if has("at") | not then empty
-		 elif (.at | type) == "string" and (.at | test(effort_utc_pattern)) then empty
-		 else "at is \(.at | effort_shown); expected a UTC time YYYY-MM-DDTHH:MM:SSZ" end),
-		(if has("claude_session_id") then .claude_session_id | effort_session_problem else empty end)
-	end;
+# Why the move from $from to $to is refused, or nothing when it is allowed.
+def effort_move_refusal($from; $to):
+	{open: "reopen", paused: "pause", completed: "complete", dropped: "drop"} as $commands
+	| if effort_move_ok($from; $to) then empty
+	  elif $from == $to then "bad move: \($from) -> \($to); the effort is already \($to); try effort.sh state to confirm, and change nothing"
+	  else "bad move: \($from) -> \($to); a \($from) effort can only move to \(effort_moves[$from] | map("\(.) (\($commands[.]))") | join(" or "))"
+	  end;

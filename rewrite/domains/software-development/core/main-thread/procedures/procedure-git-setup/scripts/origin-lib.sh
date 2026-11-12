@@ -6,9 +6,6 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2034 # the sourcing scripts read repo_has_origin and shown_repo
 
-# The remote settings.jq's settings_remote names.
-readonly SETUP_REMOTE='origin'
-
 # Sets shown_repo, or exits 3 when $1 is no absolute path to a git work tree.
 check_repo() {
 	shown_repo=$(printable "$1")
@@ -22,10 +19,11 @@ check_repo() {
 		die 3 "--repo ${shown_repo} is not a git work tree; expected the repository the session runs in; try git -C DIR status"
 }
 
-# Sets repo_has_origin to yes or no for repo $1, after check_repo.
+# Sets repo_has_origin to yes or no for whether repo $1 has remote $2, the
+# one settings.jq's settings_remote names, after check_repo.
 check_repo_origin() {
 	check_repo "$1"
-	if git -C "$1" -c core.fsmonitor=false remote get-url "${SETUP_REMOTE}" >/dev/null 2>&1; then
+	if git -C "$1" -c core.fsmonitor=false remote get-url "$2" >/dev/null 2>&1; then
 		repo_has_origin=yes
 	else
 		repo_has_origin=no

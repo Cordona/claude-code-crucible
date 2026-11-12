@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 # Prints the next free seat name of a role in an effort, so no caller builds a
-# seat name itself. The names and the letters come from seats.jq, which also
-# checks the file. It reads only, without seats.sh's lock: a name is taken
-# only when seats.sh writes it.
+# seat name itself. The names and the letters come from seats.jq, over the
+# seat list seats.sh list replays. It reads only: a name is taken only when
+# seats.sh records it.
 set -eu
 
 readonly PROG='seat-name.sh'
@@ -18,17 +18,16 @@ seats_name_run($role; $lens; if $exists == "yes" then $current else null end)'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --seats FILE --role developer|tester
-       sh ${PROG} --seats FILE --role reviewer --lens L
+usage: sh ${PROG} --effort FOLDER --role developer|tester
+       sh ${PROG} --effort FOLDER --role reviewer --lens L
        sh ${PROG} --help | -h
 
 Prints the next free seat name of the role: its prefix, a dash and the
-first letter no seat in FILE uses with that prefix, in the order alpha,
-beta ... omega, then alpha-2 ... omega-2, alpha-3 and on, with no limit.
-Reads only; a missing FILE means no name is used yet.
+first letter no seat of the effort uses with that prefix, in the order
+alpha, beta ... omega, then alpha-2 ... omega-2, alpha-3 and on, with no
+limit. Reads only.
 
---seats FILE  absolute path of the effort's seats.json; its folder must
-              exist
+--effort FOLDER  the effort folder, absolute
 --role ROLE   developer (build-agent-...), tester (test-agent-...) or
               reviewer (<L>-reviewer-agent-...)
 --lens L      the reviewer's lens, lowercase words joined by dashes, like
@@ -41,11 +40,12 @@ exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, a missing
      value, --lens without --role reviewer or missing with it
-  3  input: a bad --seats path, role or lens, or seats.json does not fit
-     (one stderr line per problem)
-  4  environment: jq missing or failed, or ${MODULE}.jq not beside ${PROG}
+  3  input: a bad --effort folder, role or lens, or the seat list does not
+     fit (one stderr line per problem)
+  4  environment: jq missing or failed, or seats.sh or ${MODULE}.jq not
+     beside ${PROG}
 
-needs: POSIX sh, jq 1.6+; ${MODULE}.jq beside this script
+needs: POSIX sh, jq 1.6+; seats.sh and ${MODULE}.jq beside this script
 EOF
 }
 
@@ -77,16 +77,16 @@ take_value() {
 }
 
 parse_args() {
-	seats_file='' role='' lens=''
+	effort_folder='' role='' lens=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--seats)
-				take_value "$1" "${seats_file}" "${2-}" FILE
-				seats_file=${option_value}
+			--effort)
+				take_value "$1" "${effort_folder}" "${2-}" FOLDER
+				effort_folder=${option_value}
 				;;
 			--role)
 				take_value "$1" "${role}" "${2-}" 'developer|tester|reviewer'
@@ -98,12 +98,12 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --seats, --role, --lens or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --role, --lens or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${seats_file}" ] || usage_error '--seats missing; expected --seats FILE'
+	[ -n "${effort_folder}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ -n "${role}" ] || usage_error '--role missing; expected --role developer|tester|reviewer'
 	if [ "${role}" = reviewer ]; then
 		[ -n "${lens}" ] || usage_error '--lens missing; expected --lens L for a reviewer'
@@ -125,31 +125,28 @@ load_dependencies() {
 	[ -f "${own_dir}/${MODULE}.jq" ] || die 4 "${MODULE}.jq not found beside ${PROG}; expected both in one folder"
 }
 
-# Sets exists and current_file, refusing a path that can't be the file.
-check_seats_path() {
-	shown_seats=$(printable "${seats_file}")
-	case ${seats_file} in
-		*[[:cntrl:]]*) die 3 "--seats ${shown_seats} holds a control character; expected a plain path" ;;
-		*/) die 3 "--seats ${shown_seats} names a folder; expected the seats.json path" ;;
-		/*) ;;
-		*) die 3 "--seats ${shown_seats} is not absolute; expected an absolute path" ;;
-	esac
-	seats_dir=${seats_file%/*}
-	[ -n "${seats_dir}" ] || seats_dir=/
-	shown_dir=$(printable "${seats_dir}")
-	[ -d "${seats_dir}" ] || die 3 "--seats folder ${shown_dir} does not exist; expected the effort folder"
-	if [ -e "${seats_file}" ]; then
-		[ -f "${seats_file}" ] && [ -r "${seats_file}" ] ||
-			die 3 "--seats ${shown_seats} is not a readable file; expected the seats JSON file"
-		exists=yes current_file=${seats_file}
+# Sets current to the effort's seat list, as seats.sh list replays it, and
+# exists to yes when it holds a seat.
+read_seats() {
+	shown_effort=$(printable "${effort_folder}")
+	[ -f "${own_dir}/seats.sh" ] || die 4 "seats.sh not found beside ${PROG}; expected both in one folder"
+	if current=$(sh "${own_dir}/seats.sh" list --effort "${effort_folder}" </dev/null); then
+		:
 	else
-		exists=no current_file=/dev/null
+		list_status=$?
+		[ "${list_status}" -ne 3 ] || die 3 "--effort ${shown_effort} is no effort folder (seats.sh stderr above)"
+		die 4 "seats.sh list exited ${list_status} (its stderr is above); expected the seat list"
 	fi
+	exists=yes
+	case ${current} in
+		*'"seats":[]'*) exists=no ;;
+		*) ;;
+	esac
 }
 
 # Prints the problems to stderr and the name to stdout; exits with the code.
 print_name() {
-	result=$(jq -nc -L "${own_dir}" --rawfile current "${current_file}" --arg exists "${exists}" \
+	result=$(jq -nc -L "${own_dir}" --arg current "${current}" --arg exists "${exists}" \
 		--arg role "${role}" --arg lens "${lens}" "${NAME_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}"
 	outcome=$(printf '%s\n' "${result}" | jq -r '.exit') || die 4 'jq failed reading the result; expected jq 1.6+'
@@ -168,5 +165,5 @@ EOF
 
 parse_args "$@"
 load_dependencies
-check_seats_path
+read_seats
 print_name

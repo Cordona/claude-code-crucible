@@ -30,26 +30,25 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort DIR --seat S [--seat S]...
+usage: sh ${PROG} --effort FOLDER --seat S [--seat S]...
        sh ${PROG} --help | -h
 
 Applies idle developer seats' committed work to their main checkout's
-working tree: the diff from the start to the target, .crucible/seats left
-out. The target is the one seat's HEAD, or ../merge/tips-merge.sh's merge
-of every seat's HEAD; effort-commits.sh proves every commit from HEAD to
-the target is the effort's (seats.json's effort) and gives the start: HEAD,
-or the snapshot the seats were cut from, by the identity settings.sh get
---effort DIR prints. Never touches the index, a ref, a
+working tree: the diff from the start to the target. The target is the
+one seat's HEAD, or ../merge/tips-merge.sh's merge of every seat's HEAD;
+effort-commits.sh proves every commit from HEAD to the target is the
+effort's (the effort folder's name) and gives the start: HEAD, or the
+snapshot the seats were cut from, by the identity settings.sh get
+--effort FOLDER prints. Never touches the index, a ref, a
 seat's worktree or a path outside the patch. A success leaves
 crucible/mount.json (version 2), crucible/mount.patch and crucible/before/
 (raw copies of the files the patch replaced or deleted) in the checkout's
 git folder; a refusal writes no file, index or ref (tips-merge.sh may
 leave git objects); a failed check after applying reverses the patch.
 
---effort DIR  absolute path of the effort folder (it holds seats.json)
---seat S      a developer seat, status idle, clean worktree (changes to
-              its own fault logs, ../worktree/uncommitted.jq's, aside);
-              repeatable, each once; every seat of one repo
+--effort FOLDER  the effort folder, absolute
+--seat S         a developer seat, status idle, clean worktree; repeatable,
+                 each once; every seat of one repo
 
 A finished mount's record (HEAD moved and holds every mounted path, as
 mount-status.sh says) is removed first, with one stderr line.
@@ -75,7 +74,7 @@ exit codes:
   0  mounted
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a bad option value, seats.json or a seat does not fit
+  3  input: a bad option value, the effort or a seat does not fit
      (seats.sh's own lines first), the record is unreadable, or the
      effort has no git setup (settings.sh's own line first)
   4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, a
@@ -127,7 +126,7 @@ parse_args() {
 				exit 0
 				;;
 			--effort)
-				take_value "$1" "${effort}" "${2-}" DIR
+				take_value "$1" "${effort}" "${2-}" FOLDER
 				effort=${option_value}
 				;;
 			--seat)
@@ -141,7 +140,7 @@ parse_args() {
 		esac
 		shift 2
 	done
-	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort FOLDER'
 	[ "${seat_given}" = true ] || usage_error '--seat missing; expected --seat S'
 }
 
@@ -173,7 +172,7 @@ load_dependencies() {
 	. "${own_dir}/mount-lib.sh"
 }
 
-# Sets effort_dir (physical) and seats_file.
+# Sets effort_dir (physical).
 check_effort() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -182,7 +181,6 @@ check_effort() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	seats_file="${effort_dir}/seats.json"
 }
 
 # Refuses a --seat of the checked command line ("$@") that is no seat name
@@ -238,11 +236,11 @@ read_seats() {
 # seat_commit; seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "${seat}") || seat_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --effort's seats.json" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .worktree // "", .repo // ""') ||
@@ -314,8 +312,8 @@ check_seat_clean() {
 	git -C "${worktree}" -c core.fsmonitor=false status --porcelain=v1 -z --untracked-files=all >"${work_dir}/seat-status" 2>"${work_dir}/stderr" ||
 		git_failed "git status in the seat's worktree"
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -Rsr -L "${own_dir}/../worktree" --arg seat "${seat}" --argjson max "${MAX_LISTED}" 'include "uncommitted";
-		[uncommitted_paths($seat)]
+	jq -Rsr -L "${own_dir}/../worktree" --argjson max "${MAX_LISTED}" 'include "uncommitted";
+		[uncommitted_paths]
 		| (.[:$max][] | gsub("[\u0000-\u001f\u007f]"; "?")), (length - $max | select(. > 0) | "... and \(.) more")' \
 		"${work_dir}/seat-status" >"${work_dir}/seat-dirty" 2>"${work_dir}/stderr" ||
 		git_failed "jq reading the seat's status"
@@ -326,13 +324,14 @@ check_seat_clean() {
 	done <"${work_dir}/seat-dirty"
 }
 
-# Sets effort_id from seats.json's effort, the value of the seats' Effort
+# Sets effort_id from the seat list's effort, the value of the seats' Effort
 # trailer.
 read_effort_id() {
-	shown_seats_file=$(printable "${seats_file}")
-	effort_id=$(jq -r '.effort | strings' "${seats_file}" 2>/dev/null) ||
-		die 3 "${shown_seats_file} is not JSON; expected the effort's seats.json"
-	[ -n "${effort_id}" ] || die 3 "${shown_seats_file} has no effort; expected a non-empty effort string"
+	seat_list=$(sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}") ||
+		die 4 'seats.sh list failed (its stderr is above); expected the seat list'
+	effort_id=$(printf '%s\n' "${seat_list}" | jq -r '.effort | strings') ||
+		die 4 'jq could not read the seat list seats.sh list printed'
+	[ -n "${effort_id}" ] || die 4 'seats.sh list printed no effort; expected a non-empty effort string'
 }
 
 check_no_record() {
@@ -456,13 +455,13 @@ build_patch() {
 	# Plumbing diff-tree reads no diff config (prefixes, context, textconv,
 	# external drivers), so the patch is the same for every human's setup.
 	git -C "${checkout_dir}" -c core.fsmonitor=false diff-tree -r -z --no-renames --no-abbrev "${start}" "${target}" \
-		-- . ':(exclude).crucible/seats' >"${work_dir}/raw" 2>"${work_dir}/stderr" ||
+		>"${work_dir}/raw" 2>"${work_dir}/stderr" ||
 		git_failed 'git diff-tree --raw of the seats'
 	git -C "${checkout_dir}" -c core.fsmonitor=false diff-tree -r -p --binary --full-index --no-renames "${start}" "${target}" \
-		-- . ':(exclude).crucible/seats' >"${work_dir}/patch" 2>"${work_dir}/stderr" ||
+		>"${work_dir}/patch" 2>"${work_dir}/stderr" ||
 		git_failed 'git diff-tree --binary of the seats'
 	if [ ! -s "${work_dir}/patch" ] || [ ! -s "${work_dir}/raw" ]; then
-		refuse "the commits of ${shown_seats} change nothing outside .crucible/seats since the start ${start}: nothing to mount"
+		refuse "the commits of ${shown_seats} change nothing since the start ${start}: nothing to mount"
 		return 0
 	fi
 	newlines=$(tr -cd '\n' <"${work_dir}/raw" | wc -c | tr -d ' ') || die 4 'tr or wc failed reading the seats diff'
@@ -568,6 +567,8 @@ verify_applied() {
 	die 4 "the applied paths did not verify; the patch was reversed and nothing is mounted"
 }
 
+# start_is_snapshot, branch and mounted_at are kept for audit: no script
+# reads them; they tell a human reading the record what was mounted when.
 write_record() {
 	mounted_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ') || die 4 'date could not give the time'
 	branch=$(git -C "${checkout_dir}" -c core.fsmonitor=false symbolic-ref -q --short HEAD 2>/dev/null) || branch=''

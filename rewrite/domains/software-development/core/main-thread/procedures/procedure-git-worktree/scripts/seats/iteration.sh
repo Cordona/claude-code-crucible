@@ -1,12 +1,13 @@
 #!/usr/bin/env sh
-# Prints the iteration a writer seat is working on, where its report goes and
-# the report its newest iteration committed. The iteration is 1 + the seat's
-# own report commits since its base, so the count lives here once and every
-# reader of the report path agrees. It reads only.
+# Prints the iteration a writer seat is working on, where its report draft
+# goes and the event of its newest recorded report. An iteration belongs to a
+# build seat and is derived from git: a developer's next build is 1 + its own
+# build commits since its base; a tester's work belongs to the build it
+# tests, the newest build commit its worktree holds. It reads only.
 set -eu
 
 readonly PROG='iteration.sh'
-readonly SEATS_DIR='.crucible/seats'
+readonly CRUCIBLE_SKILL='crucible'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -19,38 +20,41 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --seats FILE --seat S
+usage: sh ${PROG} --effort FOLDER --seat S
        sh ${PROG} --help | -h
 
-Prints the iteration seat S is working on, its report's path and the
-report of its newest committed iteration; reads only.
+Prints the iteration seat S is working on, its report draft's path and
+its newest recorded report; reads only.
 
---seats FILE  absolute path of the effort's seats.json
+--effort FOLDER  the effort folder, absolute
 --seat S      a developer (mode BUILD) or tester (mode TEST) seat with a
               worktree; it may be open or bound, not chosen (no worktree yet)
 
-stdout, three lines:
-  ITERATION: <N>   1 + the commits in <base>..HEAD of the seat's worktree
-                   whose Agent-Seat trailer is S and which carry a Report:
-                   trailer (a dispatch commit carries none)
-  REPORT: <path>   <worktree>/${SEATS_DIR}/<S>/iterations/<N>/<kind>-report.json,
-                   absolute; kind build for BUILD, test for TEST
+stdout, four lines:
+  ITERATION: <N>   BUILD: 1 + the crucible(build) commits in <base>..HEAD
+                   of the worktree whose Agent-Seat trailer is S, the
+                   iteration its next build commit opens. TEST: the
+                   Iteration trailer of the newest crucible(build) commit in
+                   HEAD, 0 when there is none
+  BUILD_SEAT: <seat>  the build seat that iteration belongs to: S for BUILD,
+                   that commit's Agent-Seat for TEST (none when 0)
+  REPORT: <path>   <effort>/drafts/agents/<S>/report.json, absolute
   LAST_REPORT: <path> | none
-                   absolute: <worktree>/<the Report: trailer of the newest
-                   of those commits>; none when there is none. Another
-                   seat's commits, a sync merge's included, never change it
+                   the seat's newest build.committed or test.committed
+                   event, absolute; none when there is none
 
 exit codes:
   0  printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: seats.json, the seat, its worktree or its base does not fit,
+  3  input: the effort, the seat, its worktree or its base does not fit,
      or the seat is chosen;
      one stderr line per problem (seats.sh's own lines first when it
      refused)
-  4  environment: git, jq or seats.sh missing or failed
+  4  environment: git, jq, seats.sh or events.sh missing or failed
 
-needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh beside this script
+needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh beside this script; the
+${CRUCIBLE_SKILL} skill's events.sh
 EOF
 }
 
@@ -82,16 +86,16 @@ take_value() {
 }
 
 parse_args() {
-	seats_file='' seat=''
+	effort_folder='' seat=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--seats)
-				take_value "$1" "${seats_file}" "${2-}" FILE
-				seats_file=${option_value}
+			--effort)
+				take_value "$1" "${effort_folder}" "${2-}" FOLDER
+				effort_folder=${option_value}
 				;;
 			--seat)
 				take_value "$1" "${seat}" "${2-}" S
@@ -99,12 +103,13 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --seats, --seat or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${seats_file}" ] || usage_error '--seats missing; expected --seats FILE'
+	[ -n "${effort_folder}" ] || usage_error '--effort missing; expected --effort FOLDER'
+	while [ "${effort_folder}" != "${effort_folder%/}" ]; do effort_folder=${effort_folder%/}; done
 	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
 }
 
@@ -121,17 +126,19 @@ load_dependencies() {
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
 	[ -f "${own_dir}/seats.sh" ] || die 4 'seats.sh not found beside this script; expected both in one folder'
+	events_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/events.sh"
+	[ -f "${events_script}" ] || die 4 "events.sh not found; expected the ${CRUCIBLE_SKILL} skill installed"
 }
 
 # Sets kind, worktree and base from seats.sh get, refusing a chosen seat;
 # seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/seats.sh" get --seats "${seats_file}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/seats.sh" get --effort "${effort_folder}" --seat "${seat}") || seat_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
-		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat in --seats" ;;
+		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .status // "", .worktree // "", .base // ""') ||
@@ -154,44 +161,54 @@ EOF
 	[ -n "${worktree}" ] || die 3 "seat ${shown_seat} has no worktree; expected a developer or tester seat"
 }
 
-# Sets iteration: 1 + the commits in base..HEAD of the worktree whose
-# Agent-Seat trailer is this seat and which name a report, so another seat
-# sharing the worktree and the seat's dispatch commits are not counted; sets
-# last_report to the Report: trailer of the newest of them (git log lists
-# newest first, each commit before its parents), empty when there is none.
+# Sets iteration and build_seat from the worktree's commits in base..HEAD,
+# newest first (git log lists each commit before its parents).
 count_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
 	git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify --quiet "${base}^{commit}" >/dev/null ||
 		die 3 "seat ${shown_seat}'s base ${base} is not a commit in ${shown_worktree}; expected the seat's base"
-	seat_lines=$(git -c core.fsmonitor=false -C "${worktree}" log --topo-order \
-		--format='%(trailers:key=Agent-Seat,valueonly,separator=%x2C)%x09%(trailers:key=Report,valueonly,separator=%x2C)' \
+	build_lines=$(git -c core.fsmonitor=false -C "${worktree}" log --topo-order \
+		--format='%s%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)%x09%(trailers:key=Iteration,valueonly,separator=%x2C)' \
 		"${base}..HEAD") ||
 		die 4 "git log failed in ${shown_worktree}"
-	own_commits=0 last_report=''
+	own_builds=0 newest_iteration=0 newest_seat=none
 	tab=$(printf '\t')
 	while IFS= read -r line; do
 		case ${line} in
-			"${seat}${tab}"?*)
-				own_commits=$((own_commits + 1))
-				[ -n "${last_report}" ] || last_report=${line#"${seat}${tab}"}
-				;;
-			*) ;;
+			"crucible(build): "*) ;;
+			*) continue ;;
 		esac
+		rest=${line#*"${tab}"}
+		line_seat=${rest%%"${tab}"*}
+		line_iteration=${rest#*"${tab}"}
+		if [ "${newest_seat}" = none ]; then
+			newest_seat=${line_seat}
+			newest_iteration=${line_iteration}
+		fi
+		[ "${line_seat}" != "${seat}" ] || own_builds=$((own_builds + 1))
 	done <<EOF
-${seat_lines}
+${build_lines}
 EOF
-	iteration=$((own_commits + 1))
+	if [ "${kind}" = build ]; then
+		iteration=$((own_builds + 1)) build_seat=${seat}
+	else
+		iteration=${newest_iteration} build_seat=${newest_seat}
+	fi
+}
+
+# Sets last_report to the seat's newest build.committed or test.committed event.
+find_last_report() {
+	last_report=$(sh "${events_script}" latest --effort "${effort_folder}" --type '*.committed' \
+		--where "(.type == \"build.committed\" or .type == \"test.committed\") and .seat == \"${seat}\"" </dev/null) ||
+		die 4 'events.sh latest failed (its stderr is above)'
 }
 
 parse_args "$@"
 load_dependencies
 read_seat
 count_iteration
-printf 'ITERATION: %s\nREPORT: %s/%s/%s/iterations/%s/%s-report.json\n' \
-	"${iteration}" "${worktree%/}" "${SEATS_DIR}" "${seat}" "${iteration}" "${kind}"
-if [ -n "${last_report}" ]; then
-	printf 'LAST_REPORT: %s/%s\n' "${worktree%/}" "${last_report}"
-else
-	printf 'LAST_REPORT: none\n'
-fi
+find_last_report
+printf 'ITERATION: %s\nBUILD_SEAT: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
+	"${iteration}" "${build_seat}" "${effort_folder}" "${seat}"
+printf 'LAST_REPORT: %s\n' "${last_report:-none}"

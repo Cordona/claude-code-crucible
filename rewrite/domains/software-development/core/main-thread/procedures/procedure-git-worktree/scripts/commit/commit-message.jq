@@ -6,21 +6,18 @@
 # builds the message of an input that fits.
 
 def commit_agent_trailers: ["effort", "dispatch", "agent-seat", "agent-id", "language", "frameworks", "standards"];
-# A writer's iteration also names its report, by its path in the worktree.
-def commit_report_trailers: ["effort", "dispatch", "agent-seat", "agent-id", "report", "language", "frameworks", "standards"];
 # Each kind: its count trailer (null for none), its other trailers in the
 # order the message lists them after the count, and those that may be left out.
 def commit_kinds: {
-	"build": {count: "build-iteration", trailers: commit_report_trailers, optional: ["frameworks"]},
-	"test": {count: "test-iteration", trailers: commit_report_trailers, optional: ["frameworks"]},
-	"dispatch": {count: null, trailers: ["effort", "agent-seat", "dispatch"], optional: []},
+	"build": {count: "iteration", trailers: ["effort", "agent-seat"], optional: []},
+	"test": {count: "iteration", trailers: ["build-seat", "effort", "agent-seat"], optional: []},
 	"fix": {count: "review-round", trailers: commit_agent_trailers, optional: ["frameworks"]},
 	"review": {count: "review-round", trailers: commit_agent_trailers, optional: ["frameworks"]},
 	"aggregated-review": {count: "review-round", trailers: ["effort"], optional: []},
 	"fix-choice": {count: "review-round", trailers: ["effort"], optional: []},
 	"import": {count: null, trailers: ["effort", "imported-from"], optional: []}
 };
-def commit_count_trailers: ["build-iteration", "test-iteration", "review-round"];
+def commit_count_trailers: ["iteration", "review-round"];
 # Written on one line, items joined by ", "; an item holds no comma or
 # whitespace, so splitting the line on ", " gives the items back exactly.
 def commit_array_trailers: ["frameworks", "standards"];

@@ -6,3 +6,4 @@ DET-04: the efforts this conversation works on are judged in prose, no session r
 SCR-18: the state views' first line (state word, 🟡 for paused and dropped, path inline) is the owner-approved frozen view (owner)
 SCR-19: the offers' bulleted lists are the owner-approved frozen view (owner)
 SCR-21: the status and change views end with the folder path, no Data section, as the owner-approved frozen view (owner)
+SCH-15: render-effort-offer.sh runs before any effort exists, so its refusals stay on stderr; events.sh logs its own as faults (owner)

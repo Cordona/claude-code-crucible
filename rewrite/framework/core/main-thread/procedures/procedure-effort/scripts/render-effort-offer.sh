@@ -30,24 +30,29 @@ def title_problems:
 	  elif length > $max_title_chars then "--title is \(length) characters; expected at most \($max_title_chars); try a shorter title"
 	  else empty end;
 def expected_reasons: "expected an array of 1 to \($max_reasons) strings";
+# An absolute, home or ./ path of two or more segments, at the start or after
+# a space, bracket, quote or backtick: a slash between words (billing/auth)
+# and a URL (https://a/b) do not match.
+def holds_file_path: test("(^|[[:space:](\"\u0027`])(~|\\.{1,2})?/[^[:space:]/]+/");
 def reason_problem:
 	"reasons[\(.key)]" as $at
 	| .value
-	| if type != "string" then "\($at) is a JSON \(type); expected a string"
+	| if type != "string" then "\($at) is a JSON \(type); expected a string; try quoting it as a JSON string"
 	  elif test("^[[:space:]]*$") then "\($at) is empty; expected one line of text; try saying why in a few words"
 	  elif test("[[:cntrl:]\u2028\u2029]") then "\($at) holds a control character or a line or paragraph separator (such as a line break, tab or U+2028); expected one line of plain text; try joining it into one line"
+	  elif holds_file_path then "\($at) holds a file path; expected no path; try naming the service or area instead"
 	  elif length > $max_chars then "\($at) is \(length) characters; expected at most \($max_chars); try a shorter reason"
 	  else empty end;
 def reasons_problems:
-	if has("reasons") | not then "reasons missing; \(expected_reasons)"
-	elif (.reasons | type) != "array" then "reasons is a JSON \(.reasons | type); \(expected_reasons)"
-	elif (.reasons | length) < 1 or (.reasons | length) > $max_reasons then "reasons holds \(.reasons | length) items; \(expected_reasons)"
+	if has("reasons") | not then "reasons missing; \(expected_reasons); try {\"reasons\": [\"...\"]}"
+	elif (.reasons | type) != "array" then "reasons is a JSON \(.reasons | type); \(expected_reasons); try putting each reason in a JSON string inside [...]"
+	elif (.reasons | length) < 1 or (.reasons | length) > $max_reasons then "reasons holds \(.reasons | length) items; \(expected_reasons); try adding one, or keeping only the strongest \($max_reasons)"
 	else .reasons | to_entries[] | reason_problem end;
 title_problems,
 (if length != 1 then "expected exactly one JSON object, got \(length) values; try {\"reasons\": [\"...\"]}"
-elif (.[0] | type) != "object" then "input is a JSON \(.[0] | type); expected an object {\"reasons\": [...]}"
+elif (.[0] | type) != "object" then "input is a JSON \(.[0] | type); expected an object {\"reasons\": [...]}; try {\"reasons\": [\"...\"]}"
 else .[0]
-	| ((keys - ["reasons"])[] | "\(tojson) is an unknown field; expected only reasons"),
+	| ((keys - ["reasons"])[] | "\(tojson) is an unknown field; expected only reasons; try removing it"),
 	  reasons_problems
 end)
 '
@@ -82,7 +87,7 @@ def way_out: "A new session or /clear keeps each effort clean.";
 '
 
 usage() {
-	cat <<EOF
+	print_block <<EOF
 usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... [--after-state-offer] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
        sh ${PROG} --plan-file PATH --case new-work|done --name NAME | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-state-offer
        sh ${PROG} --help | -h
@@ -96,7 +101,8 @@ Options:
   --plan-file PATH  one JSON object, {"reasons": [str, ...]}, no other field:
                     1 to ${MAX_REASONS} reasons, each not blank, with no control character
                     (line break, tab) or U+2028/U+2029, at most ${MAX_REASON_CHARS} characters
-                    (code points, as written); inline Markdown in a reason
+                    (code points, as written), no file path (/a/b, ~/a/b,
+                    ./a/b); inline Markdown in a reason
                     renders, a leading block mark (#, >, -, 1.) shows as text
   --title TEXT      the text after "Decision needed · " on the first line,
                     default "${DEFAULT_TITLE}": not blank, one line with no
@@ -106,7 +112,7 @@ Options:
   --open-effort NAME  the effort offer: an effort this session already works
                     on, shown before the reasons with the way out; once per
                     effort, a repeat shown once; with --case, checked and not
-                    shown, since the state offer carries its own way out
+                    shown
   --after-state-offer  the effort offer right after a new-work state offer,
                     which already showed the way out: the way out is not
                     shown again; not with --case
@@ -125,19 +131,25 @@ stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
 
 Exit codes:
   0  the offer printed; go on
-  1  jq missing
+  1  an install fault (stderr names it)
   2  refused input; fix what stderr names and rerun once, else show the human stderr
-  3  jq failed on valid JSON
+  3  an install fault (stderr names it)
   4  stdout closed before the offer was written, nothing on stderr; stop and
      show the exit code
-  5  the ${RENDER_LIB} skill's view.jq or paths.jq, or with --case or
-     --open-effort the ${CRUCIBLE_SKILL} skill's lib/crucible-space.sh, missing
+  5  an install fault (stderr names it)
 
-Dependencies: POSIX sh, cat, jq 1.6+, the ${RENDER_LIB} skill's view.jq and paths.jq in the
-  skills, and with --case or --open-effort the ${CRUCIBLE_SKILL} skill's
-  scripts/lib/crucible-space.sh; the plan file is read as UTF-8 whatever the
-  locale.
+Dependencies: POSIX sh, jq 1.6+; in the skills: the ${RENDER_LIB}
+  skill's view.jq and paths.jq, and with --case or --open-effort the
+  ${CRUCIBLE_SKILL} skill's scripts/lib/crucible-space.sh; the plan file is
+  read as UTF-8 whatever the locale.
 EOF
+}
+
+# Copies stdin to stdout with the shell alone, so --help needs no tool.
+print_block() {
+	while IFS= read -r line; do
+		printf '%s\n' "${line}"
+	done
 }
 
 warn() {

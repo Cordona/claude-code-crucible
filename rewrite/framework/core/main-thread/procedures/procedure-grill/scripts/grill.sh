@@ -1,13 +1,16 @@
 #!/usr/bin/env sh
-# Writes a grill's file, the record of one interview of the human, so its
-# JSON is never typed by hand, and prints what each change shows the human.
-# The shell checks the command line's form and the --grill path; GRILL_JQ
-# checks every value against the file it changes and builds the new file;
-# grill-validator.jq checks the file read and the file about to be written.
-# Only a new file that passes replaces the old one, through a temp file beside it.
-# end first copies the ended grill into the effort's next version's docs
-# folder as grill-<ID>.json, <ID> the grill file's, so the next context
-# version carries every grill ended before it.
+# Writes a grill, the record of one interview of the human, so its JSON is
+# never typed by hand, and prints what each change shows the human. An open
+# grill is the draft <effort>/drafts/main-thread/grill-<n>.json, <n> its
+# number in the effort; an ended one is a grill.ended event, written through
+# the crucible skill's events.sh. The shell checks the command line's form and
+# the --grill path; GRILL_JQ checks every value against the draft it changes
+# and builds the new one; grill-validator.jq checks the draft read and the
+# file about to be written. Only a new draft that passes replaces the old one,
+# through a temp file beside it. end first copies the ended grill into the
+# next context version's docs folder as grill-<n>.json, so that version
+# carries every grill ended before it, then appends the event and removes
+# the draft. grill.sh runs only in the main thread, so a draft takes no lock.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
@@ -17,20 +20,23 @@ readonly PROCEDURE='procedure-grill'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
-readonly CONTEXT_SKILL='procedure-context'
-readonly DOCS_COPY_PREFIX='grill-'
-readonly KIND='grills'
-readonly REQUIRED_TOOLS='date mkdir mktemp mv rm rmdir tr'
-# The exit of a write refused because another call holds the grill's lock.
+# An open grill's draft is <effort>/DRAFTS_FOLDER/GRILL_PREFIX<n>.json; end's
+# copy is <effort>/DOCS_FOLDER/GRILL_PREFIX<n>.json.
+readonly DRAFTS_FOLDER='drafts/main-thread'
+readonly DOCS_FOLDER='drafts/main-thread/context/docs'
+readonly GRILL_PREFIX='grill-'
+readonly ENDED_TYPE='grill.ended'
+# A grill number's digits; far more grills than an effort holds, and far
+# below the shell's arithmetic limit.
+readonly MAX_NUMBER_DIGITS=9
+readonly REQUIRED_TOOLS='date mkdir mktemp mv rm tr'
+# The exit of an end refused because the events lock stayed held.
 readonly LOCKED_EXIT=7
 # The exit of a write refused because the grill's effort is not open.
 readonly NOT_OPEN_EXIT=8
 NL='
 '
 readonly NL
-# The label is the topic's words in the file name; 40 characters keep a
-# topic recognisable in a listing, below the space's label cap.
-readonly LABEL_MAX_CHARS=40
 # Bounds stderr so a refusal stays readable; the rest is counted.
 readonly MAX_PROBLEMS=20
 # The C locale keeps the shell's pattern checks byte-wise on macOS and Linux.
@@ -85,9 +91,7 @@ def id_problem($where; $file):
 def new_result:
 	value_of("--topic") as $topic
 	| result($topic | text_problem("--topic"; grill_max_chars.topic);
-		{file: {claude_session_id: $session_id, topic: $topic, questions: []},
-		 label: ($topic | ascii_downcase | gsub("[^a-z0-9]+"; "-") | sub("^-+"; "") | .[:$label_max] | sub("-+$"; "") | if . == "" then "grill" else . end),
-		 out: ""});
+		{file: {claude_session_id: $session_id, topic: $topic, questions: []}, out: ""});
 
 def parent_problem($where; $own):
 	if test(grill_id_pattern) | not then "\($where) is \(shown); expected the id of an earlier question, such as q1"
@@ -215,9 +219,11 @@ def status_result:
 			| if grill_status_prefix | has($to) then .answers += [{revision: ((.answers | length) + 1), at: $at, claude_session_id: $session_id, text: "\(grill_status_prefix[$to])\($reason)"}] else . end)),
 		 out: "\(status_line("done"; "\($titles[$to]) · \($id):")) \($reason)"});
 
+# The ended grill, the body of its grill.ended event: the event envelope
+# holds the claude_session_id of the file, and the body holds the number.
 def end_result:
 	result(ended_problems;
-		{file: (.ended = $at),
+		{file: (del(.claude_session_id) | .number = $number | .ended = $at),
 		 out: "GRILL_ENDED: \($grill) · settled \(count_of("settled")) · open \(count_of("open")) · deferred \(count_of("deferred")) · dropped \(count_of("dropped"))"});
 
 # Puts every object of the file in its field order.
@@ -247,22 +253,29 @@ readonly VALIDATE_JQ='include "grill-validator";
 	| "\($prefix)\(.)"]}
 | '"${PROBLEMS_JQ}"
 
-# list: prints {problems, out} for the $count grill files passed as $ARGS.named
-# pairs p<n> (the path) and g<n> (its text): each file's problems after its
-# path, else one GRILL line per file, newest first (the ID leads each name).
+# list: prints {problems, out} for the $count grills passed as $ARGS.named
+# p<i> (the path), g<i> (its text), k<i> (draft or event) and n<i> (a
+# draft's number, from its name): each one's problems after its path, else
+# one GRILL line per grill, newest first. An event's grill is its body.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly LIST_JQ='include "grill-validator";
 def open_count: [(.questions // [])[] | select(.status == "open")] | length;
 $ARGS.named as $named
-| [range(0; $count) | {path: $named["p\(.)"], file: [$named["g\(.)"] | try fromjson]}]
-| sort_by(.path) | reverse
+| [range(0; $count) as $i | $named["k\($i)"] as $kind
+	| {path: $named["p\($i)"], kind: $kind,
+	   file: [$named["g\($i)"] | try fromjson | if $kind == "draft" then . elif type == "object" then .body else null end],
+	   number: (if $kind == "draft" then $named["n\($i)"] | tonumber else null end)}]
+| map(if .kind == "event" then .number = (.file[0].number? // null) else . end)
+| [.[] | select(.kind == "event") | .number] as $ended
+| sort_by(.number // 0) | reverse
 | [.[] | .path as $path
-	| if (.file | length) == 0 then "is not one JSON value; expected the grill file grill.sh writes" else .file[0] | grill_file_problems end
+	| (if (.file | length) == 0 then "is not one JSON value; expected the draft or grill.ended event grill.sh writes" else .file[0] | grill_file_problems end),
+	  (if .kind == "draft" and (.number as $number | $ended | index([$number])) then "is the draft of grill \(.number), which has ended; expected only open grills in drafts; remove it" else empty end)
 	| "\($path): \(.)"] as $problems
 | if ($problems | length) > 0 then {problems: $problems}
   else {problems: [],
 	out: map(.file[0] as $file
-		| "GRILL: \(.path) · \(if $file | has("ended") then "ended" else "open" end) · open \($file | open_count) · \($file.topic)")
+		| "GRILL: \(.path) · \(if .kind == "event" then "ended" else "open" end) · open \($file | open_count) · \($file.topic)")
 	| join("\n")} end'
 
 # Prints the caps the command pages name, read from grill-validator.jq, space-separated.
@@ -281,20 +294,23 @@ usage() {
 	usage_line "sh ${PROG} --help | -h"
 	print_page <<EOF
 
-Writes a grill's file, the record of one interview of the human, in an
-effort's ${KIND}/ folder, and prints what each change shows the human. A write
-replaces the file whole only when the new file passes grill-validator.jq;
-otherwise the file stays as it was. Once the grill has ended, every write is
-refused.
+Writes a grill, the record of one interview of the human, and prints what
+each change shows the human. An open grill is the draft
+<effort>/${DRAFTS_FOLDER}/${GRILL_PREFIX}<n>.json, <n> its number in the effort
+(1 + the highest of the open drafts and ${ENDED_TYPE} events); end turns it
+into one ${ENDED_TYPE} event in <effort>/events/. A write replaces the draft
+whole only when the new draft passes grill-validator.jq; otherwise it stays
+as it was.
+Once the grill has ended, every write is refused.
 
 Commands (each page holds its options, output and exit codes):
-  new     creates the grill file, with its topic and no question
+  new     creates the draft, with its topic and no question
   add     appends questions, each open, under the next unused ids
   ask     prints a round of open questions for the human
   answer  records answers and prints the acknowledgement for the human
   status  drops, defers or reopens a question
-  end     marks the grill ended
-  list    prints the effort's grill files, newest first; writes nothing
+  end     ends the grill: one ${ENDED_TYPE} event, and the draft goes
+  list    prints the effort's grills, newest first; writes nothing
 
 Ids: q1, q2, ... in the order added, never reused.
 EOF
@@ -313,14 +329,15 @@ command_help() {
 		new)
 			print_page <<EOF
 
-Creates the grill file in the effort's ${KIND}/ folder, named after the topic.
+Creates the draft <effort>/${DRAFTS_FOLDER}/${GRILL_PREFIX}<n>.json, <n> the next grill
+number in the effort.
 
 Options:
   --effort FOLDER        the effort folder, as effort.sh start printed it
   --topic TEXT           what the grill is about: one line, at most ${cap_topic}
                          characters
 
-stdout on exit 0: GRILL_FILE: <the grill file, absolute>
+stdout on exit 0: GRILL_FILE: <the draft, absolute>
 EOF
 			help_shared caps
 			help_shared exits 'read stdout' new
@@ -343,7 +360,7 @@ EOF
 stdout on exit 0: GRILL_IDS: <the new ids, in order, comma-separated>
 EOF
 			help_shared caps
-			help_shared exits 'read stdout' lock
+			help_shared exits 'read stdout' write
 			;;
 		ask)
 			print_page <<'EOF'
@@ -359,7 +376,7 @@ EOF
 stdout on exit 0: the round's Markdown, each question numbered by its id
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' lock
+			help_shared exits 'relay stdout word for word' write
 			;;
 		answer)
 			print_page <<'EOF'
@@ -381,7 +398,7 @@ EOF
 stdout on exit 0: the acknowledgement's Markdown
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' lock
+			help_shared exits 'relay stdout word for word' write
 			;;
 		status)
 			print_page <<'EOF'
@@ -400,19 +417,20 @@ EOF
 stdout on exit 0: the acknowledgement's Markdown
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' lock
+			help_shared exits 'relay stdout word for word' write
 			;;
 		list)
 			print_page <<'EOF'
 
-Prints the effort's grill files, newest first, each checked against
-grill-validator.jq.
+Prints the effort's grills, newest first by number: the open ones' drafts
+and the ended ones' ${ENDED_TYPE} events, each checked against
+grill-validator.jq (an event's body).
 
 Options:
   --effort FOLDER        the effort folder, as effort.sh start printed it
 
-stdout on exit 0: one line per grill file, none when the effort has none:
-  GRILL: <the grill file, absolute> · <open|ended> · open <n> · <topic>
+stdout on exit 0: one line per grill, none when the effort has none:
+  GRILL: <the draft or event, absolute> · <open|ended> · open <n> · <topic>
   (open <n>: how many of its questions are open)
 EOF
 			help_shared exits 'read stdout' read
@@ -420,10 +438,12 @@ EOF
 		*)
 			print_page <<EOF
 
-Marks the grill ended, after copying the ended grill into the effort's next
-version's docs folder as ${DOCS_COPY_PREFIX}<ID>.json, <ID> the grill file's (the
-folder ${CONTEXT_SKILL}'s context.sh docs prints), replacing one there. A
-failed copy leaves the grill not ended.
+Ends the grill: copies the ended grill into the next context version's docs
+folder, <effort>/${DOCS_FOLDER}/ (made if missing), as
+${GRILL_PREFIX}<n>.json, replacing one there; appends one ${ENDED_TYPE} event,
+whose body is the grill without its claude_session_id (the event's), with
+its number; then removes the draft. A failed copy or append leaves the
+grill not ended.
 
 Options:
 EOF
@@ -431,11 +451,12 @@ EOF
 			print_page <<EOF
 
 stdout on exit 0, in order:
-  GRILL_ENDED: <the grill file, absolute> · settled <n> · open <n> ·
+  GRILL_ENDED: <the draft, absolute> · settled <n> · open <n> ·
     deferred <n> · dropped <n>
   DOCS_FILE: <the copy, absolute>
+  EVENT: <the ${ENDED_TYPE} event, absolute>
 EOF
-			help_shared exits 'read stdout' lock
+			help_shared exits 'read stdout' end
 			;;
 	esac
 	help_shared environment
@@ -484,12 +505,13 @@ usage_line() {
 
 # The help text more than one page prints, item $1, so it is written once;
 # exits takes exit 0's next step as $2 and, as $3, what the command does to
-# the grill file: new (creates it), lock (writes it under the lock) or read.
+# the draft: new (creates it), write (replaces it), end (turns it into an
+# event) or read.
 help_shared() {
 	case $1 in
 		grill)
 			print_page <<'EOF'
-  --grill PATH           the grill file, as new printed it
+  --grill PATH           the draft, as new printed it
 EOF
 			;;
 		caps)
@@ -515,18 +537,18 @@ EOF
 			print_page <<EOF
 
 Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
-  jq package); date, mkdir, mktemp, mv, rm, rmdir, tr; in the skills: the
-  ${CRUCIBLE_SKILL} skill's crucible.sh, scripts/lib/crucible-space.sh and
-  scripts/lib/prune.jq, the ${RENDER_LIB} skill's view.jq, the ${EFFORT_SKILL}
-  skill's effort.sh (but for list), and for end the ${CONTEXT_SKILL} skill's
-  context.sh; grill-validator.jq beside this script.
+  jq package); date, mkdir, mktemp, mv, rm, tr; in the skills: the
+  ${CRUCIBLE_SKILL} skill's events.sh, scripts/lib/crucible-space.sh and
+  scripts/lib/prune.jq, the ${RENDER_LIB} skill's view.jq and the
+  ${EFFORT_SKILL} skill's effort.sh (but for list); grill-validator.jq
+  beside this script.
 EOF
 			;;
 	esac
 }
 
 # Prints a command page's stderr lines and exit codes: exit 0's next step $1,
-# and the lines kind $2 (new, lock or read, as help_shared exits takes) adds.
+# and the lines kind $2 (new, write, end or read, as help_shared exits takes) adds.
 help_exits() {
 	print_page <<EOF
 
@@ -534,10 +556,6 @@ stderr on exit 2: one "${PROG}: <what>; expected <x>" line per problem, at
   most ${MAX_PROBLEMS}, then a count of the rest (a usage error adds a "Try" line)
 stderr on exits 1, 3, 5: "${PROG}: install:"; tell the human what it names
   to install, and stop
-EOF
-	[ "$2" != lock ] || print_page <<EOF
-
-One call at a time on one grill; a held lock exits ${LOCKED_EXIT}.
 EOF
 	print_page <<EOF
 
@@ -560,6 +578,8 @@ EOF
      and show the exit code
   5  an install fault: a tool or skill file missing or failing; stderr names
      which
+  6  events.sh could not read the effort's events; show the human stderr,
+     and stop
   129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
      show the exit code, and stop
 EOF
@@ -570,20 +590,19 @@ EOF
      write landed; stop and show the exit code
   5  an install fault: a tool or skill file missing or failing; stderr names
      which
-  6  the write failed, the grill file as it was (new: none left); show the
+  6  the write failed, the draft as it was (new: none left); show the
      human stderr, and stop
 EOF
-	[ "$2" != lock ] || print_page <<EOF
-  ${LOCKED_EXIT}  the grill is locked: another call is writing it, or a killed run left
-     the lock; nothing written; stderr names the lock. Rerun once your other
-     call has ended; if it is still held, show the human stderr, and stop
+	[ "$2" != end ] || print_page <<EOF
+  ${LOCKED_EXIT}  the events lock stayed held; the grill not ended; rerun once, else
+     show the human stderr, and stop
 EOF
 	print_page <<EOF
   ${NOT_OPEN_EXIT}  the grill's effort is not open, or its state is unknown; nothing
      written; show the human stderr, and stop
 EOF
 	print_page <<'EOF'
-  129, 130, 143  stopped by HUP, INT or TERM, the grill file whole, as it was
+  129, 130, 143  stopped by HUP, INT or TERM, the draft whole, as it was
      or as written; tell the human it was stopped, show the exit code, and stop
 EOF
 }
@@ -728,7 +747,7 @@ require_skill_file() {
 }
 
 # Sets own_dir, render_lib_dir (view.jq), crucible_lib_dir (prune.jq) and
-# crucible_script, and sources the space rules.
+# events_script, and sources the space rules.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -743,24 +762,20 @@ load_dependencies() {
 	require_skill_file "${render_lib_dir}/view.jq" "${RENDER_LIB}" 'layout module'
 	crucible_lib_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
 	require_skill_file "${crucible_lib_dir}/prune.jq" "${CRUCIBLE_SKILL}" 'prune module'
-	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
-	require_skill_file "${crucible_script}" "${CRUCIBLE_SKILL}" 'crucible.sh'
+	events_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/events.sh"
+	require_skill_file "${events_script}" "${CRUCIBLE_SKILL}" 'events.sh'
 	space_lib="${crucible_lib_dir}/crucible-space.sh"
 	require_skill_file "${space_lib}" "${CRUCIBLE_SKILL}" 'space rules'
 	if [ "${command}" != list ]; then
 		effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
 		require_skill_file "${effort_script}" "${EFFORT_SKILL}" 'effort.sh'
 	fi
-	if [ "${command}" = end ]; then
-		context_script="${skills_dir}/${CONTEXT_SKILL}/scripts/context.sh"
-		require_skill_file "${context_script}" "${CONTEXT_SKILL}" 'context.sh'
-	fi
 	# shellcheck source=crucible-space.sh
 	. "${space_lib}"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
-# before the lock is taken or any file made.
+# before any file is made.
 require_session() {
 	# shellcheck disable=SC2310 # its status says whether the session is usable; the problem is read here
 	crucible_check_session || exit_on_problems "${crucible_session_problem}"
@@ -793,59 +808,81 @@ require_open_effort() {
 	esac
 }
 
-# Prints the problem of the --grill path, or nothing when it names a grill
-# file of an effort of the space.
-grill_path_problem() {
+# Sets path_problem to the problem of the --grill path, or to nothing when
+# it names an open grill's draft in an effort of the space; then sets
+# grill_effort to that effort and grill_number to the draft's number. The
+# file itself is checked once the grill is known not to have ended.
+check_grill_path() {
+	path_problem=''
 	case ${grill} in
 		*[[:cntrl:]]*)
-			printf '%s' '--grill holds a control character (such as a line break); expected one absolute path'
+			path_problem='--grill holds a control character (such as a line break); expected one absolute path'
 			return 0
 			;;
 		/*) ;;
 		*)
-			printf '%s' "--grill ${grill} is not absolute; expected the absolute path ${PROG} new printed"
+			path_problem="--grill ${grill} is not absolute; expected the absolute path ${PROG} new printed"
 			return 0
 			;;
 	esac
-	# shellcheck disable=SC2310 # its status says whether the space is usable; the problem is printed
+	# shellcheck disable=SC2310 # its status says whether the space is usable; the problem is read here
 	if ! crucible_resolve_root; then
-		printf '%s' "CRUCIBLE_HOME: ${crucible_root_problem}"
+		path_problem="CRUCIBLE_HOME: ${crucible_root_problem}"
 		return 0
 	fi
-	# shellcheck disable=SC2310 # its status says whether the path is an item's; the problem is printed
-	if ! crucible_check_effort_item "${grill}" "${KIND}"; then
-		printf '%s' "--grill ${grill} is ${crucible_item_problem}"
+	# shellcheck disable=SC2310 # its status says whether the path is an item's; the problem is read here
+	if ! crucible_check_effort_item "${grill}" "${DRAFTS_FOLDER}"; then
+		path_problem="--grill ${grill} is ${crucible_item_problem}"
 		return 0
 	fi
+	grill_effort=${crucible_effort}
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
-	if ! is_grill_name "${grill##*/}"; then
-		printf '%s' "--grill ${grill} is not named <ID>-<label>.json; expected the grill file ${PROG} new printed"
+	if ! number_of_draft_name "${grill##*/}"; then
+		path_problem="--grill ${grill} is not named ${GRILL_PREFIX}<n>.json; expected the draft ${PROG} new printed"
 		return 0
 	fi
+	grill_number=${name_number}
+}
+
+# Succeeds when file name $1 is a draft's, GRILL_PREFIX<n>.json with <n> a
+# whole number from 1, and sets name_number to <n>.
+number_of_draft_name() {
+	name_number=${1#"${GRILL_PREFIX}"}
+	name_number=${name_number%.json}
+	[ "${GRILL_PREFIX}${name_number}.json" = "$1" ] || return 1
+	case ${name_number} in
+		'' | 0* | *[!0123456789]*) return 1 ;;
+		*) ;;
+	esac
+	[ "${#name_number}" -le "${MAX_NUMBER_DIGITS}" ]
+}
+
+# Exits 2 when grill grill_number of grill_effort has a grill.ended event, or
+# when its draft is no readable, writable regular file.
+require_open_grill() {
+	read_events slurp --effort "${grill_effort}" --type "${ENDED_TYPE}"
+	ended_grills=${events_out}
+	ended_seq=$(printf '%s\n' "${ended_grills}" | jq -r --argjson number "${grill_number}" '[.[] | select(.body.number == $number) | .seq][0] // empty') ||
+		install_fault 3 'jq failed reading the ended grills; expected jq 1.6+; try jq --version, then rerun'
+	[ -z "${ended_seq}" ] ||
+		exit_on_problems "--grill ${grill}: grill ${grill_number} ended (its ${ENDED_TYPE} event is seq ${ended_seq}); expected a grill that has not ended; start another with ${PROG} new"
 	[ -f "${grill}" ] && [ ! -L "${grill}" ] && [ -r "${grill}" ] && [ -w "${grill}" ] ||
-		printf '%s' "--grill ${grill} is not a readable, writable regular file, or is a symbolic link; expected the grill file ${PROG} new printed"
+		exit_on_problems "--grill ${grill} is not a readable, writable regular file, or is a symbolic link; expected the draft ${PROG} new printed"
 }
 
-# Succeeds when file name $1 is a grill file's: <ID>-<label>.json.
-is_grill_name() {
-	# shellcheck disable=SC2310 # pure tests; their status is the answer
-	crucible_split_id "$1" && [ "${crucible_name_rest%.json}" != "${crucible_name_rest}" ] &&
-		crucible_is_label "${crucible_name_rest%.json}"
-}
-
-# Takes the grill's lock, a folder beside the grill file that only one call
-# can create, so one call at a time reads, checks and replaces the file; a
-# held lock exits LOCKED_EXIT. clean_up removes it; a killed run leaves it,
-# and the refusal says how to remove it.
-take_lock() {
-	lock_path="${grill%/*}/.${grill##*/}.lock"
-	if mkdir "${lock_path}" 2>/dev/null; then
-		lock_dir=${lock_path}
-		return 0
+# Sets events_out to the stdout of the read events.sh "$@", or exits 5 on an
+# install fault it names and 6 on any other failure.
+read_events() {
+	if events_out=$(sh "${events_script}" "$@" </dev/null); then
+		events_status=0
+	else
+		events_status=$?
 	fi
-	[ -d "${lock_path}" ] ||
-		die 6 "mkdir could not create the lock ${lock_path}; expected a writable ${grill%/*}; try checking its permissions, then rerun"
-	die "${LOCKED_EXIT}" "--grill ${grill} is locked by ${lock_path}; expected one call at a time; try again once the other call has ended; if none is running, a killed run left the lock: remove it with rmdir '${lock_path}', then rerun"
+	case ${events_status} in
+		0) ;;
+		5) install_fault 5 "events.sh $1 names a missing dependency above; install it, then rerun" ;;
+		*) die 6 "events.sh $1 failed (exit ${events_status}; its stderr is above); expected the effort's ${ENDED_TYPE} events; try the fix it names, then rerun" ;;
+	esac
 }
 
 # Prints each line of $1 as a problem and exits 2, when $1 holds any.
@@ -880,7 +917,7 @@ run_grill_jq() {
 
 grill_jq() {
 	jq -c -L "${own_dir}" -L "${render_lib_dir}" -L "${crucible_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
-		--arg session_id "${session_id}" --arg prog "${PROG}" --argjson label_max "${LABEL_MAX_CHARS}" "${GRILL_JQ}" --args -- "$@"
+		--arg session_id "${session_id}" --arg prog "${PROG}" --argjson number "${grill_number}" "${GRILL_JQ}" --args -- "$@"
 }
 
 # Exits 2 when setup problems $1 or the problems in result hold any.
@@ -909,138 +946,179 @@ set_effort_dir() {
 	while [ "${effort_dir}" != "${effort_dir%/}" ]; do effort_dir=${effort_dir%/}; done
 }
 
-# Removes the temp file, on a failing exit the grill file this run created,
-# and last the lock this run took.
+# Removes the temp files and, on a failing exit, the draft and the docs copy
+# this run made.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
 	[ -z "${docs_temp}" ] || rm -f "${docs_temp}"
-	if [ "${exit_status}" -ne 0 ] && [ -n "${created_file}" ]; then
-		rm -f "${created_file}" && warn "removed ${created_file}, made by this run"
-	fi
-	if [ -n "${lock_dir}" ]; then
-		rmdir "${lock_dir}" 2>/dev/null ||
-			warn "could not remove the lock ${lock_dir}; expected it gone; try rmdir '${lock_dir}'"
-	fi
+	[ "${exit_status}" -ne 0 ] || return 0
+	for made_file in "${created_file}" "${docs_made}"; do
+		[ -n "${made_file}" ] || continue
+		rm -f "${made_file}" && warn "removed ${made_file}, made by this run"
+	done
 }
 
-# Writes result's file over path $1 through a temp file beside it, once the
-# temp file passes the validator.
-write_file() {
+# Writes result's file through a temp file beside path $1 and checks it
+# against the validator; sets temp_file to it.
+stage_file() {
 	temp_file=$(mktemp "${1%/*}/.${1##*/}.XXXXXX") ||
 		die 6 "mktemp could not create a temp file beside $1; expected a writable ${1%/*}; try checking its permissions and free space, then rerun"
 	printf '%s\n' "${result}" | jq '.file' >"${temp_file}" ||
-		die 6 "could not write the temp file ${temp_file}; expected the grill file written; try checking free space, then rerun"
+		die 6 "could not write the temp file ${temp_file}; expected the grill written; try checking free space, then rerun"
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
 	written_problems=$(file_problems "${temp_file}" 'the file this call would write: ') ||
 		install_fault 3 'jq failed on the grill validator; expected jq 1.6+; try jq --version, then rerun'
 	exit_on_problems "${written_problems}"
-	[ "${command}" != end ] || copy_into_docs "${temp_file}"
+}
+
+# Writes result's file over path $1, once it passes the validator.
+write_file() {
+	stage_file "$1"
 	mv -f "${temp_file}" "$1" ||
-		die 6 "mv could not move the temp file onto $1; expected the grill file in place; try checking the permissions and free space of ${1%/*}, then rerun"
+		die 6 "mv could not move the temp file onto $1; expected the draft in place; try checking the permissions and free space of ${1%/*}, then rerun"
 	temp_file=''
 }
 
-# end: copies grill file $1, as it is about to be written, into the effort's
-# next version's docs folder as DOCS_COPY_PREFIX<ID>.json, through a temp file
-# in the effort's context/, so the folder never holds a part of it; sets
-# docs_copy.
+# end: copies the ended grill into the docs folder, appends it as the
+# grill.ended event, then removes the draft; sets docs_copy and event_file.
+end_grill() {
+	stage_file "${grill}"
+	copy_into_docs "${temp_file}"
+	append_ended_event
+	docs_made=''
+	rm -f "${grill}" ||
+		die 6 "grill ${grill_number} ended (${event_file}), but rm could not remove its draft ${grill}; expected it gone; remove it by hand"
+}
+
+# end: copies file $1 into the next context version's docs folder, made if
+# missing, as GRILL_PREFIX<n>.json, through a temp file in the drafts folder,
+# so the docs folder never holds a part of it; sets docs_copy and docs_made.
 copy_into_docs() {
-	grills_folder=${grill%/*}
-	grill_effort=${grills_folder%/*}
-	# shellcheck disable=SC2310 # --grill passed is_grill_name, so its name splits
-	crucible_split_id "${grill##*/}" || die 6 "--grill ${grill} is not named <ID>-<label>.json; expected the grill file ${PROG} new printed"
-	docs_copy_name="${DOCS_COPY_PREFIX}${crucible_name_id}.json"
-	if docs_out=$(sh "${context_script}" docs --effort "${grill_effort}" </dev/null); then
-		docs_status=0
-	else
-		docs_status=$?
-	fi
-	case ${docs_status} in
-		0) ;;
-		5) install_fault 5 'context.sh docs names a missing dependency above; install it, then rerun' ;;
-		6) die "${NOT_OPEN_EXIT}" "context.sh docs refused the effort (its stderr is above); expected an open effort; ask the human to check the effort" ;;
-		*) die 6 "context.sh docs failed (exit ${docs_status}; its stderr is above); the grill is not ended; try the fix it names, then rerun" ;;
-	esac
-	docs_folder=${docs_out#DOCS_FOLDER: }
-	case ${docs_folder} in
-		"${grill_effort}/context/docs/v"[1-9]*) ;;
-		*)
-			shown_docs=$(printable "${docs_out}")
-			die 6 "context.sh docs printed ${shown_docs}, which is not a docs folder of ${grill_effort}; expected DOCS_FOLDER: <folder>; try reinstalling the ${CONTEXT_SKILL} skill, then rerun"
-			;;
-	esac
-	docs_temp=$(mktemp "${grill_effort}/context/.${docs_copy_name}.XXXXXX") ||
-		die 6 "mktemp could not create a temp file in ${grill_effort}/context; expected a writable folder; the grill is not ended; try checking its permissions, then rerun"
-	cat "$1" >"${docs_temp}" ||
+	docs_dir="${grill_effort}/${DOCS_FOLDER}"
+	mkdir -p "${docs_dir}" 2>/dev/null || [ -d "${docs_dir}" ] ||
+		die 6 "mkdir could not create ${docs_dir}; expected a writable effort folder; the grill is not ended; try checking its permissions, then rerun"
+	docs_copy="${docs_dir}/${GRILL_PREFIX}${grill_number}.json"
+	# shellcheck disable=SC2310 # its status says whether the path is an item's; the problem is read here
+	crucible_check_effort_item "${docs_copy}" "${DOCS_FOLDER}" ||
+		die 6 "the docs copy ${docs_copy} is ${crucible_item_problem}; the grill is not ended; try moving the link aside, then rerun"
+	docs_temp=$(mktemp "${grill%/*}/.${docs_copy##*/}.docs.XXXXXX") ||
+		die 6 "mktemp could not create a temp file in ${grill%/*}; expected a writable folder; the grill is not ended; try checking its permissions, then rerun"
+	jq '.' <"$1" >"${docs_temp}" ||
 		die 6 "could not copy the grill into ${docs_temp}; expected the copy written; the grill is not ended; try checking free space, then rerun"
-	docs_copy="${docs_folder}/${docs_copy_name}"
 	mv -f "${docs_temp}" "${docs_copy}" ||
 		die 6 "mv could not move the copy onto ${docs_copy}; expected the copy in place; the grill is not ended; try checking the folder's permissions, then rerun"
 	docs_temp=''
+	docs_made=${docs_copy}
 }
 
-# new: creates the grill file through crucible.sh and sets grill to it.
-create_grill_file() {
-	label=$(printf '%s\n' "${result}" | jq -r '.label') ||
-		install_fault 3 'jq failed reading the label; expected jq 1.6+; try jq --version, then rerun'
-	if created=$(sh "${crucible_script}" new --kind "${KIND}" --effort "${effort}" --label "${label}" </dev/null); then
-		crucible_status=0
+# end: appends the staged ended grill as the grill.ended event through
+# events.sh; sets event_file.
+append_ended_event() {
+	if event_file=$(sh "${events_script}" append --effort "${grill_effort}" --type "${ENDED_TYPE}" --by "${PROG}" \
+		--body-file "${temp_file}" --session "${session_id}" </dev/null); then
+		append_status=0
 	else
-		crucible_status=$?
+		append_status=$?
 	fi
-	case ${crucible_status} in
+	case ${append_status} in
 		0) ;;
-		5) install_fault 5 'crucible.sh new names a missing dependency above; install it, then rerun' ;;
-		*) die 6 "crucible.sh new failed (its stderr is above); expected a new empty file in ${effort}/${KIND}/; try the fix it names, then rerun" ;;
+		3) die "${NOT_OPEN_EXIT}" "events.sh refused the ${ENDED_TYPE} event (its stderr is above); the grill is not ended; expected an open effort; ask the human to check the effort" ;;
+		5) install_fault 5 'events.sh append names a missing dependency above; install it, then rerun' ;;
+		6) die "${LOCKED_EXIT}" "the events lock of ${grill_effort} stayed held (events.sh stderr above); the grill is not ended; rerun once" ;;
+		*) die 6 "events.sh append failed (exit ${append_status}; its stderr is above); the grill is not ended; try the fix it names, then rerun" ;;
 	esac
-	created_file=${created}
-	set_effort_dir
-	case ${created} in
-		"${effort_dir}/${KIND}/"*.json) ;;
-		*)
-			shown_created=$(printable "${created}")
-			die 6 "crucible.sh new printed ${shown_created}, which is not in ${effort_dir}/${KIND}/; expected a new file there; try reinstalling the crucible skill, then rerun"
-			;;
-	esac
-	grill=${created}
 }
 
-# list: sets result to LIST_JQ's output over the effort's grill files, or
-# exits 2 on a file in its grills/ folder that is not one.
+# new: creates the empty draft of the effort's next grill number, never
+# overwriting one, and sets grill and grill_number to it.
+create_draft() {
+	drafts_dir="${effort_dir}/${DRAFTS_FOLDER}"
+	mkdir -p "${drafts_dir}" 2>/dev/null || [ -d "${drafts_dir}" ] ||
+		die 6 "mkdir could not create ${drafts_dir}; expected a writable effort folder; try checking its permissions, then rerun"
+	read_events slurp --effort "${effort_dir}" --type "${ENDED_TYPE}"
+	next_grill_number "${events_out}"
+	grill="${drafts_dir}/${GRILL_PREFIX}${grill_number}.json"
+	# effort_problem resolved the root in a subshell; this sets crucible_root here.
+	# shellcheck disable=SC2310 # its status says whether the space is usable; the problem is read here
+	crucible_resolve_root || exit_on_problems "CRUCIBLE_HOME: ${crucible_root_problem}"
+	# shellcheck disable=SC2310 # its status says whether the path is an item's; the problem is read here
+	crucible_check_effort_item "${grill}" "${DRAFTS_FOLDER}" ||
+		die 6 "the draft ${grill} is ${crucible_item_problem}; try moving the link aside, then rerun"
+	if (
+		set -C
+		: >"${grill}"
+	) 2>/dev/null; then
+		created_file=${grill}
+		return 0
+	fi
+	die 6 "could not create the draft ${grill}, or it exists; expected a new file; try checking the permissions of ${drafts_dir}, then rerun"
+}
+
+# Sets grill_number to 1 + the highest number of the open drafts in
+# drafts_dir and of the grill.ended events in JSON array $1.
+next_grill_number() {
+	highest=$(printf '%s\n' "$1" | jq -r '[.[].body.number | numbers] | max // 0 | tostring') ||
+		install_fault 3 'jq failed reading the ended grills; expected jq 1.6+; try jq --version, then rerun'
+	case ${highest} in
+		'' | *[!0123456789]*) die 6 "a ${ENDED_TYPE} event of ${effort_dir} holds the number ${highest}; expected a whole number; ask the human to check the effort's events" ;;
+		*) ;;
+	esac
+	[ "${#highest}" -le "${MAX_NUMBER_DIGITS}" ] ||
+		die 6 "a ${ENDED_TYPE} event of ${effort_dir} holds a number of over ${MAX_NUMBER_DIGITS} digits; expected a grill number; ask the human to check the effort's events"
+	for draft in "${drafts_dir}/${GRILL_PREFIX}"*.json; do
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		number_of_draft_name "${draft##*/}" || continue
+		[ "${name_number}" -le "${highest}" ] || highest=${name_number}
+	done
+	grill_number=$((highest + 1))
+}
+
+# list: sets result to LIST_JQ's output over the effort's drafts and its
+# grill.ended events, or exits 2 on a file in its drafts that is no draft.
 list_grills() {
 	set_effort_dir
 	case ${effort_dir} in
 		*[[:cntrl:]]*) exit_on_problems '--effort holds a control character (such as a line break); expected one absolute path' ;;
 		*) ;;
 	esac
-	grills_dir="${effort_dir}/${KIND}"
-	if [ -L "${grills_dir}" ] || { [ -e "${grills_dir}" ] && [ ! -d "${grills_dir}" ]; }; then
-		exit_on_problems "--effort ${effort}: ${KIND}/ is a symbolic link or not a folder; expected the real folder ${PROG} new creates"
+	drafts_dir="${effort_dir}/${DRAFTS_FOLDER}"
+	if [ -L "${drafts_dir}" ] || { [ -e "${drafts_dir}" ] && [ ! -d "${drafts_dir}" ]; }; then
+		exit_on_problems "--effort ${effort}: ${DRAFTS_FOLDER}/ is a symbolic link or not a folder; expected the real folder ${PROG} new creates"
 	fi
 	# An unreadable folder globs to nothing, which would read as no grills.
-	if [ -d "${grills_dir}" ] && { [ ! -r "${grills_dir}" ] || [ ! -x "${grills_dir}" ]; }; then
-		exit_on_problems "--effort ${effort}: cannot read ${grills_dir}; expected a readable folder; try checking its permissions"
+	if [ -d "${drafts_dir}" ] && { [ ! -r "${drafts_dir}" ] || [ ! -x "${drafts_dir}" ]; }; then
+		exit_on_problems "--effort ${effort}: cannot read ${drafts_dir}; expected a readable folder; try checking its permissions"
 	fi
 	set --
 	listed_count=0 listed_problems=''
-	if [ -d "${grills_dir}" ]; then
-		for listed_file in "${grills_dir}"/*.json; do
+	if [ -d "${drafts_dir}" ]; then
+		for listed_file in "${drafts_dir}/${GRILL_PREFIX}"*.json; do
 			[ -e "${listed_file}" ] || [ -L "${listed_file}" ] || continue
 			# shellcheck disable=SC2310 # a pure test; its status is the answer
-			if is_grill_name "${listed_file##*/}" && [ -f "${listed_file}" ] && [ ! -L "${listed_file}" ] && [ -r "${listed_file}" ]; then
-				set -- "$@" --arg "p${listed_count}" "${listed_file}" --rawfile "g${listed_count}" "${listed_file}"
+			if number_of_draft_name "${listed_file##*/}" && [ -f "${listed_file}" ] && [ ! -L "${listed_file}" ] && [ -r "${listed_file}" ]; then
+				set -- "$@" --arg "p${listed_count}" "${listed_file}" --rawfile "g${listed_count}" "${listed_file}" \
+					--arg "k${listed_count}" draft --arg "n${listed_count}" "${name_number}"
 				listed_count=$((listed_count + 1))
 			else
 				listed_problems="${listed_problems:+${listed_problems}
-}${listed_file}: is not a readable regular file named <ID>-<label>.json, or is a symbolic link; expected only the grill files ${PROG} new writes"
+}${listed_file}: is not a readable regular file named ${GRILL_PREFIX}<n>.json, or is a symbolic link; expected only the drafts ${PROG} new writes"
 			fi
 		done
 	fi
 	exit_on_problems "${listed_problems}"
+	read_events list --effort "${effort_dir}" --type "${ENDED_TYPE}"
+	while IFS= read -r listed_file; do
+		[ -n "${listed_file}" ] || continue
+		set -- "$@" --arg "p${listed_count}" "${listed_file}" --rawfile "g${listed_count}" "${listed_file}" \
+			--arg "k${listed_count}" event --arg "n${listed_count}" ''
+		listed_count=$((listed_count + 1))
+	done <<EOF
+${events_out}
+EOF
 	result=$(jq -n -c -L "${own_dir}" --argjson count "${listed_count}" "$@" "${LIST_JQ}" </dev/null) ||
-		install_fault 3 'jq failed on the grill files; expected jq 1.6+; try jq --version, then rerun'
+		install_fault 3 'jq failed on the grills; expected jq 1.6+; try jq --version, then rerun'
 }
 
 # Prints $1 and a newline, or exits 4 when stdout is closed.
@@ -1067,18 +1145,18 @@ list_command() {
 	print_result_out
 }
 
-# Every other command: checks its input against the grill file it reads
-# (none for new) under the grill's lock, writes the new file and prints its output.
+# Every other command: checks its input against the draft it reads (none
+# for new), writes the new draft, or for end the grill.ended event, and
+# prints its output.
 write_command() {
 	require_session
 	if [ "${command}" = new ]; then
 		setup_problems=$(effort_problem)
 	else
-		path_problem=$(grill_path_problem)
+		check_grill_path
 		exit_on_problems "${path_problem}"
-		grills_folder=${grill%/*}
-		require_open_effort "${grills_folder%/*}"
-		take_lock
+		require_open_effort "${grill_effort}"
+		require_open_grill
 		# shellcheck disable=SC2310 # its status is jq's; a failure exits
 		read_problems=$(file_problems "${grill}" "--grill ${grill}: ") ||
 			install_fault 3 'jq failed on the grill validator; expected jq 1.6+; try jq --version, then rerun'
@@ -1090,21 +1168,26 @@ write_command() {
 	if [ "${command}" = new ]; then
 		set_effort_dir
 		require_open_effort "${effort_dir}"
-		create_grill_file
+		create_draft
 	fi
-	write_file "${grill}"
+	if [ "${command}" = end ]; then
+		end_grill
+	else
+		write_file "${grill}"
+	fi
 	created_file=''
 	case ${command} in
 		new) print_out "GRILL_FILE: ${grill}" ;;
 		end)
 			print_result_out
 			print_out "DOCS_FILE: ${docs_copy}"
+			print_out "EVENT: ${event_file}"
 			;;
 		*) print_result_out ;;
 	esac
 }
 
-temp_file='' created_file='' lock_dir='' session_id='' docs_temp='' docs_copy=''
+temp_file='' created_file='' session_id='' docs_temp='' docs_copy='' docs_made='' event_file='' grill_number=0
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

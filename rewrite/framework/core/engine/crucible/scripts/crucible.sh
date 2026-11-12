@@ -1,20 +1,19 @@
 #!/usr/bin/env sh
 # Hands out paths and IDs in the effort folders of the durable Crucible space,
-# finds items by ID or kind, opens them, expires an effort's cache and prunes
-# efforts no file changed in for long.
+# finds drafts by ID, opens them and prunes efforts no file changed in for long.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 readonly PROG='crucible.sh'
-# Every kind is a folder of an effort folder; a nested kind is one folder per level.
-readonly KIND_LIST='context plans grills states reports/review drafts cache/gates cache/denials'
-readonly CACHE_KINDS='cache/gates cache/denials'
-# A cache item is read in the session that wrote it; a week covers a session
-# resumed days later. One fixed age until the hub has settings.
-readonly CACHE_MAX_DAYS=7
+# The one kind: main's drafts, kept in drafts/main-thread/ of an effort
+# folder. Everything else of an effort is an event (events.sh).
+readonly KIND_LIST='drafts'
+readonly DRAFTS_DIR='drafts/main-thread'
 # Bounds the --older-than value handed to find -mtime, far past any real age.
 readonly MAX_PRUNE_DAYS_DIGITS=5
+# Keeps a --max value inside the shell's integer range.
+readonly MAX_PATHS_DIGITS=9
 readonly RENDER_LIB='human-view'
 # The C locale keeps the shell's patterns and sort byte-wise on macOS and Linux.
 LC_ALL=C
@@ -26,76 +25,80 @@ usage() {
 usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
        crucible.sh id --effort FOLDER
        crucible.sh path ID
-       crucible.sh find --effort FOLDER --kind KIND [--label LABEL]
+       crucible.sh find --effort FOLDER --kind KIND [--label LABEL] [--max N]
        crucible.sh open ID [--editor CMD]
-       crucible.sh prune --older-than Nd [--apply]
+       crucible.sh prune --older-than Nd [--apply FOLDER...]
        crucible.sh root
        crucible.sh --help | -h
 
-Hands out, finds, opens and prunes the files of the durable Crucible space.
+Hands out, finds and opens drafts by ID, and prunes effort folders of the
+durable Crucible space.
 
-The space: \${CRUCIBLE_HOME:-\$HOME/.crucible}, absolute, not / and not a
-symbolic link. Nothing outside it is written or removed; folders made are
-mode 700, files 600. A symbolic link for efforts/, an effort or a kind
-folder: new and find refuse it, the rest skip it.
+Nothing outside the space is written or removed; folders made are mode 700,
+files 600. Nothing else is left behind (a SIGKILL aside, which can leave a
+pruned folder half removed). A symbolic link for efforts/, an effort or a
+kind folder: new and find refuse it, the rest skip it.
 
-Layout: <root>/efforts/<effort>/<kind>/<ID>-<label>.<ext>
-  ID      <YYYYMMDDTHHMMSS>-<hex>, hex 4 lowercase hex digits
+Layout: <root>/efforts/<effort>/drafts/main-thread/<ID>-<label>.md
+  ID      <YYYYMMDDTHHMMSS>-<4 lowercase hex digits>
   effort  named ${help_name_rule}
-  kind    context, plans, grills, states, reports/review, drafts,
-          cache/gates or cache/denials; the cache kinds expire
-          after ${CACHE_MAX_DAYS} days
-  ext     md for drafts (every Markdown artifact the main thread writes
-          inside an effort), json for every other kind
+  kind    drafts: Markdown the main thread makes with new
 
 Options:
   --kind KIND         new, find: a kind of the layout
   --effort FOLDER     new, id, find: an existing effort folder directly in
                       <root>/efforts/, absolute
-  --label LABEL       new: the item's label; find: only items with it.
+  --label LABEL       new: the draft's label; find: only drafts with it.
                       ${help_label_rule}
+  --max N             find: at most N (default 0, all); stderr notes a cut
   ID                  path, open (before its options): a full ID or its
                       4 hex digits
-  --editor CMD        open: run by sh with the file as last argument, instead
-                      of open (macOS) or xdg-open (Linux), and waited for: it
-                      must hand the file to a GUI app and return (code, idea;
-                      never 'code -w' or a terminal editor)
+  --editor CMD        open: split on blanks (no quotes, no shell) and run
+                      with the file as last argument, instead of open or
+                      xdg-open, and waited for: it must hand the file to a
+                      GUI app and return (code, idea; never 'code -w' or a
+                      terminal editor)
   --older-than Nd     prune: the age N, in whole days
-  --apply             prune: remove them; without it, nothing changes
+  --apply FOLDER...   prune: remove these folders of the dry run's list
+  CRUCIBLE_HOME       the space root <root> (default \$HOME/.crucible):
+                      absolute, not / and not a symbolic link
+  CLAUDE_CONFIG_DIR   where skills are found (default \$HOME/.claude)
 
 Commands:
   new    creates an empty file in --effort's KIND folder (made if missing),
-         never overwriting, with an ID no other item of the effort holds;
-         stdout: its absolute path. Also expires the effort's cache.
-  id     stdout: a fresh ID no item of --effort holds, for a file the
-         caller keeps outside the kinds. Read-only.
-  path   stdout: the absolute path of the item with ID.
-  find   stdout: the absolute path of each KIND item (with --label, of that
-         label) in --effort's folder, one per line, newest first; nothing
-         when there is none (KIND folder missing included); a KIND folder
-         it cannot read exits 4. Read-only.
-  open   opens the item's own file. stdout: one line, "**Opened:** <its
-         absolute path>".
-  prune  lists effort folders unchanged for N days, or with --apply removes
-         them, never one modified in the last 24 hours or not fully
-         readable; touches nothing else and follows no symbolic link.
-         stdout: a line per folder, then a summary line.
-  root   stdout: the space root, checked, not created. Takes no argument.
+         never overwriting, with an ID no other draft of the effort holds;
+         stdout: its absolute path.
+  id     stdout: a fresh ID no draft of --effort holds, for the caller
+         (a dispatch ID). Read-only.
+  path   stdout: the absolute path of the draft with ID.
+  find   read-only; stdout: the absolute path of each KIND draft (with
+         --label, of that label) in --effort's folder, one per line, newest
+         first; nothing when none (or no KIND folder); an unreadable KIND
+         folder exits 4.
+  open   opens the draft. stdout: the line "**Opened:** <its absolute path>".
+  prune  lists effort folders unchanged for N days (24 hours at least)
+         and fully readable; --apply removes those FOLDERs, refusing any
+         other (exit 2, nothing removed). Follows no symbolic link. stdout:
+         a view for the human, relayed as printed.
+  root   stdout: the space root, checked, not created.
 
 Exit codes:
   0  done; go on
-  1  path, open: no single item has the ID; report it with stderr
-  2  usage error; show stderr
-  4  space fault; show stderr
-  5  install fault; show stderr
-  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
+  1  path, open: no single draft has the ID; show the human stderr, and stop
+  2  usage error; fix what stderr names and rerun once, else show the human
+     stderr, and stop
+  4  space fault; relay a failed --apply's "Prune stopped" view (stdout)
+     as printed; show the human stderr, and stop
+  5  install fault; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
+  other  unexpected; show the human the exit code and stderr, and stop
 
 Dependencies:
   POSIX sh; lib/crucible-space.sh beside this script
   cat, date, find, mkdir, od, rm, sort, uname, /dev/urandom
-  open: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq); the
-    ${RENDER_LIB} skill's view.jq in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
-    without --editor, open (macOS) or xdg-open (Linux)
+  open, prune: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq);
+    the ${RENDER_LIB} skill's view.jq in <CLAUDE_CONFIG_DIR>/skills
+  open without --editor: open (macOS) or xdg-open (Linux)
 EOF
 }
 
@@ -228,7 +231,6 @@ run_new() {
 	check_label
 	check_effort
 	create_item
-	expire_cache
 	printf '%s\n' "${item_file}"
 }
 
@@ -247,7 +249,10 @@ set_kinds_text() {
 	for known_kind in ${KIND_LIST}; do
 		kinds_text="${kinds_text:+${kinds_text}, }${known_kind}"
 	done
-	kinds_text="${kinds_text%, *} or ${kinds_text##*, }"
+	case ${kinds_text} in
+		*", "*) kinds_text="${kinds_text%, *} or ${kinds_text##*, }" ;;
+		*) ;;
+	esac
 }
 
 check_label() {
@@ -272,11 +277,8 @@ check_effort() {
 
 # Sets item_file to a new empty file in effort/kind/.
 create_item() {
-	kind_dir="${effort}/${kind}"
-	case ${kind} in
-		*/*) ensure_dir "${effort}/${kind%%/*}" ;;
-		*) ;;
-	esac
+	kind_dir="${effort}/${DRAFTS_DIR}"
+	ensure_dir "${effort}/${DRAFTS_DIR%%/*}"
 	ensure_dir "${kind_dir}"
 	claim_item_file
 	item_file="${kind_dir}/${name}"
@@ -284,9 +286,9 @@ create_item() {
 
 # Creates one folder of the layout; an existing folder is reused unless it is a symlink.
 ensure_dir() {
-	[ ! -L "$1" ] || space_fault "$1 is a symbolic link; expected a real folder inside the space"
-	mkdir "$1" 2>/dev/null || [ -d "$1" ] || space_fault "cannot create $1; expected a writable folder"
-	[ ! -L "$1" ] || space_fault "$1 is a symbolic link; expected a real folder inside the space"
+	[ ! -L "$1" ] || space_fault "$1 is a symbolic link; expected a real folder inside the space; try replacing the link with a real folder"
+	mkdir "$1" 2>/dev/null || [ -d "$1" ] || space_fault "cannot create $1; expected a writable folder; try checking its permissions"
+	[ ! -L "$1" ] || space_fault "$1 is a symbolic link; expected a real folder inside the space; try replacing the link with a real folder"
 }
 
 # Sets name for a file created in kind_dir whose ID no other item of the
@@ -350,28 +352,6 @@ mint_free_id() {
 	done
 }
 
-# Removes the regular files directly in the effort's cache kind folders last
-# modified CACHE_MAX_DAYS or more days ago. find -mtime +N counts whole days
-# of age, so +(days - 1) is an age of at least that many days. Each folder is
-# entered with cd -P and checked to be the effort's own, so a folder swapped
-# for a link is never cleaned; find never follows a link or enters a folder.
-expire_cache() {
-	physical_effort=$(cd -P "${effort}" 2>/dev/null && pwd -P) || {
-		warn "cache not expired: cannot enter ${effort}"
-		return 0
-	}
-	for cache_kind in ${CACHE_KINDS}; do
-		cache_dir="${effort}/${cache_kind}"
-		[ ! -L "${effort}/cache" ] && [ ! -L "${cache_dir}" ] && [ -d "${cache_dir}" ] || continue
-		(
-			cd -P "${cache_dir}" 2>/dev/null || exit 1
-			entered=$(pwd -P) || exit 1
-			[ "${entered}" = "${physical_effort}/${cache_kind}" ] || exit 1
-			find . ! -name . -prune -type f -mtime "+$((CACHE_MAX_DAYS - 1))" -exec rm -f -- {} +
-		) || warn "cache not fully expired in ${cache_dir}; expected its old files removed; the next crucible.sh new tries again"
-	done
-}
-
 run_path() {
 	[ "$#" -eq 1 ] || usage_error 'path takes exactly one ID; expected crucible.sh path ID'
 	find_item "$1"
@@ -386,44 +366,48 @@ run_open() {
 	esac
 	wanted_id=$1
 	shift
-	editor=''
+	editor='' editor_given=false
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--editor)
 				require_value "$1" "$#"
-				editor=$2
+				editor=$2 editor_given=true
 				shift 2
 				;;
 			*) usage_error "unknown argument for open: $1; expected --editor CMD" ;;
 		esac
 	done
+	[ "${editor_given}" = false ] || check_editor
 	find_item "${wanted_id}"
 	check_jq
+	find_render_lib
 	opened_line=$(render_opened_line)
 	open_in_editor
 	printf '%s\n' "${opened_line}"
 }
 
 run_find() {
-	kind='' label='' effort=''
+	kind='' label='' effort='' max_paths=0
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--kind | --label | --effort) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for find: $1; expected --effort, --kind or --label" ;;
+			--kind | --label | --effort | --max) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for find: $1; expected --effort, --kind, --label or --max" ;;
 		esac
 		case $1 in
 			--kind) kind=$2 ;;
 			--label) label=$2 ;;
+			--max) max_paths=$2 ;;
 			*) effort=$2 ;;
 		esac
 		shift 2
 	done
+	check_max
 	check_kind
 	[ -z "${label}" ] || check_label
 	check_effort
-	kind_dir="${effort}/${kind}"
-	[ ! -L "${effort}/${kind%%/*}" ] && [ ! -L "${kind_dir}" ] ||
-		space_fault "${kind_dir} or a folder above it in the effort is a symbolic link; expected real folders"
+	kind_dir="${effort}/${DRAFTS_DIR}"
+	[ ! -L "${effort}/${DRAFTS_DIR%%/*}" ] && [ ! -L "${kind_dir}" ] ||
+		space_fault "${kind_dir} or a folder above it in the effort is a symbolic link; expected real folders; try replacing the link with a real folder"
 	[ -d "${kind_dir}" ] || return 0
 	# An unreadable folder globs to nothing, which would read as no items.
 	[ -r "${kind_dir}" ] && [ -x "${kind_dir}" ] ||
@@ -440,12 +424,32 @@ run_find() {
 	[ -n "${found_names}" ] || return 0
 	# Item names lead with their ID and hold no newline, so a byte-order sort,
 	# reversed, is newest first.
-	sorted_names=$(printf '%s' "${found_names}" | sort -r) || install_fault 'sort failed; expected a POSIX sort'
+	sorted_names=$(printf '%s' "${found_names}" | sort -r) || install_fault 'sort failed; expected a POSIX sort; try installing one'
+	shown=0 total=0
 	while IFS= read -r found_name; do
+		total=$((total + 1))
+		[ "${max_paths}" -eq 0 ] || [ "${total}" -le "${max_paths}" ] || continue
 		printf '%s/%s\n' "${kind_dir}" "${found_name}"
+		shown=${total}
 	done <<EOF
 ${sorted_names}
 EOF
+	warn_cut "${shown}" "${total}"
+}
+
+check_max() {
+	case ${max_paths} in
+		0) ;;
+		'' | *[!0123456789]* | 0*) usage_error "bad --max: ${max_paths}; expected a whole number, 0 for all" ;;
+		*) ;;
+	esac
+	[ "${#max_paths}" -le "${MAX_PATHS_DIGITS}" ] ||
+		usage_error "bad --max: ${max_paths}; expected at most ${MAX_PATHS_DIGITS} digits"
+}
+
+# Says on stderr that --max cut the output: $1 shown of $2.
+warn_cut() {
+	[ "$1" -eq "$2" ] || warn "showing $1 of $2"
 }
 
 # Sets parsed_id and parsed_label when file name $1 is an item name of the
@@ -466,9 +470,9 @@ find_item() {
 	crucible_is_id "$1" || crucible_is_id_hex "$1" ||
 		usage_error "bad ID: $1; expected <YYYYMMDDTHHMMSS>-<hex> or the 4 lowercase hex digits"
 	collect_matches "$1"
-	[ "${match_count}" -gt 0 ] || not_found "no item with ID $1 in ${root}/efforts"
+	[ "${match_count}" -gt 0 ] || not_found "no draft with ID $1 in ${root}/efforts; expected an ID crucible.sh new printed; try crucible.sh find --effort FOLDER --kind drafts"
 	if [ "${match_count}" -gt 1 ]; then
-		warn "ID $1 is shared by ${match_count} items; expected a unique ID; use the full one:"
+		warn "ID $1 is shared by ${match_count} drafts; expected a unique ID; use the full one:"
 		printf '%s' "${matches}" >&2
 		exit 1
 	fi
@@ -494,8 +498,8 @@ collect_matches() {
 # Adds the items of kind folder kind of effort folder $1 whose ID, or the
 # ID's hex, is $2.
 match_in_kind() {
-	kind_dir="$1/${kind}"
-	[ ! -L "$1/${kind%%/*}" ] && [ ! -L "${kind_dir}" ] && [ -d "${kind_dir}" ] || return 0
+	kind_dir="$1/${DRAFTS_DIR}"
+	[ ! -L "$1/${DRAFTS_DIR%%/*}" ] && [ ! -L "${kind_dir}" ] && [ -d "${kind_dir}" ] || return 0
 	wanted=$2
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	if crucible_is_id_hex "${wanted}"; then
@@ -515,12 +519,26 @@ match_in_kind() {
 	done
 }
 
-# Prints the line open reports, built from human-view's layout module; exits 5
-# when the module is missing or jq fails on it.
-render_opened_line() {
+# A blank --editor would leave the draft's own path as the command to run.
+check_editor() {
+	set -f
+	# shellcheck disable=SC2086 # counts the words open_in_editor splits it into
+	set -- ${editor}
+	set +f
+	[ "$#" -gt 0 ] || usage_error "--editor is blank; expected a command, e.g. --editor code"
+}
+
+# Sets render_lib_dir to human-view's folder; exits 5 when its layout module is
+# missing.
+find_render_lib() {
 	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
 	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
 		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+}
+
+# Prints the line open reports, built from human-view's layout module; exits 5
+# when jq fails on it.
+render_opened_line() {
 	# shellcheck disable=SC2016 # the $ signs are jq's
 	jq -nr -L "${render_lib_dir}" --arg path "${item_path}" \
 		'include "view"; "**Opened:** \($path | path_text)"' </dev/null ||
@@ -529,13 +547,17 @@ render_opened_line() {
 
 open_in_editor() {
 	if [ -n "${editor}" ]; then
-		# The editor string is the human's own choice, split by sh as git does;
-		# the file path reaches it only as a separate argument.
-		sh -c "${editor} \"\$@\"" "${editor}" "${item_path}" >&2 ||
-			install_fault "the editor '${editor}' failed on ${item_path}; expected it to open the file"
+		# Split on blanks only, globbing off: the editor string is never parsed
+		# by a shell, and the file path reaches it as one separate argument.
+		set -f
+		# shellcheck disable=SC2086 # splitting the editor into its words is the point
+		set -- ${editor} "${item_path}"
+		set +f
+		"$@" >&2 ||
+			install_fault "the editor '${editor}' failed on ${item_path}; expected it to open the file; try another --editor CMD"
 		return 0
 	fi
-	os=$(uname -s) || install_fault 'uname failed; expected the OS name to pick an opener'
+	os=$(uname -s) || install_fault 'uname failed; expected the OS name to pick an opener; try --editor CMD'
 	if [ "${os}" = Darwin ]; then
 		opener=open
 	else
@@ -544,11 +566,11 @@ open_in_editor() {
 	command -v "${opener}" >/dev/null 2>&1 ||
 		install_fault "${opener} missing; expected it on PATH, or --editor CMD"
 	"${opener}" "${item_path}" >&2 ||
-		install_fault "${opener} failed on ${item_path}; expected it to open the file"
+		install_fault "${opener} failed on ${item_path}; expected it to open the file; try --editor CMD"
 }
 
 run_prune() {
-	days='' apply=false
+	days='' apply=false apply_folders=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--older-than)
@@ -559,21 +581,28 @@ run_prune() {
 			--apply)
 				apply=true
 				shift
+				while [ "$#" -gt 0 ]; do
+					case $1 in
+						-*) break ;;
+						*) add_apply_folder "$1" ;;
+					esac
+					shift
+				done
 				;;
-			*) usage_error "unknown argument for prune: $1; expected --older-than Nd or --apply" ;;
+			*) usage_error "unknown argument for prune: $1; expected --older-than Nd or --apply FOLDER..." ;;
 		esac
 	done
 	check_days
-	command -v find >/dev/null 2>&1 || install_fault 'find missing; expected find on PATH to see recent files'
-	removed=0 kept=0
-	efforts_dir="${root}/efforts"
-	if [ -d "${efforts_dir}" ] && [ ! -L "${efforts_dir}" ]; then
-		for effort_dir in "${efforts_dir}"/*; do
-			# shellcheck disable=SC2310 # a pure test; its status is the answer
-			crucible_is_effort_name "${effort_dir##*/}" || continue
-			[ -d "${effort_dir}" ] && [ ! -L "${effort_dir}" ] || continue
-			prune_effort "${effort_dir}"
-		done
+	[ "${apply}" = false ] || [ -n "${apply_folders}" ] ||
+		usage_error '--apply needs folders; expected --apply FOLDER..., folders the dry run listed'
+	command -v find >/dev/null 2>&1 || install_fault 'find missing; expected find on PATH to see recent files; try installing find (POSIX)'
+	check_jq
+	find_render_lib
+	removed_items='' kept_items=''
+	if [ "${apply}" = true ]; then
+		apply_prune
+	else
+		list_prunable
 	fi
 	report_prune
 }
@@ -595,32 +624,107 @@ check_days() {
 	while [ "${count}" != "${count#0}" ] && [ "${#count}" -gt 1 ]; do count=${count#0}; done
 }
 
-# Lists, keeps or removes effort folder $1 by the age of the newest thing in it.
-# A session may still write to an effort, so one touched in the last 24 hours
-# stays whatever N is.
-prune_effort() {
+# The folders travel newline-separated, so one holding a newline is refused here.
+add_apply_folder() {
+	case $1 in
+		*"
+"*) usage_error '--apply: a folder holds a newline; expected folders the dry run listed' ;;
+		*) apply_folders="${apply_folders}$1
+" ;;
+	esac
+}
+
+# Sets removed_items and kept_items to the dry run's lists.
+list_prunable() {
+	efforts_dir="${root}/efforts"
+	[ -d "${efforts_dir}" ] && [ ! -L "${efforts_dir}" ] || return 0
+	for effort_dir in "${efforts_dir}"/*; do
+		# shellcheck disable=SC2310 # a pure test; its status is the answer
+		crucible_is_effort_name "${effort_dir##*/}" || continue
+		[ -d "${effort_dir}" ] && [ ! -L "${effort_dir}" ] || continue
+		check_prunable "${effort_dir}"
+		case ${keep_reason} in
+			'') removed_items="${removed_items}${effort_dir}
+" ;;
+			young) ;;
+			*) print_kept "${effort_dir}" "${keep_reason}" ;;
+		esac
+	done
+}
+
+# Removes the --apply folders once every one is still prunable; refuses them
+# all, exit 2, when any is not.
+apply_prune() {
+	prune_list='' refused=0
+	while IFS= read -r wanted_folder; do
+		[ -n "${wanted_folder}" ] || continue
+		refusal=''
+		# shellcheck disable=SC2310 # its status says whether the folder passed; the refusal is read below
+		if ! crucible_effort_check "${wanted_folder}"; then
+			refusal=${crucible_effort_problem}
+		else
+			case ${prune_list} in
+				*"${crucible_effort}
+"*) refusal='listed twice' ;;
+				*) set_refusal_by_age "${crucible_effort}" ;;
+			esac
+		fi
+		if [ -n "${refusal}" ]; then
+			warn "refused: ${wanted_folder}: ${refusal}"
+			refused=$((refused + 1))
+		else
+			prune_list="${prune_list}${crucible_effort}
+"
+		fi
+	done <<EOF
+${apply_folders}
+EOF
+	[ "${refused}" -eq 0 ] ||
+		usage_error "${refused} folder(s) refused, nothing removed; expected folders still prunable; try a new dry run"
+	while IFS= read -r prune_folder; do
+		[ -n "${prune_folder}" ] || continue
+		remove_effort "${prune_folder}"
+		removed_items="${removed_items}${prune_folder}
+"
+	done <<EOF
+${prune_list}
+EOF
+}
+
+# Sets refusal to why effort folder $1 may not go by its age; empty when it may.
+set_refusal_by_age() {
+	check_prunable "$1"
+	case ${keep_reason} in
+		young) refusal="modified in the last ${count} days" ;;
+		*) refusal=${keep_reason} ;;
+	esac
+}
+
+# Sets keep_reason for effort folder $1 by the age of the newest thing in it:
+# empty when it may go, young when modified in the last N days, else why it
+# stays. A session may still write to an effort, so one touched in the last
+# 24 hours stays whatever N is.
+check_prunable() {
+	keep_reason='find cannot read all of it'
 	# shellcheck disable=SC2310 # its status is the answer; a failure to read keeps the folder
-	recent_in "$1" "${count}" || {
-		print_kept "$1" 'find cannot read all of it'
-		return 0
-	}
+	recent_in "$1" "${count}" || return 0
+	keep_reason=young
 	[ -z "${recent}" ] || return 0
+	keep_reason='find cannot read all of it'
 	# shellcheck disable=SC2310 # its status is the answer; a failure to read keeps the folder
-	recent_in "$1" 1 || {
-		print_kept "$1" 'find cannot read all of it'
-		return 0
+	recent_in "$1" 1 || return 0
+	keep_reason='something in it was modified in the last 24 hours'
+	[ -z "${recent}" ] || return 0
+	keep_reason=''
+}
+
+# Removes effort folder $1 and checks it is gone; on a failure, shows what was
+# removed before it, then exits 4.
+remove_effort() {
+	{ rm -rf "$1" && [ ! -e "$1" ] && [ ! -L "$1" ]; } || {
+		report_prune blocked 'Prune stopped'
+		space_fault "cannot remove $1; expected it gone; try checking its permissions"
 	}
-	if [ -n "${recent}" ]; then
-		print_kept "$1" 'something in it was modified in the last 24 hours'
-		return 0
-	fi
-	if [ "${apply}" = false ]; then
-		printf 'would remove %s\n' "$1"
-	else
-		rm -rf "$1" || space_fault "cannot remove $1; expected a writable folder"
-		printf 'removed %s\n' "$1"
-	fi
-	removed=$((removed + 1))
 }
 
 # Sets recent to what in folder $1 (the folder included) was modified less
@@ -630,18 +734,34 @@ recent_in() {
 }
 
 print_kept() {
-	printf 'kept %s (%s)\n' "$1" "$2"
-	kept=$((kept + 1))
+	kept_items="${kept_items}$1 ($2)
+"
 }
 
+# Prints the prune view, built from human-view's layout module, with status $1
+# and title $2 when given; exits 5 when jq fails on the module. Effort folder names hold no
+# newline, so the lists travel newline-separated.
 report_prune() {
-	kept_note=''
-	[ "${kept}" -eq 0 ] || kept_note=" (kept ${kept}, listed above)"
 	if [ "${apply}" = true ]; then
-		printf 'removed %s effort folders unchanged for %s days%s\n' "${removed}" "${count}" "${kept_note}"
+		view_status=${1:-done} view_title=${2:-Prune} list_name='Removed' closing_note=''
 	else
-		printf 'would remove %s effort folders unchanged for %s days%s; nothing changed, add --apply to remove them\n' "${removed}" "${count}" "${kept_note}"
+		view_status=decision view_title='Prune dry run' list_name='Would remove'
+		closing_note='Nothing changed; to remove them, add --apply and the folders.'
 	fi
+	# shellcheck disable=SC2016 # the $ signs are jq's
+	jq -nr -L "${render_lib_dir}" --arg status "${view_status}" --arg title "${view_title}" --arg list "${list_name}" \
+		--arg note "${closing_note}" --arg days "${count}" \
+		--arg removed "${removed_items}" --arg kept "${kept_items}" '
+		include "view";
+		def lines: split("\n") | map(select(. != ""));
+		($removed | lines | map(path_text)) as $gone
+		| [ status_line($status; $title;
+				"\($gone | length) effort folder\(if ($gone | length) == 1 then "" else "s" end) unchanged for \($days) days"),
+			section($list; $gone),
+			section("Kept"; $kept | lines),
+			(if ($gone | length) == 0 then "" else $note end) ]
+		| blocks' </dev/null ||
+		install_fault "jq failed on ${render_lib_dir}/view.jq; expected jq 1.6+ and the ${RENDER_LIB} skill's module; try reinstalling it"
 }
 
 main "$@"

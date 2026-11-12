@@ -1,4 +1,4 @@
-# The compact card of one developer commit: its heading, task, counts, the
+# The compact card of one developer report: its heading, task, counts, the
 # gates that did not pass and where the report is. A module: load it with
 # jq -L <this folder> and -L human-view's folder, and include "card"; it
 # includes human-view's view and title modules. The card keeps its own layout
@@ -18,7 +18,7 @@ def card_dash_list: map("- " + .) | join("\n");
 def card_count_lines($files):
 	(card_items("answers") | map(objects | .status)) as $statuses
 	| [card_count("security") | select(. > 0) | "⚠️ " + card_counted(.; "security warning"; "security warnings")]
-	+ ["\(card_counted($files.total; "file"; "files")) changed, \($files.new) new"]
+	+ [if $files == null then "no code change" else "\(card_counted($files.total; "file"; "files")) changed, \($files.new) new" end]
 	+ (if $statuses == [] then [] else
 		["\(card_counted($statuses | length; "concern"; "concerns")) answered: \([$statuses[] | select(. == "fixed")] | length) fixed, \([$statuses[] | select(. == "blocked")] | length) blocked"]
 	  end)
@@ -38,13 +38,14 @@ def card_gates:
 	| if . == [] then "" else "**Gates**\n" + card_dash_list end;
 
 # Input: the parsed report. $labels: {language, frameworks} labels for title;
-# $files: {total, new}; $commit: {seat, count ("build iteration 2"), short,
-# report_path, warnings (lines shown after the counts)}.
+# $files: {total, new}, null for no commit; $commit: {seat, count ("build
+# iteration 2"), short ("" for no commit), report_path, warnings (lines
+# shown after the counts)}.
 def card($labels; $files; $commit):
 	(if card_count("blockers") > 0 then "blocked" else "done" end) as $state
 	| ["### \($labels | seat_title("developer"; $commit.seat)) · \($commit.count) · \($state)",
 	   "Task: \(.summary | card_text)",
 	   (card_count_lines($files) + ($commit.warnings // []) | card_dash_list),
 	   card_gates,
-	   "**Developer report:** `\($commit.short)` in \($commit.report_path | path_text)"]
+	   "**Developer report:** \(if $commit.short == "" then "" else "`\($commit.short)` in " end)\($commit.report_path | path_text)"]
 	| blocks;

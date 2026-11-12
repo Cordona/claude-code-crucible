@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Opens one chosen writer seat: a worktree of the main checkout on its own
-# branch at the seat's base, at the path seats.json records, the checkout's
+# branch at the seat's base, at the path its seat.chosen event records, the checkout's
 # dependency folders copied into it, and the seat's status set to open. It
 # only runs seats.sh, worktree-create.sh and worktree-setup.sh in order; a
 # failure after the worktree exists removes it and its branch again and
@@ -25,16 +25,16 @@ usage: sh ${PROG} --effort DIR --seat S
        sh ${PROG} --help | -h
 
 Opens a chosen developer seat, stopping at the first failing step:
-  seats.sh get --seats <effort>/seats.json --seat S   (its repo, base and worktree)
+  seats.sh get --effort <effort> --seat S   (its repo, base and worktree)
   ../worktree/worktree-create.sh --repo <repo> --base <base> --path <worktree>
       --branch ${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>
   ../worktree/worktree-setup.sh --from <repo> --to <worktree>
-  seats.sh opened --seats <effort>/seats.json --seat S
+  seats.sh opened --effort <effort> --seat S
 and prints the seat as seats.sh get does. A failure after the worktree
 exists removes it (git worktree remove --force) and its branch, says so,
 and leaves the seat chosen.
 
---effort DIR  absolute path of the effort folder (it holds seats.json)
+--effort DIR  absolute path of the effort folder
 --seat S      a seat seats.sh choose recorded, status chosen; a developer
               (a tester shares a developer's worktree: not yet supported
               and refused)
@@ -46,7 +46,7 @@ exit codes:
   0  the seat is open; its JSON line is printed
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
-  3  input: a refused option, the seat not in seats.json, a seat that is
+  3  input: a refused option, the seat not in the effort, a seat that is
      no developer's (checked before its status), or a step refused its
      input (exit 3)
   4  a step failed otherwise, or a dependency is missing
@@ -131,7 +131,8 @@ load_dependencies() {
 	done
 }
 
-# Sets effort_dir (the physical effort folder) and seats_file.
+# Sets effort_dir (the physical effort folder, whose name the branch takes)
+# and effort without trailing slashes, as seats.sh takes it.
 check_inputs() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -140,20 +141,19 @@ check_inputs() {
 	esac
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
-	seats_file="${effort_dir}/seats.json"
-	shown_seats=$(printable "${seats_file}")
+	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
 }
 
 # Sets role, repo, base and worktree from the chosen seat, before anything is
 # created; seats.sh's own lines say why it refused.
 read_chosen_seat() {
 	step_rc=0
-	seat_json=$(sh "${own_dir}/seats.sh" get --seats "${seats_file}" --seat "${seat}") || step_rc=$?
+	seat_json=$(sh "${own_dir}/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${step_rc} in
 		0) ;;
-		6) die 3 "seat ${shown_seat} is not in ${shown_seats}; expected a seat seats.sh choose recorded" ;;
-		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_seats}" ;;
+		6) die 3 "seat ${shown_seat} is not in ${shown_effort}; expected a seat seats.sh choose recorded" ;;
+		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_effort}" ;;
 		*) die 4 "seats.sh get failed (exit ${step_rc})" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .repo // "", .base // "", .worktree // ""') ||
@@ -235,8 +235,8 @@ read_chosen_seat
 create_worktree
 run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
 [ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
-run_step seats.sh opened --seats "${seats_file}" --seat "${seat}"
+run_step seats.sh opened --effort "${effort}" --seat "${seat}"
 [ "${step_rc}" -eq 0 ] || step_failed 'seats.sh opened'
-run_step seats.sh get --seats "${seats_file}" --seat "${seat}"
+run_step seats.sh get --effort "${effort}" --seat "${seat}"
 [ "${step_rc}" -eq 0 ] || die 4 "seats.sh get failed (exit ${step_rc}) after the seat was opened; the seat is open"
 printf '%s\n' "${step_out}"

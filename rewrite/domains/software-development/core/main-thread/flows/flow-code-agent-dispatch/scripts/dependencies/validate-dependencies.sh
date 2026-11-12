@@ -1,10 +1,8 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's seats.sh, its seed-commit.sh, which the dispatch
-# script runs, and its seat bind, report commit and block relay hook scripts,
-# the
-# crucible skill's space rules, the four context checks the
+# procedure-git-worktree's seats.sh and its seat bind, report commit and
+# block relay hook scripts, the crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module, the crucible skill's prune
@@ -12,18 +10,21 @@
 # report script load, human-view's view module, which every view of the flow
 # loads, and its title module, which the dispatch script loads,
 # procedure-approval-gate's
-# open-gate.sh and its two hook scripts, crucible.sh, jq, the run-time tools
-# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the six hook
-# entries in settings.json (the inject hook, which must block on failure, both
-# gate hooks, and procedure-git-worktree's seat bind, report commit and async
-# block relay hooks), the Crucible
-# space in its additionalDirectories, and the installed plugins. Every check
+# open-gate.sh and its three hook scripts, crucible.sh and its events guard
+# hook, jq, the run-time tools
+# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the eight hook
+# entries in settings.json (the inject hook and the crucible skill's events
+# guard hook, which must block on failure, the three gate hooks, and
+# procedure-git-worktree's seat bind, report commit and async block relay
+# hooks), the Crucible space in its additionalDirectories, its Edit allow
+# rule and its events Edit deny rule, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix; the lines
 # are kept and printed at the end, as a pass line, a view or the full
 # checklist. It reads
-# settings.json only through jq, and only those hook commands and
-# permissions.additionalDirectories, which it counts or hashes and never
-# prints: the file may hold secrets in its env block.
+# settings.json only through jq, and only those hook commands,
+# permissions.additionalDirectories, permissions.allow and permissions.deny,
+# which it counts or
+# hashes and never prints: the file may hold secrets in its env block.
 # A full pass is cached: the marker keeps a fingerprint of everything the checks
 # depend on, and while that fingerprint is unchanged the checks are skipped.
 # The marker is the only file it leaves (its temp file is removed on exit);
@@ -64,24 +65,29 @@ readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
 readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
 readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
+readonly GATE_ANSWER_SCRIPT="${GATE_PROCEDURE}/scripts/gate-answer-hook.sh"
 readonly WORKTREE_PROCEDURE='procedure-git-worktree'
 readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
 readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
 readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
+readonly EVENTS_SCRIPT='events.sh'
+readonly EVENTS_GUARD_HOOK='events-guard-hook.sh'
+readonly EVENTS_GUARD_SCRIPT="${CRUCIBLE_SKILL}/scripts/${EVENTS_GUARD_HOOK}"
 # Relative to DIR/crucible/scripts/.
 readonly CRUCIBLE_SPACE_LIB='lib/crucible-space.sh'
 readonly PRUNE_MODULE='lib/prune.jq'
 # The inject hook reads every plugin file of the dispatch, so its bound is
 # generous; with "onFailure": "block" a timeout blocks the dispatch.
 readonly HOOK_TIMEOUT=30
-# The inject hook's entry must block the dispatch when the hook fails or times
-# out; Claude Code otherwise lets the call through with its prompt untouched.
+# The inject hook's and the events guard hook's entries must block their call
+# when the hook fails or times out; Claude Code otherwise lets it through (the
+# dispatch with its prompt untouched, the Bash command unchecked).
 readonly HOOK_ON_FAILURE='block'
 
-# The gate hooks read one small state file, and a timed-out one lets the stop
-# or question through, so a stuck one is cut short.
+# The gate hooks read or write one small state file or event, and a timed-out
+# one lets the stop, question or answer through, so a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
 # The seat bind hook runs one seats.sh change; the report commit hook checks a
 # report and commits the worktree, so its bound is wider.
@@ -90,6 +96,9 @@ readonly REPORT_COMMIT_HOOK_TIMEOUT=30
 # The block relay hook waits for the report commit hook's outcome, up to two minutes, and must
 # run async with asyncRewake: its exit 2 is what wakes the main thread.
 readonly BLOCK_RELAY_HOOK_TIMEOUT=150
+# The events guard hook runs one jq over the command text; with "onFailure":
+# "block" a timed-out one blocks the Bash call, so a stuck one is cut short.
+readonly EVENTS_GUARD_HOOK_TIMEOUT=10
 readonly HOOK_ASYNC_REWAKE='rewake'
 # Printed unexpanded so the fix can be pasted into settings.json as is.
 # shellcheck disable=SC2016
@@ -154,6 +163,26 @@ readonly ALLOWED_DIRS_JQ='.permissions?.additionalDirectories?[]? | strings | se
 readonly SPACE_COUNT_JQ="(\$dir | sub(\"/+\$\"; \"\")) as \$space | [${ALLOWED_DIRS_JQ} | select(. as \$entry | \$space == \$entry or (\$space | startswith(\$entry + \"/\")))] | length"
 # shellcheck disable=SC2016 # $dir is jq's
 readonly SPACE_FRAGMENT_JQ='{permissions: {additionalDirectories: [$dir]}}'
+# Emits the folder of each permissions.allow rule Edit(//<folder>/**), with
+# its leading slash; a missing or mistyped level emits nothing. A Write rule
+# alone does not let an agent edit its report draft in the space.
+readonly EDIT_RULE_DIRS_JQ='.permissions?.allow?[]? | strings | capture("^Edit\\(/(?<dir>/.*[^/])/+\\*\\*\\)$")? | .dir'
+# Counts the Edit rules whose folder is $dir or a parent of it, whole path
+# components only, as SPACE_COUNT_JQ does.
+# shellcheck disable=SC2016 # $dir is jq's
+readonly EDIT_RULE_COUNT_JQ="(\$dir | sub(\"/+\$\"; \"\")) as \$space | [${EDIT_RULE_DIRS_JQ} | select(. as \$entry | \$space == \$entry or (\$space | startswith(\$entry + \"/\")))] | length"
+# shellcheck disable=SC2016 # $dir is jq's
+readonly EDIT_RULE_FRAGMENT_JQ='{permissions: {allow: ["Edit(/\($dir | sub("/+$"; ""))/**)"]}}'
+# The permissions.deny rule that keeps Write and Edit calls out of every
+# effort's events/ folder for space $dir, which the Edit allow rule above
+# would otherwise let through: events are written only by their scripts.
+# shellcheck disable=SC2016 # $dir is jq's
+readonly EVENTS_DENY_RULE_JQ='"Edit(/\($dir | sub("/+$"; ""))/efforts/*/events/**)"'
+# Counts the permissions.deny entries that are exactly that rule.
+readonly EVENTS_DENY_COUNT_JQ="(${EVENTS_DENY_RULE_JQ}) as \$rule | [.permissions?.deny?[]? | strings | select(. == \$rule)] | length"
+# Emits each permissions.deny Edit rule, for the fingerprint.
+readonly EVENTS_DENY_RULES_JQ='.permissions?.deny?[]? | strings | select(startswith("Edit("))'
+readonly EVENTS_DENY_FRAGMENT_JQ="{permissions: {deny: [${EVENTS_DENY_RULE_JQ}]}}"
 # The C locale keeps pattern matching and sort byte-wise; the UTF-8 marks are
 # printed as bytes.
 LC_ALL=C
@@ -219,8 +248,9 @@ stdout, to relay as printed; one of:
 
 Cache: after a pass with no ⚠, leaves only CACHE/${MARKER_NAME} and
   reuses it until anything the checks read changes; a ✗ or ⚠ removes it.
-settings.json: reads only its hook entries and
-  permissions.additionalDirectories; never writes it or prints a value.
+settings.json: reads only its hook entries, permissions.additionalDirectories
+  permissions.allow (for Edit(//<space>/**)) and permissions.deny (for
+  Edit(//<space>/efforts/*/events/**)); never writes it or prints a value.
 
 Exit codes:
   0  every check passed (a ⚠ included), or the cached pass holds; go on
@@ -341,22 +371,30 @@ fingerprint_input() {
 		"${skills_dir}/${TITLE_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
 		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
+		"${gate_scripts_dir}/gate-answer-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/commit/seed-commit.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
-		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
+		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${EVENTS_SCRIPT}" \
+		"${crucible_scripts_dir}/${EVENTS_GUARD_HOOK}" \
+		"${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
+	fingerprint_hook PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}"
 	fingerprint_hook PostToolUse Agent "${SEAT_BIND_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${REPORT_COMMIT_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${BLOCK_RELAY_SCRIPT}"
+	fingerprint_hook PreToolUse Bash "${EVENTS_GUARD_SCRIPT}"
 	printf 'crucible space\n%s\n' "${crucible_home}"
 	jq -c "${ALLOWED_DIRS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
 		printf 'additional directories unreadable\n'
+	jq -c "${EDIT_RULE_DIRS_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
+		printf 'edit rules unreadable\n'
+	jq -c "${EVENTS_DENY_RULES_JQ}" "${settings_file}" </dev/null 2>/dev/null ||
+		printf 'deny rules unreadable\n'
 	printf 'jq\n'
 	jq --version </dev/null 2>/dev/null || printf 'jq unavailable\n'
 	printf 'tools\n'
@@ -660,8 +698,9 @@ set_coreutils_fix() {
 	run_tool_fix="put $1 back on PATH (macOS: it ships in $2; Linux: the distro's coreutils package), then rerun"
 }
 
-# Checks that the settings file registers the six hooks and allows the
-# Crucible space; a settings file jq can't read fails once for all seven.
+# Checks that the settings file registers the eight hooks, allows the
+# Crucible space and has its Edit allow and events deny rules; a settings
+# file jq can't read fails once for all eleven.
 check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
@@ -671,7 +710,9 @@ check_settings() {
 		hook_entries=''
 		each_hook append_hook_entry
 		set_space_fix
-		fail 'hooks not registered' "no settings file at ${settings_file}" "create it with ${hook_entries}; and ${space_fix}, then run /hooks or restart"
+		set_edit_rule_fix
+		set_events_deny_fix
+		fail 'hooks not registered' "no settings file at ${settings_file}" "create it with ${hook_entries}; ${space_fix}; ${edit_rule_fix}; and ${events_deny_fix}, then run /hooks or restart"
 		return 0
 	fi
 	if [ ! -f "${settings_file}" ] || [ ! -r "${settings_file}" ]; then
@@ -684,6 +725,8 @@ check_settings() {
 	fi
 	each_hook check_hook_entry
 	check_space_allowed
+	check_edit_rule
+	check_events_deny_rule
 }
 
 # Calls $1 once per hook entry with: item name, event, matcher ("" any), script,
@@ -694,9 +737,11 @@ each_hook() {
 	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}" ''
 	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'gate answer hook' PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'seat bind hook' PostToolUse Agent "${SEAT_BIND_SCRIPT}" "${SEAT_BIND_HOOK_TIMEOUT}" '' ''
 	"$1" 'report commit hook' SubagentStop '' "${REPORT_COMMIT_SCRIPT}" "${REPORT_COMMIT_HOOK_TIMEOUT}" '' ''
 	"$1" 'block relay hook' SubagentStop '' "${BLOCK_RELAY_SCRIPT}" "${BLOCK_RELAY_HOOK_TIMEOUT}" '' "${HOOK_ASYNC_REWAKE}"
+	"$1" 'events guard hook' PreToolUse Bash "${EVENTS_GUARD_SCRIPT}" "${EVENTS_GUARD_HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}" ''
 }
 
 # Appends the settings entry for hook $2..$7 (each_hook's arguments) to hook_entries.
@@ -762,7 +807,7 @@ check_on_failure() {
 	case ${blocking_count} in
 		'' | *[!0-9]* | 0)
 			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
-			fail_hook "$4" "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets the dispatch through unprepared" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			fail_hook "$4" "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets its call through unchecked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
 			return 1
 			;;
 		*) return 0 ;;
@@ -814,6 +859,51 @@ check_space_allowed() {
 	esac
 }
 
+# Checks that permissions.allow holds Edit(//<space>/**), or the rule for a
+# folder the space lies inside, so an agent writes its report draft under
+# <space>/efforts/<effort>/drafts/agents/<seat>/ without a prompt.
+check_edit_rule() {
+	if [ -n "${crucible_home_problem}" ]; then
+		fail 'Crucible space Edit rule not checked' "${crucible_home_problem}" 'fix what it names (CRUCIBLE_HOME, or the crucible skill), then rerun'
+		return 0
+	fi
+	if edit_rule_count=$(jq --arg dir "${crucible_home}" "${EDIT_RULE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+		:
+	else
+		fail 'Crucible space Edit rule not checked' "jq could not read permissions.allow in ${settings_file}" "check it with jq, then rerun"
+		return 0
+	fi
+	case ${edit_rule_count} in
+		'' | *[!0-9]* | 0)
+			set_edit_rule_fix
+			fail 'Crucible space Edit rule missing' "permissions.allow in ${settings_file} has no Edit(//<folder>/**) rule whose folder is ${crucible_home} or a folder it lies inside" "${edit_rule_fix}, then restart Claude Code"
+			;;
+		*) pass "Crucible space Edit rule allowed (Edit(/${crucible_home%/}/**) in permissions.allow)" ;;
+	esac
+}
+
+# Checks that permissions.deny holds Edit(//<space>/efforts/*/events/**), so
+# no Write or Edit call writes an event the Edit allow rule would let through.
+check_events_deny_rule() {
+	if [ -n "${crucible_home_problem}" ]; then
+		fail 'Crucible events Edit deny rule not checked' "${crucible_home_problem}" 'fix what it names (CRUCIBLE_HOME, or the crucible skill), then rerun'
+		return 0
+	fi
+	if events_deny_count=$(jq --arg dir "${crucible_home}" "${EVENTS_DENY_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
+		:
+	else
+		fail 'Crucible events Edit deny rule not checked' "jq could not read permissions.deny in ${settings_file}" "check it with jq, then rerun"
+		return 0
+	fi
+	case ${events_deny_count} in
+		'' | *[!0-9]* | 0)
+			set_events_deny_fix
+			fail 'Crucible events Edit deny rule missing' "permissions.deny in ${settings_file} has no Edit(//<space>/efforts/*/events/**) rule for the space ${crucible_home}" "${events_deny_fix}, then restart Claude Code"
+			;;
+		*) pass "Crucible events Edit rule denied (Edit(/${crucible_home%/}/efforts/*/events/**) in permissions.deny)" ;;
+	esac
+}
+
 # Sets crucible_home to the space crucible.sh root prints, by the crucible
 # skill's space rules, or crucible_home_problem to why it can't be had.
 resolve_crucible_home() {
@@ -837,6 +927,26 @@ set_space_fix() {
 		space_fix="merge ${space_fragment} into settings.json (append the path when additionalDirectories exists)"
 	else
 		space_fix="add ${crucible_home} to permissions.additionalDirectories in settings.json"
+	fi
+}
+
+# Sets edit_rule_fix to the fix that adds the space's Edit rule: the JSON to
+# merge into settings.json, built by jq so the path is escaped.
+set_edit_rule_fix() {
+	if edit_rule_fragment=$(jq -cn --arg dir "${crucible_home}" "${EDIT_RULE_FRAGMENT_JQ}" </dev/null 2>/dev/null); then
+		edit_rule_fix="merge ${edit_rule_fragment} into settings.json (append the rule when allow exists)"
+	else
+		edit_rule_fix="add Edit(/${crucible_home%/}/**) to permissions.allow in settings.json"
+	fi
+}
+
+# Sets events_deny_fix to the fix that adds the space's events deny rule: the
+# JSON to merge into settings.json, built by jq so the path is escaped.
+set_events_deny_fix() {
+	if events_deny_fragment=$(jq -cn --arg dir "${crucible_home}" "${EVENTS_DENY_FRAGMENT_JQ}" </dev/null 2>/dev/null); then
+		events_deny_fix="merge ${events_deny_fragment} into settings.json (append the rule when deny exists)"
+	else
+		events_deny_fix="add Edit(/${crucible_home%/}/efforts/*/events/**) to permissions.deny in settings.json"
 	fi
 }
 
@@ -1085,14 +1195,16 @@ check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
 check_script "${WORKTREE_PROCEDURE}" seats/seats.sh
-check_script "${WORKTREE_PROCEDURE}" commit/seed-commit.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
+check_script "${GATE_PROCEDURE}" gate-answer-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
+check_script "${CRUCIBLE_SKILL}" "${EVENTS_SCRIPT}"
+check_script "${CRUCIBLE_SKILL}" "${EVENTS_GUARD_HOOK}"
 check_lib_file "${CRUCIBLE_SPACE_LIB}" "${crucible_scripts_dir}" "${CRUCIBLE_SKILL}"
 check_lib_file "${PRUNE_MODULE}" "${crucible_scripts_dir}" "${CRUCIBLE_SKILL}"
 check_lib_file "${PLAN_VALIDATOR_LIB}" "${scripts_dir}" "${PROCEDURE}"

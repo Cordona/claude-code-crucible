@@ -5,7 +5,7 @@
       "question": "Open work: <items>. <move> it anyway?",
       "multiSelect": false,
       "options": [
-        { "label": "Keep it open", "description": "Nothing changes." },
+        { "label": "Keep it open (Recommended)", "description": "Nothing changes." },
         { "label": "<move> anyway", "description": "The effort changes state; the open items stay as they are." }
       ]
     }

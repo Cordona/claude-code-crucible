@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Writes one dispatch plan from the main thread's choices, so the plan JSON is
-# never typed by hand, to the gate's plan file and as a plans item of its
-# effort. The plan pins the effort and the fingerprint of the context version
+# never typed by hand, to the gate's plan file and as a plan.made event of its
+# effort. The plan pins the fingerprint of the context version
 # the approved dispatch cuts; it is checked by dispatch-plan-validator.jq
 # against the installed plugins; every problem is named by the option behind
 # it, and nothing is written until there is none.
@@ -17,8 +17,7 @@ readonly EFFORT_SKILL='procedure-effort'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
 readonly REQUIRED_TOOLS='cat mktemp mv rm tr wc'
-readonly RECORD_KIND='plans'
-readonly RECORD_LABEL='dispatch-plan'
+readonly EVENT_TYPE='plan.made'
 NL='
 '
 readonly NL
@@ -48,7 +47,7 @@ def list_key: ($installed[.value].kind // (if .value | startswith("procedure-") 
 def listed($kind; $key): [of_kind($kind)[] | select(list_key == $key)];
 def frameworks: of_kind("framework") | sort_by(.value);
 def plan:
-	{claude_session_id: $session_id, agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
+	{agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
 	 plugins: {
 		load: {language: (of_kind("language") | if . == [] then null else .[0] | item end),
 			frameworks: frameworks | map(item),
@@ -58,7 +57,7 @@ def plan:
 			procedures: listed("skip"; "procedures") | map(item)},
 		load_reason: value_of("load_reason")},
 	 replan: value_of("replan"),
-	 context: {effort: $context_effort, sha256: $context_fingerprint}}
+	 context: {sha256: $context_fingerprint}}
 	| prune;
 
 # A long value keeps its start and end, where a path differs most; an option
@@ -79,8 +78,7 @@ def plugin_line($at; $problem):
 def named_line:
 	.at as $at | .problem as $problem
 	| if $at[0] == "installed" then line("--load or --skip"; $at[1]; $problem)
-	  elif $at[:2] == ["context", "sha256"] then line("--fingerprint"; $context_fingerprint; $problem)
-	  elif $at[0] == "context" then line("--effort"; $context_effort; $problem)
+	  elif $at[0] == "context" then line("--fingerprint"; $context_fingerprint; $problem)
 	  elif $at[0] == "tasks" then line("--task"; of_kind("task")[$at[1] // -1].value; $problem)
 	  elif $at[:2] == ["plugins", "load_reason"] then line("--load-reason"; value_of("load_reason"); $problem)
 	  elif $at[0] == "plugins" and ($at[2] == "language" or ($at[3] | type) == "number") then plugin_line($at; $problem)
@@ -100,8 +98,8 @@ usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD|TEST --effort FOLD
            [--replan KIND] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
-Writes one dispatch plan to --plan-file and a new ${RECORD_KIND} item of the
-effort.
+Writes one dispatch plan to --plan-file and as a ${EVENT_TYPE} event of the
+effort, its body the plan.
 Rules: at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
@@ -134,7 +132,7 @@ Options:
 stdout on exit 0, in order:
   PLAN_FILE: <the --plan-file, absolute>
   PLAN_SHA256: <64 lowercase hex>, for generate-agent-dispatch.sh --plan-sha256
-  PLAN_RECORD: <absolute path>, the ${RECORD_KIND} item, for
+  PLAN_RECORD: <absolute path>, the ${EVENT_TYPE} event, for
     render-dispatch-plan.sh --data Plan=
 stderr on exit 3, one line per problem:
   "${PROG}: <option> <value>: <problem>; expected <x>"
@@ -157,7 +155,7 @@ Dependencies (skills in --skills-dir):
   this skill's list-plugins.sh; beside this script: dispatch-plan-validator.jq,
     installed-plugins.jq, ../agent-dispatch/dispatch-names.jq
   ${CONTEXT_PROCEDURE}: agent-context-file-checks.sh and what it loads
-  ${CRUCIBLE_SKILL}: crucible.sh, lib/crucible-space.sh, lib/prune.jq
+  ${CRUCIBLE_SKILL}: crucible.sh, events.sh, lib/crucible-space.sh, lib/prune.jq
   ${EFFORT_SKILL}: effort.sh
 EOF
 }
@@ -201,12 +199,10 @@ printable() {
 	printf '%s' "$1" | tr '[:cntrl:]' '?'
 }
 
-# Removes the temp file, and the plan record on a failed or stopped run.
+# Removes the temp file on every exit.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 remove_partial_files() {
-	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
-	[ "${exit_status}" -eq 0 ] || [ -z "${record_file}" ] || rm -f "${record_file}"
 }
 
 # Handles option $1 when no option value is awaited: sets awaited_option, or exits 2.
@@ -349,9 +345,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill or pass the right --skills-dir"
-	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
+	events_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/events.sh"
+	[ -f "${events_script}" ] && [ -r "${events_script}" ] ||
+		die 5 "events.sh missing; expected ${events_script}; install the ${CRUCIBLE_SKILL} skill or pass the right --skills-dir"
 	effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
 	[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
 		die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill or pass the right --skills-dir"
@@ -440,7 +436,7 @@ run_plan_jq() {
 	run_mode=$1
 	shift
 	jq -nr -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode "${run_mode}" --argjson installed "${installed}" \
-		--arg context_effort "${record_effort}" --arg context_fingerprint "${fingerprint}" --arg session_id "${session_id}" \
+		--arg context_fingerprint "${fingerprint}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		"${PLAN_JQ}" --args -- "$@" </dev/null
 }
@@ -501,17 +497,15 @@ write_plan() {
 	temp_file=''
 }
 
-# Writes plan_json to a new plans item of the effort, through
-# crucible.sh new, and sets record_file to it; or exits 1, nothing written.
+# Appends the written plan as the effort's plan.made event and sets
+# record_file to it; or exits 1. The plan file is written first, so the event
+# body is the plan the gate shows.
 write_record() {
-	new_record=$(sh "${crucible_script}" new --kind "${RECORD_KIND}" --effort "${record_effort}" --label "${RECORD_LABEL}" </dev/null) ||
-		die 1 "crucible.sh new --kind ${RECORD_KIND} failed (its stderr is above); nothing was written; expected an empty file in ${record_effort}/${RECORD_KIND}/; fix what it names, then rerun"
-	case ${new_record} in
-		"${record_effort}/${RECORD_KIND}/"*.json) record_file=${new_record} ;;
-		*) die 1 "crucible.sh new printed no file of ${record_effort}/${RECORD_KIND}/; nothing was written; expected crucible.sh to use the same CRUCIBLE_HOME; export CRUCIBLE_HOME once for both, then rerun" ;;
-	esac
-	printf '%s\n' "${plan_json}" >"${record_file}" ||
-		die 1 "could not write the plan record ${record_file}; nothing was written; expected a writable folder ${record_effort}/${RECORD_KIND}; check its free space, then rerun"
+	if record_file=$(sh "${events_script}" append --effort "${record_effort}" --type "${EVENT_TYPE}" --by "${PROG}" \
+		--body-file "${plan_file}" --session "${session_id}" </dev/null); then
+		return 0
+	fi
+	die 1 "events.sh append ${EVENT_TYPE} failed (its stderr is above); the plan file ${plan_file} is written, but no event; fix what it names, then rerun"
 }
 
 # Sets context_digest to the sha256 of the written plan in canonical form, the
@@ -565,7 +559,7 @@ check_effort
 check_plan_file
 build_plan "$@"
 require_open_effort
-write_record
 write_plan
 digest_written_plan
+write_record
 printf 'PLAN_FILE: %s\nPLAN_SHA256: %s\nPLAN_RECORD: %s\n' "${plan_file}" "${context_digest}" "${record_file}"

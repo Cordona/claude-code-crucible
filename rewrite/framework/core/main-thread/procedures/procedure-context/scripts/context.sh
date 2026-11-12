@@ -1,11 +1,14 @@
 #!/usr/bin/env sh
-# Keeps an effort's context: the next version's docs folder, the pending
-# outside entries, the approved spec and the diff files, and cuts a version
-# from them only when the fingerprint a plan pinned still matches. The
-# version JSON is never typed by hand: freeze builds it from the latest
-# version, the folder and the pending entries, checks it as every reader does
-# (agent-context-validator.jq and agent-context-file-checks.sh), and writes it
-# whole under the effort's context lock.
+# Keeps an effort's context: the draft of the next version (its docs folder,
+# the pending outside entries, the approved spec and the diff files) in
+# drafts/main-thread/context/, and cuts a version from it only when the
+# fingerprint a plan pinned still matches. A version is a context.cut event,
+# never typed by hand: freeze builds its body from the latest version, the
+# docs and the pending entries, checks it as every reader does
+# (agent-context-validator.jq and agent-context-file-checks.sh), moves the
+# docs to files/context/v<N>/ and appends the event through events.sh, which
+# takes the effort's events lock. The main thread runs this script one
+# command at a time, so the draft needs no lock of its own.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
@@ -17,19 +20,21 @@ readonly EFFORT_SKILL='procedure-effort'
 readonly NOT_OPEN_EXIT=6
 readonly DOCS_EXIT=7
 readonly LOCKED_EXIT=8
-readonly REQUIRED_TOOLS='cat chmod ln mkdir mktemp mv rm rmdir sleep tr wc'
-readonly ENTRIES_NAME='next-entries.json'
+readonly REQUIRED_TOOLS='cat chmod mkdir mktemp mv rm rmdir tr wc'
+readonly ENTRIES_NAME='entries.json'
+readonly DRAFT_PATH='drafts/main-thread/context'
+readonly FILES_PATH='files/context'
+readonly VERSION_EVENT='context.cut'
 # The why of each path add --docs-of puts in, before the file name.
 readonly DOCS_OF_WHY='documents'
-readonly LOCK_NAME='.lock'
-# A second writer waits this many seconds for the lock: a cut takes well under
-# one, so a longer hold is a killed run's lock.
-readonly LOCK_WAIT_SECONDS=10
-# Stands for the ID of the version a freeze would write, so the would-be
-# version is checked at its final path's length before the ID is minted.
-readonly PLACEHOLDER_ID='00000000T000000-0000'
-readonly GATE_RECORD_KIND='cache/gates'
+# events.sh's exit when the events lock stayed held past its wait.
+readonly EVENTS_LOCKED_EXIT=6
 readonly SPEC_APPROVAL_LABEL='spec-approval'
+# Room the event's envelope (type, seq, at, by, session) takes around a
+# version's body, under the readers' cap.
+readonly ENVELOPE_MAX_BYTES=512
+# A spec approval counts this long after its answer, as a dispatch plan's does.
+readonly APPROVAL_MAX_SECONDS=604800
 readonly SPEC_LABEL='spec'
 # The tokens a caller matches, never the sentence after them.
 readonly NO_SPEC_TOKEN='NO-SPEC'
@@ -94,10 +99,10 @@ else .[0]
 end
 '
 
-# Builds the would-be version: the latest version's paths and links minus
-# the ones pending retirement, then the next version's folder with its digest
-# when it holds files, then the pending paths and links not in it yet, then
-# the spec; links left out when there is none.
+# Builds the would-be version's body: its number, the latest version's paths
+# and links minus the ones pending retirement, then the folder the draft's
+# docs move to with their digest when there are any, then the pending paths
+# and links not in it yet, then the spec; links left out when there is none.
 # shellcheck disable=SC2016
 readonly CANDIDATE_JQ='
 [($entries.retire // [])[] | {kind: (if has("path") then "path" else "link" end), value: (.path // .link)}] as $gone
@@ -107,7 +112,7 @@ readonly CANDIDATE_JQ='
 | ($kept_paths + (if $folder == "" then [] else [{path: $folder, sha256: $digest, why: $folder_why}] end)) as $listed
 | ($listed + [($entries.paths // [])[] | select(.path as $path | $listed | any(.path == $path) | not)]) as $paths
 | ($kept_links + [($entries.links // [])[] | select(.url as $url | $kept_links | any(.url == $url) | not)]) as $links
-| {claude_session_id: $session_id, paths: $paths} + (if $links == [] then {} else {links: $links} end) + {spec: $spec}
+| {version: $version, paths: $paths} + (if $links == [] then {} else {links: $links} end) + {spec: $spec}
 '
 
 # Shows a value as a JSON string on one line, cut as SHOWN_MAX_CHARS says.
@@ -122,14 +127,15 @@ usage() {
 	usage_line "sh ${PROG} --help | -h"
 	print_page <<EOF
 
-Keeps an effort's context in its context/: the next version's docs folder
-(context/docs/v<N>/), the pending outside paths and links (${ENTRIES_NAME}),
-and the versions, each cut by freeze only while the fingerprint a plan
-pinned still matches. A version and the docs folder files it was cut with
-are never changed by this script.
+Keeps an effort's context. The draft of the next version is
+<effort>/${DRAFT_PATH}/: its docs folder (docs/) and the pending
+outside paths and links (${ENTRIES_NAME}). A version is a ${VERSION_EVENT} event in
+<effort>/events/, cut by freeze only while the fingerprint a plan pinned
+still matches; its docs move to <effort>/${FILES_PATH}/v<N>/. A version and
+the docs it was cut with are never changed by this script.
 
 Commands (each page holds its options, output and exit codes):
-  docs    prints the next version's folder, creating it
+  docs    prints the draft's docs folder, creating it
   add     puts an outside path or link into the pending entries
   drop    takes one out, or retires one of the latest version's
   spec    copies an approved spec draft into the folder, or says whether
@@ -149,7 +155,7 @@ command_help() {
 		docs)
 			print_page <<'EOF'
 
-Prints the next version's folder, creating it when missing. Nothing else is
+Prints the draft's docs folder, creating it when missing. Nothing else is
 left behind.
 
 Options:
@@ -157,7 +163,8 @@ EOF
 			help_shared effort
 			print_page <<'EOF'
 
-stdout on exit 0: DOCS_FOLDER: <the folder, absolute>
+stdout on exit 0: DOCS_FOLDER: <the folder, absolute:
+  <effort>/drafts/main-thread/context/docs>
 EOF
 			help_shared exits write
 			;;
@@ -176,21 +183,20 @@ entry_help() {
 	if [ "$1" = add ]; then
 		print_page <<EOF
 
-Puts one outside path or link into ${ENTRIES_NAME}, for the next cut, or,
-with --docs-of or --docs-of-file, every file of ROOT naming FILE or a name
-in NAMES. The same entry again
-changes nothing; one pending retirement is undone instead. The file is
-replaced whole or not at all.
+Puts one outside path or link into the draft's ${ENTRIES_NAME}, for the
+next cut, or, with --docs-of or --docs-of-file, every file of ROOT naming
+FILE or a name in NAMES. The same entry again changes nothing; one pending
+retirement is undone instead. The file is replaced whole or not at all.
 
 Options:
 EOF
 	else
 		print_page <<EOF
 
-Takes a pending entry out of ${ENTRIES_NAME}, or records the retirement of
-one of the latest version's outside paths and links, so the next cut leaves
-it out. A docs folder is never dropped. The file is replaced whole or not at
-all, and removed when it holds nothing.
+Takes a pending entry out of the draft's ${ENTRIES_NAME}, or records the
+retirement of one of the latest version's outside paths and links, so the
+next cut leaves it out. A docs folder is never dropped. The file is
+replaced whole or not at all, and removed when it holds nothing.
 
 Options:
 EOF
@@ -198,9 +204,10 @@ EOF
 	help_shared effort
 	print_page <<EOF
   --path ABS             an existing readable file or folder (drop: by its
-                         text only) outside the effort's context/, not a
-                         symlink, nor a path agent-context-file-checks.sh
-                         refuses
+                         text only) outside the effort's
+                         ${DRAFT_PATH}/ and ${FILES_PATH}/,
+                         not a symlink, nor a path
+                         agent-context-file-checks.sh refuses
   --link URL             an http(s) URL; rules: agent-context-url.jq
   --why LINE             one line: why the agent needs it (add), or the
                          human's reason (drop)
@@ -239,41 +246,43 @@ EOF
 spec_help() {
 	print_page <<EOF
 
---approved copies DRAFT into the next version's folder as spec.md,
-replacing an earlier one there, once the effort's ${SPEC_APPROVAL_LABEL} gate
-record names DRAFT at its current sha256 (the record expires with the
-cache). --status reads the docs folders only.
+--approved copies DRAFT into the draft's docs folder as spec.md,
+replacing an earlier one there, once the effort's newest
+gate.${SPEC_APPROVAL_LABEL}.answered event approves it, at most 7 days old,
+its body.view naming DRAFT at its current sha256. --status reads the docs
+folders only.
 
 Options:
 EOF
 	help_shared effort
 	print_page <<EOF
-  --approved DRAFT       the draft: <effort>/drafts/<ID>-${SPEC_LABEL}.md, a regular
-                         file, UTF-8, at most ${docs_cap} bytes
+  --approved DRAFT       the draft:
+                         <effort>/drafts/main-thread/<ID>-${SPEC_LABEL}.md, a
+                         regular file, UTF-8, at most ${docs_cap} bytes
   --status               print whether a docs folder holds a spec
   one of --approved and --status
 
 stdout on exit 0:
   --approved: SPEC_FILE: <the folder's spec.md, absolute>
   --status: SPEC: approved | none; after approved, SPEC_FILE: <the newest
-    spec.md, absolute>: the one in the docs folder of the highest v<N>
+    spec.md, absolute>: the draft's, else the one of the highest v<N>
 EOF
-	help_shared exits write "     ${NO_SPEC_GATE_TOKEN}  no gate record approves DRAFT as it is now; open
+	help_shared exits write "     ${NO_SPEC_GATE_TOKEN}  no gate event approves DRAFT as it is now; open
        the spec's approval gate again"
 }
 
 freeze_help() {
 	print_page <<EOF
 
---dry-run builds the version a cut would write and prints its fingerprint,
-the sha256 of the version as jq -cS 'del(.claude_session_id)' prints it;
-with no file in the next version's folder and nothing pending, the latest
-version's. It writes nothing. --expect cuts it, under the effort's context
-lock, only when its fingerprint is HEX: it writes v<N>, makes the folder's
-files and the version read-only (0444) and removes ${ENTRIES_NAME}. With
-nothing new it returns the latest version. A second call with the same HEX
-waits for the first and gets the version it cut. A version is at most
-${context_cap} bytes; shape: agent-context-validator.jq.
+--dry-run builds the body of the version a cut would write and prints its
+fingerprint, the sha256 of the body as jq -cS . prints it; with no file in
+the draft's docs folder and nothing pending, the latest version's. It
+writes nothing. --expect cuts it only when its fingerprint is HEX: it
+removes a ${FILES_PATH}/v<N>/ no ${VERSION_EVENT} event holds, moves the draft's
+docs there with their files read-only (0444), appends the ${VERSION_EVENT}
+event of v<N> and removes ${ENTRIES_NAME}. With nothing new, as on a second
+call with the same HEX, it returns the latest version. An event is at most
+${context_cap} bytes; body shape: agent-context-validator.jq.
 
 Options:
 EOF
@@ -286,22 +295,22 @@ EOF
 
 stdout on exit 0:
   --dry-run: FINGERPRINT: <64 lowercase hex digits>
-  --expect: CONTEXT_FILE: <the version, absolute>, then
+  --expect: CONTEXT_FILE: <the context.cut event, absolute>, then
     CONTEXT_SHA256: <its sha256>
 EOF
 	help_shared exits write "     ${NO_SPEC_TOKEN}  no docs folder holds a spec.md; approve the spec, then rerun
      ${DOCS_NAME_TOKEN}  a file the docs folder may not hold; rename or remove it
      ${DOCS_SIZE_TOKEN}  the folder's files are over ${docs_cap} bytes; shorten them
-     ${CHANGED_TOKEN}  --expect's HEX is not the fingerprint now, or a minted
-       docs folder changed; fix what stderr names (a new fingerprint: show
-       the plan again)"
+     ${CHANGED_TOKEN}  --expect's HEX is not the fingerprint now, a cut docs
+       folder changed, or another cut took v<N>; fix what stderr names (a
+       new fingerprint: show the plan again)"
 }
 
 latest_help() {
 	print_page <<'EOF'
 
-Prints the latest version, and the next version's folder when a cut would
-add something. Reads only.
+Prints the latest version, the newest context.cut event, and the draft's
+docs folder when a cut would add something. Reads only.
 
 Options:
 EOF
@@ -309,9 +318,9 @@ EOF
 	print_page <<EOF
 
 stdout on exits 0 and ${DOCS_EXIT}, in order:
-  DOCS_FOLDER: <the next version's folder, absolute>  exit ${DOCS_EXIT} only; it
+  DOCS_FOLDER: <the draft's docs folder, absolute>  exit ${DOCS_EXIT} only; it
     may not exist yet when only entries are pending
-  CONTEXT_FILE: <the latest version, absolute>  when there is one
+  CONTEXT_FILE: <the latest ${VERSION_EVENT} event, absolute>  when there is one
   CONTEXT_SHA256: <its sha256>  with CONTEXT_FILE
 stderr on exit 1: ${PROG}: ${NONE_TOKEN}: ...
 EOF
@@ -323,7 +332,7 @@ EOF
 diff_help() {
 	print_page <<'EOF'
 
-Writes a commit or range of ROOT into the next version's folder as
+Writes a commit or range of ROOT into the draft's docs folder as
 diff-<sha>.patch (a range: diff-<sha>..<sha>.patch), replacing one of the
 same name, and leaves out every file --path refuses. ROOT is only read.
 
@@ -432,8 +441,10 @@ EOF
 	[ "$1" = read ] || print_page <<EOF
   ${NOT_OPEN_EXIT}  the effort is not open or its state unknown, nothing written; show
      the human stderr, and stop
-  ${LOCKED_EXIT}  another call held the effort's context lock for ${LOCK_WAIT_SECONDS} seconds, nothing
-     written; rerun once, else show the human stderr (it names the lock)
+EOF
+	[ "${command}" != freeze ] || print_page <<EOF
+  ${LOCKED_EXIT}  the effort's events lock stayed held, nothing written; rerun
+     once, else show the human stderr (events.sh names the holder)
 EOF
 	if [ "$1" = write ]; then
 		print_page <<'EOF'
@@ -456,10 +467,11 @@ Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq);
     ${REQUIRED_TOOLS};
     sha256sum or shasum (macOS: built in)
-  the ${CRUCIBLE_SKILL} skill: scripts/lib/crucible-space.sh; for a write,
-    crucible.sh; ${EFFORT_SKILL}: effort.sh, for a write
+  the ${CRUCIBLE_SKILL} skill: scripts/lib/crucible-space.sh; events.sh, for
+    freeze and spec --approved; ${EFFORT_SKILL}: effort.sh, for a write
   beside this script: agent-context-file-checks.sh, agent-context-validator.jq,
-    agent-context-url.jq, context-versions.sh
+    agent-context-url.jq, context-versions.sh; context-cut-guard.jq, for
+    freeze
 EOF
 	case $1 in
 		diff | add)
@@ -513,19 +525,23 @@ load_help_values() {
 	docs_cap=${context_docs_max_bytes:-${docs_cap}}
 }
 
-# Removes the temp files and, on a failing exit, a signal included, the
-# version this run made and the read-only mode it set; then the lock.
+# Removes the temp files and, on a failing exit, a signal included, puts the
+# docs a cut moved back into the draft and gives back the read-only mode it
+# set: a cut with no event leaves the draft as it found it.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	exit_status=$?
 	[ -z "${temp_file}" ] || rm -f "${temp_file}"
 	[ -z "${diff_temp}" ] || rm -f "${diff_temp}"
-	if [ "${exit_status}" -ne 0 ]; then
-		[ -z "${created_file}" ] || { rm -f "${created_file}" && warn "removed ${created_file}, made by this run"; }
-		unlock_files
+	[ "${exit_status}" -ne 0 ] || return 0
+	if [ -n "${moved_folder}" ]; then
+		if mv "${moved_folder}" "${next_folder}" 2>/dev/null; then
+			warn "moved ${moved_folder} back to ${next_folder}, as no ${VERSION_EVENT} event holds it"
+		else
+			warn "could not move ${moved_folder} back to ${next_folder}; the next cut removes it, so move it back by hand first"
+		fi
 	fi
-	[ -z "${lock_dir}" ] || rmdir "${lock_dir}" 2>/dev/null ||
-		warn "could not remove the lock ${lock_dir}; expected it gone; try rmdir '${lock_dir}'"
+	unlock_files
 }
 
 # Gives each file in locked_files its write bit back.
@@ -748,8 +764,9 @@ require_tools() {
 	tools_checked=true
 }
 
-# Exits 5 unless jq, the shared checks and what they load, and, for every
-# command but latest, crucible.sh and effort.sh are in place.
+# Exits 5 unless jq, the shared checks and what they load, and, for a
+# write, effort.sh and, for freeze and spec --approved, events.sh are in
+# place.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -764,9 +781,18 @@ load_dependencies() {
 		latest: | spec:status | freeze:dry-run) return 0 ;;
 		*) ;;
 	esac
-	crucible_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
+	events_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/events.sh"
+	case ${command} in
+		freeze | spec)
+			[ -f "${events_script}" ] && [ -r "${events_script}" ] ||
+				die 5 "events.sh missing; expected ${events_script}; install the ${CRUCIBLE_SKILL} skill"
+			cut_guard="${own_scripts_dir}/context-cut-guard.jq"
+			if [ "${command}" = freeze ] && { [ ! -f "${cut_guard}" ] || [ ! -r "${cut_guard}" ]; }; then
+				die 5 "the cut guard missing; expected ${cut_guard}; reinstall the ${PROCEDURE} skill"
+			fi
+			;;
+		*) ;;
+	esac
 	effort_script="${skills_dir}/${EFFORT_SKILL}/scripts/effort.sh"
 	[ -f "${effort_script}" ] && [ -r "${effort_script}" ] ||
 		die 5 "effort.sh missing; expected ${effort_script}; install the ${EFFORT_SKILL} skill"
@@ -813,29 +839,32 @@ resolve_effort() {
 	# shellcheck disable=SC2310 # its status says whether the folder passed; the problem is read here
 	crucible_check_effort_folder "${effort_dir}" || refuse "${crucible_effort_refusal}"
 	effort_dir=${crucible_effort}
-	context_dir="${effort_dir}/context"
-	docs_root="${context_dir}/docs"
+	context_dir="${effort_dir}/${DRAFT_PATH}"
+	next_folder="${context_dir}/docs"
 	entries_file="${context_dir}/${ENTRIES_NAME}"
-	for layout_dir in "${context_dir}" "${docs_root}"; do
+	files_dir="${effort_dir}/${FILES_PATH}"
+	events_dir="${effort_dir}/events"
+	for layout_dir in "${effort_dir}/drafts" "${context_dir%/*}" "${context_dir}" "${next_folder}" \
+		"${files_dir%/*}" "${files_dir}" "${events_dir}"; do
 		[ ! -L "${layout_dir}" ] || refuse "--effort ${effort_dir}: ${layout_dir} is a symlink; expected a real folder"
 		[ ! -e "${layout_dir}" ] || [ -d "${layout_dir}" ] || refuse "--effort ${effort_dir}: ${layout_dir} is not a folder; expected a real folder"
 	done
 	[ ! -L "${entries_file}" ] || refuse "--effort ${effort_dir}: ${entries_file} is a symlink; expected the file add and drop write"
 }
 
-# Sets latest_path and latest_number (0 when none) to the effort's latest
-# version, and next_number and next_folder to the next version's.
+# Sets latest_path and latest_number (0 when none) to the effort's newest
+# context.cut event and its version, and next_number and version_folder to
+# the next version's.
 read_versions() {
 	latest_path='' latest_number=0
-	if [ -d "${context_dir}" ]; then
-		context_find_latest_version "${context_dir}"
+	if [ -d "${events_dir}" ]; then
+		context_find_latest_version "${events_dir}"
 		latest_path=${context_version_latest}
 		latest_number=${context_version_latest_number:-0}
 	fi
 	next_number=$((latest_number + 1))
-	next_folder="${docs_root}/v${next_number}"
-	[ ! -L "${next_folder}" ] || refuse "--effort ${effort_dir}: ${next_folder} is a symlink; expected a real folder"
-	[ ! -e "${next_folder}" ] || [ -d "${next_folder}" ] || refuse "--effort ${effort_dir}: ${next_folder} is not a folder; expected a real folder"
+	version_folder="${files_dir}/v${next_number}"
+	[ ! -L "${version_folder}" ] || refuse "--effort ${effort_dir}: ${version_folder} is a symlink; expected a real folder"
 }
 
 # Prints problem line $1 and exits 3.
@@ -869,36 +898,28 @@ require_open_effort() {
 	esac
 }
 
-# Takes the effort's context lock, a folder in context/ only one call can
-# create, waiting up to LOCK_WAIT_SECONDS; creates context/ first when
-# missing. clean_up removes the lock; a killed run leaves it, and the
-# refusal says how to remove it.
-take_lock() {
-	[ -d "${context_dir}" ] || mkdir "${context_dir}" 2>/dev/null || [ -d "${context_dir}" ] ||
-		die 1 "mkdir could not create ${context_dir}; expected a writable effort folder; try checking its permissions, then rerun"
-	lock_path="${context_dir}/${LOCK_NAME}"
-	lock_tries=0
-	until mkdir "${lock_path}" 2>/dev/null; do
-		[ -d "${lock_path}" ] ||
-			die 1 "mkdir could not create the lock ${lock_path}; expected a writable ${context_dir}; try checking its permissions, then rerun"
-		[ "${lock_tries}" -lt "${LOCK_WAIT_SECONDS}" ] ||
-			die "${LOCKED_EXIT}" "--effort ${effort_dir}: its context is locked by ${lock_path}; expected one writer at a time; try again once the other call has ended; if none is running, a killed run left the lock: remove it with rmdir '${lock_path}', then rerun"
-		sleep 1
-		lock_tries=$((lock_tries + 1))
-	done
-	lock_dir=${lock_path}
-}
-
-# Creates the next version's folder (and docs/) when missing.
-ensure_next_folder() {
-	for needed_dir in "${docs_root}" "${next_folder}"; do
+# Creates each of folders $@ that is missing, in order, each in the one
+# before it, or exits 1.
+make_folders() {
+	for needed_dir in "$@"; do
 		[ -d "${needed_dir}" ] || mkdir "${needed_dir}" ||
 			die 1 "mkdir could not create ${needed_dir}; expected a writable ${needed_dir%/*}; try checking its permissions, then rerun"
 	done
 }
 
-# Sets temp_file to a new temp file in context/, the folder every write here
-# moves from, so a docs folder never holds a temp file; or exits 1.
+# Creates the draft's folder, drafts/main-thread/context/, when missing.
+ensure_draft() {
+	make_folders "${effort_dir}/drafts" "${context_dir%/*}" "${context_dir}"
+}
+
+# Creates the draft's docs folder when missing.
+ensure_next_folder() {
+	ensure_draft
+	make_folders "${next_folder}"
+}
+
+# Sets temp_file to a new temp file in the draft's folder, the folder every
+# write here moves from, so a docs folder never holds a temp file; or exits 1.
 make_temp() {
 	temp_file=$(mktemp "${context_dir}/.$1.XXXXXX") ||
 		die 1 "mktemp could not create a temp file in ${context_dir}; expected a writable folder; try checking its permissions and free space, then rerun"
@@ -919,17 +940,15 @@ file_digest() {
 	digest=${context_digest}
 }
 
-# docs: prints the next version's folder, creating it.
+# docs: prints the draft's docs folder, creating it.
 docs_command() {
 	require_open_effort
-	take_lock
-	read_versions
 	ensure_next_folder
 	printf 'DOCS_FOLDER: %s\n' "${next_folder}"
 }
 
-# add and drop: checks the entry, then rewrites the pending entries under the
-# lock and prints the outcome.
+# add and drop: checks the entry, then rewrites the pending entries and
+# prints the outcome.
 entry_command() {
 	entry_problems=$(entry_input_problems)
 	if [ -n "${entry_problems}" ]; then
@@ -937,11 +956,6 @@ entry_command() {
 		exit 3
 	fi
 	require_open_effort
-	if [ "${command}" = drop ] && [ ! -d "${context_dir}" ]; then
-		show_entry
-		refuse "${entry_option} ${shown_entry}: is neither pending nor in the latest version; expected an entry add put in"
-	fi
-	take_lock
 	read_versions
 	load_entries
 	check_latest
@@ -1012,8 +1026,8 @@ path_entry_problem() {
 		return 0
 	fi
 	case $1/ in
-		"${context_dir}"/*)
-			printf 'is in the effort'\''s context/; expected an outside path: the effort'\''s own docs go into its docs folder'
+		"${context_dir}"/* | "${files_dir}"/*)
+			printf 'is in the effort'\''s %s/ or %s/; expected an outside path: the effort'\''s own docs go into its docs folder' "${DRAFT_PATH}" "${FILES_PATH}"
 			return 0
 			;;
 		*) ;;
@@ -1034,7 +1048,7 @@ path_entry_problem() {
 
 # add --docs-of and --docs-of-file: finds the files of ROOT's README* and
 # docs/ that name each file name, then puts each into the pending entries
-# under the lock through the checks --path takes, and prints an ADDED line per
+# through the checks --path takes, and prints an ADDED line per
 # new one. A match those checks refuse, or one pending with another why, is
 # named on stderr and left out.
 docs_of_command() {
@@ -1050,7 +1064,6 @@ docs_of_command() {
 	require_open_effort
 	find_all_documenting_files
 	[ -n "${documenting_pairs}" ] || return 0
-	take_lock
 	read_versions
 	load_entries
 	check_latest
@@ -1216,6 +1229,7 @@ write_entries() {
 			die 1 "rm could not remove ${entries_file}; expected it gone; try checking the permissions of ${context_dir}, then rerun"
 		return 0
 	fi
+	ensure_draft
 	make_temp "${ENTRIES_NAME}"
 	printf '%s\n' "${new_entries}" >"${temp_file}" ||
 		die 1 "could not write the temp file ${temp_file}; expected the entries written; try checking free space, then rerun"
@@ -1243,12 +1257,10 @@ spec_command() {
 	[ -z "${draft_problem}" ] || refuse "--approved ${draft}: ${draft_problem}"
 	file_digest "${draft}"
 	approved_digest=${digest}
-	# shellcheck disable=SC2016,SC2310 # $spec and $sha256 are jq's; its status says whether a record matched
-	find_gate_record "${SPEC_APPROVAL_LABEL}" '.case == "approval" and .spec == $spec and .sha256 == $sha256' "${draft}" "${approved_digest}" ||
-		refuse "${NO_SPEC_GATE_TOKEN}: --approved ${draft}: no ${SPEC_APPROVAL_LABEL} gate record approves this draft as it is now; expected the spec approved at its gate"
+	# shellcheck disable=SC2310 # its status says whether the event approves the draft
+	spec_approval_matches "${draft}" "${approved_digest}" ||
+		refuse "${NO_SPEC_GATE_TOKEN}: --approved ${draft}: the newest gate.${SPEC_APPROVAL_LABEL}.answered event does not approve this draft as it is now, or is over 7 days old; expected the spec approved at its gate"
 	require_open_effort
-	take_lock
-	read_versions
 	ensure_next_folder
 	make_temp spec.md
 	cat "${draft}" >"${temp_file}" ||
@@ -1261,11 +1273,15 @@ spec_command() {
 }
 
 # spec --status: prints whether a docs folder holds a spec.md and, when one
-# does, the newest: the one in the folder of the highest version number.
+# does, the newest: the draft's, else the one in the folder of the highest
+# version a context.cut event holds.
 print_spec_status() {
 	newest_spec='' newest_number=0
-	if [ -d "${docs_root}" ]; then
-		for spec_candidate in "${docs_root}"/v*/spec.md; do
+	read_versions
+	if [ -f "${next_folder}/spec.md" ] && [ ! -L "${next_folder}/spec.md" ]; then
+		newest_spec="${next_folder}/spec.md"
+	elif [ -d "${files_dir}" ]; then
+		for spec_candidate in "${files_dir}"/v*/spec.md; do
 			[ -f "${spec_candidate}" ] && [ ! -L "${spec_candidate}" ] || continue
 			spec_folder=${spec_candidate%/spec.md}
 			spec_number=${spec_folder##*/v}
@@ -1274,7 +1290,7 @@ print_spec_status() {
 				*) ;;
 			esac
 			[ "${#spec_number}" -le "${context_version_max_digits}" ] || continue
-			[ "${spec_number}" -gt "${newest_number}" ] || continue
+			[ "${spec_number}" -gt "${newest_number}" ] && [ "${spec_number}" -le "${latest_number}" ] || continue
 			newest_spec=${spec_candidate} newest_number=${spec_number}
 		done
 	fi
@@ -1297,8 +1313,8 @@ draft_path_problem() {
 	draft_dir=${draft%/*}
 	# shellcheck disable=SC2310 # pure tests; their status is the answer
 	if ! crucible_split_id "${draft##*/}" || [ "${crucible_name_rest}" != "${SPEC_LABEL}.md" ] ||
-		[ "${draft_dir}" != "${effort_dir}/drafts" ]; then
-		printf 'is not a spec draft of this effort; expected %s/drafts/<ID>-%s.md' "${effort_dir}" "${SPEC_LABEL}"
+		[ "${draft_dir}" != "${effort_dir}/drafts/main-thread" ]; then
+		printf 'is not a spec draft of this effort; expected %s/drafts/main-thread/<ID>-%s.md' "${effort_dir}" "${SPEC_LABEL}"
 		return 0
 	fi
 	if [ -L "${draft}" ] || [ ! -f "${draft}" ] || [ ! -r "${draft}" ]; then
@@ -1335,33 +1351,33 @@ text_is_utf8() {
 	[ "${utf8_file_digest}" = "${utf8_text_digest}" ]
 }
 
-# Succeeds when a gate record of the effort labelled $1 passes jq test $2,
-# with $spec and $sha256 bound to $3 and $4; crucible.sh find lists the
-# records, and one it cannot read as JSON matches nothing. Its space fault
-# (exit 4) stays this script's space exit; any other failure is an install
-# fault.
-find_gate_record() {
-	if gate_records=$(sh "${crucible_script}" find --effort "${effort_dir}" --kind "${GATE_RECORD_KIND}" --label "$1" </dev/null); then
-		find_status=0
+# Succeeds when the effort's newest gate.spec-approval.answered event
+# approves draft $1 at sha256 $2: body.approved true, its at at most
+# APPROVAL_MAX_SECONDS ago, and body.view the approval plan
+# render-spec-gate.sh --approval-plan wrote for that draft. An event jq cannot
+# read so matches nothing. events.sh's space fault (exit 4) stays this
+# script's space exit; any other failure is an install fault.
+spec_approval_matches() {
+	if approval_event=$(sh "${events_script}" latest --effort "${effort_dir}" --type "gate.${SPEC_APPROVAL_LABEL}.answered" </dev/null); then
+		latest_status=0
 	else
-		find_status=$?
+		latest_status=$?
 	fi
-	case ${find_status} in
+	case ${latest_status} in
 		0) ;;
-		4) die 4 "crucible.sh find could not read the effort's gate records; its stderr is above; expected a readable ${GATE_RECORD_KIND} folder; fix what it names, then rerun" ;;
-		*) die 5 "crucible.sh find failed on the effort's gate records (exit ${find_status}); its stderr is above; fix what it names, then rerun" ;;
+		4) die 4 "events.sh latest could not read the effort's events; its stderr is above; expected a readable ${events_dir}; fix what it names, then rerun" ;;
+		*) die 5 "events.sh latest failed on the effort's events (exit ${latest_status}); its stderr is above; fix what it names, then rerun" ;;
 	esac
-	while IFS= read -r gate_record; do
-		[ -n "${gate_record}" ] || continue
-		jq -e --arg spec "$3" --arg sha256 "$4" "$2" "${gate_record}" </dev/null >/dev/null 2>&1 && return 0
-	done <<EOF
-${gate_records}
-EOF
-	return 1
+	[ -n "${approval_event}" ] || return 1
+	# shellcheck disable=SC2016 # the program is jq's
+	jq -e --arg spec "$1" --arg sha256 "$2" --argjson max_age "${APPROVAL_MAX_SECONDS}" \
+		'.body.approved == true and (.body.view | type) == "object" and .body.view.case == "approval"
+		and .body.view.spec == $spec and .body.view.sha256 == $sha256
+		and (now - (.at | fromdateiso8601)) <= $max_age' "${approval_event}" </dev/null >/dev/null 2>&1
 }
 
 # freeze: --dry-run prints the fingerprint; --expect cuts the version when it
-# matches, under the lock.
+# matches.
 freeze_command() {
 	require_session
 	if [ "${mode}" = dry-run ]; then
@@ -1371,8 +1387,6 @@ freeze_command() {
 		return 0
 	fi
 	require_open_effort
-	[ -d "${context_dir}" ] || refuse_no_spec
-	take_lock
 	read_versions
 	build_candidate
 	[ "${fingerprint}" = "${expected_fingerprint}" ] ||
@@ -1405,27 +1419,27 @@ build_candidate() {
 	fi
 	folder_entry='' candidate_spec=''
 	if [ "${next_count}" -gt 0 ]; then
-		folder_entry=${next_folder}
-		[ ! -f "${next_folder}/spec.md" ] || candidate_spec="${next_folder}/spec.md"
+		folder_entry=${version_folder}
+		[ ! -f "${next_folder}/spec.md" ] || candidate_spec="${version_folder}/spec.md"
 	fi
 	if [ -z "${candidate_spec}" ] && [ -n "${latest_path}" ]; then
-		candidate_spec=$(jq -r '.spec // ""' "${latest_path}" </dev/null) ||
+		candidate_spec=$(jq -r '.body.spec // ""' "${latest_path}" </dev/null) ||
 			die 5 'jq failed reading the latest version; expected jq 1.6+; try jq --version, then rerun'
 	fi
 	[ -n "${candidate_spec}" ] || refuse_no_spec
 	# shellcheck disable=SC2016 # the program is jq's
 	candidate_json=$(jq -n --argjson latest "${latest_json}" --argjson entries "${entries_json}" \
 		--arg folder "${folder_entry}" --arg digest "${next_digest}" --arg folder_why "the effort's docs for v${next_number}" \
-		--arg spec "${candidate_spec}" --arg session_id "${session_id}" "${CANDIDATE_JQ}" </dev/null) ||
+		--arg spec "${candidate_spec}" --argjson version "${next_number}" "${CANDIDATE_JQ}" </dev/null) ||
 		die 5 'jq failed building the version; expected jq 1.6+; try jq --version, then rerun'
 	check_candidate
 	# shellcheck disable=SC2310 # its status is a tool's; a failure exits
 	fingerprint_of "${candidate_json}" || die 5 'jq or the sha256 tool failed on the would-be version; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Sets latest_json to the latest version ({} when none), or exits 3 when it
-# fails the read checks: a minted docs folder changed leads with
-# CONTEXT-CHANGED.
+# Sets latest_json to the latest version, its event's body ({} when none),
+# or exits 3 when it fails the read checks: a cut docs folder changed leads
+# with CONTEXT-CHANGED.
 check_latest() {
 	latest_json='{}'
 	[ -n "${latest_path}" ] || return 0
@@ -1439,11 +1453,11 @@ check_latest() {
 		no-spec) refuse "${NO_SPEC_TOKEN}: ${latest_shown}: ${context_read_text#"${NO_SPEC_TOKEN}: "}" ;;
 		*) refuse "${latest_shown}: ${context_read_text}" ;;
 	esac
-	latest_json=$(jq -c . "${latest_path}") ||
+	latest_json=$(jq -c .body "${latest_path}") ||
 		die 5 'jq failed reading the latest version; expected jq 1.6+; try jq --version, then rerun'
 }
 
-# Sets next_count and next_digest for the next version's folder (0 and empty
+# Sets next_count and next_digest for the draft's docs folder (0 and empty
 # when it holds no file), or exits 3 on a file it may not hold (DOCS-NAME) or
 # its files over the cap (DOCS-SIZE).
 scan_next_folder() {
@@ -1460,17 +1474,18 @@ scan_next_folder() {
 	next_digest=${context_docs_digest}
 }
 
-# Exits 3 on what the validator, at the version's final path, and the size
-# cap find in candidate_json.
+# Exits 3 on what the validator, for this effort, and the size cap find in
+# candidate_json. The cap leaves ENVELOPE_MAX_BYTES for the event around it,
+# so the event a cut appends passes the readers' cap too.
 check_candidate() {
-	placeholder_path="${context_dir}/${PLACEHOLDER_ID}-v${next_number}.json"
-	candidate_problems=$(printf '%s\n' "${candidate_json}" | jq -rs --arg context_path "${placeholder_path}" -f "${context_validator}") ||
+	candidate_problems=$(printf '%s\n' "${candidate_json}" | jq -rs --arg effort "${effort_dir}" -f "${context_validator}") ||
 		die 5 'jq failed on the context validator; expected jq 1.6+; try jq --version, then rerun'
 	candidate_bytes=$(printf '%s\n' "${candidate_json}" | wc -c) ||
 		die 5 'wc could not count the version bytes; expected a byte count; rerun'
 	candidate_bytes=${candidate_bytes##* }
-	[ "${candidate_bytes}" -le "${context_max_bytes}" ] ||
-		candidate_problems="${candidate_problems}${candidate_problems:+${NL}}the would-be version is ${candidate_bytes} bytes; expected at most ${context_max_bytes} bytes: fewer outside entries"
+	body_max_bytes=$((context_max_bytes - ENVELOPE_MAX_BYTES))
+	[ "${candidate_bytes}" -le "${body_max_bytes}" ] ||
+		candidate_problems="${candidate_problems}${candidate_problems:+${NL}}the would-be version is ${candidate_bytes} bytes; expected at most ${body_max_bytes} bytes: fewer outside entries"
 	[ -n "${candidate_problems}" ] || return 0
 	while IFS= read -r candidate_problem; do
 		warn "context file: ${candidate_problem}"
@@ -1480,50 +1495,85 @@ EOF
 	exit 3
 }
 
-# Sets fingerprint to the sha256 of version JSON $1 as
-# jq -cS 'del(.claude_session_id)' prints it.
+# Sets fingerprint to the sha256 of version JSON $1 as jq -cS . prints it.
 fingerprint_of() {
-	normalized=$(printf '%s\n' "$1" | jq -cS 'del(.claude_session_id)') || return 1
+	normalized=$(printf '%s\n' "$1" | jq -cS .) || return 1
 	# shellcheck disable=SC2310 # the caller reports a failure
 	fingerprint=$(printf '%s\n' "${normalized}" | context_print_stdin_digest) || return 1
 }
 
-# Writes candidate_json as v<next_number> under a fresh ID, makes it and
-# the folder's files read-only, checks it as a reader does, removes the
-# pending entries and prints it. The version appears whole, so a reader never
-# sees a part of it.
+# Moves the draft's docs, their files made read-only, to version_folder,
+# appends candidate_json as the context.cut event of v<next_number>, checks
+# it as a reader does, removes the pending entries and prints it. A failing
+# exit before the event is written moves the docs back (clean_up).
 cut_version() {
-	version_id=$(sh "${crucible_script}" id --effort "${effort_dir}" </dev/null) ||
-		die 1 "crucible.sh id failed (its stderr is above); expected a fresh ID; try the fix it names, then rerun"
-	# shellcheck disable=SC2310 # a pure test; its status is the answer
-	crucible_is_id "${version_id}" ||
-		die 1 "crucible.sh id printed no ID; expected <YYYYMMDDTHHMMSS>-<hex>; try reinstalling the ${CRUCIBLE_SKILL} skill, then rerun"
-	crucible_name_item "${version_id}" "v${next_number}"
-	version_path="${context_dir}/${crucible_item_file_name}"
-	make_temp "v${next_number}"
+	remove_leftover_folder
+	if [ "${next_count}" -gt 0 ]; then
+		make_folders "${effort_dir}/files" "${files_dir}"
+		lock_folder_files
+		mv "${next_folder}" "${version_folder}" ||
+			die 1 "mv could not move ${next_folder} to ${version_folder}; expected the docs moved; try checking the permissions of ${files_dir}, then rerun"
+		moved_folder=${version_folder}
+		check_moved_folder
+	fi
+	make_temp "${VERSION_EVENT}"
 	printf '%s\n' "${candidate_json}" >"${temp_file}" ||
 		die 1 "could not write the temp file ${temp_file}; expected the version written; try checking free space, then rerun"
-	lock_folder_files
-	ln "${temp_file}" "${version_path}" 2>/dev/null ||
-		die 1 "ln could not put the version at ${version_path}; expected a new file there; try checking the permissions of ${context_dir}, then rerun"
-	created_file=${version_path}
+	append_version_event
+	moved_folder='' locked_files=''
 	rm -f "${temp_file}"
 	temp_file=''
-	chmod 444 "${version_path}" ||
-		die 1 "chmod could not make ${version_path} read-only; expected mode 0444; try checking its owner, then rerun"
 	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
-	context_read_problem "${version_path}" ||
+	context_read_problem "${version_event}" ||
 		die 5 'a tool failed reading the written version (its stderr is above); expected jq 1.6+ and wc; try jq --version, then rerun'
 	[ -z "${context_read_fault}" ] ||
-		die 1 "context file ${version_path} fails the read checks as written: ${context_read_text}; expected a version that passes; rerun, and on a second failure reinstall the ${PROCEDURE} skill"
+		die 1 "the ${VERSION_EVENT} event ${version_event} is written but fails the read checks: ${context_read_text}; expected a version that passes; show the human stderr, and reinstall the ${PROCEDURE} skill"
 	rm -f "${entries_file}" ||
 		die 1 "rm could not remove ${entries_file}; expected the entries cut into the version gone; try checking the permissions of ${context_dir}, then rerun"
-	created_file='' locked_files=''
 	[ "${next_count}" -gt 0 ] || [ ! -d "${next_folder}" ] || rmdir "${next_folder}" 2>/dev/null || true
-	print_version "${version_path}"
+	print_version "${version_event}"
 }
 
-# Makes every file of the next version's folder read-only, recording each in
+# Removes version_folder when it is there: no context.cut event holds
+# v<next_number> yet, so it is what a cut that stopped between its move and
+# its append left behind.
+remove_leftover_folder() {
+	[ -e "${version_folder}" ] || return 0
+	[ -d "${version_folder}" ] ||
+		refuse "--effort ${effort_dir}: ${version_folder} is not a folder; expected nothing there before the cut of v${next_number}"
+	warn "removing ${version_folder}: no ${VERSION_EVENT} event holds it, so a cut left it before its event"
+	rm -rf "${version_folder}" ||
+		die 1 "rm could not remove ${version_folder}; expected it gone before the cut; try checking the permissions of ${files_dir}, then rerun"
+}
+
+# Exits 1 unless version_folder still gives the digest the draft's docs gave.
+check_moved_folder() {
+	# shellcheck disable=SC2310 # its status is a tool's; a failure exits
+	context_docs_scan "${version_folder}" ||
+		die 5 "a tool failed hashing ${version_folder} (its stderr is above); expected sha256sum or shasum, cat and wc; rerun"
+	[ "${context_docs_digest}" = "${next_digest}" ] ||
+		die 1 "${version_folder} gives another digest after the move; expected the docs as scanned; rerun"
+}
+
+# Appends the version in temp_file through events.sh, whose guard refuses it
+# when another cut took v<next_number> first; sets version_event.
+append_version_event() {
+	if version_event=$(sh "${events_script}" append --effort "${effort_dir}" --type "${VERSION_EVENT}" --by "${PROG}" \
+		--body-file "${temp_file}" --session "${session_id}" --guard "${cut_guard}" </dev/null); then
+		append_status=0
+	else
+		append_status=$?
+	fi
+	case ${append_status} in
+		0) ;;
+		3) refuse "${CHANGED_TOKEN}: --effort ${effort_dir}: events.sh refused the ${VERSION_EVENT} event of v${next_number} (its stderr is above); expected v${next_number} free and the effort open; take a fresh fingerprint with freeze --dry-run and show the plan again" ;;
+		"${EVENTS_LOCKED_EXIT}") die "${LOCKED_EXIT}" "--effort ${effort_dir}: the events lock stayed held (events.sh stderr above names its holder); expected one writer at a time; rerun once the other call has ended" ;;
+		4) die 4 "events.sh could not write the ${VERSION_EVENT} event (its stderr is above); expected a writable ${events_dir}; fix what it names, then rerun" ;;
+		*) die 5 "events.sh exited ${append_status} (its stderr is above); expected exit 0; try reinstalling the ${CRUCIBLE_SKILL} skill" ;;
+	esac
+}
+
+# Makes every file of the draft's docs folder read-only, recording each in
 # locked_files so a failing exit gives the write bit back.
 lock_folder_files() {
 	[ "${next_count}" -gt 0 ] || return 0
@@ -1535,14 +1585,14 @@ lock_folder_files() {
 	done
 }
 
-# Prints version file $1's path and sha256.
+# Prints context.cut event $1's path and sha256.
 print_version() {
 	file_digest "$1"
 	printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "$1" "${digest}"
 }
 
 # latest: prints the latest version and, when a cut would add something, the
-# next version's folder (exit DOCS_EXIT); exits 1 with nothing at all. A name
+# draft's docs folder (exit DOCS_EXIT); exits 1 with nothing at all. A name
 # starting with . counts for nothing, as context_docs_scan skips it.
 latest_command() {
 	read_versions
@@ -1659,7 +1709,7 @@ resolve_commit() {
 }
 
 # diff: checks the inputs, writes the diff git prints into a temp file,
-# checks it, then moves it into the next version's folder under the lock.
+# checks it, then moves it into the draft's docs folder.
 diff_command() {
 	repo_problem=$(repo_root_problem)
 	[ -z "${repo_problem}" ] || refuse "--repo ${repo_root}: ${repo_problem}"
@@ -1694,8 +1744,6 @@ diff_command() {
 	# shellcheck disable=SC2310 # it prints the problem; its status only says whether there was one
 	diff_problem=$(long_text_problem "${diff_temp}" 'the diff') || true
 	[ -z "${diff_problem}" ] || refuse "--ref ${ref}: ${diff_problem}"
-	take_lock
-	read_versions
 	ensure_next_folder
 	make_temp "${patch_name}"
 	cat "${diff_temp}" >"${temp_file}" ||
@@ -1706,10 +1754,10 @@ diff_command() {
 
 command='' mode='' effort_dir='' entry_kind='' entry_value='' entry_why='' docs_of='' docs_of_file='' draft='' expected_fingerprint=''
 repo_root='' ref='' seen_options='' tools_checked='' session_id=''
-temp_file='' diff_temp='' created_file='' locked_files='' lock_dir=''
+temp_file='' diff_temp='' moved_folder='' locked_files=''
 trap clean_up EXIT
-# A signal exits through the EXIT trap, so the temp files, the version this
-# run made and the lock go on every path.
+# A signal exits through the EXIT trap, so the temp files go and moved docs
+# come back on every path.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM

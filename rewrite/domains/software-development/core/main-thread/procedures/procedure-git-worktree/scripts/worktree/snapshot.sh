@@ -252,7 +252,6 @@ check_repo() {
 		*) die 3 "--repo ${shown_repo} is not absolute; expected an absolute path" ;;
 	esac
 	[ -d "${repo}" ] || die 3 "--repo ${shown_repo} is not a folder; expected the main checkout's top folder"
-	command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
 	inside=$(git -C "${repo}" -c core.fsmonitor=false rev-parse --is-inside-work-tree 2>/dev/null) || inside=''
 	[ "${inside}" = true ] || die 3 "--repo ${shown_repo} is not a git work tree; expected a main checkout, not bare"
 	physical_repo=$(cd -P -- "${repo}" && pwd -P) || physical_repo=''
@@ -421,6 +420,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 parse_args "$@"
+command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
 [ -z "${effort_dir}" ] || read_effort_identity
 check_identity
 check_repo

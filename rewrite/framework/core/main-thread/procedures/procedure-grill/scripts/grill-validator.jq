@@ -1,6 +1,7 @@
 # The grill file's shape, the one definition grill.sh checks every file
-# against before it writes it and after it reads it. A module: load it with
-# jq -L <this folder> and include "grill-validator".
+# against before it writes it and after it reads it: an open grill's draft,
+# and an ended grill, the body of its grill.ended event. A module: load it
+# with jq -L <this folder> and include "grill-validator".
 # grill_file_problems reads the parsed file and prints one
 # "<field> <problem>; expected <x>" line per problem, nothing when it fits;
 # positions in a field, such as questions[0], are counted from 0.
@@ -20,9 +21,10 @@ def grill_utc_pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$
 # CLAUDE_CODE_SESSION_ID by the crucible skill's crucible_session_rule.
 def grill_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
 # Each object's fields, in the order the file holds them. claude_session_id is
-# the session that started the grill (the file), added the question, or gave
-# the answer.
-def grill_file_fields: ["claude_session_id", "topic", "ended", "questions"];
+# the session that started the grill (the draft), added the question, or gave
+# the answer; an ended grill's body leaves the file's out, as its event's
+# envelope holds it, and holds the grill's number in the effort.
+def grill_file_fields: ["claude_session_id", "number", "topic", "ended", "questions"];
 def grill_question_fields: ["id", "claude_session_id", "text", "parent", "round", "recommendation", "status", "answers"];
 def grill_recommendation_fields: ["text", "reason"];
 # An answer's at and change_reason are kept for audit: when and why the human
@@ -119,8 +121,11 @@ def grill_question_problems($index):
 
 def grill_file_problems:
 	if type != "object" then "the file is a JSON \(type); expected an object"
-	else grill_field_problems("the file"; grill_file_fields; ["claude_session_id", "topic"]),
+	else grill_field_problems("the file"; grill_file_fields; if has("ended") then ["topic"] else ["claude_session_id", "topic"] end),
 		grill_session_problem("the file"),
+		(if has("number") | not then empty
+		 elif (.number | type) == "number" and .number == (.number | floor) and .number >= 1 then empty
+		 else "number is \(.number | tojson); expected a whole number from 1" end),
 		(if has("topic") then .topic | grill_text_problem(grill_max_chars.topic) | "topic \(.)" else empty end),
 		(if has("ended") then .ended | grill_utc_problem("ended") else empty end),
 		(if has("questions") | not then empty

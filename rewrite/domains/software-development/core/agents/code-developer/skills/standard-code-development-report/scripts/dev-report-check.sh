@@ -35,20 +35,20 @@ usage: sh ${PROG} --report FILE --worktree DIR [--chosen FILE]
 
 Checks a developer's BUILD report; changes nothing, prints nothing on stdout.
 
---report FILE    absolute path of the report: one JSON object
+--report FILE    absolute path of the report: one JSON object, the seat's
+                 draft <effort>/drafts/agents/<seat>/report.json
 --worktree DIR   absolute path of the developer's worktree; every path:line
                  in the report resolves against it
 --chosen FILE    absolute path of a text file, one chosen concern id per
                  line, blank lines ignored. Given: a fix round, whose answers
                  hold exactly these ids. Absent: an iteration, no answers.
 
-the report: summary (one line, at most 55 characters, not starting with a
-word: or word(word): prefix) and verification (at least one gate) are
-required; deviations, decisions, noticed, security
-({kind, at, text}, kind secret or instruction), open (at most 8 items) and
-blockers are optional; answers only in a fix round. Every text
-is one line of at most 200 characters; no value is null, [] or {}; a
+the report: summary (one line, not starting with a word: or word(word):
+prefix) and verification (at least one gate) are required; deviations,
+decisions, noticed, security, open and blockers are optional; answers only
+in a fix round. Every text is one line; no value is null, [] or {}; a
 path:line is relative to the worktree and names a line of a file in it.
+The caps and allowed values: sh report-limits.sh prints them.
 The shape is set out in the ${SKILL} skill's SKILL.md,
 references/report-iteration.json and references/report-fix-round.json;
 where they differ, this check wins.
@@ -150,7 +150,8 @@ check_worktree() {
 	worktree_prefix="${physical%/}/"
 }
 
-# Sets round, chosen_file and hint (where and in what shape the report goes).
+# Sets round, chosen_file and hint (where and in what shape the report goes):
+# the report's own path, outside the worktree.
 check_chosen() {
 	if [ -z "${chosen}" ]; then
 		round=first chosen_file=/dev/null example=report-iteration.json
@@ -163,12 +164,7 @@ check_chosen() {
 			usage_error "--chosen ${shown_chosen} holds no id; expected the chosen ids, one per line"
 		round=fix chosen_file=${chosen} example=report-fix-round.json
 	fi
-	case ${report} in
-		"${worktree_prefix}"*) report_place=${report#"${worktree_prefix}"} ;;
-		"${worktree%/}/"*) report_place=${report#"${worktree%/}/"} ;;
-		*) report_place='.crucible/seats/<seat>/iterations/<N>/<build or test>-report.json' ;;
-	esac
-	report_place=$(printable "${report_place}")
+	report_place=$(printable "${report}")
 	# Resolved physically, so the path holds when the skill is installed through a link.
 	scripts=$(script_dir)
 	references=$(cd -P -- "${scripts}/../references" 2>/dev/null && pwd -P) ||

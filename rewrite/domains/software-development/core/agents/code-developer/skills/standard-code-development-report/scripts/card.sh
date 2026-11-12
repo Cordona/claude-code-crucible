@@ -1,26 +1,23 @@
 #!/usr/bin/env sh
-# Prints the human's compact card for one developer commit the stop hook made
-# in a worktree. Everything comes from the commit: the subject gives the kind,
-# the trailers the count, the seat, the plugins and the report's path, the
-# committed report its counts and gates, and the commit's diff the files;
-# its signature and the branch's upstream say whether it is signed and
-# pushed, as the effort's settings ask. card.jq lays it out with human-view.
-# Read-only on the repo: no git command here takes the index lock or writes it.
+# Prints the human's compact card for one developer report the stop hook
+# recorded. Everything comes from the seat's build.committed or
+# test.committed event: its type gives the kind, its iteration the count,
+# its body the report's counts and gates, its dispatch (through the
+# dispatch.made event) the plugins, and its commit's diff the files; the
+# seat's fault.raised events since its last report, the commit's signature
+# and the branch's upstream say what went wrong, as the effort's settings
+# ask. card.jq lays it out with human-view. Read-only: no git command here
+# takes the index lock or writes it, and nothing is written to the effort.
 set -eu
 umask 077
 
 readonly PROG='card.sh'
 readonly MODULE='card'
 readonly VIEW_LIB='human-view'
-# Its seats.jq holds the one seat-name check.
+# Its seats.jq holds the one seat-name check; seats.sh names the worktree.
 readonly SEATS_LIB='procedure-git-worktree/scripts/seats'
 readonly SETTINGS='procedure-git-setup/scripts/settings.sh'
-# A worktree <effort>/worktrees/<letter> belongs to the effort folder.
-readonly WORKTREES_FOLDER='worktrees'
-readonly FAULTS='stop-hook-faults.log'
-# Every seat's own folder, its report included, lies in this folder of the
-# worktree; the files the card counts are those outside it.
-readonly SEATS_FOLDER='.crucible/seats'
+readonly EVENTS='crucible/scripts/events.sh'
 # The card shows this many characters of the commit's sha.
 readonly SHORT_SHA_LENGTH=12
 readonly newline='
@@ -29,16 +26,37 @@ readonly newline='
 LC_ALL=C
 export LC_ALL
 GIT_OPTIONAL_LOCKS=0
-export GIT_OPTIONAL_LOCKS
+GIT_TERMINAL_PROMPT=0
+export GIT_OPTIONAL_LOCKS GIT_TERMINAL_PROMPT
 
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly CARD_JQ='include "card";
 ($labels | split("\n")) as $names
-| input
+| .body
 | card({language: $names[0], frameworks: $names[1:] | map(select(. != ""))};
-	{total: $total, new: $new};
-	{seat: $seat, count: "\($count_label) \($count)", short: $short, report_path: $report_path,
+	(if $total == "" then null else {total: ($total | tonumber), new: ($new | tonumber)} end);
+	{seat: $seat, count: $count, short: $short, report_path: $report_path,
 	 warnings: ($warnings | split("\n") | map(select(. != "")))})'
+
+# The seat's report event: seq $seq, or the newest. Input: the seat's
+# build.committed and test.committed events, oldest first.
+# shellcheck disable=SC2016
+readonly EVENT_JQ='map(select(.seat == $seat and ($seq == "" or .seq == ($seq | tonumber)))) | last // empty'
+
+# The seat's faults after its report before this one, up to this one's
+# time, one "⚠️ <what>" line each. Input: every event and fault by time.
+# shellcheck disable=SC2016
+readonly FAULTS_JQ='($event | fromjson) as $this
+| ([.[] | select((.type | IN("build.committed", "test.committed")) and .seat == $this.seat and .seq < $this.seq)]
+	| last | .at // "") as $since
+| .[] | select(.type == "fault.raised" and .body.seat == $this.seat and .at > $since and .at <= $this.at)
+| "⚠️ " + (.body.what // "a fault" | tostring | gsub("[[:cntrl:]]+"; " "))'
+
+# The language's plugin name, then each framework's, one per line, of the
+# dispatch with id $id. Input: the dispatch.made events.
+# shellcheck disable=SC2016
+readonly PLUGINS_JQ='map(select(.body.id == $id)) | last // empty
+| .body.plugins // {} | (.language.name // ""), (.frameworks // [] | .[] | .name // empty)'
 
 # Prints a plugin SKILL.md's metadata.label by flow-code-agent-dispatch's
 # list-plugins.sh rules: the frontmatter opens on line 1 and is closed by
@@ -68,44 +86,49 @@ END { if (closed) print label }
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --worktree DIR --commit SHA [--skills-dir DIR]
+usage: sh ${PROG} --effort FOLDER --seat S [--seq N] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
-Prints the compact Markdown card of one developer commit. Reads the
-commit only, never the working tree's report; writes nothing to the repo.
-The report is the file the commit's Report: trailer names, in the commit.
+Prints the compact Markdown card of one developer report: seat S's newest
+build.committed or test.committed event, or the one with seq N. Writes
+nothing.
 
---worktree DIR    absolute path of the developer's git worktree
---commit SHA      4 to 64 hex digits: a crucible(build) or crucible(test)
-                  commit whose Report: trailer names a file in
-                  ${SEATS_FOLDER}/<its Agent-Seat>/
+--effort FOLDER   absolute path of the effort folder
+--seat S          the seat, a seat name by seats.jq
+--seq N           a whole number: that report event of the seat
 --skills-dir DIR  absolute; default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
-                  holds ${VIEW_LIB}, procedure-git-worktree (its seats.jq),
+                  holds ${VIEW_LIB}, ${EVENTS%%/*} (its events.sh),
+                  procedure-git-worktree (its seats.jq and seats.sh),
                   ${SETTINGS%%/*} (its settings.sh) and each plugin, whose
                   metadata.label titles the card (the plugin name when it
                   has none)
 
-Two warning lines, read from git, only when needed: "commit not signed"
-when settings.sh get --effort <the worktree's effort folder> names a
-signing key and the commit has no signature; "not pushed to <remote>"
-when it says AUTO_PUSH=yes and the worktree branch's upstream lacks the
-commit. Without the effort's settings neither shows and stderr says why.
+The title's plugins are the language and frameworks of the dispatch.made
+event whose body.id is the event's dispatch; none when there is no such
+event. The files line counts the event's commit's changed and added paths
+in the seat's worktree; with commit null it says no code change.
 
-last line: **Developer report:** the short sha and the report's path: the
-worktree's file when it still holds the committed report, else a new temp
-file (mode 600, kept for the human) holding it.
+Warning lines, only when needed: one per fault.raised of the seat after
+its report event before this one, up to this one's time; and, from git
+for a commit, "commit not signed" when settings.sh get --effort FOLDER
+names a signing key and the commit has no signature, "not pushed to
+<remote>" when it says AUTO_PUSH=yes and the branch's upstream lacks the
+commit. Without the effort's settings the git two don't show and stderr
+says why.
+
+last line: **Developer report:** the commit's short sha and the event's
+path, the report its body.
 
 exit codes:
   0  the card is printed
   2  wrong command line: a missing, repeated or unknown option, a path that
-     is not absolute, or a --commit that is not hex; fix the call
-  3  input: not a git worktree, the commit is missing, is no developer
-     commit, has no single valid count, Agent-Seat or Report: trailer, or
-     its report is missing or not one JSON object; one stderr line
+     is not absolute, a --seq that is no number; fix the call
+  3  input: S is no seat name, the seat has no such report event, its
+     commit is no hex sha or not in its worktree, or its body is no JSON
+     object; one stderr line
   4  environment: git or jq missing or failed, ${MODULE}.jq not beside
-     ${PROG}, ${VIEW_LIB}, ${SEATS_LIB}/seats.jq or
-     ${SETTINGS} not in the skills dir, or the temp file
-     failed
+     ${PROG}, or ${VIEW_LIB}, ${EVENTS}, ${SEATS_LIB}/seats.jq,
+     ${SEATS_LIB}/seats.sh or ${SETTINGS} not in the skills dir
 
 needs: POSIX sh, awk, git 2.26+, jq 1.6+
 EOF
@@ -139,20 +162,24 @@ take_value() {
 }
 
 parse_args() {
-	worktree='' commit='' skills_dir=''
+	effort='' seat='' seq='' skills_dir=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
 				;;
-			--worktree)
-				take_value "$1" "${worktree}" "${2-}" DIR
-				worktree=${option_value}
+			--effort)
+				take_value "$1" "${effort}" "${2-}" FOLDER
+				effort=${option_value}
 				;;
-			--commit)
-				take_value "$1" "${commit}" "${2-}" SHA
-				commit=${option_value}
+			--seat)
+				take_value "$1" "${seat}" "${2-}" S
+				seat=${option_value}
+				;;
+			--seq)
+				take_value "$1" "${seq}" "${2-}" N
+				seq=${option_value}
 				;;
 			--skills-dir)
 				take_value "$1" "${skills_dir}" "${2-}" DIR
@@ -160,28 +187,27 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --worktree, --commit, --skills-dir or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat, --seq, --skills-dir or --help"
 				;;
 		esac
 		shift 2
 	done
-	[ -n "${worktree}" ] || usage_error '--worktree missing; expected --worktree DIR'
-	[ -n "${commit}" ] || usage_error '--commit missing; expected --commit SHA'
-	require_absolute --worktree "${worktree}"
-	# Hex only, so the value can never reach git as an option or a revision expression.
-	case ${commit} in
-		*[!0-9a-fA-F]*)
-			shown_commit=$(printable "${commit}")
-			usage_error "--commit ${shown_commit} is not hex; expected 4 to 64 hex digits"
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort FOLDER'
+	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
+	require_absolute --effort "${effort}"
+	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
+	case ${seq} in
+		*[!0-9]* | 0*)
+			shown_seq=$(printable "${seq}")
+			usage_error "--seq ${shown_seq} is not a whole number from 1; expected an event's seq"
 			;;
-		????*) ;;
-		*) usage_error "--commit ${commit} is too short; expected 4 to 64 hex digits" ;;
+		*) ;;
 	esac
-	[ "${#commit}" -le 64 ] || usage_error '--commit is longer than 64 digits; expected 4 to 64 hex digits'
 	if [ -z "${skills_dir}" ]; then
 		skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
 	fi
 	require_absolute --skills-dir "${skills_dir}"
+	skills_dir=${skills_dir%/}
 }
 
 # Refuses option $1 whose path $2 is not absolute.
@@ -208,205 +234,125 @@ load_dependencies() {
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
 	[ -f "${own_dir}/${MODULE}.jq" ] || die 4 "${MODULE}.jq not found beside ${PROG}; expected both in one folder"
-	view_dir="${skills_dir%/}/${VIEW_LIB}"
-	for view_module in view title; do
-		[ ! -f "${view_dir}/${view_module}.jq" ] || continue
-		shown_module=$(printable "${view_dir}/${view_module}.jq")
-		die 4 "${VIEW_LIB} module missing; expected ${shown_module}; install ${VIEW_LIB} or pass --skills-dir"
+	view_dir="${skills_dir}/${VIEW_LIB}"
+	seats_dir="${skills_dir}/${SEATS_LIB}"
+	events_script="${skills_dir}/${EVENTS}"
+	settings_script="${skills_dir}/${SETTINGS}"
+	for needed in "${view_dir}/view.jq" "${view_dir}/title.jq" "${seats_dir}/seats.jq" "${seats_dir}/seats.sh" \
+		"${events_script}" "${settings_script}"; do
+		[ ! -f "${needed}" ] || continue
+		shown_needed=$(printable "${needed}")
+		die 4 "${shown_needed} not found; install its skill or pass --skills-dir"
 	done
-	seats_dir="${skills_dir%/}/${SEATS_LIB}"
-	[ -f "${seats_dir}/seats.jq" ] || {
-		shown_seats_dir=$(printable "${seats_dir}")
-		die 4 "seats.jq not found in ${shown_seats_dir}; install procedure-git-worktree or pass --skills-dir"
-	}
-	settings_script="${skills_dir%/}/${SETTINGS}"
-	[ -f "${settings_script}" ] || {
-		shown_settings=$(printable "${settings_script}")
-		die 4 "settings.sh not found at ${shown_settings}; install ${SETTINGS%%/*} or pass --skills-dir"
-	}
 }
 
-# Sets worktree_root, the worktree's top folder as git names it, and enters it.
-# Every git call here runs with GIT_OPTIONAL_LOCKS=0 and core.fsmonitor=false,
-# so the index is neither refreshed nor written.
-find_worktree() {
-	shown_worktree=$(printable "${worktree}")
-	[ -d "${worktree}" ] || die 3 "--worktree ${shown_worktree} is not a folder; expected the developer's worktree"
-	worktree_root=$(git -c core.fsmonitor=false -C "${worktree}" rev-parse --show-toplevel 2>/dev/null) ||
-		die 3 "--worktree ${shown_worktree} is not a git worktree; expected the developer's worktree"
-	[ -n "${worktree_root}" ] || die 3 "--worktree ${shown_worktree} has no working tree; expected the developer's worktree"
-	cd -- "${worktree_root}" || die 3 "--worktree ${shown_worktree} can't be entered; expected a readable folder"
-}
-
-# Sets sha, count_label, count and seat, refusing a commit that is no
-# developer commit.
-read_commit() {
-	sha=$(git -c core.fsmonitor=false rev-parse --verify --quiet "${commit}^{commit}") ||
-		die 3 "commit ${commit} is not in the worktree's repository; expected a commit sha it holds"
-	subject=$(git -c core.fsmonitor=false log -1 --format=%s "${sha}") || die 4 "git log failed on commit ${sha}"
-	case ${subject} in
-		'crucible(build): '*) count_key='Build-Iteration' count_label='build iteration' ;;
-		'crucible(test): '*) count_key='Test-Iteration' count_label='test iteration' ;;
-		*)
-			shown_subject=$(printable "${subject}")
-			die 3 "commit ${sha} is not a developer commit: its subject is ${shown_subject}; expected crucible(build|test): <summary>"
-			;;
-	esac
-	count=$(trailer "${count_key}")
-	case ${count} in
-		'') die 3 "commit ${sha} has no ${count_key} trailer; expected the stop hook's commit" ;;
-		*"${newline}"*) die 3 "commit ${sha} has more than one ${count_key} trailer; expected one" ;;
-		0* | *[!0-9]*)
-			shown_count=$(printable "${count}")
-			die 3 "commit ${sha} has ${count_key} ${shown_count}; expected a whole number of 1 or more"
-			;;
-		*) ;;
-	esac
-	seat=$(trailer Agent-Seat)
-	case ${seat} in
-		'') die 3 "commit ${sha} has no Agent-Seat trailer; expected the stop hook's commit" ;;
-		*"${newline}"*) die 3 "commit ${sha} has more than one Agent-Seat trailer; expected one" ;;
-		*) ;;
-	esac
-	check_seat_name
-}
-
-# Refuses a seat that is no seat name by seats.jq, so it is safe as a file
-# name.
+# Refuses a seat that is no seat name by seats.jq, so it is safe in a path.
 check_seat_name() {
 	name_problem=$(jq -nr -L "${seats_dir}" --arg name "${seat}" 'include "seats"; $name | seats_name_problem' </dev/null) ||
 		die 4 "jq failed checking the seat name; expected jq 1.6+ and ${SEATS_LIB}/seats.jq"
 	[ -n "${name_problem}" ] || return 0
 	shown_problem=$(printable "${name_problem}")
-	die 3 "commit ${sha} has Agent-Seat ${shown_problem}"
+	die 3 "--seat ${shown_problem}"
 }
 
-# Prints the values of trailer $1 on the commit, one per line.
-trailer() {
-	git -c core.fsmonitor=false log -1 --format="%(trailers:key=$1,valueonly,unfold)" "${sha}" | sed '/^$/d'
+# Prints events.sh slurp's output for "$@".
+slurp() {
+	sh "${events_script}" slurp --effort "${effort}" "$@" </dev/null ||
+		die 4 'events.sh slurp failed (its stderr is above)'
 }
 
-# Sets report_entry to the path the commit's one Report: trailer names,
-# refusing a path outside the seat's own folder or one that could climb out of
-# it, so the value reaches git only as a plain path in the commit's tree.
-read_report_entry() {
-	report_entry=$(trailer Report)
-	case ${report_entry} in
-		'') die 3 "commit ${sha} has no Report: trailer; expected the stop hook's commit, which names its report" ;;
-		*"${newline}"*) die 3 "commit ${sha} has more than one Report: trailer; expected one" ;;
+# Sets event, the report event, and from it kind_label, count, commit,
+# dispatch and event_path.
+read_event() {
+	committed=$(slurp --type '*.committed')
+	event=$(printf '%s\n' "${committed}" |
+		jq -c --arg seat "${seat}" --arg seq "${seq}" \
+			"map(select(.type | IN(\"build.committed\", \"test.committed\"))) | ${EVENT_JQ}") ||
+		die 4 'jq could not read the events events.sh slurp printed'
+	[ -n "${event}" ] || die 3 "seat ${seat} has no build.committed or test.committed event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
+	fields=$(printf '%s\n' "${event}" |
+		jq -r '.type, .seq, (.iteration.number // "" | tostring), (.commit // ""), (.dispatch // "" | tostring),
+			(.body | type)') || die 4 'jq could not read the report event'
+	type='' event_seq='' count='' commit='' dispatch='' body_type=''
+	{
+		IFS= read -r type || :
+		IFS= read -r event_seq || :
+		IFS= read -r count || :
+		IFS= read -r commit || :
+		IFS= read -r dispatch || :
+		IFS= read -r body_type || :
+	} <<EOF
+${fields}
+EOF
+	[ "${body_type}" = object ] || die 3 "event ${event_seq}'s body is a JSON ${body_type}; expected the report the stop hook checked"
+	kind_label="${type%.committed} iteration"
+	if [ -n "${count}" ]; then
+		count="${kind_label} ${count}"
+	else
+		count='no iteration'
+	fi
+	event_path=$(printf '%s/events/%06d-%s.json' "${effort}" "${event_seq}" "${type}")
+	[ -f "${event_path}" ] || die 4 "event ${event_seq} is not at ${event_path}; expected events.sh's file name"
+}
+
+# Sets files_total, files_new, short and the git warnings, entering the
+# seat's worktree; for no commit, none of them.
+read_commit() {
+	files_total='' files_new='' short='' git_warnings=''
+	[ -n "${commit}" ] || return 0
+	# Hex only, so the value can never reach git as an option or a revision expression.
+	case ${commit} in
+		*[!0-9a-f]* | '')
+			shown_commit=$(printable "${commit}")
+			die 3 "event ${event_seq}'s commit ${shown_commit} is not a hex sha; expected the stop hook's commit"
+			;;
 		*) ;;
 	esac
-	shown_entry=$(printable "${report_entry}")
-	case /${report_entry}/ in
-		*/../* | */./* | *//* | *[[:cntrl:]]*) die 3 "commit ${sha} has Report: ${shown_entry}; expected a plain path relative to the worktree" ;;
-		"/${SEATS_FOLDER}/${seat}/"?*) ;;
-		*) die 3 "commit ${sha} has Report: ${shown_entry}; expected a file in ${SEATS_FOLDER}/${seat}/, the folder of its Agent-Seat" ;;
-	esac
-}
-
-# Sets report_text from the file the commit's Report: trailer names, refusing
-# a missing or empty report.
-read_report() {
-	read_report_entry
-	report_text=$(git -c core.fsmonitor=false cat-file blob "${sha}:${report_entry}" 2>/dev/null) ||
-		die 3 "commit ${sha} holds no ${report_entry}; expected the report the stop hook committed"
-	[ -n "${report_text}" ] || die 3 "commit ${sha} holds an empty ${report_entry}; expected one JSON object"
-	printf '%s' "${report_text}" | jq -ne '[inputs] | length == 1 and (.[0] | type) == "object"' >/dev/null 2>&1 ||
-		die 3 "commit ${sha}'s ${report_entry} is not one JSON object; expected the report the stop hook checked"
-}
-
-# Sets report_path: the worktree's report when it still holds the committed
-# bytes, else a new temp file holding them.
-place_report() {
-	worktree_report="${worktree_root}/${report_entry}"
-	committed_blob=$(git -c core.fsmonitor=false rev-parse --verify --quiet "${sha}:${report_entry}") || die 4 "git rev-parse failed on ${report_entry}"
-	if [ -f "${worktree_report}" ] && [ ! -L "${worktree_report}" ]; then
-		current_blob=$(git -c core.fsmonitor=false hash-object --no-filters -- "${worktree_report}" 2>/dev/null) || current_blob=''
-		if [ "${current_blob}" = "${committed_blob}" ]; then
-			report_path=${worktree_report}
-			return 0
-		fi
-	fi
-	temp_dir=${TMPDIR:-/tmp}
-	count_name=$(printf '%s' "${count_label}" | tr ' ' '-')
-	report_path=$(mktemp "${temp_dir%/}/crucible-card-${seat}-${count_name}${count}.XXXXXX") ||
-		die 4 'mktemp could not create the temp report file; expected a writable TMPDIR'
-	chmod 600 "${report_path}" || die 4 "could not set mode 600 on ${report_path}"
-	git -c core.fsmonitor=false cat-file blob "${sha}:${report_entry}" >"${report_path}" ||
-		die 4 "could not write the committed report to ${report_path}"
-}
-
-# Sets files_total and files_new: the commit's changed paths outside
-# SEATS_FOLDER, and those it added.
-count_files() {
-	counts=$(git -c core.fsmonitor=false diff-tree -r --root --no-commit-id --no-renames --name-status "${sha}" -- ":(exclude)${SEATS_FOLDER}" |
+	find_worktree
+	sha=$(git -c core.fsmonitor=false rev-parse --verify --quiet "${commit}^{commit}") ||
+		die 3 "commit ${commit} is not in seat ${seat}'s worktree; expected the commit the event names"
+	counts=$(git -c core.fsmonitor=false diff-tree -r --root --no-commit-id --no-renames --name-status "${sha}" |
 		awk '{ total++ } /^A/ { added++ } END { printf "%d %d", total, added }') ||
 		die 4 "git diff-tree failed on commit ${sha}"
 	files_total=${counts% *}
 	files_new=${counts#* }
+	short=$(printf '%s' "${sha}" | cut -c "1-${SHORT_SHA_LENGTH}")
+	read_git_warnings
 }
 
-# Sets labels: the language's label, then each framework's, one per line.
-read_labels() {
-	language=$(trailer Language | head -n 1)
-	frameworks=$(trailer Frameworks | head -n 1)
-	labels=$(plugin_label "${language}")
-	rest=${frameworks}
-	while [ -n "${rest}" ]; do
-		framework=${rest%%, *}
-		case ${rest} in
-			*', '*) rest=${rest#*, } ;;
-			*) rest='' ;;
-		esac
-		labels="${labels}${newline}$(plugin_label "${framework}")"
-	done
+# Enters the seat's worktree, as seats.sh get names it.
+find_worktree() {
+	worktree=$(sh "${seats_dir}/seats.sh" get --effort "${effort}" --seat "${seat}" </dev/null | jq -r '.worktree // empty') ||
+		die 4 "seats.sh get failed for seat ${seat} (its stderr is above)"
+	[ -n "${worktree}" ] && [ -d "${worktree}" ] || die 3 "seat ${seat} has no worktree folder; expected the seat's git worktree"
+	cd -- "${worktree}" || die 3 "seat ${seat}'s worktree can't be entered; expected a readable folder"
 }
 
-# Prints plugin $1's metadata.label, or $1 when it is not installed or has
-# none; a name that is no skill name is never looked up as a path.
-plugin_label() {
-	label=''
-	case $1 in
-		'' | *[!a-z0-9-]* | -* | *-) ;;
-		*)
-			skill_file="${skills_dir%/}/$1/SKILL.md"
-			[ ! -f "${skill_file}" ] || label=$(awk "${PLUGIN_LABEL_AWK}" "${skill_file}" 2>/dev/null) || label=''
-			;;
-	esac
-	printf '%s' "${label:-$1}" | tr '[:cntrl:]' ' '
-}
-
-# Sets warnings: one line per thing gone wrong that the effort's settings
-# ask for, read from git; none, with a stderr line, when they can't be read.
-read_warnings() {
-	warnings=''
+# Sets git_warnings: one line per thing gone wrong that the effort's
+# settings ask for, read from git; none, with a stderr line, when they can't
+# be read.
+read_git_warnings() {
 	read_settings
 	[ "${settings_found}" = yes ] || return 0
 	# The commit's own signature header, not %G?: that says N for an ssh
 	# signature whenever no allowed-signers file is configured.
 	if [ -n "${signing_key}" ]; then
 		signature_lines=$(git -c core.fsmonitor=false cat-file commit "${sha}" | sed -n '1,/^$/p' | grep -c '^gpgsig' || :)
-		[ "${signature_lines}" -gt 0 ] || warnings="⚠️ commit not signed (see ${FAULTS})"
+		[ "${signature_lines}" -gt 0 ] || git_warnings='⚠️ commit not signed'
 	fi
 	[ "${auto_push}" = yes ] || return 0
 	upstream=$(git -c core.fsmonitor=false rev-parse --verify --quiet '@{upstream}' 2>/dev/null) || upstream=''
 	if [ -z "${upstream}" ] || ! git -c core.fsmonitor=false merge-base --is-ancestor "${sha}" "${upstream}" 2>/dev/null; then
-		warnings="${warnings}${newline}⚠️ not pushed to ${remote} (see ${FAULTS})"
+		git_warnings="${git_warnings}${newline}⚠️ not pushed to ${remote}"
 	fi
 }
 
 # Sets signing_key, auto_push and remote from settings.sh get for the
-# effort folder above the worktree, and settings_found; says why on stderr
-# when there are none.
+# effort, and settings_found; says why on stderr when there are none.
 read_settings() {
 	settings_found=no
-	worktrees_dir=${worktree_root%/*}
-	if [ "${worktrees_dir##*/}" != "${WORKTREES_FOLDER}" ]; then
-		warn "--worktree ${shown_worktree} is not in an effort's ${WORKTREES_FOLDER} folder; the card does not say whether the commit is signed or pushed"
-		return 0
-	fi
-	settings=$(sh "${settings_script}" get --effort "${worktrees_dir%/*}" 2>/dev/null) || {
-		warn "settings.sh get found no git setup for the worktree's effort; the card does not say whether the commit is signed or pushed"
+	settings=$(sh "${settings_script}" get --effort "${effort}" 2>/dev/null </dev/null) || {
+		warn "settings.sh get found no git setup for the effort; the card does not say whether the commit is signed or pushed"
 		return 0
 	}
 	settings_found=yes
@@ -423,22 +369,64 @@ ${settings}
 EOF
 }
 
+# Sets fault_warnings from the seat's faults since its last report.
+read_faults() {
+	everything=$(slurp --faults)
+	fault_warnings=$(printf '%s\n' "${everything}" | jq -r --arg event "${event}" "${FAULTS_JQ}") ||
+		die 4 'jq could not read the faults events.sh slurp printed'
+}
+
+# Sets labels: the language's label, then each framework's, one per line,
+# from the event's dispatch; none without its dispatch.made event.
+read_labels() {
+	labels=''
+	[ -n "${dispatch}" ] || return 0
+	dispatches=$(slurp --type dispatch.made)
+	names=$(printf '%s\n' "${dispatches}" | jq -r --arg id "${dispatch}" "${PLUGINS_JQ}") ||
+		die 4 'jq could not read the dispatch.made events'
+	[ -n "${names}" ] || return 0
+	first=yes
+	while IFS= read -r name; do
+		label=$(plugin_label "${name}")
+		if [ "${first}" = yes ]; then
+			labels=${label} first=no
+		else
+			labels="${labels}${newline}${label}"
+		fi
+	done <<EOF
+${names}
+EOF
+}
+
+# Prints plugin $1's metadata.label, or $1 when it is not installed or has
+# none; a name that is no skill name is never looked up as a path.
+plugin_label() {
+	label=''
+	case $1 in
+		'' | *[!a-z0-9-]* | -* | *-) ;;
+		*)
+			skill_file="${skills_dir}/$1/SKILL.md"
+			[ ! -f "${skill_file}" ] || label=$(awk "${PLUGIN_LABEL_AWK}" "${skill_file}" 2>/dev/null) || label=''
+			;;
+	esac
+	printf '%s' "${label:-$1}" | tr '[:cntrl:]' ' '
+}
+
 print_card() {
-	short=$(printf '%s' "${sha}" | cut -c "1-${SHORT_SHA_LENGTH}")
-	printf '%s' "${report_text}" | jq -nr -L "${own_dir}" -L "${view_dir}" \
-		--arg labels "${labels}" --argjson total "${files_total}" --argjson new "${files_new}" \
-		--arg seat "${seat}" --arg count_label "${count_label}" --arg count "${count}" \
-		--arg short "${short}" --arg report_path "${report_path}" --arg warnings "${warnings}" \
-		"${CARD_JQ}" || die 4 "jq could not render the card; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and ${VIEW_LIB} in the skills dir"
+	warnings="${fault_warnings}${newline}${git_warnings}"
+	printf '%s\n' "${event}" | jq -r -L "${own_dir}" -L "${view_dir}" \
+		--arg labels "${labels}" --arg total "${files_total}" --arg new "${files_new}" \
+		--arg seat "${seat}" --arg count "${count}" --arg short "${short}" \
+		--arg report_path "${event_path}" --arg warnings "${warnings}" \
+		"${CARD_JQ}" ||
+		die 4 "jq could not render the card; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and ${VIEW_LIB} in the skills dir"
 }
 
 parse_args "$@"
 load_dependencies
-find_worktree
-read_commit
-read_report
-count_files
+check_seat_name
+read_event
 read_labels
-place_report
-read_warnings
+read_faults
+read_commit
 print_card

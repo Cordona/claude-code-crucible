@@ -6,7 +6,7 @@
       "multiSelect": false,
       "options": [
         {
-          "label": "Yes, start an effort",
+          "label": "Yes, start an effort (Recommended)",
           "description": "Tracked work with its own ID and a folder that keeps its context. I ask a few questions to pin down what matters, then show you a plan to approve before any agent runs."
         },
         {

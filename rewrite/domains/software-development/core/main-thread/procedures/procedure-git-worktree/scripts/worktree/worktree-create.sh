@@ -70,6 +70,8 @@ exit codes:
   4  git is missing, or git failed reading --repo before anything was created
   6  creation or verification failed; the worktree was rolled back and each
      problem, then each rollback step, is one stderr line
+
+needs: POSIX sh, git 2.31+
 EOF
 }
 

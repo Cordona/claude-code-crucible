@@ -2,7 +2,8 @@
 # Renders one dispatch plan, or its approval question, from its JSON file, so
 # the main thread never hand-formats either. This script owns the wording; the
 # layout is human-view's view.jq. The Data section ends with what the dispatch
-# would cut, as procedure-context's context.sh latest reads the plan's effort.
+# would cut, as procedure-context's context.sh latest reads the effort of the
+# plan.made event --data Plan= names.
 # A dispatch plan's rules are
 # dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
 # the plan; this script only refuses a plan it can't render. Pipe its stdout
@@ -18,8 +19,8 @@ readonly CONTEXT_PROCEDURE='procedure-context'
 readonly LATEST_CONTEXT=0
 readonly LATEST_NONE=1
 readonly LATEST_DOCS=7
-# The pending entries' file in the effort's context/ folder.
-readonly PENDING_FILE='next-entries.json'
+# The pending entries of the next context version, in the effort folder.
+readonly PENDING_FILE='drafts/main-thread/context/entries.json'
 
 # Definitions every program below starts with. The programs are single-quoted
 # on purpose: their $ signs are jq's.
@@ -75,8 +76,8 @@ def plan_fields:
 	field_problem("mode"; .mode | type == "string"; "a string"),
 	field_problem("plugins"; .plugins | is_plugins;
 		"an object {\"load\": {...}, \"skip\": {...}} of {\"plugin\": str, ...} entries"),
-	field_problem("context"; (.context | type) == "object" and (.context.effort | type) == "string" and (.context.sha256 | type) == "string";
-		"an object {\"effort\": str, \"sha256\": str}");
+	field_problem("context"; (.context | type) == "object" and (.context.sha256 | type) == "string";
+		"an object {\"sha256\": str}");
 checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
@@ -177,9 +178,10 @@ Options:
 
 stdout, a plan: its Markdown, without the gate marker; its Data section
   ends with what the dispatch would cut, by context.sh latest --effort of
-  the plan's context.effort: "Docs folder" (DOCS_FOLDER) and, when the file
-  exists, "Pending entries" (<effort>/context/${PENDING_FILE}) for new
-  material, or "Context" (CONTEXT_FILE) when nothing is new;
+  the effort of the plan.made event --data Plan= names (required:
+  <effort>/events/<seq>-plan.made.json): "Docs folder" (DOCS_FOLDER) and,
+  when the file exists, "Pending entries" (<effort>/${PENDING_FILE})
+  for new material, or "Context" (CONTEXT_FILE) when nothing is new;
   a plan whose replan is "invalid" prints as blocked: the Developer or
     Reviewer line from the installed plugins not named invalid, Task,
     Invalid (the plugins named with reason "invalid"), Data
@@ -351,8 +353,7 @@ read_context_lines() {
 	context_script="${skills_dir}/${CONTEXT_PROCEDURE}/scripts/context.sh"
 	[ -f "${context_script}" ] && [ -r "${context_script}" ] ||
 		install_fault 5 "context.sh missing; expected ${context_script}; install the ${CONTEXT_PROCEDURE} skill in ${skills_dir}"
-	plan_effort=$(printf '%s' "${slurped}" | jq -r '.[0].context.effort') ||
-		install_fault 3 'jq failed reading the plan'\''s effort; expected jq 1.6+; try jq --version, then rerun'
+	read_plan_effort
 	if latest_out=$(sh "${context_script}" latest --effort "${plan_effort}" </dev/null); then
 		latest_status=0
 	else
@@ -362,13 +363,30 @@ read_context_lines() {
 		"${LATEST_CONTEXT}") context_lines="Context=$(latest_value CONTEXT_FILE)" ;;
 		"${LATEST_DOCS}")
 			context_lines="Docs folder=$(latest_value DOCS_FOLDER)"
-			pending_path="${plan_effort}/context/${PENDING_FILE}"
+			pending_path="${plan_effort}/${PENDING_FILE}"
 			[ ! -f "${pending_path}" ] || context_lines="${context_lines}
 Pending entries=${pending_path}"
 			;;
 		"${LATEST_NONE}") usage_error "the plan's effort has no context yet (context.sh latest exit ${LATEST_NONE}); expected a plan made after context.sh freeze --dry-run printed its fingerprint" ;;
 		*) install_fault 6 "context.sh latest failed (exit ${latest_status}); expected exit ${LATEST_CONTEXT}, ${LATEST_NONE} or ${LATEST_DOCS}; fix what its stderr above names, or reinstall ${CONTEXT_PROCEDURE}" ;;
 	esac
+}
+
+# Sets plan_effort to the effort folder of the plan.made event the --data
+# Plan= line names, <effort>/events/<seq>-plan.made.json; exits 2 without one.
+read_plan_effort() {
+	plan_event=''
+	while IFS= read -r data_line; do
+		case ${data_line} in
+			Plan=/*/events/[0-9][0-9][0-9][0-9][0-9][0-9]-plan.made.json) plan_event=${data_line#Plan=} ;;
+			*) ;;
+		esac
+	done <<EOF
+${data_lines}
+EOF
+	[ -n "${plan_event}" ] ||
+		usage_error "no --data Plan= names a plan.made event; expected --data 'Plan=<effort>/events/<seq>-plan.made.json', the PLAN_RECORD generate-dispatch-plan.sh printed"
+	plan_effort=${plan_event%/events/*}
 }
 
 # Prints the value of context.sh latest's "$1: <value>" line, or exits 6 when

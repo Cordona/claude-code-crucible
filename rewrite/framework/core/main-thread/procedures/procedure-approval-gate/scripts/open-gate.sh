@@ -43,15 +43,14 @@ the gate text to relay.
 Options:
   --plan-path       print the session's plan file path; opens no gate; takes
                     no other option
-  --label LABEL     open a pending gate, its record saved under LABEL, the
-                    label the gate's procedure sets (such as dispatch-plan), a
-                    Crucible item label (see crucible.sh --help); needed
-                    unless --plan-path or --show-only
+  --label LABEL     open a pending gate labelled LABEL, the label the gate's
+                    procedure sets (such as dispatch-plan), a Crucible item
+                    label (see crucible.sh --help); needed unless
+                    --plan-path or --show-only
   --effort FOLDER   the absolute effort folder the gate belongs to, as
                     effort.sh start printed, under
-                    \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/: the record
-                    is saved in its cache/gates/; without --effort, in the
-                    session's gate folder, never in the Crucible space
+                    \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/; where
+                    the answer is recorded: see gate-answer-hook.sh --help
   --show-only       open a gate that shows the plan and asks nothing; saves no
                     record, so takes no --label or --effort
 

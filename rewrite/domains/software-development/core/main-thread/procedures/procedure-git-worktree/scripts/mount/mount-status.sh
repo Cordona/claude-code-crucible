@@ -41,9 +41,10 @@ stdout, one JSON line:
   seat_head is the seat worktree's HEAD now, null when the worktree is
   gone; a seat is stale when seat_head is not seat_commit (false when
   null), the mount when any seat is; parents_moved: each seat P a mounted
-  seat S was cut from (seats.json's base_seats, followed through every
-  level) whose worktree HEAD the mount's target lacks, null (not checked)
-  when seats.json or a seat can't be read; head_moved: HEAD is not the HEAD at mount time;
+  seat S was cut from (base_seats in the effort's seat list, followed
+  through every level) whose worktree HEAD the mount's target lacks, null
+  (not checked) when the seat list or a seat can't be read; head_moved:
+  HEAD is not the HEAD at mount time;
   finished: head_moved and every mounted path holds what HEAD's tree holds
   (the human committed it; unmount.sh then only forgets the record);
   edited: the mounted paths that no longer hold what the mount left there;
@@ -59,8 +60,8 @@ exit codes:
      unreadable or not version 1 or 2
   4  environment: git, jq or ${VIEW_LIB} missing or failed
 
-needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh, ../merge/chain.jq and
-../seats/seats.jq from this script's folder; ${VIEW_LIB}'s title.jq in
+needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh, ../merge/chain.jq,
+../seats/seats.sh and ../seats/seats.jq from this script's folder; ${VIEW_LIB}'s title.jq in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -120,7 +121,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in mount-lib.sh ../merge/chain.jq ../seats/seats.jq; do
+	for neighbour in mount-lib.sh ../merge/chain.jq ../seats/seats.sh ../seats/seats.jq; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
@@ -156,10 +157,11 @@ read_seat_heads() {
 list_parents_moved() {
 	: >"${work_dir}/parents-moved"
 	parents_checked=false
+	sh "${own_dir}/../seats/seats.sh" list --effort "${rec_effort}" >"${work_dir}/seat-list" 2>/dev/null </dev/null || return 0
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r -L "${own_dir}/../merge" --rawfile seats "${work_dir}/rec-seats" 'include "chain";
 		($seats | rtrimstr("\n") | split("\n") | map(split("\t") | .[0]))[] as $seat
-		| ancestors($seat) | [$seat, .seat, .worktree] | join("\t")' "${rec_effort}/seats.json" \
+		| ancestors($seat) | [$seat, .seat, .worktree] | join("\t")' "${work_dir}/seat-list" \
 		>"${work_dir}/ancestors" 2>/dev/null || return 0
 	while IFS= read -r ancestor_line; do
 		mounted_seat=${ancestor_line%%"${tab}"*}

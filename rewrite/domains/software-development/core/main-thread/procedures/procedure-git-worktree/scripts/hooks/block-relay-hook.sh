@@ -2,8 +2,8 @@
 # Claude Code's async SubagentStop hook (asyncRewake) beside report-commit-hook.sh. A
 # developer that hands back with SubagentHandback has ended before report-commit-hook.sh
 # blocks its stop, so it never sees the block. This hook waits for
-# report-commit-hook.sh's rejection of the same event, in the iteration's
-# rejections file, or for the seat to leave working, and, for such a
+# report-commit-hook.sh's stop.blocked or stop.gave-up event for the same
+# hook event, or for the seat to leave working, and, for such a
 # developer only, wakes the main thread with the exact line to send it, or,
 # on a give-up, the line to show the human. Every other stop ends here
 # silently.
@@ -14,7 +14,7 @@ readonly PROG='block-relay-hook.sh'
 # report-commit-hook.sh's outcome for the event is awaited at most this many half-seconds.
 readonly WAIT_TICKS=240
 readonly WAKE_EXIT=2
-readonly REJECTIONS='stop-hook-rejections.jsonl'
+readonly CRUCIBLE_SKILL='crucible'
 LC_ALL=C
 export LC_ALL
 
@@ -24,14 +24,15 @@ usage: sh ${PROG} [--efforts DIR]
        sh ${PROG} --help | -h
 
 Claude Code's SubagentStop hook, registered async with asyncRewake, beside
-report-commit-hook.sh. Reads the event JSON on stdin; finds the agent's developer seat
-with seats.sh find in each DIR/*/seats.json; goes on only when the agent's
-transcript (agent_transcript_path) ends in a SubagentHandback call. Then waits
-up to $((WAIT_TICKS / 2)) s for report-commit-hook.sh's rejection line for the
-same event and agent in the seat's current iteration (iteration.sh's REPORT
-folder), ${REJECTIONS} (the event id: the cksum of the event JSON), and
-ends the wait at once when the seat in seats.json is no longer working (a
-fitting report sets it idle, a give-up gave-up), reading the file once more.
+report-commit-hook.sh. Reads the event JSON on stdin; finds the agent's
+seat with events.sh find-agent, and goes on only for a developer seat that
+seats.sh get shows holding the agent, when the agent's transcript
+(agent_transcript_path) ends in a SubagentHandback call. Then waits up to
+$((WAIT_TICKS / 2)) s for report-commit-hook.sh's newest stop.blocked or
+stop.gave-up event of the agent whose body.hook_event is this event's id
+(the cksum of the event JSON), and ends the wait at once when seats.sh get
+shows the seat no longer working (a recorded build sets it idle, a give-up
+gave-up), reading the events once more.
 
   blocked     prints to stderr the line to send the agent, the line's
               reason, and exits ${WAKE_EXIT}: Claude Code wakes the main thread
@@ -40,8 +41,8 @@ fitting report sets it idle, a give-up gave-up), reading the file once more.
   no line     once the seat is not working, or at the end of the wait (any
               fault): exits 0, silent
 
---efforts DIR  absolute path of the efforts folder; default
-               \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
+--efforts DIR  absolute path of the space's efforts folder, <space>/efforts;
+               default \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts
 
 writes: nothing
 
@@ -50,8 +51,8 @@ exit codes:
   1  wrong command line
   ${WAKE_EXIT}  the main thread has a line to act on (stderr)
 
-needs: POSIX sh, jq 1.6+, cksum; ../seats/seats.sh and ../seats/iteration.sh
-(git 2.26+) from this script's folder
+needs: POSIX sh, jq 1.6+, cksum; ../seats/seats.sh from this script's
+folder; the ${CRUCIBLE_SKILL} skill's events.sh
 EOF
 }
 
@@ -85,10 +86,16 @@ parse_args() {
 				;;
 		esac
 	done
+	[ -n "${efforts}" ] || return 0
+	while [ "${efforts}" != "${efforts%/}" ]; do efforts=${efforts%/}; done
 	case ${efforts} in
-		'' | /*) ;;
+		/*/efforts) ;;
+		/*) usage_error '--efforts is not a space'\''s efforts folder; expected <space>/efforts' ;;
 		*) usage_error '--efforts is not absolute; expected an absolute path' ;;
 	esac
+	# events.sh names the space by CRUCIBLE_HOME.
+	CRUCIBLE_HOME=${efforts%/efforts}
+	export CRUCIBLE_HOME
 }
 
 # Nothing for the main thread.
@@ -103,15 +110,9 @@ script_dir() {
 	esac
 }
 
-resolve_efforts() {
-	[ -z "${efforts}" ] || return 0
-	root=${CRUCIBLE_HOME:-${HOME:-}/.crucible}
-	case ${root} in
-		/*) ;;
-		*) quiet ;;
-	esac
-	while [ "${root}" != "${root%/}" ]; do root=${root%/}; done
-	efforts="${root}/efforts"
+find_events_script() {
+	events_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/events.sh"
+	[ -f "${events_script}" ] || quiet
 }
 
 read_event() {
@@ -121,25 +122,24 @@ read_event() {
 	agent_id=$(jq -r 'if type == "object" then .agent_id // empty | strings else empty end' "${work_dir}/event" 2>/dev/null) || quiet
 	transcript=$(jq -r '.agent_transcript_path // empty | strings' "${work_dir}/event" 2>/dev/null) || quiet
 	case ${agent_id} in
-		'' | *[!A-Za-z0-9_-]*) quiet ;;
+		'' | *[!a-z0-9_-]*) quiet ;;
 		*) ;;
 	esac
 }
 
-# Sets seats_file, seat and worktree from the developer seat holding agent_id.
+# Sets effort, seat and worktree from the developer seat holding agent_id.
 find_seat() {
-	for candidate in "${efforts}"/*/seats.json; do
-		[ -f "${candidate}" ] || continue
-		[ ! -L "${candidate%/seats.json}" ] || continue
-		seat_json=$(sh "${own_dir}/../seats/seats.sh" find --seats "${candidate}" --agent-id "${agent_id}" 2>/dev/null) || continue
-		fields=$(printf '%s\n' "${seat_json}" | jq -r 'select(.role == "developer") | .seat, .worktree // ""') || quiet
-		[ -n "${fields}" ] || quiet
-		seats_file=${candidate}
-		seat=$(printf '%s\n' "${fields}" | sed -n 1p)
-		worktree=$(printf '%s\n' "${fields}" | sed -n 2p)
-		return 0
-	done
-	quiet
+	found=$(sh "${events_script}" find-agent --agent-id "${agent_id}" 2>/dev/null </dev/null) || quiet
+	case ${found} in
+		*"	"*) ;;
+		*) quiet ;;
+	esac
+	effort=${found%%"	"*}
+	seat=${found#*"	"}
+	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}" 2>/dev/null </dev/null) || quiet
+	worktree=$(printf '%s\n' "${seat_json}" |
+		jq -r --arg agent "${agent_id}" 'select(.role == "developer" and .agent_id == $agent) | .worktree // ""') || quiet
+	[ -n "${worktree}" ] || quiet
 }
 
 # Goes on only when the agent's last assistant entry is a SubagentHandback
@@ -154,26 +154,18 @@ require_handback() {
 	esac
 }
 
-# Sets rejections to the seat's current iteration's rejections file, read
-# before report-commit-hook.sh may commit the iteration and move the count on.
-find_rejections() {
-	report=$(sh "${own_dir}/../seats/iteration.sh" --seats "${seats_file}" --seat "${seat}" 2>/dev/null |
-		sed -n 's/^REPORT: //p') || quiet
-	[ -n "${report}" ] || quiet
-	rejections="${report%/*}/${REJECTIONS}"
-}
-
-# Sets outcome to the rejection report-commit-hook.sh wrote for this event.
-# A seat no longer working has had its stop handled; report-commit-hook.sh
-# writes a rejection before it changes the status, so one more read finds it.
+# Sets outcome to the stop event report-commit-hook.sh wrote for this hook
+# event: blocked or gave-up. A seat no longer working has had its stop
+# handled; report-commit-hook.sh writes the stop event before it changes the
+# status, so one more read finds it.
 await_outcome() {
 	ticks=0
 	while [ "${ticks}" -lt "${WAIT_TICKS}" ]; do
-		outcome=$(event_line .outcome)
+		outcome=$(stop_field outcome)
 		[ -z "${outcome}" ] || return 0
 		# shellcheck disable=SC2310 # its status is the test result; errexit adds nothing
 		if ! seat_is_working; then
-			outcome=$(event_line .outcome)
+			outcome=$(stop_field outcome)
 			[ -n "${outcome}" ] || quiet
 			return 0
 		fi
@@ -183,27 +175,28 @@ await_outcome() {
 	quiet
 }
 
-# Succeeds while seats.json holds the seat as working; a seat seats.sh can't
+# Succeeds while seats.sh get shows the seat working; a seat seats.sh can't
 # read counts as working, so the wait goes on to its end.
 seat_is_working() {
-	seat_status=$(sh "${own_dir}/../seats/seats.sh" get --seats "${seats_file}" --seat "${seat}" 2>/dev/null |
+	seat_status=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}" 2>/dev/null </dev/null |
 		jq -r '.status // empty | strings' 2>/dev/null) || return 0
 	[ -z "${seat_status}" ] || [ "${seat_status}" = working ]
 }
 
-# Prints field $1 of the last rejection line of this event and agent; an
-# unreadable line is skipped, a missing file prints nothing.
-event_line() {
-	[ -f "${rejections}" ] || return 0
-	jq -nRr --arg e "${event_id}" --arg a "${agent_id}" \
-		"[inputs | fromjson? | objects | select(.event == \$e and .agent_id == \$a)] | last | $1 // empty | strings" \
-		"${rejections}" 2>/dev/null || :
+# Prints, of the newest stop event of this hook event and agent, its outcome
+# ($1 outcome: blocked or gave-up) or its body's reason ($1 reason); nothing
+# when there is none or the events can't be read.
+stop_field() {
+	sh "${events_script}" slurp --effort "${effort}" --type 'stop.*' 2>/dev/null </dev/null |
+		jq -r --arg e "${event_id}" --arg a "${agent_id}" --arg field "$1" \
+			'[.[] | select(.body.hook_event == $e and .body.agent_id == $a)] | last // empty
+			| if $field == "outcome" then .type | ltrimstr("stop.") else .body.reason // empty | strings end' 2>/dev/null || :
 }
 
 wake() {
 	case ${outcome} in
 		blocked)
-			reason=$(event_line .reason)
+			reason=$(stop_field reason)
 			[ -n "${reason}" ] || quiet
 			printf '%s\n' "Crucible: the developer in ${seat} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
 			;;
@@ -222,7 +215,7 @@ on_exit() {
 	exit "${exit_status}"
 }
 
-work_dir='' seats_file='' seat='' worktree='' outcome='' rejections=''
+work_dir='' effort='' seat='' worktree='' outcome=''
 trap on_exit EXIT
 parse_args "$@"
 own_path=$(script_dir)
@@ -232,9 +225,8 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-block-relay.XXXXXX") || {
 	quiet
 }
 read_event
-resolve_efforts
+find_events_script
 find_seat
 require_handback
-find_rejections
 await_outcome
 wake
