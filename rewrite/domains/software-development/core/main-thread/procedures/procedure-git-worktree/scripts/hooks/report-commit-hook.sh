@@ -4,7 +4,8 @@
 # the report fits, commits the worktree's changes as the seat's next
 # iteration, as the effort's identity, pushes the worktree's branch when the
 # effort's settings ask for it, and records the report as one
-# build.committed event, which also sets the seat idle.
+# build.committed event, which also sets the seat idle. A commit that
+# finishes a merge is also a seat.conflicts.resolved event.
 # The draft is renamed to report.committing.json while it is committed, so a
 # run that dies part way is finished or undone by the next one. A report
 # that does not fit blocks the stop with the checker's lines, MAX_BLOCKS
@@ -16,8 +17,11 @@ set -eu
 umask 077
 
 readonly PROG='report-commit-hook.sh'
+# Two chances to fix a report: an agent that misfits a third time is not
+# converging, and holding it longer only burns its turns.
 readonly MAX_BLOCKS=2
 readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
+readonly MERGE_BLOCK_LEAD='Your stop is blocked: finish the merge, then stop again.'
 readonly REPORT_FILE='report.json'
 readonly COMMITTING_FILE='report.committing.json'
 # From this folder to the report checker of the code-developer agent's skill.
@@ -29,6 +33,8 @@ readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 readonly CRUCIBLE_SKILL='crucible'
 # A fault quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
+# A block for files still holding conflict markers names at most this many.
+readonly MAX_MARKED_NAMED=20
 # Claude Code stops this hook after HOOK_LIMIT seconds (its settings.json
 # timeout). The push gets what is left but PUSH_MARGIN, kept for recording
 # the event; with less than MIN_PUSH_SECONDS left it could not finish. A
@@ -76,21 +82,28 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
              seat on its branch that no event's commit holds: its event is
              written from C (step 6), C goes, and with no D the stop goes
              ahead; else C moves back to D (a D already there is kept)
-  2 check    ${PRUNER} --apply, then ${CHECKER}; a misfit appends
+  2 check    ${PRUNER} --apply, then ${CHECKER}, then,
+             with a merge under way, that no change, unmerged paths
+             included, holds a leftover conflict marker (a misfit naming
+             them); a misfit appends
              stop.blocked {seat, agent_id, hook_event, block, reason} and
              blocks; the misfit after ${MAX_BLOCKS} blocks of this agent since its
              seat's last build.committed or its last stop.gave-up
              appends stop.gave-up and sets the seat gave-up
   3 rename   D to C
-  4 stage    the worktree's changes, .gitignore applied; none: no commit
+  4 stage    the worktree's changes, .gitignore applied; none and no
+             merge under way: no commit
   5 commit   commit-input.sh --report C, commit-message.sh, commit.sh
              as settings.sh get's identity, signed with its key;
-             with AUTO_PUSH=yes push.sh --timeout the seconds left of
-             ${HOOK_LIMIT} but ${PUSH_MARGIN} (under ${MIN_PUSH_SECONDS}: no push, a fault)
+             with AUTO_PUSH=yes push.sh --effort --seat --session --timeout
+             the seconds left of ${HOOK_LIMIT} but ${PUSH_MARGIN} (under ${MIN_PUSH_SECONDS}: no push, a fault)
   6 record   build.committed: body C's JSON, facts seat, dispatch
              (seats.sh get's), commit (sha or null), draft (C's sha256);
              iteration: the commit's Iteration with its Agent-Seat, else
-             the seat's current one; then C goes
+             the seat's current one; then C goes; a commit with two
+             parents then appends seat.conflicts.resolved {seat, with (the
+             second parent), conflicts (the paths git merge-tree finds
+             conflicting between the parents), commit}, same iteration
 
 The hook_event is the cksum of the event JSON, the same for every hook
 Claude Code gives that event. stop.* and the seat's faults carry the
@@ -108,7 +121,7 @@ exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+, git 2.26+, cksum, sha256sum or shasum;
+needs: POSIX sh, jq 1.6+, git 2.38+, cksum, sha256sum or shasum;
 ../seats/seats.sh, ../seats/iteration.sh, ../commit/commit-input.sh,
 ../commit/commit-message.sh, ../commit/commit.sh and ../push/push.sh from
 this script's folder; procedure-git-setup's settings.sh beside
@@ -206,13 +219,25 @@ script_dir() {
 	esac
 }
 
+# Lets the stop go ahead, naming the first missing tool, when one is not on
+# PATH: a hook part way through a commit must not find it missing then.
+check_tools() {
+	need_tool jq 'jq 1.6+'
+	need_tool git 'git 2.38+'
+	need_tool cksum cksum
+	command -v sha256sum >/dev/null 2>&1 || need_tool shasum 'sha256sum or shasum'
+}
+
+# Lets the stop go ahead when command $1 is not on PATH, expecting $2.
+need_tool() {
+	command -v "$1" >/dev/null 2>&1 && return 0
+	warn "$1 not found; expected $2 on PATH; the stop goes ahead"
+	allow
+}
+
 # Sets agent_id, session_id and event_id from the event on stdin; an event
 # without a usable agent id is no effort agent's, so the stop goes ahead.
 read_event() {
-	command -v jq >/dev/null 2>&1 || {
-		warn 'jq not found; expected jq 1.6+ on PATH; the stop goes ahead'
-		allow
-	}
 	cat >"${work_dir}/event" || {
 		warn 'stdin could not be read; the stop goes ahead'
 		allow
@@ -456,22 +481,43 @@ check_report() {
 	run sh "${checker}" --report "${report}" --worktree "${worktree}"
 	case ${child_rc} in
 		0) ;;
-		3) block_or_give_up ;;
+		3)
+			checker_text=$(cat "${work_dir}/stderr" 2>/dev/null) || checker_text=''
+			block_or_give_up "${BLOCK_LEAD}"
+			;;
 		*) child_fault "${CHECKER}" ;;
 	esac
 }
 
-# Counts this misfit; blocks the stop up to MAX_BLOCKS times, then gives up.
-# The count is the stop.blocked events, so a block that can't be recorded is
-# a fault and the stop goes ahead: the agent is never held uncounted.
+# Blocks while a change of a merge under way, an unmerged path included,
+# still holds a leftover conflict marker: commit.sh would refuse it, and only
+# the developer can resolve it. An unmerged path without one is resolved;
+# commit.sh stages it.
+check_merge_resolved() {
+	run git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify -q MERGE_HEAD
+	[ "${child_rc}" -eq 0 ] || return 0
+	# git diff --check exits 2 for any finding, whitespace included.
+	run git -c core.fsmonitor=false -C "${worktree}" diff HEAD --check
+	[ "${child_rc}" -le 2 ] || child_fault 'git diff --check'
+	marked=$(printf '%s\n' "${child_out}" | sed -n 's/^\(.*\):[0-9][0-9]*: leftover conflict marker$/\1/p' | sort -u)
+	[ -n "${marked}" ] || return 0
+	joined=$(printf '%s\n' "${marked}" | head -n "${MAX_MARKED_NAMED}" | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+	shown_paths=$(printable "${joined}")
+	checker_text="These files still hold conflict markers: ${shown_paths}. Resolve each file, remove every marker, and keep the rest of your work; the stop hook commits the merge."
+	block_or_give_up "${MERGE_BLOCK_LEAD}"
+}
+
+# Counts this misfit, checker_text saying what is wrong after lead $1;
+# blocks the stop up to MAX_BLOCKS times, then gives up. The count is the stop.blocked events,
+# so a block that can't be recorded is a fault and the stop goes ahead: the
+# agent is never held uncounted.
 block_or_give_up() {
-	checker_text=$(cat "${work_dir}/stderr" 2>/dev/null) || checker_text=''
 	slurp_events
 	blocks=$(printf '%s\n' "${events_json}" | jq -r --arg seat "${seat}" --arg agent "${agent_id}" "${BLOCKS_JQ}") ||
 		fault 'jq could not count the blocks in the events events.sh slurp printed'
 	blocks=$((blocks + 1))
 	[ "${blocks}" -le "${MAX_BLOCKS}" ] || give_up
-	reason="${BLOCK_LEAD}${newline}${checker_text}"
+	reason="$1${newline}${checker_text}"
 	decision=$(jq -nc --arg reason "${reason}" '{decision: "block", reason: $reason}') ||
 		fault 'jq could not build the block decision'
 	# shellcheck disable=SC2310 # its status is the answer; a failure is logged inside
@@ -541,7 +587,10 @@ commit_work() {
 	new_commit=''
 	run git -c core.fsmonitor=false -C "${worktree}" status --porcelain --untracked-files=all --ignore-submodules=none
 	[ "${child_rc}" -eq 0 ] || child_fault 'git status'
-	[ -n "${child_out}" ] || return 0
+	if [ -z "${child_out}" ]; then
+		run git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify -q MERGE_HEAD
+		[ "${child_rc}" -eq 0 ] || return 0
+	fi
 	read_settings
 	run sh "${own_dir}/../commit/commit-input.sh" --effort "${effort}" --seat "${seat}" --report "${committing}" \
 		--out "${work_dir}/message.json"
@@ -604,7 +653,9 @@ push_branch() {
 		log_fault "push.sh skipped: ${push_seconds} s left of the hook's ${HOOK_LIMIT} s after a ${PUSH_MARGIN} s margin; expected at least ${MIN_PUSH_SECONDS} s"
 		return 0
 	fi
-	run sh "${own_dir}/../push/push.sh" --worktree "${worktree}" --remote "${remote}" --timeout "${push_seconds}"
+	set -- --worktree "${worktree}" --remote "${remote}" --effort "${effort}" --seat "${seat}" --timeout "${push_seconds}"
+	[ -z "${session_id}" ] || set -- "$@" --session "${session_id}"
+	run sh "${own_dir}/../push/push.sh" "$@"
 	[ "${child_rc}" -eq 0 ] || log_child_fault 'push.sh'
 }
 
@@ -612,10 +663,11 @@ push_branch() {
 # $1 (empty: none), then removes the file. A record that fails keeps the
 # file, so the next run's recovery writes it.
 record() {
+	recorded_commit=$1
 	[ -n "${draft}" ] || hash_committing
 	event_stamp=${stamp}
-	[ -z "$1" ] || commit_stamp "$1"
-	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "$1" --arg draft "${draft}" \
+	[ -z "${recorded_commit}" ] || commit_stamp "${recorded_commit}"
+	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "${recorded_commit}" --arg draft "${draft}" \
 		'{seat: $seat, dispatch: $dispatch, commit: (if $commit == "" then null else $commit end), draft: $draft}') ||
 		fault 'jq could not build the event facts'
 	set -- --type build.committed --body-file "${committing}" --facts "${facts}"
@@ -623,6 +675,43 @@ record() {
 	append "$@"
 	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
 	rm -f -- "${committing}" || fault "could not remove ${committing} after recording it"
+	[ -z "${recorded_commit}" ] || record_resolution "${recorded_commit}"
+}
+
+# Appends seat.conflicts.resolved when commit $1 is a merge of two parents;
+# the conflicts are what git merge-tree finds between them. A failure is a
+# fault: the build is recorded already.
+record_resolution() {
+	run git -c core.fsmonitor=false -C "${worktree}" show -s --no-show-signature --format='%P' "$1"
+	[ "${child_rc}" -eq 0 ] || {
+		log_child_fault 'git show'
+		return 0
+	}
+	first_parent=${child_out%% *}
+	second_parent=${child_out#* }
+	case ${second_parent} in
+		"${child_out}" | *' '*) return 0 ;;
+		*) ;;
+	esac
+	merge_tree_rc=0
+	git -c core.fsmonitor=false -C "${worktree}" merge-tree --write-tree --name-only --no-messages -z \
+		"${first_parent}" "${second_parent}" >"${work_dir}/merge-tree" 2>"${work_dir}/stderr" </dev/null || merge_tree_rc=$?
+	[ "${merge_tree_rc}" -le 1 ] || {
+		child_rc=${merge_tree_rc}
+		log_child_fault 'git merge-tree'
+		return 0
+	}
+	resolution_body="${work_dir}/resolution.json"
+	jq -Rs --arg seat "${seat}" --arg with "${second_parent}" --arg commit "$1" \
+		'{seat: $seat, with: $with, conflicts: (split("\u0000")[1:] | map(select(. != ""))), commit: $commit}' \
+		"${work_dir}/merge-tree" >"${resolution_body}" 2>/dev/null || {
+		log_fault 'jq could not build the seat.conflicts.resolved body'
+		return 0
+	}
+	set -- --type seat.conflicts.resolved --body-file "${resolution_body}"
+	[ -z "${event_stamp}" ] || set -- "$@" --iteration "${event_stamp}"
+	append "$@"
+	[ "${child_rc}" -eq 0 ] || log_child_fault 'events.sh append seat.conflicts.resolved'
 }
 
 # Sets event_stamp from commit $1's Iteration and Agent-Seat trailers.
@@ -667,6 +756,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 parse_args "$@"
+check_tools
 own_path=$(script_dir)
 own_dir=$(cd -P -- "${own_path}" && pwd -P) || {
 	warn 'this script'\''s folder could not be entered; the stop goes ahead'
@@ -689,6 +779,7 @@ find_checker
 read_iteration
 recover
 check_report
+check_merge_resolved
 rename_report
 commit_work
 record "${new_commit}"

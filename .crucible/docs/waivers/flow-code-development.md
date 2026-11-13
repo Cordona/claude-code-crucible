@@ -15,3 +15,7 @@
 - SUB-03: the iteration message lines are fixed by code-developer; its preloaded honesty rule covers each report; older text, outside this change (owner, D7) (owner)
 - WF-07: the Resume ask before the unreachable way is older text, outside this change (owner, D7) (owner)
 - LEAN-10: the Terms placeholders are older text, outside this change (owner, D7) (owner)
+REF-09: past the round cap, wording only; a follow-up (owner, D12) (owner)
+LNT-77: past the round cap, wording only; a follow-up (owner, D12) (owner)
+LNT-78: past the round cap, wording only; a follow-up (owner, D12) (owner)
+SUB-13: a dispatch cap and stall limit need numbers the spec does not set; a follow-up (owner, D12) (owner)

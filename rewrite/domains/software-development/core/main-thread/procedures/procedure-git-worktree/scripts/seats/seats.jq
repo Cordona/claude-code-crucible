@@ -7,6 +7,12 @@
 # seats_checked refuses a changed list that no longer fits, so the shell
 # never edits JSON. A key with nothing in it is left out, never null, [] or {}.
 # seats_next_name gives the next free seat name of a role.
+# Each command is a refusal check, then its seats_*_change; the replay
+# (seats-events.jq) applies stored events through the changes alone.
+# When a rule tightens, it binds changes only: the replay applies stored
+# events as they were written, and get, find and busy check the list's
+# shape, so an effort written under the old rules still reads. Its next
+# change must leave the whole list fitting the new rules.
 
 def seats_top_fields: ["effort", "seats"];
 def seats_roles: ["developer"];
@@ -49,6 +55,14 @@ def seats_name_problem: seats_pattern_problem(seats_name_pattern;
 def seats_agent_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "an agent id of letters, digits, _ and -");
 def seats_dispatch_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "a dispatch id of letters, digits, _ and -");
 def seats_base_problem: seats_pattern_problem("^[0-9a-f]{40}$"; "a 40-character lowercase hex commit sha");
+
+# A branch name, as git takes it, or the name a commit was taken from.
+def seats_branch_problem:
+	if type != "string" then "is a JSON \(type); expected a branch name"
+	elif test("[[:cntrl:][:space:]]") then "\(tojson) holds a space or control character; expected a branch name"
+	elif startswith("-") then "\(tojson) starts with -; expected a branch name"
+	else empty
+	end;
 
 def seats_path_problem:
 	if type != "string" then "is a JSON \(type); expected an absolute path"
@@ -170,6 +184,20 @@ def seats_empty_problems:
 	paths(seats_is_empty) as $path
 	| "\($path | map(if type == "number" then "[\(.)]" else ".\(.)" end) | join("") | ltrimstr(".")) is \(getpath($path) | tojson); expected the key left out when empty";
 
+# The problems get, find and busy can't read past: the list and each seat's
+# JSON types, no write-time pattern.
+def seats_shape_problems:
+	if type != "object" then ["the seat list is a JSON \(type); expected an object of effort and seats"]
+	elif (.seats | type) != "array" then ["seats is a JSON \(.seats | type); expected an array of seats"]
+	else [.seats | to_entries[] | .key as $index | .value
+		| if type != "object" then "seats[\($index)] is a JSON \(type); expected a seat object"
+		else to_entries[]
+			| (if .key | IN("previous_agent_ids", "base_seats") then "array" else "string" end) as $kind
+			| select((.value | type) != $kind)
+			| "seats[\($index)].\(.key) is a JSON \(.value | type); expected a JSON \($kind)"
+		end]
+	end;
+
 def seats_problems:
 	if type != "object" then ["the seat list is a JSON \(type); expected an object of effort and seats"]
 	else [
@@ -197,7 +225,8 @@ def seats_option_problems:
 	| (if $name == "seat" then seats_name_problem
 	elif $name == "role" then seats_enum_problem(seats_roles)
 	elif $name == "repo" then seats_path_problem
-	elif $name == "base" then seats_base_problem
+	elif $name == "base" or $name == "from-head" then seats_base_problem
+	elif $name == "branch" or $name == "follows" then seats_branch_problem
 	elif $name == "base-seat" then to_entries[] | .key as $index | .value | seats_name_problem | "item \($index) \(.)"
 	elif $name == "agent-id" then seats_agent_problem
 	elif $name == "dispatch" then seats_dispatch_problem
@@ -209,6 +238,14 @@ def seats_option_problems:
 	else empty
 	end)
 	| "--\($name) \(.)";
+
+# Problem line . of command $command as a fault body {refused, rule}: where
+# it is (the command, then the line's first word, an option or a list path)
+# and its "expected ..." rule, never the value refused.
+def seats_rejection($command):
+	(ltrimstr("the seat list: ") | ltrimstr("the change would leave ")) as $line
+	| {refused: "\($command) \($line | split(" ")[0])",
+		rule: ($line | if test("; expected ") then "expected " + (split("; expected ")[1:] | join("; expected ")) else "refused" end)};
 
 def seats_result($exit; $problems; $file; $out): {exit: $exit, problems: $problems, file: $file, out: $out};
 def seats_refused($exit; $problem): seats_result($exit; [$problem]; null; "");
@@ -229,16 +266,40 @@ def seats_prefix_problem($options):
 	else "--seat \($options.seat | tojson) does not fit --role \($options.role); expected \(seats_prefixes[$options.role])-<letter>, as seat-name.sh names it"
 	end;
 
+# The changes, each applied to the seat list with no check.
+def seats_choose_change($options; $worktree):
+	.seats += [{seat: $options.seat, role: $options.role, mode: seats_modes[$options.role],
+		worktree: $worktree, repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
+		status: "chosen"}];
+def seats_opened_change($index): .seats[$index].status = "open";
+def seats_drop_change($index): del(.seats[$index]);
+def seats_bind_change($options; $index):
+	.seats[$index] |= (.agent_id = $options["agent-id"] | .dispatch = $options.dispatch | .status = "working");
+def seats_status_change($options; $index): .seats[$index].status = $options.status;
+def seats_handover_change($index):
+	.seats[$index] |= (.previous_agent_ids = (.previous_agent_ids // []) + [.agent_id] | del(.agent_id, .dispatch) | .status = "open");
+# The base seats go: the seat no longer starts from their work.
+def seats_move_change($options; $index): .seats[$index] |= (.base = $options.base | del(.base_seats));
+def seats_task_change($index): .seats[$index].status = "working";
+
+# The change command $command makes to the seat at $index, other than choose.
+def seats_seat_change($command; $options; $index):
+	if $command == "opened" then seats_opened_change($index)
+	elif $command == "drop" then seats_drop_change($index)
+	elif $command == "bind" then seats_bind_change($options; $index)
+	elif $command == "status" then seats_status_change($options; $index)
+	elif $command == "handover" then seats_handover_change($index)
+	elif $command == "move" then seats_move_change($options; $index)
+	elif $command == "task" then seats_task_change($index)
+	else .
+	end;
+
 # A seat whose worktree is not made yet: <$worktrees_dir>/<letter> is where
 # seat-open.sh makes it, so its letter names the worktree alone.
 def seats_choose($options; $worktrees_dir):
 	if [seats_prefix_problem($options)] != [] then seats_refused(3; seats_prefix_problem($options))
 	elif seats_index($options.seat) != null then seats_refused(5; seats_taken($options.seat))
-	else
-		.seats += [{seat: $options.seat, role: $options.role, mode: seats_modes[$options.role],
-			worktree: "\($worktrees_dir)/\(seats_letter($options))", repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
-			status: "chosen"}]
-		| seats_changed
+	else seats_choose_change($options; "\($worktrees_dir)/\(seats_letter($options))") | seats_changed
 	end;
 
 def seats_not_chosen($seat): seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected a chosen seat");
@@ -249,13 +310,13 @@ def seats_drop($index):
 	.seats[$index] as $seat
 	| if $seat.status != "chosen" then seats_not_chosen($seat)
 	elif (.seats | length) == 1 then seats_unchanged + {remove: true}
-	else del(.seats[$index]) | seats_changed
+	else seats_drop_change($index) | seats_changed
 	end;
 
 def seats_opened($index):
 	.seats[$index] as $seat
 	| if $seat.status != "chosen" then seats_not_chosen($seat)
-	else .seats[$index].status = "open" | seats_changed
+	else seats_opened_change($index) | seats_changed
 	end;
 
 def seats_bind($options; $index):
@@ -270,21 +331,40 @@ def seats_bind($options; $index):
 		seats_refused(5; "agent \($agent | tojson) was handed out of seat \($seat.seat | tojson); expected a fresh agent")
 	elif $seat.status != "open" then
 		seats_refused(5; "seat \($seat.seat | tojson) is held by agent \($seat.agent_id | tojson); expected an open seat")
-	else .seats[$index] |= (.agent_id = $agent | .dispatch = $options.dispatch | .status = "working") | seats_changed
+	else seats_bind_change($options; $index) | seats_changed
 	end;
 
 def seats_set_status($options; $index):
 	.seats[$index] as $seat
 	| if $seat.status | IN(seats_unbound_statuses[]) then
 		seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected an agent bound before its status changes")
-	else .seats[$index].status = $options.status | seats_changed
+	else seats_status_change($options; $index) | seats_changed
 	end;
 
 def seats_handover($index):
 	.seats[$index] as $seat
 	| if $seat.status | IN(seats_unbound_statuses[]) then
 		seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected a bound seat to hand over")
-	else .seats[$index] |= (.previous_agent_ids = (.previous_agent_ids // []) + [.agent_id] | del(.agent_id, .dispatch) | .status = "open") | seats_changed
+	else seats_handover_change($index) | seats_changed
+	end;
+
+# A new base for a seat whose worktree exists and whose agent is not busy;
+# its worktree already holds it (seat-move.sh moves it first).
+def seats_move($options; $index):
+	.seats[$index] as $seat
+	| if $seat.status == "chosen" then
+		seats_refused(5; "seat \($seat.seat | tojson) is chosen: its worktree is not made yet; expected a seat with a worktree")
+	elif $seat.status == "working" then
+		seats_refused(5; "seat \($seat.seat | tojson) is working: its developer is busy; expected it idle, open or gave-up")
+	else seats_move_change($options; $index) | seats_changed
+	end;
+
+# New work for the agent bound to an idle seat.
+def seats_task($index):
+	.seats[$index] as $seat
+	| if $seat.status != "idle" then
+		seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected an idle seat with its agent bound")
+	else seats_task_change($index) | seats_changed
 	end;
 
 # One "seat<TAB>status" line per seat with open work: working or gave-up.
@@ -309,6 +389,8 @@ def seats_on_seat($command; $options):
 	elif $command == "bind" then seats_bind($options; $index)
 	elif $command == "status" then seats_set_status($options; $index)
 	elif $command == "handover" then seats_handover($index)
+	elif $command == "move" then seats_move($options; $index)
+	elif $command == "task" then seats_task($index)
 	elif $command == "drop" then seats_drop($index)
 	elif $command == "opened" then seats_opened($index)
 	else seats_result(0; []; null; .seats[$index] | tojson)
@@ -331,19 +413,34 @@ def seats_on_missing($command; $options; $effort; $seats_dir):
 	else seats_refused(6; "seat \($options.seat | tojson) is not in the seat list; expected a seat of the effort (it has none yet)")
 	end;
 
-# Checks the seat list $list, then applies apply to it; exit 3 when it is no
-# valid seat list.
-def seats_on_list($list; apply):
-	($list | seats_problems) as $problems
-	| if $problems != [] then seats_result(3; $problems | map("the seat list: \(.)"); null; "")
+# Applies apply to the seat list $list when $problems, its problems, are
+# none; exit 3 when there are some.
+def seats_on_checked($list; $problems; apply):
+	if $problems != [] then seats_result(3; $problems | map("the seat list: \(.)"); null; "")
 	else $list | apply
+	end;
+
+# Checks the seat list $list against the contract, then applies apply to it.
+def seats_on_list($list; apply): seats_on_checked($list; $list | seats_problems; apply);
+
+# The commands that only read: they check shape, not the write-time rules.
+def seats_read_commands: ["get", "find", "busy"];
+
+# The problems of the options: a read takes any string, as its lookup only
+# compares it.
+def seats_options_problems($command):
+	if $command | IN(seats_read_commands[]) then
+		to_entries[] | select(.value | type != "string") | "--\(.key) is a JSON \(.value | type); expected a string"
+	else seats_option_problems
 	end;
 
 # $list is the seat list, or null when the effort has no seat.
 def seats_run($command; $options; $effort; $seats_dir; $list):
-	[$options | seats_option_problems] as $option_problems
+	[$options | seats_options_problems($command)] as $option_problems
 	| if $option_problems != [] then seats_result(3; $option_problems; null; "")
 	elif $list == null then seats_on_missing($command; $options; $effort; $seats_dir)
+	elif $command | IN(seats_read_commands[]) then
+		seats_on_checked($list; $list | seats_shape_problems; seats_command($command; $options; $seats_dir))
 	else seats_on_list($list; seats_command($command; $options; $seats_dir))
 	end;
 

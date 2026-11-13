@@ -10,8 +10,10 @@ readonly PROG='events.sh'
 # change to the event layout bumps it rather than misreading older efforts.
 readonly FORMAT=1
 # Event types taken after effort.completed or effort.dropped: a reopen, work
-# that lands late, and the final harvest.
-readonly AFTER_END_TYPES='effort.reopened build.committed metrics.harvested'
+# that lands late, and the final harvest. The line break keeps the --help
+# page narrow; the list is read split on blanks.
+readonly AFTER_END_TYPES='effort.reopened build.committed seat.conflicts.resolved
+  seat.pushed metrics.harvested'
 # An append holds the lock for a few jq runs, well under a second, so a wait
 # this long means a stuck holder, not a busy one.
 readonly DEFAULT_WAIT_SECONDS=5

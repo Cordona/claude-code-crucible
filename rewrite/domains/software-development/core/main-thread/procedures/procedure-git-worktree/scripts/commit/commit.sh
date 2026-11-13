@@ -4,7 +4,9 @@
 # authored, committed and, with a key, signed by the effort's identity, then
 # proves the commit is the one asked for. It never writes the message or
 # pushes. It refuses a main checkout, a HEAD on any other branch and an index
-# something else already staged, before it touches anything. A signing failure
+# something else already staged, before it touches anything; a merge under
+# way with every conflict resolved is finished as the merge commit, its
+# index git's own. A signing failure
 # never loses the work: the commit is made again unsigned and says why.
 set -eu
 umask 077
@@ -46,12 +48,19 @@ Commits every change git sees (added, modified or deleted; nothing git
 ignores) in a linked git worktree and prints the new commit's full sha. A
 path holding a line break is refused (exit 3). After the commit the
 worktree must show no change. The identity is author and committer. Runs no
-repository hook.
+repository hook. A merge under way (MERGE_HEAD, one commit) is finished:
+an unmerged path whose file holds no leftover conflict marker counts as
+resolved and is staged with the rest; the commit's parents are HEAD and
+MERGE_HEAD, its index may hold the merge's staged paths, and it is made
+even when the merge changes nothing. A pick, revert or rebase under way,
+or a merge with a change holding a leftover conflict marker (git diff HEAD
+--check), is refused, each such path named (at most ${MAX_PROBLEMS} lines).
+Nothing else is left behind (a SIGKILL aside).
 
 --worktree DIR         absolute path of the linked worktree's top folder,
                        <effort>/${WORKTREES_FOLDER}/<letter>; HEAD must be on
                        ${BRANCH_PREFIX}/<effort>/<letter> and the index must
-                       stage nothing
+                       stage nothing but a merge's paths
 --message-file FILE    the commit message, kept byte for byte; not empty
 --identity-name NAME   one line; no < or >, not starting or ending with a
                        space or any of . , : ; " ' \\
@@ -67,19 +76,18 @@ repository hook.
 
 exit codes:
   0  committed; the new commit's full sha is the only stdout line
-  2  wrong command line: a missing, repeated or unknown option, or a
-     missing value
-  3  invalid input: options, files or worktree checks, or a path holding a
-     line break, which may come after the commit; each problem is one
-     stderr line (at most ${MAX_PROBLEMS})
-  4  environment: git missing
-  5  nothing to commit: the worktree holds no change; the index is left
-     clean
-  6  git staging or the commit failed; the index is restored to clean
-  7  a commit was made but does not match what was asked; each mismatch is one
-     stderr line
+  2  wrong command line, nothing committed; log stderr's first line as a
+     fault
+  3  invalid input, nothing committed unless stderr names a path found
+     after the commit; log stderr's first line as a fault
+  4  environment, nothing committed; log stderr's first line as a fault
+  5  nothing to commit, the index left clean; go on without a commit
+  6  staging or the commit failed, the index clean again or, in a merge,
+     left as it was; log stderr's first line as a fault
+  7  a commit was made but does not match what was asked; log stderr's
+     first line as a fault
 
-needs: POSIX sh, git 2.26+
+needs: POSIX sh, git 2.31+
 EOF
 }
 
@@ -240,7 +248,8 @@ check_signing() {
 }
 
 # Refuses anything but the top folder of a linked worktree with HEAD on its
-# own branch, no merge or rebase under way, and nothing staged; records HEAD.
+# own branch, no pick, revert, rebase or unresolved merge under way, and
+# nothing staged but a merge's paths; records HEAD.
 check_worktree() {
 	shown_worktree=$(printable "${worktree}")
 	case ${worktree} in
@@ -277,7 +286,7 @@ check_linked() {
 	git_dir=$(git -C "${worktree}" rev-parse --absolute-git-dir 2>/dev/null) || git_dir=''
 	common_dir=$(git -C "${worktree}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common_dir=''
 	if [ -z "${git_dir}" ] || [ -z "${common_dir}" ]; then
-		add_problem "--worktree ${shown_worktree}: git could not name its git folders; expected git 2.26+"
+		add_problem "--worktree ${shown_worktree}: git could not name its git folders; expected git 2.31+"
 	elif [ "${git_dir}" = "${common_dir}" ]; then
 		add_problem "--worktree ${shown_worktree} is a main checkout; expected a linked worktree"
 	fi
@@ -310,25 +319,64 @@ own_branch() {
 	branch="${BRANCH_PREFIX}/${effort_dir##*/}/${physical_worktree##*/}"
 }
 
-# A merge or pick under way would turn the commit into something else.
+# A pick, revert or rebase under way would turn the commit into something
+# else; a merge is finished only once no change holds a conflict marker. Sets
+# merge_head to the merge's other commit, empty when no merge is under way.
 check_no_operation() {
+	merge_head=''
 	[ -n "${git_dir}" ] || return 0
-	for state in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
+	for state in CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
 		[ ! -e "${git_dir}/${state}" ] ||
-			add_problem "--worktree ${shown_worktree} has ${state} under way; expected no merge, pick or rebase"
+			add_problem "--worktree ${shown_worktree} has ${state} under way; expected no pick, revert or rebase"
 	done
+	[ -e "${git_dir}/MERGE_HEAD" ] || return 0
+	check_merge
+}
+
+# Sets merge_head from MERGE_HEAD, one commit; an unmerged path is staged
+# with the rest, so only a path still holding a marker is refused.
+check_merge() {
+	merge_lines=$(wc -l <"${git_dir}/MERGE_HEAD" 2>/dev/null) || merge_lines=0
+	merge_head=$(git -C "${worktree}" rev-parse --verify -q 'MERGE_HEAD^{commit}' 2>/dev/null) || merge_head=''
+	if [ "${merge_lines}" -ne 1 ] || [ -z "${merge_head}" ]; then
+		add_problem "--worktree ${shown_worktree} has a MERGE_HEAD that is not one commit; expected a merge of one commit"
+		merge_head=''
+		return 0
+	fi
+	check_markers
+}
+
+# Names each changed path, unmerged ones included, that still holds a
+# leftover conflict marker; git diff --check exits 2 for any finding,
+# whitespace included.
+check_markers() {
+	check_rc=0
+	git -C "${worktree}" -c core.fsmonitor=false diff HEAD --check >"${work_dir}/check" 2>/dev/null || check_rc=$?
+	if [ "${check_rc}" -gt 2 ]; then
+		add_problem "--worktree ${shown_worktree}: git diff --check could not read the merge's changes; expected a readable worktree"
+		return 0
+	fi
+	sed -n 's/^\(.*\):[0-9][0-9]*: leftover conflict marker$/\1/p' "${work_dir}/check" | sort -u >"${work_dir}/markers"
+	while IFS= read -r path; do
+		shown_path=$(printable "${path}")
+		add_problem "--worktree ${shown_worktree} has ${shown_path} still holding a conflict marker in the merge of ${merge_head}; expected it resolved"
+	done <"${work_dir}/markers"
 }
 
 check_index_clean() {
 	[ -n "${old_head}" ] || return 0
+	[ -z "${merge_head}" ] || return 0
 	if ! git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet >/dev/null 2>&1; then
 		add_problem "--worktree ${shown_worktree} already has staged changes; expected a clean index"
 	fi
 }
 
-# Restores the index (clean before this script staged) and exits 6.
+# Restores the index (clean before this script staged) and exits 6; in a
+# merge the index is left, since git reset would end the merge.
 fail_restored() {
-	git -C "${worktree}" -c core.fsmonitor=false reset -q >/dev/null 2>&1 || warn 'git reset failed; the index may still hold staged paths'
+	if [ -z "${merge_head}" ]; then
+		git -C "${worktree}" -c core.fsmonitor=false reset -q >/dev/null 2>&1 || warn 'git reset failed; the index may still hold staged paths'
+	fi
 	die 6 "$1"
 }
 
@@ -339,6 +387,7 @@ stage_changes() {
 		git -C "${worktree}" -c core.fsmonitor=false add -A --pathspec-from-file="${paths_nul}" --pathspec-file-nul >&2 ||
 			fail_restored 'git add failed; expected every changed file readable'
 	fi
+	[ -z "${merge_head}" ] || return 0
 	git -C "${worktree}" -c core.fsmonitor=false diff --cached --quiet && die 5 'nothing to commit; expected a change in the worktree'
 	return 0
 }
@@ -395,8 +444,10 @@ run_signed_commit() {
 	watcher_pid=$!
 	sign_rc=0
 	wait "${commit_pid}" || sign_rc=$?
+	commit_pid=''
 	kill "${watcher_pid}" 2>/dev/null || :
 	wait "${watcher_pid}" 2>/dev/null || :
+	watcher_pid=''
 	sign_timed_out=no
 	[ ! -e "${timeout_marker}" ] || sign_timed_out=yes
 }
@@ -471,9 +522,16 @@ verify_object() {
 	elif [ "${signed}" = no ] && [ "${signature_count}" -gt 0 ]; then
 		add_problem 'the commit carries a signature; expected it unsigned'
 	fi
-	parent=$(git -C "${worktree}" rev-parse --verify -q "${new_head}^" 2>/dev/null) || parent=''
-	[ "${parent_count}" -eq 1 ] && [ "${parent}" = "${old_head}" ] ||
-		add_problem "the commit's parent is not ${old_head} alone; expected the HEAD before the commit"
+	parents=$(git -C "${worktree}" show -s --no-show-signature --format='%P' "${new_head}" 2>/dev/null) || parents=''
+	if [ -z "${merge_head}" ]; then
+		[ "${parent_count}" -eq 1 ] && [ "${parents}" = "${old_head}" ] ||
+			add_problem "the commit's parent is not ${old_head} alone; expected the HEAD before the commit"
+	else
+		[ "${parent_count}" -eq 2 ] && [ "${parents}" = "${old_head} ${merge_head}" ] ||
+			add_problem "the commit's parents are not ${old_head} and ${merge_head}; expected the HEAD before the commit and the merge's commit"
+		[ ! -e "${git_dir}/MERGE_HEAD" ] ||
+			add_problem 'MERGE_HEAD is still there after the commit; expected the merge finished'
+	fi
 }
 
 verify_idents() {
@@ -505,19 +563,23 @@ verify_no_change_left() {
 	done <"${work_dir}/left.paths"
 }
 
+# Stops a signed commit and its watcher still running when a signal ends
+# the script.
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
+	[ -z "${watcher_pid}" ] || kill "${watcher_pid}" 2>/dev/null || :
+	[ -z "${commit_pid}" ] || kill "${commit_pid}" 2>/dev/null || :
 	[ -z "${work_dir}" ] || rm -rf -- "${work_dir}"
 }
 
-work_dir=''
+work_dir='' commit_pid='' watcher_pid=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 parse_args "$@"
-command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
+command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.31+ on PATH'
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-commit.XXXXXX") ||
 	die 3 'mktemp could not create a work folder; expected a writable TMPDIR'
 copy_message

@@ -24,30 +24,27 @@ usage() {
 usage: sh ${PROG} --effort DIR --seat S
        sh ${PROG} --help | -h
 
-Opens a chosen developer seat, stopping at the first failing step:
-  seats.sh get --effort <effort> --seat S   (its repo, base and worktree)
-  ../worktree/worktree-create.sh --repo <repo> --base <base> --path <worktree>
-      --branch ${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>
-  ../worktree/worktree-setup.sh --from <repo> --to <worktree>
-  seats.sh opened --effort <effort> --seat S
-and prints the seat as seats.sh get does. A failure after the worktree
-exists removes it (git worktree remove --force) and its branch, says so,
-and leaves the seat chosen.
+Opens a chosen developer seat: its worktree, cut from the seat's base at
+the path its seat.chosen event records, on the new branch
+${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>, holds copies of
+the checkout's dependency folders, and the seat is open (seat.opened). A
+failure after the worktree exists removes it and its branch, so the seat
+stays chosen and a rerun starts clean, unless removing fails too (stderr
+names what to remove). The main checkout's working tree and other branches
+are never touched. Nothing else is left behind (a SIGKILL aside).
 
 --effort DIR  absolute path of the effort folder
 --seat S      a seat seats.sh choose recorded, status chosen
 
-The steps' own stderr lines come first; this script adds one line saying
-which step failed.
+stdout: the seat's JSON line, as seats.sh get prints it, for the flow
+stderr on a failed step: its own lines, then one line naming it
 
 exit codes:
-  0  the seat is open; its JSON line is printed
-  2  wrong command line: a missing, repeated or unknown option, or a
-     missing value
-  3  input: a refused option, the seat not in the effort, or a step
-     refused its input (exit 3)
-  4  a step failed otherwise, or a dependency is missing
-  5  the seat is not chosen: it is open already or has an agent
+  0  the seat is open; read stdout
+  2  wrong command line; fix what stderr names
+  3  refused input; show the human stderr, and stop
+  4  a dependency or a step failed; show the human stderr, and stop
+  5  refused by state, nothing changed; show the human stderr, and stop
 
 needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh, ../worktree/worktree-create.sh
 and ../worktree/worktree-setup.sh from this script's folder
@@ -151,10 +148,10 @@ read_chosen_seat() {
 		0) ;;
 		6) die 3 "seat ${shown_seat} is not in ${shown_effort}; expected a seat seats.sh choose recorded" ;;
 		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_effort}" ;;
-		*) die 4 "seats.sh get failed (exit ${step_rc})" ;;
+		*) die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above); expected the seat's JSON line; fix what it names and rerun" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .base // "", .worktree // ""') ||
-		die 4 'jq could not read the seat seats.sh get printed'
+		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 	status='' repo='' base='' worktree=''
 	{
 		IFS= read -r status || :
@@ -184,7 +181,7 @@ step_failed() {
 		*) step_exit=4 ;;
 	esac
 	remove_worktree
-	die "${step_exit}" "$1 failed (exit ${step_rc}); expected it to succeed${removal_note}"
+	die "${step_exit}" "$1 failed (exit ${step_rc}; its stderr is above)${removal_note}; fix what it names and rerun"
 }
 
 # Removes the worktree and the branch this run created, if any, and sets
@@ -226,8 +223,9 @@ read_chosen_seat
 create_worktree
 run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
 [ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
-run_step seats.sh opened --effort "${effort}" --seat "${seat}"
+run_step seats.sh opened --effort "${effort}" --seat "${seat}" --branch "${branch}"
 [ "${step_rc}" -eq 0 ] || step_failed 'seats.sh opened'
 run_step seats.sh get --effort "${effort}" --seat "${seat}"
-[ "${step_rc}" -eq 0 ] || die 4 "seats.sh get failed (exit ${step_rc}) after the seat was opened; the seat is open"
+[ "${step_rc}" -eq 0 ] ||
+	die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was opened: the seat is open; expected its JSON line; run sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 printf '%s\n' "${step_out}"

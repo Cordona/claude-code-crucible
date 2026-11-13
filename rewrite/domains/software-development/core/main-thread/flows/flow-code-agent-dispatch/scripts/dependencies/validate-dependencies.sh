@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's seats.sh, iteration.sh and its seat bind, report commit and
+# procedure-git-worktree's seats.sh, iteration.sh, seat-move.sh, worktree-move.sh,
+# catch-up.sh and its seat bind, report commit and
 # block relay hook scripts, the crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
@@ -374,6 +375,9 @@ fingerprint_input() {
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/iteration.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seat-move.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/worktree/worktree-move.sh" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/merge/catch-up.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${EVENTS_SCRIPT}" \
 		"${crucible_scripts_dir}/${EVENTS_GUARD_HOOK}" \
@@ -1198,6 +1202,9 @@ check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
 check_script "${WORKTREE_PROCEDURE}" seats/seats.sh
 check_script "${WORKTREE_PROCEDURE}" seats/iteration.sh
+check_script "${WORKTREE_PROCEDURE}" seats/seat-move.sh
+check_script "${WORKTREE_PROCEDURE}" worktree/worktree-move.sh
+check_script "${WORKTREE_PROCEDURE}" merge/catch-up.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh
