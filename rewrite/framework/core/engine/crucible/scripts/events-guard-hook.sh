@@ -36,7 +36,7 @@ readonly GUARD_JQ='
 	xargs: ["-a", "-d", "-E", "-I", "-L", "-n", "-P", "-s"],
 	time: ["-f", "-o"], command: [], nohup: [], builtin: [], eval: []
 } as $wrappers
-| def base: [splits("[<>]")][0] | split("/") | last;
+| def base: ([splits("[<>]")][0] // "") | (split("/") | last) // "";
 def as_pattern:
 	gsub("\\{[^}]*\\}"; "\u0001") | gsub("\\[[^]]*\\]"; "\u0002")
 	| gsub("(?<c>[.+^$()|\\[\\]{}\\\\])"; "\\\(.c)")
