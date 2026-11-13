@@ -1,8 +1,8 @@
 # Sourced by mount.sh, unmount.sh and mount-status.sh, never run: the main
 # checkout's shape, where its mount record lives, the record's contract and
 # the state of a path in the checkout. Uses the sourcing script's warn, die,
-# printable, work_dir and own_dir (seats.jq is in ../seats from it); sets no
-# shell option of its own.
+# printable, work_dir and own_dir (seats.jq is in ../seats from it), and its
+# clean_up, which removes restore_temp; sets no shell option of its own.
 #
 # A path's state is absent or "<mode> <blob sha>", the blob as git would
 # store the checkout's file: clean filters applied, a symlink's target text.
@@ -341,6 +341,9 @@ list_saved() {
 # beside it; then checks every saved file's bytes. Lines of work_dir/saved
 # are "<n><TAB><path>"; $1 ends the message of an exit 4.
 restore_saved_bytes() {
+	# A temp file beside the human's file must not outlive a failed restore,
+	# whatever the sourcing script trapped before.
+	trap clean_up EXIT
 	while IFS= read -r saved_line; do
 		saved_copy="${record_dir}/before/${saved_line%%"${tab}"*}"
 		restored_path="${checkout_dir}/${saved_line#*"${tab}"}"
