@@ -46,7 +46,8 @@ On a fault the question is allowed, with two exceptions: while a pending gate
   is open (with jq missing: any session's), exit 2; when a relayed gate's
   record could not be saved, the deny on stdout.
 
-stdin: the hook JSON (session_id, agent_id, tool_name, tool_use_id); a tool_name other than
+stdin: the hook JSON (session_id, agent_id, tool_name, tool_use_id,
+  tool_input.questions); a tool_name other than
   AskUserQuestion, a non-empty agent_id (a subagent's or side agent's
   question) or a missing, non-string or unsafe session_id is allowed untouched
 Reads the gate state open-gate.sh wrote in
@@ -66,7 +67,8 @@ stderr on exit 0: notes on a removed gate, an unsaved record or a missing jq,
 
 Writes, in this session's gate folder and the record's folder only:
   a relayed gate's record, when its target file names an effort:
-    answers/<tool_use_id>.json in the gate folder, {label, effort, plan},
+    answers/<tool_use_id>.json in the gate folder, {label, effort,
+    question, plan}, the question the first one's text,
     for gate-answer-hook.sh; a gate without an effort saves nothing
   closing a gate (relayed once any record is saved, shown or failed): removes
     gate.md, state, target and plan.json, then the gate folder once empty
@@ -166,8 +168,12 @@ save_gate_record() {
 	jq -se 'length == 1 and (.[0] | type) == "object"' "${plan_file}" >/dev/null 2>&1 ||
 		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
 	make_effort_record
-	record=$(jq -c --arg label "${record_label}" --arg effort "${record_effort}" \
-		'{label: $label, effort: $effort, plan: .}' "${plan_file}" 2>/dev/null) ||
+	# The first question's text, as JSON, by which a dashboard answer finds
+	# the record.
+	question=$(printf '%s' "${hook_input}" | jq -c '(.tool_input.questions[0].question | strings) // ""' 2>/dev/null) ||
+		deny_record "jq could not read the question for ${record_path}" 'check jq 1.6+'
+	record=$(jq -c --arg label "${record_label}" --arg effort "${record_effort}" --argjson question "${question}" \
+		'{label: $label, effort: $effort, question: $question, plan: .}' "${plan_file}" 2>/dev/null) ||
 		deny_record "jq could not build the hand-off for ${record_path}" 'check jq 1.6+ and the plan file'
 	# Written beside the record and moved onto it, so a record is never half
 	# written.

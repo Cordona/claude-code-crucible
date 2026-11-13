@@ -11,9 +11,9 @@
 # procedure-approval-gate's
 # open-gate.sh and its three hook scripts, crucible.sh and its events guard
 # hook, jq, the run-time tools
-# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the eight hook
+# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the nine hook
 # entries in settings.json (the inject hook and the crucible skill's events
-# guard hook, which must block on failure, the three gate hooks, and
+# guard hook, which must block on failure, the four gate hook entries, and
 # procedure-git-worktree's seat bind, report commit and async block relay
 # hooks), the Crucible space in its additionalDirectories, its Edit allow
 # rule and its events Edit deny rule, and the installed plugins. Every check
@@ -384,6 +384,7 @@ fingerprint_input() {
 	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
 	fingerprint_hook PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}"
+	fingerprint_hook UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}"
 	fingerprint_hook PostToolUse Agent "${SEAT_BIND_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${REPORT_COMMIT_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${BLOCK_RELAY_SCRIPT}"
@@ -698,9 +699,9 @@ set_coreutils_fix() {
 	run_tool_fix="put $1 back on PATH (macOS: it ships in $2; Linux: the distro's coreutils package), then rerun"
 }
 
-# Checks that the settings file registers the eight hooks, allows the
+# Checks that the settings file registers the nine hooks, allows the
 # Crucible space and has its Edit allow and events deny rules; a settings
-# file jq can't read fails once for all eleven.
+# file jq can't read fails once for all twelve.
 check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
@@ -738,6 +739,7 @@ each_hook() {
 	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate answer hook' PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'gate dashboard answer hook' UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'seat bind hook' PostToolUse Agent "${SEAT_BIND_SCRIPT}" "${SEAT_BIND_HOOK_TIMEOUT}" '' ''
 	"$1" 'report commit hook' SubagentStop '' "${REPORT_COMMIT_SCRIPT}" "${REPORT_COMMIT_HOOK_TIMEOUT}" '' ''
 	"$1" 'block relay hook' SubagentStop '' "${BLOCK_RELAY_SCRIPT}" "${BLOCK_RELAY_HOOK_TIMEOUT}" '' "${HOOK_ASYNC_REWAKE}"
