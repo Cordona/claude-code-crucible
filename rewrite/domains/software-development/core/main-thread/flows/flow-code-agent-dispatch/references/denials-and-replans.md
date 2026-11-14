@@ -6,7 +6,7 @@ Step numbers are SKILL.md's.
 
 Route by the token a stderr problem leads with, right after its `generate-agent-dispatch.sh: <option> <value>: `, never by the text after it.
 
-- **A problem led by `CONTEXT-CHANGED`:** the docs or pending entries changed since the plan was shown; never look into what changed (no `events/`, no docs folder, no `entries.json`); take that plan back to step 7 with the fingerprint, as step 3 takes it, then run step 8 for it again. With a `PLUGIN` problem as well: one re-plan for both, as the `PLUGIN` bullet below sets for its plugin.
+- **A problem led by `CONTEXT-CHANGED`:** the docs or pending entries changed since the plan was shown; never look into what changed (no `events/`, no docs folder, no `entries.json`) or ask the human about it; take that plan back to step 7 with the fingerprint, as step 3 takes it, then run step 8 for it again. With a `PLUGIN` problem as well: one re-plan for both, as the `PLUGIN` bullet below sets for its plugin.
 - **A problem led by `NO-SPEC`, `DOCS-NAME` or `DOCS-SIZE`,** once per plan: run step 3, whose route settles it; take that plan back to step 7 with the fingerprint step 3 takes, then run step 8 for it again. A second one for that plan, or a stop at step 3: as SKILL.md step 8's any other exit.
 - **A problem led by `NO-GATE-RECORD`:** the plan's approval is not on record (`generate-agent-dispatch.sh --help`); take that plan back to step 7 to ask it again, then run step 8 for it again.
 - **A problem led by `PLUGIN`:** a plugin the plan approved is now uninstalled or invalid. Run step 2 again, then re-plan that plan as step 10's `PLUGIN` bullet below sets, with its stop lines and hand-backs; on Approve, run step 8 for it again.
