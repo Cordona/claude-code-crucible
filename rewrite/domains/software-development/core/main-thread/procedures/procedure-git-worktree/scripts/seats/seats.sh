@@ -5,6 +5,7 @@
 # applies the change to it, and the change is one event, appended through the
 # crucible skill's events.sh with seats-guard.jq, which checks it again under
 # the events lock. The shell never edits JSON.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -61,7 +62,7 @@ usage: sh ${PROG} choose --effort FOLDER --seat S --role developer --repo DIR --
            [--follows NAME]
        sh ${PROG} task --effort FOLDER --seat S --task TEXT
        sh ${PROG} get --effort FOLDER --seat S
-       sh ${PROG} find --effort FOLDER --agent-id ID
+       sh ${PROG} find --effort FOLDER --agent-id ID [--card]
        sh ${PROG} busy --effort FOLDER
        sh ${PROG} list --effort FOLDER
        sh ${PROG} --help | -h
@@ -86,6 +87,7 @@ a change meets. Nothing else is left behind (a SIGKILL aside).
 --from-head SHA   move: the worktree's HEAD before the move, for the record
 --follows NAME    move: the name the new base was taken from, for the record
 --task TEXT       task: the new work, made one line, for the record
+--card            find: also print its line (below)
 
 choose    a new seat, status chosen, worktree
           <effort, symlinks resolved>/worktrees/<letter>
@@ -103,18 +105,22 @@ stdout of get and find: the seat, one JSON line; of list: {effort, seats},
   working, idle, gave-up), agent_id and dispatch (none while chosen or
   open), previous_agent_ids, worktree, repo, base, base_seats; an empty key
   is left out. Their rules: seats.jq
+then, with find --card, show.sh prints (owed this session, for --effort)
+  views/lines.jq's report_gave_up (gave-up) or run_not_committed (working)
 stdout of busy: "seat<TAB>status" per seat working or gave-up
 stderr on exits 3, 5 and 6: one line per problem, at most ${MAX_PROBLEMS}
 
 needs: POSIX sh, jq 1.6+; the ${CRUCIBLE_SKILL} skill's events.sh and lib/prune.jq,
-in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CRUCIBLE_SKILL}/scripts
+in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CRUCIBLE_SKILL}/scripts; --card:
+../cards/cards-lib.sh, views/, human-view's show.sh and lib/render.sh
 
 exit codes:
   0  done; a change prints nothing
   2  wrong command line; fix what stderr names
   3  invalid input or seat list, nothing changed; show the human stderr,
      and stop
-  4  a dependency is missing or failed; show the human stderr, and stop
+  4  a dependency is missing or failed (also show.sh after find --card's
+     seat); show the human stderr, and stop
   5  refused by the seat's state, nothing changed; show the human stderr,
      and stop
   6  no such seat (find: no seat holds ID); pass it on, else show the human
@@ -153,7 +159,7 @@ command_options() {
 		move) printf -- '--effort --seat --base --from-head --follows' ;;
 		task) printf -- '--effort --seat --task' ;;
 		bind) printf -- '--effort --seat --agent-id --dispatch' ;;
-		find) printf -- '--effort --agent-id' ;;
+		find) printf -- '--effort --agent-id --card' ;;
 		status) printf -- '--effort --seat --status' ;;
 		busy | list) printf -- '--effort' ;;
 		*) printf -- '--effort --seat' ;;
@@ -170,12 +176,17 @@ take_value() {
 # Sets $option_value from "$1 $2", refusing an option command does not take
 # or a missing value.
 take_repeated() {
+	take_option "$1"
+	[ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
+	option_value=$2
+}
+
+# Refuses option $1 when command does not take it.
+take_option() {
 	case " ${allowed} " in
 		*" $1 "*) ;;
 		*) usage_error "$1 is not an option of ${command}; expected ${allowed}" ;;
 	esac
-	[ -n "$2" ] || usage_error "$1 needs a value; expected $1 VALUE"
-	option_value=$2
 }
 
 parse_args() {
@@ -194,12 +205,19 @@ parse_args() {
 	shift
 	allowed=$(command_options "${command}")
 	effort_folder='' seat='' role='' repo='' base='' agent_id='' dispatch='' status=''
-	branch='' from_head='' follows='' task=''
+	branch='' from_head='' follows='' task='' card=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
+				;;
+			--card)
+				take_option "$1"
+				[ -z "${card}" ] || usage_error '--card given twice; expected one'
+				card=yes
+				shift
+				continue
 				;;
 			--effort)
 				take_value "$1" "${effort_folder}" "${2-}"
@@ -335,6 +353,17 @@ load_dependencies() {
 	shown_crucible_dir=$(printable "${crucible_dir}")
 	[ -f "${events_script}" ] && [ -r "${events_script}" ] ||
 		die 4 "events.sh not found in ${shown_crucible_dir}; expected the ${CRUCIBLE_SKILL} skill installed"
+	[ -z "${card}" ] || load_printer
+}
+
+# Sources ../cards/cards-lib.sh and checks the line printer it loads.
+load_printer() {
+	[ -f "${own_dir}/../cards/cards-lib.sh" ] ||
+		die 4 "../cards/cards-lib.sh not found from ${PROG}'s folder; expected the procedure's scripts folders whole"
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer lines || die 4 "${card_problem}"
 }
 
 # Sets current to the seat list replayed from the effort's events, and exists
@@ -367,6 +396,11 @@ check_task() {
 run_command() {
 	place=0 left=$#
 	while [ "${left}" -gt 0 ]; do
+		if [ "$1" = --card ]; then
+			shift
+			left=$((left - 1))
+			continue
+		fi
 		[ "$1" != --base-seat ] || {
 			set -- "$@" --arg "base_seat_${place}" "$2"
 			place=$((place + 1))
@@ -403,7 +437,31 @@ EOF
 	[ "${exit_code}" -ne 0 ] || [ "${changed}" = false ] || append_event
 	output=$(printf '%s\n' "${result}" | jq -r '.out') || die 4 'jq failed reading the output; expected jq 1.6+'
 	[ -z "${output}" ] || printf '%s\n' "${output}"
+	[ "${exit_code}" -ne 0 ] || [ -z "${card}" ] || show_seat_line
 	exit "${exit_code}"
+}
+
+# Prints the line find --card gives the seat in output, by its status.
+show_seat_line() {
+	seat_fields=$(printf '%s\n' "${output}" | jq -r '.status // "", .seat // "", .worktree // ""') ||
+		die 4 'jq failed reading the seat found; expected jq 1.6+'
+	found_status='' found_seat='' found_worktree=''
+	{
+		IFS= read -r found_status || :
+		IFS= read -r found_seat || :
+		IFS= read -r found_worktree || :
+	} <<EOF
+${seat_fields}
+EOF
+	case ${found_status} in
+		gave-up) seat_line=report_gave_up ;;
+		working) seat_line=run_not_committed ;;
+		*) return 0 ;;
+	esac
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${card_show}" "${card_views}" "${seat_line}" "${effort_folder}" \
+		--arg seat "${found_seat}" --arg worktree "${found_worktree}" ||
+		die 4 "${hv_render_problem}; the seat is printed, its line not shown"
 }
 
 # Keeps a refused change's problems as faults; a read's refusal is not kept.

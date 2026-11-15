@@ -13,8 +13,8 @@
 #   list-identities.sh [-h|--help]
 #
 # Output:
-#   stdout — a numbered human-readable list AND a machine-parseable block of
-#            IDENTITY_<n>_* KEY=VALUE lines. Diagnostics go to stderr.
+#   stdout — a machine-parseable block of IDENTITY_<n>_* KEY=VALUE lines.
+#            Diagnostics go to stderr.
 #
 # Exit codes:
 #   0  at least one identity found
@@ -41,7 +41,7 @@ Read-only. An SSH key is listed only when this machine can sign with it: the
 agent holds it, or it is a .pub file with its private key beside it. The
 configured SSH user.signingkey comes first, as its path when it is one.
 
-stdout: a numbered list for the human, a blank line, then per identity <n>:
+stdout: per identity <n>, in a stable, numbered order:
   IDENTITY_<n>_METHOD=<gpg or ssh>
   IDENTITY_<n>_KEY_ID=<GPG key id, or the SSH key type>
   IDENTITY_<n>_FPR=<GPG fingerprint, or SSH SHA256:...; may be empty>
@@ -327,18 +327,7 @@ fi
 
 SORTED=$(printf '%s' "$RECORDS" | LC_ALL=C sort)
 
-# Human-readable numbered list
-printf 'Available signing identities\n'
-n=0
-printf '%s\n' "$SORTED" | while IFS="$SEP" read -r _ method key_id fpr name email _; do
-	[ -n "$method" ] || continue
-	n=$((n + 1))
-	printf '  %d) [%s] %s <%s>\n' "$n" "$method" "${name:-(no name)}" "${email:-(no email)}"
-	printf '        key id: %s  fpr: %s\n' "${key_id:-?}" "${fpr:-?}"
-done
-
 # Machine-parseable block
-printf '\n'
 n=0
 printf '%s\n' "$SORTED" | while IFS="$SEP" read -r _ method key_id fpr name email signing_key; do
 	[ -n "$method" ] || continue

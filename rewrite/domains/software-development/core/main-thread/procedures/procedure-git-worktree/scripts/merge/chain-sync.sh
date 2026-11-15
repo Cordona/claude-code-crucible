@@ -3,7 +3,9 @@
 # when chain.sh says one of them moved on, the seat's HEAD and every moved
 # seat's HEAD are merged by tips-merge.sh as the effort's identity, and the
 # seat's branch moves on to the merge in its clean worktree, a fast-forward.
-# A conflict writes no file, index or ref.
+# A conflict writes no file, index or ref. Its cards are views/ templates,
+# printed by human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 # The checkout writes the seat's files under the caller's own umask.
 inherited_umask=$(umask)
@@ -35,7 +37,7 @@ usage: sh ${PROG} --effort FOLDER --seat S
 Runs chain.sh for seat S; when a seat S was cut from moved on (at any
 level), merges S's HEAD with every moved seat's HEAD (tips-merge.sh, as
 the identity settings.sh get --effort FOLDER prints, signed with its key when
-it has one, tips-merge.sh's UNSIGNED: line passing through; message
+it has one; message
 "crucible(sync): S takes P <short sha>, ...", trailers ${EFFORT_TRAILER}
 (the effort folder's name) and ${SYNCED_TRAILER}, no Agent-Seat, so iteration.sh
 does not count it) and fast-forwards S's branch to the merge in S's
@@ -45,12 +47,14 @@ worktree, with no hook run.
 --seat S         a developer seat, status idle (not chosen), whose worktree
                  holds no uncommitted change and has HEAD on a branch
 
-stdout, one JSON line:
-  {"synced":false,"seat":S,"reason":"in_sync","line":null}   nothing moved
-  {"synced":true,"seat":S,"commit":<sha>,"parents":[P...],"message":M,
-   "line":L}
-  L, for the human, each seat by its name for the human: "Build agent
-  Beta now holds the latest work of Build agent Alpha + ..."
+stdout: one JSON line, then the cards
+  {"synced":false,"seat":S,"reason":"in_sync"}   nothing moved
+  {"synced":true,"seat":S,"commit":<sha>,"parents":[P...],"message":M}
+  synced: the card chain-synced (views/chain-synced.jq), then, for a
+  merge made unsigned, the line unsigned (views/lines.jq); on exit 5 for a
+  conflict, only the card conflict (views/conflict.jq); each printed by
+  ${VIEW_LIB}'s show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID)
   M is the line to send S's developer: "Your seat S now also holds the
   latest work of P (merged at <short sha>); build on top of it.", or,
   when S had nothing of its own and takes P's HEAD as it is, "Your seat S
@@ -64,16 +68,19 @@ exit codes:
   3  input: a bad option value, the effort or a seat does not fit, S's
      worktree has a detached HEAD, or the effort has no git setup
      (seats.sh's or a neighbour's own lines first)
-  4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, or
-     the worktree is not clean on its branch at the merge afterwards
+  4  environment: git, jq, ${VIEW_LIB}'s show.sh or a neighbour missing or
+     failed, or the worktree is not clean on its branch at the merge
+     afterwards
   5  refused by state, no file, index or ref written: S is not an idle
      developer (a chosen seat has no worktree yet) or is dirty, a moved
-     seat is not idle, or the HEADs conflict (tips-merge.sh's line)
+     seat is not idle, or the HEADs conflict (the card conflict)
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.38+, jq 1.6+; chain.sh, tips-merge.sh,
-../seats/seats.sh and ../worktree/uncommitted.jq from this script's folder; procedure-git-setup's
-settings.sh beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
-${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
+../seats/seats.sh, ../worktree/uncommitted.jq and ../cards/cards-lib.sh from
+this script's folder; procedure-git-setup's settings.sh beside
+procedure-git-worktree; this skill's views/; ${VIEW_LIB}'s scripts/show.sh
+and scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -143,17 +150,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in chain.sh tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq "${SETTINGS}"; do
+	for neighbour in chain.sh tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	[ -f "${view_dir}/title.jq" ] || {
-		shown_view_dir=$(printable "${view_dir}")
-		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer chain-synced conflict lines || die 4 "${card_problem}"
 }
 
 # Sets effort_dir (physical).
@@ -303,14 +309,23 @@ merge_moved() {
 		die 4 'could not write the merge message in the work folder'
 	set -- "$@" --identity-name "${identity_name}" --identity-email "${identity_email}"
 	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
-	run_step tips-merge.sh "$@" --message-file "${merge_message}"
+	run_step tips-merge.sh "$@" --message-file "${merge_message}" 2>"${work_dir}/tips-stderr"
+	card_read_unsigned "${work_dir}/tips-stderr"
 	case ${step_rc} in
 		0) ;;
-		5) exit 5 ;;
+		5) show_conflict ;;
 		*) step_failed tips-merge.sh ;;
 	esac
 	merge_commit=$(printf '%s\n' "${step_out}" | jq -r '.commit') || die 4 'jq could not read what tips-merge.sh printed'
 	merge_new=$(printf '%s\n' "${step_out}" | jq -r '.new') || die 4 'jq could not read what tips-merge.sh printed'
+}
+
+# Prints the card conflict from tips-merge.sh's result, then exits 5.
+show_conflict() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" conflict "${effort_dir}" "${step_out}" ||
+		die 4 "${hv_render_problem}; the seats' commits conflict, and its card is not shown"
+	exit 5
 }
 
 # Sets short to the abbreviated sha of commit $1.
@@ -387,7 +402,7 @@ check_seat
 [ "${problems}" -eq 0 ] || exit 5
 run_chain
 if [ "${moved}" != true ]; then
-	jq -nc --arg seat "${seat}" '{synced: false, seat: $seat, reason: "in_sync", line: null}' || die 4 'jq could not print the result'
+	jq -nc --arg seat "${seat}" '{synced: false, seat: $seat, reason: "in_sync"}' || die 4 'jq could not print the result'
 	exit 0
 fi
 check_moved
@@ -397,12 +412,16 @@ read_identity
 merge_moved
 move_branch
 short_sha "${merge_commit}"
-jq -nc -L "${view_dir}" --arg seat "${seat}" --arg commit "${merge_commit}" --arg synced_from "${synced_from}" --arg short "${short}" \
+result=$(jq -nc --arg seat "${seat}" --arg commit "${merge_commit}" --arg synced_from "${synced_from}" --arg short "${short}" \
 	--argjson new "${merge_new}" \
-	'include "title";
-	($synced_from | split(", ")) as $parents | ($parents | join(", ")) as $named
+	'($synced_from | split(", ")) as $parents | ($parents | join(", ")) as $named
 	| {synced: true, seat: $seat, commit: $commit, parents: $parents,
 	   message: (if $new then "Your seat \($seat) now also holds the latest work of \($named) (merged at \($short)); build on top of it."
-		else "Your seat \($seat) now holds the latest work of \($named) as it is (\($short)); build on top of it." end),
-	   line: "\($seat | seat_display) now holds the latest work of \($parents | map(seat_display) | join(" + "))."}' ||
-	die 4 "jq could not print the result; expected jq 1.6+ and ${VIEW_LIB}'s title.jq"
+		else "Your seat \($seat) now holds the latest work of \($named) as it is (\($short)); build on top of it." end)}') ||
+	die 4 'jq could not build the result; expected jq 1.6+'
+printf '%s\n' "${result}"
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+hv_show_card "${card_show}" "${card_views}" chain-synced "${effort_dir}" "${result}" ||
+	die 4 "${hv_render_problem}; seat ${seat} is synced, its card not shown"
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; seat ${seat} is synced, its unsigned line not shown"

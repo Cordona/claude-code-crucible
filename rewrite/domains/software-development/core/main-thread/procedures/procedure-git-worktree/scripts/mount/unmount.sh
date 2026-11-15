@@ -2,7 +2,9 @@
 # Takes a mount.sh mount out of the main checkout again: the saved patch is
 # reversed in the working tree only, and only while HEAD and every mounted
 # path are exactly as mount.sh left them, so nothing the human did since is
-# lost. Then the record goes.
+# lost. Then the record goes. Its card is views/unmounted.jq, printed by
+# human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 # git apply writes the checkout's files under the human's own umask.
 inherited_umask=$(umask)
@@ -39,14 +41,14 @@ left there.
 
 --repo DIR  absolute path of the main checkout's top folder
 
-stdout, one JSON line:
-  {"unmounted":true,"seats":[S...],"paths":N,"line":L}           reversed
-  {"unmounted":false,"forgotten":true,"seats":[S...],"line":L}   finished:
-                                                       record removed
-  L, for the human: "Unmounted Build agent Alpha + ... from <repo>."
-  or "Build agent Alpha + ... are committed in <repo>; the mount
-  record is dropped." (each seat by its name for the human; control
-  characters as "?")
+stdout: one JSON line, then the card
+  {"unmounted":true,"seats":[S...],"paths":N}           reversed
+  {"unmounted":false,"forgotten":true,"seats":[S...]}   finished: record
+                                                        removed
+  the card unmounted (views/unmounted.jq), for either result, printed by
+  ${VIEW_LIB}'s show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID) for the record's effort, when that folder
+  still exists
 
 exit codes:
   0  unmounted, or a finished mount forgotten
@@ -54,15 +56,17 @@ exit codes:
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
      unreadable or not version 2
-  4  environment: git, jq or ${VIEW_LIB} missing or failed, a write
+  4  environment: git, jq or ${VIEW_LIB}'s show.sh missing or failed, a write
      failed, or the reversed paths or their bytes did not verify (the
      record is kept)
   5  refused by state: nothing mounted, HEAD moved with mounted paths
      still uncommitted, a mounted path changed, or git apply -R --check
      failed; nothing touched
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh beside this script and
-../seats/seats.jq from its folder; ${VIEW_LIB}'s title.jq in
+../seats/seats.jq and ../cards/cards-lib.sh from its folder; this skill's
+views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -122,17 +126,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in mount-lib.sh ../seats/seats.jq; do
+	for neighbour in mount-lib.sh ../seats/seats.jq ../cards/cards-lib.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	[ -f "${view_dir}/title.jq" ] || {
-		shown_view_dir=$(printable "${view_dir}")
-		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer unmounted || die 4 "${card_problem}"
 	# shellcheck source=mount-lib.sh
 	. "${own_dir}/mount-lib.sh"
 }
@@ -197,6 +200,18 @@ remove_empty_folders() {
 	done <"${work_dir}/spec"
 }
 
+# Prints result, then its card for the record's effort; $1 says what stands
+# when the card fails.
+print_result() {
+	printf '%s\n' "${result}"
+	card_data=$(printf '%s\n' "${result}" | jq -c --arg repo "${checkout_dir}" '. + {repo: $repo}') ||
+		die 4 "jq could not build the card's data; $1"
+	card_effort_of "${rec_effort}"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" unmounted "${card_effort}" "${card_data}" ||
+		die 4 "${hv_render_problem}; $1, its card not shown"
+}
+
 # shellcheck disable=SC2329 # invoked by the EXIT trap
 clean_up() {
 	[ -z "${restore_temp}" ] || rm -f -- "${restore_temp}"
@@ -226,10 +241,9 @@ check_finished "${work_dir}/now-states" "${head}"
 if [ "${finished}" = true ]; then
 	remove_record
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -nc -L "${view_dir}" --arg seats "${rec_seats}" --arg repo "${checkout_dir}" 'include "title";
-		{unmounted: false, forgotten: true, seats: ($seats | split(" "))}
-		| .line = "\(.seats | map(seat_display) | join(" + ")) are committed in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")); the mount record is dropped."' ||
-		die 4 'jq could not print the result; the record is removed'
+	result=$(jq -nc --arg seats "${rec_seats}" '{unmounted: false, forgotten: true, seats: ($seats | split(" "))}') ||
+		die 4 'jq could not build the result; the record is removed'
+	print_result 'the record is removed'
 	exit 0
 fi
 # A finished mount needs no saved copy; a reversal needs every one.
@@ -253,8 +267,6 @@ remove_empty_folders
 remove_record
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the unmounted paths'
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc -L "${view_dir}" --arg seats "${rec_seats}" --argjson paths "${paths}" --arg repo "${checkout_dir}" \
-	'include "title";
-	{unmounted: true, seats: ($seats | split(" ")), paths: $paths}
-	| .line = "Unmounted \(.seats | map(seat_display) | join(" + ")) from \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."' ||
-	die 4 'jq could not print the result; the mount is removed'
+result=$(jq -nc --arg seats "${rec_seats}" --argjson paths "${paths}" '{unmounted: true, seats: ($seats | split(" ")), paths: $paths}') ||
+	die 4 'jq could not build the result; the mount is removed'
+print_result 'the mount is removed'

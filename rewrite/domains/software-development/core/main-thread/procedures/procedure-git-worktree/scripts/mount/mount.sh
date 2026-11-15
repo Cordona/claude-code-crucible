@@ -5,7 +5,9 @@
 # several) is applied to the working tree only, after every path it touches
 # is proven to still hold the start's state, and the patch plus a record are
 # kept in the checkout's git folder for unmount.sh. The index, refs and every
-# other path stay untouched.
+# other path stay untouched. Its cards are views/mounted.jq and
+# views/conflict.jq, printed by human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 # git apply writes the checkout's files under the human's own umask.
 inherited_umask=$(umask)
@@ -55,20 +57,21 @@ mount-status.sh says) is removed first, with one stderr line.
 
 refused (exit 5, every problem listed) when: an unfinished mount is
 recorded; a seat is not an idle developer (a chosen seat has no worktree
-yet), is dirty or has another repo; the seats' HEADs conflict
-(tips-merge.sh's line); the checkout is not a full main checkout at rest;
+yet), is dirty or has another repo; the seats' HEADs conflict (the card
+conflict); the checkout is not a full main checkout at rest;
 the range holds other work (effort-commits.sh's line); nothing to mount;
 a patch path differs in the checkout from the start (ignored files count),
 is staged differently from both HEAD and the start, is a submodule, or
 holds a newline or non-UTF-8 byte; or git apply --check fails.
 
-stdout, one JSON line:
+stdout: one JSON line, then the card
   {"mounted":true,"seats":[{"seat":S,"seat_commit":<sha>}...],
-   "target":<sha>,"paths":N,"left_alone":M,"line":L}
-  M counts the checkout's other uncommitted paths (not ignored); L, for
-  the human: "Mounted Build agent Alpha + ... in <repo>: N files;
-  your other M changed files are untouched." (each seat by its name for
-  the human; control characters as "?")
+   "target":<sha>,"paths":N,"left_alone":M}
+  M counts the checkout's other uncommitted paths (not ignored); the card
+  mounted (views/mounted.jq), printed by ${VIEW_LIB}'s show.sh and
+  recorded as owed this session (CLAUDE_CODE_SESSION_ID)
+On a conflict stdout holds only the card conflict (views/conflict.jq),
+printed and recorded the same way; the other refusals are on stderr.
 
 exit codes:
   0  mounted
@@ -77,15 +80,17 @@ exit codes:
   3  input: a bad option value, the effort or a seat does not fit
      (seats.sh's own lines first), the record is unreadable, or the
      effort has no git setup (settings.sh's own line first)
-  4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed, a
-     write failed, or the applied paths did not verify (the patch was
-     reversed)
+  4  environment: git, jq, ${VIEW_LIB}'s show.sh or a neighbour missing or
+     failed, a write failed, or the applied paths did not verify (the
+     patch was reversed)
   5  refused by state; no file, index or ref is written
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq,
 ../merge/tips-merge.sh, ../worktree/uncommitted.jq, effort-commits.sh and
-mount-lib.sh from this script's folder; procedure-git-setup's settings.sh
-beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
+mount-lib.sh and ../cards/cards-lib.sh from this script's folder;
+procedure-git-setup's settings.sh beside procedure-git-worktree; this
+skill's views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -157,17 +162,16 @@ load_dependencies() {
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
 	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh ../worktree/uncommitted.jq \
-		effort-commits.sh mount-lib.sh "${SETTINGS}"; do
+		effort-commits.sh mount-lib.sh ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	[ -f "${view_dir}/title.jq" ] || {
-		shown_view_dir=$(printable "${view_dir}")
-		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer mounted conflict || die 4 "${card_problem}"
 	# shellcheck source=mount-lib.sh
 	. "${own_dir}/mount-lib.sh"
 }
@@ -363,7 +367,7 @@ check_checkout() {
 }
 
 # Sets target to the one seat's HEAD, or tips-merge.sh's merge of every
-# seat's HEAD; its conflict line is the refusal.
+# seat's HEAD; a conflict is a refusal, shown as the card conflict.
 find_target() {
 	seat_count=$(wc -l <"${work_dir}/seats" | tr -d ' ') || die 4 'wc failed counting the seats'
 	if [ "${seat_count}" -eq 1 ]; then
@@ -381,9 +385,18 @@ find_target() {
 	run_step ../merge/tips-merge.sh "$@"
 	case ${step_rc} in
 		0) target=$(printf '%s\n' "${step_out}" | jq -r '.commit') || die 4 'jq could not read what tips-merge.sh printed' ;;
-		5) problems=$((problems + 1)) ;;
+		5) show_conflict ;;
 		*) step_failed tips-merge.sh ;;
 	esac
+}
+
+# Prints the card conflict from tips-merge.sh's result and counts it as a
+# problem.
+show_conflict() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" conflict "${effort_dir}" "${step_out}" ||
+		die 4 "${hv_render_problem}; the seats' commits conflict, and its card is not shown"
+	problems=$((problems + 1))
 }
 
 # Sets start (HEAD, or the snapshot the seats were cut from) and
@@ -711,11 +724,13 @@ write_record
 count_left_alone
 paths=$(wc -l <"${work_dir}/spec" | tr -d ' ') || die 4 'wc failed counting the mounted paths'
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc -L "${view_dir}" --rawfile seats "${work_dir}/seats" --arg target "${target}" --argjson paths "${paths}" --argjson left_alone "${left_alone}" \
-	--arg repo "${checkout_dir}" \
-	'include "title";
-	{mounted: true, seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {seat: .[0], seat_commit: .[2]})),
-	  target: $target, paths: $paths, left_alone: $left_alone}
-	| .line = "Mounted \(.seats | map(.seat | seat_display) | join(" + ")) in \($repo | gsub("[\u0000-\u001f\u007f]"; "?")): \($paths) files;"
-		+ " your other \($left_alone) changed files are untouched."' ||
-	die 4 'jq could not print the result; the mount is recorded'
+result=$(jq -nc --rawfile seats "${work_dir}/seats" --arg target "${target}" --argjson paths "${paths}" --argjson left_alone "${left_alone}" \
+	'{mounted: true, seats: ($seats | rtrimstr("\n") | split("\n") | map(split("\t") | {seat: .[0], seat_commit: .[2]})),
+	  target: $target, paths: $paths, left_alone: $left_alone}') ||
+	die 4 'jq could not build the result; the mount is recorded'
+printf '%s\n' "${result}"
+card_data=$(printf '%s\n' "${result}" | jq -c --arg repo "${checkout_dir}" '. + {repo: $repo}') ||
+	die 4 'jq could not build the card'\''s data; the mount is recorded'
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+hv_show_card "${card_show}" "${card_views}" mounted "${effort_dir}" "${card_data}" ||
+	die 4 "${hv_render_problem}; the mount is recorded, its card not shown"

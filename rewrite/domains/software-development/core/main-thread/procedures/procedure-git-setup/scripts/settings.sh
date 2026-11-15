@@ -3,8 +3,9 @@
 # worker commits are authored and signed with, and whether they are pushed.
 # Each write is one settings.set event, through the crucible skill's
 # events.sh, and the newest is the settings. settings.jq owns the shape and
-# checks every value, so the shell never edits JSON.
-# shellcheck source-path=SCRIPTDIR
+# checks every value, so the shell never edits JSON. write's saved line is
+# views/lines.jq's git_setup_saved, printed by human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -15,6 +16,10 @@ readonly EVENTS_SCRIPT="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/crucible/
 readonly COMMANDS='write get'
 readonly CANDIDATES='identity-candidates.sh'
 readonly RESOLVER='resolve-identity.sh'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly SAVED_LINE='git_setup_saved'
 # Where identity-candidates.sh --effort keeps the identities the card showed.
 readonly COPY_PATH='drafts/main-thread/git-setup-identities.json'
 # get's exit code when the effort has no settings.set event yet.
@@ -28,9 +33,10 @@ export GIT_TERMINAL_PROMPT
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 	GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
 
-# Prints {problems, file, saved} for the given options ($ARGS.named holds
-# only those given, and the key's fingerprint, "" when unknown): the
-# refusals, the settings to write and the saved line.
+# Prints {problems, file, identity} for the given options ($ARGS.named
+# holds only those given, and the key's fingerprint, "" when unknown): the
+# refusals, the settings to write and the identity's label, for the saved
+# line.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly WRITE_JQ='include "settings";
 $ARGS.named as $given
@@ -41,7 +47,7 @@ $ARGS.named as $given
 | {identity: (given(["name", "email"]) + {signing: $signing}),
    auto_push: ($given.auto_push == "yes"), remote: settings_remote} as $file
 | {problems: [$file | settings_problems($names)], file: $file,
-   saved: "Git setup saved: \($file.identity + {fingerprint: $given.fingerprint} | settings_identity_text); auto-push \(if $file.auto_push then "on" else "off" end)."}'
+   identity: ($file.identity + {fingerprint: $given.fingerprint} | settings_identity_text)}'
 
 # Prints the identity --pick-label names, {"pick": <identity or null>,
 # "count": <identities>}, from $copy (the kept copy, slurped) and $fresh (a
@@ -102,7 +108,8 @@ length caps.
                       --auto-push yes needs it and an origin remote in it;
                       ${RESOLVER} runs in it; left out: no repository
 
-stdout, write: one line, "Git setup saved: ..."
+stdout, write: the line ${SAVED_LINE} of views/lines.jq, "Git setup saved:
+  ...", printed by ${VIEW_LIB}'s show.sh and recorded as owed this session
 stdout, get: these lines, in this order; a value holds no control character
   and runs to the end of its line (read up to the first "=", never eval):
   NAME=<name>
@@ -113,21 +120,25 @@ stdout, get: these lines, in this order; a value holds no control character
   REMOTE=origin
 
 exit codes:
-  0  done; relay write's line, read get's
+  0  done; go on (write), read get's lines
   2  wrong command line; fix the call
   3  refused: a value, the effort folder, --repo, a typed key
      ${RESOLVER} refused or failed on, --pick-label, or (get) a file that breaks ${MODULE}.jq;
      stderr names each problem; show the human stderr, then (write) ask
      again from the gate, (get) stop
-  4  jq, git or a script beside this one missing or failed, or the file
-     could not be written; show the human stderr, and stop
+  4  jq, git, show.sh, views/lines.jq or a script beside this one missing
+     or failed, the file could not be written, or (write) stdout closed;
+     show the human stderr, and stop; after "the git setup was saved" the
+     settings stand
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
   ${EXIT_NO_SETUP}  (get) no git setup for this effort yet; run the git setup
      gate
 
 needs: POSIX sh, jq 1.6+, git (with --repo or --signing-key); the crucible
-skill's events.sh; ${MODULE}.jq,
-origin-lib.sh, ${CANDIDATES} (with --pick-label) and ${RESOLVER} (with
---signing-key) beside this script
+skill's events.sh; (write) the ${VIEW_LIB} skill's ${SHOW} and
+${RENDER_LIB} and views/lines.jq in this skill; ${MODULE}.jq,
+origin-lib.sh, ${CANDIDATES} (with --pick-label) and
+${RESOLVER} (with --signing-key) beside this script
 EOF
 }
 
@@ -257,7 +268,8 @@ script_dir() {
 	esac
 }
 
-# Sets own_dir, absolute, and loads origin-lib.sh when write has a repo.
+# Sets own_dir, absolute, loads origin-lib.sh when write has a repo and,
+# for write, the saved line's printer.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 4 'jq not found; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -273,11 +285,29 @@ load_dependencies() {
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folder whole; try reinstalling procedure-git-setup"
 		}
 	done
+	[ "${command}" != write ] || load_line_printer
 	[ -n "${seen_repo}${seen_key}" ] || return 0
 	command -v git >/dev/null 2>&1 ||
 		die 4 'git not found; expected git on PATH; try installing it (macOS: xcode-select --install; Linux: the distro'\''s git package)'
 	# shellcheck source=origin-lib.sh
 	. "${own_dir}/origin-lib.sh"
+}
+
+# Sets views_dir and show_script and sources human-view's card printer lib,
+# before anything is written, so a missing one saves nothing.
+load_line_printer() {
+	views_dir="${own_path}/../views"
+	view_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	render_lib="${view_skill_dir}/${RENDER_LIB}"
+	[ -f "${render_lib}" ] && [ -r "${render_lib}" ] || {
+		shown_lib=$(printable "${render_lib}")
+		die 4 "${shown_lib} not found; expected the procedure-git-setup and ${VIEW_LIB} skills installed whole; try reinstalling them"
+	}
+	# shellcheck source=render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${views_dir}" lines || die 4 "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
 # Sets effort_dir, the physical effort folder, and effort without trailing
@@ -458,7 +488,18 @@ run_write() {
 		die 4 'could not write the settings temp file; expected free space'
 	sh "${EVENTS_SCRIPT}" append --effort "${effort}" --type "${EVENT_TYPE}" --by "${PROG}" --body-file "${temp_file}" >/dev/null </dev/null ||
 		die 4 "events.sh append ${EVENT_TYPE} failed (its stderr is above); nothing was saved"
-	printf '%s\n' "${result}" | jq -r '.saved' || die 4 'jq failed reading the saved line; expected jq 1.6+; try jq --version'
+	show_saved_line
+}
+
+# Prints the saved line through show.sh, recorded as owed for the effort.
+show_saved_line() {
+	saved_identity=$(printf '%s\n' "${result}" | jq -r '.identity') ||
+		die 4 'jq failed reading the saved identity; the git setup was saved, its line not shown; expected jq 1.6+; try jq --version'
+	{ true 3>&1; } 2>/dev/null || die 4 'stdout closed; the git setup was saved, its line not shown'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${show_script}" "${views_dir}" "${SAVED_LINE}" "${effort}" \
+		--arg identity "${saved_identity}" --arg auto_push "${auto_push}" ||
+		die 4 "${hv_render_problem}; the git setup was saved, its line not shown; expected the line ${SAVED_LINE} printed from views/lines.jq; try reinstalling procedure-git-setup and the ${VIEW_LIB} skill"
 }
 
 # Prints the get lines, or refuses a missing or broken file.

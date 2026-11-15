@@ -10,7 +10,6 @@ umask 077
 readonly PROG='tips-merge.sh'
 readonly IDENT_NAME='crucible'
 readonly IDENT_EMAIL='crucible@crucible.invalid'
-readonly MAX_LISTED=20
 # A signer that waits on something (a pinentry, a card) is stopped after
 # this many seconds.
 readonly SIGN_TIMEOUT=10
@@ -64,8 +63,7 @@ The fold steps are ${IDENT_NAME}'s, unsigned; dates are git's own.
 stdout, one JSON line:
   {"merged":true,"commit":<sha>,"new":true|false}  new false: a given commit
   {"merged":false,"conflicts":[<path>...]}          a fold step conflicted
-On a conflict stderr says, in one line, which files conflict (at most
-${MAX_LISTED} named); the paths in the JSON are raw.
+The paths in the JSON are raw; a conflict prints nothing on stderr.
 
 exit codes:
   0  merged, or one commit holds the others
@@ -308,14 +306,7 @@ merge_step() {
 }
 
 refuse_conflict() {
-	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	conflict_line=$(jq -r --argjson max "${MAX_LISTED}" '.conflicts
-		| "the commits conflict in \(length) file(s): \(.[:$max] | join(", "))"
-			+ (if length > $max then " and \(length - $max) more" else "" end) + "; nothing was changed"' \
-		"${work_dir}/step.json") || die 4 'jq could not list the conflicts'
 	jq -c '{merged: false, conflicts: .conflicts}' "${work_dir}/step.json" || die 4 'jq could not print the result'
-	shown_line=$(printable "${conflict_line}")
-	warn "${shown_line}"
 	exit 5
 }
 

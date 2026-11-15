@@ -1,15 +1,19 @@
 #!/usr/bin/env sh
-# Renders the answer to "what's this repo's identity?" as one line, so the
+# Renders the answer to "what's this repo's identity?" as one card, so the
 # main thread never hand-formats it: who the repo signs as, or why its
 # identity can't sign. Reads resolve-identity.sh's IDENTITY_* lines on stdin,
-# or runs it in --repo.
-# shellcheck source-path=SCRIPTDIR
+# or runs it in --repo; views/identity.jq lays the card out and human-view's
+# show.sh prints it.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='render-identity.sh'
 readonly MODULE='settings'
 readonly RESOLVER='resolve-identity.sh'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='identity'
 # The C locale keeps the shell byte-wise; jq reads the lines as UTF-8.
 LC_ALL=C
 export LC_ALL
@@ -19,24 +23,21 @@ export GIT_TERMINAL_PROMPT
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 	GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
 
-# The line, from $lines (resolve-identity.sh's stdout) and $reason (its first
-# error, "" when none). A reconciled identity signs; any other can't, for
-# $reason, or for a key that doesn't carry the email.
+# The card's data for views/identity.jq, from $lines (resolve-identity.sh's
+# stdout) and $reason (its first error, "" when none). A reconciled identity
+# signs, named by its label; any other can't, for $reason, or for a key that
+# doesn't carry the email.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly LINE_JQ='include "settings";
-include "view";
-def shown: gsub("[\u0000-\u001f\u007f\u2028\u2029]"; "?") | gsub("(?<mark>[\\\\*_`])"; "\\\(.mark)");
+readonly VIEW_DATA_JQ='include "settings";
 ([$lines | split("\n")[] | capture("\\AIDENTITY_(?<field>[A-Z_]+)=(?<value>.*)\\z")]
 	| map({key: .field, value: .value}) | from_entries) as $id
 | if $id.STATUS == "reconciled" then
-	({format: (if $id.SIGNING_METHOD == "ssh" then "ssh" else "openpgp" end),
-	  key: (if ($id.SIGNING_KEY_ID // "") == "" then $id.SIGNING_KEY else $id.SIGNING_KEY_ID end)}
-	 | settings_key_text($id.SIGNING_KEY_FPR // "")) as $key
-	| status_line("done"; "This repo signs as \($id.NAME | shown) · \($id.COMMITTER_EMAIL | shown) · \($key | shown) ✅")
-  else
-	(if $reason != "" then $reason
-	 else "its signing key does not carry \($id.COMMITTER_EMAIL // "the email")" end) as $why
-	| status_line("attention"; "This repo'\''s identity can'\''t sign: \($why | shown)")
+	{signs: true,
+	 identity: ({name: $id.NAME, email: $id.COMMITTER_EMAIL,
+		signing: {format: (if $id.SIGNING_METHOD == "ssh" then "ssh" else "openpgp" end),
+			key: (if ($id.SIGNING_KEY_ID // "") == "" then $id.SIGNING_KEY else $id.SIGNING_KEY_ID end)},
+		fingerprint: ($id.SIGNING_KEY_FPR // "")} | settings_identity_text)}
+  else {signs: false, reason: $reason, email: $id.COMMITTER_EMAIL}
   end'
 
 usage() {
@@ -45,29 +46,32 @@ usage: sh ${PROG} --repo DIR
        sh ${RESOLVER} [OPTIONS] | sh ${PROG}
        sh ${PROG} --help | -h
 
-Prints the identity a repository signs its commits as, in one line for the
+Prints the identity a repository signs its commits as, in one card for the
 human: who it signs as and with which key, or why it can't sign. Reads
 ${RESOLVER}'s stdout on stdin, or with --repo runs ${RESOLVER} there,
-which changes nothing. No file is written.
+which changes nothing. The card is printed by ${VIEW_LIB}'s show.sh from
+views/${VIEW_NAME}.jq and recorded as owed this session (see show.sh --help).
 
 --repo DIR  the repository to ask, a git work tree; stdin is then not read
 CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
+CLAUDE_CODE_SESSION_ID  the session the card is owed in; unset: printed only
 
-stdout on exit 0: the line, "This repo signs as <name> · <email> · GPG key
-  <key> ✅" (or "SSH key <fingerprint>"), or "This repo's identity can't
-  sign: <reason>"
+stdout on exit 0: the card identity (views/identity.jq), one line: who the
+  repo signs as, or why it can't sign
 stderr on exit 5: "${PROG}: install:", a prefix no other exit prints
 
 exit codes:
-  0  printed; relay the line
+  0  printed; go on
   2  wrong command line; fix the call
   3  refused: --repo, or stdin holds no IDENTITY_STATUS line; fix what
      stderr names and rerun once, else show the human stderr
-  4  stdout closed before the line was written; show the human the exit
+  4  stdout closed before the card was written; show the human the exit
      code, and stop
-  5  an install fault; show the human stderr, and stop
+  5  an install fault, or show.sh failed; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
-needs: POSIX sh, jq 1.6+, the ${RENDER_LIB} skill's view.jq in the skills;
+needs: POSIX sh, jq 1.6+, the ${VIEW_LIB} skill's ${SHOW} and
+${RENDER_LIB} in the skills; views/${VIEW_NAME}.jq in this skill;
 ${MODULE}.jq and origin-lib.sh beside this script; with --repo, git and
 ${RESOLVER} beside this script
 EOF
@@ -129,8 +133,8 @@ script_dir() {
 	esac
 }
 
-# Sets own_dir and render_lib_dir and loads origin-lib.sh; exits 5 when a
-# tool or file is missing.
+# Sets own_dir, views_dir and show_script, loads origin-lib.sh and sources
+# human-view's card printer lib; exits 5 when a tool or file is missing.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -143,13 +147,27 @@ load_dependencies() {
 		[ -f "${own_dir}/${neighbour}" ] && [ -r "${own_dir}/${neighbour}" ] ||
 			install_fault "${neighbour} missing; expected it beside ${PROG}; reinstall the procedure-git-setup skill"
 	done
-	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
-	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
-		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+	views_dir="${own_path}/../views"
+	view_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	render_lib="${view_skill_dir}/${RENDER_LIB}"
+	require_file "${render_lib}" 'card printer lib' "install the ${VIEW_LIB} skill"
+	# shellcheck source=render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${views_dir}" "${VIEW_NAME}" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
 	[ -z "${repo}" ] || command -v git >/dev/null 2>&1 ||
 		install_fault 'git missing; expected git on PATH; try installing it (macOS: xcode-select --install; Linux: the distro'\''s git package)'
 	# shellcheck source=origin-lib.sh
 	. "${own_dir}/origin-lib.sh"
+}
+
+# Exits 5 unless file $1, the $2, is readable; $3 says how to get it.
+require_file() {
+	[ -f "$1" ] && [ -r "$1" ] || {
+		shown_file=$(printable "$1")
+		install_fault "$2 missing; expected ${shown_file}; $3"
+	}
 }
 
 # Sets lines and reason from resolve-identity.sh run in the repo: its stdout,
@@ -200,9 +218,10 @@ if [ -n "${repo}" ]; then
 else
 	read_stdin
 fi
-output=$(jq -nr -L "${own_dir}" -L "${render_lib_dir}" --arg lines "${lines}" --arg reason "${reason}" "${LINE_JQ}") ||
-	install_fault "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and ${render_lib_dir}/view.jq; try jq --version, then rerun"
-# Ignoring SIGPIPE turns a closed reader into a failed write this script can
-# tell apart from a jq fault, rather than a silent kill.
-trap '' PIPE
-printf '%s\n' "${output}" 2>/dev/null || exit 4
+view_data=$(jq -nc -L "${own_dir}" --arg lines "${lines}" --arg reason "${reason}" "${VIEW_DATA_JQ}") ||
+	install_fault "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version, then rerun"
+# A closed stdout exits 4 before show.sh records a card nobody can see.
+{ true 3>&1; } 2>/dev/null || exit 4
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+hv_show_card "${show_script}" "${views_dir}" "${VIEW_NAME}" '' "${view_data}" ||
+	install_fault "${hv_render_problem}; expected the card shown from views/${VIEW_NAME}.jq; try reinstalling procedure-git-setup and the ${VIEW_LIB} skill"

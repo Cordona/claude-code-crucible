@@ -23,8 +23,8 @@
 #   -h,--help     Show this help.
 #
 # Output:
-#   stdout — a human-readable identity block AND a machine-parseable KEY=VALUE
-#            block the caller can relay. Diagnostics/warnings go to stderr.
+#   stdout — a machine-parseable KEY=VALUE block for the calling script.
+#            Diagnostics/warnings go to stderr.
 #
 # Exit codes:
 #   0  fields reconcile — ready to commit
@@ -67,7 +67,7 @@ Options:
   --format F      Override gpg.format (gpg/openpgp or ssh).
   -h, --help      Show this help.
 
-stdout: a block for the human, a blank line, then these lines, in this order:
+stdout: these lines, in this order:
   IDENTITY_NAME=<name>
   IDENTITY_COMMITTER_EMAIL=<email>
   IDENTITY_SIGNING_METHOD=<openpgp or ssh>
@@ -438,22 +438,7 @@ else
 	STATUS=mismatch
 fi
 
-# Human-readable block (stdout)
-printf 'Git Signing Identity\n'
-printf '  Name:            %s\n' "$USER_NAME"
-printf '  Committer email: %s\n' "$USER_EMAIL"
-printf '  Signing method:  %s\n' "$SIGN_METHOD"
-printf '  Signing key:     %s\n' "$SIGNINGKEY"
-[ -n "$SIGN_KEY_ID" ]  && printf '  Key id:          %s\n' "$SIGN_KEY_ID"
-[ -n "$SIGN_KEY_FPR" ] && printf '  Fingerprint:     %s\n' "$SIGN_KEY_FPR"
-printf '  Signed-off-by:   %s\n' "$SIGNOFF"
-if [ "$AUTHOR_COMMITTER_MATCH" = false ]; then
-	printf '  Author note:     author (%s) != committer (%s)\n' "$AUTHOR_EMAIL" "$COMMITTER_EMAIL"
-fi
-printf '  Status:          %s\n' "$STATUS"
-
 # Machine-parseable block (stdout)
-printf '\n'
 printf 'IDENTITY_NAME=%s\n'                    "$USER_NAME"
 printf 'IDENTITY_COMMITTER_EMAIL=%s\n'         "$USER_EMAIL"
 printf 'IDENTITY_SIGNING_METHOD=%s\n'          "$SIGN_METHOD"

@@ -4,6 +4,8 @@
 # to it, a fast-forward in the seat's clean worktree. A conflicting one is
 # started in the worktree with git merge --no-commit, its markers left for
 # the seat's developer to resolve; the stop hook then commits the merge.
+# Its cards are views/ templates, printed by human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 # The checkout writes the seat's files under the caller's own umask.
 inherited_umask=$(umask)
@@ -38,8 +40,7 @@ Brings commit REF into seat S's branch, as the identity settings.sh get
 already holds REF, nothing is written. A clean merge is one commit,
 "crucible(sync): S takes <NAME or short sha>", trailer ${EFFORT_TRAILER} (the
 effort's name) and no Agent-Seat, so iteration.sh does not count it; S's
-branch moves on to it in S's worktree, and tips-merge.sh's UNSIGNED: line
-passes through. A conflict is left as a merge under way in S's worktree,
+branch moves on to it in S's worktree. A conflict is left as a merge under way in S's worktree,
 its markers in the files; nothing is committed. No repository hook or
 rerere runs. It writes only S's branch, S's worktree and git objects in S's
 repository; exits 2, 3 and 5 change nothing, and no event is written.
@@ -56,14 +57,16 @@ Nothing else is left behind (a SIGKILL aside).
 --label NAME     what REF is for the human; one line; default REF when it
                  is a name, else its short sha
 
-stdout, one JSON line:
+stdout: one JSON line, then the cards
   {"caught_up":false,"seat":S,"reason":"in_sync"}           nothing written
-  {"caught_up":true,"seat":S,"commit":<sha>,"line":L}
+  {"caught_up":true,"seat":S,"commit":<sha>}
   {"caught_up":false,"seat":S,"reason":"conflict","conflicts":[<path>...],
    "conflicts_not_shown":N,"message":M}
-  L, for the human: the seat's name for the human and "caught up" as a
-  bold title, then "now also holds NAME (abc1234), merged at <short sha>",
-  or "now holds NAME (abc1234) as it is" when S had nothing of its own.
+  in sync: the line in_sync (views/lines.jq); caught up: the card
+  caught-up (views/caught-up.jq), then, for a merge made unsigned, the
+  line unsigned (views/lines.jq); a conflict: the card conflict
+  (views/conflict.jq); each printed by ${VIEW_LIB}'s show.sh and recorded
+  as owed this session (CLAUDE_CODE_SESSION_ID)
   conflicts: the first ${MAX_NAMED} conflicting files; N, how many more.
   M is the line to send S's developer: what S takes in, the files that
   conflict (at most ${MAX_NAMED} named), "resolve each file, remove every
@@ -77,11 +80,13 @@ exit codes:
   4  environment, git or a neighbour failed, S's branch possibly moved
      already; show the human stderr, and stop
   5  refused by S's state, nothing changed; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
-needs: POSIX sh, git 2.38+, jq 1.6+; tips-merge.sh, ../seats/seats.sh and
-../worktree/uncommitted.jq from this script's folder; procedure-git-setup's
-settings.sh beside procedure-git-worktree; ${VIEW_LIB}'s title.jq and
-view.jq in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
+needs: POSIX sh, git 2.38+, jq 1.6+; tips-merge.sh, ../seats/seats.sh,
+../worktree/uncommitted.jq and ../cards/cards-lib.sh from this script's
+folder; procedure-git-setup's settings.sh beside procedure-git-worktree;
+this skill's views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh
+in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -160,19 +165,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq "${SETTINGS}"; do
+	for neighbour in tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	for view_module in title.jq view.jq; do
-		[ -f "${view_dir}/${view_module}" ] || {
-			shown_view_dir=$(printable "${view_dir}")
-			die 4 "${view_module} not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-		}
-	done
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer caught-up conflict lines || die 4 "${card_problem}"
 }
 
 # Refuses a --with that git could read as an option and a --label that is
@@ -275,8 +277,8 @@ list_uncommitted() {
 }
 
 # Sets with_commit to --with's full sha, label to --with when it named a ref
-# and no --label was given, and taken to what the seat takes in, for the
-# human: "NAME (short)" or the short sha. A --with that is a prefix of the
+# and no --label was given, with_short to its short sha, and taken to what
+# the seat takes in, for the developer: "NAME (short)" or the short sha. A --with that is a prefix of the
 # sha it resolves to was a sha, not a name.
 resolve_with() {
 	with_commit=$(git -C "${seat_worktree}" -c core.fsmonitor=false rev-parse --verify --quiet --end-of-options "${with}^{commit}" 2>/dev/null) ||
@@ -338,9 +340,7 @@ merge_with() {
 	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
 	run_step tips-merge.sh "$@" --message-file "${merge_message}" 2>"${work_dir}/tips-stderr"
 	merge_rc=${step_rc}
-	# Its conflict line says nothing was changed; the merge in the worktree
-	# comes next, so only its other lines pass through.
-	[ "${step_rc}" -eq 5 ] || cat "${work_dir}/tips-stderr" >&2
+	card_read_unsigned "${work_dir}/tips-stderr"
 	case ${step_rc} in
 		0) ;;
 		5) return 0 ;;
@@ -379,16 +379,20 @@ check_on_branch() {
 		die 4 "seat ${seat}'s worktree HEAD left its branch ${seat_ref#refs/heads/} during $1"
 }
 
+# Prints the result, then the card caught-up and the line unsigned.
 print_caught_up() {
 	short_sha "${merge_commit}"
-	jq -nc -L "${view_dir}" --arg seat "${seat}" --arg commit "${merge_commit}" --arg taken "${taken}" \
-		--arg short "${short}" --argjson new "${merge_new}" \
-		'include "title";
-		include "view";
-		{caught_up: true, seat: $seat, commit: $commit,
-		 line: status_line("done"; "\($seat | seat_display) caught up";
-			if $new then "now also holds \($taken), merged at \($short)" else "now holds \($taken) as it is" end)}' ||
-		die 4 "jq could not print the result; expected jq 1.6+ and ${VIEW_LIB}'s title.jq and view.jq"
+	jq -nc --arg seat "${seat}" --arg commit "${merge_commit}" '{caught_up: true, seat: $seat, commit: $commit}' ||
+		die 4 'jq could not print the result; expected jq 1.6+'
+	card_data=$(jq -nc --arg seat "${seat}" --arg label "${label}" --arg with_short "${with_short}" \
+		--arg merge_short "${short}" --argjson new "${merge_new}" \
+		'{seat: $seat, label: $label, with_short: $with_short, merge_short: $merge_short, new: $new}') ||
+		die 4 'jq could not build the card'\''s data; expected jq 1.6+'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" caught-up "${effort_dir}" "${card_data}" ||
+		die 4 "${hv_render_problem}; seat ${seat} caught up, its card not shown"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; seat ${seat} caught up, its unsigned line not shown"
 }
 
 # Starts the merge in the seat's worktree and leaves its conflicts there;
@@ -417,6 +421,8 @@ abort_merge() {
 	die 4 "git merge of ${with_short} left no conflicted file though tips-merge.sh found a conflict; the merge is aborted"
 }
 
+# Prints the result, then the card conflict for the merge left in the seat's
+# worktree.
 print_conflict() {
 	jq -Rsc --arg seat "${seat}" --arg taken "${taken}" --argjson max "${MAX_NAMED}" \
 		'split("\u0000") | map(select(. != "")) as $paths
@@ -426,6 +432,19 @@ print_conflict() {
 		   conflicts_not_shown: ([($paths | length) - $max, 0] | max),
 		   message: "Your seat \($seat) takes in \($taken), and these files conflict: \($files). Resolve each file, remove every marker, and keep the rest of your work; the stop hook commits the merge."}' \
 		"${work_dir}/conflicts" || die 4 'jq could not print the result; expected jq 1.6+'
+	card_data=$(jq -Rsc --arg seat "${seat}" '{merged: false, conflicts: (split("\u0000") | map(select(. != ""))), seat: $seat}' \
+		"${work_dir}/conflicts") || die 4 'jq could not build the card'\''s data; expected jq 1.6+'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" conflict "${effort_dir}" "${card_data}" ||
+		die 4 "${hv_render_problem}; the merge is left in seat ${seat}'s worktree, its card not shown"
+}
+
+# Prints the result, then the line in_sync.
+print_in_sync() {
+	jq -nc --arg seat "${seat}" '{caught_up: false, seat: $seat, reason: "in_sync"}' || die 4 'jq could not print the result'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${card_show}" "${card_views}" in_sync "${effort_dir}" --arg seat "${seat}" --arg taken "${taken}" ||
+		die 4 "${hv_render_problem}; seat ${seat} already holds the commit, its line not shown"
 }
 
 # Runs neighbour $1, a path from this script's folder, with the rest as
@@ -481,7 +500,7 @@ git -C "${seat_worktree}" -c core.fsmonitor=false merge-base --is-ancestor "${wi
 	2>"${work_dir}/stderr" || holds_rc=$?
 [ "${holds_rc}" -le 1 ] || git_failed 'git merge-base --is-ancestor'
 if [ "${holds_rc}" -eq 0 ]; then
-	jq -nc --arg seat "${seat}" '{caught_up: false, seat: $seat, reason: "in_sync"}' || die 4 'jq could not print the result'
+	print_in_sync
 	exit 0
 fi
 read_effort_id

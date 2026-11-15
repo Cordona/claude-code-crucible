@@ -6,7 +6,9 @@
 # the effort's identity (given, or read with procedure-git-setup's
 # settings.sh) and, with a key, signed. A fingerprint of the
 # checkout taken before and after proves nothing moved but the refs working
-# seats move meanwhile.
+# seats move meanwhile. A snapshot made unsigned is said by views/lines.jq's
+# unsigned, printed through human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -67,12 +69,15 @@ index, no file of the checkout; runs no hook.
 --signing-key K     user.signingkey): the commit is signed, stdin closed,
                     no GPG_TTY, SSH_ASKPASS_REQUIRE=force with a failing
                     askpass; if signing fails or takes over ${SIGN_TIMEOUT} s it is
-                    written unsigned and stderr says UNSIGNED: <reason>
-                    ("signing timed out after ${SIGN_TIMEOUT} s" for the second)
+                    written unsigned
 
 output, one stdout line:
   SNAPSHOT: <sha>   the new commit
   CLEAN: <sha>      nothing uncommitted: HEAD's sha, no object written
+then, for a snapshot written unsigned, the line unsigned (views/lines.jq),
+  its reason "signing timed out after ${SIGN_TIMEOUT} s" for the time limit,
+  printed by human-view's show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID) for --effort
 
 exit codes:
   0  printed
@@ -81,13 +86,18 @@ exit codes:
   3  --repo is not a main checkout fit for a snapshot, one stderr line per
      problem; a bad identity or signing option; or (--effort) no git
      setup for the effort, or settings.sh refused it (its stderr first)
-  4  git is missing or failed; or settings.sh missing or failed
+  4  git is missing or failed; settings.sh missing or failed; or, with a
+     signing key, show.sh missing, or failed after the SNAPSHOT: line
   5  the checkout changed during the run; no snapshot printed (run again).
      Refs under ${SEAT_BRANCHES} and ${REMOTE_REFS} may move meanwhile
      (worktrees commit and push); any other ref that changes counts
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.26+; with --effort, procedure-git-setup's settings.sh
-beside procedure-git-worktree (and its jq)
+beside procedure-git-worktree (and its jq); with a signing key, jq 1.6+,
+../cards/cards-lib.sh from this script's folder, this skill's views/ and
+human-view's scripts/show.sh and scripts/lib/render.sh in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/human-view
 EOF
 }
 
@@ -388,17 +398,33 @@ watch_signing() {
 	kill "$1" 2>/dev/null || :
 }
 
-# Prints UNSIGNED: and why: the time limit, or the signer's own first line,
-# no gpg status line and not git's "gpg failed to sign" lead-in.
+# Sets card_unsigned to why the snapshot is unsigned: the time limit, or the
+# signer's own first line, no gpg status line and not git's "gpg failed to
+# sign" lead-in.
 say_unsigned() {
 	if [ "${sign_timed_out}" = yes ] && [ "${sign_rc}" -ne 0 ]; then
-		printf 'UNSIGNED: signing timed out after %s s\n' "${SIGN_TIMEOUT}" >&2
+		card_unsigned="signing timed out after ${SIGN_TIMEOUT} s"
 		return 0
 	fi
 	sign_reason=$(sed -e '/^\[GNUPG:\]/d' -e '/^error: gpg failed to sign the data/d' -e '/^[[:space:]]*$/d' \
 		"${work_dir}/sign-stderr" | head -n 1) || sign_reason=''
-	shown_reason=$(printable "${sign_reason:-git commit-tree -S failed}")
-	printf 'UNSIGNED: %s\n' "${shown_reason}" >&2
+	card_unsigned=$(printable "${sign_reason:-git commit-tree -S failed}")
+}
+
+# Sources the card printer, before a signed snapshot is tried, so a missing
+# one makes nothing.
+load_card_printer() {
+	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
+	own_path=$(script_dir)
+	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
+	[ -f "${own_dir}/../cards/cards-lib.sh" ] || {
+		shown_lib=$(printable "${own_dir}/../cards/cards-lib.sh")
+		die 4 "${shown_lib} not found; expected the procedure's scripts folders whole"
+	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer lines || die 4 "${card_problem}"
 }
 
 # Exits 4 naming step $1 and git's first stderr line.
@@ -413,7 +439,7 @@ clean_up() {
 	[ -z "${work_dir}" ] || rm -rf -- "${work_dir}"
 }
 
-work_dir=''
+work_dir='' card_unsigned=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -423,6 +449,7 @@ parse_args "$@"
 command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
 [ -z "${effort_dir}" ] || read_effort_identity
 check_identity
+[ -z "${signing_key}" ] || load_card_printer
 check_repo
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-snapshot.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
@@ -441,3 +468,6 @@ fingerprint
 [ "${before}" = "${fp}" ] ||
 	die 5 "the checkout ${shown_repo} changed during the run; expected it untouched (no snapshot printed)"
 printf '%s\n' "${result}"
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+[ -z "${card_unsigned}" ] || card_show_unsigned "${effort_dir}" ||
+	die 4 "${hv_render_problem}; the snapshot is made unsigned, its line not shown"

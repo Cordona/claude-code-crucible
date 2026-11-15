@@ -2,7 +2,9 @@
 # Says whether the main checkout holds a mount.sh mount and how it stands:
 # whether a seat moved on since, whether a seat it was cut from has work the
 # mount lacks, whether HEAD moved, and which mounted paths the human changed.
-# It reads only.
+# It reads only. With --card it also prints views/mount-status.jq through
+# human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -21,21 +23,22 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --repo DIR
+usage: sh ${PROG} --repo DIR [--card]
        sh ${PROG} --help | -h
 
 Prints the state of the mount recorded in the checkout's git folder
 (crucible/mount.json). Reads only; nothing is left behind (a SIGKILL
-aside).
+aside) but, with --card, the card's owed record.
 
 --repo DIR  absolute path of the main checkout's top folder
+--card      also print the card mount-status, the state said for the human
 
-stdout, one JSON line:
-  {"mounted":false,"line":L}   nothing is mounted
+stdout: one JSON line, then with --card the card
+  {"mounted":false}   nothing is mounted
   {"mounted":true,"effort":<dir>,"seats":[{"seat":S,"seat_commit":<sha>,
    "seat_head":<sha or null>,"stale":bool}...],"stale":bool,
    "parents_moved":[{"seat":S,"parent":P}...] or null,"head_moved":bool,
-   "finished":bool,"paths":[<path>...],"edited":[<path>...],"line":L}
+   "finished":bool,"paths":[<path>...],"edited":[<path>...]}
   seat_head is the seat worktree's HEAD now, null when the worktree is
   gone; a seat is stale when seat_head is not seat_commit (false when
   null), the mount when any seat is; parents_moved: each seat P a mounted
@@ -46,9 +49,10 @@ stdout, one JSON line:
   finished: head_moved and every mounted path holds what HEAD's tree holds
   (the human committed it; unmount.sh then only forgets the record);
   edited: the mounted paths that no longer hold what the mount left there;
-  line: one sentence of the above for the human, to relay word for word
-  (each seat by its name for the human, like Build agent Alpha; at
-  most 20 edited paths named; control characters as "?")
+  the card mount-status (views/mount-status.jq): one sentence of the above,
+  each seat by its name for the human, like Build agent Alpha; printed by
+  ${VIEW_LIB}'s show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID) for the record's effort, when that folder exists
 
 exit codes:
   0  printed
@@ -56,10 +60,14 @@ exit codes:
      missing value
   3  input: --repo is not a main checkout's top folder, or the record is
      unreadable or not version 2
-  4  environment: git, jq or ${VIEW_LIB} missing or failed
+  4  environment: git, jq or (--card) ${VIEW_LIB}'s show.sh missing or
+     failed
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh, ../merge/chain.jq,
-../seats/seats.sh and ../seats/seats.jq from this script's folder; ${VIEW_LIB}'s title.jq in
+../seats/seats.sh and ../seats/seats.jq from this script's folder; with
+--card, ../cards/cards-lib.sh from it, this skill's views/ and ${VIEW_LIB}'s
+scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -85,12 +93,17 @@ printable() {
 }
 
 parse_args() {
-	repo=''
+	repo='' card=no
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
+				;;
+			--card)
+				[ "${card}" = no ] || usage_error '--card given twice; expected one'
+				card=yes
+				shift
 				;;
 			--repo)
 				[ -n "${2-}" ] || usage_error '--repo needs a value; expected --repo DIR'
@@ -100,7 +113,7 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --repo or --help"
+				usage_error "unknown option: ${shown_option}; expected --repo, --card or --help"
 				;;
 		esac
 	done
@@ -125,13 +138,33 @@ load_dependencies() {
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	[ -f "${view_dir}/title.jq" ] || {
-		shown_view_dir=$(printable "${view_dir}")
-		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-	}
+	[ "${card}" = no ] || load_card_printer
 	# shellcheck source=mount-lib.sh
 	. "${own_dir}/mount-lib.sh"
+}
+
+load_card_printer() {
+	[ -f "${own_dir}/../cards/cards-lib.sh" ] || {
+		shown_lib=$(printable "${own_dir}/../cards/cards-lib.sh")
+		die 4 "${shown_lib} not found; expected the procedure's scripts folders whole"
+	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer mount-status || die 4 "${card_problem}"
+}
+
+# Prints result, then with --card its card, for effort folder $1 when that
+# still is one.
+print_result() {
+	printf '%s\n' "${result}"
+	[ "${card}" = yes ] || return 0
+	card_data=$(printf '%s\n' "${result}" | jq -c --arg repo "${checkout_dir}" '. + {repo: $repo}') ||
+		die 4 "jq could not build the card's data; expected jq 1.6+"
+	card_effort_of "$1"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" mount-status "${card_effort}" "${card_data}" ||
+		die 4 "${hv_render_problem}; the mount state is printed above, its card not shown"
 }
 
 # Writes work_dir/seat-heads, "<seat><TAB><seat commit><TAB><seat head>"
@@ -200,10 +233,8 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-mount-status.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 read_record
 if [ "${record_present}" != true ]; then
-	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -nc --arg repo "${checkout_dir}" \
-		'{mounted: false, line: "Nothing is mounted in \($repo | gsub("[\u0000-\u001f\u007f]"; "?"))."}' ||
-		die 4 'jq could not print the mount state'
+	result='{"mounted":false}'
+	print_result ''
 	exit 0
 fi
 read_seat_heads
@@ -213,27 +244,18 @@ checkout_states "${work_dir}/spec" "${work_dir}/now-states"
 check_finished "${work_dir}/now-states" "${head}"
 list_mismatches "${work_dir}/spec" "${work_dir}/now-states" 2 'recreated' "${work_dir}/edited"
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-jq -nc -L "${view_dir}" --arg effort "${rec_effort}" --arg repo "${checkout_dir}" --rawfile seats "${work_dir}/seat-heads" \
-	--argjson parents_checked "${parents_checked}" --argjson max "${MAX_LISTED}" \
+result=$(jq -nc --arg effort "${rec_effort}" --rawfile seats "${work_dir}/seat-heads" \
+	--argjson parents_checked "${parents_checked}" \
 	--rawfile parents_moved "${work_dir}/parents-moved" --arg head "${head}" --arg rec_head "${rec_head}" \
 	--argjson finished "${finished}" --rawfile spec "${work_dir}/spec" --rawfile edited "${work_dir}/edited" '
-	include "title";
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
 	def path_of: split("\t") | .[2:] | join("\t");
-	def shown: gsub("[\u0000-\u001f\u007f]"; "?");
-	def listed: if . == [] then "none" else join(", ") end;
 	($seats | lines | map(split("\t") | {seat: .[0], seat_commit: .[1], seat_head: (if .[2] == "" then null else .[2] end)}
 		| .stale = (.seat_head != null and .seat_head != .seat_commit))) as $mounted
 	| {mounted: true, effort: $effort, seats: $mounted, stale: any($mounted[]; .stale),
 	 parents_moved: (if $parents_checked then $parents_moved | lines | map(split("\t") | {seat: .[0], parent: .[1]}) else null end),
 	 head_moved: ($head != $rec_head), finished: $finished,
 	 paths: ($spec | lines | map(path_of)),
-	 edited: ($edited | lines | map(split("\t") | .[1:] | join("\t")))}
-	| .line = "Mounted in \($repo | shown): \(.seats | map(.seat | seat_display) | join(" + "))"
-		+ "; moved on since: \(.seats | map(select(.stale) | .seat | seat_display) | listed)"
-		+ "; cut-from seats with newer work: "
-		+ (if .parents_moved == null then "not checked" else .parents_moved | map("\(.parent | seat_display) → \(.seat | seat_display)") | listed end)
-		+ "; HEAD moved: \(if .head_moved then "yes" else "no" end)"
-		+ "; edited: \(if .edited == [] then "none"
-			else (.edited[:$max] | map(shown) | join(", ")) + (if (.edited | length) > $max then " and \((.edited | length) - $max) more" else "" end) end)."' ||
-	die 4 'jq could not print the mount state'
+	 edited: ($edited | lines | map(split("\t") | .[1:] | join("\t")))}') ||
+	die 4 'jq could not build the mount state'
+print_result "${rec_effort}"

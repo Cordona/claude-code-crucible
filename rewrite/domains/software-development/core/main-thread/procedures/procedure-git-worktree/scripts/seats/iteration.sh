@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 # Prints the iteration a seat is working on, where its report draft goes and
-# the event of its newest recorded report. The iteration is derived from git:
-# the seat's next build is 1 + its own build commits since its base. It reads
-# only.
+# the event of its newest recorded report and whether that report is done (the
+# one done test). The iteration is derived from git: the seat's next build is
+# 1 + its own build commits since its base. It reads only; with --checked it
+# also prints, for the human, that done state.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='iteration.sh'
@@ -19,17 +21,19 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort FOLDER --seat S
+usage: sh ${PROG} --effort FOLDER --seat S [--checked TASK]
        sh ${PROG} --help | -h
 
-Prints the iteration seat S is working on, its report draft's path and
-its newest recorded report; reads only.
+Prints the iteration seat S is working on, its report draft's path, its
+newest recorded report and whether that report is done; reads only.
 
 --effort FOLDER  the effort folder, absolute
 --seat S      a seat with a worktree; it may be open or bound, not chosen
               (no worktree yet)
+--checked TASK
+              also print the line checked_earlier for the seat's part TASK
 
-stdout, three lines:
+stdout, four lines:
   ITERATION: <N>   1 + the crucible(build) commits in <base>..HEAD of the
                    worktree whose Agent-Seat trailer is S, the iteration its
                    next build commit opens
@@ -37,6 +41,12 @@ stdout, three lines:
   LAST_REPORT: <path> | none
                    the seat's newest build.committed event, absolute; none
                    when there is none
+  LAST_REPORT_STATE: done | blocked
+                   done when LAST_REPORT's body lists no blockers, else
+                   blocked (also with none)
+with --checked, then the line checked_earlier (views/lines.jq) with that
+  state, printed by human-view's show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID) for --effort
 
 exit codes:
   0  printed
@@ -46,10 +56,15 @@ exit codes:
      or the seat is chosen;
      one stderr line per problem (seats.sh's own lines first when it
      refused)
-  4  environment: git, jq, seats.sh or events.sh missing or failed
+  4  environment: git, jq, seats.sh or events.sh missing or failed, or the
+     report event unreadable (nothing printed); with --checked, also the
+     printer missing, or show.sh failed after the four lines (stderr says so)
 
 needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh beside this script; the
-${CRUCIBLE_SKILL} skill's events.sh
+${CRUCIBLE_SKILL} skill's events.sh; with --checked:
+../cards/cards-lib.sh from this script's folder, this skill's views/ and
+human-view's scripts/show.sh and scripts/lib/render.sh in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/human-view
 EOF
 }
 
@@ -81,7 +96,7 @@ take_value() {
 }
 
 parse_args() {
-	effort_folder='' seat=''
+	effort_folder='' seat='' checked_task=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -96,9 +111,13 @@ parse_args() {
 				take_value "$1" "${seat}" "${2-}" S
 				seat=${option_value}
 				;;
+			--checked)
+				take_value "$1" "${checked_task}" "${2-}" TASK
+				checked_task=${option_value}
+				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --seat or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat, --checked or --help"
 				;;
 		esac
 		shift 2
@@ -123,6 +142,17 @@ load_dependencies() {
 	[ -f "${own_dir}/seats.sh" ] || die 4 'seats.sh not found beside this script; expected both in one folder'
 	events_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/events.sh"
 	[ -f "${events_script}" ] || die 4 "events.sh not found; expected the ${CRUCIBLE_SKILL} skill installed"
+	[ -z "${checked_task}" ] || load_printer
+}
+
+# Sources ../cards/cards-lib.sh and checks the line printer it loads.
+load_printer() {
+	[ -f "${own_dir}/../cards/cards-lib.sh" ] ||
+		die 4 "../cards/cards-lib.sh not found from ${PROG}'s folder; expected the procedure's scripts folders whole"
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer lines || die 4 "${card_problem}"
 }
 
 # Sets worktree and base from seats.sh get, refusing a chosen seat;
@@ -181,11 +211,28 @@ find_last_report() {
 		die 4 'events.sh latest failed (its stderr is above)'
 }
 
+# Sets report_state to done when the last report lists no blockers, else
+# blocked.
+read_report_state() {
+	report_state=blocked
+	[ -n "${last_report}" ] || return 0
+	shown_report=$(printable "${last_report}")
+	report_done=$(jq -r '(.body.blockers // []) | length == 0' "${last_report}" </dev/null) ||
+		die 4 "jq could not read the report event ${shown_report}"
+	[ "${report_done}" != true ] || report_state='done'
+}
+
 parse_args "$@"
 load_dependencies
 read_seat
 count_iteration
 find_last_report
+read_report_state
 printf 'ITERATION: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
 	"${iteration}" "${effort_folder}" "${seat}"
-printf 'LAST_REPORT: %s\n' "${last_report:-none}"
+printf 'LAST_REPORT: %s\nLAST_REPORT_STATE: %s\n' "${last_report:-none}" "${report_state}"
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+[ -z "${checked_task}" ] ||
+	hv_show_line "${card_show}" "${card_views}" checked_earlier "${effort_folder}" \
+		--arg state "${report_state}" --arg task "${checked_task}" ||
+	die 4 "${hv_render_problem}; the four lines are printed, the line checked_earlier not shown"

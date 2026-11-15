@@ -3,14 +3,14 @@
 # reset to the commit and the seat's base becomes that commit. It only runs
 # seats.sh and worktree-move.sh in order; when seats.sh refuses after the
 # worktree moved, the worktree is moved back to its old HEAD and the ref
-# that kept it is deleted.
+# that kept it is deleted. Its card is views/seat-moved.jq, printed by
+# human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
 readonly PROG='seat-move.sh'
 readonly VIEW_LIB='human-view'
-# The line shows this many characters of the commit's sha.
-readonly SHORT_SHA_LENGTH=7
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
 export LC_ALL
@@ -43,19 +43,22 @@ is left behind (a SIGKILL aside).
 --follows NAME  the branch the commit was taken from, for the human;
                 default: COMMIT when it is a ref, not a sha
 
-stdout: the seat's JSON line, as seats.sh get prints it; then the line for
-  the human, relayed
+stdout: the seat's JSON line, as seats.sh get prints it; then the card
+  seat-moved (views/seat-moved.jq), printed by ${VIEW_LIB}'s show.sh and
+  recorded as owed this session (CLAUDE_CODE_SESSION_ID)
 
 exit codes:
-  0  moved; relay the second line
+  0  moved; go on
   2  wrong command line; fix what stderr names
   3  refused input, nothing changed; show the human stderr, and stop
   4  a dependency or a step failed; show the human stderr, and stop
   5  refused by state, nothing changed; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
 needs: POSIX sh, git 2.31+, jq 1.6+; seats.sh, seats.jq and
-../worktree/worktree-move.sh from this script's folder; ${VIEW_LIB}'s
-view.jq and title.jq in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
+../worktree/worktree-move.sh and ../cards/cards-lib.sh from this script's
+folder; this skill's views/; ${VIEW_LIB}'s scripts/show.sh and
+scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -134,19 +137,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for step in ../worktree/worktree-move.sh seats.sh seats.jq; do
+	for step in ../worktree/worktree-move.sh seats.sh seats.jq ../cards/cards-lib.sh; do
 		[ -f "${own_dir}/${step}" ] || {
 			shown_step=$(printable "${own_dir}/${step}")
 			die 4 "${shown_step} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	for module in view.jq title.jq; do
-		[ -f "${view_dir}/${module}" ] || {
-			shown_view_dir=$(printable "${view_dir}")
-			die 4 "${module} not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-		}
-	done
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer seat-moved || die 4 "${card_problem}"
 }
 
 # Sets effort_name, the effort folder's name with symlinks resolved, as
@@ -305,19 +305,18 @@ drop_kept_ref() {
 		die 4 "seats.sh move failed and the worktree is back on ${old_head}, but ${kept} could not be deleted; run git -C ${shown_repo} update-ref -d ${kept}"
 }
 
-# Prints the seat and the line for the human.
+# Prints the seat, then its card.
 print_result() {
 	run_step seats.sh get --effort "${effort}" --seat "${seat}"
 	[ "${step_rc}" -eq 0 ] ||
 		die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was moved: the seat is moved; expected its JSON line; run sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 	printf '%s\n' "${step_out}"
-	jq -nr -L "${view_dir}" --arg seat "${seat}" --arg sha "${to_sha}" --arg follows "${follows}" \
-		--argjson short_length "${SHORT_SHA_LENGTH}" '
-		include "view";
-		include "title";
-		$sha[:$short_length] as $short
-		| status_line("done"; "\($seat | seat_display) moved"; if $follows != "" then "\($follows) (\($short))" else $short end)' </dev/null ||
-		die 4 "jq could not print the line; expected jq 1.6+ and ${VIEW_LIB}'s view.jq and title.jq"
+	card_data=$(jq -nc --arg seat "${seat}" --arg commit "${to_sha}" --arg follows "${follows}" \
+		'{seat: $seat, commit: $commit, follows: $follows}') ||
+		die 4 'jq could not build the card'\''s data; the seat is moved; expected jq 1.6+'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" seat-moved "${effort}" "${card_data}" ||
+		die 4 "${hv_render_problem}; the seat is moved, its card not shown"
 }
 
 parse_args "$@"

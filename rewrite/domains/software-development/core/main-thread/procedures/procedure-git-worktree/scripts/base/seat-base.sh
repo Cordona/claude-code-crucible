@@ -3,7 +3,9 @@
 # independent (the checkout's HEAD, or a snapshot of it), or on the work of
 # one or more idle seats (one seat's HEAD, or tips-merge.sh's merge of
 # several). It never chooses; it writes no ref and no file, only git
-# objects (the merge commit, or what a conflicting merge leaves).
+# objects (the merge commit, or what a conflicting merge leaves). Its
+# cards are views/ templates, printed by human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -12,8 +14,6 @@ readonly tab='	'
 readonly EFFORT_TRAILER='Effort'
 readonly SNAPSHOT_MESSAGE='crucible(snapshot): uncommitted changes'
 readonly VIEW_LIB='human-view'
-# The line shows this many characters of the base's sha.
-readonly SHORT_SHA_LENGTH=7
 # From this folder to the effort settings' reader.
 readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 # The C locale keeps the shell byte-wise.
@@ -29,7 +29,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --effort FOLDER --repo DIR --seat S --independent [--snapshot SHA]
-       sh ${PROG} --effort FOLDER --repo DIR --seat S --on S [--on S]...
+          [--card]
+       sh ${PROG} --effort FOLDER --repo DIR --seat S --on S [--on S]... [--card]
        sh ${PROG} --help | -h
 
 Prints the base for ../seats/seats.sh choose's --base and --base-seat.
@@ -50,17 +51,16 @@ Prints the base for ../seats/seats.sh choose's --base and --base-seat.
                 merge of every seat's HEAD (message "crucible(merge): S +
                 S", trailer ${EFFORT_TRAILER}: the effort folder's name) as
                 the identity settings.sh get --effort FOLDER prints, signed with
-                its key when it has one, tips-merge.sh's UNSIGNED: line
-                passing through
+                its key when it has one
+--card          also print the card seat-base, the base said for the human
 
-stdout, one JSON line:
-  {"base":<sha>,"base_seats":[S...],"unmerged":[S...],"line":L}
-  base_seats: the --on seats in order ([] when independent); L, for the
-  human, starts with --seat's name as the human sees it, like "Build
-  agent Beta: ", then "Starts from your checkout (<short sha>).",
-  with --snapshot "Starts from your checkout with your uncommitted
-  changes (<short sha>).", or "Starts from Build agent Alpha +
-  ... (<short sha>)."; a short sha is the first ${SHORT_SHA_LENGTH} characters
+stdout: one JSON line, then the cards
+  {"base":<sha>,"base_seats":[S...],"unmerged":[S...]}
+  base_seats: the --on seats in order ([] when independent); with --card
+  the card seat-base (views/seat-base.jq); a merge made unsigned: the line
+  unsigned (views/lines.jq); on exit 5 for a conflict, only the card
+  conflict (views/conflict.jq); each printed by ${VIEW_LIB}'s show.sh and
+  recorded as owed this session (CLAUDE_CODE_SESSION_ID)
 
 exit codes:
   0  printed
@@ -71,14 +71,17 @@ exit codes:
      first), --snapshot is no snapshot of HEAD, or a snapshot or a merge
      is given or needed and the effort has no git setup (settings.sh's
      own line first)
-  4  environment: git, jq, ${VIEW_LIB} or a neighbour missing or failed
+  4  environment: git, jq, ${VIEW_LIB}'s show.sh or a neighbour missing or
+     failed
   5  refused by state, no file or ref written: an --on seat is no developer,
      of another repo, chosen (no worktree yet) or not idle, or the HEADs
-     conflict (tips-merge.sh's line)
+     conflict (the card conflict)
+  129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq and
 ../merge/tips-merge.sh from this script's folder; procedure-git-setup's
-settings.sh beside procedure-git-worktree; ${VIEW_LIB}'s title.jq in
+settings.sh beside procedure-git-worktree; ../cards/cards-lib.sh and this
+skill's views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -111,7 +114,7 @@ take_value() {
 }
 
 parse_args() {
-	effort='' repo='' seat='' snapshot='' independent=no on_seats=''
+	effort='' repo='' seat='' snapshot='' independent=no on_seats='' card=no
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -121,6 +124,12 @@ parse_args() {
 			--independent)
 				[ "${independent}" = no ] || usage_error '--independent given twice; expected one'
 				independent=yes
+				shift
+				continue
+				;;
+			--card)
+				[ "${card}" = no ] || usage_error '--card given twice; expected one'
+				card=yes
 				shift
 				continue
 				;;
@@ -146,7 +155,7 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --seat, --independent, --on, --snapshot or --help"
+				usage_error "unknown option: ${shown_option}; expected --effort, --repo, --seat, --independent, --on, --snapshot, --card or --help"
 				;;
 		esac
 		shift 2
@@ -213,17 +222,16 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh "${SETTINGS}"; do
+	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
 		}
 	done
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
-	[ -f "${view_dir}/title.jq" ] || {
-		shown_view_dir=$(printable "${view_dir}")
-		die 4 "title.jq not found in ${shown_view_dir}; expected the ${VIEW_LIB} skill installed"
-	}
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer seat-base conflict lines || die 4 "${card_problem}"
 }
 
 # Sets effort_dir (physical), repo_dir (physical) and head.
@@ -415,14 +423,24 @@ EOF
 	set -- "$@" --identity-name "${identity_name}" --identity-email "${identity_email}"
 	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
 	step_rc=0
-	step_out=$(sh "${own_dir}/../merge/tips-merge.sh" --repo "${repo_dir}" "$@" --message-file "${merge_message}") || step_rc=$?
+	step_out=$(sh "${own_dir}/../merge/tips-merge.sh" --repo "${repo_dir}" "$@" --message-file "${merge_message}" \
+		2>"${work_dir}/tips-stderr") || step_rc=$?
+	card_read_unsigned "${work_dir}/tips-stderr"
 	case ${step_rc} in
 		0) ;;
 		3) die 3 'tips-merge.sh refused its input (exit 3); expected the seats'\'' commits in --repo' ;;
-		5) exit 5 ;;
+		5) show_conflict ;;
 		*) die 4 "tips-merge.sh failed (exit ${step_rc})" ;;
 	esac
 	base=$(printf '%s\n' "${step_out}" | jq -r '.commit') || die 4 'jq could not read what tips-merge.sh printed'
+}
+
+# Prints the card conflict from tips-merge.sh's result, then exits 5.
+show_conflict() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" conflict "${effort_dir}" "${step_out}" ||
+		die 4 "${hv_render_problem}; the seats' commits conflict, and its card is not shown"
+	exit 5
 }
 
 # Sets the identity_* and signing_* variables from settings.sh get for the
@@ -508,11 +526,19 @@ else
 	: >"${work_dir}/unmerged"
 	printf '%s\n' "${on_seats}" >"${work_dir}/base-seats" || die 4 'could not write the base seats in the work folder'
 fi
-jq -nc -L "${view_dir}" --arg base "${base}" --arg snapshot "${snapshot}" --arg seat "${seat}" \
-	--argjson short_length "${SHORT_SHA_LENGTH}" --rawfile base_seats "${work_dir}/base-seats" --rawfile unmerged "${work_dir}/unmerged" '
-	include "title";
+result=$(jq -nc --arg base "${base}" --rawfile base_seats "${work_dir}/base-seats" --rawfile unmerged "${work_dir}/unmerged" '
 	def lines: rtrimstr("\n") | if . == "" then [] else split("\n") end;
-	{base: $base, base_seats: ($base_seats | lines), unmerged: ($unmerged | lines)}
-	| .line = "\($seat | seat_display): Starts from \(if .base_seats != [] then .base_seats | map(seat_display) | join(" + ")
-		elif $snapshot != "" then "your checkout with your uncommitted changes" else "your checkout" end) (\($base[:$short_length]))."' ||
-	die 4 "jq could not print the result; expected jq 1.6+ and ${VIEW_LIB}'s title.jq"
+	{base: $base, base_seats: ($base_seats | lines), unmerged: ($unmerged | lines)}') ||
+	die 4 'jq could not build the result; expected jq 1.6+'
+printf '%s\n' "${result}"
+if [ "${card}" = yes ]; then
+	is_snapshot=false
+	[ -z "${snapshot}" ] || is_snapshot=true
+	card_data=$(printf '%s\n' "${result}" | jq -c --arg seat "${seat}" --argjson snapshot "${is_snapshot}" \
+		'{seat: $seat, base, base_seats, snapshot: $snapshot}') || die 4 'jq could not build the card'\''s data; expected jq 1.6+'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${card_show}" "${card_views}" seat-base "${effort_dir}" "${card_data}" ||
+		die 4 "${hv_render_problem}; the base is printed above, its card not shown"
+fi
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; the merge is made unsigned, its line not shown"

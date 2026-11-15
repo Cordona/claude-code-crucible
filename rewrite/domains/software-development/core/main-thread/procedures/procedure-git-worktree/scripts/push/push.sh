@@ -4,7 +4,9 @@
 # run it and always go on. The first push sets the branch's upstream. A
 # non-fast-forward rejection is named, never fixed; given its effort and
 # seat, it records the push, and replaces what the seat last pushed, by
-# lease, only after the seat moved.
+# lease, only after the seat moved. Asked for its card, it prints
+# views/lines.jq's pushed through human-view's show.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 umask 077
 
@@ -31,7 +33,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 usage() {
 	cat <<EOF
 usage: sh ${PROG} --worktree DIR --remote NAME [--timeout SECONDS]
-          [--effort FOLDER --seat S [--session ID]]
+          [--effort FOLDER --seat S [--session ID]] [--card]
        sh ${PROG} --help | -h
 
 Pushes the branch the worktree has checked out to the remote, as the
@@ -59,21 +61,29 @@ left behind (a SIGKILL aside).
 --seat S        the developer seat whose branch this is; with --effort
 --session ID    Claude Code's session for the event (default
                 CLAUDE_CODE_SESSION_ID)
+--card          print the line pushed for the human once pushed
 
-stdout on success, one line: PUSHED: <remote>/<branch> (also when the
-remote already held it)
+stdout on success: with --card, the line pushed (views/lines.jq), also
+  when the remote already held the branch, printed by human-view's show.sh
+  after the push is recorded, and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID) for --effort; else nothing
 
 exit codes:
   0  pushed
   2  wrong command line, nothing pushed; give stderr, and skip this push
   3  input does not fit, nothing pushed; give stderr, and skip this push
   4  environment or a neighbour failed, nothing pushed; give stderr, and
-     skip this push
+     skip this push; or (--card) show.sh failed after the push, stderr
+     says it was pushed
+  129, 130, 143  stopped by HUP, INT or TERM
   5  the push failed, was rejected or timed out, nothing forced; give
      stderr, and skip this push
 
 needs: POSIX sh, git 2.26+; with --effort: jq 1.6+, ../seats/seats.sh from
-this script's folder and the ${CRUCIBLE_SKILL} skill's events.sh
+this script's folder and the ${CRUCIBLE_SKILL} skill's events.sh; with
+--card: jq 1.6+, ../cards/cards-lib.sh from this script's folder, this
+skill's views/ and human-view's scripts/show.sh and scripts/lib/render.sh in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/human-view
 EOF
 }
 
@@ -105,12 +115,18 @@ take_value() {
 }
 
 parse_args() {
-	worktree='' remote='' timeout='' effort='' seat='' session=''
+	worktree='' remote='' timeout='' effort='' seat='' session='' card=no
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
+				;;
+			--card)
+				[ "${card}" = no ] || usage_error '--card given twice; expected one'
+				card=yes
+				shift
+				continue
 				;;
 			--worktree)
 				take_value "$1" "${worktree}" "${2-}" DIR
@@ -138,7 +154,7 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --worktree, --remote, --timeout, --effort, --seat, --session or --help"
+				usage_error "unknown option: ${shown_option}; expected --worktree, --remote, --timeout, --effort, --seat, --session, --card or --help"
 				;;
 		esac
 		shift 2
@@ -208,12 +224,30 @@ script_dir() {
 	esac
 }
 
+# Sets own_dir, this script's folder, physical.
+find_own_dir() {
+	[ -z "${own_dir}" ] || return 0
+	own_path=$(script_dir)
+	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
+}
+
+# Sources the card printer before anything is pushed, so a missing one
+# pushes nothing.
+load_card_printer() {
+	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
+	find_own_dir
+	[ -f "${own_dir}/../cards/cards-lib.sh" ] || die 4 "${own_dir}/../cards/cards-lib.sh not found; expected the procedure's scripts folders whole"
+	# shellcheck source=../cards/cards-lib.sh
+	. "${own_dir}/../cards/cards-lib.sh"
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	card_load_printer lines || die 4 "${card_problem}"
+}
+
 # Checks that --seat is a seat of --effort whose worktree is --worktree,
 # and finds events.sh.
 check_seat() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
-	own_path=$(script_dir)
-	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
+	find_own_dir
 	[ -f "${own_dir}/../seats/seats.sh" ] || die 4 "${own_dir}/../seats/seats.sh not found; expected the procedure's scripts folders whole"
 	events_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/events.sh"
 	[ -f "${events_script}" ] || die 4 "events.sh not found at ${events_script}; expected the ${CRUCIBLE_SKILL} skill installed"
@@ -367,7 +401,7 @@ clean_up() {
 	[ -z "${work_dir}" ] || rm -rf -- "${work_dir}"
 }
 
-work_dir='' push_pid='' watcher_pid=''
+work_dir='' push_pid='' watcher_pid='' own_dir=''
 trap clean_up EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -376,6 +410,7 @@ trap 'exit 143' TERM
 parse_args "$@"
 check_timeout
 check_inputs
+[ "${card}" = no ] || load_card_printer
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/crucible-push.XXXXXX") ||
 	die 4 'mktemp could not create a work folder; expected a writable TMPDIR'
 lease=''
@@ -388,5 +423,8 @@ pushed_commit_now=$(git -C "${worktree}" rev-parse --verify -q "refs/heads/${bra
 build_push
 run_push
 [ "${push_rc}" -eq 0 ] || push_failed
-printf 'PUSHED: %s/%s\n' "${remote}" "${branch}"
 [ -z "${effort}" ] || record_push
+[ "${card}" = yes ] || exit 0
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+hv_show_line "${card_show}" "${card_views}" pushed "${effort}" --arg remote "${remote}" --arg branch "${branch}" ||
+	die 4 "${hv_render_problem}; ${shown_branch} is pushed to ${shown_remote}, its line not shown"

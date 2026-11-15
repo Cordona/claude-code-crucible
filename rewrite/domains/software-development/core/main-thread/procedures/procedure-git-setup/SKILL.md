@@ -27,6 +27,8 @@ Run by the main thread from `flow-code-development` step 2, handed the effort fo
 
 ## Steps
 
+`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-setup/views"`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line> --effort '<effort folder>'`; a non-zero exit: show the human its stderr.
+
 Copy steps 1–5 into the todo list and tick each.
 
 1. **Set up already?** Run `sh "<gs>/settings.sh" get --effort '<effort folder>'`. Exit 0: hand back `ready`, saying nothing. Exit 5: step 2.
@@ -35,14 +37,14 @@ Copy steps 1–5 into the todo list and tick each.
 4. **The answer:**
    - **Identity, an option naming an identity:** `--pick-label '<its label, exactly as the answer gives it>'`.
    - **"Set up git first (Recommended)" or "No, set up git first":** as Always.
-   - **"Type name and email":** show the line `Type the name and email this effort's commits are authored with.`, end the turn, and take the reply as a typed Identity answer.
+   - **"Type name and email":** show the line `type_name_and_email`, end the turn, and take the reply as a typed Identity answer.
    - **A typed Identity answer:** a name and an email: `--name '<name>' --email '<email>'`, plus `--signing-format '<openpgp or ssh>' --signing-key '<key>'` when it gives a key; a stop: as Always; a question about a repository's identity: The human's ask, then the gate again from step 2; unclear: ask the human to clarify with AskUserQuestion.
    - **Auto-push:** "Yes": `--auto-push yes`; "No (Recommended)": `--auto-push no`; a typed answer: clarify it as a typed Identity answer; no Auto-push question: neither.
-5. **Save:** `sh "<gs>/settings.sh" write --effort '<effort folder>'` with step 4's options, plus `--repo '<repo>'` with an Auto-push option. Exit 0: show its one line as printed, a message of its own, and hand back `ready`. Exit 3: show its stderr as it is, then the gate again from step 2.
+5. **Save:** `sh "<gs>/settings.sh" write --effort '<effort folder>'` with step 4's options, plus `--repo '<repo>'` with an Auto-push option. Exit 0: hand back `ready`. Exit 3: show its stderr as it is and end the turn; at the human's next message, the gate again from step 2.
 
 ## The human's ask: which identity a repository uses
 
-At the git setup question or in chat ("what's this repo's identity?", `<repo>` unless they name another): run `sh "<gs>/render-identity.sh" --repo '<that repository>'`, and show its line as printed, a message of its own; it changes nothing. Asked at the question: then the gate again from step 2, where the human picks.
+At the git setup question or in chat ("what's this repo's identity?", `<repo>` unless they name another): run `sh "<gs>/render-identity.sh" --repo '<that repository>'`; it changes nothing. Asked at the question: then the gate again from step 2, where the human picks.
 
 ## Resume
 
@@ -54,6 +56,7 @@ All in `<gs>`. This skill runs `settings.sh`, `identity-candidates.sh`, `render-
 
 ## Dependencies
 
-- **Skill:** `procedure-approval-gate`, under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/` (steps 2–3); missing: show the line `procedure-approval-gate is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`, and hand back `stopped: git setup not shown`.
+- **Skill:** `procedure-approval-gate`, under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/` (steps 2–3); missing: show the line `approval_gate_not_installed`, and hand back `stopped: git setup not shown`.
+- **`human-view`, not loaded:** its `show.sh` renders the gate and prints the identity card and the saved line from `views/` inside the scripts, and shows this skill's lines (Steps).
 - **Tools:** Bash, Skill, AskUserQuestion.
-- **Commands:** git (macOS: `xcode-select --install`; Linux: the distro's `git` package); missing: show the line `git is not installed: install it, then ask me again.`, and hand back `stopped: git setup failed`.
+- **Commands:** git (macOS: `xcode-select --install`; Linux: the distro's `git` package); missing: show the line `git_not_installed`, and hand back `stopped: git setup failed`.

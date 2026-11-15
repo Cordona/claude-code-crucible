@@ -5,8 +5,8 @@
 # report-commit-hook.sh's stop.blocked or stop.gave-up event for the same
 # hook event, or for the seat to leave working, and, for such a
 # developer only, wakes the main thread with the exact line to send it, or,
-# on a give-up, the line to show the human. Every other stop ends here
-# silently.
+# on a give-up, with what happened; flow-code-development step 4 owns what
+# the human is shown. Every other stop ends here silently.
 set -eu
 umask 077
 
@@ -37,7 +37,9 @@ gave-up), reading the events once more.
   blocked     prints to stderr the line to send the agent, the line's
               reason, and exits ${WAKE_EXIT}: Claude Code wakes the main thread
               with it
-  gave-up     prints to stderr the line to show the human; exits ${WAKE_EXIT}
+  gave-up     prints to stderr that the developer gave up, its seat and
+              worktree, for flow-code-development step 4's gave-up
+              handling; exits ${WAKE_EXIT}
   no line     once the seat is not working, or at the end of the wait (any
               fault): exits 0, silent
 
@@ -181,7 +183,7 @@ wake() {
 			printf '%s\n' "Crucible: the developer in ${seat} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
 			;;
 		gave-up)
-			printf '%s\n' "Crucible: the developer in ${seat} failed its report check 3 times; nothing was committed. Show the human exactly this line: The developer in ${seat} could not write a valid report; its work stays uncommitted in ${worktree}." >&2
+			printf '%s\n' "Crucible: the developer in ${seat} failed its report check 3 times; nothing was committed in its worktree ${worktree}. Act on seat ${seat} as flow-code-development step 4 does for gave-up." >&2
 			;;
 		*) quiet ;;
 	esac

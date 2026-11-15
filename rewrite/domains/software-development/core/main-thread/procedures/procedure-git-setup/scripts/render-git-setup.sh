@@ -4,13 +4,17 @@
 # AskUserQuestion input, two questions (Identity and Auto-push) answered in
 # tabs. The identities are the plan identity-candidates.sh --plan-out wrote;
 # the repo, when there is one, says whether auto-push can be offered.
+# views/git-setup.jq lays the card out and human-view's show.sh renders it.
 # Pipe the card into procedure-approval-gate's open-gate.sh.
-# shellcheck source-path=SCRIPTDIR
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='render-git-setup.sh'
 readonly MODULE='settings'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='git-setup'
 # The C locale keeps the shell byte-wise; jq reads the plan as UTF-8.
 LC_ALL=C
 export LC_ALL
@@ -41,16 +45,10 @@ else .[0].identities
 	  end
 end'
 
-# The card: its title and one line, plus a line when auto-push can't be offered.
+# The card's data for views/git-setup.jq: how many identities the plan
+# offers, and whether the repo has an origin remote.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly VIEW_JQ='include "view";
-[status_line("decision"; "Decision needed · git setup for this effort'\''s agents"),
- (if (.[0].identities | length) > 0 then "Pick the identity that signs this effort'\''s agents'\'' commits."
-  else "This machine has no GPG or SSH signing key." end),
- (if $has_origin == "yes" then ""
-  elif $has_origin == "no" then "This repo has no origin remote, so auto-push stays off."
-  else "No repository here, so auto-push stays off." end)]
-| blocks'
+readonly VIEW_DATA_JQ='{identities: (.[0].identities | length), origin: $has_origin}'
 
 # The AskUserQuestion input: Identity, one option per identity and a way to
 # stop, or with none the two ways on; then Auto-push, left out when there is
@@ -96,14 +94,16 @@ input. stdin is never read, the plan file only read; no file is written.
 CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
 
 stdout on exit 0 only:
-  a gate: its Markdown, with no gate marker
+  a gate: its Markdown, with no gate marker, rendered from
+    views/${VIEW_NAME}.jq by ${VIEW_LIB}'s show.sh render
   --question: one line of JSON, {"questions": [...]}, for one AskUserQuestion
     as it is. Identity: one option per identity, labelled
     "<name> · <email> · GPG key <key>" or "<name> · <email> · SSH key
     <fingerprint>", in plan order, then "No, set up git first"; with none,
     "Set up git first (Recommended)" and "Type name and email". Auto-push,
     only with a repo that has an origin remote: "No (Recommended)" and "Yes"
-stderr on exit 5: "${PROG}: install:", a prefix no other exit prints
+stderr on exit 5: "${PROG}: install:", a prefix no other exit prints,
+  after any show.sh line
 
 exit codes:
   0  printed; pipe a gate into open-gate.sh, pass a question to one
@@ -113,11 +113,13 @@ exit codes:
      what it names and rerun once, else show the human stderr
   4  stdout closed before the output was written; show the human the exit
      code, and stop
-  5  an install fault; show the human stderr, and stop
+  5  an install fault, or show.sh failed; show the human stderr, and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
-needs: POSIX sh, jq 1.6+; git, with --repo; to print a gate, the ${RENDER_LIB}
-skill's view.jq in the skills; ${MODULE}.jq and origin-lib.sh beside this
-script
+needs: POSIX sh, jq 1.6+; git, with --repo; to print a gate, the ${VIEW_LIB}
+skill's ${SHOW} and ${RENDER_LIB} in the skills and
+views/${VIEW_NAME}.jq in this skill; ${MODULE}.jq and origin-lib.sh beside
+this script
 EOF
 }
 
@@ -187,8 +189,9 @@ script_dir() {
 	esac
 }
 
-# Sets own_dir and render_lib_dir and loads origin-lib.sh; exits 5 when a
-# tool or file is missing.
+# Sets own_dir and loads origin-lib.sh, and for a gate sets views_dir and
+# show_script and sources human-view's gate printer lib; exits 5 when a tool
+# or file is missing.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -201,10 +204,24 @@ load_dependencies() {
 	done
 	# shellcheck source=origin-lib.sh
 	. "${own_dir}/origin-lib.sh"
-	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
 	[ "${want_question}" = false ] || return 0
-	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
-		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+	views_dir="${own_dir}/../views"
+	view_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_LIB}"
+	render_lib="${view_skill_dir}/${RENDER_LIB}"
+	require_file "${render_lib}" 'gate printer' "install the ${VIEW_LIB} skill"
+	# shellcheck source=render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${views_dir}" "${VIEW_NAME}" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
+}
+
+# Exits 5 unless file $1, the $2, is readable; $3 says how to get it.
+require_file() {
+	[ -f "$1" ] && [ -r "$1" ] || {
+		shown_file=$(printable "$1")
+		install_fault "$2 missing; expected ${shown_file}; $3"
+	}
 }
 
 # Prints problem lines $1, when any, to stderr and exits 3.
@@ -232,7 +249,7 @@ load_plan() {
 
 # Runs jq program $1 over the slurped plan; a jq failure exits 5.
 run_jq() {
-	printf '%s' "${slurped}" | jq -r -c -L "${own_dir}" -L "${render_lib_dir}" \
+	printf '%s' "${slurped}" | jq -r -c -L "${own_dir}" \
 		--arg has_origin "${repo_has_origin}" "$1" ||
 		install_fault "jq failed on valid JSON; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}; try jq --version, then rerun"
 }
@@ -247,11 +264,14 @@ if [ -n "${repo}" ]; then
 	check_repo_origin "${repo}" "${remote}"
 fi
 load_plan
-if [ "${want_question}" = true ]; then
-	output=$(run_jq "${QUESTION_JQ}")
-else
-	output=$(run_jq "${VIEW_JQ}")
+if [ "${want_question}" = false ]; then
+	view_data=$(run_jq "${VIEW_DATA_JQ}")
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_render_gate "${show_script}" "${views_dir}" "${VIEW_NAME}" "${view_data}" ||
+		install_fault "${hv_render_problem}; expected the gate rendered from views/${VIEW_NAME}.jq; try reinstalling procedure-git-setup and the ${VIEW_LIB} skill"
+	exit 0
 fi
+output=$(run_jq "${QUESTION_JQ}")
 # Ignoring SIGPIPE turns a closed reader into a failed write this script can
 # tell apart from a jq fault, rather than a silent kill.
 trap '' PIPE
