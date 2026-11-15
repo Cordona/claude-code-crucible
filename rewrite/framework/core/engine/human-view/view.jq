@@ -1,5 +1,6 @@
 # Layout building blocks for human-facing views. A def returning "" stands for
-# "nothing to show"; `blocks` drops it. Values arrive as cleaned display text.
+# "nothing to show"; `blocks` drops it. Values arrive as display text; `shown`
+# and `one_line` clean a value taken from outside.
 # jq resolves a def only after its definition, so each helper precedes its callers.
 
 # numbered_list
@@ -11,6 +12,23 @@ def numbered_list: to_entries | map("\(.key + 1). \(.value)") | join("\n");
 #   input:  array of strings
 #   output: one `* item` line per item, joined by newlines
 def bullet_list: map("* \(.)") | join("\n");
+
+# shown
+#   input:  text taken from a repository, a record or the human
+#   output: the text with each control character and each line or paragraph
+#           separator (U+2028, U+2029) as "?"
+def shown: gsub("[[:cntrl:]\u2028\u2029]"; "?");
+
+# one_line
+#   input:  text taken from a repository, a record or the human
+#   output: the text with each run of control characters and line or paragraph
+#           separators as one space
+def one_line: gsub("[[:cntrl:]\u2028\u2029]+"; " ");
+
+# counted($one; $many)
+#   input:  a count
+#   output: `<count> <one>` for 1, else `<count> <many>`
+def counted($one; $many): "\(.) \(if . == 1 then $one else $many end)";
 
 # plain_line
 #   input:  one line of text
@@ -49,6 +67,24 @@ def section($name; $plural; $items):
 	else "**\($plural)**\n" + ($items | numbered_list)
 	end;
 def section($name; $items): section($name; $name; $items);
+
+# bullet_section($name; $items)
+#   input:  ignored
+#   output: "" for no items; else `**<name>:**` and a bullet list under it, for
+#           an offer's or a hint's list that completes its heading
+def bullet_section($name; $items):
+	if ($items | length) == 0 then ""
+	else "**\($name):**\n" + ($items | bullet_list)
+	end;
+
+# numbered_section($name; $items)
+#   input:  ignored
+#   output: "" for no items; else `**<name>**` and a numbered list, even for
+#           one item
+def numbered_section($name; $items):
+	if ($items | length) == 0 then ""
+	else "**\($name)**\n" + ($items | numbered_list)
+	end;
 
 # field_lines($pairs)
 #   input:  ignored

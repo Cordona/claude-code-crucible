@@ -1,21 +1,22 @@
 #!/usr/bin/env sh
 # Claude Code PreToolUse hook (matcher AskUserQuestion) for approval gates. It
-# denies the question while this session's gate is pending, so the plan is
-# relayed before it is asked about, and clears any other gate as its question
-# goes out, first saving an effort's relayed gate's plan as a gate record: a
-# hand-off under the question's tool_use_id, from which gate-answer-hook.sh
-# writes the gate.<label>.answered event once the human answers. The record is
-# the plan the human was shown, so a relayed gate whose record can't be saved
-# denies the question and stays open. A fault allows the question, except once a
-# pending gate is loaded, or when jq is missing and any session has a live
-# pending gate: then it fails closed, since that block is confined to an open
-# gate and ends when the gate goes stale.
+# denies the question while this session's gate card is owed (show.sh recorded
+# it and show-stop-hook.sh has not seen it shown), so the plan is shown before
+# it is asked about. It closes a shown gate as its question goes out, first
+# saving an effort's gate's plan as a gate record: a hand-off under the
+# question's tool_use_id, from which gate-answer-hook.sh writes the
+# gate.<label>.answered event once the human answers. The record is the plan
+# the human was shown, so a shown gate whose record can't be saved denies the
+# question and stays open. A fault allows the question, except once an owed
+# gate is found, or when jq is missing and any session has a live owed gate:
+# then it fails closed, since that block is confined to an open gate and ends
+# when the gate goes stale.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 # The EXIT trap also removes the record temp file, and a signal exits
 # through it.
 record_temp=''
-trap '[ -z "${record_temp}" ] || rm -f -- "${record_temp}"; exit 0' EXIT
+trap 'rm -f -- ${record_temp:+"${record_temp}"}; exit 0' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -23,15 +24,18 @@ umask 077
 
 readonly PROG='gate-question-hook.sh'
 readonly REASON_PREFIX='procedure-approval-gate:'
-# 30 min, as in gate-stop-hook.sh: long enough to read a plan, short enough that
-# a gate left open by a crashed or abandoned turn soon stops denying questions.
-readonly STALE_SECONDS=1800
-readonly STALE_MINUTES=$((STALE_SECONDS / 60))
 readonly DENY_REASON="${REASON_PREFIX} this session's gate is pending: its plan has not been relayed as a turn's last message yet, so the question is denied."
-# The record deny when jq can't build the one naming the cause, so a relayed
+# The record deny when jq can't build the one naming the cause, so a shown
 # gate without its record never lets the question through.
 readonly RECORD_DENY_FALLBACK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-approval-gate: the gate record could not be saved, so the question is denied; the cause is on the hook'\''s stderr; fix it, then ask again."}}'
 readonly SPACE_LIB="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/lib/crucible-space.sh"
+readonly HV_LIB_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/human-view/scripts/lib"
+# The verdict on one owed record: its status (owed or shown) for a gate,
+# stale for a gate past the store's stale time, other for anything else.
+# shellcheck disable=SC2016 # the $ names are jq's
+readonly GATE_JQ='include "owed";
+if is_owed_record and .kind == "gate" then (if is_stale(now; $stale) then "stale" else .status end)
+else "other" end'
 
 usage() {
 	cat <<EOF
@@ -39,56 +43,55 @@ usage: sh ${PROG} < pre-tool-use-input.json
        sh ${PROG} --help | -h
 
 A Claude Code PreToolUse hook for AskUserQuestion: denies the main thread's
-question while this session's approval gate is pending, and closes this
-session's gate in any other state as its question goes out, first saving a
-relayed gate's plan as the gate record when the gate has an effort.
-On a fault the question is allowed, with two exceptions: while a pending gate
-  is open (with jq missing: any session's), exit 2; when a relayed gate's
+question while this session's gate card is owed, and closes this session's
+shown gate as its question goes out, first saving its plan as the gate
+record when the gate has an effort.
+On a fault the question is allowed, with two exceptions: while an owed gate
+  is open (with jq missing: any session's), exit 2; when a shown gate's
   record could not be saved, the deny on stdout.
 
 stdin: the hook JSON (session_id, agent_id, tool_name, tool_use_id,
-  tool_input.questions); a tool_name other than
-  AskUserQuestion, a non-empty agent_id (a subagent's or side agent's
-  question) or a missing, non-string or unsafe session_id is allowed untouched
-Reads the gate state open-gate.sh wrote in
+  tool_input.questions); a tool_name other than AskUserQuestion, a non-empty
+  agent_id (a subagent's or side agent's question) or a missing, non-string
+  or unsafe session_id is allowed untouched
+Reads the session's gate record, which show.sh wrote (see show.sh --help),
+  and the plan file in
   \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/approval-gate/<session_id>/
-  and the gate's target file (format: see open-gate.sh --help)
 
 stdout on a deny (exit 0): one PreToolUse decision for Claude Code,
   {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<reason>"}}
   with <reason> one of:
   "${DENY_REASON}"
-    the plan is not relayed yet; the gate stays pending
+    the gate is not shown yet; it stays owed
   "${REASON_PREFIX} the gate record could not be saved (<cause>), so the question is denied; <fix>, then ask again."
-    the relayed gate stays open; a <fix> starting "open the gate again" means
-      the gate's target file is bad and the gate must be opened again
+    the shown gate stays open; a <fix> starting "open the gate again" means
+      the gate's record is bad and the gate must be opened again
 stderr on exit 0: notes on a removed gate, an unsaved record or a missing jq,
   or a failing command's own message
 
-Writes, in this session's gate folder and the record's folder only:
-  a relayed gate's record, when its target file names an effort:
+Writes, in this session's gate folder and owed records only:
+  a shown gate's record, when it names an effort:
     answers/<tool_use_id>.json in the gate folder, {label, effort,
     question, plan}, the question the first one's text,
     for gate-answer-hook.sh; a gate without an effort saves nothing
-  closing a gate (relayed once any record is saved, shown or failed): removes
-    gate.md, state, target and plan.json, then the gate folder once empty
-  a malformed gate, one over ${STALE_MINUTES} minutes old, or a folder with no state and
-    nothing changed for ${STALE_MINUTES} minutes: removed with its folder; a
-    plan.json changed within ${STALE_MINUTES} minutes stays, and then only gate.md and
-    state are removed
+  closing a shown gate: removes its owed record and plan.json, then the
+    gate folder once empty
+  a gate record past the store's stale time: removed
 
 Exit codes:
   0  allowed; or denied by the decision on stdout, which Claude Code applies,
      giving Claude its reason
   2  denied: Claude Code blocks the question and gives Claude the reason from
      stderr, starting "${REASON_PREFIX}"; the block ends at most
-     ${STALE_MINUTES} minutes after the pending gate opened
+     ${hv_stale_minutes-} minutes after the gate was opened
 
 Dependencies:
-  POSIX sh; cat, date, find (with -mmin, as on macOS and Linux), rm, rmdir
+  POSIX sh; cat, find (with -mmin, as on macOS and Linux), grep, rm, rmdir
     (every macOS and Linux base system)
   jq 1.6+ (macOS: brew install jq; Linux: the distro's jq package)
-  for a relayed gate: the crucible skill's space rules,
+  human-view's store rules, lib/owed.sh and lib/owed.jq, in
+    \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/human-view/scripts/
+  for a shown gate: the crucible skill's space rules,
     \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/crucible/scripts/lib/crucible-space.sh,
     and mkdir, mktemp, mv (with an effort)
 
@@ -102,65 +105,33 @@ warn() {
 	printf '%s: %s\n' "${PROG}" "$1" >&2
 }
 
-# Removes the gate (reason $1 goes to stderr) and allows the question: the whole
-# folder, or only gate.md and the state when plan.json changed within
-# STALE_SECONDS, since that is the session's next plan, written before its gate
-# opens.
-remove_gate() {
-	fresh_plan=$(find "${gate_dir}/plan.json" -prune -type f ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || fresh_plan=''
-	if [ -n "${fresh_plan}" ]; then
-		warn "$1 removed, plan.json kept: ${gate_dir}"
-		rm -f "${gate_dir}/state" "${gate_dir}/gate.md"
-	else
-		warn "$1 removed: ${gate_dir}"
-		rm -rf "${gate_dir}"
-	fi
-	exit 0
-}
-
-# With no gate state, removes the folder when nothing in it (the folder
-# included) changed within STALE_SECONDS; allows the question either way.
-drop_idle_folder() {
-	recent=$(find "${gate_dir}" ! -mmin "+${STALE_MINUTES}" 2>/dev/null) || exit 0
-	[ -n "${recent}" ] || remove_gate 'gate folder with no gate state, unchanged for over '"${STALE_SECONDS}"'s,'
-	exit 0
-}
-
-# True when the state line in file $1 is a pending gate younger than
-# STALE_SECONDS. Needs no jq.
-is_live_pending() {
-	read -r pending_status pending_tries pending_created _ <"$1" || true
-	[ "${pending_status-}" = pending ] || return 1
-	case ${pending_tries-}:${pending_created-} in
-		:* | *: | *[!0-9:]* | *:*:*) return 1 ;;
-		*) ;;
-	esac
-	pending_now=$(date +%s) || return 1
-	[ $((pending_now - pending_created)) -le "${STALE_SECONDS}" ]
-}
-
-# With jq missing the session id can't be read, so any session's live pending
-# gate denies the question (exit 2); with none it is allowed (exit 0).
+# With jq missing no record can be read, so any session's owed gate record
+# changed within the stale time denies the question (exit 2); with none, or
+# without human-view's store rules, it is allowed (exit 0).
 handle_jq_missing() {
-	for state_file in "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"/cache/approval-gate/*/state; do
-		[ -f "${state_file}" ] || continue
-		# shellcheck disable=SC2310 # its status is the answer; set -e is not needed inside
-		if is_live_pending "${state_file}"; then
+	if [ -n "${hv_root-}" ]; then
+		for owed_record in "${hv_root}"/*/owed/*.json; do
+			[ -f "${owed_record}" ] || continue
+			# show.sh writes records as compact JSON, so the two fields read as written.
+			grep -q '"kind":"gate"' "${owed_record}" 2>/dev/null || continue
+			grep -q '"status":"owed"' "${owed_record}" 2>/dev/null || continue
+			recent=$(find "${owed_record}" -prune ! -mmin "+${hv_stale_minutes}" 2>/dev/null) || recent=''
+			[ -n "${recent}" ] || continue
 			printf '%s jq is missing and a pending gate exists, so the question is denied; the hooks need jq 1.6+.\n' "${REASON_PREFIX}" >&2
 			trap - EXIT
 			exit 2
-		fi
-	done
+		done
+	fi
 	warn 'jq missing; no pending gate; question allowed'
 	exit 0
 }
 
-# Saves the relayed gate's plan.json as the hand-off when the gate's target
-# file names an effort, or denies the question (deny_record exits) naming the
-# cause and the fix.
+# Saves the shown gate's plan.json as the hand-off when its record names an
+# effort, or denies the question (deny_record exits) naming the cause and the
+# fix.
 save_gate_record() {
 	load_space_lib
-	read_target
+	read_gate_target
 	[ -n "${record_effort}" ] || return 0
 	plan_file="${gate_dir}/plan.json"
 	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] ||
@@ -196,26 +167,16 @@ load_space_lib() {
 	. "${SPACE_LIB}"
 }
 
-# Sets record_label and record_effort from the gate's target file, in the
-# format open-gate.sh --help states, or denies.
-read_target() {
-	target_file="${gate_dir}/target"
+# Sets record_label and record_effort from the gate's owed record, or denies.
+read_gate_target() {
 	open_again='open the gate again through open-gate.sh --label LABEL [--effort FOLDER]'
-	[ -f "${target_file}" ] && [ ! -L "${target_file}" ] ||
-		deny_record "no target file at ${target_file}" "${open_again}"
-	label_line='' effort_line=''
-	{
-		IFS= read -r label_line || true
-		IFS= read -r effort_line || true
-	} <"${target_file}"
-	record_label=${label_line#label }
-	record_effort=${effort_line#effort }
-	if [ "${record_label}" = "${label_line}" ] || [ "${record_effort}" = "${effort_line}" ]; then
-		deny_record "${target_file} is not a label line then an effort line" "${open_again}"
-	fi
+	record_label=$(jq -r '.gate | strings' "${gate_record}" 2>/dev/null) ||
+		deny_record "${gate_record} could not be read" "${open_again}"
+	record_effort=$(jq -r '.effort // "" | strings' "${gate_record}" 2>/dev/null) ||
+		deny_record "${gate_record} could not be read" "${open_again}"
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
 	crucible_is_label "${record_label}" ||
-		deny_record "${target_file} names a bad label (${crucible_label_problem})" "${open_again}"
+		deny_record "${gate_record} names a bad label (${crucible_label_problem})" "${open_again}"
 }
 
 # Sets record_path to the answer hand-off of this question, answers/<tool_use_id>.json
@@ -228,10 +189,10 @@ make_effort_record() {
 	record_path="${answers_dir}/${tool_use_id}.json"
 }
 
-# Removes the gate's own files, and its folder once nothing else is left in
-# it.
+# Removes the gate's record and plan file, and the gate folder once nothing
+# else is left in it.
 clear_gate() {
-	rm -f "${gate_dir}/state" "${gate_dir}/gate.md" "${gate_dir}/target" "${gate_dir}/plan.json"
+	rm -f "${gate_record}" "${gate_dir}/plan.json"
 	rmdir "${gate_dir}" 2>/dev/null || true
 }
 
@@ -246,29 +207,46 @@ deny_record() {
 	exit 0
 }
 
-# Sets gate_dir (absolute, so the paths stderr names are whole) and
-# gate_status from a live gate, or exits 0 when there is none: no state
-# (an idle folder is removed), or a malformed or stale one (removed as
-# remove_gate sets).
+# Sets gate_dir (absolute, so the paths stderr names are whole), and
+# gate_record and gate_status from this session's gate record, an owed one
+# first, both empty when there is none; removes a stale one.
 load_gate() {
 	gate_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/approval-gate/$1"
 	case ${gate_dir} in
 		/*) ;;
 		*) gate_dir="$(pwd)/${gate_dir}" ;;
 	esac
-	[ -f "${gate_dir}/state" ] || drop_idle_folder
-	read -r gate_status tries created _ <"${gate_dir}/state" || true
-	case ${gate_status-} in
-		pending | relayed | shown | failed) ;;
-		*) remove_gate 'malformed state' ;;
-	esac
-	case ${tries-}:${created-} in
-		:* | *: | *[!0-9:]* | *:*:*) remove_gate 'malformed state' ;;
-		*) ;;
-	esac
-	now=$(date +%s)
-	[ $((now - created)) -le "${STALE_SECONDS}" ] || remove_gate 'stale gate'
+	# shellcheck disable=SC2310 # its status says whether the paths are usable; the problem is read below
+	hv_set_paths "$1" || {
+		warn "${hv_path_problem}; question allowed"
+		exit 0
+	}
+	gate_record='' gate_status=''
+	for owed_record in "${hv_owed_dir}"/*.json; do
+		[ -f "${owed_record}" ] && [ ! -L "${owed_record}" ] || continue
+		verdict=$(jq -r -L "${HV_LIB_DIR}" --argjson stale "${hv_stale_seconds}" "${GATE_JQ}" "${owed_record}" 2>/dev/null) || continue
+		case ${verdict} in
+			stale)
+				warn "stale gate removed: ${owed_record}"
+				rm -f "${owed_record}"
+				;;
+			owed)
+				gate_record=${owed_record} gate_status=owed
+				return 0
+				;;
+			shown) gate_record=${owed_record} gate_status=shown ;;
+			*) ;;
+		esac
+	done
 }
+
+if [ -f "${HV_LIB_DIR}/owed.sh" ] && [ -r "${HV_LIB_DIR}/owed.sh" ] && [ -f "${HV_LIB_DIR}/owed.jq" ]; then
+	# shellcheck source=../../../../engine/human-view/scripts/lib/owed.sh
+	. "${HV_LIB_DIR}/owed.sh"
+	hv_set_root
+else
+	hv_root=''
+fi
 
 case ${1-} in
 	--help | -h)
@@ -277,8 +255,11 @@ case ${1-} in
 		;;
 	*) ;;
 esac
-
 command -v jq >/dev/null 2>&1 || handle_jq_missing
+[ -n "${hv_root}" ] || {
+	warn "human-view's store rules missing in ${HV_LIB_DIR}; question allowed; reinstall the human-view skill"
+	exit 0
+}
 hook_input=$(cat)
 # Fields: the caller ("main", or "agent" when agent_id is set), session_id and
 # tool_name, a non-string one as "" so the fields never shift; none holds a
@@ -303,15 +284,16 @@ case ${tool_use_id} in
 	*) ;;
 esac
 load_gate "${session_id}"
-if [ "${gate_status}" != pending ]; then
-	if [ "${gate_status}" = relayed ]; then save_gate_record; fi
+[ -n "${gate_record}" ] || exit 0
+if [ "${gate_status}" = shown ]; then
+	save_gate_record
 	clear_gate
 	exit 0
 fi
 
-# A pending gate is loaded: from here any failure denies the question (exit 2).
+# An owed gate is loaded: from here any failure denies the question (exit 2).
 # An EXIT trap, not set -E with ERR, so it works in dash too.
-trap 'printf "%s internal error in %s with a pending gate, so the question is denied; the question is allowed once the gate is relayed, or %s minutes after it opened.\n" "${REASON_PREFIX}" "${PROG}" "${STALE_MINUTES}" >&2; exit 2' EXIT
+trap 'printf "%s internal error in %s with a pending gate, so the question is denied; the question is allowed once the gate is shown, or %s minutes after it opened.\n" "${REASON_PREFIX}" "${PROG}" "${hv_stale_minutes}" >&2; exit 2' EXIT
 deny=$(jq -cn --arg reason "${DENY_REASON}" \
 	'{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}')
 printf '%s\n' "${deny}"

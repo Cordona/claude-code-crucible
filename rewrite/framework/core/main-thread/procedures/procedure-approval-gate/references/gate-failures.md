@@ -4,11 +4,11 @@ Step numbers are SKILL.md's.
 
 ## Step 3: no hook message, and the turn ended
 
-On the human's next message, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/scripts/dependencies/validate-dependencies.sh"` (its `--help` first, once per session, as for every script). Whatever its exit, send the fixed line below as one message, word for word without its backticks. Send the script's stdout as printed (its pass line, or its view with every Fix or Warnings item) as the next message. Put nothing else in either. Ask nothing, and tell the gate's procedure the plan was not shown. SKILL.md's Never sets when a new gate may open.
+On the human's next message, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/scripts/dependencies/validate-dependencies.sh"` (its `--help` first, once per session, as for every script). Whatever its exit, show the line `relay_not_confirmed`, then the script's stdout as printed, since human-view's Stop hook, which would hold its card owed, may be what failed. Ask nothing, and tell the gate's procedure the plan was not shown. SKILL.md's Never sets when a new gate may open.
 
-`**Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`
+To show a line (each in `views/lines.jq`), run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh" line --views "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/views" --name <line>`. human-view's Stop hook may be what failed here, and so may jq, which `show.sh` needs: when it exits non-zero for `relay_not_confirmed`, show its stderr, then `**Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`, without its backticks; for any other line, show its stderr.
 
-- **`flow-code-agent-dispatch` missing** (the script exits 127): in place of the script's stdout, send the line `The gate's hooks could not be checked: flow-code-agent-dispatch is not installed.`, word for word without its backticks, and stop as this section sets.
+- **`flow-code-agent-dispatch` missing** (the script exits 127): in place of the script's stdout, show the line `hooks_not_checked`, and stop as this section sets.
 
 ## Step 4: a blocked AskUserQuestion
 
@@ -18,6 +18,6 @@ On the human's next message, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 
 ## Gotchas
 
-- **The hooks guarantee nothing when they don't run:** a Stop hook timeout or fault lets the turn end with no message (step 3), and a question hook timeout lets the question through. The relay itself is what shows the plan, so always relay.
+- **The hooks guarantee nothing when they don't run:** a Stop hook timeout or fault lets the turn end with no message (step 3), and a question hook timeout lets the question through.
 - **A question blocked with jq missing:** install jq, then open the gate again.
-- **To turn the gate off,** the human removes all four gate entries from `settings.json` (the Stop entry running `gate-stop-hook.sh`, the `PreToolUse` › `AskUserQuestion` entry running `gate-question-hook.sh`, and the `PostToolUse` › `AskUserQuestion` and `UserPromptSubmit` entries running `gate-answer-hook.sh`), then runs `/hooks` or restarts. `flow-code-agent-dispatch`'s install check then fails until they are back; its Fix items print the exact entries.
+- **To turn the gate off,** the human removes the three gate entries from `settings.json` (the `PreToolUse` › `AskUserQuestion` entry running `gate-question-hook.sh`, and the `PostToolUse` › `AskUserQuestion` and `UserPromptSubmit` entries running `gate-answer-hook.sh`), then runs `/hooks` or restarts. human-view's card Stop entry, running `show-stop-hook.sh`, stays: every card needs it. `flow-code-agent-dispatch`'s install check then fails until they are back; its Fix items print the exact entries.
