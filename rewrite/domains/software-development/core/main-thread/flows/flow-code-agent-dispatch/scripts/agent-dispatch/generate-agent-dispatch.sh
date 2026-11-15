@@ -10,7 +10,8 @@
 # reads it. The plan is checked again by dispatch-plan-validator.jq; its
 # fingerprint against procedure-context's context.sh freeze --dry-run; its
 # plugins are resolved to files by plugin-files.sh, and the agent's title is
-# built by human-view's title; and the dispatch is checked by
+# built by views/common.jq's agent_title, as the plan's gate shows it; and the
+# dispatch is checked by
 # agent-dispatch-validator.jq, after crucible's prune leaves out each key with
 # nothing in it. Only once every check passes and the effort is open does
 # context.sh freeze --expect cut the version, or return the one already cut;
@@ -39,6 +40,8 @@ readonly DISPATCH_EVENT='dispatch.made'
 readonly APPROVAL_MAX_AGE_SECONDS=604800
 readonly NAMES_MODULE='dispatch-names'
 readonly VIEW_LIB='human-view'
+# The skill's shared template defs, where the agent's title is built.
+readonly COMMON_TEMPLATE='common'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
 readonly WORKTREE_SKILL='procedure-git-worktree'
@@ -123,24 +126,22 @@ def report: $validator_problem_lines | split("\n")[] | select(. != "") | fromjso
 if $mode_of_run == "report" then report else dispatch end
 '
 
-# Prints the TITLE line from the plan file and the installed plugins: a
-# code-reviewer standard seat (a standard and no language) is "<standard label>
-# <role>"; any other seat is human-view's title of the language label and the
-# framework labels in plugin-name order. Labels' control characters print as
-# "?", as on the LABELS line.
+# Prints the TITLE line from the plan file and the installed plugins:
+# views/common.jq's agent_title of the language label, the framework labels in
+# plugin-name order and, for a code-reviewer standard seat (a standard and no
+# language), the standard's label as its lens. Labels' control characters
+# print as "?", as on the LABELS line.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly TITLE_JQ='
-include "title";
+include "common";
 def plugin_label: $installed[.plugin].label | gsub("[[:cntrl:]]"; "?");
 (.plugins.load // {}) as $load
 | ($load.standards // []) as $standards
-| if $role == "reviewer" and $load.language == null and $standards != [] then "\($standards[0] | plugin_label) \($role)"
-  else {language: ($load.language // null | if . == null then null else plugin_label end),
-		frameworks: [$load.frameworks // [] | sort_by(.plugin)[] | plugin_label]}
-	| title($role)
-  end
-| "TITLE: \(.)"
+| {language: ($load.language // null | if . == null then null else plugin_label end),
+	frameworks: [$load.frameworks // [] | sort_by(.plugin)[] | plugin_label],
+	lens: (if $role == "reviewer" and $standards != [] then $standards[0] | plugin_label else null end)}
+| "TITLE: \(agent_title($role))"
 '
 
 # Pairs the plan validator's text lines ($lines) with its JSON problems
@@ -257,7 +258,8 @@ Dependencies:
     ${CONTEXT_PROCEDURE} (context.sh, agent-context-file-checks.sh),
     ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh)
     and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
-  this skill's dispatch-plan/ and agent-dispatch/ scripts
+  this skill's dispatch-plan/ and agent-dispatch/ scripts and
+    views/${COMMON_TEMPLATE}.jq
 EOF
 }
 
@@ -376,9 +378,9 @@ trim_trailing_slashes() {
 }
 
 # Exits 5 unless jq, a sha256 tool, crucible.sh, events.sh, context.sh,
-# list-plugins.sh, crucible's prune module, human-view's title module,
-# seats.sh and every shared check and helper are in place; sources the two
-# shell helpers.
+# list-plugins.sh, crucible's prune module, human-view's title module, this
+# skill's views/common.jq, seats.sh and every shared check and helper are in
+# place; sources the two shell helpers.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		die 5 'jq missing; expected jq 1.6+ on PATH; install it (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -401,8 +403,10 @@ load_dependencies() {
 	plugin_lib="${dispatch_dir}/plugin-files.sh"
 	dispatch_validator="${dispatch_dir}/agent-dispatch-validator.jq"
 	names_module="${dispatch_dir}/${NAMES_MODULE}.jq"
+	views_dir="${dispatch_dir}/../../views"
 	for shared_file in "${plan_validator}" "${installed_program}" \
-		"${plugin_lib}" "${dispatch_validator}" "${names_module}"; do
+		"${plugin_lib}" "${dispatch_validator}" "${names_module}" \
+		"${views_dir}/${COMMON_TEMPLATE}.jq"; do
 		[ -f "${shared_file}" ] && [ -r "${shared_file}" ] ||
 			die 5 "shared check or helper missing; expected ${shared_file}; reinstall the ${PROCEDURE} skill"
 	done
@@ -778,8 +782,8 @@ EOF
 	# shellcheck disable=SC2310 # its status is awk's; a failure exits
 	labels_line=$(select_plugin_lines labels "${PROG}" "${listing}" "$@") ||
 		die 5 'awk failed building the LABELS line; expected a POSIX awk; check the awk on PATH'
-	title_line=$(jq -r -L "${view_lib_dir}" --argjson installed "${installed}" --arg role "${role}" "${TITLE_JQ}" "${plan_body_file}") ||
-		die 5 'jq failed building the TITLE line; expected jq 1.6+ and human-view'\''s title.jq; try jq --version, then rerun'
+	title_line=$(jq -r -L "${view_lib_dir}" -L "${views_dir}" --argjson installed "${installed}" --arg role "${role}" "${TITLE_JQ}" "${plan_body_file}") ||
+		die 5 'jq failed building the TITLE line; expected jq 1.6+, human-view'\''s title.jq and views/common.jq; try jq --version, then rerun'
 }
 
 # Sets space_root by the space rules and space_ok=true, or adds the

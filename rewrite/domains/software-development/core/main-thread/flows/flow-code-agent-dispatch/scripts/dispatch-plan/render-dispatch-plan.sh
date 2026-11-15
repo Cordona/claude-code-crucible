@@ -1,18 +1,24 @@
 #!/usr/bin/env sh
 # Renders one dispatch plan, or its approval question, from its JSON file, so
-# the main thread never hand-formats either. This script owns the wording; the
-# layout is human-view's view.jq. The Data section ends with what the dispatch
-# would cut, as procedure-context's context.sh latest reads the effort of the
-# plan.made event --data Plan= names.
+# the main thread never hand-formats either. views/dispatch-plan.jq lays the
+# plan out and human-view's show.sh renders it; this script passes it the
+# plan, the installed plugins and the Data pairs, which end with what the
+# dispatch would cut, as procedure-context's context.sh latest reads the
+# effort of the plan.made event --data Plan= names.
 # A dispatch plan's rules are
 # dispatch-plan-validator.jq's, checked when generate-dispatch-plan.sh writes
 # the plan; this script only refuses a plan it can't render. Pipe its stdout
 # into procedure-approval-gate's open-gate.sh.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='render-dispatch-plan.sh'
 readonly PROCEDURE='flow-code-agent-dispatch'
 readonly RENDER_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly CARD_PRINTER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='dispatch-plan'
+readonly COMMON_TEMPLATE='common'
 readonly CONTEXT_PROCEDURE='procedure-context'
 # context.sh latest's exits: a version and nothing new, nothing yet, and new
 # material waiting for the next cut.
@@ -26,7 +32,6 @@ readonly PENDING_FILE='drafts/main-thread/context/entries.json'
 # on purpose: their $ signs are jq's.
 # shellcheck disable=SC2016
 readonly COMMON_JQ='
-def clean: gsub("[[:cntrl:]]+"; " ") | sub("^ +"; "") | sub(" +$"; "");
 def option($label; $description): {label: $label, description: $description};
 def checked_object(problems):
 	if length != 1 then "expected exactly one JSON object, got \(length) values"
@@ -34,22 +39,13 @@ def checked_object(problems):
 	else .[0] | problems end;
 '
 
-# A printed plan starts with human-view's layout and title modules: jq takes an
-# include only at the start of the program, before the common definitions and these.
-readonly VIEW_INCLUDE='include "view"; include "title";'
+# The plan's data for views/dispatch-plan.jq: the plan, the installed plugins
+# and the Data pairs, the --data KIND=PATH lines in the order given, then what
+# the dispatch would cut.
 # shellcheck disable=SC2016
-readonly PRINTED_JQ='
-# A task keeps its own lines (a numbered list in it stays as written); any
-# other control character prints as a space.
-def task_text: gsub("\r"; "") | split("\n") | map(gsub("[[:cntrl:]]+"; " ") | sub(" +$"; "")) | join("\n")
-	| sub("\\A\n+"; "") | sub("\n+\\z"; "");
-# The later lines of a numbered item are indented under it; a blank line stays empty.
-def list_item_lines: split("\n") | .[:1] + (.[1:] | map(if . == "" then . else "   " + . end)) | join("\n");
-def task_section: section("Task"; "Tasks"; .tasks | map(task_text | list_item_lines));
-# KIND=PATH lines, in order, as Data pairs.
-def pairs_of($lines): [$lines | split("\n")[] | select(. != "") | index("=") as $at | [.[:$at], (.[($at + 1):] | clean)]];
-# The --data pairs in the order given, then what the dispatch would cut.
-def data_pairs: pairs_of($data_lines) + pairs_of($context_lines);
+readonly VIEW_DATA_JQ='
+def pairs_of($lines): [$lines | split("\n")[] | select(. != "") | index("=") as $at | [.[:$at], .[($at + 1):]]];
+{plan: .[0], installed: $installed, data: (pairs_of($data_lines) + pairs_of($context_lines))}
 '
 
 # Prints one line per field a printed plan (want "plan") or its question
@@ -79,55 +75,6 @@ def plan_fields:
 	field_problem("context"; (.context | type) == "object" and (.context.sha256 | type) == "string";
 		"an object {\"sha256\": str}");
 checked_object(if $want == "question" then question_fields else plan_fields end)
-'
-
-# The slim plan, plugins by label (a plugin list-plugins.sh no longer prints
-# shows its name), every reason staying in the plan JSON. A code-developer plan:
-# the Developer title from its valid language and frameworks, then Load and Skip with
-# its standards, then procedures, in plan order. A code-reviewer plan holds one
-# lens and shows only the Reviewer line: the reviewer title for a language
-# seat, the standard's label for a standard seat. A replan "invalid" plan shows
-# only the plugins it names as invalid, and no question.
-# shellcheck disable=SC2016
-readonly RENDER_JQ='
-def plugin_label: $installed[.plugin].label // .plugin | clean;
-def kind_labels($group): (($group.standards // []) + ($group.procedures // [])) | map(plugin_label);
-def installed_only: .plugin as $name | select($installed | has($name));
-# A plugin installed and not named invalid by the plan.
-def valid_only: installed_only | select(.reason != "invalid");
-# The title input, from the valid plugins only (an invalid one shows only
-# under Invalid): the language label and the framework labels in plugin-name order.
-def seat_labels: {language: (first(.language // empty | valid_only | plugin_label) // null),
-	frameworks: [.frameworks // [] | sort_by(.plugin)[] | valid_only | plugin_label]};
-def role_section:
-	(.plugins.load // {}) as $load
-	| [$load.standards // [] | .[] | installed_only | plugin_label] as $lenses
-	| if .agent == "code-reviewer" then
-		section("Reviewer"; if $load.language == null and $lenses != [] then $lenses
-			else [$load | seat_labels | title("reviewer")] end)
-	  else section("Developer"; [$load | seat_labels | title("developer")]) end;
-def invalid_labels:
-	[(.plugins.load.language // empty), (.plugins.load.frameworks // [])[], (.plugins.skip.standards // [])[], (.plugins.skip.procedures // [])[]
-	 | select(.reason == "invalid") | plugin_label];
-.[0]
-| if .replan == "invalid" then
-	[status_line("blocked"; "Blocked · this plan names an invalid plugin: fix it, then rerun"),
-	 role_section,
-	 task_section,
-	 section("Invalid"; invalid_labels)]
-  elif .agent == "code-reviewer" then
-	[status_line("decision"; "Decision needed · approve this dispatch?"),
-	 role_section,
-	 task_section]
-  else
-	[status_line("decision"; "Decision needed · approve this dispatch?"),
-	 role_section,
-	 task_section,
-	 section("Load"; kind_labels(.plugins.load // {})),
-	 section("Skip"; kind_labels(.plugins.skip // {}))]
-  end
-| . + [data_section(data_pairs)]
-| blocks
 '
 
 # Prints the AskUserQuestion fields for the plan, or nothing for replan
@@ -176,15 +123,15 @@ Options:
                       asked one after another, 1 or more
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout, a plan: its Markdown, without the gate marker; its Data section
+stdout, a plan: its Markdown from views/${VIEW_NAME}.jq, rendered by
+  ${RENDER_LIB}'s show.sh render, without the gate marker; its Data section
   ends with what the dispatch would cut, by context.sh latest --effort of
   the effort of the plan.made event --data Plan= names (required:
   <effort>/events/<seq>-plan.made.json): "Docs folder" (DOCS_FOLDER) and,
   when the file exists, "Pending entries" (<effort>/${PENDING_FILE})
   for new material, or "Context" (CONTEXT_FILE) when nothing is new;
-  a plan whose replan is "invalid" prints as blocked: the Developer or
-    Reviewer line from the installed plugins not named invalid, Task,
-    Invalid (the plugins named with reason "invalid"), Data
+  a plan whose replan is "invalid" prints as blocked, showing the plugins
+    named with reason "invalid"; it has no question
 stdout, --question: one JSON object {"header": str, "question": str,
   "options": [{"label": str, "description": str}, ...]}; nothing for a
   dispatch plan whose replan is "invalid"
@@ -204,15 +151,17 @@ Exit codes:
      included; show stderr and stop
   3  a tool failed (its stderr is above)
   4  list-plugins.sh missing from the --skills-dir; install
-     ${PROCEDURE} there
+     ${PROCEDURE} there; or stdout closed before the plan was printed
   5  a shared file missing; install the skill stderr names
+  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
   6  list-plugins.sh or context.sh failed (its stderr and exit are printed)
 
 Dependencies (skills in the --skills-dir):
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's jq)
-  to print a plan: the ${RENDER_LIB} skill's view.jq and title.jq, the
-    ${CONTEXT_PROCEDURE} skill's context.sh (it reads CRUCIBLE_HOME), and
-    this skill's list-plugins.sh and installed-plugins.jq
+  to print a plan: the ${RENDER_LIB} skill's ${SHOW} and ${CARD_PRINTER_LIB},
+    the ${CONTEXT_PROCEDURE} skill's context.sh (it reads CRUCIBLE_HOME), and
+    this skill's list-plugins.sh, installed-plugins.jq and
+    views/${VIEW_NAME}.jq and views/${COMMON_TEMPLATE}.jq
 EOF
 }
 
@@ -311,13 +260,24 @@ read_input() {
 	exit 2
 }
 
-# Exits 5 when human-view's layout or title module, which a printed plan
-# includes, is not a readable file in the skills folder.
-check_render_lib() {
-	for view_module in "${render_lib_dir}/view.jq" "${render_lib_dir}/title.jq"; do
-		[ -f "${view_module}" ] && [ -r "${view_module}" ] ||
-			install_fault 5 "human-view module missing; expected ${view_module}; install the ${RENDER_LIB} skill in ${skills_dir}"
-	done
+# Sets views_dir and show_script and sources human-view's card printer lib,
+# which checks that show.sh and the plan's templates are in place; exits 5
+# when one of them is missing.
+load_card_printer() {
+	case $0 in
+		*/*) own_dir=${0%/*} ;;
+		*) own_dir='.' ;;
+	esac
+	views_dir="${own_dir}/../../views"
+	card_printer="${skills_dir}/${RENDER_LIB}/${CARD_PRINTER_LIB}"
+	[ -f "${card_printer}" ] && [ -r "${card_printer}" ] ||
+		install_fault 5 "card printer lib missing; expected ${card_printer}; install the ${RENDER_LIB} skill in ${skills_dir}"
+	# shellcheck source=../../../../../../../../framework/core/engine/human-view/scripts/lib/render.sh
+	. "${card_printer}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${RENDER_LIB}/scripts" "${views_dir}" "${VIEW_NAME}" "${COMMON_TEMPLATE}" ||
+		install_fault 5 "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
 # Sets installed to the installed plugins, installed-plugins.jq's map of
@@ -406,10 +366,9 @@ EOF
 	install_fault 6 "context.sh latest printed no $1 line; expected one on exit ${latest_status}; reinstall ${CONTEXT_PROCEDURE}"
 }
 
-# Runs jq program $1 over the slurped input, with human-view on jq's module
-# path; a jq failure exits 3.
+# Runs jq program $1 over the slurped input; a jq failure exits 3.
 run_jq() {
-	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --arg want "${want}" \
+	printf '%s' "${slurped}" | jq -rc --arg want "${want}" \
 		--argjson installed "${installed}" --argjson plans "${plans:-1}" \
 		--arg data_lines "${data_lines}" --arg context_lines "${context_lines}" \
 		"$1" || {
@@ -423,16 +382,14 @@ command -v jq >/dev/null 2>&1 ||
 
 # One slurped value so an empty file and several values are caught as one problem.
 slurped=$(read_input)
-render_lib_dir="${skills_dir}/${RENDER_LIB}"
 want=plan
 [ "${want_question}" -eq 0 ] || want=question
 installed='{}' context_lines=''
 if [ "${want}" = plan ]; then
-	check_render_lib
+	load_card_printer
 	read_installed
 fi
 check_program=${COMMON_JQ}${RENDERABLE_JQ}
-render_program=${VIEW_INCLUDE}${COMMON_JQ}${PRINTED_JQ}${RENDER_JQ}
 question_program=${COMMON_JQ}${QUESTION_JQ}
 problems=$(run_jq "${check_program}")
 if [ -n "${problems}" ]; then
@@ -442,6 +399,10 @@ fi
 [ "${want}" != plan ] || read_context_lines
 if [ "${want_question}" -eq 1 ]; then
 	run_jq "${question_program}"
-else
-	run_jq "${render_program}"
+	exit 0
 fi
+view_data=$(run_jq "${VIEW_DATA_JQ}")
+# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+hv_render_gate "${show_script}" "${views_dir}" "${VIEW_NAME}" "${view_data}" && exit 0
+[ "${hv_render_status}" != 5 ] || install_fault 5 "${hv_render_problem}; expected the ${RENDER_LIB} skill installed whole"
+install_fault 3 "${hv_render_problem}; expected the plan rendered from views/${VIEW_NAME}.jq; try reinstalling ${PROCEDURE} and ${RENDER_LIB}"

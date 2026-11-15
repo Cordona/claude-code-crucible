@@ -2,33 +2,40 @@
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
 # procedure-git-worktree's seats.sh, iteration.sh, seat-move.sh, worktree-move.sh,
-# catch-up.sh and its seat bind, report commit and
+# catch-up.sh, its card helper and its seat bind, report commit and
 # block relay hook scripts, the crucible skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module, the crucible skill's prune
 # module, which the plan and dispatch scripts and the inject hook load,
-# human-view's view module, which every view of the flow loads, and its title module, which the dispatch script loads,
+# human-view's view, title, line and gate modules, which the cards and the
+# dispatch script load, human-view's show.sh, its card printer helper, its
+# Stop hook and their store rules, the card templates of this skill,
+# procedure-approval-gate, procedure-context and procedure-git-worktree,
 # procedure-approval-gate's
-# open-gate.sh and its three hook scripts, crucible.sh and its events guard
+# open-gate.sh and its two hook scripts, crucible.sh and its events guard
 # hook, jq, the run-time tools
 # date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the nine hook
 # entries in settings.json (the inject hook and the crucible skill's events
-# guard hook, which must block on failure, the four gate hook entries, and
+# guard hook, which must block on failure, human-view's Stop hook entry, the
+# three gate hook entries, and
 # procedure-git-worktree's seat bind, report commit and async block relay
 # hooks), the Crucible space in its additionalDirectories, its Edit allow
 # rule and its events Edit deny rule, and the installed plugins. Every check
-# runs, whatever an earlier one found, so one run names every fix; the lines
-# are kept and printed at the end, as a pass line, a view or the full
-# checklist. It reads
+# runs, whatever an earlier one found, so one run names every fix; the
+# result is printed at the end as one card, views/install-check.jq, through
+# human-view's show.sh, which needs jq: with jq missing, a plain list of the
+# Fix items is printed instead. It reads
 # settings.json only through jq, and only those hook commands,
 # permissions.additionalDirectories, permissions.allow and permissions.deny,
 # which it counts or
 # hashes and never prints: the file may hold secrets in its env block.
 # A full pass is cached: the marker keeps a fingerprint of everything the checks
 # depend on, and while that fingerprint is unchanged the checks are skipped.
-# The marker is the only file it leaves (its temp file is removed on exit);
+# The marker is the only file it leaves (its temp file is removed on exit),
+# show.sh's owed record aside;
 # it holds no settings content.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='validate-dependencies.sh'
@@ -60,16 +67,30 @@ readonly TEMPLATE_FILE='references/agent-context-rules.md'
 # More symlink hops than any install chain needs; a longer chain is a loop.
 readonly MAX_LINK_HOPS=40
 readonly RENDER_LIB='human-view'
-readonly VIEW_NAME='view'
-readonly VIEW_MODULE="${RENDER_LIB}/${VIEW_NAME}.jq"
+readonly VIEW_MODULE="${RENDER_LIB}/view.jq"
 readonly TITLE_MODULE="${RENDER_LIB}/title.jq"
-readonly GATE_STOP_SCRIPT="${GATE_PROCEDURE}/scripts/gate-stop-hook.sh"
+readonly LINE_MODULE="${RENDER_LIB}/line.jq"
+readonly GATE_MODULE="${RENDER_LIB}/gate.jq"
+readonly SHOW_SCRIPTS="${RENDER_LIB}/scripts"
+readonly SHOW_STOP_SCRIPT="${SHOW_SCRIPTS}/show-stop-hook.sh"
+# Relative to DIR/human-view/scripts/.
+readonly OWED_SH_LIB='lib/owed.sh'
+readonly OWED_JQ_LIB='lib/owed.jq'
+readonly CARD_PRINTER_LIB='lib/render.sh'
+# The result's card, and the lines --line may add after it, in views/ of
+# this skill.
+readonly CARD_NAME='install-check'
+readonly LINE_TEMPLATE='lines'
+readonly LINE_NAMES='ask_tool_missing confirm_hooks_loaded'
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly GATE_ANSWER_SCRIPT="${GATE_PROCEDURE}/scripts/gate-answer-hook.sh"
 readonly WORKTREE_PROCEDURE='procedure-git-worktree'
 readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
 readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
 readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
+# Relative to DIR/procedure-git-worktree/scripts/: what seat-move.sh and
+# catch-up.sh print their cards through.
+readonly WORKTREE_CARDS_LIB='cards/cards-lib.sh'
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 readonly EVENTS_SCRIPT='events.sh'
@@ -86,8 +107,9 @@ readonly HOOK_TIMEOUT=30
 # dispatch with its prompt untouched, the Bash command unchecked).
 readonly HOOK_ON_FAILURE='block'
 
-# The gate hooks read or write one small state file or event, and a timed-out
-# one lets the stop, question or answer through, so a stuck one is cut short.
+# The gate hooks and the card Stop hook read or write a few small records or
+# one event, and a timed-out one lets the stop, question or answer through, so
+# a stuck one is cut short.
 readonly GATE_HOOK_TIMEOUT=10
 # The seat bind hook runs one seats.sh change; the report commit hook checks a
 # report and commits the worktree, so its bound is wider.
@@ -190,33 +212,27 @@ export LC_ALL
 NL='
 '
 readonly NL
-# Separates the view items handed to jq; no check text holds it.
+# Separates the card's items handed to jq; no check text holds it.
 ITEM_SEPARATOR=$(printf '\036')
 readonly ITEM_SEPARATOR
-# Builds the view of a full run from $fixes and $warnings, items separated
-# by U+001E, and the counts $failed and $total.
+# Builds views/install-check.jq's data from the counts $failed and $total,
+# the items $fixes, $warnings and $passed (separated by U+001E; $passed only
+# when $verbose is 1), the cached pass time $since and the cache note $note
+# ("" for none).
 # shellcheck disable=SC2016 # the $ names are jq's
-readonly RESULT_VIEW_JQ='
-def items: split("\u001e") | map(select(length > 0) | gsub("[\u0000-\u001f\u007f]"; "?") | (.[:1] | ascii_upcase) + .[1:]);
-($fixes | items) as $fix_items
-| ($warnings | items) as $warning_items
-| if ($failed | tonumber) > 0 then
-	[status_line("blocked"; "Blocked · install check: \($failed) of \($total) checks failed"),
-		section("Fix"; $fix_items)]
-  elif ($warning_items | length) > 0 then
-	[status_line("attention"; "Install check passed with \($warning_items | length) warning" + (if ($warning_items | length) == 1 then "" else "s" end)),
-		section("Warning"; "Warnings"; $warning_items)]
-  else [status_line("done"; "Install check passed"; "\($total) checks")]
-  end
-| blocks'
-# Builds the pass line of a cached run from its pass time $since.
-# shellcheck disable=SC2016 # the $ names are jq's
-readonly CACHED_VIEW_JQ='status_line("done"; "Install check passed"; "unchanged since \($since)")'
+readonly CARD_DATA_JQ='
+def items: split("\u001e") | map(select(length > 0));
+def or_null: if . == "" then null else . end;
+{failed: ($failed | tonumber), total: ($total | tonumber),
+ fixes: ($fixes | items), warnings: ($warnings | items),
+ passed: (if $verbose == "1" then $passed | items else null end),
+ since: ($since | or_null), not_cached: ($note | or_null)}'
 
 usage() {
 	cat <<EOF
 usage: sh ${PROG} [--skills-dir DIR] [--settings FILE]
                                    [--cache-dir CACHE] [--force] [--verbose]
+                                   [--line NAME]...
        sh ${PROG} --help | -h
 
 Checks the skills, tools, settings.json entries and plugins
@@ -230,21 +246,22 @@ Options:
   --cache-dir CACHE  the cache folder; default
                      \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/cache/code-agent-dispatch
   --force            runs every check even when the cached pass holds
-  --verbose          prints the full checklist: a header line, one line per
-                     check (✓, ✗ <item>: <reason>. Fix: <action>, or
-                     ⚠ <item>: <reason>), then a summary line
+  --verbose          the card also lists every passed check (Passed)
+  --line NAME        prints the line NAME of views/${LINE_TEMPLATE}.jq after
+                     the card; repeatable; one of:
+                     ask_tool_missing      AskUserQuestion is not in the
+                                           main thread's tools
+                     confirm_hooks_loaded  the human added or changed a hook
+                                           entry
 
-stdout, to relay as printed; one of:
-  **Install check passed** · <n> checks
-                     a pass with no ⚠
-  **Install check passed** · unchanged since <YYYY-MM-DD HH:MM>
-                     a cached pass
-  a view             any ✗: blocked, one Fix item per ✗ or ⚠ line;
-                     only ⚠: passed, one Warnings item per ⚠ line
-  without jq or ${VIEW_MODULE}: the --verbose output instead, a pass
-                     without its header and check lines
-  then "(result not cached: <reason>)" as the last line when a pass
-                     can't be cached; never a failure
+stdout: the card views/${CARD_NAME}.jq, printed by ${RENDER_LIB}'s show.sh
+  and recorded as owed this session; then each --line line, the same way.
+  The card's cases: passed, with the count of checks (no ⚠); a cached
+  pass, with its time; blocked (any ✗), one Fix item per ✗ or ⚠ check;
+  passed with warnings (only ⚠), one Warnings item per ⚠ check; and, when
+  a pass can't be cached, a not-cached note with its reason, never a
+  failure. Without jq, which show.sh needs: a plain list of the Fix items
+  instead, and no line.
 
 Cache: after a pass with no ⚠, leaves only CACHE/${MARKER_NAME} and
   reuses it until anything the checks read changes; a ✗ or ⚠ removes it.
@@ -256,13 +273,24 @@ Exit codes:
   0  every check passed (a ⚠ included), or the cached pass holds; go on
   1  a check failed; stop: each Fix item names its fix
   2  usage error; reinstall ${PROCEDURE} and stop
+  4  stdout closed before the card was printed; stop
+  5  the card could not be printed: show.sh, ${CARD_PRINTER_LIB} or a template
+     missing or failing; show the human stderr, which names what to install
   129, 130, 143  stopped by HUP, INT or TERM; tell the human it was stopped,
                  show the exit code, and stop
+
+Environment:
+  CLAUDE_CODE_SESSION_ID  set by the Bash tool; unset: the card is printed,
+                 nothing is recorded
+  CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
 
 Dependencies:
   POSIX sh; cat, grep, readlink, tr
   cksum, date, find, mkdir, mktemp, mv, rm, sort for the cache (a missing one
     leaves the result not cached)
+  to print the card: jq ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}+, ${RENDER_LIB}'s scripts/show.sh and
+    scripts/${CARD_PRINTER_LIB} in the --skills-dir, and this skill's
+    views/${CARD_NAME}.jq and views/${LINE_TEMPLATE}.jq
   jq ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}+, date, git, cmp, awk, sort, mktemp, mv, rm, wc, sha256sum or
     shasum: checked, not required; each has its own check line
 EOF
@@ -275,7 +303,7 @@ usage_error() {
 }
 
 # Sets skills_dir, settings_file and cache_dir (each absolute, so every Fix
-# item names a whole path), force and verbose from the arguments.
+# item names a whole path), force, verbose and line_names from the arguments.
 parse_args() {
 	config_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 	skills_dir="${config_dir}/skills"
@@ -283,6 +311,7 @@ parse_args() {
 	cache_dir="${config_dir}/cache/code-agent-dispatch"
 	force=0
 	verbose=0
+	line_names=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
@@ -297,6 +326,11 @@ parse_args() {
 				verbose=1
 				shift
 				;;
+			--line)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "--line needs a value; expected --line NAME, one of: ${LINE_NAMES}"
+				add_line_name "$2"
+				shift 2
+				;;
 			--skills-dir | --settings | --cache-dir)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 PATH"
 				case $1 in
@@ -306,7 +340,7 @@ parse_args() {
 				esac
 				shift 2
 				;;
-			*) usage_error "unknown argument: $1; expected --skills-dir, --settings, --cache-dir, --force, --verbose or --help" ;;
+			*) usage_error "unknown argument: $1; expected --skills-dir, --settings, --cache-dir, --force, --verbose, --line or --help" ;;
 		esac
 	done
 	skills_dir=$(absolute_path "${skills_dir}")
@@ -319,6 +353,18 @@ parse_args() {
 	crucible_scripts_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts"
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
+}
+
+# Adds line name $1 to line_names, once, or exits 2 unless it is one of LINE_NAMES.
+add_line_name() {
+	case " ${LINE_NAMES} " in
+		*" $1 "*) ;;
+		*) usage_error "unknown --line name: $1; expected one of: ${LINE_NAMES}" ;;
+	esac
+	case " ${line_names} " in
+		*" $1 "*) ;;
+		*) line_names="${line_names}${line_names:+ }$1" ;;
+	esac
 }
 
 # Prints path $1, a relative one taken from the current folder.
@@ -369,8 +415,13 @@ fingerprint_input() {
 		"${context_scripts_dir}/${CONTEXT_VERSIONS_LIB}" "${context_procedure_dir}/${TEMPLATE_FILE}" \
 		"${skills_dir}/${VIEW_MODULE}" \
 		"${skills_dir}/${TITLE_MODULE}" \
+		"${skills_dir}/${LINE_MODULE}" "${skills_dir}/${GATE_MODULE}" \
 		"${gate_scripts_dir}/open-gate.sh" \
-		"${gate_scripts_dir}/gate-stop-hook.sh" "${gate_scripts_dir}/gate-question-hook.sh" \
+		"${skills_dir}/${SHOW_SCRIPTS}/show.sh" "${skills_dir}/${SHOW_STOP_SCRIPT}" \
+		"${skills_dir}/${SHOW_SCRIPTS}/${OWED_SH_LIB}" "${skills_dir}/${SHOW_SCRIPTS}/${OWED_JQ_LIB}" \
+		"${skills_dir}/${SHOW_SCRIPTS}/${CARD_PRINTER_LIB}" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/${WORKTREE_CARDS_LIB}" \
+		"${gate_scripts_dir}/gate-question-hook.sh" \
 		"${gate_scripts_dir}/gate-answer-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
@@ -384,8 +435,10 @@ fingerprint_input() {
 		"${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
 		"${crucible_scripts_dir}/${PRUNE_MODULE}" 2>/dev/null ||
 		printf 'scripts unreadable\n'
+	printf 'templates\n'
+	each_view_template fingerprint_templates
 	fingerprint_hook PreToolUse Agent "${HOOK_SCRIPT}"
-	fingerprint_hook Stop '' "${GATE_STOP_SCRIPT}"
+	fingerprint_hook Stop '' "${SHOW_STOP_SCRIPT}"
 	fingerprint_hook PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}"
 	fingerprint_hook PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}"
 	fingerprint_hook UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}"
@@ -408,6 +461,28 @@ fingerprint_input() {
 	done
 	printf 'plugins\n'
 	fingerprint_plugins
+}
+
+# Calls $1 once per skill with that skill, then the templates (views/<name>.jq)
+# its checked scripts print their cards and lines through: the one list both
+# the template checks and the fingerprint are built from.
+each_view_template() {
+	"$1" "${PROCEDURE}" "${CARD_NAME}" dispatch-plan common denial "${LINE_TEMPLATE}"
+	"$1" "${GATE_PROCEDURE}" gate lines
+	"$1" "${CONTEXT_PROCEDURE}" lines
+	"$1" "${WORKTREE_PROCEDURE}" seat-moved caught-up conflict common lines
+}
+
+# Prints one cksum line per template $2... of skill $1, or a fixed line for
+# each one that can't be read.
+# shellcheck disable=SC2329 # called by name through each_view_template
+fingerprint_templates() {
+	template_skill=$1
+	shift
+	for template in "$@"; do
+		cksum "${skills_dir}/${template_skill}/views/${template}.jq" 2>/dev/null ||
+			printf '%s views/%s.jq unreadable\n' "${template_skill}" "${template}"
+	done
 }
 
 # Prints the hook commands and their onFailure for event $1, matcher $2 (""
@@ -464,19 +539,14 @@ EOF
 	esac
 }
 
-# Adds line $1 to the full checklist.
-add_line() {
-	checklist="${checklist}$1${NL}"
-}
-
+# Records passed check $1 as a Passed item, and counts it.
 pass() {
-	add_line "✓ $1"
+	passed_items="${passed_items}${ITEM_SEPARATOR}$1"
 	passed_count=$((passed_count + 1))
 }
 
-# Records a failed line for item $1, reason $2 and fix $3 as a Fix item, and counts it.
+# Records failed check $1, reason $2 and fix $3 as a Fix item, and counts it.
 fail() {
-	add_line "✗ $1: $2. Fix: $3"
 	add_fix_item "$1: $2. Fix: $3"
 	failed_count=$((failed_count + 1))
 }
@@ -485,19 +555,8 @@ add_fix_item() {
 	fix_items="${fix_items}${ITEM_SEPARATOR}$1"
 }
 
-# Fails a hook entry check for script $1 like fail with $2..$4, and counts a
-# failed inject hook check for the summary line.
-# shellcheck disable=SC2329 # called from check_hook_entry, which each_hook calls by name
-fail_hook() {
-	hook_script=$1
-	shift
-	fail "$@"
-	[ "${hook_script}" != "${HOOK_SCRIPT}" ] || inject_failed_count=$((inject_failed_count + 1))
-}
-
-# Records a warning line for item $1 and reason $2 as a Fix and a Warnings item, and counts it.
+# Records warned check $1 and reason $2 as a Fix and a Warnings item, and counts it.
 warn() {
-	add_line "⚠ $1: $2"
 	add_fix_item "$1: $2"
 	warning_items="${warning_items}${ITEM_SEPARATOR}$1: $2"
 	warning_count=$((warning_count + 1))
@@ -557,6 +616,21 @@ check_lib_file() {
 	else
 		fail "$1" "missing or unreadable in $2" "reinstall $3 under ${skills_dir}"
 	fi
+}
+
+# Checks that each card template $2... of skill $1 (views/<name>.jq) is readable.
+# shellcheck disable=SC2329 # called by name through each_view_template
+check_card_templates() {
+	template_skill=$1
+	shift
+	for template in "$@"; do
+		template_file="${skills_dir}/${template_skill}/views/${template}.jq"
+		if [ -f "${template_file}" ] && [ -r "${template_file}" ]; then
+			pass "${template_skill} views/${template}.jq"
+		else
+			fail "${template_skill} views/${template}.jq" "missing or unreadable in ${template_file%/*}" "reinstall ${template_skill} under ${skills_dir}"
+		fi
+	done
 }
 
 # Checks the template the inject hook sends word for word, by the hook's own
@@ -668,7 +742,7 @@ check_run_tools() {
 set_run_tool_hint() {
 	case $1 in
 		date)
-			run_tool_need='open-gate.sh, both gate hooks, the seat bind and report commit hooks and crucible.sh'
+			run_tool_need='show.sh, the seat bind and report commit hooks and crucible.sh'
 			set_coreutils_fix date /bin
 			;;
 		git)
@@ -676,7 +750,7 @@ set_run_tool_hint() {
 			run_tool_fix='install git (macOS: xcode-select --install; Linux: the distro'\''s git package), then rerun'
 			;;
 		cmp)
-			run_tool_need='open-gate.sh'
+			run_tool_need='the report commit hook'\''s commit check'
 			run_tool_fix='put cmp back on PATH (macOS: it ships in /usr/bin; Linux: the distro'\''s diffutils package), then rerun'
 			;;
 		awk)
@@ -740,7 +814,7 @@ check_settings() {
 # are built from.
 each_hook() {
 	"$1" 'inject hook' PreToolUse Agent "${HOOK_SCRIPT}" "${HOOK_TIMEOUT}" "${HOOK_ON_FAILURE}" ''
-	"$1" 'gate Stop hook' Stop '' "${GATE_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'card Stop hook' Stop '' "${SHOW_STOP_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate answer hook' PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate dashboard answer hook' UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
@@ -780,13 +854,13 @@ check_hook_entry() {
 	if hook_count=$(jq --arg event "$2" --arg matcher "$3" --arg needle "$4" "${HOOK_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
 		:
 	else
-		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		fail "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
 		return 0
 	fi
 	case ${hook_count} in
 		'' | *[!0-9]* | 0)
 			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
-			fail_hook "$4" "$1 not registered" "no ${where} entry runs ${4##*/}" "add ${hook_entry}, in settings.json, then run /hooks or restart"
+			fail "$1 not registered" "no ${where} entry runs ${4##*/}" "add ${hook_entry}, in settings.json, then run /hooks or restart"
 			;;
 		*)
 			# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
@@ -807,13 +881,13 @@ check_on_failure() {
 		"${HOOK_ON_FAILURE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
 		:
 	else
-		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		fail "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
 		return 1
 	fi
 	case ${blocking_count} in
 		'' | *[!0-9]* | 0)
 			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
-			fail_hook "$4" "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets its call through unchecked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			fail "$1 does not block on failure" "the ${where} entry that runs ${4##*/} has no \"onFailure\": \"$6\", so a failing or timed-out hook lets its call through unchecked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
 			return 1
 			;;
 		*) return 0 ;;
@@ -829,13 +903,13 @@ check_async_rewake() {
 		"${HOOK_ASYNC_REWAKE_COUNT_JQ}" "${settings_file}" </dev/null 2>/dev/null); then
 		:
 	else
-		fail_hook "$4" "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
+		fail "$1 not checked" "jq could not read the hook entries in ${settings_file}" "check it with jq, then rerun"
 		return 1
 	fi
 	case ${rewake_count} in
 		'' | *[!0-9]* | 0)
 			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
-			fail_hook "$4" "$1 does not wake the main thread" "the $2 entry that runs ${4##*/} is not \"async\": true with \"asyncRewake\": true, so a developer that handed back never hears why its stop was blocked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			fail "$1 does not wake the main thread" "the $2 entry that runs ${4##*/} is not \"async\": true with \"asyncRewake\": true, so a developer that handed back never hears why its stop was blocked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
 			return 1
 			;;
 		*) return 0 ;;
@@ -1036,15 +1110,14 @@ add_kind_count() {
 }
 
 # Adds each report line, its tabs as spaces and other control characters
-# dropped, so a line from list-plugins.sh can't forge a checklist line:
-# indented to the checklist, and joined by "; " to the last Fix item.
+# dropped, so a line from list-plugins.sh can't forge a Fix item: joined by
+# "; " to the last Fix item.
 add_reports() {
 	[ -n "${reports}" ] || return 0
 	clean_reports=$(printf '%s' "${reports}" | tr '\011' ' ' | tr -d '\001-\010\013-\037\177')
 	reported=''
 	while IFS= read -r line; do
 		[ -n "${line}" ] || continue
-		add_line "  ${line}"
 		reported="${reported}${reported:+; }${line}"
 	done <<EOF
 ${clean_reports}
@@ -1087,8 +1160,8 @@ write_marker() {
 	fi
 }
 
-# Fails one line per base tool missing from PATH, then ends the run with the
-# summary and exit 1, since the checks below would misreport without them.
+# Fails one check per base tool missing from PATH, then ends the run with the
+# card and exit 1, since the checks below would misreport without them.
 check_base_tools() {
 	for tool in ${BASE_TOOLS}; do
 		command -v "${tool}" >/dev/null 2>&1 && continue
@@ -1105,76 +1178,98 @@ check_base_tools() {
 	exit 1
 }
 
-# Prints the result: the full checklist with --verbose, the pass line on a
-# clean pass, else the view, or the full checklist when it can't be rendered;
-# then the cache note.
+# Prints the card of a full run, then the --line lines.
 print_result() {
-	# shellcheck disable=SC2310 # render_view's status picks the fallback checklist
-	if [ "${verbose}" -eq 1 ]; then
-		print_checklist
-	elif result_view=$(render_view); then
-		printf '%s\n' "${result_view}"
-	else
-		[ "${failed_count}" -eq 0 ] && [ "${warning_count}" -eq 0 ] || verbose=1
-		print_checklist
-	fi
-	[ -z "${cache_note}" ] || printf '(result not cached: %s)\n' "${cache_note}"
+	print_card "$((passed_count + failed_count + warning_count))" ''
 }
 
-# Prints the header and check lines with --verbose, then the summary line.
-print_checklist() {
-	[ "${verbose}" -eq 0 ] || printf '%s' "${checklist}"
-	print_summary
-}
-
-# Prints the view of a full run; fails when it can't be built.
-render_view() {
-	render_with_view "${RESULT_VIEW_JQ}" --arg fixes "${fix_items}" --arg warnings "${warning_items}" \
-		--arg failed "${failed_count}" --arg total "$((passed_count + failed_count + warning_count))"
-}
-
-# Prints the cached pass: its view, the full checklist's line with --verbose,
-# or that line when the view can't be built.
+# Prints the card of the cached pass, then the --line lines.
 print_cached_pass() {
-	# shellcheck disable=SC2310 # render_with_view's status picks the fallback line
-	if [ "${verbose}" -eq 0 ] && cached_view=$(render_with_view "${CACHED_VIEW_JQ}" --arg since "${cached_time}"); then
-		printf '%s\n' "${cached_view}"
+	print_card "${cached_checks}" "${cached_time}"
+}
+
+# Prints the card for total $1 checks, cached at time $2 ("" for a full run),
+# and each --line line, through show.sh; without jq, which show.sh needs,
+# the plain result instead. Exits 5 when a card can't be printed.
+print_card() {
+	if ! command -v jq >/dev/null 2>&1; then
+		print_plain_result "$1"
 		return 0
 	fi
-	[ "${verbose}" -eq 0 ] || printf '%s' "${checklist}"
-	printf '✓ Install unchanged since %s: %s checks passed\n' "${cached_time}" "${cached_checks}"
+	card_data=$(jq -cn --arg failed "${failed_count}" --arg total "$1" \
+		--arg fixes "${fix_items}" --arg warnings "${warning_items}" \
+		--arg passed "${passed_items}" --arg verbose "${verbose}" \
+		--arg since "$2" --arg note "${cache_note}" "${CARD_DATA_JQ}" </dev/null) ||
+		install_fault "jq could not build the card's data; expected jq ${JQ_MIN_MAJOR}.${JQ_MIN_MINOR}+; try jq --version, then rerun"
+	load_card_printer
+	# A closed stdout exits 4 before show.sh records a card nobody can see.
+	{ true 3>&1; } 2>/dev/null || exit 4
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${show_script}" "${views_dir}" "${CARD_NAME}" '' "${card_data}" || card_fault "views/${CARD_NAME}.jq"
+	for line_name in ${line_names}; do
+		# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+		hv_show_line "${show_script}" "${views_dir}" "${line_name}" '' || card_fault "${line_name} of views/${LINE_TEMPLATE}.jq"
+	done
 }
 
-# Prints jq program $1, given the further jq arguments, run after human-view's
-# view module; fails when jq or the module is missing or jq fails.
-render_with_view() {
-	command -v jq >/dev/null 2>&1 || return 1
-	render_lib_dir="${skills_dir}/${RENDER_LIB}"
-	[ -f "${render_lib_dir}/${VIEW_NAME}.jq" ] && [ -r "${render_lib_dir}/${VIEW_NAME}.jq" ] || return 1
-	view_program=$1
-	shift
-	jq -nr -L "${render_lib_dir}" "$@" "include \"${VIEW_NAME}\"; ${view_program}" </dev/null 2>/dev/null
+# Sets views_dir and show_script and sources human-view's card printer lib,
+# which checks that show.sh and the templates are in place; exits 5 when one
+# of them is missing.
+load_card_printer() {
+	# The logical path, links kept as named: show.sh names the card's skill after it.
+	own_dir=$(script_dir)
+	views_dir=$(CDPATH='' cd -- "${own_dir}/../../views" 2>/dev/null && pwd) ||
+		install_fault "this skill's views folder could not be entered; expected views/ beside scripts/; reinstall ${PROCEDURE}"
+	card_printer="${skills_dir}/${SHOW_SCRIPTS}/${CARD_PRINTER_LIB}"
+	[ -f "${card_printer}" ] && [ -r "${card_printer}" ] ||
+		install_fault "card printer lib missing; expected ${card_printer}; install the ${RENDER_LIB} skill"
+	# shellcheck source=../../../../../../../../framework/core/engine/human-view/scripts/lib/render.sh
+	. "${card_printer}"
+	set -- "${CARD_NAME}"
+	[ -z "${line_names}" ] || set -- "$@" "${LINE_TEMPLATE}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${SHOW_SCRIPTS}" "${views_dir}" "$@" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
-print_summary() {
-	if [ "${failed_count}" -eq 0 ]; then
-		case ${warning_count} in
-			0) printf 'All checks passed.\n' ;;
-			1) printf 'All checks passed. (1 warning)\n' ;;
-			*) printf 'All checks passed. (%s warnings)\n' "${warning_count}" ;;
+# Prints this script's folder: the path it was run by, links kept.
+script_dir() {
+	case $0 in
+		*/*) printf '%s' "${0%/*}" ;;
+		*) printf '.' ;;
+	esac
+}
+
+# Exits 5 after show.sh failed printing $1, its stderr already above.
+card_fault() {
+	install_fault "${hv_render_problem}; expected $1 printed; try reinstalling ${PROCEDURE} and ${RENDER_LIB}"
+}
+
+install_fault() {
+	printf '%s: %s\n' "${PROG}" "$1" >&2
+	exit 5
+}
+
+# Prints the result with no jq, which show.sh needs: the counts of total $1
+# checks, then one "- " line per Fix item, then the cache note. The only
+# result not printed by show.sh, and no --line line goes with it.
+print_plain_result() {
+	printf 'Install check: %s of %s checks failed; jq is missing, so this list is plain text.\n' "${failed_count}" "$1"
+	plain_items=${fix_items#"${ITEM_SEPARATOR}"}
+	while [ -n "${plain_items}" ]; do
+		printf -- '- %s\n' "${plain_items%%"${ITEM_SEPARATOR}"*}"
+		case ${plain_items} in
+			*"${ITEM_SEPARATOR}"*) plain_items=${plain_items#*"${ITEM_SEPARATOR}"} ;;
+			*) plain_items='' ;;
 		esac
-	elif [ "${failed_count}" -eq "${inject_failed_count}" ]; then
-		printf '%s check(s) failed: dispatch needs the inject hook.\n' "${failed_count}"
-	else
-		printf '%s check(s) failed.\n' "${failed_count}"
-	fi
+	done
+	[ -z "${cache_note}" ] || printf '(result not cached: %s)\n' "${cache_note}"
 }
 
 passed_count=0
 failed_count=0
-inject_failed_count=0
 warning_count=0
-checklist=''
+passed_items=''
 fix_items=''
 warning_items=''
 cache_note=''
@@ -1184,7 +1279,6 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 parse_args "$@"
-add_line 'Code agent dispatch: install check'
 check_base_tools
 resolve_crucible_home
 compute_fingerprint
@@ -1208,8 +1302,13 @@ check_script "${WORKTREE_PROCEDURE}" merge/catch-up.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh
+check_lib_file "${WORKTREE_CARDS_LIB}" "${skills_dir}/${WORKTREE_PROCEDURE}/scripts" "${WORKTREE_PROCEDURE}"
 check_script "${GATE_PROCEDURE}" open-gate.sh
-check_script "${GATE_PROCEDURE}" gate-stop-hook.sh
+check_script "${RENDER_LIB}" show.sh
+check_script "${RENDER_LIB}" show-stop-hook.sh
+check_lib_file "${OWED_SH_LIB}" "${skills_dir}/${SHOW_SCRIPTS}" "${RENDER_LIB}"
+check_lib_file "${OWED_JQ_LIB}" "${skills_dir}/${SHOW_SCRIPTS}" "${RENDER_LIB}"
+check_lib_file "${CARD_PRINTER_LIB}" "${skills_dir}/${SHOW_SCRIPTS}" "${RENDER_LIB}"
 check_script "${GATE_PROCEDURE}" gate-question-hook.sh
 check_script "${GATE_PROCEDURE}" gate-answer-hook.sh
 check_runnable "${CRUCIBLE_SKILL}" "${CRUCIBLE_SCRIPT}"
@@ -1229,6 +1328,9 @@ check_lib_file "${CONTEXT_VERSIONS_LIB}" "${context_scripts_dir}" "${CONTEXT_PRO
 check_template
 check_lib_file "${VIEW_MODULE}" "${skills_dir}" "${RENDER_LIB}"
 check_lib_file "${TITLE_MODULE}" "${skills_dir}" "${RENDER_LIB}"
+check_lib_file "${LINE_MODULE}" "${skills_dir}" "${RENDER_LIB}"
+check_lib_file "${GATE_MODULE}" "${skills_dir}" "${RENDER_LIB}"
+each_view_template check_card_templates
 check_jq
 check_run_tools
 check_settings

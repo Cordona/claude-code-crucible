@@ -28,7 +28,7 @@
 # procedure-context sets what a version may hold, and the template and
 # plugins the human installed. The version embeds no docs text: the agent
 # reads its docs folders and the spec itself.
-# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
 readonly PROG='prepare-agent-prompt.sh'
@@ -40,7 +40,9 @@ readonly LISTED_AGENTS='code-developer'
 readonly NAMES_MODULE='dispatch-names'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
-readonly VIEW_NAME='view'
+readonly CARD_PRINTER_LIB='scripts/lib/render.sh'
+# The deny reason's template, in this skill's views/.
+readonly DENIAL_TEMPLATE='denial'
 readonly PRUNE_NAME='prune'
 # The seat list's reader and the seat's iteration reader, relative to the
 # skills folder.
@@ -217,20 +219,19 @@ is_skill && FNR > 1 && opened && !closed && is_fence($0) { closed = 1 }
 END { finish_file() }
 '
 
-# Renders the deny reason from $problems (one per line, KIND first), the KIND
-# words $kinds, the reason prefix $prefix, the dispatch.denied event $details
-# ("" for none) and the bounds $max_shown and $line_cap, with human-view's view
-# module.
+# Builds views/denial.jq's data from $problems (one per line, KIND first),
+# the KIND words $kinds, the dispatch.denied event $details ("" for none) and
+# the bounds $max_shown and $line_cap: {count, shown, more, details}.
 # The first problem of each KIND is always shown (there are fewer KINDs than
 # $max_shown), so the reason names every KIND found; the others follow in
-# order up to $max_shown, and the rest become "+N more". A line over
-# $line_cap is cut, but one holding $context_tail keeps it as its end: the text
-# before it is cut and the path after it dropped. Claude Code caps a hook's
-# text added to the context at 10,000 characters; the bounds keep the reason
-# far under it.
+# order up to $max_shown, and the rest are counted in more. A shown problem
+# over $line_cap is cut (the template shows each control character as "?"),
+# but one holding $context_tail keeps it as its end: the text before it is
+# cut and the path after it dropped. Claude Code caps a hook's text added to the
+# context at 10,000 characters; the bounds keep the reason far under it.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
-readonly DENIAL_JQ='
+readonly DENIAL_DATA_JQ='
 def cut_to($n): if length > $n then .[:$n - 1] + "…" else . end;
 def cut: if length <= $line_cap then .
 	else split($context_tail) as $parts
@@ -246,12 +247,10 @@ def cut: if length <= $line_cap then .
 	  then .seen[$word] = true | .firsts += [$i] else . end)
 	| .firsts) as $firsts
 | ($firsts + [range(0; $count) | select(. as $i | $firsts | any(. == $i) | not)])[:$max_shown] | sort as $shown
-| ($count - ($shown | length)) as $more
-| [$prefix + " " + status_line("blocked"; "Blocked · the dispatch was denied: \($count) problem" + (if $count == 1 then "" else "s" end)),
-	section("Problem"; "Problems"; $shown | map($all[.] | gsub("[\u0000-\u001f\u007f]"; "?") | cut)),
-	(if $more > 0 then "+\($more) more" else "" end),
-	data_section(if $details == "" then [] else [["Denial", $details]] end)]
-| blocks'
+| {count: $count,
+   shown: ($shown | map($all[.] | cut)),
+   more: ($count - ($shown | length)),
+   details: (if $details == "" then null else $details end)}'
 # Builds the dispatch.denied body: every problem in full, its KIND, the
 # dispatch path and the hint; prune leaves out a missing KIND and an empty hint.
 # shellcheck disable=SC2016
@@ -424,13 +423,13 @@ stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
          the message
   deny   permissionDecisionReason "${REASON_PREFIX} <text>"; a reason with no
-         KIND is a hook, install or host fault. A failed check: "<prefix> **Blocked · the
-         dispatch was denied: <N> problem(s)**", "**Problem:** <p>" or
-         "**Problems**" and numbered <p> lines (${DENIAL_MAX_SHOWN} at most, every KIND shown,
-         cut to ${DENIAL_LINE_CAP} characters), "+<M> more" past ${DENIAL_MAX_SHOWN}, then, when the effort is known,
-         "**Data · Denial:** <path>" (the ${DENIED_EVENT} event, all as JSON). <p>:
-         "<KIND> <problem>; expected <x>", most ending ": <path>" (a cut CONTEXT
-         <p> keeps its end); KIND:
+         KIND is a hook, install or host fault. A failed check: the prefix,
+         then the card views/denial.jq renders: the problems <p>, at most
+         ${DENIAL_MAX_SHOWN} (every KIND shown), each cut to ${DENIAL_LINE_CAP} characters, the
+         count of the rest, then, when the effort is known, the path of the
+         ${DENIED_EVENT} event (all as JSON). <p>: "<KIND> <problem>;
+         expected <x>", most ending ": <path>" (a cut CONTEXT <p> keeps its
+         end); KIND:
          DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
          PLUGIN, SEAT, BACKGROUND (dispatched in the foreground),
          SKILL (a skill the agent file's skills: preloads, not installed)
@@ -457,17 +456,17 @@ Exit codes:
 
 Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
-  awk, cat, dd, grep, mktemp, readlink, rm, tr, wc, and
-    sha256sum or shasum (base system)
+  awk, cat, dd, grep, mktemp, readlink, rm, tr, wc, sha256sum
+    or shasum (base system)
   procedure-git-worktree: scripts/seats/seats.sh, scripts/seats/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
   ${CRUCIBLE_SKILL}: scripts/lib/crucible-space.sh, scripts/lib/${PRUNE_NAME}.jq,
     scripts/events.sh
-  ${RENDER_LIB}: ${VIEW_NAME}.jq
+  ${RENDER_LIB}: scripts/show.sh, scripts/lib/render.sh
   this skill: scripts/agent-dispatch/agent-dispatch-validator.jq,
-    ${NAMES_MODULE}.jq
+    ${NAMES_MODULE}.jq, views/${DENIAL_TEMPLATE}.jq
 EOF
 }
 
@@ -1283,21 +1282,37 @@ refuse_all() {
 	deny_problems "${DISPATCH_HINT}"
 }
 
-# Denies with every problem, the compact reason DENIAL_JQ renders, after
-# writing them in full with hint $1 ("" for none) as a dispatch.denied event
-# when the dispatch's effort is known.
+# Denies with every problem, the compact reason views/denial.jq lays out
+# after REASON_PREFIX, after writing them in full with hint $1 ("" for none)
+# as a dispatch.denied event when the dispatch's effort is known.
 deny_problems() {
-	view_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${RENDER_LIB}"
 	prune_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/lib"
-	require_denial_module "${view_dir}/${VIEW_NAME}.jq" "${RENDER_LIB}"
 	require_denial_module "${prune_dir}/${PRUNE_NAME}.jq" "${CRUCIBLE_SKILL}"
+	load_denial_printer
 	write_denial_details "$1"
-	reason=$(jq -nr -L "${view_dir}" --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" \
-		--arg prefix "${REASON_PREFIX}" --arg details "${details_path}" \
+	denial_data=$(jq -nc --arg problems "${problems}" --arg kinds "${PROBLEM_KINDS}" --arg details "${details_path}" \
 		--argjson max_shown "${DENIAL_MAX_SHOWN}" --argjson line_cap "${DENIAL_LINE_CAP}" --arg context_tail "${CONTEXT_TAIL}" \
-		"include \"${VIEW_NAME}\"; ${DENIAL_JQ}" </dev/null) ||
-		fault "jq could not render the deny reason with ${view_dir}/${VIEW_NAME}.jq; the hook needs jq 1.6+; the cause is on stderr."
-	deny "${reason}"
+		"${DENIAL_DATA_JQ}" </dev/null) ||
+		fault "jq could not build the deny reason's data; the hook needs jq 1.6+; the cause is on stderr."
+	# The command substitution's subshell takes hv_render_gate's own exits.
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	denial_text=$(hv_render_gate "${denial_show}" "${denial_views}" "${DENIAL_TEMPLATE}" "${denial_data}") ||
+		fault "show.sh could not render the deny reason from views/${DENIAL_TEMPLATE}.jq; the cause is on stderr."
+	deny "${REASON_PREFIX} ${denial_text}"
+}
+
+# Sources human-view's card printer lib and sets denial_show and
+# denial_views once show.sh and views/denial.jq are in place; faults otherwise.
+load_denial_printer() {
+	view_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${RENDER_LIB}"
+	require_denial_module "${view_skill_dir}/${CARD_PRINTER_LIB}" "${RENDER_LIB}"
+	# shellcheck source=../../../../../../../../framework/core/engine/human-view/scripts/lib/render.sh
+	. "${view_skill_dir}/${CARD_PRINTER_LIB}"
+	denial_views="$(script_dir)/../../views"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${denial_views}" "${DENIAL_TEMPLATE}" ||
+		fault "${hv_printer_problem}; the fault is in the install, not in the dispatch."
+	denial_show=${hv_show}
 }
 
 # Faults unless module file $1 of skill $2 is readable.
