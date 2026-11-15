@@ -3,14 +3,17 @@
 # revision offer (revise the spec?) and the approval (approve the spec?), or
 # with --question the gate's question. The
 # approval view takes its Goal line and open points from the draft itself,
-# and only while the draft is the one --approval-plan hashed. Pipe its stdout
-# into procedure-approval-gate's open-gate.sh.
+# and only while the draft is the one --approval-plan hashed.
+# views/spec-offer.jq and views/spec-approval.jq lay them out and
+# human-view's show.sh renders them. Pipe its stdout into
+# procedure-approval-gate's open-gate.sh, which shows the gate.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 umask 077
 
 readonly PROG='render-spec-gate.sh'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly RENDER_LIB='scripts/lib/render.sh'
 readonly CRUCIBLE_SKILL='crucible'
 readonly SPEC_LABEL='spec'
 # The revision offer stays a glance: a few one-line reasons, each short
@@ -77,6 +80,7 @@ def draft:
 	   prose_only: (($parts.items | length) == 0 and ($parts.prose | length) > 0
 		and (($parts.prose | length) == 1 and ($parts.prose[0] | is_none) | not)),
 	   points: (if ($parts.items | length) == 1 and ($parts.items[0] | is_none) then [] else $parts.items end)};
+def approve_label: if (draft | .points | length) > 0 then "Approve, leave them to the developer" else "Approve" end;
 '
 
 # Prints one line per problem of the slurped plan file; nothing when it is one
@@ -136,27 +140,14 @@ draft
 	| "open point \(.key + 1) is \(.value | length) characters; expected at most \($max_line_chars); rewrite open point \(.key + 1) shorter: \(again)" end)
 '
 
-# A printed gate starts with human-view's layout module: jq takes an include
-# only at the start of the program, before the common definitions.
-readonly VIEW_INCLUDE='include "view";'
-# Each reason, the Goal line and each open point is trimmed and its leading
-# Markdown block mark escaped, so it renders as one plain line or list item;
-# the lists stay numbered even with one item. The draft's path closes the
-# approval view, as every gate's Data line does.
+# The gate's data for its template: views/spec-offer.jq takes the trimmed
+# reasons, views/spec-approval.jq the draft's Goal line, its open points and
+# its path.
 # shellcheck disable=SC2016
-readonly RENDER_JQ='
-def numbered($heading): "**\($heading)**\n" + (map(trimmed | plain_line) | numbered_list);
+readonly VIEW_DATA_JQ='
 .[0]
-| if .case == "revision" then
-	[status_line("decision"; "Decision needed · revise the spec?"), (.reasons | numbered("Why"))]
-  else
-	draft as $parts
-	| [status_line("decision"; "Decision needed · approve the spec?"),
-	   "**Goal:** \($parts.goal | plain_line)",
-	   (if ($parts.points | length) == 0 then "**Open points:** none" else $parts.points | numbered("Open points") end),
-	   data_section([["Spec", .spec]])]
-  end
-| blocks
+| if .case == "revision" then {reasons: (.reasons | map(trimmed))}
+  else draft as $parts | {goal: $parts.goal, points: $parts.points, spec: .spec} end
 '
 
 # Prints the AskUserQuestion fields of the gate as one JSON object.
@@ -171,11 +162,11 @@ option("Change it: say what"; "Type the change; the spec comes back here.") as $
   elif (draft | .points | length) > 0 then
 	{header: "Approval", question: "Approve the spec?",
 	 options: [option("Answer the open points (Recommended)"; "Answer them in the chat; the spec is updated and comes back here."),
-		option("Approve, leave them to the developer"; "Approved; the open points stay as the developer'\''s call."),
+		option(approve_label; "Approved; the open points stay as the developer'\''s call."),
 		$change]}
   else
 	{header: "Approval", question: "Approve the spec?",
-	 options: [option("Approve (Recommended)"; "Approved; the spec enters the context."), $change]}
+	 options: [option("\(approve_label) (Recommended)"; "Approved; the spec enters the context."), $change]}
   end
 '
 
@@ -189,15 +180,13 @@ usage() {
 	print_page <<EOF
 usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label spec-offer|spec-approval --effort FOLDER
        sh ${PROG} --plan-file PATH --question
-       sh ${PROG} --approval-plan --spec PATH --plan-out PATH
+       sh ${PROG} --approval-plan --spec PATH --plan-out PATH [--spec-needed] [--typed-approval]
        sh ${PROG} --help | -h
 
 Prints a spec gate as Markdown, or with --question its question: the
 revision offer (case revision, label spec-offer) or the approval (case
 approval, label spec-approval).
---approval-plan writes the approval plan for a draft. stdin is never read;
-the plan file and the draft are only read; only --approval-plan writes, and
-only to --plan-out.
+stdin is never read; only --approval-plan writes, to --plan-out.
 
 Options:
   --plan-file PATH  one JSON object, no other field:
@@ -206,14 +195,16 @@ Options:
                       characters; written with the Write tool
                     {"case": "approval", "spec": PATH, "sha256": HEX}: only
                       as --approval-plan writes it
-  --question        print the gate's question instead of the gate
-  --approval-plan   write the approval plan of the draft --spec names, with
-                    its current sha256, to --plan-out
+  --question        print the gate's question, not the gate
+  --approval-plan   write the plan of draft --spec, with its sha256, to
+                    --plan-out
   --spec PATH       the draft, a regular file, no symbolic link, no // or
                     /./: <effort>/drafts/main-thread/<ID>-${SPEC_LABEL}.md
-  --plan-out PATH   absolute, not a folder or a symbolic link, in an existing
+  --plan-out PATH   absolute, not a folder or a link, in an existing
                     folder: the path open-gate.sh --plan-path printed
-  CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
+  --spec-needed     also print the line spec_needed
+  --typed-approval  also print the line pick_approve_option
+  CLAUDE_CONFIG_DIR  holds skills/; default \$HOME/.claude
 
 The draft, for the approval case and its question: its sha256 must equal the
 plan's. A section runs from its "## " heading (any letter case, maybe more
@@ -226,10 +217,10 @@ code fence (three backticks or tildes) is never a heading.
                   indented lines are joined in; none: no section, an empty
                   one or only "None"; refused: a code fence or text outside
                   the items
-No line is ever cut: a longer one is refused, and the draft is rewritten.
+A longer line is refused, never cut: rewrite the draft.
 
 stdout on exit 0 only:
-  a gate: its Markdown, with no gate marker
+  a gate: its Markdown, no gate marker
   --question: one JSON object {"header": str, "question": str, "options":
     [{"label": str, "description": str}, ...]}, the first option marked
     (Recommended):
@@ -237,12 +228,13 @@ stdout on exit 0 only:
     approval with open points: Answer the open points / Approve, leave them
       to the developer / Change it: say what
     approval with no open points: Approve / Change it: say what
-  --approval-plan: SPEC_SHA256: <the draft's sha256>
+  --approval-plan: SPEC_SHA256: <the draft's sha256>; then each line asked
+    for, printed through show.sh
 stderr on exits 2 and 3: one "${PROG}: <what>; expected <x>[; try <y>]"
-  line per problem (a usage error adds a "Try" line); a plan field is named
-  case, reasons[<i>] (from 0), spec or sha256
-stderr on exit 5: "${PROG}: install:", a prefix no other exit prints: an
-  install fault, never a problem of the input; do not rerun; stop
+  line per problem; a plan field is named case, reasons[<i>] (from 0),
+  spec or sha256
+stderr on exit 5: "${PROG}: install:", a prefix no other exit
+  prints; do not rerun; stop
 
 Exit codes:
   0  printed; pipe a gate into open-gate.sh, copy a question into one
@@ -251,12 +243,14 @@ Exit codes:
   3  invalid plan or draft; fix what stderr names and rerun once, else show
      the human stderr. "the draft changed since its plan": run
      --approval-plan again
-  4  --approval-plan could not write --plan-out, or stdout closed before the
-     output was written; stop and show the exit code and stderr
+  4  --approval-plan could not write --plan-out, or stdout closed; stop and
+     show the exit code and stderr
   5  an install fault
   129, 130, 143  stopped by HUP, INT or TERM; nothing written
 
-Dependencies: POSIX sh, jq 1.6+; a gate: ${RENDER_LIB}'s view.jq; a draft:
+Dependencies: POSIX sh, jq 1.6+; a gate or a line: ${VIEW_LIB}'s
+  scripts/show.sh and scripts/lib/render.sh, views/spec-offer.jq,
+  spec-approval.jq and lines.jq; a draft:
   ${CRUCIBLE_SKILL}'s lib/crucible-space.sh, agent-context-file-checks.sh beside
   this script, tr, sha256sum or shasum; --approval-plan: mktemp, mv.
 EOF
@@ -302,7 +296,7 @@ clean_up() {
 # Sets mode (gate, question or approval-plan), plan_file, spec and plan_out
 # from the arguments, and refuses a combination the modes don't take.
 parse_args() {
-	plan_file='' spec='' plan_out='' want_question=false want_approval_plan=false
+	plan_file='' spec='' plan_out='' want_question=false want_approval_plan=false spec_needed=false typed_approval=false
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			--help | -h)
@@ -317,6 +311,14 @@ parse_args() {
 				want_approval_plan=true
 				shift
 				;;
+			--spec-needed)
+				spec_needed=true
+				shift
+				;;
+			--typed-approval)
+				typed_approval=true
+				shift
+				;;
 			--plan-file | --spec | --plan-out)
 				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error "$1 needs a value; expected $1 PATH"
 				case $1 in
@@ -326,7 +328,7 @@ parse_args() {
 				esac
 				shift 2
 				;;
-			*) usage_error 'unknown argument; expected --plan-file PATH, --question, --approval-plan, --spec PATH, --plan-out PATH or --help' ;;
+			*) usage_error 'unknown argument; expected --plan-file PATH, --question, --approval-plan, --spec PATH, --plan-out PATH, --spec-needed, --typed-approval or --help' ;;
 		esac
 	done
 	if [ "${want_approval_plan}" = true ]; then
@@ -354,21 +356,34 @@ check_approval_plan_args() {
 check_plan_file_args() {
 	mode=gate
 	[ "${want_question}" = false ] || mode=question
-	[ -z "${spec}" ] && [ -z "${plan_out}" ] ||
-		usage_error '--spec and --plan-out go only with --approval-plan; expected --approval-plan --spec PATH --plan-out PATH'
+	[ -z "${spec}" ] && [ -z "${plan_out}" ] && [ "${spec_needed}" = false ] && [ "${typed_approval}" = false ] ||
+		usage_error '--spec, --plan-out, --spec-needed and --typed-approval go only with --approval-plan; expected --approval-plan --spec PATH --plan-out PATH'
 	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
 }
 
-# Exits 5 unless jq and, when printing a gate, human-view's layout module are
-# in place; sets render_lib_dir.
+# Exits 5 unless jq and, when printing a gate or a line, human-view's
+# lib/render.sh and by it the templates and show.sh are in place; sets
+# views_dir and show_script and sources lib/render.sh.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
-	render_lib_dir="${skills_dir}/${RENDER_LIB}"
-	[ "${mode}" = gate ] || return 0
-	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
-		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+	views_dir="$(script_dir)/../views"
+	if [ "${mode}" = gate ]; then
+		set -- spec-offer spec-approval
+	elif [ "${spec_needed}" = true ] || [ "${typed_approval}" = true ]; then
+		set -- lines
+	else
+		return 0
+	fi
+	render_lib="${skills_dir}/${VIEW_LIB}/${RENDER_LIB}"
+	[ -f "${render_lib}" ] && [ -r "${render_lib}" ] ||
+		install_fault "gate printer missing; expected ${render_lib}; install the ${VIEW_LIB} skill"
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" "$@" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
 # Sources the space rules and context.sh's path check and finds a sha256
@@ -465,7 +480,7 @@ read_plan() {
 # Runs jq program $1 over the slurped plan with draft file $2 (/dev/null for
 # a revision offer) and the limits; a jq failure exits 5.
 run_jq() {
-	printf '%s' "${slurped}" | jq -rc -L "${render_lib_dir}" --rawfile draft "$2" \
+	printf '%s' "${slurped}" | jq -rc --rawfile draft "$2" \
 		--argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
 		--argjson max_line_chars "${MAX_LINE_CHARS}" --argjson max_points "${MAX_OPEN_POINTS}" "$1" ||
 		install_fault 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
@@ -518,6 +533,27 @@ write_approval_plan() {
 	}
 	temp_file=''
 	print_output "SPEC_SHA256: ${digest}"
+	[ "${spec_needed}" = false ] || show_line spec_needed
+	[ "${typed_approval}" = false ] || show_pick_approve_option
+}
+
+# Prints the line pick_approve_option, naming the approve option the draft's
+# approval question offers.
+show_pick_approve_option() {
+	approve_option=$(jq -rn --rawfile draft "${spec}" "${COMMON_JQ}approve_label" </dev/null) ||
+		install_fault 'jq failed reading the draft; expected jq 1.6+; try jq --version, then rerun'
+	show_line pick_approve_option --arg option "${approve_option}"
+}
+
+# Prints line $1, with its --arg options after it, for the human after the
+# machine line, recorded as owed for the draft's effort.
+show_line() {
+	line_name=$1
+	shift
+	draft_dir=${spec%/*}
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${show_script}" "${views_dir}" "${line_name}" "${draft_dir%/drafts/main-thread}" "$@" ||
+		install_fault "${hv_render_problem}; expected the line ${line_name} printed from views/lines.jq; try reinstalling procedure-context and ${VIEW_LIB}"
 }
 
 # Prints $1 to stdout; exits 4 when stdout is closed. Ignoring SIGPIPE turns a
@@ -526,6 +562,17 @@ write_approval_plan() {
 print_output() {
 	trap '' PIPE
 	printf '%s\n' "$1" 2>/dev/null || exit 4
+}
+
+# Renders the plan's gate through its template to stdout: the revision offer
+# or the approval; a show.sh fault is an install fault.
+render_gate() {
+	view_data=$(run_jq "${COMMON_JQ}${VIEW_DATA_JQ}" "${draft_file}")
+	view_name='spec-approval'
+	[ "${plan_case}" = approval ] || view_name='spec-offer'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_render_gate "${show_script}" "${views_dir}" "${view_name}" "${view_data}" ||
+		install_fault "${hv_render_problem}; expected the gate rendered from views/${view_name}.jq; try reinstalling procedure-context and ${VIEW_LIB}"
 }
 
 temp_file='' draft_tools_loaded=''
@@ -543,7 +590,7 @@ fi
 load_plan
 if [ "${mode}" = question ]; then
 	output=$(run_jq "${COMMON_JQ}${QUESTION_JQ}" "${draft_file}")
+	print_output "${output}"
 else
-	output=$(run_jq "${VIEW_INCLUDE}${COMMON_JQ}${RENDER_JQ}" "${draft_file}")
+	render_gate
 fi
-print_output "${output}"

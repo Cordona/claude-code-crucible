@@ -1,6 +1,6 @@
 ---
 name: procedure-resume
-description: "Picks up an effort after a compaction, interruption or new session: finds it (`procedure-effort`), sees what is open, and loads the skill that resumes it. Use on Resume, or to go back to an effort or work this conversation doesn't show, from an earlier session or a /clear (\"continue the prune work\"). Writes nothing. Not for new work (CLAUDE.md §4), starting an effort (`procedure-effort`), context (`procedure-context`), or a \"continue\" about unbroken work still on screen."
+description: "Picks up an effort after a compaction, interruption or new session: finds it (`procedure-effort`), sees what is open, and loads the skill that resumes it. Use on Resume, or to go back to an effort or work this conversation doesn't show, from an earlier session or a /clear (\"continue the prune work\"). Writes only owed records. Not for new work (CLAUDE.md §4), starting an effort (`procedure-effort`), context (`procedure-context`), or a \"continue\" about unbroken work still on screen."
 user-invocable: false
 ---
 
@@ -34,13 +34,13 @@ Run by the main thread. After a compaction, an interruption or a new session, th
 
 ## Steps
 
-"Show the line" means a fixed line, as CLAUDE.md §1 sets. The install line for `<skill>`: show the line `<skill> is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`, and stop. A skill this procedure loads that the Skill tool can't load: its install line.
+`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-resume/views"`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line>`, with `--effort '<effort folder>'` once step 1 found it, and an `--arg <field> '<value>'` per field the step names; a non-zero exit: show the human its stderr. The install line for `<skill>`: show the line `skill_not_installed`, with `--arg skill '<skill>'`, and stop. A skill this procedure loads that the Skill tool can't load: its install line.
 
 `<grill.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-grill/scripts/grill.sh"`, `<settings.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-setup/scripts/settings.sh"` and `<seats.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-worktree/scripts/seats/seats.sh"`. Each `--help` is its script's whole contract: run `<grill.sh> list --help`, `<settings.sh> --help` and `<seats.sh> --help` once each, before its first use in a session, and again in that session only when its contract is no longer in context (after a compaction). A non-zero exit, or no `usage:` line: for `grill.sh`, the install line for `procedure-grill`; for `settings.sh` or `seats.sh`, show the human its stderr and go on without that read.
 
-1. **Find the effort:** load `procedure-effort` with the Skill tool and follow its steps for finding an effort; it hands the path back here. Keep the absolute folder path it finds. Its stop resumes nothing: stop here too. Only when it ended with `No effort is resumed.` and the human did not pick Stop, take the message that loaded this procedure as new work by CLAUDE.md §4, not by its Resume line again. After a script or install failure: stop.
+1. **Find the effort:** load `procedure-effort` with the Skill tool and follow its steps for finding an effort; it hands the path back here. Keep the absolute folder path it finds. Its stop resumes nothing: stop here too. Only when it ended by showing its line `no_effort_resumed` and the human did not pick Stop, take the message that loaded this procedure as new work by CLAUDE.md §4, not by its Resume line again. After a script or install failure: stop.
 2. **See what is open, from disk:** run `<grill.sh> list --effort '<effort folder>'`, then `<settings.sh> get --effort '<effort folder>'`, then `<seats.sh> list --effort '<effort folder>'`, each a Bash call of its own.
-   - **`grill.sh list`:** exit 0: each stdout line is one grill's `GRILL:` line, and an open grill is one whose second field is `open`; no line means no grill. Any other exit: relay its stdout and stderr, then show the line `grill.sh list exited <code>: nothing was resumed.`, and stop.
+   - **`grill.sh list`:** exit 0: each stdout line is one grill's `GRILL:` line, and an open grill is one whose second field is `open`; no line means no grill. Any other exit: relay its stdout and stderr, then show the line `grill_list_failed`, with `--arg code '<its exit code>'`, and stop.
    - **`settings.sh get` and `seats.sh list`:** a plan is made when `get` exits 0 (a git setup is saved) or `seats.sh list` prints a seat list holding a seat; `get` exit 5 (no git setup yet) and no seat: no plan made.
    - **Any other `get` exit:** act on it as its `--help` sets: 2, fix the call; 3 or 4, show the human its stderr, and stop.
 
@@ -58,4 +58,5 @@ Run by the main thread. After a compaction, an interruption or a new session, th
   - `procedure-grill`, for its `grill.sh` and loaded at step 2.
   - `procedure-git-setup` and `procedure-git-worktree`, not loaded: step 2 runs only their `settings.sh` and `seats.sh`; missing: as the Steps preamble sets for a failed `--help`.
   - `flow-code-development` and the flow CLAUDE.md §4 routes the work to, loaded at step 2.
+- **`human-view`, not loaded:** its `show.sh` shows this skill's lines from `views/` (Steps).
 - **Tools:** Skill, Bash and AskUserQuestion.

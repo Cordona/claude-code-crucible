@@ -61,6 +61,8 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
 
 `<context.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh"`. Run `<context.sh> --help` once, before its first use in a session, and `<context.sh> <command> --help` before a command's first use; again only after a compaction drops their contract. A non-zero exit, or no `usage:` line: tell the human to install `procedure-context` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop as step 8 sets (`stopped: context.sh not installed`).
 
+`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/views"`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line> --effort '<effort folder>'`, with an `--arg <field> '<value>'` per field the step names; a non-zero exit: show the human its stderr.
+
 1. **Discover and gather.** Run `<context.sh> docs --effort '<effort folder>'` and keep its `DOCS_FOLDER:` path as the docs folder. Read what the work is about and the files and trackers the human names. Then ask the human free-form questions until you know what the work must achieve and what it must not break; use AskUserQuestion only where a fixed choice fits better. With your first question, tell the human they can answer `go on` (you go on with what you have) or `stop the work` (`stopped: context not settled`, or in the spec talk `references/settle-spec.md` step 4's stop) at any point before the spec is approved. Ask nothing yet about how the entries agree: step 3 does that. The agent loads no CLAUDE.md.
    - **Each outside path or link the human gives,** at once: `<context.sh> add --effort '<effort folder>'` with `--path '<absolute path>'` or `--link '<url>'` and `--why '<line>'`. One the human takes back: `drop`, with the same entry and the human's reason as its why.
    - **What you write for the work** (research, a design note): a short `<name>.md` in the docs folder, with the Write tool. `<name>` is letters, digits, `.`, `_` and `-`, starting with a letter or digit, and no name `context.sh` refuses as a path (`CLAUDE.md`, `SKILL.md`, a key or credential name): the cut refuses any other file (`DOCS-NAME`).
@@ -85,7 +87,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-what-next.sh" --plan-file <the plan file>`.
    - **The gate's label:** `what-next`, with `--effort '<effort folder>'`.
    - **On "now ask":** Read the fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/references/what-next-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, and act as the gate can't be shown (below).
-   - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Show the line `The "what next?" question could not be shown; the flow goes on to its own plan.`, and hand over as step 8 sets: the work's own plan gate still guards every dispatch.
+   - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Hand over as step 8 sets, its `latest` with `--line what_next_not_shown`: the work's own plan gate still guards every dispatch.
 
    Act on the answer:
    - **"Dispatch agents":** hand over as step 8 sets, to the running flow's step 2; with none running, load the work's flow as CLAUDE.md §4 routes it.
@@ -114,7 +116,7 @@ Every dispatch has a spec, however small: no skip; the only offer is a revision'
    - **The gate's label:** `spec-approval`, with `--effort '<effort folder>'`.
    - **On "now ask":** run the renderer with `--plan-file <the plan file> --question`, and copy its `header`, `question` and `options` into one AskUserQuestion as they are.
 
-   Never repeat the view's Goal, open points or path in the chat. A non-zero exit of either command, or a gate that can't be shown or asked: `references/settle-spec.md`'s "The spec's gates".
+   A non-zero exit of either command, or a gate that can't be shown or asked: `references/settle-spec.md`'s "The spec's gates".
 5. **Act on the answer,** matched to an option with `(Recommended)` ignored.
    - **"Approve" or "Approve, leave them to the developer":** run `<context.sh> spec --effort '<effort folder>' --approved '<the newest draft's absolute path>'`; its `SPEC_FILE:` line is the approved spec. Then step 6.
    - **"Answer the open points":** the human answers in the chat; write a new draft in which each answer moves into the section it settles and its point leaves `## Open points`, then step 4.
@@ -137,6 +139,7 @@ After a compaction, an interruption or a new session, load this skill again with
   - `standard-spec` (The spec step 2); missing: as that step sets.
   - `crucible`, not loaded: only its scripts run (The spec steps 1 and 3, `references/resume.md`; and what `context.sh --help` names); missing, `context.sh` exits 5: tell the human to install it, and stop as step 8 sets.
   - `procedure-approval-gate`, which shows the gates (step 7, The spec); missing: as each sets.
+  - `human-view`, not loaded: its `show.sh` renders this skill's gates from `views/` and shows its lines.
   - `procedure-grill` (step 1); on Resume, only its `grill.sh list` runs (`references/resume.md`).
   - `procedure-git-setup` and `procedure-git-worktree`, not loaded: only `settings.sh get` and `seats.sh list` run (`references/resume.md` step 2); missing: as that step sets.
   - `procedure-read-trackers`, not loaded: only its `read-link.sh` runs (steps 1 and 5); missing: a tracker link is not read, as `references/tracker-links.md` sets.

@@ -13,6 +13,8 @@ readonly CRUCIBLE_SKILL='crucible'
 readonly HARVESTED_TYPE='metrics.harvested'
 readonly EVENTS_FORMAT=1
 readonly VIEW_SKILL='human-view'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='token-use'
 # The exit when the events lock stayed held past events.sh's wait.
 readonly LOCKED_EXIT=6
 # Unknown arguments are echoed back only up to this length, so a long or
@@ -180,66 +182,14 @@ def agent_entries($running):
 	| if any($read.launched | to_entries[]; .key as $id | ($read.files | has($id) | not) and launched_before_grace(.value))
 	  then .[$session].partly_expired = true else . end)'
 
-# Prints the view from the $count session figures passed as $ARGS.named pairs
-# p<n> (the metrics.harvested event's path) and f<n> (its body's text), and
-# the ids of sessions expired before any harvest in $missing.
+# Prints the view's data from the $count session figures passed as
+# $ARGS.named pairs p<n> (the metrics.harvested event's path) and f<n> (its
+# body's text), and the ids of sessions expired before any harvest in $missing.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly VIEW_JQ='include "view";
-def tenths($unit): (. / $unit * 10 + 0.5 | floor) as $tenths | "\($tenths / 10 | floor).\($tenths % 10)";
-def millions: if . >= 999950000 then "\(tenths(1000000000))B" else "\(tenths(1000000))M" end;
-def thousands: if . >= 999950 then millions else "\(tenths(1000))k" end;
-def rounded: if . >= 999500 then millions elif . >= 1000 then "\(. / 1000 + 0.5 | floor)k" else thousands end;
-def sums: reduce .[] as $entry ({input: 0, output: 0, cache_read: 0, cache_write: 0};
-	.input += $entry.input | .output += $entry.output | .cache_read += $entry.cache_read | .cache_write += $entry.cache_write);
-def cells: "\(.input | thousands) | \(.output | thousands) | \(.cache_read | rounded) | \(.cache_write | rounded)";
-def bold_cells: "**\(.input | thousands)** | **\(.output | thousands)** | **\(.cache_read | rounded)** | **\(.cache_write | rounded)**";
-def marks: (if .running then " (running)" else "" end) + (if .unreliable then " (unreliable)" else "" end);
-def harvest_time: "\(.[0:10]) \(.[11:16]) UTC";
-# A file read back is checked for shape only, so an agent name in it may
-# predate the name rule; no character of it may break the table.
-def cell_text: gsub("[[:cntrl:]|`]"; "?");
-# The rows of a session with a figure above zero; the first names the session.
-def session_rows:
-	. as $file
-	| [{who: "main thread", unreliable: any($file.main_thread[]; .unreliable), sum: ($file.main_thread | sums)}]
-	+ [$file.subagents | group_by(.agent)[]
-		| {who: (.[0].agent | cell_text), running: any(.[]; .running), unreliable: any(.[]; .unreliable), sum: sums}]
-	| map(select(.sum | [.input, .output, .cache_read, .cache_write] | any(. > 0)))
-	| to_entries
-	| map((if .key == 0 then "| `\($file.claude_session_id[0:8])`\(if $file.expired then " (expired)" else "" end) |" else "| |" end) as $session
-		| .value | "\($session) \(.who)\(marks) | \(.sum | cells) |");
-def table($rows; $mine):
-	if ($rows | length) == 0 then "No session figures for this effort yet."
-	else ["| Session | Who | Fresh input | Output | Cached reads | Cache writes |",
-		"|---|---|---:|---:|---:|---:|"]
-		+ $rows
-		+ ["| **Total** | | \($mine | sums | bold_cells) |"]
-		| join("\n")
-	end;
-$ARGS.named as $named
-| [range(0; $count) | {path: $named["p\(.)"], file: ($named["f\(.)"] | fromjson)}] | sort_by(.file.claude_session_id) as $read
-| [$read[].file] as $files
-| ($missing | split(" ") | map(select(. != ""))) as $expired_unseen
-| [$files[] | .main_thread[], .subagents[]] as $mine
-| [$files[] | .outside[]] as $outside
-| [$files[] | session_rows[]] as $rows
-# Effort names are at most 40 characters and a whole effort folder name 61,
-# so 80 passes every folder effort.sh makes and keeps the first line short.
-| (if $name | test("\\A[A-Za-z0-9._-]{1,80}\\z") then $name else "effort" end) as $shown_name
-| [status_line("done"; "Token use · `\($shown_name)`"),
-   table($rows; $mine),
-   section("Note"; "Notes"; [
-	"Harvested \($at | harvest_time).",
-	(if ($outside | length) > 0 then ($outside | sums) as $sum
-		| "Outside this effort, same sessions\(if any($outside[]; .unreliable) then " (unreliable)" else "" end): \($sum.input | thousands) input, \($sum.output | thousands) output, \($sum.cache_read | rounded) cached reads, \($sum.cache_write | rounded) cache writes.",
-		  "Split by effort from the tool calls that name its folder; calls before the first one count as outside." else empty end),
-	(if any($mine[]; .running) then "(running): still running at harvest; the next ask completes it." else empty end),
-	(if any($mine[], $outside[]; .unreliable) then "(unreliable): some output figures are placeholders Claude Code left unfinished; output counts low there." else empty end),
-	($files[] | select(.expired) | "`\(.claude_session_id[0:8])` (expired): transcript gone; figures from its harvest of \(.harvested_at | harvest_time)."),
-	(if ($expired_unseen | length) > 0 then "Expired before any harvest, no figures: \($expired_unseen | map("`\(.[0:8])`") | join(", "))." else empty end)
-	] | map(plain_line)),
-   data_section([$read[] | ["Metrics", .path]])]
-| blocks'
+readonly VIEW_DATA_JQ='$ARGS.named as $named
+| {name: $name, harvested_at: $at,
+   expired_unseen: ($missing | split(" ") | map(select(. != ""))),
+   figures: [range(0; $count) | {path: $named["p\(.)"], body: ($named["f\(.)"] | fromjson)}]}'
 
 usage() {
 	print_block <<'EOF'
@@ -262,13 +212,17 @@ session's claude_session_id; the newest per session is its figure.
 Not counted: compaction, title generation, prompt suggestions and /btw.
 
   harvest          append the session figures
-  show             harvest, then print the view from the newest figures
+  show             harvest, then print the view from the newest figures,
+                   through the human-view skill's show.sh view, recorded
+                   as owed this session
   --effort FOLDER  an effort folder of the space, absolute
   CRUCIBLE_HOME    the space; default $HOME/.crucible
   CLAUDE_CONFIG_DIR  holds projects/, the transcripts, and skills/;
                    default $HOME/.claude
+  CLAUDE_CODE_SESSION_ID  show: the session the view is recorded in;
+                   unset: the view is printed, nothing is recorded
 
-stdout on exit 0: harvest nothing; show the view, Markdown, to relay.
+stdout on exit 0: harvest nothing; show the view, from views/token-use.jq.
 stderr: "metrics.sh:" lines to show the human.
 
 A session whose transcript is gone keeps its newest figures, marked
@@ -280,11 +234,12 @@ Each harvest adds to FOLDER/events/, so Crucible's prune age check sees
 the effort as recently active.
 
 Exit codes:
-  0  done; harvest: go on; show: relay stdout as printed
+  0  done; go on
   2  refused call; nothing written; show the human stderr, and stop
   4  the effort or a file it reads is unusable, or the effort has no
-     format 1 events/000001-effort.opened.json; show the human stderr,
-     and stop
+     format 1 events/000001-effort.opened.json; or show's reader was
+     gone before the view was written; show the human stderr and the
+     exit code, and stop
   5  install fault; show the human stderr, and stop
   6  the events lock stayed held; a figure is not written; rerun once,
      else show the human stderr, and stop
@@ -296,7 +251,9 @@ Dependencies:
     (macOS: brew install jq; Linux: the distro's jq package)
   metrics-validator.jq beside this script
   the crucible skill's events.sh and lib/crucible-space.sh
-  show only: the human-view skill's view.jq, in CLAUDE_CONFIG_DIR's skills/
+  show only: the human-view skill's scripts/show.sh and
+    scripts/lib/render.sh, in CLAUDE_CONFIG_DIR's skills/;
+    views/token-use.jq in this skill
 EOF
 }
 
@@ -473,11 +430,18 @@ resolve_projects() {
 	projects_dir="${config_dir}/projects"
 }
 
-# Sets view_dir, the human-view skill's folder the view is built with, or exits 5.
+# Sets views_dir and show_script and sources human-view's card printer lib,
+# or exits 5.
 load_view_helpers() {
-	view_dir="${config_dir}/skills/${VIEW_SKILL}"
-	[ -f "${view_dir}/view.jq" ] && [ -r "${view_dir}/view.jq" ] ||
-		install_fault "layout module missing; expected ${view_dir}/view.jq; try installing the ${VIEW_SKILL} skill"
+	views_dir="${own_dir}/../views"
+	view_skill_dir="${config_dir}/skills/${VIEW_SKILL}"
+	render_lib="${view_skill_dir}/${RENDER_LIB}"
+	require_file "${render_lib}" 'card printer lib' "try installing the ${VIEW_SKILL} skill"
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${views_dir}" "${VIEW_NAME}" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
 # Exits unless effort is an effort folder of the space whose first event is
@@ -785,7 +749,8 @@ raise_fault() {
 }
 
 # Prints the view from each session's newest figures whose shape passes the
-# validator, as events.sh lists them after this harvest.
+# validator, as events.sh lists them after this harvest, through show.sh
+# view, recorded as owed for the effort.
 show_view() {
 	read_newest_figures
 	file_count=0
@@ -806,9 +771,12 @@ show_view() {
 	done <<EOF
 ${sessions}
 EOF
-	jq -n -r -L "${view_dir}" --argjson count "${file_count}" --arg missing "${expired_unseen}" --arg name "${effort_name}" \
-		--arg at "${harvested_at}" "$@" "${VIEW_JQ}" </dev/null ||
-		install_fault "jq failed printing the view; expected jq 1.6+ and the ${VIEW_SKILL} skill's view.jq; try jq --version"
+	view_data=$(jq -n -c --argjson count "${file_count}" --arg missing "${expired_unseen}" --arg name "${effort_name}" \
+		--arg at "${harvested_at}" "$@" "${VIEW_DATA_JQ}" </dev/null) ||
+		install_fault 'jq failed building the view data; expected jq 1.6+; try jq --version'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${show_script}" "${views_dir}" "${VIEW_NAME}" "${effort}" "${view_data}" && return 0
+	install_fault "${hv_render_problem}; expected the view shown from views/${VIEW_NAME}.jq; try reinstalling procedure-metrics and the ${VIEW_SKILL} skill"
 }
 
 # Removes this run's temp files.

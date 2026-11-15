@@ -17,7 +17,9 @@ umask 077
 
 readonly PROG='grill.sh'
 readonly PROCEDURE='procedure-grill'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
 # An open grill's draft is <effort>/DRAFTS_FOLDER/GRILL_PREFIX<n>.json; end's
@@ -45,14 +47,14 @@ export LC_ALL
 
 # Parses the command's options ($ARGS.positional, option and value pairs),
 # checks each value against the grill file read on stdin (null for new), and
-# prints {problems, file, out}: the problem lines, the file to write and the
-# stdout text. The round and acknowledgement views are built here with view.jq.
+# prints {problems, file, out, view}: the problem lines, the file to write,
+# the machine lines for stdout and, for ask, answer and status, the data of
+# the card a views/ template lays out.
 # The file goes through crucible's prune, so a key with nothing in it is
 # left out; a missing questions or answers is read as none.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly GRILL_JQ='include "grill-validator";
-include "view";
 include "prune";
 
 def pairs: $ARGS.positional | [range(0; length / 2) as $n | {option: .[$n * 2], value: .[$n * 2 + 1]}];
@@ -116,25 +118,6 @@ def add_result:
 			  + {recommendation: {text: .["--recommendation"], reason: .["--reason"]}, status: "open", answers: []}]),
 		 out: "GRILL_IDS: \($groups | map(.id) | join(","))"});
 
-# One question of a round: its id number, then its recommendation and reason
-# on lines indented under its text, after hard breaks.
-def round_item($delimiter):
-	"\(.id | grill_id_number)\($delimiter) " as $marker
-	| (" " * ($marker | length)) as $indent
-	| "\($marker)\(.text | plain_line)  \n\($indent)Recommendation: \(.recommendation.text)  \n\($indent)Reason: \(.recommendation.reason)";
-
-# The round questions numbered by their ids. Markdown numbers a list from its
-# first item on, so each run of consecutive ids is a list of its own: a blank
-# line and the other delimiter (. or )) start the next, numbered from its id.
-def round_list:
-	sort_by(.id | grill_id_number)
-	| reduce .[] as $question ([];
-		if length > 0 and (.[length - 1][-1].id | grill_id_number) + 1 == ($question.id | grill_id_number)
-		then .[length - 1] += [$question] else . + [[$question]] end)
-	| to_entries
-	| map((if .key % 2 == 0 then "." else ")" end) as $delimiter | .value | map(round_item($delimiter)) | join("\n"))
-	| join("\n\n");
-
 def ask_id_problem($position; $ids; $file):
 	. as $id
 	| id_problem("--ids entry \($position + 1)"; $file)
@@ -151,9 +134,9 @@ def ask_result:
 		(if ($ids | length) == 0 or ($ids | length) > grill_round_max then "--ids names \($ids | length) questions; expected 1 to \(grill_round_max) ids, comma-separated" else empty end),
 		($ids | to_entries[] | .key as $position | .value | ask_id_problem($position; $ids; $file));
 		{file: ($file | .questions |= (. // [] | map(if (.id as $id | $ids | holds($id)) then .round = $round else . end))),
-		 out: ([status_line("decision"; "Decision needed · grill round \($round)"),
-			([$file.questions[] | select(.id as $id | $ids | holds($id))] | round_list),
-			(if $round == 1 then "Say \"end the grill\" at any point to stop." else "" end)] | blocks)});
+		 view: {round: $round,
+			questions: [$file.questions[] | select(.id as $id | $ids | holds($id))
+				| {number: (.id | grill_id_number), text, recommendation: .recommendation.text, reason: .recommendation.reason}]}});
 
 def answer_group_problems($group; $earlier_ids; $file):
 	"in group \($group.group)" as $in
@@ -167,15 +150,6 @@ def answer_group_problems($group; $earlier_ids; $file):
 		      elif $status == "settled" and ($group | has("--change-reason") | not) then "--id \($id) \($in) is settled; expected --change-reason TEXT with its new answer"
 		      elif $status != "settled" and ($group | has("--change-reason")) then "--change-reason \($in) is given for \($id), which is \($status); expected it only to change a settled answer"
 		      else empty end));
-
-def recorded_view($recorded):
-	if ($recorded | length) == 0 then ""
-	elif ($recorded | length) == 1 then "\(status_line("done"; "Recorded:")) \($recorded[0]["--id"]): \($recorded[0]["--text"])"
-	else "\(status_line("done"; "Recorded"))  \n" + ($recorded | map("\(.["--id"]): \(.["--text"])") | join("  \n")) end;
-
-def changed_view($file):
-	.["--id"] as $id
-	| "\(status_line("done"; "Changed · \($id):")) \(.["--text"]) (was \(($file | question_of($id)).answers[-1].text): \(.["--change-reason"]))";
 
 # The file with the answer of each group added as the next revision of its question.
 def answered($groups):
@@ -199,25 +173,25 @@ def answer_result:
 		| ($file | answered($groups)) as $answered
 		| [$answered.questions[] | select(.status == "settled" and (.parent as $parent | $changed_ids | holds($parent)) and (.id as $id | $ids | holds($id) | not)) | .id] as $reopened
 		| {file: ($answered | .questions |= map(if (.id as $id | $reopened | holds($id)) then .status = "open" else . end)),
-		   out: ([recorded_view([$groups[] | select(has("--change-reason") | not)]),
-			($changed[] | changed_view($file)),
-			(if ($reopened | length) > 0 then "Back to open: \($reopened | join(", "))" else "" end)] | blocks)});
+		   view: {recorded: [$groups[] | select(has("--change-reason") | not) | {id: .["--id"], text: .["--text"]}],
+			changed: [$changed[] | .["--id"] as $id
+				| {id: $id, text: .["--text"], was: ($file | question_of($id)).answers[-1].text, reason: .["--change-reason"]}],
+			reopened: $reopened}});
 
 def status_result:
 	. as $file
 	| value_of("--id") as $id
 	| value_of("--to") as $to
 	| value_of("--reason") as $reason
-	| {dropped: "Dropped", deferred: "Deferred", open: "Reopened"} as $titles
 	| result(ended_problems,
 		($reason | text_problem("--reason"; grill_max_chars.status_reason)),
-		(if $titles | has($to) then empty else "--to is \($to | shown); expected dropped, deferred or open" end),
+		(if ["dropped", "deferred", "open"] | holds($to) then empty else "--to is \($to | shown); expected dropped, deferred or open" end),
 		($id | id_problem("--id"; $file)
 			// (if ($file | question_of($id)).status == $to then "--id \($id) is \($to) already; expected a question that is not \($to)" else empty end));
 		{file: ($file | .questions[($id | grill_id_number) - 1] |= (
 			.status = $to
 			| if grill_status_prefix | has($to) then .answers += [{revision: ((.answers | length) + 1), at: $at, claude_session_id: $session_id, text: "\(grill_status_prefix[$to])\($reason)"}] else . end)),
-		 out: "\(status_line("done"; "\($titles[$to]) · \($id):")) \($reason)"});
+		 view: {id: $id, to: $to, reason: $reason}});
 
 # The ended grill, the body of its grill.ended event: the event envelope
 # holds the claude_session_id of the file, and the body holds the number.
@@ -373,10 +347,11 @@ EOF
 			print_page <<EOF
   --ids ID,ID,...        1 to ${cap_round} open questions, comma-separated, each once
 
-stdout on exit 0: the round's Markdown, each question numbered by its id
+stdout on exit 0: the round card, each question numbered by its id,
+  printed by ${VIEW_LIB}'s show.sh, which records it as owed this session
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' write
+			help_shared exits 'go on' card
 			;;
 		answer)
 			print_page <<'EOF'
@@ -395,10 +370,11 @@ EOF
   --change-reason TEXT   why a settled answer changes: one line, at most ${cap_change_reason}
                          characters; only for a settled question
 
-stdout on exit 0: the acknowledgement's Markdown
+stdout on exit 0: the acknowledgement card, printed by ${VIEW_LIB}'s
+  show.sh, which records it as owed this session
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' write
+			help_shared exits 'go on' card
 			;;
 		status)
 			print_page <<'EOF'
@@ -414,10 +390,11 @@ EOF
   --to STATUS            dropped, deferred or open
   --reason TEXT          why: one line, at most ${cap_status_reason} characters
 
-stdout on exit 0: the acknowledgement's Markdown
+stdout on exit 0: the acknowledgement card, printed by ${VIEW_LIB}'s
+  show.sh, which records it as owed this session
 EOF
 			help_shared caps
-			help_shared exits 'relay stdout word for word' write
+			help_shared exits 'go on' card
 			;;
 		list)
 			print_page <<EOF
@@ -505,8 +482,8 @@ usage_line() {
 
 # The help text more than one page prints, item $1, so it is written once;
 # exits takes exit 0's next step as $2 and, as $3, what the command does to
-# the draft: new (creates it), write (replaces it), end (turns it into an
-# event) or read.
+# the draft: new (creates it), write (replaces it), card (replaces it and
+# shows a card), end (turns it into an event) or read.
 help_shared() {
 	case $1 in
 		grill)
@@ -539,16 +516,19 @@ EOF
 Dependencies: POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package); date, mkdir, mktemp, mv, rm, tr; in the skills: the
   ${CRUCIBLE_SKILL} skill's events.sh, scripts/lib/crucible-space.sh and
-  scripts/lib/prune.jq, the ${RENDER_LIB} skill's view.jq and the
-  ${EFFORT_SKILL} skill's effort.sh (but for list); grill-validator.jq
-  beside this script.
+  scripts/lib/prune.jq, the ${EFFORT_SKILL} skill's effort.sh (but for
+  list) and, for ask, answer and status, the ${VIEW_LIB} skill's
+  ${SHOW} and ${RENDER_LIB}; grill-validator.jq beside this
+  script and views/grill-round.jq, grill-answer.jq and grill-status.jq in
+  this skill.
 EOF
 			;;
 	esac
 }
 
 # Prints a command page's stderr lines and exit codes: exit 0's next step $1,
-# and the lines kind $2 (new, write, end or read, as help_shared exits takes) adds.
+# and the lines kind $2 (new, write, card, end or read, as help_shared exits
+# takes) adds.
 help_exits() {
 	print_page <<EOF
 
@@ -569,9 +549,16 @@ EOF
      "${PROG}: CLAUDE_CODE_SESSION_ID ...": unset, empty, not a lowercase
        UUID or naming no session transcript; show the human stderr, and stop
 EOF
-	print_page <<'EOF'
+	if [ "$2" = card ]; then
+		print_page <<EOF
+  3  jq failed, nothing written; or ${VIEW_LIB}'s show.sh failed after the
+     write landed (its stderr is above): show the human stderr, and stop
+EOF
+	else
+		print_page <<'EOF'
   3  jq failed, nothing written
 EOF
+	fi
 	if [ "$2" = read ]; then
 		print_page <<'EOF'
   4  stdout closed before the output was written, nothing on stderr; stop
@@ -746,8 +733,9 @@ require_skill_file() {
 		install_fault 5 "$3 missing; expected $1; install the $2 skill"
 }
 
-# Sets own_dir, render_lib_dir (view.jq), crucible_lib_dir (prune.jq) and
-# events_script, and sources the space rules.
+# Sets own_dir, crucible_lib_dir (prune.jq), events_script and, for ask,
+# answer and status, views_dir, card (the template's name) and show_script,
+# and sources the space rules.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
@@ -758,8 +746,21 @@ load_dependencies() {
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
 	own_dir=$(script_dir)
 	require_skill_file "${own_dir}/grill-validator.jq" "${PROCEDURE}" 'grill file shape'
-	render_lib_dir="${skills_dir}/${RENDER_LIB}"
-	require_skill_file "${render_lib_dir}/view.jq" "${RENDER_LIB}" 'layout module'
+	case ${command} in
+		ask | answer | status)
+			card="grill-${command}"
+			[ "${command}" != ask ] || card='grill-round'
+			views_dir="${own_dir}/../views"
+			render_lib="${skills_dir}/${VIEW_LIB}/${RENDER_LIB}"
+			require_skill_file "${render_lib}" "${VIEW_LIB}" 'card printer lib'
+			# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+			. "${render_lib}"
+			# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+			hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" "${card}" || install_fault 5 "${hv_printer_problem}"
+			show_script=${hv_show}
+			;;
+		*) ;;
+	esac
 	crucible_lib_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts/lib"
 	require_skill_file "${crucible_lib_dir}/prune.jq" "${CRUCIBLE_SKILL}" 'prune module'
 	events_script="${skills_dir}/${CRUCIBLE_SKILL}/scripts/events.sh"
@@ -916,7 +917,7 @@ run_grill_jq() {
 }
 
 grill_jq() {
-	jq -c -L "${own_dir}" -L "${render_lib_dir}" -L "${crucible_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
+	jq -c -L "${own_dir}" -L "${crucible_lib_dir}" --arg command "${command}" --arg at "${at}" --arg grill "${grill}" \
 		--arg session_id "${session_id}" --arg prog "${PROG}" --argjson number "${grill_number}" "${GRILL_JQ}" --args -- "$@"
 }
 
@@ -1136,6 +1137,19 @@ print_result_out() {
 	[ -z "${out}" ] || print_out "${out}"
 }
 
+# ask, answer and status: prints result's card through show.sh view,
+# recorded as owed for the grill's effort; a closed stdout exits 4 before
+# anything is recorded.
+show_card() {
+	{ true 3>&1; } 2>/dev/null || exit 4
+	view_data=$(printf '%s\n' "${result}" | jq -c '.view') ||
+		install_fault 3 'jq failed reading the card'"'"'s data; expected jq 1.6+; try jq --version, then rerun'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${show_script}" "${views_dir}" "${card}" "${grill_effort}" "${view_data}" && return 0
+	[ "${hv_render_status}" != 5 ] || install_fault 5 "${hv_render_problem}; expected the ${VIEW_LIB} skill installed whole"
+	install_fault 3 "${hv_render_problem}; expected the card shown from views/${card}.jq; try reinstalling ${PROCEDURE} and ${VIEW_LIB}"
+}
+
 # list: prints a line per grill file of the effort; reads only.
 list_command() {
 	setup_problems=$(effort_problem)
@@ -1183,7 +1197,8 @@ write_command() {
 			print_out "DOCS_FILE: ${docs_copy}"
 			print_out "EVENT: ${event_file}"
 			;;
-		*) print_result_out ;;
+		add) print_result_out ;;
+		*) show_card ;;
 	esac
 }
 

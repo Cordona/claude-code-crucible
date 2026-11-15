@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Retry",
+      "question": "Try the fix again here anyway?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Start over (Recommended)",
+          "description": "You go back to before the first try (/rewind, or /clear when the line above names only /clear) and re-prompt with what the attempts showed, so the fix starts clean, without the failed attempts."
+        },
+        {
+          "label": "Yes",
+          "description": "I make the fix again in this conversation; the failed attempts stay in it, and every turn re-reads them."
+        },
+        {
+          "label": "No",
+          "description": "I leave the fix as it is and make no new try."
+        }
+      ]
+    }
+  ]
+}

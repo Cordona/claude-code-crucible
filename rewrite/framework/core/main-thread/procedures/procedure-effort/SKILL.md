@@ -45,20 +45,20 @@ An **effort** is how one piece of work is tracked: its folder, its context (`pro
 
 ## Always
 
-- **Relay into your text:** a view a step relays, and the stderr and exit code a step shows, go into your reply's text as printed, in a message of its own; the human never sees a Bash result.
+- **Relay into your text:** the stderr and exit code a step shows go into your reply's text as printed; the human never sees a Bash result.
 - **Hand over the folder's absolute path, never the ID alone:** scripts take the effort from that path, never from the session.
 - **Every file of the effort is written in its folder, by its owner, never by this skill but what Never's existing-folder line allows:** events (`events/`) only through the scripts and hooks that own them, never by hand; drafts (`drafts/`) as `crucible` sets; worktrees (`worktrees/`) by their writers.
 - **Pass every name and ID to `effort.sh` in single quotes, and only a value of `a-z`, `0-9`, `-` and `T`:** for a value holding any other character, ask the human instead of running it, so their words never run as shell. The effort folder goes by the next line.
-- **Pass the effort folder to `effort.sh`, `render-effort-state.sh`, `seats.sh` and `grill.sh` as the absolute path a script printed,** in single quotes, never one you typed.
+- **Pass the effort folder to `effort.sh`, `render-effort-state.sh`, `show.sh`, `seats.sh` and `grill.sh` as the absolute path a script printed,** in single quotes, never one you typed.
 - **Know which efforts this conversation works on:** each one it started, found or resumed. Check that list before every offer (step 1) and every find for `procedure-resume` (`references/find-effort.md` step 7), so a second effort is caught before it enters the session; when unsure whether the work is a second effort, treat it as one and warn.
 - **Before completing or dropping an effort, check for open work and ask on any open item** (`references/state-change.md` step 9.2): nothing is written before the answer.
 - **A `render-effort-state.sh` view that exits non-zero:** show its stderr and exit code, as the relay line sets. Then go on when the change it shows is already written; otherwise stop, writing nothing.
 
 ## Steps
 
-"Show the line" means a fixed line: word for word without its backticks, its `<placeholders>` filled, nothing added, in a message of its own.
+`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/views"`. Its templates share `views/common.jq`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line>`, with `--effort '<folder>'` when the step names the effort, and an `--arg <field> '<value>'` per field the step names; a non-zero exit: show the human its stderr.
 
-The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/`; every command below runs them by that full path. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" --help`, `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --help` and `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-state.sh" --help` once each, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: show the line `procedure-effort is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`, and stop.
+The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/`; every command below runs them by that full path. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" --help`, `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --help` and `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-state.sh" --help` once each, before its first use in a session, and not again in that session unless its contract is no longer in context (after a compaction); every other call runs only the command its step names. A non-zero exit, or no `usage:` line: show the human `procedure-effort is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.` word for word, and stop.
 
 1. **Offer** the effort. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** the reasons, written from your judgment, in the shape `render-effort-offer.sh --help` sets. Good: "The change touches the billing and auth services and needs a review". Bad: "This seems like a big task" (says nothing the human can weigh).
@@ -68,12 +68,12 @@ The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/
    - **The offer can't be shown or asked:** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/offer-failures.md` when the pipe exits non-zero, that question file can't be read or isn't one JSON object with a `questions` array, or the Skill tool can't load `procedure-approval-gate` or it reports the plan not shown; start no effort unless it sends you back to `procedure-approval-gate`'s step 1.
 2. **Act on the answer:**
    - **"Yes, start an effort (Recommended)"** or **"Yes, start it here":** step 3.
-   - **"Start it in a new session (Recommended)":** no effort; show the line `No effort was started here. Open a new session or run /clear, then ask again.`, and stop.
+   - **"Start it in a new session (Recommended)":** no effort; show the line `no_effort_started`, and stop.
    - **"No, do it without one":** no effort; go on by CLAUDE.md's short path.
    - **A typed answer:** a reply, not a revision of the offer: answer it as the turn's last message, and start no effort. At the human's next message, offer again from step 1, unless their reply chose a path: then take that option.
 3. **Name** the effort from the human's request, up to 3 words, keeping NAME as `effort.sh --help` sets it. Good: `prune-dry-run`. Bad: `fix-the-prune-command-so-it-has-a-dry-run` (too many words).
 4. **Start** it: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" start --name '<name>'`, and act on its exit:
-   - 0 with an `EFFORT: <absolute folder path>`, a `STATE:` and an `EVENT:` line: keep the `EFFORT:` path for the rest of the work (step 8). Without them: as any other exit.
+   - 0 with an `EFFORT: <absolute folder path>`, a `STATE:` and an `EVENT:` line: keep the `EFFORT:` path for the rest of the work (step 8), and show the start: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-state.sh" changed --effort '<that path>'`; on a non-zero exit, as Always sets. Without them: as any other exit.
    - 2 with an `effort.sh: bad name` stderr: name it again within step 3's rules and run this step once more. A second such 2: show the human the stderr, and stop.
    - Any other 2: show the human the stderr, and stop.
    - 4: show the human the stderr, and stop.
@@ -85,14 +85,14 @@ The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/
 8. **Hand over** the folder's absolute path (Always) to every later step and flow of the work; then load the work's flow (CLAUDE.md routes it), which builds the context.
 9. **Change the state** when the human asks to pause, complete, drop or reopen an effort, or answers an offer (step 10) with Pause, Complete or Drop: Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/state-change.md` and follow its steps; its open-work question is `references/open-work-question.json`.
 10. **Offer a state change** when the open effort's work looks done, when a flow loads this step once every part is done (When to use it; case `done`), or when the human moves to work it doesn't cover (When to use it): Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/state-offer.md` and follow its steps; its questions are `references/state-offer-done-question.json` (case `done`) and `references/state-offer-question.json` (case `new-work`).
-11. **Show the state** when the human asks where an effort stands: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-state.sh" status --effort '<folder>'`, the folder being the one the conversation shows when the human names none, otherwise the one found by step 5 (Read `references/find-effort.md`), and relay its stdout as printed; on a non-zero exit, as Always sets. Writes nothing.
+11. **Show the state** when the human asks where an effort stands: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-state.sh" status --effort '<folder>'`, the folder being the one the conversation shows when the human names none, otherwise the one found by step 5 (Read `references/find-effort.md`); on a non-zero exit, as Always sets. Writes nothing.
 
 ## Dependencies
 
 - **Companion skills** you load or run, each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
   - `procedure-approval-gate`, loaded to show the offer (step 1). Without it, step 1's failure rule applies.
-  - `procedure-resume`, loaded after a reopen the human asked for (step 9). Without it, show the line `procedure-resume is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.` after the reopen, and stop.
+  - `procedure-resume`, loaded after a reopen the human asked for (step 9). Without it, show the line `resume_not_installed`, with `--effort '<folder>'`, after the reopen, and stop.
   - `procedure-grill`'s `grill.sh list` and `procedure-git-worktree`'s `seats.sh busy`, run by the open-work check, never loaded. Without one, its read fails, and the check asks as for any failed read.
-- **`crucible`, `human-view` and `procedure-metrics` are never loaded:** only their scripts run, inside this skill's scripts.
+- **`crucible`, `human-view` and `procedure-metrics` are never loaded:** only their scripts run, inside this skill's scripts; and `human-view`'s `show.sh`, which prints this skill's cards from `views/`, shows its lines (Steps).
 - **Tools:** Skill, Read, Write, Bash and AskUserQuestion.
 - **Commands:** none of your own; each script lists its tools in its `--help`, and a missing one is an install fault the step's exit rule handles.

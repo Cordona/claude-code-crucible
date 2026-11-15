@@ -2,13 +2,19 @@
 # Renders the effort offer, the gate that asks the human whether to start an
 # effort, or with --case the state offer, which asks what should happen to the
 # open effort when new work comes or suggests completing it, from a JSON file
-# of reasons, so the main thread never hand-formats it. Pipe its stdout into
-# procedure-approval-gate's open-gate.sh.
+# of reasons, so the main thread never hand-formats it. views/effort-offer.jq
+# and views/state-offer.jq lay them out and human-view's show.sh renders them.
+# Pipe its stdout into procedure-approval-gate's open-gate.sh, which shows the
+# gate.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 
 readonly PROG='render-effort-offer.sh'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly OFFER_VIEW='effort-offer'
+readonly STATE_OFFER_VIEW='state-offer'
 readonly CRUCIBLE_SKILL='crucible'
 readonly DEFAULT_TITLE='start an effort for this?'
 # The title shares the first line with "Decision needed · ", so
@@ -57,33 +63,20 @@ else .[0]
 end)
 '
 
-# Each reason is trimmed and its leading Markdown block mark escaped, so it
-# renders as one plain line or list item. Without $case: the effort offer,
-# with the efforts this session already works on ($open_efforts, one NAME per
-# line, a repeat shown once) and the way out before the reasons when any are
-# given, the way out left out when $way_out_shown is "true"; with it: the state
-# offer, its two first lines fixed per case and the reasons as bullets,
-# new-work ending with the way out. The program is single-quoted on purpose:
-# its $ signs are jq's.
+# The offer's data for its template: the title and each reason trimmed;
+# without $case, the efforts this session already works on ($open_efforts,
+# one NAME per line), each once, and whether a state offer just showed the way
+# out. The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
-readonly RENDER_JQ='include "view";
-include "paths";
-def trimmed: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
-def way_out: "A new session or /clear keeps each effort clean.";
-(.[0].reasons | map(trimmed | plain_line)) as $reasons
-| ($open_efforts | split("\n") | map(select(. != ""))
-	| reduce .[] as $effort ([]; if any(.[]; . == $effort) then . else . + [$effort] end)) as $open
+readonly VIEW_DATA_JQ='def trimmed: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
+(.[0].reasons | map(trimmed)) as $reasons
 | if $case == "" then
-	[status_line("decision"; "Decision needed · \($title | trimmed)"),
-	 (if ($open | length) == 0 then "" else "**This session already works on:**\n\($open | map(code_span) | bullet_list)" end),
-	 (if ($open | length) == 0 or $way_out_shown == "true" then "" else way_out end),
-	 section("Why"; $reasons)]
-  else
-	{"new-work": {title: "It seems that you are planning something new.", suggestion: "What should happen to the open effort?", tail: way_out},
-	 done: {title: "It looks like \($name | code_span) is done.", suggestion: "You should consider completing it:", tail: ""}}[$case] as $lines
-	| [status_line("decision"; $lines.title), "\($lines.suggestion)\n\($reasons | bullet_list)", $lines.tail]
-  end
-| blocks
+	{title: ($title | trimmed),
+	 open: ($open_efforts | split("\n") | map(select(. != ""))
+		| reduce .[] as $effort ([]; if any(.[]; . == $effort) then . else . + [$effort] end)),
+	 way_out_shown: ($way_out_shown == "true"),
+	 reasons: $reasons}
+  else {case: $case, name: $name, reasons: $reasons} end
 '
 
 usage() {
@@ -104,7 +97,7 @@ Options:
                     (code points, as written), no file path (/a/b, ~/a/b,
                     ./a/b); inline Markdown in a reason
                     renders, a leading block mark (#, >, -, 1.) shows as text
-  --title TEXT      the text after "Decision needed · " on the first line,
+  --title TEXT      the offer's title, after its fixed first words,
                     default "${DEFAULT_TITLE}": not blank, one line with no
                     control character or U+2028/U+2029, at most ${MAX_TITLE_CHARS}
                     characters (code points, as written); inline Markdown
@@ -122,26 +115,29 @@ Options:
   CLAUDE_CONFIG_DIR  holds the skills, in its skills/; default \$HOME/.claude
 
 stdout on exit 0 only: the offer's Markdown, the reasons in input order,
-  with no gate marker
+  with no gate marker, rendered from views/${OFFER_VIEW}.jq (with --case,
+  views/${STATE_OFFER_VIEW}.jq) by ${VIEW_LIB}'s show.sh render
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a reason is named
   reasons[<i>], from 0, and the title --title, each with its first fault only
 stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
-  prints: an install fault, never a problem of the input; do not rerun; stop
+  prints, after any show.sh line: an install fault, never a problem of the
+  input; do not rerun; stop
 
 Exit codes:
   0  the offer printed; go on
   1  an install fault (stderr names it)
   2  refused input; fix what stderr names and rerun once, else show the human stderr
-  3  an install fault (stderr names it)
+  3  an install fault: jq or show.sh failed (stderr names it)
   4  stdout closed before the offer was written, nothing on stderr; stop and
      show the exit code
   5  an install fault (stderr names it)
 
-Dependencies: POSIX sh, jq 1.6+; in the skills: the ${RENDER_LIB}
-  skill's view.jq and paths.jq, and with --case or --open-effort the
-  ${CRUCIBLE_SKILL} skill's scripts/lib/crucible-space.sh; the plan file is
-  read as UTF-8 whatever the locale.
+Dependencies: POSIX sh, jq 1.6+; views/${OFFER_VIEW}.jq and
+  views/${STATE_OFFER_VIEW}.jq in this skill; in the skills: the ${VIEW_LIB}
+  skill's ${SHOW} and ${RENDER_LIB}, and with --case or
+  --open-effort the ${CRUCIBLE_SKILL} skill's scripts/lib/crucible-space.sh;
+  the plan file is read as UTF-8 whatever the locale.
 EOF
 }
 
@@ -267,11 +263,39 @@ read_input() {
 
 # Runs jq program $1 over the slurped input; a jq failure exits 3.
 run_jq() {
-	printf '%s' "${slurped}" | jq -r -L "${render_lib_dir}" --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
+	printf '%s' "${slurped}" | jq -c -r --argjson max_reasons "${MAX_REASONS}" --argjson max_chars "${MAX_REASON_CHARS}" \
 		--arg title "${title}" --argjson max_title_chars "${MAX_TITLE_CHARS}" --arg case "${offer_case}" --arg name "${name}" \
 		--arg open_efforts "${open_efforts}" --arg way_out_shown "${way_out_shown}" "$1" || {
 		install_fault 3 'jq failed on valid JSON; expected jq 1.6+; try jq --version, then rerun'
 	}
+}
+
+# Sets views_dir, view_name and show_script and sources lib/render.sh, or
+# exits 5 when lib/render.sh, or by it the template or show.sh, is missing.
+load_views() {
+	case $0 in
+		*/*) views_dir="${0%/*}/../views" ;;
+		*) views_dir='../views' ;;
+	esac
+	view_name=${OFFER_VIEW}
+	[ -z "${offer_case}" ] || view_name=${STATE_OFFER_VIEW}
+	render_lib="${skills_dir}/${VIEW_LIB}/${RENDER_LIB}"
+	[ -f "${render_lib}" ] && [ -r "${render_lib}" ] ||
+		install_fault 5 "gate printer missing; expected ${render_lib}; install the ${VIEW_LIB} skill"
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" "${view_name}" || install_fault 5 "${hv_printer_problem}"
+	show_script=${hv_show}
+}
+
+# Renders view_data through the offer's template to stdout; a show.sh fault
+# is an install fault.
+render_offer() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_render_gate "${show_script}" "${views_dir}" "${view_name}" "${view_data}" && return 0
+	[ "${hv_render_status}" != 5 ] || install_fault 5 "${hv_render_problem}; expected the ${VIEW_LIB} skill installed whole"
+	install_fault 3 "${hv_render_problem}; expected the offer rendered from views/${view_name}.jq; try reinstalling procedure-effort and ${VIEW_LIB}"
 }
 
 parse_args "$@"
@@ -279,11 +303,7 @@ command -v jq >/dev/null 2>&1 ||
 	install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
 
 skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
-render_lib_dir="${skills_dir}/${RENDER_LIB}"
-for module in view.jq paths.jq; do
-	[ -f "${render_lib_dir}/${module}" ] && [ -r "${render_lib_dir}/${module}" ] ||
-		install_fault 5 "layout module missing; expected ${render_lib_dir}/${module}; install the ${RENDER_LIB} skill"
-done
+load_views
 check_names
 
 # One slurped value so an empty file and several values are caught as one problem.
@@ -293,8 +313,5 @@ if [ -n "${problems}" ]; then
 	printf '%s\n' "${problems}" | while IFS= read -r problem; do warn "${problem}"; done
 	exit 2
 fi
-offer=$(run_jq "${RENDER_JQ}")
-# Ignoring SIGPIPE turns a closed reader into a failed write this script can
-# tell apart from a jq fault, rather than a silent kill.
-trap '' PIPE
-printf '%s\n' "${offer}" 2>/dev/null || exit 4
+view_data=$(run_jq "${VIEW_DATA_JQ}")
+render_offer

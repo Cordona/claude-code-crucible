@@ -16,4 +16,4 @@ How SKILL.md's Resume goes on in two cases: no version cut yet (`CONTEXT-DOCS` w
 
 ## A version
 
-Run the drafts `find` of an open spec talk (above), and Read the latest version, the file `<context.sh> latest`'s `CONTEXT_FILE:` line names. When a spec talk is open, say where things stand in a few lines, and go on through SKILL.md's The spec; then hand over as SKILL.md step 8 sets.
+Run the drafts `find` of an open spec talk (above), and Read the latest version, the file `<context.sh> latest`'s `CONTEXT_FILE:` line names. When a spec talk is open, go on through SKILL.md's The spec, whose approval gate names the draft, its goal and open points; then hand over as SKILL.md step 8 sets.

@@ -43,6 +43,9 @@ readonly CHANGED_TOKEN='CONTEXT-CHANGED'
 readonly DOCS_NAME_TOKEN='DOCS-NAME'
 readonly DOCS_SIZE_TOKEN='DOCS-SIZE'
 readonly NONE_TOKEN='CONTEXT-NONE'
+# The lines of views/lines.jq latest may print after its stdout.
+readonly LATEST_LINES='what_next_not_shown context_unchanged'
+readonly VIEW_LIB='human-view'
 # A problem line shows a value whole up to 80 characters; a longer one keeps
 # its first 40 and last 39 around a "…", as a path or URL differs most at its
 # start and end.
@@ -310,18 +313,24 @@ latest_help() {
 	print_page <<'EOF'
 
 Prints the latest version, the newest context.cut event, and the draft's
-docs folder when a cut would add something. Reads only.
+docs folder when a cut would add something. Reads only, but for --line's
+owed record.
 
 Options:
 EOF
 	help_shared effort
 	print_page <<EOF
+  --line LINE            also print LINE of views/lines.jq for the human,
+                         one of: ${LATEST_LINES}
 
 stdout on exits 0 and ${DOCS_EXIT}, in order:
   DOCS_FOLDER: <the draft's docs folder, absolute>  exit ${DOCS_EXIT} only; it
     may not exist yet when only entries are pending
   CONTEXT_FILE: <the latest ${VERSION_EVENT} event, absolute>  when there is one
   CONTEXT_SHA256: <its sha256>  with CONTEXT_FILE
+  then, with --line, the line, through ${VIEW_LIB}'s show.sh, which records
+    it as owed this session: show it; a failing show.sh exits 5 after its
+    stderr, 4 when stdout closed under it
 stderr on exit 1: ${PROG}: ${NONE_TOKEN}: ...
 EOF
 	help_shared exits read '' "  1  ${NONE_TOKEN}: no version, no file in the folder, nothing pending;
@@ -363,7 +372,7 @@ usage_lines() {
 			drop) usage_line "sh ${PROG} drop --effort FOLDER (--path ABS | --link URL) --why LINE" ;;
 			spec) usage_line "sh ${PROG} spec --effort FOLDER (--approved DRAFT | --status)" ;;
 			freeze) usage_line "sh ${PROG} freeze --effort FOLDER (--dry-run | --expect HEX)" ;;
-			latest) usage_line "sh ${PROG} latest --effort FOLDER" ;;
+			latest) usage_line "sh ${PROG} latest --effort FOLDER [--line LINE]" ;;
 			*) usage_line "sh ${PROG} diff --effort FOLDER --repo ROOT --ref REF" ;;
 		esac
 	done
@@ -390,7 +399,8 @@ EOF
 Environment:
   CRUCIBLE_HOME          the space (default $HOME/.crucible)
   CLAUDE_CODE_SESSION_ID freeze: required, the session ID Claude Code sets,
-                         a lowercase UUID; other commands: not read
+                         a lowercase UUID; latest --line: show.sh's, unset:
+                         the line not recorded; other commands: not read
   CLAUDE_CONFIG_DIR      the skills are in
                          ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 EOF
@@ -478,6 +488,12 @@ EOF
 			print_page <<'EOF'
   git, for diff and add --docs-of or --docs-of-file (macOS: xcode-select
     --install; Linux: the distro's)
+EOF
+			;;
+		latest)
+			print_page <<EOF
+  for --line: the ${VIEW_LIB} skill's scripts/show.sh and scripts/lib/render.sh,
+    and views/lines.jq in this skill
 EOF
 			;;
 		*) ;;
@@ -604,7 +620,7 @@ check_option() {
 	case ${command}:$1 in
 		*:--effort) ;;
 		add:--path | add:--link | add:--why | add:--docs-of | add:--docs-of-file | add:--repo | drop:--path | drop:--link | drop:--why) ;;
-		spec:--approved | spec:--status | freeze:--dry-run | freeze:--expect | diff:--repo | diff:--ref) ;;
+		spec:--approved | spec:--status | freeze:--dry-run | freeze:--expect | diff:--repo | diff:--ref | latest:--line) ;;
 		*)
 			shown_option=$(printable "$1")
 			expected_options=$(command_options)
@@ -624,6 +640,7 @@ command_options() {
 		spec) printf '%s' '--effort, --approved, --status' ;;
 		freeze) printf '%s' '--effort, --dry-run, --expect' ;;
 		diff) printf '%s' '--effort, --repo, --ref' ;;
+		latest) printf '%s' '--effort, --line' ;;
 		*) printf '%s' '--effort' ;;
 	esac
 }
@@ -659,6 +676,7 @@ set_value() {
 			expected_fingerprint=$2
 			;;
 		--repo) repo_root=$(without_trailing_slashes "$2") ;;
+		--line) line_name=$2 ;;
 		*) ref=$2 ;;
 	esac
 }
@@ -688,8 +706,19 @@ require_options() {
 			require_option --repo ROOT
 			require_option --ref REF
 			;;
+		latest) [ -z "${line_name}" ] || require_latest_line ;;
 		*) ;;
 	esac
+}
+
+# Exits 2 unless --line names one of LATEST_LINES.
+require_latest_line() {
+	case " ${LATEST_LINES} " in
+		*" ${line_name} "*) return 0 ;;
+		*) ;;
+	esac
+	shown_line=$(printable "${line_name}")
+	usage_error "--line ${shown_line} is not a line latest prints; expected one of: ${LATEST_LINES}"
 }
 
 # add takes an entry's options, or one of --docs-of and --docs-of-file with
@@ -777,6 +806,7 @@ load_dependencies() {
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
 	# shellcheck disable=SC2310 # its status says whether the checks loaded; the problem is read here
 	context_load_checks "${skills_dir}" "${own_scripts_dir}" || die 5 "${context_load_problem}"
+	[ -z "${line_name}" ] || load_line_printer
 	case ${command}:${mode} in
 		latest: | spec:status | freeze:dry-run) return 0 ;;
 		*) ;;
@@ -800,6 +830,21 @@ load_dependencies() {
 		command -v git >/dev/null 2>&1 ||
 			die 5 "git missing; expected it on PATH; install it (macOS: xcode-select --install; Linux: the distro's git package)"
 	fi
+}
+
+# --line: exits 5 unless human-view's lib/render.sh, and by it this skill's
+# lines.jq and human-view's show.sh, are in place; sets views_dir and
+# show_script and sources lib/render.sh.
+load_line_printer() {
+	views_dir="${own_scripts_dir}/../views"
+	render_lib="${skills_dir}/${VIEW_LIB}/scripts/lib/render.sh"
+	[ -f "${render_lib}" ] && [ -r "${render_lib}" ] ||
+		die 5 "the line printer missing; expected ${render_lib}; install the ${PROCEDURE} and ${VIEW_LIB} skills"
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" lines || die 5 "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
 # Sets context_lib and sources it when it is a readable file; fails otherwise.
@@ -1611,7 +1656,16 @@ latest_command() {
 	fi
 	[ "${is_pending}" = false ] || printf 'DOCS_FOLDER: %s\n' "${next_folder}"
 	[ -z "${latest_path}" ] || print_version "${latest_path}"
+	[ -z "${line_name}" ] || show_line
 	[ "${is_pending}" = false ] || exit "${DOCS_EXIT}"
+}
+
+# Prints --line's line for the human after the machine lines, recorded as
+# owed for the effort.
+show_line() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${show_script}" "${views_dir}" "${line_name}" "${effort_dir}" ||
+		die 5 "${hv_render_problem}; expected the line ${line_name} printed from views/lines.jq; try reinstalling ${PROCEDURE} and ${VIEW_LIB}"
 }
 
 # Runs git read-only in repo_root with the arguments given. Pathspec magic
@@ -1753,7 +1807,7 @@ diff_command() {
 }
 
 command='' mode='' effort_dir='' entry_kind='' entry_value='' entry_why='' docs_of='' docs_of_file='' draft='' expected_fingerprint=''
-repo_root='' ref='' seen_options='' tools_checked='' session_id=''
+repo_root='' ref='' line_name='' seen_options='' tools_checked='' session_id=''
 temp_file='' diff_temp='' moved_folder='' locked_files=''
 trap clean_up EXIT
 # A signal exits through the EXIT trap, so the temp files go and moved docs

@@ -1,6 +1,6 @@
 # Settle the spec: the branches
 
-The branches off SKILL.md's The spec: an approved spec and its revision, a left draft, a typed answer, a gate that fails, and where each run goes once settled. `<context.sh>`, `<crucible.sh>` and `<render-spec-gate.sh>` are as SKILL.md sets.
+The branches off SKILL.md's The spec: an approved spec and its revision, a left draft, a typed answer, a gate that fails, and where each run goes once settled. `<context.sh>`, `<crucible.sh>`, `<render-spec-gate.sh>`, `<show.sh>` and `<views>` are as SKILL.md sets, and so is showing a line.
 
 ## The spec's gates
 
@@ -25,16 +25,16 @@ The revision offer and the approval are gates, as SKILL.md's Never and Always se
    - **"Revise it":** The spec step 2 when `standard-spec` is not yet loaded, then The spec step 3.
    - **"Keep it as it is":** nothing changes, and the change that led to the offer is not made (step 5).
    - **A typed answer at the revision gate:** one that asks to revise is "Revise it"; one that declines is "Keep it as it is"; any other: answer it as the turn's last message, and show the revision gate again at the human's next message.
-   - **A typed answer at the approval gate that approves the spec as it is:** like any typed answer, it is no approval: show the approval gate again (The spec step 4) and ask the human to pick its approve option ("Approve, leave them to the developer" when open points are listed). Never run `<context.sh> spec --approved` without the gate's recorded answer.
+   - **A typed answer at the approval gate that approves the spec as it is:** like any typed answer, it is no approval: show the approval gate again (The spec step 4), its `--approval-plan` run with `--typed-approval`, which prints the line that names the approve option to pick. Never run `<context.sh> spec --approved` without the gate's recorded answer.
    - **Any other typed answer at the approval gate:** write the change into a new draft, then The spec step 4.
    - **`NO-SPEC-GATE`:** show the approval gate again (The spec step 4); never copy the draft or work around it.
-   - **The human's own "no spec" or "just build it", at any point** (discovery included): say in one line that every dispatch needs a spec and a small one is enough, then The spec step 3 with a short draft; in a revision, drafting ends with nothing changed (step 5).
+   - **The human's own "no spec" or "just build it", at any point** (discovery included): The spec step 3 with a short draft, its first `--approval-plan` with `--spec-needed`; in a revision, show the line `spec_needed`, and drafting ends with nothing changed (step 5).
    - **"Stop the work":** the drafts and the docs folder stay in the effort; stop (`stopped: spec not settled`).
 5. **Settled:**
    - **Run by a flow** (a change from its plan gate or a Changes item, or no approved spec), **or after a ticket read in SKILL.md step 5:** hand over as SKILL.md step 8 sets, with no "what next?"; after "Keep it as it is", also tell the flow the spec is kept and the change not made; with `SPEC: none` still, `stopped: spec not settled`.
    - **Run during discovery** (the human's own ask before SKILL.md step 4): go back to SKILL.md step 1, then steps 2–4.
    - **Run from SKILL.md step 4:** go back to it, which goes on to "what next?".
    - **Run from SKILL.md step 7 after a grill:** go back to it, which asks "what next?".
-   - **Run alone on the human's own ask, once the spec is approved:** once the approved spec is written, SKILL.md step 7 asks "what next?" again. With nothing changed, tell the human in one line that the context stays as it was, hand a running flow its line as SKILL.md step 8 sets, and end the turn with no "what next?".
+   - **Run alone on the human's own ask, once the spec is approved:** once the approved spec is written, SKILL.md step 7 asks "what next?" again. With nothing changed: hand a running flow its line as SKILL.md step 8 sets, its `latest` with `--line context_unchanged`; with none running, show the line `context_unchanged`. Then end the turn with no "what next?".
    - **Run from Resume:** back to SKILL.md's Resume, with the spec talk settled for this session.
    - Every stop here ends as SKILL.md step 8 sets, its step named `references/settle-spec.md` step `<n>`.

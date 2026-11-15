@@ -1,28 +1,26 @@
 #!/usr/bin/env sh
 # Renders the "what next?" gate, asked once an effort's spec is approved, so
-# the main thread never hand-formats it. The title is fixed; its input is a
-# plan file naming the effort's draft docs folder and, after a
-# grill, the grill file; both paths print whole, so the human can open either.
-# Pipe its stdout into procedure-approval-gate's open-gate.sh.
+# the main thread never hand-formats it. Its input is a plan file naming the
+# effort's draft docs folder and, after a grill, the grill file;
+# views/what-next.jq lays it out and human-view's show.sh renders it. Pipe its
+# stdout into procedure-approval-gate's open-gate.sh, which shows the gate.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
 set -eu
 
 readonly PROG='render-what-next.sh'
-readonly RENDER_LIB='human-view'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='what-next'
 # The draft's docs folder of an effort, the one context.sh docs prints.
 readonly DOCS_PATH='drafts/main-thread/context/docs'
 # The shell's pattern checks stay byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
 
+# The gate's data for views/what-next.jq.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly RENDER_JQ='include "view";
-def decisions: if . == 1 then "1 decision" else "\(.) decisions" end;
-[status_line("decision"; "Decision needed · the context is ready: what next?"),
- (if $settled == null or $settled == 0 then "" else section("Settled"; [$settled | decisions]) end),
- data_section([["Docs", $docs]] + (if $grill == "" then [] else [["Grill", $grill]] end))]
-| blocks
-'
+readonly VIEW_DATA_JQ='{docs: $docs, grill: $grill, settled: $settled}'
 
 # Prints one line per problem of the slurped plan file; nothing when it is one
 # object with a docs path and, at most, a grill path.
@@ -85,26 +83,28 @@ Options:
                         present, are an array
   CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
 
-stdout on exit 0 only: the gate's Markdown, with no gate marker
+stdout on exit 0 only: the gate's Markdown, with no gate marker, rendered
+  from views/${VIEW_NAME}.jq by ${VIEW_LIB}'s show.sh render
 stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
   line per problem (a usage error adds a "Try" line); a plan field is
   named docs or grill
 stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
-  prints; tell the human what it names to install, and stop
+  prints, after any show.sh line; tell the human what it names to install,
+  and stop
 
 Exit codes:
   0  the gate printed; go on
   1  jq missing
   2  refused input; fix what stderr names and rerun once, else show the human stderr
-  3  jq failed
-  4  stdout closed before the gate was written, nothing on stderr; stop and
-     show the exit code
+  3  jq or show.sh failed
+  4  stdout closed before the gate was written; stop and show the exit code
   5  an install fault: a tool or skill file missing or failing
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
-  distro's jq package), the ${RENDER_LIB} skill's view.jq and the crucible
-  skill's scripts/lib/crucible-space.sh in the skills; CRUCIBLE_HOME, the
-  space (default \$HOME/.crucible).
+  distro's jq package), views/${VIEW_NAME}.jq in this skill, the ${VIEW_LIB}
+  skill's ${SHOW} and ${RENDER_LIB} and the crucible skill's
+  scripts/lib/crucible-space.sh in the skills; CRUCIBLE_HOME, the space
+  (default \$HOME/.crucible).
 EOF
 }
 
@@ -158,13 +158,22 @@ require_skill_file() {
 		install_fault 5 "$3 missing; expected $1; install the $2 skill"
 }
 
-# Sets render_lib_dir and sources the space rules.
+# Sets views_dir and show_script and sources the space rules.
 load_dependencies() {
 	command -v jq >/dev/null 2>&1 ||
 		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
 	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
-	render_lib_dir="${skills_dir}/${RENDER_LIB}"
-	require_skill_file "${render_lib_dir}/view.jq" "${RENDER_LIB}" 'layout module'
+	case $0 in
+		*/*) views_dir="${0%/*}/../views" ;;
+		*) views_dir='../views' ;;
+	esac
+	render_lib="${skills_dir}/${VIEW_LIB}/${RENDER_LIB}"
+	require_skill_file "${render_lib}" "${VIEW_LIB}" 'gate printer'
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" "${VIEW_NAME}" || install_fault 5 "${hv_printer_problem}"
+	show_script=${hv_show}
 	space_lib="${skills_dir}/crucible/scripts/lib/crucible-space.sh"
 	require_skill_file "${space_lib}" crucible 'space rules'
 	# shellcheck source=crucible-space.sh
@@ -292,6 +301,15 @@ load_grill() {
 		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
 }
 
+# Renders view_data through views/VIEW_NAME.jq to stdout; a show.sh fault
+# is an install fault.
+render_gate() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_render_gate "${show_script}" "${views_dir}" "${VIEW_NAME}" "${view_data}" && return 0
+	[ "${hv_render_status}" != 5 ] || install_fault 5 "${hv_render_problem}; expected the ${VIEW_LIB} skill installed whole"
+	install_fault 3 "${hv_render_problem}; expected the gate rendered from views/${VIEW_NAME}.jq; try reinstalling procedure-context and ${VIEW_LIB}"
+}
+
 parse_args "$@"
 load_dependencies
 load_plan
@@ -299,9 +317,6 @@ problems=$(docs_problems)
 settled=null
 [ -z "${grill}" ] || load_grill
 refuse_problems "${problems}"
-view=$(jq -n -r -L "${render_lib_dir}" --arg docs "${docs}" --arg grill "${grill}" --argjson settled "${settled}" "${RENDER_JQ}" </dev/null) ||
+view_data=$(jq -cn --arg docs "${docs}" --arg grill "${grill}" --argjson settled "${settled}" "${VIEW_DATA_JQ}" </dev/null) ||
 	install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
-# Ignoring SIGPIPE turns a closed reader into a failed write this script can
-# tell apart from a jq fault, rather than a silent kill.
-trap '' PIPE
-printf '%s\n' "${view}" 2>/dev/null || exit 4
+render_gate
