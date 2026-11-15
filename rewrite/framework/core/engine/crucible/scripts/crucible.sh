@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 # Hands out paths and IDs in the effort folders of the durable Crucible space,
 # finds drafts by ID, opens them and prunes efforts no file changed in for long.
+# Its cards are human-view's show.sh's to print: views/opened.jq for open,
+# views/prune.jq for prune and views/prune-stopped.jq before a failed
+# --apply's exit 4, the prune cards sharing views/common.jq.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
@@ -14,7 +17,8 @@ readonly DRAFTS_DIR='drafts/main-thread'
 readonly MAX_PRUNE_DAYS_DIGITS=5
 # Keeps a --max value inside the shell's integer range.
 readonly MAX_PATHS_DIGITS=9
-readonly RENDER_LIB='human-view'
+readonly VIEW_SKILL='human-view'
+readonly RENDER_LIB='scripts/lib/render.sh'
 # The C locale keeps the shell's patterns and sort byte-wise on macOS and Linux.
 LC_ALL=C
 export LC_ALL
@@ -75,11 +79,11 @@ Commands:
          --label, of that label) in --effort's folder, one per line, newest
          first; nothing when none (or no KIND folder); an unreadable KIND
          folder exits 4.
-  open   opens the draft. stdout: the line "**Opened:** <its absolute path>".
+  open   opens the draft. stdout: the card opened, its absolute path.
   prune  lists effort folders unchanged for N days (24 hours at least)
          and fully readable; --apply removes those FOLDERs, refusing any
          other (exit 2, nothing removed). Follows no symbolic link. stdout:
-         a view for the human, relayed as printed.
+         its card, or the card prune-stopped before a failed --apply's exit 4.
   root   stdout: the space root, checked, not created.
 
 Exit codes:
@@ -87,8 +91,8 @@ Exit codes:
   1  path, open: no single draft has the ID; show the human stderr, and stop
   2  usage error; fix what stderr names and rerun once, else show the human
      stderr, and stop
-  4  space fault; relay a failed --apply's "Prune stopped" view (stdout)
-     as printed; show the human stderr, and stop
+  4  space fault, or stdout gone before a card; show the human stderr,
+     and stop
   5  install fault; show the human stderr, and stop
   129, 130, 143  stopped by HUP, INT or TERM; show the human stderr, and stop
   other  unexpected; show the human the exit code and stderr, and stop
@@ -97,7 +101,7 @@ Dependencies:
   POSIX sh; lib/crucible-space.sh beside this script
   cat, date, find, mkdir, od, rm, sort, uname, /dev/urandom
   open, prune: jq 1.6+ (macOS: brew install jq; Linux: the distro's jq);
-    the ${RENDER_LIB} skill's view.jq in <CLAUDE_CONFIG_DIR>/skills
+    the ${VIEW_SKILL} skill's show.sh and its lib/render.sh; this skill's views/
   open without --editor: open (macOS) or xdg-open (Linux)
 EOF
 }
@@ -165,9 +169,10 @@ load_space_lib() {
 # where it was looked for, when it is not a readable file.
 source_space_lib() {
 	case $0 in
-		*/*) space_lib="${0%/*}/lib/crucible-space.sh" ;;
-		*) space_lib='./lib/crucible-space.sh' ;;
+		*/*) own_dir=${0%/*} ;;
+		*) own_dir=. ;;
 	esac
+	space_lib="${own_dir}/lib/crucible-space.sh"
 	[ -f "${space_lib}" ] && [ -r "${space_lib}" ] || return 1
 	# shellcheck source=lib/crucible-space.sh
 	. "${space_lib}"
@@ -362,10 +367,11 @@ run_open() {
 	[ "${editor_given}" = false ] || check_editor
 	find_item "${wanted_id}"
 	check_jq
-	find_render_lib
-	opened_line=$(render_opened_line)
+	load_card_printer opened
+	card_data=$(jq -nc --arg path "${item_path}" '{path: $path}' </dev/null) ||
+		install_fault 'jq failed building the card data; expected jq 1.6+; try jq --version'
 	open_in_editor
-	printf '%s\n' "${opened_line}"
+	show_card opened "${item_path%/"${DRAFTS_DIR}"/*}"
 }
 
 run_find() {
@@ -506,21 +512,32 @@ check_editor() {
 	[ "$#" -gt 0 ] || usage_error "--editor is blank; expected a command, e.g. --editor code"
 }
 
-# Sets render_lib_dir to human-view's folder; exits 5 when its layout module is
-# missing.
-find_render_lib() {
-	render_lib_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${RENDER_LIB}"
-	[ -f "${render_lib_dir}/view.jq" ] && [ -r "${render_lib_dir}/view.jq" ] ||
-		install_fault "layout module missing; expected ${render_lib_dir}/view.jq; install the ${RENDER_LIB} skill"
+# Sets views_dir and show_script and sources human-view's card printer lib,
+# which checks that show.sh and each of the templates $@ (views/<name>.jq)
+# are there; exits 5 when one of them is missing.
+load_card_printer() {
+	views_dir="${own_dir}/../views"
+	view_skill_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${VIEW_SKILL}"
+	render_lib="${view_skill_dir}/${RENDER_LIB}"
+	require_file "${render_lib}" 'card printer lib' "install the ${VIEW_SKILL} skill"
+	# shellcheck source=../../human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${view_skill_dir}/scripts" "${views_dir}" "$@" || install_fault "${hv_printer_problem}"
+	show_script=${hv_show}
 }
 
-# Prints the line open reports, built from human-view's layout module; exits 5
-# when jq fails on it.
-render_opened_line() {
-	# shellcheck disable=SC2016 # the $ signs are jq's
-	jq -nr -L "${render_lib_dir}" --arg path "${item_path}" \
-		'include "view"; "**Opened:** \($path | path_text)"' </dev/null ||
-		install_fault "jq failed on ${render_lib_dir}/view.jq; expected jq 1.6+ and the ${RENDER_LIB} skill's module; try reinstalling it"
+# Exits 5, naming file $1 as $2 and the fix $3, unless $1 is a readable file.
+require_file() {
+	[ -f "$1" ] && [ -r "$1" ] || install_fault "$2 missing; expected $1; $3"
+}
+
+# Prints card_data as card $1 of views/, owed for effort folder $2 (none when
+# empty); exits 5 when show.sh fails, 4 when stdout is gone before the card.
+show_card() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_card "${show_script}" "${views_dir}" "$1" "$2" "${card_data}" && return 0
+	install_fault "${hv_render_problem}; expected the card shown from views/$1.jq; try reinstalling the crucible and ${VIEW_SKILL} skills"
 }
 
 open_in_editor() {
@@ -575,14 +592,14 @@ run_prune() {
 		usage_error '--apply needs folders; expected --apply FOLDER..., folders the dry run listed'
 	command -v find >/dev/null 2>&1 || install_fault 'find missing; expected find on PATH to see recent files; try installing find (POSIX)'
 	check_jq
-	find_render_lib
+	load_card_printer common prune prune-stopped
 	removed_items='' kept_items=''
 	if [ "${apply}" = true ]; then
 		apply_prune
 	else
 		list_prunable
 	fi
-	report_prune
+	show_prune prune
 }
 
 check_days() {
@@ -700,7 +717,7 @@ check_prunable() {
 # removed before it, then exits 4.
 remove_effort() {
 	{ rm -rf "$1" && [ ! -e "$1" ] && [ ! -L "$1" ]; } || {
-		report_prune blocked 'Prune stopped'
+		show_prune prune-stopped
 		space_fault "cannot remove $1; expected it gone; try checking its permissions"
 	}
 }
@@ -711,35 +728,26 @@ recent_in() {
 	recent=$(find "$1" -mtime "-$2" -print 2>/dev/null)
 }
 
+# Adds effort folder $1, kept for reason $2, as two lines of kept_items.
 print_kept() {
-	kept_items="${kept_items}$1 ($2)
+	kept_items="${kept_items}$1
+$2
 "
 }
 
-# Prints the prune view, built from human-view's layout module, with status $1
-# and title $2 when given; exits 5 when jq fails on the module. Effort folder names hold no
-# newline, so the lists travel newline-separated.
-report_prune() {
-	if [ "${apply}" = true ]; then
-		view_status=${1:-done} view_title=${2:-Prune} list_name='Removed' closing_note=''
-	else
-		view_status=decision view_title='Prune dry run' list_name='Would remove'
-		closing_note='Nothing changed; to remove them, add --apply and the folders.'
-	fi
+# Prints prune card $1 (prune or prune-stopped) from the lists so far. Effort
+# folder names and reasons hold no newline, so the lists travel
+# newline-separated.
+show_prune() {
 	# shellcheck disable=SC2016 # the $ signs are jq's
-	jq -nr -L "${render_lib_dir}" --arg status "${view_status}" --arg title "${view_title}" --arg list "${list_name}" \
-		--arg note "${closing_note}" --arg days "${count}" \
+	card_data=$(jq -nc --argjson applied "${apply}" --argjson days "${count}" \
 		--arg removed "${removed_items}" --arg kept "${kept_items}" '
-		include "view";
 		def lines: split("\n") | map(select(. != ""));
-		($removed | lines | map(path_text)) as $gone
-		| [ status_line($status; $title;
-				"\($gone | length) effort folder\(if ($gone | length) == 1 then "" else "s" end) unchanged for \($days) days"),
-			section($list; $gone),
-			section("Kept"; $kept | lines),
-			(if ($gone | length) == 0 then "" else $note end) ]
-		| blocks' </dev/null ||
-		install_fault "jq failed on ${render_lib_dir}/view.jq; expected jq 1.6+ and the ${RENDER_LIB} skill's module; try reinstalling it"
+		($kept | lines) as $kept_lines
+		| {applied: $applied, days: $days, removed: ($removed | lines),
+			kept: [range(0; $kept_lines | length; 2) | {folder: $kept_lines[.], reason: $kept_lines[. + 1]}]}' </dev/null) ||
+		install_fault 'jq failed building the card data; expected jq 1.6+; try jq --version'
+	show_card "$1" ''
 }
 
 main "$@"
