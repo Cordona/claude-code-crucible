@@ -77,10 +77,11 @@ exit codes:
   129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.38+, jq 1.6+; chain.sh, tips-merge.sh,
-../seats/seats.sh, ../worktree/uncommitted.jq and ../cards/cards-lib.sh from
-this script's folder; procedure-git-setup's settings.sh beside
-procedure-git-worktree; this skill's views/; ${VIEW_LIB}'s scripts/show.sh
-and scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
+../worktree/uncommitted.jq and ../cards/cards-lib.sh from this script's
+folder; procedure-seat-run's seats/seats.sh and procedure-git-setup's
+settings.sh beside procedure-git-worktree; this skill's views/;
+${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
+${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -150,10 +151,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in chain.sh tips-merge.sh ../seats/seats.sh ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
+	for neighbour in chain.sh tips-merge.sh ../../../procedure-seat-run/scripts/seats/seats.sh ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${neighbour} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_neighbour} not found; expected ${whole}"
 		}
 	done
 	# shellcheck source=../cards/cards-lib.sh
@@ -177,7 +180,7 @@ check_effort() {
 # own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "$1") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort_dir}" --seat "$1") || seat_rc=$?
 	shown_seat=$(printable "$1")
 	case ${seat_rc} in
 		0) ;;
@@ -259,7 +262,7 @@ check_moved() {
 # Sets effort_id from the seat list's effort, the value of the seats' Effort
 # trailer.
 read_effort_id() {
-	seat_list=$(sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}") ||
+	seat_list=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${effort_dir}") ||
 		die 4 'seats.sh list failed (its stderr is above); expected the seat list'
 	effort_id=$(printf '%s\n' "${seat_list}" | jq -r '.effort | strings') ||
 		die 4 'jq could not read the seat list seats.sh list printed'

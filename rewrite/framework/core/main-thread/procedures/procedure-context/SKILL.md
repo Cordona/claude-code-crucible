@@ -141,7 +141,7 @@ After a compaction, an interruption or a new session, load this skill again with
   - `procedure-approval-gate`, which shows the gates (step 7, The spec); missing: as each sets.
   - `human-view`, not loaded: its `show.sh` renders this skill's gates from `views/` and shows its lines.
   - `procedure-grill` (step 1); on Resume, only its `grill.sh list` runs (`references/resume.md`).
-  - `procedure-git-setup` and `procedure-git-worktree`, not loaded: only `settings.sh get` and `seats.sh list` run (`references/resume.md` step 2); missing: as that step sets.
+  - `procedure-git-setup` and `procedure-seat-run`, not loaded: only `settings.sh get` and `seats.sh list` run (`references/resume.md` step 2); missing: as that step sets.
   - `procedure-read-trackers`, not loaded: only its `read-link.sh` runs (steps 1 and 5); missing: a tracker link is not read, as `references/tracker-links.md` sets.
   - `procedure-jira-auth`, for a Jira link (step 1); missing: as `references/entry-kinds.md` sets.
 - **Tools:** Read, Write, WebFetch, Bash, Skill and AskUserQuestion.

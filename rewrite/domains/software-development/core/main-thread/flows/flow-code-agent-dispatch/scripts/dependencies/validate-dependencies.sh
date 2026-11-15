@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-git-worktree's seats.sh, iteration.sh, seat-move.sh, worktree-move.sh,
-# catch-up.sh, its card helper and its seat bind, report commit and
-# block relay hook scripts, the crucible skill's space rules, the four context checks the
+# procedure-seat-run's seats.sh, iteration.sh, its card helper and its seat
+# bind, report commit and block relay hook scripts, procedure-git-worktree's
+# seat-move.sh, worktree-move.sh, catch-up.sh and its card helper, the crucible
+# skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
 # dispatch plan check and its plugin list reader, the dispatch check, the
 # plugin file helper and the dispatch names module, the crucible skill's prune
@@ -11,15 +12,15 @@
 # human-view's view, title, line and gate modules, which the cards and the
 # dispatch script load, human-view's show.sh, its card printer helper, its
 # Stop hook and their store rules, the card templates of this skill,
-# procedure-approval-gate, procedure-context and procedure-git-worktree,
-# procedure-approval-gate's
+# procedure-approval-gate, procedure-context, procedure-git-worktree and
+# procedure-seat-run, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh and its events guard
 # hook, jq, the run-time tools
 # date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the nine hook
 # entries in settings.json (the inject hook and the crucible skill's events
 # guard hook, which must block on failure, human-view's Stop hook entry, the
 # three gate hook entries, and
-# procedure-git-worktree's seat bind, report commit and async block relay
+# procedure-seat-run's seat bind, report commit and async block relay
 # hooks), the Crucible space in its additionalDirectories, its Edit allow
 # rule and its events Edit deny rule, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix; the
@@ -85,12 +86,15 @@ readonly LINE_NAMES='ask_tool_missing confirm_hooks_loaded'
 readonly GATE_QUESTION_SCRIPT="${GATE_PROCEDURE}/scripts/gate-question-hook.sh"
 readonly GATE_ANSWER_SCRIPT="${GATE_PROCEDURE}/scripts/gate-answer-hook.sh"
 readonly WORKTREE_PROCEDURE='procedure-git-worktree'
-readonly SEAT_BIND_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
-readonly REPORT_COMMIT_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
-readonly BLOCK_RELAY_SCRIPT="${WORKTREE_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
+readonly SEAT_RUN_PROCEDURE='procedure-seat-run'
+readonly SEAT_BIND_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
+readonly REPORT_COMMIT_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
+readonly BLOCK_RELAY_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
 # Relative to DIR/procedure-git-worktree/scripts/: what seat-move.sh and
-# catch-up.sh print their cards through.
-readonly WORKTREE_CARDS_LIB='cards/cards-lib.sh'
+# catch-up.sh print their cards through; relative to
+# DIR/procedure-seat-run/scripts/: what seats.sh and iteration.sh print their
+# lines through.
+readonly CARDS_LIB='cards/cards-lib.sh'
 readonly CRUCIBLE_SKILL='crucible'
 readonly CRUCIBLE_SCRIPT='crucible.sh'
 readonly EVENTS_SCRIPT='events.sh'
@@ -420,12 +424,13 @@ fingerprint_input() {
 		"${skills_dir}/${SHOW_SCRIPTS}/show.sh" "${skills_dir}/${SHOW_STOP_SCRIPT}" \
 		"${skills_dir}/${SHOW_SCRIPTS}/${OWED_SH_LIB}" "${skills_dir}/${SHOW_SCRIPTS}/${OWED_JQ_LIB}" \
 		"${skills_dir}/${SHOW_SCRIPTS}/${CARD_PRINTER_LIB}" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/${WORKTREE_CARDS_LIB}" \
+		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/${CARDS_LIB}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${CARDS_LIB}" \
 		"${gate_scripts_dir}/gate-question-hook.sh" \
 		"${gate_scripts_dir}/gate-answer-hook.sh" \
 		"${skills_dir}/${EFFORT_PROCEDURE}/scripts/${EFFORT_SCRIPT}" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seats.sh" \
-		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/iteration.sh" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/seats/seats.sh" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/seats/iteration.sh" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/seats/seat-move.sh" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/worktree/worktree-move.sh" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/merge/catch-up.sh" \
@@ -471,6 +476,7 @@ each_view_template() {
 	"$1" "${GATE_PROCEDURE}" gate lines
 	"$1" "${CONTEXT_PROCEDURE}" lines
 	"$1" "${WORKTREE_PROCEDURE}" seat-moved caught-up conflict common lines
+	"$1" "${SEAT_RUN_PROCEDURE}" lines
 }
 
 # Prints one cksum line per template $2... of skill $1, or a fixed line for
@@ -1294,15 +1300,16 @@ check_script "${PROCEDURE}" "${PLAN_GENERATOR_SCRIPT}"
 check_script "${PROCEDURE}" "${DISPATCH_GENERATOR_SCRIPT}"
 check_script "${CONTEXT_PROCEDURE}" "${CONTEXT_SCRIPT}"
 check_script "${EFFORT_PROCEDURE}" "${EFFORT_SCRIPT}"
-check_script "${WORKTREE_PROCEDURE}" seats/seats.sh
-check_script "${WORKTREE_PROCEDURE}" seats/iteration.sh
+check_script "${SEAT_RUN_PROCEDURE}" seats/seats.sh
+check_script "${SEAT_RUN_PROCEDURE}" seats/iteration.sh
 check_script "${WORKTREE_PROCEDURE}" seats/seat-move.sh
 check_script "${WORKTREE_PROCEDURE}" worktree/worktree-move.sh
 check_script "${WORKTREE_PROCEDURE}" merge/catch-up.sh
-check_script "${WORKTREE_PROCEDURE}" hooks/seat-bind-hook.sh
-check_script "${WORKTREE_PROCEDURE}" hooks/report-commit-hook.sh
-check_script "${WORKTREE_PROCEDURE}" hooks/block-relay-hook.sh
-check_lib_file "${WORKTREE_CARDS_LIB}" "${skills_dir}/${WORKTREE_PROCEDURE}/scripts" "${WORKTREE_PROCEDURE}"
+check_script "${SEAT_RUN_PROCEDURE}" hooks/seat-bind-hook.sh
+check_script "${SEAT_RUN_PROCEDURE}" hooks/report-commit-hook.sh
+check_script "${SEAT_RUN_PROCEDURE}" hooks/block-relay-hook.sh
+check_lib_file "${CARDS_LIB}" "${skills_dir}/${WORKTREE_PROCEDURE}/scripts" "${WORKTREE_PROCEDURE}"
+check_lib_file "${CARDS_LIB}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts" "${SEAT_RUN_PROCEDURE}"
 check_script "${GATE_PROCEDURE}" open-gate.sh
 check_script "${RENDER_LIB}" show.sh
 check_script "${RENDER_LIB}" show-stop-hook.sh

@@ -65,7 +65,8 @@ exit codes:
   129, 130, 143  stopped by HUP, INT or TERM
 
 needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh beside this script and
-../seats/seats.jq and ../cards/cards-lib.sh from its folder; this skill's
+../cards/cards-lib.sh from its folder; procedure-seat-run's seats/seats.jq
+beside procedure-git-worktree; this skill's
 views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
@@ -126,10 +127,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in mount-lib.sh ../seats/seats.jq ../cards/cards-lib.sh; do
+	for neighbour in mount-lib.sh ../../../procedure-seat-run/scripts/seats/seats.jq ../cards/cards-lib.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${neighbour} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_neighbour} not found; expected ${whole}"
 		}
 	done
 	# shellcheck source=../cards/cards-lib.sh

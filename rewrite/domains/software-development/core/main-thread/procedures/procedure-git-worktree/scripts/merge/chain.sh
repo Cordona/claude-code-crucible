@@ -49,8 +49,8 @@ exit codes:
      worktree (a chosen seat has none yet)
   4  environment: git, jq or seats.sh missing or failed
 
-needs: POSIX sh, git 2.26+, jq 1.6+; ../seats/seats.sh and chain.jq from
-this script's folder
+needs: POSIX sh, git 2.26+, jq 1.6+; chain.jq beside this script;
+procedure-seat-run's seats/seats.sh beside procedure-git-worktree
 EOF
 }
 
@@ -120,10 +120,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh chain.jq; do
+	for neighbour in ../../../procedure-seat-run/scripts/seats/seats.sh chain.jq; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${neighbour} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_neighbour} not found; expected ${whole}"
 		}
 	done
 }
@@ -143,7 +145,7 @@ check_effort() {
 # why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort_dir}" --seat "${seat}") || seat_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${seat_rc} in
 		0) ;;
@@ -171,7 +173,7 @@ EOF
 # Writes work_dir/parents, "<seat><TAB><via><TAB><head><TAB><in seat>" per
 # seat the seat was cut from; head is empty when it has no worktree or HEAD.
 list_parents() {
-	sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seats" ||
+	sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seats" ||
 		die 4 'seats.sh list failed (its stderr is above)'
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r -L "${own_dir}" --arg seat "${seat}" 'include "chain"; ancestors($seat) | [.seat, .via, .worktree] | join("\t")' \

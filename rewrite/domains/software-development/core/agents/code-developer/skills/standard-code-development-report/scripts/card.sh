@@ -17,7 +17,7 @@ readonly VIEW_LIB='human-view'
 readonly SHOW='scripts/show.sh'
 readonly RENDER_LIB='scripts/lib/render.sh'
 # Its seats.jq holds the one seat-name check; seats.sh names the worktree.
-readonly SEATS_LIB='procedure-git-worktree/scripts/seats'
+readonly SEATS_LIB='procedure-seat-run/scripts/seats'
 readonly SETTINGS='procedure-git-setup/scripts/settings.sh'
 readonly EVENTS='crucible/scripts/events.sh'
 # The card shows this many characters of the commit's sha.
@@ -104,7 +104,7 @@ it from views/${MODULE}.jq and records it as owed this session (see its
 --skills-dir DIR  absolute; default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
                   holds ${VIEW_LIB} (its ${SHOW} and
                   ${RENDER_LIB}), ${EVENTS%%/*} (its events.sh),
-                  procedure-git-worktree (its seats.jq and seats.sh),
+                  ${SEATS_LIB%%/*} (its seats.jq and seats.sh),
                   ${SETTINGS%%/*} (its settings.sh) and each plugin, whose
                   metadata.label titles the card (the plugin name when it
                   has none)

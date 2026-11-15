@@ -1,7 +1,8 @@
 # Sourced by mount.sh, unmount.sh and mount-status.sh, never run: the main
 # checkout's shape, where its mount record lives, the record's contract and
 # the state of a path in the checkout. Uses the sourcing script's warn, die,
-# printable, work_dir and own_dir (seats.jq is in ../seats from it), and its
+# printable, work_dir and own_dir (seats.jq is in
+# ../../../procedure-seat-run/scripts/seats from it), and its
 # clean_up, which removes restore_temp; sets no shell option of its own.
 #
 # A path's state is absent or "<mode> <blob sha>", the blob as git would
@@ -164,7 +165,7 @@ read_record() {
 	shown_record=$(printable "${record_file}")
 	[ -f "${record_file}" ] && [ ! -L "${record_file}" ] ||
 		die 3 "the mount record ${shown_record} is not a regular file; expected mount.sh's record"
-	jq -r -L "${own_dir}/../seats" "${RECORD_JQ}" "${record_file}" >"${work_dir}/record" 2>/dev/null ||
+	jq -r -L "${own_dir}/../../../procedure-seat-run/scripts/seats" "${RECORD_JQ}" "${record_file}" >"${work_dir}/record" 2>/dev/null ||
 		die 3 "the mount record ${shown_record} is unreadable or not JSON; expected mount.sh's record"
 	IFS= read -r record_verdict <"${work_dir}/record" || record_verdict=''
 	[ "${record_verdict}" = ok ] || reject_record

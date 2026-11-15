@@ -92,7 +92,7 @@ The scripts are in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/
 - **Companion skills** you load or run, each installed under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`:
   - `procedure-approval-gate`, loaded to show the offer (step 1). Without it, step 1's failure rule applies.
   - `procedure-resume`, loaded after a reopen the human asked for (step 9). Without it, show the line `resume_not_installed`, with `--effort '<folder>'`, after the reopen, and stop.
-  - `procedure-grill`'s `grill.sh list` and `procedure-git-worktree`'s `seats.sh busy`, run by the open-work check, never loaded. Without one, its read fails, and the check asks as for any failed read.
+  - `procedure-grill`'s `grill.sh list` and `procedure-seat-run`'s `seats.sh busy`, run by the open-work check, never loaded. Without one, its read fails, and the check asks as for any failed read.
 - **`crucible`, `human-view` and `procedure-metrics` are never loaded:** only their scripts run, inside this skill's scripts; and `human-view`'s `show.sh`, which prints this skill's cards from `views/`, shows its lines (Steps).
 - **Tools:** Skill, Read, Write, Bash and AskUserQuestion.
 - **Commands:** none of your own; each script lists its tools in its `--help`, and a missing one is an install fault the step's exit rule handles.

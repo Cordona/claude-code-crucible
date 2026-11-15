@@ -6,7 +6,7 @@
 # plan must approve it, at most 7 days old; and the context version it pins
 # must still be the one its effort's docs and pending entries give. The seat
 # --seat names must be one of the effort's seats with the plan's mode, since
-# the plugins the plan chose depend on it; procedure-git-worktree's seats.sh
+# the plugins the plan chose depend on it; procedure-seat-run's seats.sh
 # reads it. The plan is checked again by dispatch-plan-validator.jq; its
 # fingerprint against procedure-context's context.sh freeze --dry-run; its
 # plugins are resolved to files by plugin-files.sh, and the agent's title is
@@ -44,7 +44,7 @@ readonly VIEW_LIB='human-view'
 readonly COMMON_TEMPLATE='common'
 readonly CRUCIBLE_SKILL='crucible'
 readonly EFFORT_SKILL='procedure-effort'
-readonly WORKTREE_SKILL='procedure-git-worktree'
+readonly SEAT_RUN_SKILL='procedure-seat-run'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
 # Stands for the ID crucible.sh id hands out once the effort is known open,
@@ -256,7 +256,7 @@ Dependencies:
     mktemp, rm, tr, wc (base system)
   the ${CRUCIBLE_SKILL} (crucible.sh, events.sh, scripts/lib/prune.jq),
     ${CONTEXT_PROCEDURE} (context.sh, agent-context-file-checks.sh),
-    ${EFFORT_SKILL} (effort.sh), ${WORKTREE_SKILL} (scripts/seats/seats.sh)
+    ${EFFORT_SKILL} (effort.sh), ${SEAT_RUN_SKILL} (scripts/seats/seats.sh)
     and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
   this skill's dispatch-plan/ and agent-dispatch/ scripts and
     views/${COMMON_TEMPLATE}.jq
@@ -428,9 +428,9 @@ load_dependencies() {
 	list_script="${skills_dir}/${PROCEDURE}/scripts/dispatch-plan/list-plugins.sh"
 	[ -f "${list_script}" ] && [ -r "${list_script}" ] ||
 		die 5 "list-plugins.sh missing; expected ${list_script}; install the ${PROCEDURE} skill"
-	seats_script="${skills_dir}/${WORKTREE_SKILL}/scripts/seats/seats.sh"
+	seats_script="${skills_dir}/${SEAT_RUN_SKILL}/scripts/seats/seats.sh"
 	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
-		die 5 "seats.sh missing; expected ${seats_script}; install the ${WORKTREE_SKILL} skill"
+		die 5 "seats.sh missing; expected ${seats_script}; install the ${SEAT_RUN_SKILL} skill"
 }
 
 # Sets session_id from CLAUDE_CODE_SESSION_ID by the space rules, or exits 2
@@ -839,14 +839,14 @@ read_seat() {
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem --seat "${seat}" "no such seat in the effort; expected a seat procedure-git-worktree's seats.sh choose made"
+			add_problem --seat "${seat}" "no such seat in the effort; expected a seat procedure-seat-run's seats.sh choose made"
 			return 1
 			;;
 		3)
 			add_problem --seat "${seat}" "the effort's seats can't be read (${seats_line}); expected the effort's seat list"
 			return 1
 			;;
-		*) die 5 "seats.sh get failed (exit ${seat_status}): ${seats_line}; fix what it names, or reinstall ${WORKTREE_SKILL}" ;;
+		*) die 5 "seats.sh get failed (exit ${seat_status}): ${seats_line}; fix what it names, or reinstall ${SEAT_RUN_SKILL}" ;;
 	esac
 	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // "" | gsub("\n"; "?")') ||
 		die 5 'jq failed reading the seat seats.sh get printed; expected jq 1.6+; try jq --version, then rerun'

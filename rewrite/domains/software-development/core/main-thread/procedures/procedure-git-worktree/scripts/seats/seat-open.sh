@@ -46,8 +46,9 @@ exit codes:
   4  a dependency or a step failed; show the human stderr, and stop
   5  refused by state, nothing changed; show the human stderr, and stop
 
-needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh, ../worktree/worktree-create.sh
-and ../worktree/worktree-setup.sh from this script's folder
+needs: POSIX sh, git 2.26+, jq 1.6+; ../worktree/worktree-create.sh and
+../worktree/worktree-setup.sh from this script's folder; procedure-seat-run's
+seats/seats.sh beside procedure-git-worktree
 EOF
 }
 
@@ -117,10 +118,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for step in ../worktree/worktree-create.sh ../worktree/worktree-setup.sh seats.sh; do
+	for step in ../worktree/worktree-create.sh ../worktree/worktree-setup.sh ../../../procedure-seat-run/scripts/seats/seats.sh; do
 		[ -f "${own_dir}/${step}" ] || {
 			shown_step=$(printable "${own_dir}/${step}")
-			die 4 "${shown_step} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${step} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_step} not found; expected ${whole}"
 		}
 	done
 }
@@ -142,7 +145,7 @@ check_inputs() {
 # created; seats.sh's own lines say why it refused.
 read_chosen_seat() {
 	step_rc=0
-	seat_json=$(sh "${own_dir}/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${step_rc} in
 		0) ;;
@@ -151,7 +154,7 @@ read_chosen_seat() {
 		*) die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above); expected the seat's JSON line; fix what it names and rerun" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .base // "", .worktree // ""') ||
-		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 	status='' repo='' base='' worktree=''
 	{
 		IFS= read -r status || :
@@ -223,9 +226,9 @@ read_chosen_seat
 create_worktree
 run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
 [ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
-run_step seats.sh opened --effort "${effort}" --seat "${seat}" --branch "${branch}"
+run_step ../../../procedure-seat-run/scripts/seats/seats.sh opened --effort "${effort}" --seat "${seat}" --branch "${branch}"
 [ "${step_rc}" -eq 0 ] || step_failed 'seats.sh opened'
-run_step seats.sh get --effort "${effort}" --seat "${seat}"
+run_step ../../../procedure-seat-run/scripts/seats/seats.sh get --effort "${effort}" --seat "${seat}"
 [ "${step_rc}" -eq 0 ] ||
-	die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was opened: the seat is open; expected its JSON line; run sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+	die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was opened: the seat is open; expected its JSON line; run sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 printf '%s\n' "${step_out}"

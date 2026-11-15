@@ -64,8 +64,9 @@ exit codes:
      failed
   129, 130, 143  stopped by HUP, INT or TERM
 
-needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh, ../merge/chain.jq,
-../seats/seats.sh and ../seats/seats.jq from this script's folder; with
+needs: POSIX sh, git 2.26+, jq 1.6+; mount-lib.sh and ../merge/chain.jq
+from this script's folder; procedure-seat-run's seats/seats.sh and
+seats/seats.jq beside procedure-git-worktree; with
 --card, ../cards/cards-lib.sh from it, this skill's views/ and ${VIEW_LIB}'s
 scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
@@ -132,10 +133,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in mount-lib.sh ../merge/chain.jq ../seats/seats.sh ../seats/seats.jq; do
+	for neighbour in mount-lib.sh ../merge/chain.jq ../../../procedure-seat-run/scripts/seats/seats.sh ../../../procedure-seat-run/scripts/seats/seats.jq; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${neighbour} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_neighbour} not found; expected ${whole}"
 		}
 	done
 	[ "${card}" = no ] || load_card_printer
@@ -188,7 +191,7 @@ read_seat_heads() {
 list_parents_moved() {
 	: >"${work_dir}/parents-moved"
 	parents_checked=false
-	sh "${own_dir}/../seats/seats.sh" list --effort "${rec_effort}" >"${work_dir}/seat-list" 2>/dev/null </dev/null || return 0
+	sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${rec_effort}" >"${work_dir}/seat-list" 2>/dev/null </dev/null || return 0
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 	jq -r -L "${own_dir}/../merge" --rawfile seats "${work_dir}/rec-seats" 'include "chain";
 		($seats | rtrimstr("\n") | split("\n") | map(split("\t") | .[0]))[] as $seat

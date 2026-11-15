@@ -9,10 +9,10 @@
 # a dispatch.denied event. Every other Agent call passes untouched. The
 # decision is the only output, so a listed agent is denied on any unexpected
 # exit (fail closed).
-# A listed agent runs in the background only: procedure-git-worktree's seat bind hook
-# links it to its seat from PostToolUse, which for a foreground agent comes
-# only after it has finished. Once every check passes, the hook appends a
-# dispatch.allowed event holding the dispatch and the call's tool_use_id, the
+# A listed agent runs in the background only: procedure-seat-run's seat bind
+# hook links it to its seat from PostToolUse, which for a foreground agent
+# comes only after it has finished. Once every check passes, the hook appends
+# a dispatch.allowed event holding the dispatch and the call's tool_use_id, the
 # link the bind hook reads, since both events of one Agent call carry that id.
 # Each checked file is read once, into a private temp copy that the checks and
 # the message all read, so the checked bytes are the sent bytes.
@@ -46,8 +46,8 @@ readonly DENIAL_TEMPLATE='denial'
 readonly PRUNE_NAME='prune'
 # The seat list's reader and the seat's iteration reader, relative to the
 # skills folder.
-readonly SEATS_SCRIPT='procedure-git-worktree/scripts/seats/seats.sh'
-readonly ITERATION_SCRIPT='procedure-git-worktree/scripts/seats/iteration.sh'
+readonly SEATS_SCRIPT='procedure-seat-run/scripts/seats/seats.sh'
+readonly ITERATION_SCRIPT='procedure-seat-run/scripts/seats/iteration.sh'
 readonly EVENTS_SCRIPT='crucible/scripts/events.sh'
 readonly DISPATCH_EVENT='dispatch.made'
 readonly DISPATCH_WRITER='generate-agent-dispatch.sh'
@@ -458,7 +458,7 @@ Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
   POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
   awk, cat, dd, grep, mktemp, readlink, rm, tr, wc, sha256sum
     or shasum (base system)
-  procedure-git-worktree: scripts/seats/seats.sh, scripts/seats/iteration.sh
+  procedure-seat-run: scripts/seats/seats.sh, scripts/seats/iteration.sh
   ${CONTEXT_PROCEDURE}: ${TEMPLATE_FILE}, and in scripts/:
     agent-context-file-checks.sh, context-versions.sh,
     agent-context-validator.jq, agent-context-url.jq
@@ -869,7 +869,7 @@ is_skill_installed() {
 check_seat() {
 	seats_script="${skills_dir}/${SEATS_SCRIPT}"
 	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
-		fault "the seat reader ${seats_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
+		fault "the seat reader ${seats_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-seat-run install, not in the dispatch."
 	# On exit 0 seats.sh prints only the seat; otherwise only its stderr lines.
 	seat_status=0
 	seat_out=$(sh "${seats_script}" get --effort "${dispatch_effort}" --seat "${dispatch_seat}" </dev/null 2>&1) || seat_status=$?
@@ -877,14 +877,14 @@ check_seat() {
 	case ${seat_status} in
 		0) ;;
 		6)
-			add_problem SEAT "seat ${dispatch_seat} is not a seat of the effort; expected a seat procedure-git-worktree's seats.sh choose made" "${dispatch_effort}"
+			add_problem SEAT "seat ${dispatch_seat} is not a seat of the effort; expected a seat procedure-seat-run's seats.sh choose made" "${dispatch_effort}"
 			return 0
 			;;
 		3)
 			add_problem SEAT "the effort's seats can't be read (${seat_line}); expected the effort's seat list as seats.sh --help sets" "${dispatch_effort}"
 			return 0
 			;;
-		*) fault "seats.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
+		*) fault "seats.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch." ;;
 	esac
 	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // ""') ||
 		fault "jq could not read the seat seats.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
@@ -922,7 +922,7 @@ EOF
 read_report_path() {
 	iteration_script="${skills_dir}/${ITERATION_SCRIPT}"
 	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
-		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-git-worktree install, not in the dispatch."
+		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-seat-run install, not in the dispatch."
 	iteration_status=0
 	iteration_out=$(sh "${iteration_script}" --effort "${dispatch_effort}" --seat "${dispatch_seat}" </dev/null 2>&1) || iteration_status=$?
 	iteration_line=$(printf '%s' "${iteration_out##*"${NL}"}" | tr '[:cntrl:]' '?')
@@ -932,7 +932,7 @@ read_report_path() {
 			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer seat whose base is a commit in its worktree" "${dispatch_effort}"
 			return 0
 			;;
-		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-git-worktree install or the host, not in the dispatch." ;;
+		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch." ;;
 	esac
 	report_path=''
 	while IFS= read -r iteration_entry; do
@@ -945,7 +945,7 @@ ${iteration_out}
 EOF
 	case ${report_path} in
 		/*) ;;
-		*) fault "iteration.sh printed no absolute REPORT line; the fault is in the procedure-git-worktree install, not in the dispatch." ;;
+		*) fault "iteration.sh printed no absolute REPORT line; the fault is in the procedure-seat-run install, not in the dispatch." ;;
 	esac
 }
 

@@ -122,10 +122,10 @@ exit codes:
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
 needs: POSIX sh, jq 1.6+, git 2.38+, cksum, sha256sum or shasum;
-../seats/seats.sh, ../seats/iteration.sh, ../commit/commit-input.sh,
-../commit/commit-message.sh, ../commit/commit.sh and ../push/push.sh from
-this script's folder; procedure-git-setup's settings.sh beside
-procedure-git-worktree; ${PRUNER} and ${CHECKER} at ${CHECKER_DIR};
+../seats/seats.sh and ../seats/iteration.sh from this script's folder;
+procedure-git-worktree's commit/commit-input.sh, commit/commit-message.sh,
+commit/commit.sh and push/push.sh and procedure-git-setup's settings.sh
+beside procedure-seat-run; ${PRUNER} and ${CHECKER} at ${CHECKER_DIR};
 the ${CRUCIBLE_SKILL} skill's events.sh
 EOF
 }
@@ -592,14 +592,14 @@ commit_work() {
 		[ "${child_rc}" -eq 0 ] || return 0
 	fi
 	read_settings
-	run sh "${own_dir}/../commit/commit-input.sh" --effort "${effort}" --seat "${seat}" --report "${committing}" \
+	run sh "${own_dir}/../../../procedure-git-worktree/scripts/commit/commit-input.sh" --effort "${effort}" --seat "${seat}" --report "${committing}" \
 		--out "${work_dir}/message.json"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-input.sh'
-	run sh "${own_dir}/../commit/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
+	run sh "${own_dir}/../../../procedure-git-worktree/scripts/commit/commit-message.sh" --input "${work_dir}/message.json" --out "${work_dir}/message"
 	[ "${child_rc}" -eq 0 ] || child_fault 'commit-message.sh'
 	set -- --identity-name "${identity_name}" --identity-email "${identity_email}"
 	[ -z "${signing_key}" ] || set -- "$@" --signing-format "${signing_format}" --signing-key "${signing_key}"
-	run sh "${own_dir}/../commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" "$@"
+	run sh "${own_dir}/../../../procedure-git-worktree/scripts/commit/commit.sh" --worktree "${worktree}" --message-file "${work_dir}/message" "$@"
 	case ${child_rc} in
 		0)
 			new_commit=$(printf '%s\n' "${child_out}" | tail -n 1)
@@ -655,7 +655,7 @@ push_branch() {
 	fi
 	set -- --worktree "${worktree}" --remote "${remote}" --effort "${effort}" --seat "${seat}" --timeout "${push_seconds}"
 	[ -z "${session_id}" ] || set -- "$@" --session "${session_id}"
-	run sh "${own_dir}/../push/push.sh" "$@"
+	run sh "${own_dir}/../../../procedure-git-worktree/scripts/push/push.sh" "$@"
 	[ "${child_rc}" -eq 0 ] || log_child_fault 'push.sh'
 }
 

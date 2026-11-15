@@ -55,9 +55,10 @@ exit codes:
   5  refused by state, nothing changed; show the human stderr, and stop
   129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code
 
-needs: POSIX sh, git 2.31+, jq 1.6+; seats.sh, seats.jq and
-../worktree/worktree-move.sh and ../cards/cards-lib.sh from this script's
-folder; this skill's views/; ${VIEW_LIB}'s scripts/show.sh and
+needs: POSIX sh, git 2.31+, jq 1.6+; ../worktree/worktree-move.sh and
+../cards/cards-lib.sh from this script's folder; procedure-seat-run's
+seats/seats.sh and seats/seats.jq beside procedure-git-worktree; this
+skill's views/; ${VIEW_LIB}'s scripts/show.sh and
 scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
@@ -137,10 +138,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for step in ../worktree/worktree-move.sh seats.sh seats.jq ../cards/cards-lib.sh; do
+	for step in ../worktree/worktree-move.sh ../../../procedure-seat-run/scripts/seats/seats.sh ../../../procedure-seat-run/scripts/seats/seats.jq ../cards/cards-lib.sh; do
 		[ -f "${own_dir}/${step}" ] || {
 			shown_step=$(printable "${own_dir}/${step}")
-			die 4 "${shown_step} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${step} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_step} not found; expected ${whole}"
 		}
 	done
 	# shellcheck source=../cards/cards-lib.sh
@@ -166,8 +169,8 @@ check_inputs() {
 # Refuses a --follows seats.sh would refuse after the worktree moved.
 check_follows() {
 	[ -n "${follows}" ] || return 0
-	follows_problem=$(jq -nr -L "${own_dir}" --arg name "${follows}" 'include "seats"; $name | seats_branch_problem' </dev/null) ||
-		die 4 'jq failed checking --follows; expected jq 1.6+ and seats.jq'
+	follows_problem=$(jq -nr -L "${own_dir}/../../../procedure-seat-run/scripts/seats" --arg name "${follows}" 'include "seats"; $name | seats_branch_problem' </dev/null) ||
+		die 4 "jq failed checking --follows; expected jq 1.6+ and procedure-seat-run's seats/seats.jq"
 	[ -z "${follows_problem}" ] || {
 		shown_problem=$(printable "${follows_problem}")
 		die 3 "--follows ${shown_problem}"
@@ -178,7 +181,7 @@ check_follows() {
 # it refused.
 read_seat() {
 	step_rc=0
-	seat_json=$(sh "${own_dir}/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
 	shown_seat=$(printable "${seat}")
 	case ${step_rc} in
 		0) ;;
@@ -187,7 +190,7 @@ read_seat() {
 		*) die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above); expected the seat's JSON line; fix what it names and rerun" ;;
 	esac
 	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .worktree // ""') ||
-		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 	status='' repo='' worktree=''
 	{
 		IFS= read -r status || :
@@ -287,7 +290,7 @@ EOF
 record_move() {
 	set -- --effort "${effort}" --seat "${seat}" --base "${to_sha}" --from-head "${old_head}"
 	[ -z "${follows}" ] || set -- "$@" --follows "${follows}"
-	run_step seats.sh move "$@"
+	run_step ../../../procedure-seat-run/scripts/seats/seats.sh move "$@"
 	[ "${step_rc}" -ne 0 ] || return 0
 	step_exit_code
 	move_rc=${step_rc}
@@ -307,9 +310,9 @@ drop_kept_ref() {
 
 # Prints the seat, then its card.
 print_result() {
-	run_step seats.sh get --effort "${effort}" --seat "${seat}"
+	run_step ../../../procedure-seat-run/scripts/seats/seats.sh get --effort "${effort}" --seat "${seat}"
 	[ "${step_rc}" -eq 0 ] ||
-		die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was moved: the seat is moved; expected its JSON line; run sh seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+		die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was moved: the seat is moved; expected its JSON line; run sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
 	printf '%s\n' "${step_out}"
 	card_data=$(jq -nc --arg seat "${seat}" --arg commit "${to_sha}" --arg follows "${follows}" \
 		'{seat: $seat, commit: $commit, follows: $follows}') ||

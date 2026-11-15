@@ -79,8 +79,9 @@ exit codes:
   5  the push failed, was rejected or timed out, nothing forced; give
      stderr, and skip this push
 
-needs: POSIX sh, git 2.26+; with --effort: jq 1.6+, ../seats/seats.sh from
-this script's folder and the ${CRUCIBLE_SKILL} skill's events.sh; with
+needs: POSIX sh, git 2.26+; with --effort: jq 1.6+, procedure-seat-run's
+seats/seats.sh beside procedure-git-worktree and the ${CRUCIBLE_SKILL}
+skill's events.sh; with
 --card: jq 1.6+, ../cards/cards-lib.sh from this script's folder, this
 skill's views/ and human-view's scripts/show.sh and scripts/lib/render.sh in
 ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/human-view
@@ -248,7 +249,7 @@ load_card_printer() {
 check_seat() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	find_own_dir
-	[ -f "${own_dir}/../seats/seats.sh" ] || die 4 "${own_dir}/../seats/seats.sh not found; expected the procedure's scripts folders whole"
+	[ -f "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" ] || die 4 "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh not found; expected procedure-seat-run installed beside procedure-git-worktree"
 	events_script="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills/${CRUCIBLE_SKILL}/scripts/events.sh"
 	[ -f "${events_script}" ] || die 4 "events.sh not found at ${events_script}; expected the ${CRUCIBLE_SKILL} skill installed"
 	shown_effort=$(printable "${effort}")
@@ -262,7 +263,7 @@ check_seat() {
 		*) ;;
 	esac
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}" </dev/null) || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort}" --seat "${seat}" </dev/null) || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;

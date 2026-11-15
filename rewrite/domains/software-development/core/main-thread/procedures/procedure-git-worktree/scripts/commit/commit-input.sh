@@ -45,8 +45,8 @@ exit codes:
   4  environment: jq, seats.sh or iteration.sh missing or failed, or --out
      could not be written
 
-needs: POSIX sh, jq 1.6+; ../seats/seats.sh and ../seats/iteration.sh (git 2.26+)
-from this script's folder
+needs: POSIX sh, jq 1.6+; procedure-seat-run's seats/seats.sh and
+seats/iteration.sh (git 2.26+) beside procedure-git-worktree
 EOF
 }
 
@@ -123,10 +123,10 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh ../seats/iteration.sh; do
+	for neighbour in ../../../procedure-seat-run/scripts/seats/seats.sh ../../../procedure-seat-run/scripts/seats/iteration.sh; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			die 4 "${shown_neighbour} not found; expected procedure-seat-run installed beside procedure-git-worktree"
 		}
 	done
 }
@@ -142,7 +142,7 @@ read_effort() {
 # seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_folder}" --seat "${seat}") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort_folder}" --seat "${seat}") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		2 | 3 | 6)
@@ -174,7 +174,7 @@ EOF
 # iteration.sh's own lines say why it refused.
 read_iteration() {
 	iteration_rc=0
-	iteration_out=$(sh "${own_dir}/../seats/iteration.sh" --effort "${effort_folder}" --seat "${seat}") || iteration_rc=$?
+	iteration_out=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/iteration.sh" --effort "${effort_folder}" --seat "${seat}") || iteration_rc=$?
 	case ${iteration_rc} in
 		0) ;;
 		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base" ;;

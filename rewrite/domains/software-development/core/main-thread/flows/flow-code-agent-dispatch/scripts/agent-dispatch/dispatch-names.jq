@@ -17,7 +17,7 @@ def sha256_pattern: "\\A[0-9a-f]{64}\\z";
 # A Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>, the shape crucible_is_id
 # of the crucible skill's scripts/lib/crucible-space.sh checks.
 def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
-# A seat name of the effort's seats, as procedure-git-worktree's
+# A seat name of the effort's seats, as procedure-seat-run's
 # scripts/seats/seats.jq names one (seats_name_pattern, kept the same here):
 # lowercase words joined by dashes, then a letter of alpha ... omega and, from
 # the second round, -2, -3 ..., like build-agent-alpha or build-agent-alpha-2.

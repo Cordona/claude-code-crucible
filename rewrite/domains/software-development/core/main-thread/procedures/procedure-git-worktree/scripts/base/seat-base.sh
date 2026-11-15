@@ -33,12 +33,14 @@ usage: sh ${PROG} --effort FOLDER --repo DIR --seat S --independent [--snapshot 
        sh ${PROG} --effort FOLDER --repo DIR --seat S --on S [--on S]... [--card]
        sh ${PROG} --help | -h
 
-Prints the base for ../seats/seats.sh choose's --base and --base-seat.
+Prints the base for procedure-seat-run's seats.sh choose's --base and
+--base-seat.
 
 --effort FOLDER the effort folder, absolute (it may have no seat yet)
 --repo DIR      absolute path of the main checkout's top folder
---seat S        the seat this base is for, as ../seats/seat-name.sh named
-                it; it need not be a seat yet and is no --on seat
+--seat S        the seat this base is for, as procedure-seat-run's
+                seat-name.sh named it; it need not be a seat yet and is no
+                --on seat
 --independent   base: --snapshot, else the checkout's HEAD; every idle
                 developer seat of --repo whose HEAD is neither its base
                 nor in the checkout's HEAD is listed in unmerged
@@ -78,11 +80,11 @@ exit codes:
      conflict (the card conflict)
   129, 130, 143  stopped by HUP, INT or TERM
 
-needs: POSIX sh, git 2.38+, jq 1.6+; ../seats/seats.sh, ../seats/seats.jq and
-../merge/tips-merge.sh from this script's folder; procedure-git-setup's
-settings.sh beside procedure-git-worktree; ../cards/cards-lib.sh and this
-skill's views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh in
-${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
+needs: POSIX sh, git 2.38+, jq 1.6+; ../merge/tips-merge.sh from this
+script's folder; procedure-seat-run's seats/seats.sh and seats/seats.jq and
+procedure-git-setup's settings.sh beside procedure-git-worktree;
+../cards/cards-lib.sh and this skill's views/; ${VIEW_LIB}'s scripts/show.sh
+and scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
 }
 
@@ -203,8 +205,8 @@ EOF
 
 # Refuses option $1's value $2 with seats.jq's own problem line.
 check_seat_name() {
-	name_problem=$(jq -nr -L "${own_dir}/../seats" --arg name "$2" 'include "seats"; $name | seats_name_problem' </dev/null) ||
-		die 4 'jq failed checking a seat name; expected jq 1.6+ and ../seats/seats.jq'
+	name_problem=$(jq -nr -L "${own_dir}/../../../procedure-seat-run/scripts/seats" --arg name "$2" 'include "seats"; $name | seats_name_problem' </dev/null) ||
+		die 4 "jq failed checking a seat name; expected jq 1.6+ and procedure-seat-run's seats/seats.jq"
 	[ -n "${name_problem}" ] || return 0
 	shown_problem=$(printable "${name_problem}")
 	die 3 "$1 ${shown_problem}"
@@ -222,10 +224,12 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in ../seats/seats.sh ../seats/seats.jq ../merge/tips-merge.sh ../cards/cards-lib.sh "${SETTINGS}"; do
+	for neighbour in ../../../procedure-seat-run/scripts/seats/seats.sh ../../../procedure-seat-run/scripts/seats/seats.jq ../merge/tips-merge.sh ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
-			die 4 "${shown_neighbour} not found; expected the procedure's scripts folders whole"
+			whole="the procedure's scripts folders whole"
+			case ${neighbour} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_neighbour} not found; expected ${whole}"
 		}
 	done
 	# shellcheck source=../cards/cards-lib.sh
@@ -339,7 +343,7 @@ EOF
 
 read_on_seat() {
 	seat_rc=0
-	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort_dir}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort_dir}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
 		6) die 3 "--on $1 is not a seat of --effort; expected an existing developer seat" ;;
@@ -474,7 +478,7 @@ EOF
 # seats.sh's own lines say why it refused.
 read_seat_list() {
 	list_rc=0
-	sh "${own_dir}/../seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seat-list" </dev/null || list_rc=$?
+	sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${effort_dir}" >"${work_dir}/seat-list" </dev/null || list_rc=$?
 	case ${list_rc} in
 		0) ;;
 		2 | 3) die 3 "seats.sh list refused the effort (exit ${list_rc}); expected the effort folder" ;;
