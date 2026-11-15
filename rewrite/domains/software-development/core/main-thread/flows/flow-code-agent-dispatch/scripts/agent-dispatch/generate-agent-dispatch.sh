@@ -219,18 +219,19 @@ stdout on exit 0, in order:
     <effort>/events/<seq>-${DISPATCH_EVENT}.json; the Agent call's whole prompt
   LABELS: <labels>  the loaded plugins' labels, relayed as printed
   TITLE: <title>  the agent's title, relayed as printed
+  AGENT: <agent>  the Agent call's subagent_type
 stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
 Once every check passes and the effort is open, context.sh freeze --expect
 cuts the plan's version as a context.cut event (or gives the one cut for
-that fingerprint; a refusal is exit 3, nothing written), and the dispatch
+that fingerprint; a refusal is exit 3), and the dispatch
 pins it as {seq, path}, the plan as {seq}. On a non-zero exit no dispatch
 event is written; a cut version stays.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
-  0  written; keep the three stdout lines
-  1  the inputs passed but the cut or the event failed; no dispatch written
+  0  written; keep the four stdout lines
+  1  the inputs passed but the cut or the event failed
   2  usage error, or a bad CLAUDE_CODE_SESSION_ID
   3  invalid input, nothing written; fix what stderr names. A problem may
      lead with a token right after "<option> <value>: ":
@@ -1212,12 +1213,15 @@ read_worktree_head() {
 	add_problem --seat "${seat}" "the seat's worktree ${shown_worktree} has no HEAD commit git rev-parse reads; expected the worktree seat-open.sh made"
 }
 
-# Builds the re-seat dispatch from the last one and appends it; sets dispatch_path.
+# Builds the re-seat dispatch from the last one and appends it; sets
+# dispatch_path, and agent to the dispatch's.
 write_reseat() {
 	read_fresh_id
 	dispatch_json=$(jq -c -L "${prune_lib_dir}" --arg id "${dispatch_id}" --argjson last_seq "${last_seq}" \
 		--arg head "${worktree_head}" --argjson notes "${notes_json}" "${RESEAT_JQ}" "${last_body_file}" </dev/null) ||
 		die 1 'jq failed building the re-seat dispatch; expected jq 1.6+; try jq --version, then rerun'
+	agent=$(printf '%s\n' "${dispatch_json}" | jq -r '.agent') ||
+		die 1 'jq failed reading the re-seat dispatch; expected jq 1.6+; try jq --version, then rerun'
 	append_dispatch
 }
 
@@ -1289,7 +1293,7 @@ if [ "${reseat}" = true ]; then
 	fi
 	require_open_effort
 	write_reseat
-	printf 'DISPATCH: %s\n%s\n%s\n' "${dispatch_path}" "${labels_line}" "${title_line}"
+	printf 'DISPATCH: %s\n%s\n%s\nAGENT: %s\n' "${dispatch_path}" "${labels_line}" "${title_line}" "${agent}"
 	exit 0
 fi
 check_plan_sha256
@@ -1313,4 +1317,4 @@ fi
 require_open_effort
 cut_context
 write_dispatch "$@"
-printf 'DISPATCH: %s\n%s\n%s\n' "${dispatch_path}" "${labels_line}" "${title_line}"
+printf 'DISPATCH: %s\n%s\n%s\nAGENT: %s\n' "${dispatch_path}" "${labels_line}" "${title_line}" "${agent}"

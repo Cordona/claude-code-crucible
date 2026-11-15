@@ -1,12 +1,12 @@
 ---
 name: standard-code-development-report
-description: "The developer's report: one JSON file per iteration, at the REPORT path its first message or a change message gives, a draft in the effort folder outside the worktree. The stop hook checks it, commits the worktree's changes and records it as the seat's `build.committed` event; the report is not committed. Bind when `code-developer` writes its report; it preloads this skill. Not for how to develop (`code-developer`), the card (`flow-code-development`) or a reviewer's report."
+description: "The developer's report: one JSON file per iteration, at the REPORT path its first message or a change message gives, a draft in the effort folder outside the worktree. The stop hook checks it, commits the worktree's changes and records it as the seat's `build.committed` event; the report is not committed. Bind when `code-developer` writes its report; it preloads this skill. Not for how to develop (`code-developer`), the card (`procedure-seat-run`) or a reviewer's report."
 user-invocable: false
 ---
 
 # Standard: Code development report
 
-One JSON object per iteration at the `REPORT` path, with only the keys below. That path is your seat's draft in the effort folder, outside the worktree: the stop hook checks it, commits the worktree's changes, and records the report as the body of your seat's `build.committed` event; the report itself is never committed. The stop hook runs `scripts/dev-report-prune.sh`, then `scripts/dev-report-check.sh`; `flow-code-development` runs `scripts/card.sh` for the card; `scripts/report-limits.sh` writes the limits below from the check's own constants; each one's `--help` is its contract. Each text is one line, within the text cap in the limits below. Every `path:line` is relative to the worktree root and names a line that exists at your stop (`src/App.kt:12`), though you work in absolute paths. You get 2 blocked stops; at the next misfit your work stays uncommitted.
+One JSON object per iteration at the `REPORT` path, with only the keys below. That path is your seat's draft in the effort folder, outside the worktree: the stop hook checks it, commits the worktree's changes, and records the report as the body of your seat's `build.committed` event; the report itself is never committed. The stop hook runs `scripts/dev-report-prune.sh`, then `scripts/dev-report-check.sh`; `procedure-seat-run`'s Results runs `scripts/card.sh` for the card; `scripts/report-limits.sh` writes the limits below from the check's own constants; each one's `--help` is its contract. Each text is one line, within the text cap in the limits below. Every `path:line` is relative to the worktree root and names a line that exists at your stop (`src/App.kt:12`), though you work in absolute paths. You get 2 blocked stops; at the next misfit your work stays uncommitted.
 
 ## Never
 

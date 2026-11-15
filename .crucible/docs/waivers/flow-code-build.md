@@ -1,0 +1,5 @@
+- SCH-15: no rejection log; new machinery, not in this effort (owner, D5) (owner)
+- LEAN-10: the Terms placeholders are older text, outside this change (owner, D7) (owner)
+REF-09: past the round cap, wording only; a follow-up (owner, D12) (owner)
+- DET-06: step and resend state stay in the conversation and the todo list, as in flow-code-agent-dispatch; no state file in this effort (owner, D12) (owner)
+- DET-01: no new machinery in this effort; the reply's first-line match and the description length stay model checks (owner, D1) (owner)

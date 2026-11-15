@@ -1,12 +1,12 @@
 ---
 name: procedure-git-setup
-description: "An effort's git setup: which of this machine's signing identities authors and signs its agents' commits, and whether each commit is pushed, asked before its first plan. Use from `flow-code-development` at the first Dispatch agents, or when the human asks which identity a repo uses. Writes the effort's git settings as an event, the gate's plan and the identities draft, by script; never a repo's git config. Needs git. Not for commits, branches or pushes (`procedure-git-worktree`)."
+description: "An effort's git setup: which of this machine's signing identities authors and signs its agents' commits, and whether each commit is pushed, asked before its first plan. Use from the flow that opens an effort's first seat (`flow-code-build`), or when the human asks which identity a repo uses. Writes the effort's git settings as an event, the gate's plan and the identities draft, by script; never a repo's git config. Needs git. Not for commits, branches or pushes (`procedure-git-worktree`)."
 user-invocable: false
 ---
 
 # Procedure: Git setup
 
-Run by the main thread from `flow-code-development` step 2, handed the effort folder's absolute path, before the effort's first seat: every commit in its seats is authored, committed and signed as the one identity saved here. `<gs>` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-setup/scripts`; `<repo>` is what `git rev-parse --show-toplevel` prints in the session's folder; with no repository there, every `--repo` below is left out. The effort's git settings are written and read only by `settings.sh`, never as a file.
+Run by the main thread from `flow-code-build`'s Get the dispatches, handed the effort folder's absolute path, before the effort's first seat: every commit in its seats is authored, committed and signed as the one identity saved here. `<gs>` is `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-setup/scripts`; `<repo>` is what `git rev-parse --show-toplevel` prints in the session's folder; with no repository there, every `--repo` below is left out. The effort's git settings are written and read only by `settings.sh`, never as a file.
 
 ## Never
 

@@ -1,6 +1,6 @@
 ---
 name: code-developer
-description: Developer for any language and its frameworks, dispatched by the main thread (`flow-code-development`) into one git worktree to write, fix or refactor code, then to make the human's changes to it; not for direct invocation.
+description: Developer for any language and its frameworks, dispatched by the main thread (`flow-code-build`) into one git worktree to write, fix or refactor code, then to make the human's changes to it, sent through `procedure-seat-run`; not for direct invocation.
 tools: Read, Grep, Glob, Edit, Write, Bash, WebFetch, mcp__context7
 model: claude-opus-5-5
 skills:

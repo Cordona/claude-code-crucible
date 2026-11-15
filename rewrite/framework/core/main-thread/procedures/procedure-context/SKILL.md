@@ -90,7 +90,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
    - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Hand over as step 8 sets, its `latest` with `--line what_next_not_shown`: the work's own plan gate still guards every dispatch.
 
    Act on the answer:
-   - **"Dispatch agents":** hand over as step 8 sets, to the running flow's step 2; with none running, load the work's flow as CLAUDE.md §4 routes it.
+   - **"Dispatch agents":** hand over as step 8 sets, to the running flow's Get the dispatches step; with none running, load the work's flow as CLAUDE.md §4 routes it.
    - **"Stop here":** step 8's stop, `stopped: stopped after the context`; the context stays in the effort.
    - **A typed answer:** a reply, not a choice: answer it as the turn's last message and hand nothing over, since the question closed the gate; at the human's next message, ask again from "To ask", unless their reply chose an option: take it.
 8. **Hand over, or report the stop,** to the calling flow:

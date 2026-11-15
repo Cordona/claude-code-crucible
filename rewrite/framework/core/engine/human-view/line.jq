@@ -26,3 +26,8 @@ def skills_install: "install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 #           defaults to skills_install
 def not_installed($what; $fix): "\($what) is not installed: \($fix), then ask me again.";
 def not_installed($what): not_installed($what; skills_install);
+
+# skill_not_installed
+#   input:  {skill: the name of the skill that could not be loaded or run}
+#   output: not_installed for that skill
+def skill_not_installed: not_installed(field("skill"));

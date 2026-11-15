@@ -47,8 +47,8 @@ Run by the main thread. After a compaction, an interruption or a new session, th
    Then take the first line below that fits, checking "Can't tell" first:
    - **Can't tell:** a `grill.sh list` line that isn't a `GRILL:` line naming an absolute path inside the effort folder, a `seats.sh list` that exits non-zero, or the conversation and the disk disagreeing. Ask with one AskUserQuestion which to resume: the lines below that the conversation or the disk point to, each option naming the skill it loads and what points to it, the likeliest first and marked (Recommended), then "Stop". Run no step before the answer; take the line picked, or on "Stop" resume nothing.
    - **An open grill:** load `procedure-grill` (step 3). It resumes the grill in progress.
-   - **A plan made:** load `flow-code-development` (step 3).
-   - **Neither:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-development` for code in an effort (step 3).
+   - **A plan made:** load `flow-code-build` (step 3).
+   - **Neither:** load the work's flow as CLAUDE.md §4 routes it, `flow-code-build` for code in an effort (step 3).
 3. **Hand over** the effort folder's absolute path to the skill step 2 loads, as you load it. That skill's own Resume rules take the work from there; this procedure does nothing more.
 
 ## Dependencies
@@ -57,6 +57,6 @@ Run by the main thread. After a compaction, an interruption or a new session, th
   - `procedure-effort`, loaded at step 1, which finds the effort.
   - `procedure-grill`, for its `grill.sh` and loaded at step 2.
   - `procedure-git-setup` and `procedure-seat-run`, not loaded: step 2 runs only their `settings.sh` and `seats.sh`; missing: as the Steps preamble sets for a failed `--help`.
-  - `flow-code-development` and the flow CLAUDE.md §4 routes the work to, loaded at step 2.
+  - `flow-code-build` and the flow CLAUDE.md §4 routes the work to, loaded at step 2.
 - **`human-view`, not loaded:** its `show.sh` shows this skill's lines from `views/` (Steps).
 - **Tools:** Skill, Bash and AskUserQuestion.

@@ -23,8 +23,8 @@ The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `fl
 - `CONTEXT-STALE`, with no `CONTEXT`: the context got a new version after the dispatch was written; take its plan back to step 7 with the fingerprint, as step 3 takes it, with any `PLUGIN` problem handled in the same re-plan as the bullet above sets; on Approve, steps 8–9 for it.
 - `CONTEXT`, alone or with `CONTEXT-STALE` or `PLUGIN`: hand it back as SKILL.md's Never sets; the human adds to the context through `procedure-context`.
 - `SEAT`, the dispatch's seat, as `seats.sh get` gives it, missing, not open or with no worktree: hand it back as SKILL.md's Never sets; the seats are the calling flow's.
-- Only `BACKGROUND`: the calling flow called Agent in the foreground; hand back the same `DISPATCH:` line, unchanged, for the calling flow to call again in the background.
-- Only `DISPATCH` or `AGENT`: run step 8 once more for that dispatch, and hand back its new `DISPATCH:` line.
+- Only `BACKGROUND`: `procedure-seat-run`'s Launch called Agent in the foreground; hand back the same entry as step 9 sets, its four step-8 lines (`AGENT:` included) unchanged, for its Launch to call again in the background.
+- Only `DISPATCH` or `AGENT`: run step 8 once more for that dispatch, and hand back its new entry as step 9 sets, the four lines step 8 printed (`DISPATCH:`, `LABELS:`, `TITLE:`, `AGENT:`) copied whole.
 - A reason with no KIND (a fault of the hook, its install or the host): hand it back as SKILL.md's Never sets.
 
 ## Step-10 re-plans
