@@ -32,12 +32,12 @@ user-invocable: false
 - **A subagent's report is a file, never its reply's text:** it reaches the main thread as its agent file and flow set (a path in its reply, or a file a hook checks).
 - **A brief passes every artifact it needs by its full absolute path.**
 - **An artifact that cites another durable artifact cites it by its full absolute path.**
-- **When the human asks to see an artifact's text,** however the ask is worded (`show me the commit text`, `can I see the report?`): first show the line `show_text_offer`: run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh" line --views "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/standard-artifact-handoff/views" --name show_text_offer --arg path '<path>'`, `<path>` the artifact's full absolute path, adding `--effort '<effort folder>'` inside an effort; a non-zero exit: show the human its stderr. Show the text only after a yes.
+- **When the human asks to see an artifact's text,** however the ask is worded (`show me the commit text`, `can I see the report?`): first show the line `show_text_offer`, with `--arg path '<path>'`, `<path>` being the artifact's full absolute path; `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/standard-artifact-handoff/views"`. Show the text only after a yes. (Main thread only; an agent never shows a line, it hands over the path.)
 
 ## Dependencies
 
 - **`human-view`, not loaded:** its `show.sh` shows this skill's line from `views/lines.jq` (Always).
-- **Tools:** Bash, for that line.
+- **Tools:** Bash, for that line, on the main thread only.
 
 ## Self-check before handing over
 

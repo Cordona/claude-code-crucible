@@ -32,7 +32,7 @@ The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `fl
 A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the reason step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it. It drops the plugin, except an invalid framework plugin, which stays in the plan. Where the plugin goes:
 
 - **A standard or procedure plugin:** to `--skip`, with that reason.
-- **A framework plugin named `invalid`:** it stays as `--framework <name> --reason invalid`, with `--replan invalid`.
+- **A framework plugin named `invalid`:** it stays as `--framework '<name>' --reason invalid`, with `--replan invalid`.
 - **A framework plugin `uninstalled after approval`:** re-plan the part at step 7 without it, as step 10's `PLUGIN` bullet above sets for a dropped plugin, its language plugin's reason saying the framework has no installed plugin (step 5).
 - **A language plugin:** never re-planned; step 10's `PLUGIN` bullet above stops the part, its frameworks dropped with it.
 

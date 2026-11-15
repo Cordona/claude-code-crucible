@@ -1,8 +1,8 @@
 # Chains
 
-Read after a seat's new commit (an `idle` result in `flow-code-build`) when a seat of the effort has `base_seats`, and when `mount-status.sh` gives a non-empty `parents_moved`.
+Read after a seat's idle result (`procedure-seat-run`'s Results, as the caller's after-idle step) when a seat of the effort has `base_seats`, and when `mount-status.sh` gives a non-empty `parents_moved`.
 
-`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-worktree/views"`.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-worktree/views"`.
 
 1. **Check:** `list=$(sh "<seat scripts>/seats/seats.sh" list --effort '<effort folder>') && printf '%s\n' "$list" | jq -r '.seats[] | select(.status != "chosen" and ((.base_seats // []) | length) > 0) | [.seat, .status] | @tsv'`, the seat that just committed included; per seat, `sh "<scripts>/merge/chain.sh" --effort '<effort folder>' --seat '<seat>'`. `moved: false`: nothing to do. A read that exits non-zero failed: show its output, and offer nothing.
 2. **Offer,** one moved seat at a time: for a moved seat that is `idle`, load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:

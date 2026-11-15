@@ -59,9 +59,9 @@ The next version is a draft, `<effort folder>/drafts/main-thread/context/`, unti
 
 Copy the steps this run uses into the todo list and tick each as it completes; note each rerun and each re-ask in its step's todo item (`rerun 1 of 2`, `re-ask 1 of 2: <contradiction>`): no count lives in memory alone.
 
-`<context.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh"`. Run `<context.sh> --help` once, before its first use in a session, and `<context.sh> <command> --help` before a command's first use; again only after a compaction drops their contract. A non-zero exit, or no `usage:` line: tell the human to install `procedure-context` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop as step 8 sets (`stopped: context.sh not installed`).
+`<context.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/context.sh"`; run `<context.sh> <command> --help` too, before a command's first use. A `--help` that exits non-zero, or prints no `usage:` line: tell the human to install `procedure-context` under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`, and stop as step 8 sets (`stopped: context.sh not installed`).
 
-`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/views"`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line> --effort '<effort folder>'`, with an `--arg <field> '<value>'` per field the step names; a non-zero exit: show the human its stderr.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/views"` (its `lines.jq`).
 
 1. **Discover and gather.** Run `<context.sh> docs --effort '<effort folder>'` and keep its `DOCS_FOLDER:` path as the docs folder. Read what the work is about and the files and trackers the human names. Then ask the human free-form questions until you know what the work must achieve and what it must not break; use AskUserQuestion only where a fixed choice fits better. With your first question, tell the human they can answer `go on` (you go on with what you have) or `stop the work` (`stopped: context not settled`, or in the spec talk `references/settle-spec.md` step 4's stop) at any point before the spec is approved. Ask nothing yet about how the entries agree: step 3 does that. The agent loads no CLAUDE.md.
    - **Each outside path or link the human gives,** at once: `<context.sh> add --effort '<effort folder>'` with `--path '<absolute path>'` or `--link '<url>'` and `--why '<line>'`. One the human takes back: `drop`, with the same entry and the human's reason as its why.
@@ -84,7 +84,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
 
    **To ask,** load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** one JSON object, `{"docs": "<the docs folder>", "grill": "<the grill's copy>"}`, the docs folder as `<context.sh> docs` prints it at this step; `grill` only after a grill, the `DOCS_FILE:` path the grill hands over.
-   - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-what-next.sh" --plan-file <the plan file>`.
+   - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-what-next.sh" --plan-file '<the plan file>'`.
    - **The gate's label:** `what-next`, with `--effort '<effort folder>'`.
    - **On "now ask":** Read the fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/references/what-next-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, and act as the gate can't be shown (below).
    - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Hand over as step 8 sets, its `latest` with `--line what_next_not_shown`: the work's own plan gate still guards every dispatch.
@@ -102,7 +102,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
 
 Every dispatch has a spec, however small: no skip; the only offer is a revision's. A change to the work once the spec is approved first asks that offer; on "Keep it as it is" the change is not made. It runs from step 4, step 7 or alone. Its outcome: **the approved spec**, the docs folder's `spec.md`, which only `context.sh spec --approved` writes. Its branches are in `references/settle-spec.md`: read it when a step sends you there.
 
-`<crucible.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`, and `<render-spec-gate.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-spec-gate.sh"`; run each `--help` once, before its first use in a session. A non-zero exit, or no `usage:` line: tell the human to install the skill that holds it (`crucible` or `procedure-context`), and stop as step 8 sets (`stopped: <that skill> not installed`).
+`<crucible.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`, and `<render-spec-gate.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-spec-gate.sh"`. A `--help` of either that exits non-zero, or prints no `usage:` line: tell the human to install the skill that holds it (`crucible` or `procedure-context`), and stop as step 8 sets (`stopped: <that skill> not installed`).
 
 1. **Where it stands:** run `<context.sh> spec --effort '<effort folder>' --status`, then `<crucible.sh> find --effort '<effort folder>' --kind drafts --label spec`, whose first line is the newest spec draft; no output, no draft. A non-zero exit, or a line that isn't an absolute path in the effort's `drafts/`: show the human its stderr and exit code, and stop as step 8 sets (`stopped: spec drafts not found`).
    - **`SPEC: approved`:** Read the file its `SPEC_FILE:` line names, in full. Then `references/settle-spec.md` step 1.
@@ -112,9 +112,9 @@ Every dispatch has a spec, however small: no skip; the only offer is a revision'
 3. **Draft it** with the human, in `drafts/`, never in the docs folder. Every draft, the first and each revision, is a new file: run `<crucible.sh> new --kind drafts --effort '<effort folder>' --label spec`, Read the empty file it prints, then Write the draft into it; the newest is the current draft. A non-zero exit, or a failed Read or Write of the draft: show the human its error, and stop (`stopped: spec draft not created`).
 4. **Ask for approval at its gate,** after every draft. Load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** the path `procedure-approval-gate`'s step 1.1 prints, anew for every showing, written by `<render-spec-gate.sh> --approval-plan --spec '<the newest draft's absolute path>' --plan-out '<the plan file>'`.
-   - **The renderer:** `<render-spec-gate.sh> --plan-file <the plan file>`.
+   - **The renderer:** `<render-spec-gate.sh> --plan-file '<the plan file>'`.
    - **The gate's label:** `spec-approval`, with `--effort '<effort folder>'`.
-   - **On "now ask":** run the renderer with `--plan-file <the plan file> --question`, and copy its `header`, `question` and `options` into one AskUserQuestion as they are.
+   - **On "now ask":** run the renderer with `--plan-file '<the plan file>' --question`, and copy its `header`, `question` and `options` into one AskUserQuestion as they are.
 
    A non-zero exit of either command, or a gate that can't be shown or asked: `references/settle-spec.md`'s "The spec's gates".
 5. **Act on the answer,** matched to an option with `(Recommended)` ignored.

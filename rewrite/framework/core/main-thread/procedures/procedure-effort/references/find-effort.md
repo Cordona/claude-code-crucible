@@ -1,6 +1,6 @@
 # Finding an effort
 
-SKILL.md steps 5–7, which find an effort. Showing a line is as SKILL.md's Steps set.
+SKILL.md steps 5–7, which find an effort. `<views>` is as SKILL.md sets.
 
 5. **Find** the effort. Run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" list`; add `--all` when the effort may be older, or when stderr says `showing 20 of <N>`. When the human gave a full ID, its 4 hex digits or an exact name, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<that value>'` instead and go to step 7. When the conversation still shows the effort folder's absolute path, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh" path '<the ID in its folder name>'` instead and go to step 7. When `list` exits non-zero, show the human its stderr and exit code, and stop.
 6. **Match** the human's words to the listed names:

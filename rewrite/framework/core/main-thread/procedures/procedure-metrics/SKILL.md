@@ -27,9 +27,9 @@ Run by the main thread. An effort's **metrics** are the tokens each Claude Code 
 
 ## Steps
 
-`<metrics.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/scripts/metrics.sh"` and `<effort.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh"`. Run each one's `--help` once, before its first use in a session: it is the full contract. Run it again in that session only when its contract is no longer in context, after a compaction. A `--help` that exits non-zero or prints no `usage:` line: for `metrics.sh`, show the line `procedure-metrics is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`; for `effort.sh`, show the line `effort_not_installed`; then stop.
+`<metrics.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/scripts/metrics.sh"` and `<effort.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh"`. A `--help` that exits non-zero or prints no `usage:` line: for `metrics.sh`, show the line `procedure-metrics is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`; for `effort.sh`, show the line `effort_not_installed`; then stop.
 
-`<show.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/human-view/scripts/show.sh"`, and `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/views"`. To show a line (each in `views/lines.jq`), run `<show.sh> line --views <views> --name <line>`, with `--effort '<folder>'` once step 1 found it, and an `--arg <field> '<value>'` per field the step names; a non-zero exit: show the human its stderr.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/views"` (its `lines.jq`); its lines take `--effort '<folder>'` once step 1 found it.
 
 1. **Find the effort:**
    - **The human names none and the conversation works on one effort:** use that effort's folder.

@@ -2,10 +2,10 @@
 
 How the main thread reads each tracker link (a GitHub, GitLab or Jira issue).
 
-Run `read-link.sh --help` once, before its first use in a session; run it again in that session only when its contract is no longer in context (after a compaction). Every other call runs only the command its step names. If `--help` exits non-zero or prints no `usage:` line, no tracker link is read: show the line `tracker_links_not_read`, and weigh the others without them. `<show.sh>`, `<views>` and showing a line are as SKILL.md sets. `<read-link.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-read-trackers/scripts/read-link.sh"`. Per link, one of its two forms:
+If `read-link.sh --help` exits non-zero or prints no `usage:` line, no tracker link is read: show the line `tracker_links_not_read`, and weigh the others without them. `<views>` is as SKILL.md sets. `<read-link.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-read-trackers/scripts/read-link.sh"`. Per link, one of its two forms:
 
-- **A link not yet in a cut version** (in discovery, or added after a cut): `<read-link.sh> --url '<link>'`, the link quoted as CLAUDE.md sets, never through a shell variable.
-- **A link in a cut version:** `<read-link.sh> --context-file <the CONTEXT_FILE path> --link <n>`, `<n>` the link's place in that version's `links`, counting from 1.
+- **A link not yet in a cut version** (in discovery, or added after a cut): `<read-link.sh> --url '<link>'`, never through a shell variable.
+- **A link in a cut version:** `<read-link.sh> --context-file '<the CONTEXT_FILE path>' --link <n>`, `<n>` the link's place in that version's `links`, counting from 1.
 
 Act on its exit, the same for both forms:
 

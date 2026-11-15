@@ -1,6 +1,6 @@
 # Settle the spec: the branches
 
-The branches off SKILL.md's The spec: an approved spec and its revision, a left draft, a typed answer, a gate that fails, and where each run goes once settled. `<context.sh>`, `<crucible.sh>`, `<render-spec-gate.sh>`, `<show.sh>` and `<views>` are as SKILL.md sets, and so is showing a line.
+The branches off SKILL.md's The spec: an approved spec and its revision, a left draft, a typed answer, a gate that fails, and where each run goes once settled. `<context.sh>`, `<crucible.sh>`, `<render-spec-gate.sh>` and `<views>` are as SKILL.md sets.
 
 ## The spec's gates
 
