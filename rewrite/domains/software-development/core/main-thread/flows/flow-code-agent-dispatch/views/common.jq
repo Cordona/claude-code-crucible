@@ -4,7 +4,7 @@ include "title";
 # agent_title($role)
 #   input:  {language: label or null, frameworks: [labels], lens: label or
 #           null}, either list key absent
-#   $role:  the role word, developer or reviewer
+#   $role:  the role word, builder or reviewer
 #   output: "<lens> <role>" for a lens seat (a lens and no language), else
 #           human-view's title($role)
 def agent_title($role):

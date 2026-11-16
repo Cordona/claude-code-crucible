@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Counts each main checkout's uncommitted work and, when any is dirty, prints
-# the AskUserQuestion input that asks the human where its developers start.
+# the AskUserQuestion input that asks the human where its builders start.
 # Read-only: status runs without optional locks and without fsmonitor, so the
 # checkout's real index is never refreshed or written.
 set -eu
@@ -49,7 +49,7 @@ def header_of($max): split("-") as $w
 	| ([range(0; $w | length) | $w[.:] | join("-") | select(length <= $max)] | first) // .[:$max];
 $dirty | rtrimstr("\n") | split("\n") | map(split("\t"))
 | {questions: map(. as [$name, $staged, $unstaged, $untracked]
-	| {question: "\($name) has uncommitted changes: \([counted($staged; "staged"), counted($unstaged; "unstaged"), counted($untracked; "untracked")] | join(", ")). Where should its developers start?",
+	| {question: "\($name) has uncommitted changes: \([counted($staged; "staged"), counted($unstaged; "unstaged"), counted($untracked; "untracked")] | join(", ")). Where should its builders start?",
 	   header: ($name | header_of($header_max)),
 	   options: [
 		{label: "Include my changes (Recommended)", description: "They start from your last commit plus these changes, taken as a snapshot. Your checkout is not touched; with auto-push on, these changes are pushed to the remote with the seat'\''s first commit."},

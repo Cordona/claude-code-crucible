@@ -13,7 +13,7 @@
 
 ## How to judge
 
-- **No manual formatting finding:** the developer's format step covers it.
+- **No manual formatting finding:** the builder's format step covers it.
 - **A reasoned suppression never excuses the defect its rule would catch:** judge that defect on its own.
 
 ## Severity

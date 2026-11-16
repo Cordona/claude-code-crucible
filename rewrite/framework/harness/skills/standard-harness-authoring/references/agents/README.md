@@ -20,7 +20,7 @@ Agent checklists for agent files (`agents/**/*.md`), one perspective each, so ea
 - **Routed agent:** the main session picks it by its description.
 - **Orchestrator-only agent:** runs only as the main session (`claude --agent <name>`); never dispatched as a subagent.
 - **The agent's text:** its body plus the skills it preloads. An item about the body passes when either carries the rule.
-- **Verifier:** any agent that judges another agent's output, including a code reviewer judging a developer's change.
+- **Verifier:** any agent that judges another agent's output, including a code reviewer judging a builder's change.
 - **Waivers file:** the target's waivers file, as `SKILL.md` Invariants define it.
 - **Dispatching flow:** a `flow-*` skill, or any skill section or agent that holds the steps dispatching this agent. Find them by grepping the agent's name.
 

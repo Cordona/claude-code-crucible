@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 # Claude Code's async SubagentStop hook (asyncRewake) beside report-commit-hook.sh. A
-# developer that hands back with SubagentHandback has ended before report-commit-hook.sh
+# builder that hands back with SubagentHandback has ended before report-commit-hook.sh
 # blocks its stop, so it never sees the block. This hook waits for
 # report-commit-hook.sh's stop.blocked or stop.gave-up event for the same
 # hook event, or for the seat to leave working, and, for such a
-# developer only, wakes the main thread with the exact line to send it, or,
+# builder only, wakes the main thread with the exact line to send it, or,
 # on a give-up, with what happened; procedure-seat-run's Results owns what
 # the human is shown. Every other stop ends here silently.
 set -eu
@@ -25,7 +25,7 @@ usage: sh ${PROG}
 
 Claude Code's SubagentStop hook, registered async with asyncRewake, beside
 report-commit-hook.sh. Reads the event JSON on stdin; finds the agent's
-seat with events.sh find-agent, and goes on only for a developer seat that
+seat with events.sh find-agent, and goes on only for a builder seat that
 seats.sh get shows holding the agent, when the agent's transcript
 (agent_transcript_path) ends in a SubagentHandback call. Then waits up to
 $((WAIT_TICKS / 2)) s for report-commit-hook.sh's newest stop.blocked or
@@ -37,7 +37,7 @@ gave-up), reading the events once more.
   blocked     prints to stderr the line to send the agent, the line's
               reason, and exits ${WAKE_EXIT}: Claude Code wakes the main thread
               with it
-  gave-up     prints to stderr that the developer gave up, its seat and
+  gave-up     prints to stderr that the builder gave up, its seat and
               worktree, for procedure-seat-run's Results gave-up
               handling; exits ${WAKE_EXIT}
   no line     once the seat is not working, or at the end of the wait (any
@@ -109,7 +109,7 @@ read_event() {
 	esac
 }
 
-# Sets effort, seat and worktree from the developer seat holding agent_id.
+# Sets effort, seat and worktree from the builder seat holding agent_id.
 find_seat() {
 	found=$(sh "${events_script}" find-agent --agent-id "${agent_id}" 2>/dev/null </dev/null) || quiet
 	case ${found} in
@@ -120,7 +120,7 @@ find_seat() {
 	seat=${found#*"	"}
 	seat_json=$(sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}" 2>/dev/null </dev/null) || quiet
 	worktree=$(printf '%s\n' "${seat_json}" |
-		jq -r --arg agent "${agent_id}" 'select(.role == "developer" and .agent_id == $agent) | .worktree // ""') || quiet
+		jq -r --arg agent "${agent_id}" 'select(.role == "builder" and .agent_id == $agent) | .worktree // ""') || quiet
 	[ -n "${worktree}" ] || quiet
 }
 
@@ -180,10 +180,10 @@ wake() {
 		blocked)
 			reason=$(stop_field reason)
 			[ -n "${reason}" ] || quiet
-			printf '%s\n' "Crucible: the developer in ${seat} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
+			printf '%s\n' "Crucible: the builder in ${seat} handed back, then its stop was blocked; it never saw why and nothing was committed, so its result above is not final. Send agent ${agent_id} exactly the text between the --- lines with SendMessage, then wait for its result:" '---' "${reason}" '---' >&2
 			;;
 		gave-up)
-			printf '%s\n' "Crucible: the developer in ${seat} failed its report check 3 times; nothing was committed in its worktree ${worktree}. Act on seat ${seat} as procedure-seat-run's Results does for gave-up." >&2
+			printf '%s\n' "Crucible: the builder in ${seat} failed its stop checks 3 times; nothing was committed in its worktree ${worktree}. Act on seat ${seat} as procedure-seat-run's Results does for gave-up." >&2
 			;;
 		*) quiet ;;
 	esac

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Says whether the seats a developer seat was cut from have work it lacks:
+# Says whether the seats a builder seat was cut from have work it lacks:
 # every seat its base_seats name, followed through every level, with that
 # seat's worktree HEAD and whether the seat's own HEAD already holds it. It
 # reads only.
@@ -24,14 +24,14 @@ usage() {
 usage: sh ${PROG} --effort FOLDER --seat S
        sh ${PROG} --help | -h
 
-Lists every seat that developer seat S was cut from: the seats its base_seats
+Lists every seat that builder seat S was cut from: the seats its base_seats
 name in the effort's seat list, theirs, and so on, each once (a cycle ends
 the walk).
 For each, its worktree HEAD now and whether S's worktree HEAD holds it.
 Reads only.
 
 --effort FOLDER  the effort folder, absolute
---seat S         a developer seat with a worktree (not chosen)
+--seat S         a builder seat with a worktree (not chosen)
 
 stdout, one JSON line:
   {"seat":S,"head":<sha>,"parents":[{"seat":P,"via":V,"head":<sha>|null,
@@ -45,7 +45,7 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: a bad option value, the effort or the seat does not fit
-     (seats.sh's own lines first), or the seat is no developer with a
+     (seats.sh's own lines first), or the seat is no builder with a
      worktree (a chosen seat has none yet)
   4  environment: git, jq or seats.sh missing or failed
 
@@ -162,7 +162,7 @@ read_seat() {
 	} <<EOF
 ${fields}
 EOF
-	[ "${role}" = developer ] || die 3 "seat ${shown_seat} is a ${role} seat; expected a developer seat"
+	[ "${role}" = builder ] || die 3 "seat ${shown_seat} is a ${role} seat; expected a builder seat"
 	[ "${status}" != chosen ] || die 3 "seat ${shown_seat} is chosen: its worktree is not made yet; expected a seat with a worktree"
 	shown_worktree=$(printable "${worktree}")
 	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"

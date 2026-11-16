@@ -18,7 +18,7 @@ seats_name_run($role; if $exists == "yes" then $current else null end)'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --effort FOLDER --role developer
+usage: sh ${PROG} --effort FOLDER --role builder
        sh ${PROG} --help | -h
 
 Prints the next free seat name of the role: its prefix, a dash and the
@@ -27,7 +27,7 @@ alpha, beta ... omega, then alpha-2 ... omega-2, alpha-3 and on, with no
 limit. Reads only.
 
 --effort FOLDER  the effort folder, absolute
---role ROLE   developer (build-agent-...)
+--role ROLE   builder (build-agent-...)
 
 stdout: the name, like build-agent-alpha or build-agent-alpha-2
 
@@ -84,7 +84,7 @@ parse_args() {
 				effort_folder=${option_value}
 				;;
 			--role)
-				take_value "$1" "${role}" "${2-}" developer
+				take_value "$1" "${role}" "${2-}" builder
 				role=${option_value}
 				;;
 			*)
@@ -95,7 +95,7 @@ parse_args() {
 		shift 2
 	done
 	[ -n "${effort_folder}" ] || usage_error '--effort missing; expected --effort FOLDER'
-	[ -n "${role}" ] || usage_error '--role missing; expected --role developer'
+	[ -n "${role}" ] || usage_error '--role missing; expected --role builder'
 }
 
 script_dir() {

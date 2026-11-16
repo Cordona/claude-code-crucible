@@ -58,7 +58,7 @@ left behind (a SIGKILL aside).
                 the whole push's limit, connection included: a whole
                 number from 1 to ${MAX_TIMEOUT}; default ${DEFAULT_TIMEOUT}
 --effort FOLDER the effort folder, absolute; with --seat
---seat S        the developer seat whose branch this is; with --effort
+--seat S        the builder seat whose branch this is; with --effort
 --session ID    Claude Code's session for the event (default
                 CLAUDE_CODE_SESSION_ID)
 --card          print the line pushed for the human once pushed

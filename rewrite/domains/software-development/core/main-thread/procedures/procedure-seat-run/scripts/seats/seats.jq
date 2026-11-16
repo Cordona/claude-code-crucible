@@ -15,10 +15,10 @@
 # change must leave the whole list fitting the new rules.
 
 def seats_top_fields: ["effort", "seats"];
-def seats_roles: ["developer"];
-def seats_modes: {"developer": "BUILD"};
+def seats_roles: ["builder"];
+def seats_modes: {"builder": "BUILD"};
 # The name a role's seats start with, before "-<letter>".
-def seats_prefixes: {"developer": "build-agent"};
+def seats_prefixes: {"builder": "build-agent"};
 # The letter ending every seat name, in the order seat-name.sh hands them out;
 # after omega the round goes on as alpha-2 ... omega-2, then alpha-3, with no limit.
 def seats_letters: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda",
@@ -355,7 +355,7 @@ def seats_move($options; $index):
 	| if $seat.status == "chosen" then
 		seats_refused(5; "seat \($seat.seat | tojson) is chosen: its worktree is not made yet; expected a seat with a worktree")
 	elif $seat.status == "working" then
-		seats_refused(5; "seat \($seat.seat | tojson) is working: its developer is busy; expected it idle, open or gave-up")
+		seats_refused(5; "seat \($seat.seat | tojson) is working: its builder is busy; expected it idle, open or gave-up")
 	else seats_move_change($options; $index) | seats_changed
 	end;
 

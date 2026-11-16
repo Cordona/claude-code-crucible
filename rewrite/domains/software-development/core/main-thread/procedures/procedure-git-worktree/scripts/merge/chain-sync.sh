@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Brings an idle developer seat up to date with the seats it was cut from:
+# Brings an idle builder seat up to date with the seats it was cut from:
 # when chain.sh says one of them moved on, the seat's HEAD and every moved
 # seat's HEAD are merged by tips-merge.sh as the effort's identity, and the
 # seat's branch moves on to the merge in its clean worktree, a fast-forward.
@@ -44,7 +44,7 @@ does not count it) and fast-forwards S's branch to the merge in S's
 worktree, with no hook run.
 
 --effort FOLDER  the effort folder, absolute
---seat S         a developer seat, status idle (not chosen), whose worktree
+--seat S         a builder seat, status idle (not chosen), whose worktree
                  holds no uncommitted change and has HEAD on a branch
 
 stdout: one JSON line, then the cards
@@ -55,7 +55,7 @@ stdout: one JSON line, then the cards
   conflict, only the card conflict (views/conflict.jq); each printed by
   ${VIEW_LIB}'s show.sh and recorded as owed this session
   (CLAUDE_CODE_SESSION_ID)
-  M is the line to send S's developer: "Your seat S now also holds the
+  M is the line to send S's builder: "Your seat S now also holds the
   latest work of P (merged at <short sha>); build on top of it.", or,
   when S had nothing of its own and takes P's HEAD as it is, "Your seat S
   now holds the latest work of P as it is (<short sha>); build on top of
@@ -72,7 +72,7 @@ exit codes:
      failed, or the worktree is not clean on its branch at the merge
      afterwards
   5  refused by state, no file, index or ref written: S is not an idle
-     developer (a chosen seat has no worktree yet) or is dirty, a moved
+     builder (a chosen seat has no worktree yet) or is dirty, a moved
      seat is not idle, or the HEADs conflict (the card conflict)
   129, 130, 143  stopped by HUP, INT or TERM
 
@@ -204,11 +204,11 @@ refuse() {
 	problems=$((problems + 1))
 }
 
-# Refuses a seat that is no idle developer with a clean worktree; sets
+# Refuses a seat that is no idle builder with a clean worktree; sets
 # seat_worktree.
 check_seat() {
 	read_seat "${seat}"
-	[ "${role}" = developer ] || die 5 "seat ${shown_seat} is a ${role} seat; expected a developer seat"
+	[ "${role}" = builder ] || die 5 "seat ${shown_seat} is a ${role} seat; expected a builder seat"
 	[ "${status}" != chosen ] || die 5 "seat ${shown_seat} is chosen: its worktree is not made yet; expected status idle"
 	seat_worktree=${worktree}
 	shown_worktree=$(printable "${seat_worktree}")
@@ -235,7 +235,7 @@ list_uncommitted() {
 check_idle() {
 	case ${status} in
 		idle) ;;
-		working) refuse "seat ${shown_seat} is working: its developer is busy; expected status idle" ;;
+		working) refuse "seat ${shown_seat} is working: its builder is busy; expected status idle" ;;
 		*) refuse "seat ${shown_seat} is ${status}; expected status idle" ;;
 	esac
 }

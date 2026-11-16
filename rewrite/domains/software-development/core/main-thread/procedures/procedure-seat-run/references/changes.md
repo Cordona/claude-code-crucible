@@ -1,6 +1,6 @@
 # Changes: a change to a part already shown
 
-A change the human asks for to a part already shown (a fix, a refactor, an addition to the same area and repository) goes to the same developer, still warm, over SendMessage; never back through the caller's plan step. Its terms are SKILL.md's, and what a change message and each `--note` line may carry unfenced is SKILL.md's Always. A step number alone is this file's; SKILL.md's steps are named so. Each send fills the caller's slots (SKILL.md Interface).
+A change the human asks for to a part already shown (a fix, a refactor, an addition to the same area and repository) goes to the seat's same agent, still warm, over SendMessage; never back through the caller's plan step. Its terms are SKILL.md's, and what a change message and each `--note` line may carry unfenced is SKILL.md's Always. A step number alone is this file's; SKILL.md's steps are named so. Each send fills the caller's slots (SKILL.md Interface).
 
 Copy steps 1–5 into the todo list and tick each.
 

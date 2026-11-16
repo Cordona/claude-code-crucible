@@ -202,11 +202,11 @@ EOF
 	shown_worktree=$(printable "${worktree}")
 }
 
-# Refuses a seat that has no worktree yet or whose developer is busy.
+# Refuses a seat that has no worktree yet or whose builder is busy.
 check_status() {
 	case ${status} in
 		chosen) die 5 "seat ${shown_seat} is chosen: its worktree is not made yet; expected a seat with a worktree" ;;
-		working) die 5 "seat ${shown_seat} is working: its developer is busy; expected it idle, open or gave-up" ;;
+		working) die 5 "seat ${shown_seat} is working: its builder is busy; expected it idle, open or gave-up" ;;
 		*) ;;
 	esac
 }

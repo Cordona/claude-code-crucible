@@ -51,7 +51,7 @@ include "prune";
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} choose --effort FOLDER --seat S --role developer --repo DIR --base SHA
+usage: sh ${PROG} choose --effort FOLDER --seat S --role builder --repo DIR --base SHA
            [--base-seat S]...
        sh ${PROG} opened --effort FOLDER --seat S --branch NAME
        sh ${PROG} drop --effort FOLDER --seat S
@@ -76,7 +76,7 @@ a change meets. Nothing else is left behind (a SIGKILL aside).
 
 --effort FOLDER   the effort folder, absolute
 --seat S          the seat, like build-agent-alpha
---role developer  choose: the seat's role
+--role builder    choose: the seat's role
 --repo DIR        choose: the repository's main checkout, absolute
 --base SHA        choose, move: the commit the worktree starts from
 --base-seat S     choose: a seat the new one is cut from; repeatable
@@ -290,7 +290,7 @@ require_options() {
 	esac
 	case ${command} in
 		choose)
-			require --role "${role}" developer
+			require --role "${role}" builder
 			require --repo "${repo}" DIR
 			require --base "${base}" SHA
 			;;

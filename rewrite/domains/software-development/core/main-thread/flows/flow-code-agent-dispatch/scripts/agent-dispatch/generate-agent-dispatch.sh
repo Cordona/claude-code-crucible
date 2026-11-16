@@ -759,7 +759,7 @@ add_context_problem() {
 resolve_plugins() {
 	plugin_paths='' labels_line='' title_line=''
 	case ${agent} in
-		code-developer) role=developer ;;
+		code-builder) role=builder ;;
 		code-reviewer) role=reviewer ;;
 		*) return 0 ;;
 	esac
@@ -870,7 +870,7 @@ check_seat_worktree() {
 	worktrees_dir="${effort_dir}/worktrees"
 	shown_worktree=$(printable "${seat_worktree}")
 	if [ -z "${seat_worktree}" ]; then
-		add_problem --seat "${seat}" "the seat has no worktree; expected a developer seat, which works in a worktree"
+		add_problem --seat "${seat}" "the seat has no worktree; expected a builder seat, which works in a worktree"
 		return 0
 	fi
 	real_worktrees_dir=$(cd -P -- "${worktrees_dir}" 2>/dev/null && pwd -P) || real_worktrees_dir=''
@@ -1280,7 +1280,7 @@ resolve_space_root
 check_skills_dir
 # Stand-ins for what the plan gives, so the dispatch check still reports the
 # options' own problems when the plan is not found or not valid.
-agent=code-developer mode=BUILD plugin_paths='' labels_line='' title_line=''
+agent=code-builder mode=BUILD plugin_paths='' labels_line='' title_line=''
 plan_fingerprint=''
 context_path=${PLACEHOLDER_CONTEXT} context_sha256='' context_seq=${PLACEHOLDER_SEQ}
 task=${TASK_STAND_IN} task_known=false

@@ -104,7 +104,7 @@ Rules: at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
 --language with its --framework plugins, one standard --load, or neither;
-code-developer: a --language and a standard --load.
+code-builder: a --language and a standard --load.
 
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable

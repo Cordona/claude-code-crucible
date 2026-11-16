@@ -36,7 +36,7 @@ readonly REASON_PREFIX='flow-code-agent-dispatch:'
 # The agents whose dispatches carry a DISPATCH line. The no-jq path needs them
 # without jq, so they stay here; the hook faults unless they match the listed
 # agents of the shared names module, the list to edit first.
-readonly LISTED_AGENTS='code-developer'
+readonly LISTED_AGENTS='code-builder'
 readonly NAMES_MODULE='dispatch-names'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
@@ -903,7 +903,7 @@ EOF
 	fi
 	worktrees_dir="${real_root}/efforts/${place_effort_name}/worktrees"
 	case ${seat_worktree} in
-		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a developer seat" "${dispatch_effort}" ;;
+		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a builder seat" "${dispatch_effort}" ;;
 		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${dispatch_effort}" ;;
 		*)
 			# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
@@ -929,7 +929,7 @@ read_report_path() {
 	case ${iteration_status} in
 		0) ;;
 		3)
-			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a developer seat whose base is a commit in its worktree" "${dispatch_effort}"
+			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a builder seat whose base is a commit in its worktree" "${dispatch_effort}"
 			return 0
 			;;
 		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch." ;;

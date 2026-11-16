@@ -57,7 +57,7 @@ readonly SKILL_BOOL_KEYS="disable-model-invocation user-invocable background"
 readonly SKILL_REQUIRED="name description"
 readonly AGENT_KEYS="name description tools disallowedTools model permissionMode maxTurns skills mcpServers hooks memory background omitClaudeMd effort isolation color initialPrompt experimental"
 readonly AGENT_REQUIRED="name description tools model effort"
-readonly HOUSE_PREFIXES="flow- procedure- standard- review- build- harness- code-development- code-review- language- framework-"
+readonly HOUSE_PREFIXES="flow- procedure- standard- review- build- harness- code-build- code-review- language- framework-"
 readonly GENERIC_WORDS="helper utils tools documents data files"
 readonly GATE_EVENTS="PreToolUse UserPromptSubmit UserPromptExpansion Stop SubagentStop"
 readonly REQUIRED_TOOLS="awk basename cat cut dirname find grep head mkdir mktemp rm sed sort tr"
@@ -810,8 +810,8 @@ check_skill_name() {
 }
 
 # LNT-72: a language, framework, standard or procedure plugin is hidden from
-# the model, has references/development.md, carries metadata.label and sets no
-# metadata.base.
+# the model, has its role file (references/build.md; standard-testing's is
+# references/test.md), carries metadata.label and sets no metadata.base.
 plugin_meta() {
 	awk -v key="$2" '
 		NR == 1 && $0 != "---" { exit }
@@ -823,11 +823,12 @@ plugin_meta() {
 }
 
 check_plugin() {
-	local name=$1 kind rec label
+	local name=$1 kind rec label role_file=references/build.md
 	case "${name}" in
 		language-*)  kind=language ;;
 		framework-*) kind=framework ;;
-		standard-*)  [[ "${SKILL_DIR%/*}" == */plugins/standards ]] || return 0; kind=standard ;;
+		standard-*)  [[ "${SKILL_DIR%/*}" == */plugins/standards ]] || return 0; kind=standard
+			[[ "${name}" != standard-testing ]] || role_file=references/test.md ;;
 		procedure-*) [[ "${SKILL_DIR%/*}" == */plugins/procedures ]] || return 0; kind=procedure ;;
 		*) return 0 ;;
 	esac
@@ -835,8 +836,8 @@ check_plugin() {
 		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin does not set disable-model-invocation: true (list-plugins.sh would skip or reject it)"
 		return 0
 	fi
-	if [[ ! -f "${SKILL_DIR}/references/development.md" ]]; then
-		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin has no references/development.md"
+	if [[ ! -f "${SKILL_DIR}/${role_file}" ]]; then
+		emit LNT-72 FAIL "${SKILL_MD}" 1 "${kind} plugin has no ${role_file}"
 		return 0
 	fi
 	rec=$(plugin_meta "${SKILL_MD}" label)

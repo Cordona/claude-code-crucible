@@ -8,10 +8,10 @@
 
 # The agents a dispatch file is written for: the one list of dispatched
 # agents. A new agent goes here.
-def dispatched_agents: ["code-developer", "code-reviewer"];
+def dispatched_agents: ["code-builder", "code-reviewer"];
 # The agents prepare-agent-prompt.sh acts on as a PreToolUse hook. No
 # code-reviewer: no review seat exists to dispatch it into.
-def listed_agents: ["code-developer"];
+def listed_agents: ["code-builder"];
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
 def sha256_pattern: "\\A[0-9a-f]{64}\\z";
 # A Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>, the shape crucible_is_id

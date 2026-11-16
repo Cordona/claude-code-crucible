@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Runs the install check for flow-code-agent-dispatch: its five other
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
-# procedure-seat-run's seats.sh, iteration.sh, its card helper and its seat
-# bind, report commit and block relay hook scripts, procedure-git-worktree's
+# procedure-seat-run's seats.sh, iteration.sh, its card helper, its write
+# scope module, its pre-tool, seat bind, report commit and block relay hook
+# scripts and its two write scope rules, procedure-git-worktree's
 # seat-move.sh, worktree-move.sh, catch-up.sh and its card helper, the crucible
 # skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
@@ -16,12 +17,12 @@
 # procedure-seat-run, procedure-approval-gate's
 # open-gate.sh and its two hook scripts, crucible.sh and its events guard
 # hook, jq, the run-time tools
-# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the nine hook
+# date, git, cmp, awk, sort, mktemp, mv, rm, wc and sha256sum or shasum, the ten hook
 # entries in settings.json (the inject hook and the crucible skill's events
 # guard hook, which must block on failure, human-view's Stop hook entry, the
 # three gate hook entries, and
-# procedure-seat-run's seat bind, report commit and async block relay
-# hooks), the Crucible space in its additionalDirectories, its Edit allow
+# procedure-seat-run's pre-tool, seat bind, report commit and async block
+# relay hooks), the Crucible space in its additionalDirectories, its Edit allow
 # rule and its events Edit deny rule, and the installed plugins. Every check
 # runs, whatever an earlier one found, so one run names every fix; the
 # result is printed at the end as one card, views/install-check.jq, through
@@ -90,6 +91,13 @@ readonly SEAT_RUN_PROCEDURE='procedure-seat-run'
 readonly SEAT_BIND_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/seat-bind-hook.sh"
 readonly REPORT_COMMIT_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/report-commit-hook.sh"
 readonly BLOCK_RELAY_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
+readonly PRE_TOOL_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/pre-tool-hook.sh"
+# Relative to DIR/procedure-seat-run/scripts/: the pre-tool hook's and the
+# report commit hook's rules, and the write scope module both load.
+readonly PRE_TOOL_RULE='hooks/rules/pre-tool/builder-write-scope.sh'
+readonly STOP_RULE='hooks/rules/stop/builder-write-scope.sh'
+readonly WRITE_SCOPE_LIB='seats/write-scope.jq'
+readonly PRE_TOOL_MATCHER='Write|Edit|MultiEdit|NotebookEdit'
 # Relative to DIR/procedure-git-worktree/scripts/: what seat-move.sh and
 # catch-up.sh print their cards through; relative to
 # DIR/procedure-seat-run/scripts/: what seats.sh and iteration.sh print their
@@ -118,6 +126,8 @@ readonly GATE_HOOK_TIMEOUT=10
 # The seat bind hook runs one seats.sh change; the report commit hook checks a
 # report and commits the worktree, so its bound is wider.
 readonly SEAT_BIND_HOOK_TIMEOUT=10
+# The pre-tool hook runs one git and one jq per rule on every write call.
+readonly PRE_TOOL_HOOK_TIMEOUT=10
 readonly REPORT_COMMIT_HOOK_TIMEOUT=30
 # The block relay hook waits for the report commit hook's outcome, up to two minutes, and must
 # run async with asyncRewake: its exit 2 is what wakes the main thread.
@@ -435,6 +445,9 @@ fingerprint_input() {
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/worktree/worktree-move.sh" \
 		"${skills_dir}/${WORKTREE_PROCEDURE}/scripts/merge/catch-up.sh" \
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
+		"${skills_dir}/${PRE_TOOL_SCRIPT}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${PRE_TOOL_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${STOP_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${WRITE_SCOPE_LIB}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${EVENTS_SCRIPT}" \
 		"${crucible_scripts_dir}/${EVENTS_GUARD_HOOK}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
@@ -448,6 +461,7 @@ fingerprint_input() {
 	fingerprint_hook PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}"
 	fingerprint_hook UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}"
 	fingerprint_hook PostToolUse Agent "${SEAT_BIND_SCRIPT}"
+	fingerprint_hook PreToolUse "${PRE_TOOL_MATCHER}" "${PRE_TOOL_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${REPORT_COMMIT_SCRIPT}"
 	fingerprint_hook SubagentStop '' "${BLOCK_RELAY_SCRIPT}"
 	fingerprint_hook PreToolUse Bash "${EVENTS_GUARD_SCRIPT}"
@@ -783,9 +797,9 @@ set_coreutils_fix() {
 	run_tool_fix="put $1 back on PATH (macOS: it ships in $2; Linux: the distro's coreutils package), then rerun"
 }
 
-# Checks that the settings file registers the nine hooks, allows the
+# Checks that the settings file registers the ten hooks, allows the
 # Crucible space and has its Edit allow and events deny rules; a settings
-# file jq can't read fails once for all twelve.
+# file jq can't read fails once for all thirteen.
 check_settings() {
 	if ! command -v jq >/dev/null 2>&1; then
 		fail 'hooks not checked' 'jq is missing, and settings.json is read only through jq' "${JQ_FIX}"
@@ -824,6 +838,7 @@ each_hook() {
 	"$1" 'gate question hook' PreToolUse AskUserQuestion "${GATE_QUESTION_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate answer hook' PostToolUse AskUserQuestion "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
 	"$1" 'gate dashboard answer hook' UserPromptSubmit '' "${GATE_ANSWER_SCRIPT}" "${GATE_HOOK_TIMEOUT}" '' ''
+	"$1" 'pre-tool hook' PreToolUse "${PRE_TOOL_MATCHER}" "${PRE_TOOL_SCRIPT}" "${PRE_TOOL_HOOK_TIMEOUT}" '' ''
 	"$1" 'seat bind hook' PostToolUse Agent "${SEAT_BIND_SCRIPT}" "${SEAT_BIND_HOOK_TIMEOUT}" '' ''
 	"$1" 'report commit hook' SubagentStop '' "${REPORT_COMMIT_SCRIPT}" "${REPORT_COMMIT_HOOK_TIMEOUT}" '' ''
 	"$1" 'block relay hook' SubagentStop '' "${BLOCK_RELAY_SCRIPT}" "${BLOCK_RELAY_HOOK_TIMEOUT}" '' "${HOOK_ASYNC_REWAKE}"
@@ -915,7 +930,7 @@ check_async_rewake() {
 	case ${rewake_count} in
 		'' | *[!0-9]* | 0)
 			hook_entry=$(hook_entry_text "$2" "$3" "$4" "$5" "$6" "$7")
-			fail "$1 does not wake the main thread" "the $2 entry that runs ${4##*/} is not \"async\": true with \"asyncRewake\": true, so a developer that handed back never hears why its stop was blocked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
+			fail "$1 does not wake the main thread" "the $2 entry that runs ${4##*/} is not \"async\": true with \"asyncRewake\": true, so a builder that handed back never hears why its stop was blocked" "make it ${hook_entry}, in settings.json, then run /hooks or restart"
 			return 1
 			;;
 		*) return 0 ;;
@@ -1308,6 +1323,10 @@ check_script "${WORKTREE_PROCEDURE}" merge/catch-up.sh
 check_script "${SEAT_RUN_PROCEDURE}" hooks/seat-bind-hook.sh
 check_script "${SEAT_RUN_PROCEDURE}" hooks/report-commit-hook.sh
 check_script "${SEAT_RUN_PROCEDURE}" hooks/block-relay-hook.sh
+check_script "${SEAT_RUN_PROCEDURE}" hooks/pre-tool-hook.sh
+check_script "${SEAT_RUN_PROCEDURE}" "${PRE_TOOL_RULE}"
+check_script "${SEAT_RUN_PROCEDURE}" "${STOP_RULE}"
+check_lib_file "${WRITE_SCOPE_LIB}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts" "${SEAT_RUN_PROCEDURE}"
 check_lib_file "${CARDS_LIB}" "${skills_dir}/${WORKTREE_PROCEDURE}/scripts" "${WORKTREE_PROCEDURE}"
 check_lib_file "${CARDS_LIB}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts" "${SEAT_RUN_PROCEDURE}"
 check_script "${GATE_PROCEDURE}" open-gate.sh

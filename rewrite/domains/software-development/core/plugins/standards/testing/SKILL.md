@@ -44,7 +44,7 @@ Read every rule below through this section. Each framework or library named here
 
 - **Code that guards security, persisted data, concurrency (races, retries, compare-and-set, idempotency) or authentication always gets a test that fails when the guard breaks, unless the human waives it:** smallness never removes one.
 - **Name the category of a required-category behaviour left untested;** when it falls under two, name it security or authentication, never another. Its untested line needs the human's waiver (the rule above), noted in its reason.
-- **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus one line showing the risk is covered or absent (`test 3`, a `file:line`), or mark it unproven. Write each case as the one line `references/untested-template.md` sets; that file arrives in the developer's first message after `references/development.md`. A reviewer gets no template: it checks each line holds the case, reason, risk, category and proof these two rules name.
+- **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus one line showing the risk is covered or absent (`test 3`, a `file:line`), or mark it unproven. Write each case as the one line `references/untested-template.md` sets; that file arrives in the tester's first message after `references/test.md`. A reviewer gets no template: it checks each line holds the case, reason, risk, category and proof these two rules name.
 - **"Not testable at level X" names the level where it can be tested.**
 - **An accepted risk with a user-visible effect is behaviour:** test it, or the human waives it explicitly.
 

@@ -1,6 +1,6 @@
 ---
 name: language-typescript
-description: "TypeScript rules: toolchain, types, unions, async, Zod and lints, plus the developer's verification gate. Use when writing or reviewing TypeScript. A language plugin. Its gate writes only tool caches and what the project's scripts write; needs `node`, a package manager and `typescript`. Not for TypeScript driven only from another file, pure JavaScript, React's or Next.js's own rules (framework plugins), or rules every language shares (`code-developer`, standard plugins)."
+description: "TypeScript rules: toolchain, types, unions, async, Zod and lints, plus the builder's verification gate. Use when writing or reviewing TypeScript. A language plugin. Its gate writes only tool caches and what the project's scripts write; needs `node`, a package manager and `typescript`. Not for TypeScript driven only from another file, pure JavaScript, React's or Next.js's own rules (framework plugins), or rules every language shares (`code-builder`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:

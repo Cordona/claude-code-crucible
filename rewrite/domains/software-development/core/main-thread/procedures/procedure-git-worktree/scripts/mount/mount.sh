@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Mounts idle developer seats' committed work into the main checkout, so the
+# Mounts idle builder seats' committed work into the main checkout, so the
 # human can try it there: the diff from the start (HEAD, or the snapshot the
 # seats were cut from) to the target (one seat's HEAD, or the merge of
 # several) is applied to the working tree only, after every path it touches
@@ -35,7 +35,7 @@ usage() {
 usage: sh ${PROG} --effort FOLDER --seat S [--seat S]...
        sh ${PROG} --help | -h
 
-Applies idle developer seats' committed work to their main checkout's
+Applies idle builder seats' committed work to their main checkout's
 working tree: the diff from the start to the target. The target is the
 one seat's HEAD, or ../merge/tips-merge.sh's merge of every seat's HEAD;
 effort-commits.sh proves every commit from HEAD to the target is the
@@ -49,14 +49,14 @@ git folder; a refusal writes no file, index or ref (tips-merge.sh may
 leave git objects); a failed check after applying reverses the patch.
 
 --effort FOLDER  the effort folder, absolute
---seat S         a developer seat, status idle, clean worktree; repeatable,
+--seat S         a builder seat, status idle, clean worktree; repeatable,
                  each once; every seat of one repo
 
 A finished mount's record (HEAD moved and holds every mounted path, as
 mount-status.sh says) is removed first, with one stderr line.
 
 refused (exit 5, every problem listed) when: an unfinished mount is
-recorded; a seat is not an idle developer (a chosen seat has no worktree
+recorded; a seat is not an idle builder (a chosen seat has no worktree
 yet), is dirty or has another repo; the seats' HEADs conflict (the card
 conflict); the checkout is not a full main checkout at rest;
 the range holds other work (effort-commits.sh's line); nothing to mount;
@@ -218,7 +218,7 @@ check_seat_name() {
 }
 
 # Reads and checks each --seat of the checked command line ("$@"); writes
-# work_dir/seats, "<seat><TAB><worktree><TAB><seat commit>" per developer
+# work_dir/seats, "<seat><TAB><worktree><TAB><seat commit>" per builder
 # seat, and sets repo to the first one's repo.
 read_seats() {
 	: >"${work_dir}/seats"
@@ -239,7 +239,7 @@ read_seats() {
 }
 
 # Sets role, status, worktree and seat_repo from seats.sh get, mountable
-# (yes for a developer seat that is not chosen, so it has a worktree) and
+# (yes for a builder seat that is not chosen, so it has a worktree) and
 # seat_commit; seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
@@ -262,11 +262,11 @@ read_seat() {
 ${fields}
 EOF
 	mountable=no
-	[ "${role}" != developer ] || [ "${status}" = chosen ] || mountable=yes
+	[ "${role}" != builder ] || [ "${status}" = chosen ] || mountable=yes
 	[ "${mountable}" = no ] || check_seat_worktree
 }
 
-# Refuses a developer seat whose worktree and repo git can't read as one
+# Refuses a builder seat whose worktree and repo git can't read as one
 # repository; sets seat_commit.
 check_seat_worktree() {
 	shown_worktree=$(printable "${worktree}")
@@ -287,19 +287,19 @@ refuse() {
 }
 
 check_seat_state() {
-	if [ "${role}" != developer ]; then
-		refuse "seat ${shown_seat} is not a developer seat; expected a developer's seat"
+	if [ "${role}" != builder ]; then
+		refuse "seat ${shown_seat} is not a builder seat; expected a builder's seat"
 		return 0
 	fi
 	case ${status} in
 		idle) ;;
 		chosen) refuse "seat ${shown_seat} is chosen: its worktree is not made yet; expected status idle" ;;
-		working) refuse "seat ${shown_seat} is working: its developer is busy; expected status idle" ;;
+		working) refuse "seat ${shown_seat} is working: its builder is busy; expected status idle" ;;
 		*) refuse "seat ${shown_seat} is ${status}: it has nothing finished; expected status idle" ;;
 	esac
 }
 
-# The first developer seat's repo is the mount's; every other must match it.
+# The first builder seat's repo is the mount's; every other must match it.
 check_seat_repo() {
 	[ "${mountable}" = yes ] || return 0
 	if [ -z "${repo}" ]; then

@@ -1,11 +1,11 @@
 ---
 name: flow-code-agent-dispatch
-description: "Flow from code tasks to checked dispatches: check dependencies, pin the context fingerprint, plan and approve each dispatch's plugins (one language, its frameworks, standards, procedures), append each hook-checked dispatch as a `dispatch.made` event, outside git. Use before dispatching `code-developer`. Writes only via scripts; asks via `procedure-approval-gate`; needs its hooks. Not for task split, seats (`flow-code-build`), the Agent call onward (`procedure-seat-run`) except hook denials."
+description: "Flow from code tasks to checked dispatches: check dependencies, pin the context fingerprint, plan and approve each dispatch's plugins (one language, its frameworks, standards, procedures), append each hook-checked dispatch as a `dispatch.made` event, outside git. Use before dispatching `code-builder`. Writes only via scripts; asks via `procedure-approval-gate`; needs its hooks. Not for task split, seats (`flow-code-build`), the Agent call onward (`procedure-seat-run`) except hook denials."
 ---
 
 # Flow: Code agent dispatch
 
-Run by the main thread when a calling flow loads it (`flow-code-build`'s Plans and dispatches): before any `code-developer` dispatch, and `code-reviewer`'s once a review flow dispatches `code-reviewer`.
+Run by the main thread when a calling flow loads it (`flow-code-build`'s Plans and dispatches): before any `code-builder` dispatch, and `code-reviewer`'s once a review flow dispatches `code-reviewer`.
 
 Not for: the task split, the seats and their worktrees (the calling flow's); the Agent call, its resends and all work after step 9's hand-back (`procedure-seat-run`'s), but a hook denial of that call (step 10, On a hook denial); how an agent works from its first message (its body and preloaded skills); `TEST` parts, which never come here; a specialist (a project manager, a git operator, a doc writer outside the repo), which is called with its own skill, never dispatched. A *plugin* is anything injected into a dispatch: a language plugin (`language-<name>`), a framework plugin (`framework-<name>`), a standard plugin (`standard-<area>`) or a procedure plugin (`procedure-<name>`).
 
@@ -49,7 +49,7 @@ Not for: the task split, the seats and their worktrees (the calling flow's); the
 
 Follow them in order for every hand-in from the calling flow. Copy steps 1–9 into the todo list and tick each as it completes. Note each retry in its step's todo item (`retry 1 of 2`): no count lives in memory alone. Step 10 is a branch, on a hook denial.
 
-The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`, the language and frameworks its code is in (for a config change, the language that config belongs to), its seat (a developer seat of the effort, such as `build-agent-alpha`, chosen by the calling flow and opened at step 7.5, or open already) and entry points; and, once per effort, the effort folder's absolute path (`<effort folder>`, `procedure-effort`'s) with the `CONTEXT_DOCS:` or `CONTEXT_FILE:` line `procedure-context` handed over.
+The calling flow hands in, per task: its agent (`code-builder`), mode `BUILD`, the language and frameworks its code is in (for a config change, the language that config belongs to), its seat (a builder seat of the effort, such as `build-agent-alpha`, chosen by the calling flow and opened at step 7.5, or open already) and entry points; and, once per effort, the effort folder's absolute path (`<effort folder>`, `procedure-effort`'s) with the `CONTEXT_DOCS:` or `CONTEXT_FILE:` line `procedure-context` handed over.
 
 1. **Check the dependencies, every time this flow starts.** Run this exact command as a Bash call of its own, never joined to another with `;` or `&&` (step 2's command is a separate call): `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/scripts/dependencies/validate-dependencies.sh"`, plus `--line ask_tool_missing` when AskUserQuestion is missing from your tool list, and `--line confirm_hooks_loaded` after the human adds or changes a hook entry. Run it again with `--verbose` only on the human's ask. Act on the exit code only: 0 (Warnings items included) with no `--line`: go on. On any other exit, or a run with `--line`: read `references/install-failures.md` for the stop.
 2. **List the plugins:** `sh "<scripts>/dispatch-plan/list-plugins.sh" --max-lines 0`, `<scripts>` being `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/scripts`, so no plan is built from a cut list. Check stderr first, then the exit; a plugin line is as `list-plugins.sh --help` sets. Exit 0 or 1 with no `TRUNCATED:` line on stderr and every stdout line a plugin line: go on; on exit 1, every code part stops as step 5 sets for code whose language has no installed plugin. On anything else: read `references/install-failures.md` for what to show and when to stop.
@@ -62,8 +62,8 @@ The calling flow hands in, per task: its agent (`code-developer`), mode `BUILD`,
    - Each procedure plugin whose description matches what the context entries hold, such as a tracker link the agent would otherwise skip.
    - Two plugins' descriptions both match one concern: read `references/boundary-map.md` and load the owner.
    - A `code-reviewer` part holds one lens: its language plugin with its framework plugins (the tech lens), or one standard plugin, or neither (the correctness seat); the generator refuses any other.
-   - A `code-developer` part always loads its language plugin and at least one standard plugin; the generator refuses one without.
-   - A doc change is no developer's: plan nothing for it and hand the part back as `stopped: a doc change is not a developer task` (step 9).
+   - A `code-builder` part always loads its language plugin and at least one standard plugin; the generator refuses one without.
+   - A doc change is no builder's: plan nothing for it and hand the part back as `stopped: a doc change is not a builder task` (step 9).
    - A task in two languages, or in two repositories, becomes one part per language and per repository; each framework goes with the language its code is in.
    - Code whose language has no installed plugin: plan nothing for that part, show the line `no_language_plugin` with `--arg name '<name>'`, `<name>` being that language as the calling flow handed it in, and hand the part back as `stopped: no installed plugin for <name>` (step 9). The human runs a task only with its language installed, so no other path is offered.
    - A framework with no installed plugin: plan the part under its language plugin, with no framework plugin, and say so in the language plugin's reason.

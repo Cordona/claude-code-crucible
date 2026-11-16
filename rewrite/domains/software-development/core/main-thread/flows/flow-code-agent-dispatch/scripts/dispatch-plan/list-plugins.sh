@@ -7,7 +7,8 @@
 # main thread picks plugins by their descriptions and passes their names to
 # generate-dispatch-plan.sh; generate-agent-dispatch.sh copies the paths into
 # the dispatch. A plugin is reported on stderr instead of listed when it lacks
-# SKILL.md or references/development.md, fails prepare-agent-prompt.sh's
+# SKILL.md or a role file (references/build.md; standard-testing's is
+# references/test.md), fails prepare-agent-prompt.sh's
 # plugin test (name, disable-model-invocation, closed frontmatter), lacks a
 # label or description, sets metadata.base, or has a path holding a comma or
 # control character (a tab or a line break would split a plugin line). A
@@ -159,14 +160,16 @@ Options:
   --max-lines N     print at most N plugin lines; default ${DEFAULT_MAX_LINES}, 0 prints all
 
 Plugins, by folder in DIR:
-  language   language-<name>/ with SKILL.md and references/development.md
+  language   language-<name>/ with SKILL.md and a role file
   framework  framework-<name>/, as a language plugin
-  standard   standard-<area>/ with SKILL.md and references/development.md,
+  standard   standard-<area>/ with SKILL.md and a role file,
              opted in by disable-model-invocation: true in its frontmatter.
              A standard-* folder without a readable SKILL.md, or whose
              SKILL.md has no closed frontmatter with that line, is not a
              plugin: skipped, never reported
   procedure  procedure-<name>/, as a standard plugin
+The role file is references/build.md; standard-testing's is
+  references/test.md.
 A plugin is valid when its SKILL.md frontmatter is closed by --- and has
   name: <its folder name>, disable-model-invocation: true, a metadata.label,
   a readable description and no metadata.base, and its path, DIR included,
@@ -174,7 +177,7 @@ A plugin is valid when its SKILL.md frontmatter is closed by --- and has
 
 stdout: one line per valid plugin, TAB-separated, language lines first, then
   framework, then standard, then procedure, each group sorted by NAME:
-  <KIND> <NAME> <label> <description> <SKILL.md> <development.md>
+  <KIND> <NAME> <label> <description> <SKILL.md> <role file>
   KIND language, framework, standard or procedure; NAME the folder name
   (language-shell); label metadata.label; description on one field, its tabs
   and line breaks as spaces; the two paths absolute
@@ -278,8 +281,21 @@ missing_file_error() {
 	printf '%s is missing; expected %s; reinstall the plugin' "$2" "$1/$2"
 }
 
+# Prints the paths of plugin $1's SKILL.md and of its role file, which
+# set_role_file found.
 plugin_paths() {
-	printf '%s\t%s' "${skills_dir}/$1/SKILL.md" "${skills_dir}/$1/references/development.md"
+	printf '%s\t%s' "${skills_dir}/$1/SKILL.md" "${skills_dir}/$1/${role_file}"
+}
+
+# Sets role_file to the role file of plugin folder $1, references/build.md
+# (standard-testing's references/test.md); or line_error when it is missing.
+set_role_file() {
+	role_file=references/build.md
+	[ "${1##*/}" != standard-testing ] || role_file=references/test.md
+	if [ ! -f "$1/${role_file}" ]; then
+		line_error=$(missing_file_error "$1" "${role_file}")
+		role_file=''
+	fi
 }
 
 # Sets plugin_line for the valid plugin $1-$2 of kind $1 from the split frontmatter.
@@ -296,16 +312,18 @@ build_listed_line() {
 	[ -z "${line_error}" ] || return 0
 	if [ ! -f "${plugin_dir}/SKILL.md" ]; then
 		line_error=$(missing_file_error "${plugin_dir}" SKILL.md)
-	elif [ ! -f "${plugin_dir}/references/development.md" ]; then
-		line_error=$(missing_file_error "${plugin_dir}" references/development.md)
-	elif ! frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md"); then
-		line_error=${NO_FRONTMATTER_ERROR}
-	else
-		split_frontmatter
-		line_error=$(plugin_test_error "$1-$2")
-		[ -n "${line_error}" ] || line_error=$(field_error)
-		[ -n "${line_error}" ] || set_plugin_line "$1" "$2"
+		return 0
 	fi
+	set_role_file "${plugin_dir}"
+	[ -z "${line_error}" ] || return 0
+	if ! frontmatter=$(awk "${FRONTMATTER_AWK}" "${plugin_dir}/SKILL.md"); then
+		line_error=${NO_FRONTMATTER_ERROR}
+		return 0
+	fi
+	split_frontmatter
+	line_error=$(plugin_test_error "$1-$2")
+	[ -n "${line_error}" ] || line_error=$(field_error)
+	[ -n "${line_error}" ] || set_plugin_line "$1" "$2"
 }
 
 # Sets is_plugin=true for a plugin $1-$2 of kind $1 (standard or procedure),
@@ -327,10 +345,8 @@ build_opt_in_line() {
 	[ -z "${line_error}" ] || return 0
 	line_error=$(plugin_test_error "$1-$2")
 	[ -z "${line_error}" ] || return 0
-	if [ ! -f "${plugin_dir}/references/development.md" ]; then
-		line_error=$(missing_file_error "${plugin_dir}" references/development.md)
-		return 0
-	fi
+	set_role_file "${plugin_dir}"
+	[ -z "${line_error}" ] || return 0
 	line_error=$(field_error)
 	[ -n "${line_error}" ] || set_plugin_line "$1" "$2"
 }

@@ -1,9 +1,11 @@
 #!/usr/bin/env sh
-# Brings a commit into an idle developer seat's worker branch. A clean merge
+# Brings a commit into an idle builder seat's worker branch. A clean merge
 # is made by tips-merge.sh as the effort's identity and the branch moves on
 # to it, a fast-forward in the seat's clean worktree. A conflicting one is
 # started in the worktree with git merge --no-commit, its markers left for
-# the seat's developer to resolve; the stop hook then commits the merge.
+# the seat's builder to resolve; the stop hook then commits the merge. A
+# conflict in a file outside the seat's write scope (procedure-seat-run's
+# write-scope.jq) cancels the merge and names the roles that must resolve it.
 # Its cards are views/ templates, printed by human-view's show.sh.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
@@ -14,10 +16,19 @@ umask 077
 readonly PROG='catch-up.sh'
 readonly EFFORT_TRAILER='Effort'
 # The conflict line and the JSON name at most this many files, so a merge
-# touching hundreds stays one readable line for the developer and the caller.
+# touching hundreds stays one readable line for the builder and the caller.
 readonly MAX_NAMED=20
+# The jq that reads work_dir/conflicts into $paths and $files, the files named
+# for the human, the first MAX_NAMED of them and how many more; it needs --argjson max.
+# The program is single-quoted on purpose: its $ signs are jq's.
+# shellcheck disable=SC2016
+readonly NAMED_FILES_JQ='split("\u0000") | map(select(. != "")) as $paths
+| ($paths[:$max] | join(", ")) as $named
+| (if ($paths | length) > $max then "\($named) and \(($paths | length) - $max) more" else $named end) as $files'
 # From this folder to the effort settings' reader.
 readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
+# From this folder to the seat roles' write scopes.
+readonly WRITE_SCOPE_DIR='../../../procedure-seat-run/scripts/seats'
 readonly VIEW_LIB='human-view'
 # The C locale keeps the shell byte-wise.
 LC_ALL=C
@@ -41,13 +52,14 @@ already holds REF, nothing is written. A clean merge is one commit,
 "crucible(sync): S takes <NAME or short sha>", trailer ${EFFORT_TRAILER} (the
 effort's name) and no Agent-Seat, so iteration.sh does not count it; S's
 branch moves on to it in S's worktree. A conflict is left as a merge under way in S's worktree,
-its markers in the files; nothing is committed. No repository hook or
+its markers in the files; nothing is committed. A conflict in a file outside
+S's write scope cancels the merge: S is left as before. No repository hook or
 rerere runs. It writes only S's branch, S's worktree and git objects in S's
 repository; exits 2, 3 and 5 change nothing, and no event is written.
 Nothing else is left behind (a SIGKILL aside).
 
 --effort FOLDER  the effort folder, absolute
---seat S         a developer seat, status idle (not chosen), whose worktree
+--seat S         a builder seat, status idle (not chosen), whose worktree
                  has HEAD on a branch, no change and no merge, pick or
                  rebase under way
 --with REF       a commit sha or a ref name of S's repository (a branch,
@@ -62,19 +74,23 @@ stdout: one JSON line, then the cards
   {"caught_up":true,"seat":S,"commit":<sha>}
   {"caught_up":false,"seat":S,"reason":"conflict","conflicts":[<path>...],
    "conflicts_not_shown":N,"message":M}
+  {"caught_up":false,"seat":S,"reason":"out_of_scope","conflicts":[<path>...],
+   "conflicts_not_shown":N,"needs":[<role>...]}  merge cancelled
   in sync: the line in_sync (views/lines.jq); caught up: the card
   caught-up (views/caught-up.jq), then, for a merge made unsigned, the
   line unsigned (views/lines.jq); a conflict: the card conflict
-  (views/conflict.jq); each printed by ${VIEW_LIB}'s show.sh and recorded
-  as owed this session (CLAUDE_CODE_SESSION_ID)
+  (views/conflict.jq); out of scope: the line out_of_scope; each printed
+  by ${VIEW_LIB}'s show.sh and recorded as owed this session
+  (CLAUDE_CODE_SESSION_ID)
   conflicts: the first ${MAX_NAMED} conflicting files; N, how many more.
-  M is the line to send S's developer: what S takes in, the files that
+  M is the line to send S's builder: what S takes in, the files that
   conflict (at most ${MAX_NAMED} named), "resolve each file, remove every
   marker, and keep the rest of your work; the stop hook commits the merge."
+  out_of_scope's needs: the roles whose files conflict, builder first.
 
 exit codes:
-  0  in sync, caught up, or a conflict left for S's developer; read the
-     JSON line
+  0  in sync, caught up, a conflict left for S's builder, or a merge
+     cancelled as out of S's scope; read the JSON line
   2  wrong command line, nothing changed; show the human stderr, and stop
   3  input does not fit, nothing changed; show the human stderr, and stop
   4  environment, git or a neighbour failed, S's branch possibly moved
@@ -84,7 +100,8 @@ exit codes:
 
 needs: POSIX sh, git 2.38+, jq 1.6+; tips-merge.sh,
 ../worktree/uncommitted.jq and ../cards/cards-lib.sh from this script's
-folder; procedure-seat-run's seats/seats.sh and procedure-git-setup's
+folder; procedure-seat-run's seats/seats.sh and seats/write-scope.jq and
+procedure-git-setup's
 settings.sh beside procedure-git-worktree;
 this skill's views/; ${VIEW_LIB}'s scripts/show.sh and scripts/lib/render.sh
 in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
@@ -166,7 +183,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for neighbour in tips-merge.sh ../../../procedure-seat-run/scripts/seats/seats.sh ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
+	for neighbour in tips-merge.sh ../../../procedure-seat-run/scripts/seats/seats.sh "${WRITE_SCOPE_DIR}/write-scope.jq" ../worktree/uncommitted.jq ../cards/cards-lib.sh "${SETTINGS}"; do
 		[ -f "${own_dir}/${neighbour}" ] || {
 			shown_neighbour=$(printable "${own_dir}/${neighbour}")
 			whole="the procedure's scripts folders whole"
@@ -228,11 +245,11 @@ ${fields}
 EOF
 }
 
-# Refuses a seat that is no idle developer with a clean worktree on its
+# Refuses a seat that is no idle builder with a clean worktree on its
 # branch and nothing under way; sets seat_worktree, seat_ref and seat_head.
 check_seat() {
 	read_seat
-	[ "${role}" = developer ] || die 5 "seat ${shown_seat} is a ${role} seat; expected a developer seat"
+	[ "${role}" = builder ] || die 5 "seat ${shown_seat} is a ${role} seat; expected a builder seat"
 	[ "${status}" != chosen ] || die 5 "seat ${shown_seat} is chosen: its worktree is not made yet; expected status idle"
 	seat_worktree=${worktree}
 	shown_worktree=$(printable "${seat_worktree}")
@@ -244,7 +261,7 @@ check_seat() {
 	problems=0
 	case ${status} in
 		idle) ;;
-		working) refuse "seat ${shown_seat} is working: its developer is busy; expected status idle" ;;
+		working) refuse "seat ${shown_seat} is working: its builder is busy; expected status idle" ;;
 		*) refuse "seat ${shown_seat} is ${status}; expected status idle" ;;
 	esac
 	check_no_operation
@@ -281,7 +298,7 @@ list_uncommitted() {
 
 # Sets with_commit to --with's full sha, label to --with when it named a ref
 # and no --label was given, with_short to its short sha, and taken to what
-# the seat takes in, for the developer: "NAME (short)" or the short sha. A --with that is a prefix of the
+# the seat takes in, for the builder: "NAME (short)" or the short sha. A --with that is a prefix of the
 # sha it resolves to was a sha, not a name.
 resolve_with() {
 	with_commit=$(git -C "${seat_worktree}" -c core.fsmonitor=false rev-parse --verify --quiet --end-of-options "${with}^{commit}" 2>/dev/null) ||
@@ -417,20 +434,67 @@ start_conflicted_merge() {
 }
 
 # tips-merge.sh saw a conflict that git merge did not: the merge is undone,
-# so nothing is left half-done for the developer.
+# so nothing is left half-done for the builder.
 abort_merge() {
-	git -C "${seat_worktree}" -c core.hooksPath=/dev/null -c core.fsmonitor=false merge --abort </dev/null \
-		>/dev/null 2>&1 || warn "git merge --abort failed; seat ${seat}'s worktree may still hold the merge of ${with_short}"
+	# shellcheck disable=SC2310 # a failed undo is warned about; the exit below follows either way
+	undo_merge || warn "git merge --abort failed; seat ${seat}'s worktree may still hold the merge of ${with_short}"
 	die 4 "git merge of ${with_short} left no conflicted file though tips-merge.sh found a conflict; the merge is aborted"
+}
+
+undo_merge() {
+	git -C "${seat_worktree}" -c core.hooksPath=/dev/null -c core.fsmonitor=false merge --abort </dev/null \
+		>/dev/null 2>"${work_dir}/stderr"
+}
+
+# Sets needs to the roles whose files conflict, space-separated in the order
+# builder, tester, when a conflicting file is outside the seat role's write
+# scope; to "" when every one is inside it.
+check_scope() {
+	needs=$(jq -Rsr -L "${own_dir}/${WRITE_SCOPE_DIR}" --arg role "${role}" \
+		'include "write-scope";
+		split("\u0000") | map(select(. != "")) as $paths
+		| if all($paths[]; in_scope($role; .)) then ""
+		  else [if any($paths[]; is_test_path | not) then "builder" else empty end,
+			if any($paths[]; is_test_path) then "tester" else empty end] | join(" ")
+		  end' "${work_dir}/conflicts" 2>"${work_dir}/stderr") ||
+		git_failed "jq checking the conflicts against write-scope.jq"
+}
+
+# Cancels the merge that is out of the seat's scope, then proves HEAD is
+# still on the seat's branch, at its commit, and the worktree clean.
+cancel_merge() {
+	# shellcheck disable=SC2310 # its status is acted on here; set -e is not relied on inside
+	undo_merge || git_failed "git merge --abort of ${with_short} in seat ${seat}'s worktree"
+	check_on_branch 'the cancelled merge'
+	now_head=$(git -C "${seat_worktree}" -c core.fsmonitor=false rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null) || now_head=''
+	[ "${now_head}" = "${seat_head}" ] ||
+		die 4 "seat ${seat}'s branch is at ${now_head:-none} after the cancelled merge, not ${seat_head}"
+	list_uncommitted
+	[ ! -s "${work_dir}/seat-dirty" ] ||
+		die 4 "seat ${seat}'s worktree is not clean after the merge of ${with_short} was cancelled"
+}
+
+# Prints the result, then the line out_of_scope.
+print_out_of_scope() {
+	jq -Rsc --arg seat "${seat}" --arg needs "${needs}" --argjson max "${MAX_NAMED}" \
+		"${NAMED_FILES_JQ}"'
+		| {caught_up: false, seat: $seat, reason: "out_of_scope", conflicts: $paths[:$max],
+		   conflicts_not_shown: ([($paths | length) - $max, 0] | max),
+		   needs: ($needs | split(" "))}' \
+		"${work_dir}/conflicts" || die 4 'jq could not print the result; expected jq 1.6+'
+	conflict_files=$(jq -Rsr --argjson max "${MAX_NAMED}" "${NAMED_FILES_JQ}"' | $files' "${work_dir}/conflicts") ||
+		die 4 'jq could not build the line'\''s files; expected jq 1.6+'
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_show_line "${card_show}" "${card_views}" out_of_scope "${effort_dir}" --arg seat "${seat}" --arg taken "${taken}" \
+		--arg files "${conflict_files}" --arg needs "${needs}" ||
+		die 4 "${hv_render_problem}; the merge of ${with_short} was cancelled in seat ${seat}, its line not shown"
 }
 
 # Prints the result, then the card conflict for the merge left in the seat's
 # worktree.
 print_conflict() {
 	jq -Rsc --arg seat "${seat}" --arg taken "${taken}" --argjson max "${MAX_NAMED}" \
-		'split("\u0000") | map(select(. != "")) as $paths
-		| ($paths[:$max] | join(", ")) as $named
-		| (if ($paths | length) > $max then "\($named) and \(($paths | length) - $max) more" else $named end) as $files
+		"${NAMED_FILES_JQ}"'
 		| {caught_up: false, seat: $seat, reason: "conflict", conflicts: $paths[:$max],
 		   conflicts_not_shown: ([($paths | length) - $max, 0] | max),
 		   message: "Your seat \($seat) takes in \($taken), and these files conflict: \($files). Resolve each file, remove every marker, and keep the rest of your work; the stop hook commits the merge."}' \
@@ -515,4 +579,10 @@ if [ "${merge_rc}" -eq 0 ]; then
 	exit 0
 fi
 start_conflicted_merge
+check_scope
+if [ -n "${needs}" ]; then
+	cancel_merge
+	print_out_of_scope
+	exit 0
+fi
 print_conflict

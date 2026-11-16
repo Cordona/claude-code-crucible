@@ -78,28 +78,28 @@ select_plugin_lines() {
 		awk -v prog="${plugin_prog}" -v want="${plugin_want}" "${plugin_select_awk}" "$@"
 }
 
-# Sets plugin_paths to the files role $1 (developer or reviewer) loads from the
-# selected paths $2, one per line: for reviewer each references/development.md
-# becomes references/review.md, dropped when that is not a readable file; for
-# developer each references/development.md is followed by every readable
-# references/*-template.md file of that plugin, in the glob's byte order under
-# the C locale. Returns 3 with plugin_problem set when a template name holds a
-# comma or control character.
+# Sets plugin_paths to the files role $1 (builder or reviewer) loads from the
+# selected paths $2, one per line: for reviewer each references/build.md or
+# references/test.md becomes references/review.md, dropped when that is not a
+# readable file; for builder each references/build.md is followed by every
+# readable references/*-template.md file of that plugin, in the glob's byte
+# order under the C locale. Returns 3 with plugin_problem set when a template
+# name holds a comma or control character.
 resolve_role_paths() {
 	plugin_paths=''
 	plugin_problem=''
 	while IFS= read -r plugin_path; do
 		[ -n "${plugin_path}" ] || continue
 		case $1:${plugin_path} in
-			reviewer:*/references/development.md)
-				plugin_path="${plugin_path%development.md}review.md"
+			reviewer:*/references/build.md | reviewer:*/references/test.md)
+				plugin_path="${plugin_path%/*}/review.md"
 				[ -f "${plugin_path}" ] && [ -r "${plugin_path}" ] || continue
 				add_plugin_path "${plugin_path}"
 				;;
-			developer:*/references/development.md)
+			builder:*/references/build.md)
 				add_plugin_path "${plugin_path}"
 				# shellcheck disable=SC2310 # its status is the template check; the caller acts on it
-				add_plugin_templates "${plugin_path%development.md}" || return 3
+				add_plugin_templates "${plugin_path%build.md}" || return 3
 				;;
 			*) add_plugin_path "${plugin_path}" ;;
 		esac

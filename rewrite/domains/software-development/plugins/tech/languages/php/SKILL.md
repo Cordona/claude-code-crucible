@@ -1,6 +1,6 @@
 ---
 name: language-php
-description: "PHP rules: toolchain, type juggling, null and array access, decoding, exhaustiveness, exceptions, strict types and lints, plus the developer's verification gate. Use when writing or reviewing PHP. A language plugin. Its gate writes only tool caches and what the project's tests write; needs `php`, `composer` and the `vendor/bin` tools. Not for PHP driven only from another file, Laravel's own rules (`framework-laravel`), or rules every language shares (`code-developer`, standard plugins)."
+description: "PHP rules: toolchain, type juggling, null and array access, decoding, exhaustiveness, exceptions, strict types and lints, plus the builder's verification gate. Use when writing or reviewing PHP. A language plugin. Its gate writes only tool caches and what the project's tests write; needs `php`, `composer` and the `vendor/bin` tools. Not for PHP driven only from another file, Laravel's own rules (`framework-laravel`), or rules every language shares (`code-builder`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:

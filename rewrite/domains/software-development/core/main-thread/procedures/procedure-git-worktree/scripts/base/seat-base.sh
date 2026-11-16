@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Gives the base a new developer seat starts at, as its caller chose it:
+# Gives the base a new builder seat starts at, as its caller chose it:
 # independent (the checkout's HEAD, or a snapshot of it), or on the work of
 # one or more idle seats (one seat's HEAD, or tips-merge.sh's merge of
 # several). It never chooses; it writes no ref and no file, only git
@@ -42,13 +42,13 @@ Prints the base for procedure-seat-run's seats.sh choose's --base and
                 seat-name.sh named it; it need not be a seat yet and is no
                 --on seat
 --independent   base: --snapshot, else the checkout's HEAD; every idle
-                developer seat of --repo whose HEAD is neither its base
+                builder seat of --repo whose HEAD is neither its base
                 nor in the checkout's HEAD is listed in unmerged
 --snapshot SHA  snapshot.sh's commit of the checkout (its subject
                 "${SNAPSHOT_MESSAGE}", author the identity
                 settings.sh get --effort FOLDER prints, one parent: HEAD);
                 --independent only
---on S          an idle developer seat of --repo; repeatable, each once.
+--on S          an idle builder seat of --repo; repeatable, each once.
                 base: the one seat's HEAD, or ../merge/tips-merge.sh's
                 merge of every seat's HEAD (message "crucible(merge): S +
                 S", trailer ${EFFORT_TRAILER}: the effort folder's name) as
@@ -75,7 +75,7 @@ exit codes:
      own line first)
   4  environment: git, jq, ${VIEW_LIB}'s show.sh or a neighbour missing or
      failed
-  5  refused by state, no file or ref written: an --on seat is no developer,
+  5  refused by state, no file or ref written: an --on seat is no builder,
      of another repo, chosen (no worktree yet) or not idle, or the HEADs
      conflict (the card conflict)
   129, 130, 143  stopped by HUP, INT or TERM
@@ -281,13 +281,13 @@ EOF
 		die 3 "--snapshot ${base} is not a snapshot of HEAD ${head} by the effort's identity; expected snapshot.sh's sha for --repo, made with settings.sh get's NAME and EMAIL"
 }
 
-# Writes work_dir/unmerged, one seat per idle developer seat of the repo
+# Writes work_dir/unmerged, one seat per idle builder seat of the repo
 # whose HEAD is neither its base nor in the checkout's HEAD.
 list_unmerged() {
 	: >"${work_dir}/unmerged"
 	read_seat_list
 	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-	jq -r '.seats[] | select(.role == "developer" and .status == "idle")
+	jq -r '.seats[] | select(.role == "builder" and .status == "idle")
 		| [.seat, .worktree, .repo, .base] | map(strings) | select(length == 4) | join("\t")' "${work_dir}/seat-list" \
 		>"${work_dir}/idle" 2>/dev/null || die 4 'jq could not read the seat list seats.sh list printed'
 	while IFS= read -r idle_line; do
@@ -346,7 +346,7 @@ read_on_seat() {
 	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort_dir}" --seat "$1" 2>"${work_dir}/get-stderr") || seat_rc=$?
 	case ${seat_rc} in
 		0) ;;
-		6) die 3 "--on $1 is not a seat of --effort; expected an existing developer seat" ;;
+		6) die 3 "--on $1 is not a seat of --effort; expected an existing builder seat" ;;
 		*)
 			cat -- "${work_dir}/get-stderr" >&2 || :
 			case ${seat_rc} in
@@ -369,11 +369,11 @@ EOF
 	check_on_seat "$1"
 }
 
-# Refuses seat $1 when it is no idle developer of --repo with a HEAD;
+# Refuses seat $1 when it is no idle builder of --repo with a HEAD;
 # otherwise adds its HEAD to work_dir/on-heads.
 check_on_seat() {
-	if [ "${role}" != developer ]; then
-		refuse "seat $1 is a ${role} seat; expected a developer seat"
+	if [ "${role}" != builder ]; then
+		refuse "seat $1 is a ${role} seat; expected a builder seat"
 		return 0
 	fi
 	same_repo "${seat_repo}"
@@ -388,7 +388,7 @@ check_on_seat() {
 			refuse "seat $1 is chosen: its worktree is not made yet; expected status idle"
 			return 0
 			;;
-		working) refuse "seat $1 is working: its developer is busy; expected status idle" ;;
+		working) refuse "seat $1 is working: its builder is busy; expected status idle" ;;
 		*) refuse "seat $1 is ${status}: it has nothing finished; expected status idle" ;;
 	esac
 	shown_worktree=$(printable "${worktree}")

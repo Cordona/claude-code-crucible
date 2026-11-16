@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Opens one chosen developer seat: a worktree of the main checkout on its own
+# Opens one chosen builder seat: a worktree of the main checkout on its own
 # branch at the seat's base, at the path its seat.chosen event records, the checkout's
 # dependency folders copied into it, and the seat's status set to open. It
 # only runs seats.sh, worktree-create.sh and worktree-setup.sh in order; a
@@ -24,7 +24,7 @@ usage() {
 usage: sh ${PROG} --effort DIR --seat S
        sh ${PROG} --help | -h
 
-Opens a chosen developer seat: its worktree, cut from the seat's base at
+Opens a chosen builder seat: its worktree, cut from the seat's base at
 the path its seat.chosen event records, on the new branch
 ${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>, holds copies of
 the checkout's dependency folders, and the seat is open (seat.opened). A

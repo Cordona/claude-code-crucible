@@ -1,6 +1,6 @@
 ---
 name: language-rust
-description: "Rust rules: toolchain, errors, panics, casts, std traits, `unsafe`, async, ownership, clippy, plus the developer's verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin. Its gate writes only Cargo's `target/` and what the tests write; needs `cargo`, `rustfmt` and `clippy`. Not for Rust driven only from another file (a Dockerfile `RUN`, a CI step), or rules every language shares (`code-developer`, standard plugins)."
+description: "Rust rules: toolchain, errors, panics, casts, std traits, `unsafe`, async, ownership, clippy, plus the builder's verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin. Its gate writes only Cargo's `target/` and what the tests write; needs `cargo`, `rustfmt` and `clippy`. Not for Rust driven only from another file (a Dockerfile `RUN`, a CI step), or rules every language shares (`code-builder`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:
@@ -104,7 +104,7 @@ When async is in play:
 - **Secrets in memory:** `secrecy` and `zeroize`.
 - **Supply chain:** `cargo-audit`, and pinned dependencies.
 - **Tracing:** `tracing` spans with structured fields, through `tracing-subscriber`, with context carried across `.await`.
-- **Docs:** `///` on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it; a doc example that would be a doc-test is left to the test dispatch.
+- **Docs:** `///` on a public item only when its signature can't state a constraint, a failure condition or behaviour beyond it.
 - **Persistence:**
   - explicit `sqlx` or Diesel transactions;
   - `SELECT … FOR UPDATE` or a version column against lost updates;

@@ -80,7 +80,7 @@ def draft:
 	   prose_only: (($parts.items | length) == 0 and ($parts.prose | length) > 0
 		and (($parts.prose | length) == 1 and ($parts.prose[0] | is_none) | not)),
 	   points: (if ($parts.items | length) == 1 and ($parts.items[0] | is_none) then [] else $parts.items end)};
-def approve_label: if (draft | .points | length) > 0 then "Approve, leave them to the developer" else "Approve" end;
+def approve_label: if (draft | .points | length) > 0 then "Approve, leave them to the agents" else "Approve" end;
 '
 
 # Prints one line per problem of the slurped plan file; nothing when it is one
@@ -162,7 +162,7 @@ option("Change it: say what"; "Type the change; the spec comes back here.") as $
   elif (draft | .points | length) > 0 then
 	{header: "Approval", question: "Approve the spec?",
 	 options: [option("Answer the open points (Recommended)"; "Answer them in the chat; the spec is updated and comes back here."),
-		option(approve_label; "Approved; the open points stay as the developer'\''s call."),
+		option(approve_label; "Approved; the open points stay as the agents'\'' call."),
 		$change]}
   else
 	{header: "Approval", question: "Approve the spec?",
@@ -226,7 +226,7 @@ stdout on exit 0 only:
     (Recommended):
     revision: Revise it / Keep it as it is
     approval with open points: Answer the open points / Approve, leave them
-      to the developer / Change it: say what
+      to the agents / Change it: say what
     approval with no open points: Approve / Change it: say what
   --approval-plan: SPEC_SHA256: <the draft's sha256>; then each line asked
     for, printed through show.sh

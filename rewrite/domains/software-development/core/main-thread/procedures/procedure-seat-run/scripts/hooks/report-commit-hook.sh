@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Claude Code's SubagentStop hook for an effort's developers. It finds the
+# Claude Code's SubagentStop hook for an effort's builders. It finds the
 # stopping agent's working seat, checks the agent's report draft and, when
 # the report fits, commits the worktree's changes as the seat's next
 # iteration, as the effort's identity, pushes the worktree's branch when the
@@ -10,9 +10,11 @@
 # run that dies part way is finished or undone by the next one. A report
 # that does not fit blocks the stop with the checker's lines, MAX_BLOCKS
 # times at most, each block a stop.blocked event, which block-relay-hook.sh
-# reads. A fault allows the stop and is a fault.raised event: a failing hook
-# must never hold an agent. Every child's stdout is captured, so stdout
-# carries only the block decision.
+# reads. A change to a test file or test data, which only the shell could
+# have made past pre-tool-hook.sh, blocks it the same way, naming the files,
+# so it is never committed. A fault allows the stop and is a fault.raised
+# event: a failing hook must never hold an agent. Every child's stdout is
+# captured, so stdout carries only the block decision.
 set -eu
 umask 077
 
@@ -22,15 +24,18 @@ readonly PROG='report-commit-hook.sh'
 readonly MAX_BLOCKS=2
 readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
 readonly MERGE_BLOCK_LEAD='Your stop is blocked: finish the merge, then stop again.'
+readonly SCOPE_BLOCK_LEAD='Your stop is blocked: undo your test-file changes, then stop again.'
 readonly REPORT_FILE='report.json'
 readonly COMMITTING_FILE='report.committing.json'
-# From this folder to the report checker of the code-developer agent's skill.
-readonly CHECKER_DIR='../../../../../agents/code-developer/skills/standard-code-development-report/scripts'
-readonly CHECKER='dev-report-check.sh'
-readonly PRUNER='dev-report-prune.sh'
+# From this folder to the report checker of the code-builder agent's skill.
+readonly CHECKER_DIR='../../../../../agents/code-builder/skills/standard-code-build-report/scripts'
+readonly CHECKER='build-report-check.sh'
+readonly PRUNER='build-report-prune.sh'
 # From this folder to the effort settings' reader.
 readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 readonly CRUCIBLE_SKILL='crucible'
+# From this folder to the rule that names the builder's changed test files.
+readonly SCOPE_RULE='rules/stop/builder-write-scope.sh'
 # A fault quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
 # A block for files still holding conflict markers names at most this many.
@@ -70,9 +75,9 @@ usage() {
 usage: sh ${PROG}
        sh ${PROG} --help | -h
 
-Claude Code's SubagentStop hook for effort developers. Reads the event JSON
+Claude Code's SubagentStop hook for effort builders. Reads the event JSON
 on stdin (agent_id, session_id); finds the agent's seat with events.sh
-find-agent and seats.sh get. Only a working developer seat that holds the
+find-agent and seats.sh get. Only a working builder seat that holds the
 agent goes on; every other stop goes ahead.
 
 The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
@@ -85,7 +90,8 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
   2 check    ${PRUNER} --apply, then ${CHECKER}, then,
              with a merge under way, that no change, unmerged paths
              included, holds a leftover conflict marker (a misfit naming
-             them); a misfit appends
+             them), then that ${SCOPE_RULE##*/} (${SCOPE_RULE%/*}/)
+             finds no changed test file (a misfit naming them); a misfit appends
              stop.blocked {seat, agent_id, hook_event, block, reason} and
              blocks; the misfit after ${MAX_BLOCKS} blocks of this agent since its
              seat's last build.committed or its last stop.gave-up
@@ -125,7 +131,8 @@ needs: POSIX sh, jq 1.6+, git 2.38+, cksum, sha256sum or shasum;
 ../seats/seats.sh and ../seats/iteration.sh from this script's folder;
 procedure-git-worktree's commit/commit-input.sh, commit/commit-message.sh,
 commit/commit.sh and push/push.sh and procedure-git-setup's settings.sh
-beside procedure-seat-run; ${PRUNER} and ${CHECKER} at ${CHECKER_DIR};
+beside procedure-seat-run; ${SCOPE_RULE} from this script's folder;
+${PRUNER} and ${CHECKER} at ${CHECKER_DIR};
 the ${CRUCIBLE_SKILL} skill's events.sh
 EOF
 }
@@ -333,9 +340,9 @@ find_checker() {
 	checker_dir=$(cd -P -- "${own_dir}/${CHECKER_DIR}" 2>/dev/null && pwd -P) ||
 		fault "the report checker's folder ${CHECKER_DIR} is not beside ${own_dir}; expected the software-development tree installed whole"
 	checker="${checker_dir}/${CHECKER}"
-	[ -f "${checker}" ] || fault "${checker} is missing; expected the code-developer agent's report skill"
+	[ -f "${checker}" ] || fault "${checker} is missing; expected the code-builder agent's report skill"
 	pruner="${checker_dir}/${PRUNER}"
-	[ -f "${pruner}" ] || fault "${pruner} is missing; expected the code-developer agent's report skill"
+	[ -f "${pruner}" ] || fault "${pruner} is missing; expected the code-builder agent's report skill"
 }
 
 # Sets report, committing and iteration from iteration.sh, and stamp, the
@@ -491,7 +498,7 @@ check_report() {
 
 # Blocks while a change of a merge under way, an unmerged path included,
 # still holds a leftover conflict marker: commit.sh would refuse it, and only
-# the developer can resolve it. An unmerged path without one is resolved;
+# the builder can resolve it. An unmerged path without one is resolved;
 # commit.sh stages it.
 check_merge_resolved() {
 	run git -c core.fsmonitor=false -C "${worktree}" rev-parse --verify -q MERGE_HEAD
@@ -505,6 +512,20 @@ check_merge_resolved() {
 	shown_paths=$(printable "${joined}")
 	checker_text="These files still hold conflict markers: ${shown_paths}. Resolve each file, remove every marker, and keep the rest of your work; the stop hook commits the merge."
 	block_or_give_up "${MERGE_BLOCK_LEAD}"
+}
+
+# Blocks while the worktree holds a change to a test file or test data,
+# merge-brought paths aside, with the rule's text: it names them, and only
+# the builder can undo them.
+check_write_scope() {
+	run sh "${own_dir}/${SCOPE_RULE}" --worktree "${worktree}"
+	case ${child_rc} in
+		0) return 0 ;;
+		3) ;;
+		*) child_fault "${SCOPE_RULE##*/}" ;;
+	esac
+	checker_text=$(printable "${child_out}")
+	block_or_give_up "${SCOPE_BLOCK_LEAD}"
 }
 
 # Counts this misfit, checker_text saying what is wrong after lead $1;
@@ -771,7 +792,7 @@ read_event
 find_events_script
 find_seat
 read_seat
-[ "${role}" = developer ] || allow
+[ "${role}" = builder ] || allow
 [ "${bound_agent}" = "${agent_id}" ] || allow
 # Only a working seat's stop is checked; nobody woke an idle or gave-up seat.
 [ "${status}" = working ] || allow
@@ -780,6 +801,7 @@ read_iteration
 recover
 check_report
 check_merge_resolved
+check_write_scope
 rename_report
 commit_work
 record "${new_commit}"

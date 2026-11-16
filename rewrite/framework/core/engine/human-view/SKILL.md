@@ -53,7 +53,7 @@ A template includes each module it uses by name, without `.jq`, before any `def`
 | `paths.jq` | Path and link display for a path cited for recognition: the shortening, the `~` form for the home folder, the middle cut and the 80-character cap; and `link_span`, a whole path in backticks |
 | `gate.jq` | The gate marker `_Crucible gate_`, and the gate text without trailing blank lines |
 | `line.jq` | `field($name)`, the one way a template reads a field it needs: missing, null or `""`, `show.sh` refuses the card, exit 2, naming the line or template and the field; `sentence`, a field's text with `.` added unless it already ends with one, for a line that ends a sentence on a field; and `not_installed($what; $fix)` (`$fix` defaulting to `skills_install`, installing under the skills folder), the one wording of a line saying something is not installed, ending `then ask me again.`; and `skill_not_installed`, that line for the skill in its input's `skill` field, which a skill shows with its own `--views` when its `views/lines.jq` includes `line` |
-| `title.jq` | The one place a developer or reviewer title is built from a language label and framework labels, and a seat's name for the human from its seat name; the caller passes the role word and never adds it itself |
+| `title.jq` | The one place a builder or reviewer title is built from a language label and framework labels, and a seat's name for the human from its seat name; the caller passes the role word and never adds it itself |
 
 `view.jq`'s public defs. A def returning `""` means nothing to show, and `blocks` drops it. Only `shown` and `one_line` clean control characters, so a value taken from outside goes through one of them first.
 
@@ -93,8 +93,8 @@ A template includes each module it uses by name, without `.jq`, before any `def`
 | Def | Input | Output |
 |---|---|---|
 | `joined_labels` | array of labels | `A`, `A and B`, or `A, B and C` for three or more, in the given order |
-| `title($role)` | `{language: label, frameworks: [labels]}`, either key absent or null; `$role` such as `developer` | `<language> <role>` with no framework; `<language> <role> with <frameworks>` with one or more; `Generic <role>` with no language |
+| `title($role)` | `{language: label, frameworks: [labels]}`, either key absent or null; `$role` such as `builder` | `<language> <role>` with no framework; `<language> <role> with <frameworks>` with one or more; `Generic <role>` with no language |
 | `capitalised` | a word | the word with its first letter in upper case |
 | `seat_letter` | a seat name, such as `build-agent-alpha` or `build-agent-alpha-2` | its letter capitalised, with its round from the second one, such as `Alpha` or `Alpha 2` |
 | `seat_display` | a seat name | its words with spaces, the first capitalised, then its letter as `seat_letter` gives it, such as `Build agent Alpha` |
-| `seat_title($role; $seat)` | as `title`'s | `title`'s, with `$seat`'s letter right after the role word: `Rust developer Alpha`, `Kotlin developer Alpha with Spring`, `Generic developer Alpha` |
+| `seat_title($role; $seat)` | as `title`'s | `title`'s, with `$seat`'s letter right after the role word: `Rust builder Alpha`, `Kotlin builder Alpha with Spring`, `Generic builder Alpha` |

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Prints the commit-message.sh input for one developer seat's current work: the
+# Prints the commit-message.sh input for one builder seat's current work: the
 # kind from the seat's mode, the iteration from iteration.sh, the text from
 # the seat's report, and the trailers. It reads only; commit-message.sh
 # checks what it prints.
@@ -24,7 +24,7 @@ Prints the commit-message.sh input JSON for seat S's current work. Reads
 only; checks no value commit-message.sh checks.
 
 --effort FOLDER  the effort folder, absolute
---seat S       a developer seat with an agent bound
+--seat S       a builder seat with an agent bound
 --report FILE  the report to take the text from; default iteration.sh's REPORT
 --out FILE     write the JSON there, whole through a temp file beside it,
                instead of printing it
@@ -164,10 +164,10 @@ ${fields}
 EOF
 	case ${mode} in
 		BUILD) kind='build' ;;
-		*) die 3 "seat ${seat} has no mode; expected a developer seat" ;;
+		*) die 3 "seat ${seat} has no mode; expected a builder seat" ;;
 	esac
 	[ -n "${dispatch}" ] || die 3 "seat ${seat} is ${status}; expected an agent and its dispatch bound"
-	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a developer seat"
+	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a builder seat"
 }
 
 # Sets count and, without --report, report from iteration.sh;

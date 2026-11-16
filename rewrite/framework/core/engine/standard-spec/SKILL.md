@@ -39,7 +39,7 @@ Each is a `## ` heading, in this order:
 2. **Done when:** what is true when it is finished, as behaviour or results the human can check.
 3. **Scope:** what is in, and what is out (the no-gos).
 4. **Constraints:** what must hold or must not be touched, and what needs the human's OK first.
-5. **Open points:** unknowns and risks. At approval none is open, or the human leaves every point still listed to the developer: each becomes the developer's call.
+5. **Open points:** unknowns and risks. At approval none is open, or the human leaves every point still listed to the agents: each becomes the agents' call.
 
 ## Form
 

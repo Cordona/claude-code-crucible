@@ -1,6 +1,6 @@
 ---
 name: language-kotlin
-description: "Kotlin rules: toolchain, null safety, data classes, coroutines, Flow, Java interop and lints, plus the developer's verification gate. Use when writing or reviewing Kotlin on the JVM. A language plugin. Its gate writes only the build tool's output and its caches; needs Gradle or Maven and a JDK. Not for Kotlin driven only from another file (a Dockerfile `RUN`, a CI step), Android or Kotlin Multiplatform, or rules every language shares (`code-developer`, standard plugins)."
+description: "Kotlin rules: toolchain, null safety, data classes, coroutines, Flow, Java interop and lints, plus the builder's verification gate. Use when writing or reviewing Kotlin on the JVM. A language plugin. Its gate writes only the build tool's output and its caches; needs Gradle or Maven and a JDK. Not for Kotlin driven only from another file (a Dockerfile `RUN`, a CI step), Android or Kotlin Multiplatform, or rules every language shares (`code-builder`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:

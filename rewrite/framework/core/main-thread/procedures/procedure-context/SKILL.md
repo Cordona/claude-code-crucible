@@ -118,7 +118,7 @@ Every dispatch has a spec, however small: no skip; the only offer is a revision'
 
    A non-zero exit of either command, or a gate that can't be shown or asked: `references/settle-spec.md`'s "The spec's gates".
 5. **Act on the answer,** matched to an option with `(Recommended)` ignored.
-   - **"Approve" or "Approve, leave them to the developer":** run `<context.sh> spec --effort '<effort folder>' --approved '<the newest draft's absolute path>'`; its `SPEC_FILE:` line is the approved spec. Then step 6.
+   - **"Approve" or "Approve, leave them to the agents":** run `<context.sh> spec --effort '<effort folder>' --approved '<the newest draft's absolute path>'`; its `SPEC_FILE:` line is the approved spec. Then step 6.
    - **"Answer the open points":** the human answers in the chat; write a new draft in which each answer moves into the section it settles and its point leaves `## Open points`, then step 4.
    - **"Change it: say what":** write the change into a new draft, then step 4. Picked with no words: first ask what in plain chat, as the turn's last message.
    - **A typed answer, or `NO-SPEC-GATE`:** `references/settle-spec.md` step 4.

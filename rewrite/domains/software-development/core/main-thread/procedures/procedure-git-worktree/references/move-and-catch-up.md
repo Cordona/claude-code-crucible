@@ -15,4 +15,5 @@ Only after the human's yes to where the new work starts (Never): `sh "<scripts>/
 
 - **`reason` `in_sync`:** the seat already holds the commit, said by the line `in_sync`.
 - **`caught_up` `true`:** a clean merge on the seat's branch, said by the card `caught-up`.
-- **`reason` `conflict`:** the merge is under way in the seat's worktree, said by the card `conflict`. Hand its `message` to `flow-code-build`, which sends it to the seat's developer through `procedure-seat-run`'s Changes; the worktree stays mid-merge until they resolve it (Never).
+- **`reason` `conflict`:** the merge is under way in the seat's worktree, said by the card `conflict`. Hand its `message` to `flow-code-build`, which sends it to the seat's agent through `procedure-seat-run`'s Changes; the worktree stays mid-merge until they resolve it (Never).
+- **`reason` `out_of_scope`:** a conflicting file is one the seat's agent may not edit, so the merge was cancelled and the seat is unchanged, said by the line `out_of_scope`. Hand `flow-code-build` nothing to send: the seat's agent gets no message, and the human says what next.
