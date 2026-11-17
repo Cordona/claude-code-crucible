@@ -21,8 +21,10 @@
 # events.sh; nothing goes into the worktree or git.
 # A re-seat (--reseat) needs no plan digest and no gate: once seats.sh
 # handover has freed the seat, it repeats the seat's last dispatch.made with
-# the same plan and context, a fresh ID, and the re-seat keys. Every problem
-# is named by the option behind it.
+# the same plan and context, a fresh ID, and the re-seat keys; a tester
+# re-seated while it writes tests (--test-plan) also names the seat's newest
+# test-plan.made, the plan it writes them from. Every problem is named by the
+# option behind it.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/crucible/scripts/lib source-path=SCRIPTDIR/../../../../../../../../framework/core/main-thread/procedures/procedure-context/scripts
 set -eu
 umask 077
@@ -127,9 +129,10 @@ if $mode_of_run == "report" then report else dispatch end
 '
 
 # Prints the TITLE line from the plan file and the installed plugins:
-# views/common.jq's agent_title of the language label, the framework labels in
-# plugin-name order and, for a code-reviewer standard seat (a standard and no
-# language), the standard's label as its lens. Labels' control characters
+# views/common.jq's agent_title, with the plan agent's agent_word, of the
+# language label, the framework labels in plugin-name order and, for a
+# code-reviewer standard seat (a standard and no language), the standard's
+# label as its lens. Labels' control characters
 # print as "?", as on the LABELS line.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
@@ -141,7 +144,7 @@ def plugin_label: $installed[.plugin].label | gsub("[[:cntrl:]]"; "?");
 | {language: ($load.language // null | if . == null then null else plugin_label end),
 	frameworks: [$load.frameworks // [] | sort_by(.plugin)[] | plugin_label],
 	lens: (if $role == "reviewer" and $standards != [] then $standards[0] | plugin_label else null end)}
-| "TITLE: \(agent_title($role))"
+| "TITLE: \(agent_title($agent | agent_word))"
 '
 
 # Pairs the plan validator's text lines ($lines) with its JSON problems
@@ -172,15 +175,15 @@ def as_line: "line\t\(.)";
 
 # Builds the re-seat dispatch from the seat's last dispatch body on stdin: a
 # fresh $id, the same plan, context, task and plugins, and reseat_of,
-# continue_from and the notes ($notes, a JSON array) in place of any the last
-# one held.
+# continue_from, the notes ($notes, a JSON array) and test_plan (null for
+# none) in place of any the last one held.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly RESEAT_JQ='
 include "prune";
-del(.reseat_of, .continue_from, .notes)
+del(.reseat_of, .continue_from, .notes, .test_plan)
 | .id = $id
-| . + {reseat_of: $last_seq, continue_from: $head, notes: $notes}
+| . + {reseat_of: $last_seq, continue_from: $head, notes: $notes, test_plan: $test_plan}
 | prune
 '
 
@@ -189,7 +192,7 @@ usage() {
 usage: sh ${PROG} --effort FOLDER --plan-sha256 HEX --task N --seat S
            [--entry-point REL]... [--skills-dir DIR]
        sh ${PROG} --effort FOLDER --seat S --reseat [--note TEXT]...
-           [--skills-dir DIR]
+           [--test-plan SEQ] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
 Appends the ${DISPATCH_EVENT} event for task N of a plan the human approved
@@ -201,32 +204,33 @@ Options:
       newest ${PLAN_EVENT} whose body (jq -cS .body) hashes to it, approved by
       the newest ${GATE_EVENT} of its seq, at most 7 days old
   --task N            the task's place in the plan, from 1
-  --seat S            a seat of the effort (seats.sh get), like
-      build-agent-alpha, with the plan's mode, status open, and a
-      worktree folder in FOLDER/worktrees/
+  --seat S            a seat of the effort, like build-agent-alpha, with the
+      plan's mode, status open, and a worktree folder in FOLDER/worktrees/
   --entry-point REL   a repo-relative path the task starts from; repeatable,
-      kept in order (entry_points); it need not exist
-  --reseat            re-seat S after seats.sh handover (S open, its last
-      agent handed out): repeats the ${DISPATCH_EVENT} of S's last seat.bound
-      with a fresh id, the same plan and context, reseat_of (its seq),
-      continue_from (the worktree's HEAD) and notes; no plan digest, no gate
+      kept in order; it need not exist
+  --reseat            re-seat S after seats.sh handover: repeats the
+      ${DISPATCH_EVENT} of S's last seat.bound with a fresh id, the same plan
+      and context, reseat_of, continue_from (the worktree's HEAD) and notes;
+      no plan digest, no gate
   --note TEXT         with --reseat, a line for the agent; repeatable, in order
+  --test-plan SEQ     with --reseat, a tester seat's newest test-plan.made,
+      whose tests the agent writes
   --skills-dir DIR    must be \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills (the
       default); any other DIR exits 3
 
 stdout on exit 0, in order:
   DISPATCH: <absolute path>  the ${DISPATCH_EVENT} event,
     <effort>/events/<seq>-${DISPATCH_EVENT}.json; the Agent call's whole prompt
-  LABELS: <labels>  the loaded plugins' labels, relayed as printed
-  TITLE: <title>  the agent's title, relayed as printed
+  LABELS: <labels>, TITLE: <title>  the loaded plugins' labels and the
+    agent's title, relayed as printed
   AGENT: <agent>  the Agent call's subagent_type
 stderr on exit 3: one line per problem; a line a caller routes on reads
   "${PROG}: <option> <value>: <problem>" (<value> as JSON)
 
 Once every check passes and the effort is open, context.sh freeze --expect
-cuts the plan's version as a context.cut event (or gives the one cut for
-that fingerprint; a refusal is exit 3), and the dispatch
-pins it as {seq, path}, the plan as {seq}. On a non-zero exit no dispatch
+cuts the plan's version as a context.cut event (or gives the one already
+cut; a refusal is exit 3), and the dispatch pins it as {seq, path}, the plan
+as {seq}. On a non-zero exit no dispatch
 event is written; a cut version stays.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
@@ -245,8 +249,7 @@ Exit codes (1, 2, 5, 6: show stderr and stop):
          names; re-plan
   5  a dependency is missing or failed, context.sh's other exits included
   ${NOT_OPEN_EXIT}  the effort is not open, or its state is unknown
-  129, 130, 143  stopped by HUP, INT or TERM; show the human the exit code,
-     and stop
+  129, 130, 143  stopped by HUP, INT or TERM; show the exit code and stop
 
 Environment: CLAUDE_CODE_SESSION_ID, required, a lowercase UUID with a session
   transcript
@@ -303,10 +306,10 @@ take_option() {
 			reseat=true
 			seen_options="${seen_options} $1"
 			;;
-		--effort | --plan-sha256 | --task | --seat | --entry-point | --note | --skills-dir) awaited_option=$1 ;;
+		--effort | --plan-sha256 | --task | --seat | --entry-point | --note | --test-plan | --skills-dir) awaited_option=$1 ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --seat, --entry-point, --reseat, --note, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --effort, --plan-sha256, --task, --seat, --entry-point, --reseat, --note, --test-plan, --skills-dir or --help"
 			;;
 	esac
 }
@@ -331,6 +334,7 @@ take_value() {
 		--plan-sha256) plan_sha256=$2 ;;
 		--task) task_number=$2 ;;
 		--seat) seat=$2 ;;
+		--test-plan) test_plan_seq=$2 ;;
 		*) given_skills_dir=$2 ;;
 	esac
 }
@@ -342,7 +346,7 @@ finish_parse() {
 	if [ "${reseat}" = true ]; then
 		required_options='--effort --seat' refused_options='--plan-sha256 --task --entry-point' refused_form='without --reseat'
 	else
-		required_options='--effort --plan-sha256 --task --seat' refused_options='--note' refused_form='with --reseat'
+		required_options='--effort --plan-sha256 --task --seat' refused_options='--note --test-plan' refused_form='with --reseat'
 	fi
 	for required in ${required_options}; do
 		case " ${seen_options} " in
@@ -760,6 +764,7 @@ resolve_plugins() {
 	plugin_paths='' labels_line='' title_line=''
 	case ${agent} in
 		code-builder) role=builder ;;
+		code-tester) role=tester ;;
 		code-reviewer) role=reviewer ;;
 		*) return 0 ;;
 	esac
@@ -783,7 +788,7 @@ EOF
 	# shellcheck disable=SC2310 # its status is awk's; a failure exits
 	labels_line=$(select_plugin_lines labels "${PROG}" "${listing}" "$@") ||
 		die 5 'awk failed building the LABELS line; expected a POSIX awk; check the awk on PATH'
-	title_line=$(jq -r -L "${view_lib_dir}" -L "${views_dir}" --argjson installed "${installed}" --arg role "${role}" "${TITLE_JQ}" "${plan_body_file}") ||
+	title_line=$(jq -r -L "${view_lib_dir}" -L "${views_dir}" --argjson installed "${installed}" --arg role "${role}" --arg agent "${agent}" "${TITLE_JQ}" "${plan_body_file}") ||
 		die 5 'jq failed building the TITLE line; expected jq 1.6+, human-view'\''s title.jq and views/common.jq; try jq --version, then rerun'
 }
 
@@ -827,8 +832,8 @@ check_seat() {
 	add_problem --seat "${seat}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
 }
 
-# Sets seat_out (the seat's JSON line), seat_state, seat_mode and
-# seat_worktree from seats.sh get, or adds the problem and fails.
+# Sets seat_out (the seat's JSON line), seat_state, seat_mode, seat_worktree
+# and seat_role from seats.sh get, or adds the problem and fails.
 read_seat() {
 	# On exit 0 seats.sh prints only the seat; otherwise only its stderr lines.
 	if seat_out=$(sh "${seats_script}" get --effort "${effort_dir}" --seat "${seat}" </dev/null 2>&1); then
@@ -849,7 +854,7 @@ read_seat() {
 			;;
 		*) die 5 "seats.sh get failed (exit ${seat_status}): ${seats_line}; fix what it names, or reinstall ${SEAT_RUN_SKILL}" ;;
 	esac
-	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // "" | gsub("\n"; "?")') ||
+	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // "", .role // "" | gsub("\n"; "?")') ||
 		die 5 'jq failed reading the seat seats.sh get printed; expected jq 1.6+; try jq --version, then rerun'
 	# A seat with no mode or worktree ends early: command substitution drops
 	# the empty last lines, so a read past them finds the end.
@@ -857,6 +862,7 @@ read_seat() {
 		IFS= read -r seat_state || :
 		IFS= read -r seat_mode || :
 		IFS= read -r seat_worktree || :
+		IFS= read -r seat_role || :
 	} <<EOF
 ${seat_fields}
 EOF
@@ -870,7 +876,7 @@ check_seat_worktree() {
 	worktrees_dir="${effort_dir}/worktrees"
 	shown_worktree=$(printable "${seat_worktree}")
 	if [ -z "${seat_worktree}" ]; then
-		add_problem --seat "${seat}" "the seat has no worktree; expected a builder seat, which works in a worktree"
+		add_problem --seat "${seat}" "the seat has no worktree; expected a seat that works in a worktree"
 		return 0
 	fi
 	real_worktrees_dir=$(cd -P -- "${worktrees_dir}" 2>/dev/null && pwd -P) || real_worktrees_dir=''
@@ -1077,8 +1083,9 @@ append_dispatch() {
 # The re-seat (--reseat): adds a problem unless the seat is open, its last
 # agent handed out, its last seat.bound names a dispatch.made of the effort
 # that still fits the validator, its pinned context passes the shared read
-# checks (stale aside: a re-seat keeps its version) and its plan resolves to
-# the installed plugins; then sets dispatch_json to the re-seat dispatch.
+# checks (stale aside: a re-seat keeps its version), its plan resolves to
+# the installed plugins and a --test-plan names a tester seat's newest
+# test-plan.made; then reads the worktree's HEAD for the re-seat dispatch.
 check_reseat() {
 	[ -n "${effort_dir}" ] || return 0
 	# shellcheck disable=SC2310 # its status is the test result; a jq failure exits inside
@@ -1088,6 +1095,7 @@ check_reseat() {
 	fi
 	# shellcheck disable=SC2310 # its status says whether the seat was read; the problem is added inside
 	read_seat || return 0
+	check_test_plan_seat
 	if [ "${seat_state}" != open ]; then
 		add_problem --seat "${seat}" "the seat is ${seat_state}; expected an open seat, freed by seats.sh handover"
 		return 0
@@ -1098,8 +1106,40 @@ check_reseat() {
 	find_last_dispatch || return 0
 	check_pinned_context
 	check_reseat_plan
+	check_test_plan
 	[ -z "${problems}" ] || return 0
 	read_worktree_head
+}
+
+# Adds a problem when --test-plan is not a seq or the seat is not a tester
+# seat, and then leaves the seq unchecked: only a tester writes tests from a
+# plan.
+check_test_plan_seat() {
+	[ -n "${test_plan_seq}" ] || return 0
+	# shellcheck disable=SC2310 # a pure test; its status is the answer
+	if ! is_seq "${test_plan_seq}"; then
+		add_problem --test-plan "${test_plan_seq}" "not a whole number from 1; expected the seq of the seat's newest test-plan.made"
+	elif [ "${seat_role}" != tester ]; then
+		add_problem --test-plan "${test_plan_seq}" "seat ${seat} is a ${seat_role:-roleless} seat; expected a tester seat"
+	else
+		return 0
+	fi
+	test_plan_checked=false
+}
+
+# Adds a problem unless --test-plan is the seq of the seat's newest
+# test-plan.made, the plan the flow sent it to write tests from.
+check_test_plan() {
+	[ -n "${test_plan_seq}" ] && [ "${test_plan_checked}" = true ] || return 0
+	newest_plan=$(sh "${events_script}" latest --effort "${effort_dir}" --type test-plan.made --where ".seat == \"${seat}\"" </dev/null) ||
+		die 5 'events.sh latest failed on --effort; its stderr is above; fix what it names, then rerun'
+	newest_plan_seq=''
+	if [ -n "${newest_plan}" ]; then
+		newest_plan_seq=$(jq -r '.seq' "${newest_plan}" </dev/null) ||
+			die 5 "jq could not read ${newest_plan}; expected jq 1.6+; try jq --version, then rerun"
+	fi
+	[ "${newest_plan_seq}" != "${test_plan_seq}" ] || return 0
+	add_problem --test-plan "${test_plan_seq}" "not the seq of seat ${seat}'s newest test-plan.made (${newest_plan_seq:-none}); expected the approved plan"
 }
 
 # Sets last_event, last_seq and last_body_file from the dispatch.made of the
@@ -1218,7 +1258,8 @@ read_worktree_head() {
 write_reseat() {
 	read_fresh_id
 	dispatch_json=$(jq -c -L "${prune_lib_dir}" --arg id "${dispatch_id}" --argjson last_seq "${last_seq}" \
-		--arg head "${worktree_head}" --argjson notes "${notes_json}" "${RESEAT_JQ}" "${last_body_file}" </dev/null) ||
+		--arg head "${worktree_head}" --argjson notes "${notes_json}" \
+		--argjson test_plan "${test_plan_seq:-null}" "${RESEAT_JQ}" "${last_body_file}" </dev/null) ||
 		die 1 'jq failed building the re-seat dispatch; expected jq 1.6+; try jq --version, then rerun'
 	agent=$(printf '%s\n' "${dispatch_json}" | jq -r '.agent') ||
 		die 1 'jq failed reading the re-seat dispatch; expected jq 1.6+; try jq --version, then rerun'
@@ -1248,7 +1289,7 @@ trap 'exit 143' TERM
 	exit 2
 }
 given_effort='' plan_sha256='' task_number='' seat='' skills_dir='' given_skills_dir='' seen_options='' awaited_option=''
-reseat=false notes_json='[]'
+reseat=false notes_json='[]' test_plan_seq='' test_plan_checked=true
 # Each --entry-point is appended to the positional parameters; "for" walks
 # the original arguments only, which are shifted away after the loop.
 argument_count=$#

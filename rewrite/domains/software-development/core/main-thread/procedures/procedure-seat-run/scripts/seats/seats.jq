@@ -15,10 +15,13 @@
 # change must leave the whole list fitting the new rules.
 
 def seats_top_fields: ["effort", "seats"];
-def seats_roles: ["builder"];
-def seats_modes: {"builder": "BUILD"};
+def seats_roles: ["builder", "tester"];
+def seats_modes: {"builder": "BUILD", "tester": "PLAN"};
 # The name a role's seats start with, before "-<letter>".
-def seats_prefixes: {"builder": "build-agent"};
+def seats_prefixes: {"builder": "build-agent", "tester": "test-agent"};
+# The roles seat-name.sh names and choose makes; a tester seat joins the
+# build seat of its letter instead, and shares its worktree.
+def seats_chosen_roles: ["builder"];
 # The letter ending every seat name, in the order seat-name.sh hands them out;
 # after omega the round goes on as alpha-2 ... omega-2, then alpha-3, with no limit.
 def seats_letters: ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda",
@@ -34,7 +37,11 @@ def seats_statuses: ["chosen", "open", "working", "idle", "gave-up"];
 def seats_settable_statuses: ["working", "idle", "gave-up"];
 def seats_unbound_statuses: ["chosen", "open"];
 # A seat's fields, in the order they are written.
-def seats_fields: ["seat", "role", "mode", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "base_seats", "status"];
+def seats_fields: ["seat", "role", "mode", "build_seat", "agent_id", "dispatch", "previous_agent_ids", "worktree", "repo", "base", "base_seats", "status"];
+# The fields of a seat of $role: a tester names its build seat and is cut
+# from no seat; a builder names no build seat.
+def seats_role_fields($role):
+	if $role == "tester" then seats_fields - ["base_seats"] else seats_fields - ["build_seat"] end;
 # Present only when they hold something; status decides whether agent_id and
 # dispatch must be.
 def seats_optional_fields: ["agent_id", "dispatch", "previous_agent_ids", "base_seats"];
@@ -93,16 +100,36 @@ def seats_base_seats_problem:
 # Each base seat of each seat must name another seat of the list that is not
 # chosen: a chosen seat has no work to be cut from.
 def seats_base_link_problems:
-	(reduce (.seats[] | objects | select(.seat | type == "string")) as $seat ({}; .[$seat.seat] = $seat.status)) as $statuses
+	(reduce (.seats[] | objects | select(.seat | type == "string")) as $seat ({}; .[$seat.seat] = $seat)) as $seats
 	| .seats | to_entries[] | .key as $index | .value
 	| select(type == "object" and (.base_seats | type) == "array") | .seat as $own
 	| .base_seats[] | strings | select([seats_name_problem] == [])
 	| "seats[\($index)].base_seats \(tojson) "
 		+ (if . == $own then "is the seat itself; expected another seat"
-		elif (. as $name | $statuses | has($name) | not) then "is not in the seat list; expected an existing seat"
-		elif $statuses[.] == "chosen" then "is a chosen seat; expected a seat with a worktree: a chosen seat has no work yet"
+		elif (. as $name | $seats | has($name) | not) then "is not in the seat list; expected an existing seat"
+		elif $seats[.].status == "chosen" then "is a chosen seat; expected a seat with a worktree: a chosen seat has no work yet"
+		elif $seats[.].role == "tester" then "is a tester seat; expected a build seat: a tester's work is its build seat's"
 		else empty
 		end);
+
+# Each tester seat names, as build_seat, a build seat of the list that is not
+# chosen and ends in its letter, and shares that seat's worktree, repo and
+# base. The letter makes it that seat's only tester: unique names do the rest.
+def seats_build_seat_problems:
+	(reduce (.seats[] | objects | select(.seat | type == "string")) as $seat ({}; .[$seat.seat] = $seat)) as $seats
+	| (.seats | to_entries[] | .key as $index | .value
+		| select(type == "object" and .role == "tester" and (.build_seat | type) == "string")
+		| select(.build_seat | [seats_name_problem] == []) | . as $tester
+		| $seats[$tester.build_seat] as $build
+		| "seats[\($index)].build_seat \($tester.build_seat | tojson) "
+			+ (if $build == null then "is not in the seat list; expected an existing build seat"
+			elif $build.role != "builder" then "is a \($build.role) seat; expected a build seat"
+			elif $build.status == "chosen" then "is a chosen seat; expected a build seat with a worktree"
+			elif ($tester.build_seat | ltrimstr("\(seats_prefixes.builder)-")) != ($tester.seat | ltrimstr("\(seats_prefixes.tester)-")) then
+				"does not end in the letter of seat \($tester.seat | tojson); expected the build seat of its letter"
+			else (["worktree", "repo", "base"][] as $field | select($tester[$field] != $build[$field])
+				| "differs in \($field) from seat \($tester.seat | tojson); expected the tester to share its build seat's \($field)")
+			end));
 
 # The seats $from reaches through the base_seats links $links, each once.
 def seats_base_reach($links; $from):
@@ -140,6 +167,7 @@ def seats_value_problems($where; $fields):
 	elif $field == "worktree" or $field == "repo" then seats_path_problem
 	elif $field == "base" then seats_base_problem
 	elif $field == "base_seats" then seats_base_seats_problem
+	elif $field == "build_seat" then seats_name_problem
 	elif $field == "status" then seats_enum_problem(seats_statuses)
 	else empty
 	end)
@@ -170,7 +198,7 @@ def seats_seat_problems($where):
 	elif (.role | type) != "string" or (.role | IN(seats_roles[]) | not) then "\($where).role \(.role | seats_enum_problem(seats_roles))"
 	else
 		. as $seat
-		| seats_fields as $fields
+		| seats_role_fields($seat.role) as $fields
 		| (keys_unsorted[] | select(IN($fields[]) | not)
 			| "\($where) field \(tojson) is not a field of a \($seat.role); expected only \($fields | seats_list)"),
 		($fields[] | select(IN(seats_optional_fields[]) | not) | select(. as $field | $seat | has($field) | not)
@@ -213,6 +241,7 @@ def seats_problems:
 			(.seats | to_entries[] | .key as $index | .value | seats_seat_problems("seats[\($index)]")),
 			seats_base_link_problems,
 			seats_base_cycle_problems,
+			seats_build_seat_problems,
 			([.seats[] | objects | .seat | strings] | group_by(.) | map(select(length > 1) | .[0])[]
 				| "seat \(tojson) appears more than once; expected unique seat names")
 		end)
@@ -227,6 +256,7 @@ def seats_option_problems:
 	elif $name == "repo" then seats_path_problem
 	elif $name == "base" or $name == "from-head" then seats_base_problem
 	elif $name == "branch" or $name == "follows" then seats_branch_problem
+	elif $name == "build-seat" then seats_name_problem
 	elif $name == "base-seat" then to_entries[] | .key as $index | .value | seats_name_problem | "item \($index) \(.)"
 	elif $name == "agent-id" then seats_agent_problem
 	elif $name == "dispatch" then seats_dispatch_problem
@@ -271,6 +301,11 @@ def seats_choose_change($options; $worktree):
 	.seats += [{seat: $options.seat, role: $options.role, mode: seats_modes[$options.role],
 		worktree: $worktree, repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
 		status: "chosen"}];
+# A tester seat beside build seat $build, open so its agent can bind; it
+# takes the build seat's worktree, repo and base.
+def seats_join_change($options; $build):
+	.seats += [{seat: $options.seat, role: "tester", mode: seats_modes.tester, build_seat: $build.seat,
+		worktree: $build.worktree, repo: $build.repo, base: $build.base, status: "open"}];
 def seats_opened_change($index): .seats[$index].status = "open";
 def seats_drop_change($index): del(.seats[$index]);
 def seats_bind_change($options; $index):
@@ -278,8 +313,12 @@ def seats_bind_change($options; $index):
 def seats_status_change($options; $index): .seats[$index].status = $options.status;
 def seats_handover_change($index):
 	.seats[$index] |= (.previous_agent_ids = (.previous_agent_ids // []) + [.agent_id] | del(.agent_id, .dispatch) | .status = "open");
-# The base seats go: the seat no longer starts from their work.
-def seats_move_change($options; $index): .seats[$index] |= (.base = $options.base | del(.base_seats));
+# The base seats go: the seat no longer starts from their work. Its tester
+# shares the worktree, so it takes the new base too.
+def seats_move_change($options; $index):
+	.seats[$index].seat as $moved
+	| .seats[$index] |= (.base = $options.base | del(.base_seats))
+	| .seats |= map(if .role == "tester" and .build_seat == $moved then .base = $options.base else . end);
 def seats_task_change($index): .seats[$index].status = "working";
 
 # The change command $command makes to the seat at $index, other than choose.
@@ -297,18 +336,72 @@ def seats_seat_change($command; $options; $index):
 # A seat whose worktree is not made yet: <$worktrees_dir>/<letter> is where
 # seat-open.sh makes it, so its letter names the worktree alone.
 def seats_choose($options; $worktrees_dir):
-	if [seats_prefix_problem($options)] != [] then seats_refused(3; seats_prefix_problem($options))
+	if $options.role | IN(seats_chosen_roles[]) | not then
+		seats_refused(3; "--role \($options.role | tojson) is not chosen; expected \(seats_chosen_roles | seats_list): a tester seat joins its build seat (join)")
+	elif [seats_prefix_problem($options)] != [] then seats_refused(3; seats_prefix_problem($options))
 	elif seats_index($options.seat) != null then seats_refused(5; seats_taken($options.seat))
 	else seats_choose_change($options; "\($worktrees_dir)/\(seats_letter($options))") | seats_changed
 	end;
 
 def seats_not_chosen($seat): seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected a chosen seat");
 
+# A tester seat for build seat --build-seat: open, sharing its worktree. Its
+# letter is the build seat's, so a second tester of that seat would be its
+# name taken.
+def seats_join($options):
+	({seat: $options.seat, role: "tester"}) as $named
+	| seats_index($options["build-seat"]) as $build_index
+	| .seats[$build_index // 0] as $build
+	| if seats_letter($named) | test("\\A\(seats_letter_pattern)\\z") | not then
+		seats_refused(3; "--seat \($options.seat | tojson) does not fit a tester seat; expected \(seats_prefixes.tester)-<letter>, the letter of its build seat")
+	elif seats_index($options.seat) != null then seats_refused(5; seats_taken($options.seat))
+	elif $build_index == null then
+		seats_refused(6; "--build-seat \($options["build-seat"] | tojson) is not in the seat list; expected a build seat of the effort")
+	elif $build.role != "builder" then
+		seats_refused(3; "--build-seat \($build.seat | tojson) is a \($build.role) seat; expected a build seat")
+	elif seats_letter($named) != seats_letter({seat: $build.seat, role: "builder"}) then
+		seats_refused(3; "--build-seat \($build.seat | tojson) does not end in the letter of --seat \($options.seat | tojson); expected \(seats_prefixes.builder)-\(seats_letter($named))")
+	elif $build.status == "chosen" then
+		seats_refused(5; "seat \($build.seat | tojson) is chosen: its worktree is not made yet; expected a build seat with a worktree")
+	else seats_join_change($options; $build) | seats_changed
+	end;
+
+# The seats sharing seat $seat's worktree: a tester's build seat, a build
+# seat's tester.
+def seats_pair($seat):
+	if $seat.role == "tester" then .seats[] | select(.seat == $seat.build_seat)
+	else .seats[] | select(.role == "tester" and .build_seat == $seat.seat)
+	end;
+
+# The refusal of new work for seat $seat while the other seat of its pair is
+# working or gave up (its leftovers are in the shared worktree), or nothing.
+def seats_pair_busy($seat):
+	first(seats_pair($seat) | select(.status == "working" or .status == "gave-up")) as $other
+	| seats_refused(5; "seat \($seat.seat | tojson) shares its worktree with seat \($other.seat | tojson), which "
+		+ (if $other.status == "working" then "is working; expected it idle or open: one agent works in a worktree at a time"
+		else "gave up; expected its leftovers settled first: its agent resumed, or its changes discarded"
+		end));
+
+# Change $change of the seat at $index, unless its pair is busy.
+def seats_unless_pair_busy($index; change):
+	.seats[$index] as $seat
+	| [seats_pair_busy($seat)] as $busy
+	| if $busy != [] then $busy[0] else change | seats_changed end;
+
+# A seat with no work to lose: a chosen seat, or a tester seat joined and
+# never bound (no agent was ever seated on it).
+def seats_droppable:
+	.status == "chosen" or (.role == "tester" and .status == "open" and (has("previous_agent_ids") | not));
+
 # Dropping the last seat appends its event and leaves the replayed list
 # empty, the list of an effort with no seat.
 def seats_drop($index):
 	.seats[$index] as $seat
-	| if $seat.status != "chosen" then seats_not_chosen($seat)
+	| if $seat | seats_droppable | not then
+		if $seat.role == "tester" then
+			seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status)\(if $seat.status == "open" then ", its agent handed over" else "" end); expected a tester seat never bound")
+		else seats_not_chosen($seat)
+		end
 	elif (.seats | length) == 1 then seats_unchanged + {remove: true}
 	else seats_drop_change($index) | seats_changed
 	end;
@@ -331,13 +424,14 @@ def seats_bind($options; $index):
 		seats_refused(5; "agent \($agent | tojson) was handed out of seat \($seat.seat | tojson); expected a fresh agent")
 	elif $seat.status != "open" then
 		seats_refused(5; "seat \($seat.seat | tojson) is held by agent \($seat.agent_id | tojson); expected an open seat")
-	else seats_bind_change($options; $index) | seats_changed
+	else seats_unless_pair_busy($index; seats_bind_change($options; $index))
 	end;
 
 def seats_set_status($options; $index):
 	.seats[$index] as $seat
 	| if $seat.status | IN(seats_unbound_statuses[]) then
 		seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected an agent bound before its status changes")
+	elif $options.status == "working" then seats_unless_pair_busy($index; seats_status_change($options; $index))
 	else seats_status_change($options; $index) | seats_changed
 	end;
 
@@ -348,14 +442,19 @@ def seats_handover($index):
 	else seats_handover_change($index) | seats_changed
 	end;
 
-# A new base for a seat whose worktree exists and whose agent is not busy;
-# its worktree already holds it (seat-move.sh moves it first).
+# A new base for a build seat whose worktree exists and whose agents are not
+# busy; its worktree already holds it (seat-move.sh moves it first).
 def seats_move($options; $index):
 	.seats[$index] as $seat
-	| if $seat.status == "chosen" then
+	| [seats_pair($seat) | select(.status == "working")] as $working_pair
+	| if $seat.role == "tester" then
+		seats_refused(3; "seat \($seat.seat | tojson) is a tester seat: its base is its build seat \($seat.build_seat | tojson)'s; expected a build seat")
+	elif $seat.status == "chosen" then
 		seats_refused(5; "seat \($seat.seat | tojson) is chosen: its worktree is not made yet; expected a seat with a worktree")
 	elif $seat.status == "working" then
-		seats_refused(5; "seat \($seat.seat | tojson) is working: its builder is busy; expected it idle, open or gave-up")
+		seats_refused(5; "seat \($seat.seat | tojson) is working: its agent is busy; expected it idle, open or gave-up")
+	elif $working_pair != [] then
+		seats_refused(5; "seat \($seat.seat | tojson) shares its worktree with seat \($working_pair[0].seat | tojson), which is working; expected it idle, open or gave-up")
 	else seats_move_change($options; $index) | seats_changed
 	end;
 
@@ -364,7 +463,7 @@ def seats_task($index):
 	.seats[$index] as $seat
 	| if $seat.status != "idle" then
 		seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected an idle seat with its agent bound")
-	else seats_task_change($index) | seats_changed
+	else seats_unless_pair_busy($index; seats_task_change($index))
 	end;
 
 # One "seat<TAB>status" line per seat with open work: working or gave-up.
@@ -399,6 +498,7 @@ def seats_on_seat($command; $options):
 # $seats_dir is the effort folder, symlinks resolved, which holds worktrees/.
 def seats_command($command; $options; $seats_dir):
 	if $command == "choose" then seats_choose($options; "\($seats_dir | rtrimstr("/"))/worktrees")
+	elif $command == "join" then seats_join($options)
 	elif $command == "busy" then seats_busy
 	elif $command == "find" then seats_find($options["agent-id"])
 	else seats_on_seat($command; $options)
@@ -410,6 +510,7 @@ def seats_on_missing($command; $options; $effort; $seats_dir):
 	if $command == "choose" then {effort: $effort, seats: []} | seats_command($command; $options; $seats_dir)
 	elif $command == "busy" then seats_result(0; []; null; "")
 	elif $command == "find" then seats_refused(6; "no seat holds agent \($options["agent-id"] | tojson); expected an agent bound to a seat (the effort has none yet)")
+	elif $command == "join" then seats_refused(6; "--build-seat \($options["build-seat"] | tojson) is not in the seat list; expected a build seat of the effort (it has none yet)")
 	else seats_refused(6; "seat \($options.seat | tojson) is not in the seat list; expected a seat of the effort (it has none yet)")
 	end;
 
@@ -464,7 +565,7 @@ def seats_next_name($prefix):
 # The next free name of $role in the seat list $list, null when the effort
 # has no seat; the role is checked first.
 def seats_name_run($role; $list):
-	if $role | IN(seats_roles[]) | not then seats_refused(3; "--role \($role | seats_enum_problem(seats_roles))")
+	if $role | IN(seats_chosen_roles[]) | not then seats_refused(3; "--role \($role | seats_enum_problem(seats_chosen_roles))")
 	elif $list == null then {seats: []} | seats_next_name(seats_prefixes[$role])
 	else seats_on_list($list; seats_next_name(seats_prefixes[$role]))
 	end;

@@ -8,7 +8,8 @@
 # Each kind: its count trailer and its other trailers in the order the
 # message lists them after the count; every trailer is required.
 def commit_kinds: {
-	"build": {count: "iteration", trailers: ["effort", "agent-seat"]}
+	"build": {count: "iteration", trailers: ["effort", "agent-seat"]},
+	"test": {count: "iteration", trailers: ["effort", "agent-seat"]}
 };
 def commit_count_trailers: ["iteration"];
 def commit_fields: ["kind", "text", "trailers"];

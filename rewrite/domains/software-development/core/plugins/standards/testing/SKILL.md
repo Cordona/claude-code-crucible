@@ -14,7 +14,7 @@ What a good test suite holds, in any language. A test that can't fail is worse t
 ## Scope
 
 - **In:** the tests written or changed, test data and fixtures included.
-- **Following it writes only test files and test data:** a mutation or pre-fix check never edits, reverts or stashes a production file. Use the project's mutation-testing tool where one exists; otherwise name the mutation and the line it would change, and mark the check unproven.
+- **Following it writes only test files and test data:** a mutation or pre-fix check runs only as `references/test.md`'s Mutations sets.
 - **Project conventions:** follow the project's test conventions: its framework, assertion style, test location and naming, base classes and helpers, fixture layout, and how it handles external dependencies. A deliberate, consistent convention is the local norm. A convention never excuses a wrong test: a test that can't fail is a defect even where the project's other tests do the same.
 
 ## Any framework
@@ -43,8 +43,8 @@ Read every rule below through this section. Each framework or library named here
 ## 2. Required tests and proven gaps
 
 - **Code that guards security, persisted data, concurrency (races, retries, compare-and-set, idempotency) or authentication always gets a test that fails when the guard breaks, unless the human waives it:** smallness never removes one.
-- **Name the category of a required-category behaviour left untested;** when it falls under two, name it security or authentication, never another. Its untested line needs the human's waiver (the rule above), noted in its reason.
-- **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus one line showing the risk is covered or absent (`test 3`, a `file:line`), or mark it unproven. Write each case as the one line `references/untested-template.md` sets; that file arrives in the tester's first message after `references/test.md`. A reviewer gets no template: it checks each line holds the case, reason, risk, category and proof these two rules name.
+- **Name the category of a required-category behaviour left untested;** when it falls under two, name it security or authentication, never another. Its untested entry is waived (the rule above) only by `recommend: waive` and the human's approval of the plan, never asked for while planning.
+- **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus proof the risk is covered or absent (a test, a `path:line`, a pointer to another repo), or mark it unproven. Write each case as one entry of the test plan's `untested` list, in the object form `references/untested-template.md` sets; that file arrives in the tester's first message after `references/test.md`. A reviewer gets no template: it checks each entry holds the case, reason, risk, category and proof these two rules name.
 - **"Not testable at level X" names the level where it can be tested.**
 - **An accepted risk with a user-visible effect is behaviour:** test it, or the human waives it explicitly.
 

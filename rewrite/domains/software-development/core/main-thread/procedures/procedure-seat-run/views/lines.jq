@@ -2,22 +2,25 @@
 include "line";
 
 # input: {seat, worktree: its absolute path}
-def report_gave_up: "The builder in \(field("seat")) could not pass its stop checks; its work stays uncommitted in \(field("worktree")).";
+def report_gave_up: "The agent in \(field("seat")) could not pass its stop checks; its work stays uncommitted in \(field("worktree")).";
+
+# input: {seat, worktree: its absolute path}
+def pair_leftovers: "The agent in \(field("seat")) left its work uncommitted in \(field("worktree")): resume it, or discard its changes, before other work goes there.";
 
 # input: {seat, worktree: its absolute path}
 def run_not_committed: "The work in \(field("seat")) ended without a commit; what it changed stays uncommitted in \(field("worktree")); ask me to continue it.";
 
-# input: {state: done or blocked, task: the seat's part}
+# input: {state: done, planned or blocked, task: the seat's part}
 def checked_earlier: "Checked earlier, \(field("state")): \(field("task"))";
 
 # input: {title: the TITLE: line's title, task: the hand-back entry's task}
-def builder_working: "The \(field("title")) is working on: \(field("task"))" | sentence;
+def agent_working: "The \(field("title")) is working on: \(field("task"))" | sentence;
 
 # input: {seat}
-def change_sent: "The builder in \(field("seat")) is working on the change you asked for.";
+def change_sent: "The agent in \(field("seat")) is working on the change you asked for.";
 
 # input: {seat}
-def task_sent: "The builder in \(field("seat")) is working on the new work you asked for.";
+def task_sent: "The agent in \(field("seat")) is working on the new work you asked for.";
 
 # input: {done, total, not_done: counts of the run's parts}
 def done_count: "Done: \(field("done")) of \(field("total")) parts; not done: \(field("not_done")).";

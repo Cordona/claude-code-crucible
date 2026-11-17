@@ -91,7 +91,7 @@ if $mode == "report" then report else plan end
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH --agent AGENT --mode BUILD --effort FOLDER
+usage: sh ${PROG} --plan-file PATH --agent AGENT --mode MODE --effort FOLDER
            --fingerprint HEX --task TEXT [--task TEXT]... [--language NAME --reason LINE]
            [--framework NAME --reason LINE]... [--load NAME --reason LINE]...
            [--skip NAME --reason LINE]... [--load-reason LINE]
@@ -104,12 +104,14 @@ Rules: at most one --language; --framework
 needs --language; every installed standard and procedure in --load or --skip,
 once; no language or framework in --skip; code-reviewer: one lens, the
 --language with its --framework plugins, one standard --load, or neither;
-code-builder: a --language and a standard --load.
+code-builder: a --language and a standard --load, never standard-testing;
+code-tester: a --language and a standard --load, standard-testing among them.
 
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
-  --mode BUILD        the mode
+  --mode MODE         the agent's mode: BUILD for code-builder and
+      code-reviewer, PLAN for code-tester
   --effort FOLDER     the effort folder, as effort.sh start printed it
   --fingerprint HEX   the FINGERPRINT ${CONTEXT_PROCEDURE}'s context.sh freeze
       --dry-run printed for the effort; the dispatch cuts that version
@@ -308,7 +310,7 @@ finish_parse() {
 	esac
 	case " ${seen_options} " in
 		*' --mode '*) ;;
-		*) usage_error '--mode missing; expected --mode BUILD' ;;
+		*) usage_error '--mode missing; expected --mode MODE' ;;
 	esac
 	[ -n "${given_effort}" ] || usage_error '--effort missing; expected --effort FOLDER, the effort folder'
 	[ -n "${fingerprint}" ] || usage_error '--fingerprint missing; expected --fingerprint HEX, the FINGERPRINT context.sh freeze --dry-run printed'

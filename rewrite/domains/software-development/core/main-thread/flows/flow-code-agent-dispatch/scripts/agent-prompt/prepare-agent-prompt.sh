@@ -36,7 +36,7 @@ readonly REASON_PREFIX='flow-code-agent-dispatch:'
 # The agents whose dispatches carry a DISPATCH line. The no-jq path needs them
 # without jq, so they stay here; the hook faults unless they match the listed
 # agents of the shared names module, the list to edit first.
-readonly LISTED_AGENTS='code-builder'
+readonly LISTED_AGENTS='code-builder code-tester'
 readonly NAMES_MODULE='dispatch-names'
 readonly RENDER_LIB='human-view'
 readonly CRUCIBLE_SKILL='crucible'
@@ -49,6 +49,7 @@ readonly PRUNE_NAME='prune'
 readonly SEATS_SCRIPT='procedure-seat-run/scripts/seats/seats.sh'
 readonly ITERATION_SCRIPT='procedure-seat-run/scripts/seats/iteration.sh'
 readonly EVENTS_SCRIPT='crucible/scripts/events.sh'
+readonly TEST_PLAN_EVENT='test-plan.made'
 readonly DISPATCH_EVENT='dispatch.made'
 readonly DISPATCH_WRITER='generate-agent-dispatch.sh'
 readonly ALLOWED_EVENT='dispatch.allowed'
@@ -70,10 +71,12 @@ readonly CONTEXT_TAIL="; the human changes the context through ${CONTEXT_PROCEDU
 # CONTEXT-STALE is a context version no longer its effort's latest (a
 # re-seat dispatch keeps its own and is never stale), every
 # other context problem CONTEXT; BACKGROUND is a dispatch not run in the
-# background; SEAT is a seat missing, unreadable or not open; SKILL is a
+# background; SEAT is a seat missing, unreadable or not open, or a test plan
+# that is no longer the seat's newest; PAIR is a seat whose pair (the seat
+# sharing its worktree) is working or gave up; SKILL is a
 # skill the agent's frontmatter preloads that is not installed, which Claude
 # Code would drop without a word.
-readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN SEAT BACKGROUND SKILL'
+readonly PROBLEM_KINDS='DISPATCH AGENT CONTEXT CONTEXT-STALE PLUGIN SEAT PAIR BACKGROUND SKILL'
 readonly BACKGROUND_PROBLEM='BACKGROUND the dispatch runs in the foreground; expected run_in_background: true; dispatch it again in the background'
 # The deny when jq is missing, printed as is: a fixed text, built without jq.
 readonly NO_JQ_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"flow-code-agent-dispatch: jq is missing from PATH; the hook needs jq 1.6+."}}'
@@ -265,7 +268,8 @@ readonly DENIAL_DETAILS_JQ='
 # Builds the agent's message from the dispatch copy ($dispatch, the event's
 # body), the pretty-printed body of the context copy ($context), the template
 # copy ($template), the
-# seat's $mode ("" for none) and $worktree, the $report path and the plugin
+# seat's $mode ("" for none) and $worktree, the $report path, the
+# $test_plan event's path ("" for none) and the plugin
 # files, the item list build_message puts between the two halves:
 # [plugin name, "skill"|"reference", file text] triples in the dispatch's
 # order.
@@ -298,13 +302,14 @@ def work($dispatch):
 	+ "- **ENTRY POINTS** (where to begin, not a limit): "
 	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_tree($worktree) | code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($report | code)\n"
+	+ (if $test_plan == "" then "" else "- **TEST PLAN:** \($test_plan | code)\n" end)
 	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
 	+ (if $dispatch.continue_from == null then ""
 	   else "- **CONTINUE FROM:** \($dispatch.continue_from | code), the worktree HEAD when the last agent of this seat was handed out: the work so far, yours to continue\n" end)
 	+ (if ($dispatch.notes // []) == [] then ""
 	   else "- **NOTES:**\n" + ($dispatch.notes | map("  - \(.)\n") | join("")) end)
 	+ "\nA marked gap beats a papered-over one: report what you could not read, run or decide.\n"
-	+ "Save your plan and progress as you go, in your scratchpad, so a cut-off run leaves them; write the REPORT file last, as your report skill sets, and fix it when your stop is blocked.\n";
+	+ "Save your notes and progress as you go, in your scratchpad, so a cut-off run leaves them; write the REPORT file last, as your report skill sets, and fix it when your stop is blocked.\n";
 ($dispatch | fromjson) as $parsed
 |'
 # shellcheck disable=SC2016
@@ -400,24 +405,24 @@ usage: sh ${PROG} < PreToolUse-JSON
        sh ${PROG} --help | -h
 
 The PreToolUse hook on Agent: replaces a listed agent's "DISPATCH: <path>"
-  prompt with its first message once the dispatch passes every check.
+  prompt with its first message once every check passes.
 
 Hook: acts only on a listed agent (${LISTED_AGENTS}); any other
 call: no output. A closed or unreadable stdin denies every call.
 A listed agent's call is allowed only when all of these hold:
   it runs in the background (tool_input.run_in_background not false; an
-  interactive session sends no such field and always runs in the background);
-  its prompt is exactly one line "DISPATCH: <absolute path>" naming the
+  interactive session sends none: always in the background);
+  its prompt is the one line "DISPATCH: <absolute path>" naming the
   ${DISPATCH_EVENT} event ${DISPATCH_WRITER} appended for that agent,
   <effort>/events/<seq>-${DISPATCH_EVENT}.json (symlinks resolved);
   its body (agent-dispatch-validator.jq), its context.cut event (the
   effort's, of the seq it pins, passing ${CONTEXT_PROCEDURE}'s checks; the
   latest, but for a re-seat), its plugin files (SKILL.md frontmatter as
   list-plugins.sh --help sets) and its seat (seats.sh get: open, its
-  worktree in <effort>/worktrees/) pass every check.
-Known gap: a path swapped after its check, by someone who can write to the
-  plugin folder or the Crucible space, is copied unchecked, or hangs until
-  the hook times out.
+  worktree in <effort>/worktrees/, its pair (sharing it) not working or
+  gave-up) pass every check.
+Known gap: a path swapped after its check (by a writer of the plugin
+  folder or the Crucible space) is copied unchecked, or hangs the hook.
 
 stdout (one JSON line):
   allow  hookSpecificOutput.updatedInput: tool_input, prompt replaced by
@@ -425,24 +430,25 @@ stdout (one JSON line):
   deny   permissionDecisionReason "${REASON_PREFIX} <text>"; a reason with no
          KIND is a hook, install or host fault. A failed check: the prefix,
          then the card views/denial.jq renders: the problems <p>, at most
-         ${DENIAL_MAX_SHOWN} (every KIND shown), each cut to ${DENIAL_LINE_CAP} characters, the
-         count of the rest, then, when the effort is known, the path of the
-         ${DENIED_EVENT} event (all as JSON). <p>: "<KIND> <problem>;
+         ${DENIAL_MAX_SHOWN} (every KIND shown), each cut to ${DENIAL_LINE_CAP} characters, the count of
+         the rest, then the ${DENIED_EVENT} event's path when the effort
+         is known (all as JSON). <p>: "<KIND> <problem>;
          expected <x>", most ending ": <path>" (a cut CONTEXT <p> keeps its
-         end); KIND:
-         DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale context),
-         PLUGIN, SEAT, BACKGROUND (dispatched in the foreground),
-         SKILL (a skill the agent file's skills: preloads, not installed)
+         end); KIND: DISPATCH, AGENT, CONTEXT, CONTEXT-STALE (stale
+         context), PLUGIN, SEAT, PAIR (its pair working or gave up),
+         BACKGROUND (run in the foreground), SKILL (a skill the agent's
+         skills: preloads, not installed)
 The message, built from the checked bytes: # Your plugins, # Your context,
   # Handling your context, # Your work (MODE, from the seat, left out when it
   has none; TASK; WORKTREE; ENTRY POINTS, joined to the worktree; REPORT,
-  iteration.sh's REPORT path; CONTEXT FILE, the context.cut event, whose
-  body # Your context shows; a re-seat's CONTINUE FROM and NOTES), then two
+  iteration.sh's REPORT path (PLAN for a tester with no test_plan); TEST
+  PLAN, the test_plan event; CONTEXT FILE, the context.cut event, whose body
+  # Your context shows; a re-seat's CONTINUE FROM and NOTES), then two
   closing lines. # Your plugins: one block per plugin, in the order language,
-  frameworks, standards, procedures, as the dispatch lists them; none when no
-  plugin. ENTRY POINTS: none when none. Paths are absolute, in code spans.
+  frameworks, standards, procedures, as the dispatch lists them; none when
+  none. ENTRY POINTS: none when none. Paths are absolute, in code spans.
 
-Writes only events (events.sh): once every check passes, ${ALLOWED_EVENT}
+Writes only events (events.sh): once all checks pass, ${ALLOWED_EVENT}
 {dispatch: <id>, seq: <its seq>, tool_use_id} for the seat bind hook (a
 failed write denies); on a deny of a known effort, ${DENIED_EVENT}
 {dispatch: <path>, hint, problems}.
@@ -455,7 +461,7 @@ Exit codes:
      known; no output
 
 Dependencies (skills in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/):
-  POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's jq)
+  POSIX sh; jq 1.6+ (--rawfile) (macOS: brew install jq; Linux: the distro's)
   awk, cat, dd, grep, mktemp, readlink, rm, tr, wc, sha256sum
     or shasum (base system)
   procedure-seat-run: scripts/seats/seats.sh, scripts/seats/iteration.sh
@@ -534,7 +540,7 @@ read_call_fields() {
 # every problem.
 prepare_message() {
 	expected_agent=$1
-	problems=''
+	problems='' test_plan_path=''
 	resolve_space_root
 	check_dispatch_file
 	read_dispatch_fields
@@ -726,12 +732,13 @@ check_dispatch_place() {
 }
 
 # Sets dispatch_id, dispatch_agent, dispatch_context, dispatch_context_seq,
-# dispatch_seat, dispatch_reseat (yes for a re-seat) and plugin_entries
+# dispatch_seat, dispatch_reseat (yes for a re-seat), dispatch_test_plan (its
+# test_plan seq, "" for none) and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.seq, .seat, (if has("reseat_of") then "yes" else "no" end)' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.seq, .seat, (if has("reseat_of") then "yes" else "no" end), (.test_plan // "")' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
 		IFS= read -r dispatch_id
@@ -740,6 +747,7 @@ read_dispatch_fields() {
 		IFS= read -r dispatch_context_seq
 		IFS= read -r dispatch_seat
 		IFS= read -r dispatch_reseat
+		IFS= read -r dispatch_test_plan || :
 	} <<EOF
 ${dispatch_fields}
 EOF
@@ -863,9 +871,10 @@ is_skill_installed() {
 }
 
 # Adds a SEAT problem unless the dispatch's seat field names an open seat of its
-# effort, read with seats.sh get, whose worktree is a folder directly in the
-# effort's worktrees/; sets seat_mode and seat_worktree from it, and
-# report_path with read_report_path.
+# effort, read with seats.sh get, whose pair is neither working nor gave up
+# (check_pair) and whose worktree is a folder directly in the effort's
+# worktrees/; sets seat_mode, seat_worktree and seat_role from it, and
+# report_path and test_plan_path with read_report_path.
 check_seat() {
 	seats_script="${skills_dir}/${SEATS_SCRIPT}"
 	[ -f "${seats_script}" ] && [ -r "${seats_script}" ] ||
@@ -886,7 +895,7 @@ check_seat() {
 			;;
 		*) fault "seats.sh get exited ${seat_status} (${seat_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch." ;;
 	esac
-	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // ""') ||
+	seat_fields=$(printf '%s\n' "${seat_out}" | jq -r '.status // "", .mode // "", .worktree // "", .role // ""') ||
 		fault "jq could not read the seat seats.sh get printed; the hook needs jq 1.6+; the cause is on stderr."
 	# A seat with no mode or worktree ends early: command substitution drops
 	# the empty last lines, so a read past them finds the end.
@@ -894,6 +903,7 @@ check_seat() {
 		IFS= read -r seat_state || :
 		IFS= read -r seat_mode || :
 		IFS= read -r seat_worktree || :
+		IFS= read -r seat_role || :
 	} <<EOF
 ${seat_fields}
 EOF
@@ -901,9 +911,10 @@ EOF
 		add_problem SEAT "seat ${dispatch_seat} is ${seat_state}; expected an open seat" "${dispatch_effort}"
 		return 0
 	fi
+	check_pair
 	worktrees_dir="${real_root}/efforts/${place_effort_name}/worktrees"
 	case ${seat_worktree} in
-		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a builder seat" "${dispatch_effort}" ;;
+		'') add_problem SEAT "seat ${dispatch_seat} has no worktree; expected a seat that works in a worktree" "${dispatch_effort}" ;;
 		*'`'*) add_problem SEAT "seat ${dispatch_seat}'s worktree holds a backtick; expected a path without one, so the agent's message prints it unchanged" "${dispatch_effort}" ;;
 		*)
 			# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
@@ -916,10 +927,15 @@ EOF
 	esac
 }
 
-# Sets report_path from iteration.sh's REPORT line for the seat. A seat whose
-# worktree or base does not fit, or a chosen seat (exit 3), is a SEAT problem;
-# any other failure is a fault.
+# Sets report_path from iteration.sh's REPORT line for the seat, its PLAN
+# line for a tester seat dispatched to plan: one with no test_plan, which only
+# a tester re-seated to write a plan's tests holds. A seat whose worktree or
+# base does not fit, a chosen seat, or a tester seat whose build seat has no
+# build commit (exit 3), is a SEAT problem; any other failure is a fault.
+# Then sets test_plan_path with check_test_plan.
 read_report_path() {
+	report_key='REPORT'
+	[ "${seat_role}" != tester ] || [ -n "${dispatch_test_plan}" ] || report_key='PLAN'
 	iteration_script="${skills_dir}/${ITERATION_SCRIPT}"
 	[ -f "${iteration_script}" ] && [ -r "${iteration_script}" ] ||
 		fault "the iteration reader ${iteration_script} is missing or unreadable; ${PROG} needs it; the fault is in the procedure-seat-run install, not in the dispatch."
@@ -929,7 +945,7 @@ read_report_path() {
 	case ${iteration_status} in
 		0) ;;
 		3)
-			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a builder seat whose base is a commit in its worktree" "${dispatch_effort}"
+			add_problem SEAT "seat ${dispatch_seat}'s iteration can't be counted (${iteration_line}); expected a seat whose base is a commit in its worktree" "${dispatch_effort}"
 			return 0
 			;;
 		*) fault "iteration.sh exited ${iteration_status} (${iteration_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch." ;;
@@ -937,7 +953,7 @@ read_report_path() {
 	report_path=''
 	while IFS= read -r iteration_entry; do
 		case ${iteration_entry} in
-			'REPORT: '*) report_path=${iteration_entry#REPORT: } ;;
+			"${report_key}: "*) report_path=${iteration_entry#"${report_key}: "} ;;
 			*) ;;
 		esac
 	done <<EOF
@@ -945,8 +961,59 @@ ${iteration_out}
 EOF
 	case ${report_path} in
 		/*) ;;
-		*) fault "iteration.sh printed no absolute REPORT line; the fault is in the procedure-seat-run install, not in the dispatch." ;;
+		*) fault "iteration.sh printed no absolute ${report_key} line; the fault is in the procedure-seat-run install, not in the dispatch." ;;
 	esac
+	check_test_plan
+}
+
+# Adds a PAIR problem when the seat's pair, the seat sharing its worktree (a
+# tester's build seat, a build seat's tester), is working or gave up, read
+# from seats.sh list: one agent works in a worktree at a time, and a gave-up
+# agent's leftovers stay there until the human settles them.
+check_pair() {
+	pair_status=0
+	pair_out=$(sh "${seats_script}" list --effort "${dispatch_effort}" </dev/null 2>&1) || pair_status=$?
+	if [ "${pair_status}" != 0 ]; then
+		pair_line=$(printf '%s' "${pair_out%%"${NL}"*}" | tr '[:cntrl:]' '?')
+		fault "seats.sh list exited ${pair_status} (${pair_line}); the fault is in the procedure-seat-run install or the host, not in the dispatch."
+	fi
+	pair_fields=$(printf '%s\n' "${pair_out}" | jq -r --arg seat "${dispatch_seat}" '
+		(.seats | map(select(.seat == $seat)) | first) as $own
+		| first(.seats[]
+			| select(if $own.role == "tester" then .seat == $own.build_seat else .role == "tester" and .build_seat == $own.seat end)
+			| select(.status == "working" or .status == "gave-up"))
+		| .seat, .status') ||
+		fault "jq could not read the seat list seats.sh list printed; the hook needs jq 1.6+; the cause is on stderr."
+	[ -n "${pair_fields}" ] || return 0
+	pair_seat=${pair_fields%%"${NL}"*}
+	case ${pair_fields#*"${NL}"} in
+		working) pair_problem='is working; expected it idle or open: one agent works in a worktree at a time' ;;
+		*) pair_problem='gave up; expected its leftovers settled first: its agent resumed, or its changes discarded' ;;
+	esac
+	add_problem PAIR "seat ${dispatch_seat} shares its worktree with seat ${pair_seat}, which ${pair_problem}" "${dispatch_effort}"
+}
+
+# Sets test_plan_path to the dispatch's test_plan event, which must be the
+# seat's newest test-plan.made, or adds a SEAT problem: a newer plan is a
+# draft the human has not approved for this re-seat.
+check_test_plan() {
+	test_plan_path=''
+	[ -n "${dispatch_test_plan}" ] || return 0
+	events_reader="${skills_dir}/${EVENTS_SCRIPT}"
+	[ -f "${events_reader}" ] && [ -r "${events_reader}" ] ||
+		fault "the events reader ${events_reader} is missing or unreadable; ${PROG} needs it; the fault is in the crucible install, not in the dispatch."
+	newest_plan=$(sh "${events_reader}" latest --effort "${dispatch_effort}" --type "${TEST_PLAN_EVENT}" --where ".seat == \"${dispatch_seat}\"" </dev/null) ||
+		fault "events.sh latest failed reading the seat's ${TEST_PLAN_EVENT} events; the fault is in the crucible install or the host, not in the dispatch; the cause is on stderr."
+	newest_plan_seq=''
+	if [ -n "${newest_plan}" ]; then
+		newest_plan_seq=$(jq -r '.seq' "${newest_plan}" </dev/null) ||
+			fault "jq could not read ${newest_plan}; the hook needs jq 1.6+; the cause is on stderr."
+	fi
+	if [ "${newest_plan_seq}" = "${dispatch_test_plan}" ]; then
+		test_plan_path=${newest_plan}
+		return 0
+	fi
+	add_problem SEAT "the dispatch's test_plan ${dispatch_test_plan} is not seat ${dispatch_seat}'s newest ${TEST_PLAN_EVENT} (${newest_plan_seq:-none}); expected the plan the human approved; write the re-seat dispatch again" "${dispatch_effort}"
 }
 
 # Checks, copies and scans the plugin files in plugin_entries, adding a problem for each fault.
@@ -1231,7 +1298,7 @@ EOF
 	jq -nj --rawfile dispatch "${dispatch_copy}" --rawfile context "${context_pretty}" \
 		--rawfile template "${template_copy}" \
 		--arg mode "${seat_mode}" --arg worktree "${seat_worktree}" --arg report "${report_path}" \
-		"$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
+		--arg test_plan "${test_plan_path}" "$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Drops the empty keys from a builder's report before the stop hook checks
-# it, so a stray "noticed": [] costs the builder no block; without --apply
+# Drops the empty keys from a seat agent's report before the stop hook checks
+# it, so a stray "noticed": [] costs the agent no block; without --apply
 # it only lists them. crucible's prune does the dropping. A file that holds no one JSON value is left for
 # build-report-check.sh to report; a report with nothing to drop is not touched.
 # A change goes in place through a temp file beside the report, so the report
@@ -39,7 +39,7 @@ usage() {
 usage: sh ${PROG} --report FILE [--apply]
        sh ${PROG} --help | -h
 
-Drops every key whose value is null, [] or {} from a builder's report,
+Drops every key whose value is null, [] or {} from a seat agent's report,
 inner keys first, so a key left holding only empty keys goes too; array
 items, false, 0 and "" stay. report-commit-hook.sh, its only caller,
 passes --apply.

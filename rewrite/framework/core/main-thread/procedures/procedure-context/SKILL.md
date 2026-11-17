@@ -16,7 +16,7 @@ The next version is a draft, `<effort folder>/drafts/main-thread/context/`, unti
 ## When to use it
 
 - **Build it** once per effort: discovery (steps 1–3), the spec (step 4), "what next?" (step 7). It starts when the work's own flow calls this skill right after `procedure-effort` starts the effort, or, for an effort a grill started, when that grill ends.
-- **Add to it** when something new enters a running effort once its spec is approved, before or after a cut: a link or file, a contradiction settled, a plan answer that changes the work, an ended grill (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger; add only when the human asks.
+- **Add to it** when something new enters a running effort once its spec is approved, before or after a cut: a link or file, a contradiction settled, a plan answer that changes the work, an ended grill, or what the human confirmed in a live validation, as a `live-validation.md` doc (step 5). A `CONTEXT` or `CONTEXT-STALE` hook denial is no trigger; add only when the human asks.
 - **Settle the spec alone** (The spec below): a calling flow finds no approved spec, or its change calls for a revised spec; or the human's own ask ("I think we need to specify").
 - **Find where the context stands** on Resume, or when a flow loads this skill for an effort that already holds a context and nothing new enters: run Resume below.
 

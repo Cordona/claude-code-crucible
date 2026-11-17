@@ -5,8 +5,9 @@
 # is_test_path: input a path; true when it names a test file or a file in a
 # test folder.
 # in_scope($role; $path): true when a seat of $role may write $path; a
-# builder writes every path but a test path. A role it does not know is an
-# error, so a caller never reads a guess as an answer.
+# builder writes every path but a test path, a tester only test paths. A
+# role it does not know is an error, so a caller never reads a guess as an
+# answer.
 
 # Folder names whose files are tests or test data.
 def write_scope_test_folders: [
@@ -43,5 +44,6 @@ def is_test_path:
 
 def in_scope($role; $path):
 	if $role == "builder" then $path | is_test_path | not
-	else error("in_scope: role \($role | tojson) has no write scope; expected builder")
+	elif $role == "tester" then $path | is_test_path
+	else error("in_scope: role \($role | tojson) has no write scope; expected builder or tester")
 	end;

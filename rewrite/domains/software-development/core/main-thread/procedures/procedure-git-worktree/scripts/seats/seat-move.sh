@@ -37,7 +37,9 @@ main checkout's working tree and branches are never touched. Nothing else
 is left behind (a SIGKILL aside).
 
 --effort DIR    absolute path of the effort folder
---seat S        a seat with a worktree, not working
+--seat S        a build seat with a worktree, not working, its tester not
+                working; a tester seat is refused (its base is its build
+                seat's)
 --to COMMIT     a sha or a ref of the seat's repo (a branch, a
                 remote-tracking branch, a tag); not starting with -
 --follows NAME  the branch the commit was taken from, for the human;
@@ -177,8 +179,8 @@ check_follows() {
 	}
 }
 
-# Sets status, repo and worktree from the seat; seats.sh's own lines say why
-# it refused.
+# Sets status, repo, worktree, role and build_seat from the seat; seats.sh's
+# own lines say why it refused.
 read_seat() {
 	step_rc=0
 	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
@@ -189,26 +191,50 @@ read_seat() {
 		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_effort}" ;;
 		*) die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above); expected the seat's JSON line; fix what it names and rerun" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .worktree // ""') ||
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .worktree // "", .role // "", .build_seat // ""') ||
 		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
-	status='' repo='' worktree=''
+	status='' repo='' worktree='' role='' build_seat=''
 	{
 		IFS= read -r status || :
 		IFS= read -r repo || :
 		IFS= read -r worktree || :
+		IFS= read -r role || :
+		IFS= read -r build_seat || :
 	} <<EOF
 ${fields}
 EOF
 	shown_worktree=$(printable "${worktree}")
 }
 
-# Refuses a seat that has no worktree yet or whose builder is busy.
+# Refuses a tester seat, as seats.sh move does, before anything moves.
+check_role() {
+	[ "${role}" = tester ] || return 0
+	shown_build_seat=$(printable "${build_seat}")
+	die 3 "seat ${shown_seat} is a tester seat: its base is its build seat ${shown_build_seat}'s; expected a build seat"
+}
+
+# Refuses a seat that has no worktree yet, whose agent is busy, or whose
+# tester is working: never two agents in one worktree.
 check_status() {
 	case ${status} in
 		chosen) die 5 "seat ${shown_seat} is chosen: its worktree is not made yet; expected a seat with a worktree" ;;
-		working) die 5 "seat ${shown_seat} is working: its builder is busy; expected it idle, open or gave-up" ;;
+		working) die 5 "seat ${shown_seat} is working: its ${role} is busy; expected it idle, open or gave-up" ;;
 		*) ;;
 	esac
+	check_pair_idle
+}
+
+# Refuses the seat while its tester, sharing its worktree, is working.
+check_pair_idle() {
+	run_step ../../../procedure-seat-run/scripts/seats/seats.sh list --effort "${effort}"
+	[ "${step_rc}" -eq 0 ] ||
+		die 4 "seats.sh list failed (exit ${step_rc}; its stderr is above); expected the effort's seat list; fix what it names and rerun"
+	busy_pair=$(printf '%s\n' "${step_out}" | jq -r --arg seat "${seat}" '
+		first(.seats[] | select(.build_seat == $seat and .status == "working") | .seat)') ||
+		die 4 'jq could not read the seat list seats.sh list printed; expected one JSON line'
+	[ -n "${busy_pair}" ] || return 0
+	shown_pair=$(printable "${busy_pair}")
+	die 5 "seat ${shown_seat} shares its worktree with seat ${shown_pair}, which is working; expected no agent working in the worktree"
 }
 
 # Sets to_sha, the full sha --to names in the seat's repo, and follows to
@@ -326,6 +352,7 @@ parse_args "$@"
 load_dependencies
 check_inputs
 read_seat
+check_role
 check_status
 resolve_target
 check_follows

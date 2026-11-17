@@ -31,7 +31,7 @@ usage: sh ${PROG} --input FILE --out FILE
 Writes one Crucible commit message; runs no git.
 
 --input FILE  a JSON object, no other fields:
-                kind      build
+                kind      build or test
                 text      the subject's text: one line; the whole subject
                           "crucible(<kind>): <text>" at most 72 characters
                 trailers  an object; the count a whole number of 1 or more,
@@ -42,6 +42,7 @@ Writes one Crucible commit message; runs no git.
 
 kinds and their trailers, in message order (all required):
   build  iteration, effort, agent-seat
+  test   iteration, effort, agent-seat
 
 output: crucible(<kind>): <text>
         then a blank line and one "Key-Name: value" line per trailer given,

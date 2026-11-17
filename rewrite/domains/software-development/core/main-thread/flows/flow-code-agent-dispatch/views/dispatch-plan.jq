@@ -1,8 +1,8 @@
 # The dispatch-plan gate: the slim plan, plugins by label (a plugin
 # list-plugins.sh no longer prints shows its name), every reason staying in the
-# plan JSON. A code-builder plan: the Builder title from its valid language
-# and frameworks, then Load and Skip with its standards, then procedures, in
-# plan order. A code-reviewer plan holds one lens and shows only the Reviewer
+# plan JSON. A code-builder or code-tester plan: the Build agent or Test agent
+# title from its valid language and frameworks, then Load and Skip with its
+# standards, then procedures, in plan order. A code-reviewer plan holds one lens and shows only the Reviewer
 # line, its seat's title. A replan "invalid" plan shows only the plugins it
 # names as invalid, and no question.
 include "view";
@@ -40,7 +40,8 @@ def view:
 		| if .agent == "code-reviewer" then
 			section("Reviewer"; [$load | seat_labels
 				+ {lens: (if $load.language == null then $lenses[0] else null end)} | agent_title("reviewer")])
-		  else section("Builder"; [$load | seat_labels | agent_title("builder")]) end;
+		  else .agent as $agent
+			| section($agent | agent_label; [$load | seat_labels | agent_title($agent | agent_word)]) end;
 	def invalid_labels:
 		[(.plugins.load.language // empty), (.plugins.load.frameworks // [])[], (.plugins.skip.standards // [])[], (.plugins.skip.procedures // [])[]
 		 | select(.reason == "invalid") | plugin_label];

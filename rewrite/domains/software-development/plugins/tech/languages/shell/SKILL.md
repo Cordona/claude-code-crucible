@@ -1,6 +1,6 @@
 ---
 name: language-shell
-description: "Shell rules: the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the builder's verification gate. Use when writing or reviewing Bash or POSIX `sh` scripts. A language plugin. Its gate writes only what the project's own tests write; needs `shellcheck` and `bash` or `sh`. Not for shell driven only from another file, native Windows `cmd` or PowerShell, or rules every language shares (`code-builder`, standard plugins)."
+description: "Shell rules: the target shell, quoting, strict mode, silent traps, injection, temp files, leak surfaces, portability and shellcheck, plus the verification gate. Use when writing or reviewing Bash or POSIX `sh` scripts. A language plugin. Its gate writes only what the project's own tests write; needs `shellcheck` and `bash` or `sh`. Not for shell driven only from another file, native Windows `cmd` or PowerShell, or rules every language shares (`code-builder`, `code-tester`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:

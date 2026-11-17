@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
-# Checks a builder's BUILD report before the stop hook commits it. The
-# shell checks the command line, the files and each path:line's file in the
-# worktree; build-report-check.jq checks the report and words every problem as
-# a repair the builder can make from that line alone, since the stop hook
-# hands the builder nothing else. It changes nothing.
+# Checks a seat agent's report before the stop hook commits it: a builder's
+# build report or a tester's test report. The shell checks the command line,
+# the files and each path:line's file in the worktree; build-report-check.jq
+# checks the report and words every problem as a repair the agent can make
+# from that line alone, since the stop hook hands the agent nothing else. It
+# changes nothing.
 set -eu
 
 readonly PROG='build-report-check.sh'
@@ -26,19 +27,26 @@ readonly LOCATIONS_JQ='include "build-report-check";
 # Prints the problem lines, at most $max and one counting the rest.
 # shellcheck disable=SC2016
 readonly CHECK_JQ='include "build-report-check";
-report_check($report; $files_text; $hint; $max)[]'
+report_check($report; $files_text; $hint; $max; $kind)[]'
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --report FILE --worktree DIR
+usage: sh ${PROG} [--kind build|test] --report FILE --worktree DIR
        sh ${PROG} --help | -h
 
-Checks a builder's BUILD report; changes nothing, prints nothing on stdout.
+Checks a seat agent's report; changes nothing, prints nothing on stdout.
 
+--kind KIND      build (default): a builder's build report; test: a
+                 tester's test report, which adds the blocker kinds
+                 test_red and production_bug (location path:line), lets a
+                 fail gate pair with any of gate_red, test_red and
+                 production_bug, and takes deviations[].from plan: <id>
+                 (a plan id: B-, T-, M-, R-, F- or N- and a number) or
+                 plan: none (a change outside the plan)
 --report FILE    absolute path of the report: one JSON object, the seat's
                  draft <effort>/drafts/agents/<seat>/report.json
---worktree DIR   absolute path of the builder's worktree; every path:line
-                 in the report resolves against it
+--worktree DIR   absolute path of the seat's worktree; every path:line in
+                 the report resolves against it
 
 the report: summary (one line, not starting with a word: or word(word):
 prefix) and verification (at least one gate) are required; deviations,
@@ -51,9 +59,9 @@ references/report-iteration.json; where they differ, this check wins.
 
 exit codes:
   0  the report fits; nothing is printed
-  2  wrong command line: a missing, repeated or unknown option, a path that
-     is not absolute, or a --worktree that is no folder or can't be
-     entered; fix the call
+  2  wrong command line: a missing, repeated or unknown option, a --kind
+     other than build or test, a path that is not absolute, or a
+     --worktree that is no folder or can't be entered; fix the call
   3  the report does not fit, is missing, empty, a folder or not a readable
      file, or is not one JSON object; each problem is one stderr line saying
      how to fix it (at most ${MAX_PROBLEMS}, then one counting the rest): fix
@@ -94,12 +102,16 @@ take_value() {
 }
 
 parse_args() {
-	report='' worktree=''
+	report='' worktree='' kind=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
 				usage
 				exit 0
+				;;
+			--kind)
+				take_value "$1" "${kind}" "${2-}" KIND
+				kind=${option_value}
 				;;
 			--report)
 				take_value "$1" "${report}" "${2-}" FILE
@@ -111,13 +123,21 @@ parse_args() {
 				;;
 			*)
 				shown_option=$(printable "$1")
-				usage_error "unknown option: ${shown_option}; expected --report, --worktree or --help"
+				usage_error "unknown option: ${shown_option}; expected --kind, --report, --worktree or --help"
 				;;
 		esac
 		shift 2
 	done
 	[ -n "${report}" ] || usage_error '--report missing; expected --report FILE'
 	[ -n "${worktree}" ] || usage_error '--worktree missing; expected --worktree DIR'
+	case ${kind:=build} in
+		build) agent=builder ;;
+		test) agent=tester ;;
+		*)
+			shown_kind=$(printable "${kind}")
+			usage_error "--kind ${shown_kind} is not a report kind; expected build or test"
+			;;
+	esac
 }
 
 # Refuses option $1 whose path $2 is not absolute.
@@ -135,7 +155,7 @@ require_absolute() {
 check_worktree() {
 	require_absolute --worktree "${worktree}"
 	shown_worktree=$(printable "${worktree}")
-	[ -d "${worktree}" ] || usage_error "--worktree ${shown_worktree} is not a folder; expected the builder's worktree"
+	[ -d "${worktree}" ] || usage_error "--worktree ${shown_worktree} is not a folder; expected the ${agent}'s worktree"
 	physical=$(cd -P -- "${worktree}" && pwd -P) ||
 		usage_error "--worktree ${shown_worktree} can't be entered; expected a readable folder"
 	worktree_prefix="${physical%/}/"
@@ -224,7 +244,7 @@ EOF
 check_report() {
 	problems=$(jq -nr -L "${own_dir}" --rawfile report "${report}" \
 		--arg files_text "${files_text}" --arg hint "${hint}" \
-		--argjson max "${MAX_PROBLEMS}" "${CHECK_JQ}") ||
+		--argjson max "${MAX_PROBLEMS}" --arg kind "${kind}" "${CHECK_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+ and ${MODULE}.jq beside ${PROG}"
 	[ -n "${problems}" ] || return 0
 	while IFS= read -r problem; do

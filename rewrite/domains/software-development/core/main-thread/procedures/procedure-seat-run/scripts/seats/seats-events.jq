@@ -16,6 +16,7 @@ def seats_event_command:
 		{command: "choose", options: ({seat: $body.seat, role: $body.role, repo: $body.repo, base: $body.base}
 			+ (if $body.base_seats then {"base-seat": $body.base_seats} else {} end)),
 		 dir: ($body.worktree | sub("/worktrees/[^/]+$"; ""))}
+	  elif $type == "seat.joined" then {command: "join", options: {seat: $body.seat, "build-seat": $body.build_seat}}
 	  elif $type == "seat.opened" then {command: "opened", options: {seat: $body.seat}}
 	  elif $type == "seat.dropped" then {command: "drop", options: {seat: $body.seat}}
 	  elif $type == "seat.bound" then {command: "bind", options: {seat: $body.seat, "agent-id": $body.agent_id, dispatch: $body.dispatch}}
@@ -39,21 +40,28 @@ def seats_command_on($file; $c; $effort):
 # The seat list after stored event $c's change: a choose of a seat already
 # listed, or any other command on a seat not listed, changes nothing, as no
 # list holds a seat twice or a change to a seat it lacks. choose takes the
-# worktree its event recorded.
+# worktree its event recorded; join takes its build seat's, as it is then,
+# and a join whose build seat is not listed changes nothing.
 def seats_replay($event; $c):
 	seats_index($c.options.seat) as $index
 	| if $c.command == "choose" then
 		if $index != null then . else seats_choose_change($c.options; $event.body.worktree) end
+	  elif $c.command == "join" then
+		seats_index($c.options["build-seat"]) as $build_index
+		| if $index != null or $build_index == null then . else seats_join_change($c.options; .seats[$build_index]) end
 	  elif $index == null then .
 	  else seats_seat_change($c.command; $c.options; $index)
 	  end
 	| .seats |= map(seats_ordered | with_entries(select(.value | seats_is_empty | not)));
 
-# The seat list after event $event: its change applied, or, for the seat's
-# build.committed, the seat idle again (the work is recorded, so the agent is
-# free).
+# The events that record a seat's result: each sets the seat idle again (the
+# work is recorded, so the agent is free).
+def seats_result_types: ["build.committed", "test-plan.made", "test.committed"];
+
+# The seat list after event $event: its change applied, or, for one of the
+# seat's result events, the seat idle again.
 def seats_apply($event):
-	if $event.type == "build.committed" then
+	if $event.type | IN(seats_result_types[]) then
 		seats_index($event.seat) as $index
 		| if $index != null and (.seats[$index].status | IN("working", "gave-up")) then .seats[$index].status = "idle" else . end
 	else
@@ -72,6 +80,10 @@ def seats_event_body($command; $options; $before; $after):
 		# mode is kept for audit: the replay derives it from role.
 		[$after.seats[] | select(.seat == $options.seat)][0] | {seat, role, mode, worktree, repo, base, base_seats}
 		| with_entries(select(.value != null))
+	# role, mode, worktree, repo and base are kept for audit: the replay takes
+	# them from the build seat.
+	elif $command == "join" then
+		[$after.seats[] | select(.seat == $options.seat)][0] | {seat, role, mode, build_seat, worktree, repo, base}
 	elif $command == "bind" then {seat: $options.seat, agent_id: $options["agent-id"], dispatch: $options.dispatch}
 	elif $command == "status" then {seat: $options.seat, status: $options.status}
 	# agent_id is kept for audit, naming the agent handed over from; the
@@ -90,5 +102,5 @@ def seats_event_body($command; $options; $before; $after):
 	else {seat: $options.seat}
 	end;
 
-def seats_event_types: {choose: "seat.chosen", opened: "seat.opened", drop: "seat.dropped", bind: "seat.bound", status: "seat.status.changed",
+def seats_event_types: {choose: "seat.chosen", join: "seat.joined", opened: "seat.opened", drop: "seat.dropped", bind: "seat.bound", status: "seat.status.changed",
 	handover: "seat.reseated", move: "seat.moved", task: "seat.tasked"};

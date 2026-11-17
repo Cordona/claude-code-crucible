@@ -59,9 +59,9 @@ repository; exits 2, 3 and 5 change nothing, and no event is written.
 Nothing else is left behind (a SIGKILL aside).
 
 --effort FOLDER  the effort folder, absolute
---seat S         a builder seat, status idle (not chosen), whose worktree
-                 has HEAD on a branch, no change and no merge, pick or
-                 rebase under way
+--seat S         a builder seat, status idle (not chosen), with no tester
+                 seat working in its worktree, whose worktree has HEAD on a
+                 branch, no change and no merge, pick or rebase under way
 --with REF       a commit sha or a ref name of S's repository (a branch,
                  a remote-tracking branch such as origin/main, a tag),
                  resolved there with git rev-parse --verify 'REF^{commit}';
@@ -264,6 +264,7 @@ check_seat() {
 		working) refuse "seat ${shown_seat} is working: its builder is busy; expected status idle" ;;
 		*) refuse "seat ${shown_seat} is ${status}; expected status idle" ;;
 	esac
+	check_tester_idle
 	check_no_operation
 	list_uncommitted
 	[ ! -s "${work_dir}/seat-dirty" ] ||
@@ -274,6 +275,25 @@ check_seat() {
 refuse() {
 	warn "$1"
 	problems=$((problems + 1))
+}
+
+# Refuses the seat while a tester seat sharing its worktree is working:
+# never two agents in one worktree.
+check_tester_idle() {
+	list_rc=0
+	seat_list=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${effort_dir}") || list_rc=$?
+	[ "${list_rc}" -eq 0 ] ||
+		die 4 "seats.sh list failed (exit ${list_rc}; its stderr is above); expected the effort's seat list"
+	busy_testers=$(printf '%s\n' "${seat_list}" |
+		jq -r --arg seat "${seat}" '.seats[] | select(.build_seat == $seat and .status == "working") | .seat') ||
+		die 4 'jq could not read the seat list seats.sh list printed'
+	while IFS= read -r busy_tester; do
+		[ -n "${busy_tester}" ] || continue
+		shown_tester=$(printable "${busy_tester}")
+		refuse "seat ${shown_seat}'s tester ${shown_tester} is working in its worktree; expected no agent working there"
+	done <<EOF
+${busy_testers}
+EOF
 }
 
 # Refuses a worktree with a merge, pick, revert or rebase under way.

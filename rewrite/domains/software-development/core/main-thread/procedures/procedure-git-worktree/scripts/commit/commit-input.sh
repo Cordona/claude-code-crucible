@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# Prints the commit-message.sh input for one builder seat's current work: the
-# kind from the seat's mode, the iteration from iteration.sh, the text from
-# the seat's report, and the trailers. It reads only; commit-message.sh
+# Prints the commit-message.sh input for one builder or tester seat's current
+# work: the kind from the seat's role, the iteration from iteration.sh, the
+# text from the seat's report, and the trailers. It reads only; commit-message.sh
 # checks what it prints.
 set -eu
 umask 077
@@ -24,13 +24,13 @@ Prints the commit-message.sh input JSON for seat S's current work. Reads
 only; checks no value commit-message.sh checks.
 
 --effort FOLDER  the effort folder, absolute
---seat S       a builder seat with an agent bound
+--seat S       a builder or tester seat with an agent bound
 --report FILE  the report to take the text from; default iteration.sh's REPORT
 --out FILE     write the JSON there, whole through a temp file beside it,
                instead of printing it
 
 the input:
-  kind      build for mode BUILD
+  kind      build for a builder seat, test for a tester seat
   text      the summary of the report, one JSON object
   trailers  iteration: iteration.sh's ITERATION; effort: the effort
             folder's name; agent-seat
@@ -151,23 +151,24 @@ read_seat() {
 			;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.mode // "", .status // "", .dispatch // "", .worktree // ""') ||
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .status // "", .dispatch // "", .worktree // ""') ||
 		die 4 'jq could not read the seat seats.sh get printed'
-	mode='' status='' dispatch='' worktree=''
+	role='' status='' dispatch='' worktree=''
 	{
-		IFS= read -r mode || :
+		IFS= read -r role || :
 		IFS= read -r status || :
 		IFS= read -r dispatch || :
 		IFS= read -r worktree || :
 	} <<EOF
 ${fields}
 EOF
-	case ${mode} in
-		BUILD) kind='build' ;;
-		*) die 3 "seat ${seat} has no mode; expected a builder seat" ;;
+	case ${role} in
+		builder) kind='build' ;;
+		tester) kind='test' ;;
+		*) die 3 "seat ${seat} has no role that commits; expected a builder or tester seat" ;;
 	esac
 	[ -n "${dispatch}" ] || die 3 "seat ${seat} is ${status}; expected an agent and its dispatch bound"
-	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a builder seat"
+	[ -n "${worktree}" ] || die 3 "seat ${seat} has no worktree; expected a seat that works in a worktree"
 }
 
 # Sets count and, without --report, report from iteration.sh;
@@ -177,7 +178,7 @@ read_iteration() {
 	iteration_out=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/iteration.sh" --effort "${effort_folder}" --seat "${seat}") || iteration_rc=$?
 	case ${iteration_rc} in
 		0) ;;
-		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base" ;;
+		3) die 3 "iteration.sh refused seat ${seat} (exit 3); expected a seat with a worktree and its base, and for a tester seat a build seat with a build commit" ;;
 		*) die 4 "iteration.sh failed (exit ${iteration_rc})" ;;
 	esac
 	count='' printed_report=''

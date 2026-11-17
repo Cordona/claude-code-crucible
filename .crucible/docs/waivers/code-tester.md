@@ -1,0 +1,2 @@
+- LNT-69: body plus the report-standard and seat-agent preloads is over 12k by design, as the builder's; plugins and context arrive in the first message (owner)
+- LNT-68: the tester method is in the agent body, as the builder's; same load as a preload (owner)

@@ -14,7 +14,8 @@
 # · Standards: <labels> · Procedures: <labels>", a kind with no loaded plugin
 # left out ("LABELS:" alone when none is loaded); each list is in plugin-line
 # order, joined by ", ". The plugin rules (at most one language, frameworks
-# with a language, standard-testing never loaded) are the plan validator's,
+# with a language, standard-testing only in, and always in, a code-tester
+# plan) are the plan validator's,
 # checked before this runs. A plugin line is <kind> <name> <label>
 # <description> <paths...>, so the paths start at field 5. The names are taken out of ARGV,
 # each operand split on whitespace, so awk reads stdin.
@@ -78,12 +79,13 @@ select_plugin_lines() {
 		awk -v prog="${plugin_prog}" -v want="${plugin_want}" "${plugin_select_awk}" "$@"
 }
 
-# Sets plugin_paths to the files role $1 (builder or reviewer) loads from the
-# selected paths $2, one per line: for reviewer each references/build.md or
-# references/test.md becomes references/review.md, dropped when that is not a
-# readable file; for builder each references/build.md is followed by every
-# readable references/*-template.md file of that plugin, in the glob's byte
-# order under the C locale. Returns 3 with plugin_problem set when a template
+# Sets plugin_paths to the files role $1 (builder, tester or reviewer) loads
+# from the selected paths $2, one per line: for reviewer each
+# references/build.md or references/test.md becomes references/review.md,
+# dropped when that is not a readable file; for builder each
+# references/build.md, and for tester each references/build.md and
+# references/test.md, is followed by every readable references/*-template.md
+# file of that plugin, in the glob's byte order under the C locale. Returns 3 with plugin_problem set when a template
 # name holds a comma or control character.
 resolve_role_paths() {
 	plugin_paths=''
@@ -96,10 +98,10 @@ resolve_role_paths() {
 				[ -f "${plugin_path}" ] && [ -r "${plugin_path}" ] || continue
 				add_plugin_path "${plugin_path}"
 				;;
-			builder:*/references/build.md)
+			builder:*/references/build.md | tester:*/references/build.md | tester:*/references/test.md)
 				add_plugin_path "${plugin_path}"
 				# shellcheck disable=SC2310 # its status is the template check; the caller acts on it
-				add_plugin_templates "${plugin_path%build.md}" || return 3
+				add_plugin_templates "${plugin_path%/*}/" || return 3
 				;;
 			*) add_plugin_path "${plugin_path}" ;;
 		esac

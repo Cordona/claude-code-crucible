@@ -3,7 +3,10 @@
 # scripts, procedure-context's context.sh, procedure-effort's effort.sh,
 # procedure-seat-run's seats.sh, iteration.sh, its card helper, its write
 # scope module, its pre-tool, seat bind, report commit and block relay hook
-# scripts and its two write scope rules, procedure-git-worktree's
+# scripts, its four write scope rules, its mutation copy script and its stop
+# rule, the report checker, report pruner and plan checker its report commit
+# hook runs (found from the hook's folder as the hook finds them),
+# procedure-git-worktree's
 # seat-move.sh, worktree-move.sh, catch-up.sh and its card helper, the crucible
 # skill's space rules, the four context checks the
 # scripts share and the context-handling template the inject hook sends, the
@@ -93,10 +96,26 @@ readonly REPORT_COMMIT_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/report-commit
 readonly BLOCK_RELAY_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/block-relay-hook.sh"
 readonly PRE_TOOL_SCRIPT="${SEAT_RUN_PROCEDURE}/scripts/hooks/pre-tool-hook.sh"
 # Relative to DIR/procedure-seat-run/scripts/: the pre-tool hook's and the
-# report commit hook's rules, and the write scope module both load.
+# report commit hook's rules, the write scope module the write scope rules
+# load, and the mutation copy script the tester's stop rule names.
 readonly PRE_TOOL_RULE='hooks/rules/pre-tool/builder-write-scope.sh'
 readonly STOP_RULE='hooks/rules/stop/builder-write-scope.sh'
+readonly TESTER_PRE_TOOL_RULE='hooks/rules/pre-tool/tester-write-scope.sh'
+readonly TESTER_STOP_RULE='hooks/rules/stop/tester-write-scope.sh'
+readonly MUTATION_STOP_RULE='hooks/rules/stop/mutation-copy.sh'
+readonly MUTATION_SCRIPT='mutation/mutation-copy.sh'
 readonly WRITE_SCOPE_LIB='seats/write-scope.jq'
+# Relative to DIR/procedure-seat-run/scripts/hooks/ once its links are
+# resolved, as report-commit-hook.sh finds them: the folders of the report
+# checker and pruner (code-builder's report skill) and of the plan checker
+# (code-tester's report skill) it runs at a seat's stop.
+readonly REPORT_CHECKER_SKILL='standard-code-build-report'
+readonly REPORT_CHECKER_DIR="../../../../../agents/code-builder/skills/${REPORT_CHECKER_SKILL}/scripts"
+readonly REPORT_CHECKER='build-report-check.sh'
+readonly REPORT_PRUNER='build-report-prune.sh'
+readonly PLAN_CHECKER_SKILL='standard-code-test-report'
+readonly PLAN_CHECKER_DIR="../../../../../agents/code-tester/skills/${PLAN_CHECKER_SKILL}/scripts"
+readonly PLAN_CHECKER='test-plan-check.sh'
 readonly PRE_TOOL_MATCHER='Write|Edit|MultiEdit|NotebookEdit'
 # Relative to DIR/procedure-git-worktree/scripts/: what seat-move.sh and
 # catch-up.sh print their cards through; relative to
@@ -367,6 +386,18 @@ parse_args() {
 	crucible_scripts_dir="${skills_dir}/${CRUCIBLE_SKILL}/scripts"
 	gate_scripts_dir="${skills_dir}/${GATE_PROCEDURE}/scripts"
 	marker="${cache_dir}/${MARKER_NAME}"
+	# shellcheck disable=SC2310 # a folder not found is an answer, checked later
+	report_checker_dir=$(hooks_relative_dir "${REPORT_CHECKER_DIR}") || report_checker_dir=''
+	# shellcheck disable=SC2310 # a folder not found is an answer, checked later
+	plan_checker_dir=$(hooks_relative_dir "${PLAN_CHECKER_DIR}") || plan_checker_dir=''
+}
+
+# Prints the physical path of folder $1, relative to procedure-seat-run's
+# hooks folder with its links resolved, the way report-commit-hook.sh
+# resolves it; fails when either can't be entered.
+hooks_relative_dir() {
+	hooks_real=$(cd -P -- "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/hooks" 2>/dev/null && pwd -P) || return 1
+	cd -P -- "${hooks_real}/$1" 2>/dev/null && pwd -P
 }
 
 # Adds line name $1 to line_names, once, or exits 2 unless it is one of LINE_NAMES.
@@ -447,7 +478,13 @@ fingerprint_input() {
 		"${skills_dir}/${SEAT_BIND_SCRIPT}" "${skills_dir}/${REPORT_COMMIT_SCRIPT}" "${skills_dir}/${BLOCK_RELAY_SCRIPT}" \
 		"${skills_dir}/${PRE_TOOL_SCRIPT}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${PRE_TOOL_RULE}" \
 		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${STOP_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${TESTER_PRE_TOOL_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${TESTER_STOP_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${MUTATION_STOP_RULE}" \
+		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${MUTATION_SCRIPT}" \
 		"${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts/${WRITE_SCOPE_LIB}" \
+		"${report_checker_dir:-unresolved}/${REPORT_CHECKER}" "${report_checker_dir:-unresolved}/${REPORT_PRUNER}" \
+		"${plan_checker_dir:-unresolved}/${PLAN_CHECKER}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SCRIPT}" "${crucible_scripts_dir}/${EVENTS_SCRIPT}" \
 		"${crucible_scripts_dir}/${EVENTS_GUARD_HOOK}" \
 		"${crucible_scripts_dir}/${CRUCIBLE_SPACE_LIB}" \
@@ -587,9 +624,28 @@ warn() {
 check_script() {
 	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
 	read_help "$1" "$2" || return 0
+	check_usage_line "$2"
+}
+
+# Checks that script $2 in folder $1, which report-commit-hook.sh runs from
+# skill $3, answers --help with a usage line; an empty $1: the folder was
+# not found from the hook's folder.
+check_stop_checker() {
+	reinstall="install the software-development tree whole, $3 in it, and link procedure-seat-run from it"
+	if [ -z "$1" ]; then
+		fail "$2" "not found from ${SEAT_RUN_PROCEDURE}'s hooks folder, where ${REPORT_COMMIT_SCRIPT##*/} looks" "${reinstall}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # it reports its own failure; its status only says whether to go on
+	read_help_in "$1" "$2" || return 0
+	check_usage_line "$2"
+}
+
+# Passes check $1 when help_text has a line starting "Usage:" or "usage:".
+check_usage_line() {
 	case ${NL}${help_text} in
-		*"${NL}Usage:"* | *"${NL}usage:"*) pass "$2" ;;
-		*) fail "$2" "--help printed no Usage: line" "${reinstall}" ;;
+		*"${NL}Usage:"* | *"${NL}usage:"*) pass "$1" ;;
+		*) fail "$1" "--help printed no Usage: line" "${reinstall}" ;;
 	esac
 }
 
@@ -604,11 +660,17 @@ check_runnable() {
 # to the fix for it; fails the check for $2 and returns 1 when the script is
 # missing or its --help exits non-zero.
 read_help() {
-	script_dir="${skills_dir}/$1/scripts"
-	script="${script_dir}/$2"
 	reinstall="reinstall $1 under ${skills_dir}"
+	read_help_in "${skills_dir}/$1/scripts" "$2"
+}
+
+# Sets help_text to the --help output of script $2 in folder $1; fails the
+# check for $2 with the fix in reinstall and returns 1 when the script is
+# missing or its --help exits non-zero.
+read_help_in() {
+	script="$1/$2"
 	if [ ! -f "${script}" ] || [ ! -r "${script}" ]; then
-		fail "$2" "missing from ${script_dir}" "${reinstall}"
+		fail "$2" "missing from $1" "${reinstall}"
 		return 1
 	fi
 	# stderr is kept with stdout: a --help that fails on a tool missing from
@@ -1326,7 +1388,14 @@ check_script "${SEAT_RUN_PROCEDURE}" hooks/block-relay-hook.sh
 check_script "${SEAT_RUN_PROCEDURE}" hooks/pre-tool-hook.sh
 check_script "${SEAT_RUN_PROCEDURE}" "${PRE_TOOL_RULE}"
 check_script "${SEAT_RUN_PROCEDURE}" "${STOP_RULE}"
+check_script "${SEAT_RUN_PROCEDURE}" "${TESTER_PRE_TOOL_RULE}"
+check_script "${SEAT_RUN_PROCEDURE}" "${TESTER_STOP_RULE}"
+check_script "${SEAT_RUN_PROCEDURE}" "${MUTATION_STOP_RULE}"
+check_script "${SEAT_RUN_PROCEDURE}" "${MUTATION_SCRIPT}"
 check_lib_file "${WRITE_SCOPE_LIB}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts" "${SEAT_RUN_PROCEDURE}"
+check_stop_checker "${report_checker_dir}" "${REPORT_CHECKER}" "${REPORT_CHECKER_SKILL}"
+check_stop_checker "${report_checker_dir}" "${REPORT_PRUNER}" "${REPORT_CHECKER_SKILL}"
+check_stop_checker "${plan_checker_dir}" "${PLAN_CHECKER}" "${PLAN_CHECKER_SKILL}"
 check_lib_file "${CARDS_LIB}" "${skills_dir}/${WORKTREE_PROCEDURE}/scripts" "${WORKTREE_PROCEDURE}"
 check_lib_file "${CARDS_LIB}" "${skills_dir}/${SEAT_RUN_PROCEDURE}/scripts" "${SEAT_RUN_PROCEDURE}"
 check_script "${GATE_PROCEDURE}" open-gate.sh

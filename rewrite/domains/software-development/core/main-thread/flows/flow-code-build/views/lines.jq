@@ -7,7 +7,9 @@ def builder_not_installed:
 
 def git_not_installed: not_installed("git"; "install it");
 
-def test_part_held: "This flow writes no tests, so the test part is not dispatched.";
+def test_part_held: "Tests are planned for a part this effort built: ask for them after its build card.";
+
+def review_not_available: "Review is not available yet.";
 
 def doc_change_not_dispatched: "A doc change is not a builder's task, so it is not dispatched.";
 

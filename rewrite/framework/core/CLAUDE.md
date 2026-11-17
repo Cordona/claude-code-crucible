@@ -8,6 +8,7 @@ In a flow or procedure, the human sees only:
 
 - the cards scripts print for the human (a gate, a summary, what-next, metrics, a line);
 - a script's stderr and exit code, when a skill says to show them, as printed, never retyped;
+- the output of a command a skill has you run for the human to check, as printed, never retyped;
 - the lines a skill spells out word for word for when its own views or jq can't be used, without their backticks, each `<placeholder>` filled and nothing added;
 - the questions and answers a skill tells you to ask or give;
 - an artifact's full absolute path, with at most one line on what it holds, and its text when the human asks for it, as §2 sets;

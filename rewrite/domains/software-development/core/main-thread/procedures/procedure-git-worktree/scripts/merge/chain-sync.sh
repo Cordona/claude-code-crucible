@@ -44,8 +44,9 @@ does not count it) and fast-forwards S's branch to the merge in S's
 worktree, with no hook run.
 
 --effort FOLDER  the effort folder, absolute
---seat S         a builder seat, status idle (not chosen), whose worktree
-                 holds no uncommitted change and has HEAD on a branch
+--seat S         a builder seat, status idle (not chosen), with no tester
+                 seat working in its worktree, whose worktree holds no
+                 uncommitted change and has HEAD on a branch
 
 stdout: one JSON line, then the cards
   {"synced":false,"seat":S,"reason":"in_sync"}   nothing moved
@@ -204,6 +205,25 @@ refuse() {
 	problems=$((problems + 1))
 }
 
+# Refuses the seat while a tester seat sharing its worktree is working:
+# never two agents in one worktree.
+check_tester_idle() {
+	list_rc=0
+	seat_list=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" list --effort "${effort_dir}") || list_rc=$?
+	[ "${list_rc}" -eq 0 ] ||
+		die 4 "seats.sh list failed (exit ${list_rc}; its stderr is above); expected the effort's seat list"
+	busy_testers=$(printf '%s\n' "${seat_list}" |
+		jq -r --arg seat "${seat}" '.seats[] | select(.build_seat == $seat and .status == "working") | .seat') ||
+		die 4 'jq could not read the seat list seats.sh list printed'
+	while IFS= read -r busy_tester; do
+		[ -n "${busy_tester}" ] || continue
+		shown_tester=$(printable "${busy_tester}")
+		refuse "seat ${shown_seat}'s tester ${shown_tester} is working in its worktree; expected no agent working there"
+	done <<EOF
+${busy_testers}
+EOF
+}
+
 # Refuses a seat that is no idle builder with a clean worktree; sets
 # seat_worktree.
 check_seat() {
@@ -216,6 +236,7 @@ check_seat() {
 	seat_ref=$(git -C "${seat_worktree}" symbolic-ref -q HEAD 2>/dev/null) ||
 		die 3 "seat ${shown_seat}'s worktree ${shown_worktree} has a detached HEAD; expected HEAD on its branch"
 	check_idle
+	check_tester_idle
 	list_uncommitted
 	[ ! -s "${work_dir}/seat-dirty" ] ||
 		refuse "seat ${shown_seat}'s worktree ${shown_worktree} has uncommitted changes; expected a clean worktree"

@@ -17,9 +17,9 @@ readonly MAX_PROBLEMS=20
 # events.sh's own default: an append holds the lock for a moment, so a lock
 # still held after 5 s is stuck, and waiting longer only delays the refusal.
 readonly LOCK_WAIT_SECONDS=5
-readonly COMMANDS='choose opened drop bind status handover move task get find busy list'
+readonly COMMANDS='choose join opened drop bind status handover move task get find busy list'
 # The commands that change the seat list; a refusal of one is kept as a fault.
-readonly CHANGE_COMMANDS='choose opened drop bind status handover move task'
+readonly CHANGE_COMMANDS='choose join opened drop bind status handover move task'
 # The C locale keeps the shell byte-wise; jq reads and writes UTF-8.
 LC_ALL=C
 export LC_ALL
@@ -37,7 +37,7 @@ include "prune";
 ([$ARGS.named | to_entries[] | select(.key | startswith("base_seat_"))
 	| {place: (.key | ltrimstr("base_seat_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_seats
 | {seat: $seat, role: $role, repo: $repo, base: $base,
-	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "base-seat": $base_seats,
+	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "base-seat": $base_seats, "build-seat": $build_seat,
 	branch: $branch, "from-head": $from_head, follows: $follows,
 	task: ($task_text | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))} as $given
 | ($given | with_entries(select(.value != "" and .value != []))) as $options
@@ -53,6 +53,7 @@ usage() {
 	cat <<EOF
 usage: sh ${PROG} choose --effort FOLDER --seat S --role builder --repo DIR --base SHA
            [--base-seat S]...
+       sh ${PROG} join --effort FOLDER --seat S --build-seat S
        sh ${PROG} opened --effort FOLDER --seat S --branch NAME
        sh ${PROG} drop --effort FOLDER --seat S
        sh ${PROG} bind --effort FOLDER --seat S --agent-id ID --dispatch ID
@@ -69,44 +70,47 @@ usage: sh ${PROG} choose --effort FOLDER --seat S --role builder --repo DIR --ba
 
 Keeps an effort's seat list as seat.* events: a change is one event,
 appended under the events lock only when the list after it fits the
-contract; a refused change writes no event, only one fault per problem in
-the ${CRUCIBLE_SKILL} skill's rejection log (events.sh). A seat's
-build.committed makes it idle. Reads check the list's shape, not the rules
-a change meets. Nothing else is left behind (a SIGKILL aside).
+contract; a refused one writes only a fault per problem (events.sh). A
+seat's result (build.committed, test-plan.made, test.committed) makes it
+idle. Reads check shape only. Nothing else is left (a SIGKILL aside).
 
 --effort FOLDER   the effort folder, absolute
 --seat S          the seat, like build-agent-alpha
 --role builder    choose: the seat's role
---repo DIR        choose: the repository's main checkout, absolute
+--build-seat S    join: the tester's build seat
+--repo DIR        choose: the repo's checkout, absolute
 --base SHA        choose, move: the commit the worktree starts from
 --base-seat S     choose: a seat the new one is cut from; repeatable
 --branch NAME     opened: the branch the worktree was cut on
 --agent-id ID     bind, find: Claude Code's agent id
 --dispatch ID     bind: the dispatch that seated the agent
---status STATUS   status: working, idle or gave-up
---from-head SHA   move: the worktree's HEAD before the move, for the record
---follows NAME    move: the name the new base was taken from, for the record
---task TEXT       task: the new work, made one line, for the record
---card            find: also print its line (below)
+--from-head SHA   move: the worktree's HEAD before it (a record)
+--follows NAME    move: where the new base was taken from (a record)
+--task TEXT       task: the new work, made one line (a record)
+--card            find: also print its line
 
 choose    a new seat, status chosen, worktree
           <effort, symlinks resolved>/worktrees/<letter>
-opened    sets a chosen seat open, once its worktree exists
-drop      removes a chosen seat
-bind      seats an agent on an open seat: working; the same agent and
-          dispatch again changes nothing
+join      a tester seat, open, sharing --build-seat's worktree, repo and
+          base (not chosen, of its letter, no tester yet)
+opened    sets a chosen seat open once its worktree exists
+drop      removes a chosen seat or a never-bound tester
+bind      seats an agent on an open seat: working (the same agent and
+          dispatch again: no change)
 status    sets the status of a bound seat
-handover  frees a bound seat: the agent goes to previous_agent_ids, open
-move      sets the base of a seat neither chosen nor working; base_seats go
-task      gives an idle seat's bound agent new work: working
+handover  frees a bound seat: its agent to previous_agent_ids; open
+move      sets a build seat's base (its tester's too), not while chosen
+          or while it or its tester works; base_seats go
+task      gives an idle seat's agent new work: working
+bind, status working, task: refused while the seat's pair is working or
+gave-up (one agent per worktree)
 
-stdout of get and find: the seat, one JSON line; of list: {effort, seats},
-  one JSON line. A seat's keys: seat, role, mode, status (chosen, open,
-  working, idle, gave-up), agent_id and dispatch (none while chosen or
-  open), previous_agent_ids, worktree, repo, base, base_seats; an empty key
-  is left out. Their rules: seats.jq
-then, with find --card, show.sh prints (owed this session, for --effort)
-  views/lines.jq's report_gave_up (gave-up) or run_not_committed (working)
+stdout, one JSON line, of get and find: the seat; of list: {effort,
+  seats}. A seat's keys (status: chosen, open, working, idle, gave-up;
+  agent_id and dispatch none while chosen or open; a tester's
+  build_seat) and their rules: seats.jq; an empty key is left out
+then, with find --card, show.sh prints (owed this session) views/lines.jq's
+  report_gave_up (gave-up) or run_not_committed (working)
 stdout of busy: "seat<TAB>status" per seat working or gave-up
 stderr on exits 3, 5 and 6: one line per problem, at most ${MAX_PROBLEMS}
 
@@ -117,17 +121,13 @@ in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${CRUCIBLE_SKILL}/scripts; --card
 exit codes:
   0  done; a change prints nothing
   2  wrong command line; fix what stderr names
-  3  invalid input or seat list, nothing changed; show the human stderr,
-     and stop
-  4  a dependency is missing or failed (also show.sh after find --card's
-     seat); show the human stderr, and stop
-  5  refused by the seat's state, nothing changed; show the human stderr,
-     and stop
-  6  no such seat (find: no seat holds ID); pass it on, else show the human
-     stderr, and stop
-  7  the events lock is busy past ${LOCK_WAIT_SECONDS}s; rerun once, else show the
-     human stderr, and stop
+  3  invalid input or seat list, nothing changed
+  4  a dependency (show.sh too) is missing or failed
+  5  refused by the seat's state, nothing changed
+  6  no such seat (find: no seat holds ID); pass it on
+  7  the events lock is busy past ${LOCK_WAIT_SECONDS}s; rerun once
   8  busy found open work; stdout names it (any other exit is a failed read)
+  3 to 7: else show the human stderr and stop
 EOF
 }
 
@@ -155,6 +155,7 @@ printable() {
 command_options() {
 	case $1 in
 		choose) printf -- '--effort --seat --role --repo --base --base-seat' ;;
+		join) printf -- '--effort --seat --build-seat' ;;
 		opened) printf -- '--effort --seat --branch' ;;
 		move) printf -- '--effort --seat --base --from-head --follows' ;;
 		task) printf -- '--effort --seat --task' ;;
@@ -196,7 +197,7 @@ parse_args() {
 			exit 0
 			;;
 		'') usage_error "command missing; expected one of ${COMMANDS}" ;;
-		choose | opened | drop | bind | status | handover | move | task | get | find | busy | list) command=$1 ;;
+		choose | join | opened | drop | bind | status | handover | move | task | get | find | busy | list) command=$1 ;;
 		*)
 			shown_command=$(printable "$1")
 			usage_error "unknown command: ${shown_command}; expected one of ${COMMANDS}"
@@ -205,7 +206,7 @@ parse_args() {
 	shift
 	allowed=$(command_options "${command}")
 	effort_folder='' seat='' role='' repo='' base='' agent_id='' dispatch='' status=''
-	branch='' from_head='' follows='' task='' card=''
+	build_seat='' branch='' from_head='' follows='' task='' card=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -238,6 +239,10 @@ parse_args() {
 			--base)
 				take_value "$1" "${base}" "${2-}"
 				base=${option_value}
+				;;
+			--build-seat)
+				take_value "$1" "${build_seat}" "${2-}"
+				build_seat=${option_value}
 				;;
 			--base-seat)
 				# run_command reads each value from the command line, in order.
@@ -294,6 +299,7 @@ require_options() {
 			require --repo "${repo}" DIR
 			require --base "${base}" SHA
 			;;
+		join) require --build-seat "${build_seat}" S ;;
 		bind)
 			require --agent-id "${agent_id}" ID
 			require --dispatch "${dispatch}" ID
@@ -372,7 +378,7 @@ read_seats() {
 	events_json=$(sh "${events_script}" slurp --effort "${effort_folder}" </dev/null) ||
 		die 4 "events.sh slurp failed for ${shown_effort} (its stderr is above); expected the effort's events"
 	current=$(printf '%s\n' "${events_json}" | jq -c -L "${own_dir}" --arg effort "${effort}" \
-		'include "seats-events"; [.[] | select((.type | startswith("seat.")) or .type == "build.committed")] | seats_fold($effort)') ||
+		'include "seats-events"; [.[] | select((.type | startswith("seat.")) or (.type | IN(seats_result_types[])))] | seats_fold($effort)') ||
 		die 4 "jq failed replaying the seat events; expected jq 1.6+ and seats-events.jq beside ${PROG}"
 	seat_count=$(printf '%s\n' "${current}" | jq '.seats | length') ||
 		die 4 'jq failed counting the seats; expected jq 1.6+'
@@ -413,7 +419,7 @@ run_command() {
 		--arg command "${command}" --arg effort "${effort}" --arg seats_dir "${physical_dir}" --argjson max "${MAX_PROBLEMS}" \
 		--arg seat "${seat}" --arg role "${role}" --arg repo "${repo}" \
 		--arg base "${base}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
-		--arg status "${status}" --arg branch "${branch}" --arg from_head "${from_head}" \
+		--arg status "${status}" --arg build_seat "${build_seat}" --arg branch "${branch}" --arg from_head "${from_head}" \
 		--arg follows "${follows}" --arg task_text "${task}" "$@" "${RUN_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and prune.jq in ${shown_lib_dir}"
 }

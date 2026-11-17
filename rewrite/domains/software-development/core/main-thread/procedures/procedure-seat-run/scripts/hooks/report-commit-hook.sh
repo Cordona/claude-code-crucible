@@ -1,18 +1,21 @@
 #!/usr/bin/env sh
-# Claude Code's SubagentStop hook for an effort's builders. It finds the
-# stopping agent's working seat, checks the agent's report draft and, when
-# the report fits, commits the worktree's changes as the seat's next
-# iteration, as the effort's identity, pushes the worktree's branch when the
-# effort's settings ask for it, and records the report as one
-# build.committed event, which also sets the seat idle. A commit that
-# finishes a merge is also a seat.conflicts.resolved event.
+# Claude Code's SubagentStop hook for an effort's builders and testers. It
+# finds the stopping agent's working seat, checks the agent's report draft
+# and, when the report fits, commits the worktree's changes (a builder's as
+# the seat's next iteration, a tester's in its build seat's current one), as
+# the effort's identity, pushes the worktree's branch when the effort's
+# settings ask for it, and records the report as one build.committed or
+# test.committed event, which also sets the seat idle. A tester's plan draft
+# commits nothing: it is checked and recorded as one test-plan.made event.
+# A commit that finishes a merge is also a seat.conflicts.resolved event.
 # The draft is renamed to report.committing.json while it is committed, so a
 # run that dies part way is finished or undone by the next one. A report
 # that does not fit blocks the stop with the checker's lines, MAX_BLOCKS
 # times at most, each block a stop.blocked event, which block-relay-hook.sh
-# reads. A change to a test file or test data, which only the shell could
+# reads. A change outside the role's write scope (a builder's to a test file
+# or test data, a tester's to any other file), which only the shell could
 # have made past pre-tool-hook.sh, blocks it the same way, naming the files,
-# so it is never committed. A fault allows the stop and is a fault.raised
+# so it is never committed; so does a tester's open mutation copy. A fault allows the stop and is a fault.raised
 # event: a failing hook must never hold an agent. Every child's stdout is
 # captured, so stdout carries only the block decision.
 set -eu
@@ -25,20 +28,34 @@ readonly MAX_BLOCKS=2
 readonly BLOCK_LEAD='Your stop is blocked: fix your report, then stop again.'
 readonly MERGE_BLOCK_LEAD='Your stop is blocked: finish the merge, then stop again.'
 readonly SCOPE_BLOCK_LEAD='Your stop is blocked: undo your test-file changes, then stop again.'
+readonly TESTER_SCOPE_BLOCK_LEAD='Your stop is blocked: undo your production-file changes, then stop again.'
+readonly MUTATION_BLOCK_LEAD='Your stop is blocked: remove your mutation copy, then stop again.'
+readonly PLAN_BLOCK_LEAD='Your stop is blocked: fix your plan, then stop again.'
+readonly PLAN_CHANGES_BLOCK_LEAD='Your stop is blocked: undo your worktree changes, then stop again.'
+readonly DRAFT_BLOCK_LEAD='Your stop is blocked: leave exactly one draft, then stop again.'
 readonly REPORT_FILE='report.json'
+readonly PLAN_FILE='test-plan.json'
 readonly COMMITTING_FILE='report.committing.json'
-# From this folder to the report checker of the code-builder agent's skill.
+# From this folder to the report checker of the code-builder agent's skill,
+# which checks a tester's report too, with --kind test.
 readonly CHECKER_DIR='../../../../../agents/code-builder/skills/standard-code-build-report/scripts'
 readonly CHECKER='build-report-check.sh'
 readonly PRUNER='build-report-prune.sh'
+# From this folder to the plan checker of the code-tester agent's skill.
+readonly PLAN_CHECKER_DIR='../../../../../agents/code-tester/skills/standard-code-test-report/scripts'
+readonly PLAN_CHECKER='test-plan-check.sh'
 # From this folder to the effort settings' reader.
 readonly SETTINGS='../../../procedure-git-setup/scripts/settings.sh'
 readonly CRUCIBLE_SKILL='crucible'
-# From this folder to the rule that names the builder's changed test files.
+# From this folder to the rule that names the builder's changed test files,
+# the tester's changed production files, and the tester's open mutation copy.
 readonly SCOPE_RULE='rules/stop/builder-write-scope.sh'
+readonly TESTER_SCOPE_RULE='rules/stop/tester-write-scope.sh'
+readonly MUTATION_RULE='rules/stop/mutation-copy.sh'
 # A fault quotes at most this many bytes of a child's first stderr line.
 readonly MAX_QUOTE_BYTES=200
-# A block for files still holding conflict markers names at most this many.
+# A block for files still holding conflict markers, or for a plan stop's
+# changed files, names at most this many.
 readonly MAX_MARKED_NAMED=20
 # Claude Code stops this hook after HOOK_LIMIT seconds (its settings.json
 # timeout). The push gets what is left but PUSH_MARGIN, kept for recording
@@ -60,12 +77,12 @@ GIT_OPTIONAL_LOCKS=0
 GIT_TERMINAL_PROMPT=0
 export GIT_OPTIONAL_LOCKS GIT_TERMINAL_PROMPT
 
-# The blocks of agent $agent since its seat's last build.committed or its
-# own last stop.gave-up. Input: every event.
+# The blocks of agent $agent since its seat's last result event (of
+# $cut_types) or its own last stop.gave-up. Input: every event.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly BLOCKS_JQ='. as $all
 | ([range(length) | select($all[.] as $e
-	| $e.type == "build.committed" and $e.seat == $seat
+	| ($e.type | IN($cut_types[])) and $e.seat == $seat
 	  or ($e.type == "stop.gave-up" and $e.body.agent_id == $agent))] | last) as $cut
 | $all[(if $cut == null then 0 else $cut + 1 end):]
 | map(select(.type == "stop.blocked" and .body.agent_id == $agent)) | length'
@@ -75,15 +92,15 @@ usage() {
 usage: sh ${PROG}
        sh ${PROG} --help | -h
 
-Claude Code's SubagentStop hook for effort builders. Reads the event JSON
-on stdin (agent_id, session_id); finds the agent's seat with events.sh
-find-agent and seats.sh get. Only a working builder seat that holds the
-agent goes on; every other stop goes ahead.
+Claude Code's SubagentStop hook for effort builders and testers. Reads the
+event JSON on stdin (agent_id, session_id); finds the agent's seat with
+events.sh find-agent and seats.sh get. Only a working builder or tester
+seat that holds the agent goes on; every other stop goes ahead.
 
 The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
 (iteration.sh's REPORT); C is ${COMMITTING_FILE} beside it.
   1 recover  C left by a run that died: an event whose draft is C's
-             sha256 exists: C goes; a crucible(build) commit of the
+             sha256 exists: C goes; a crucible(<kind>) commit of the
              seat on its branch that no event's commit holds: its event is
              written from C (step 6), C goes, and with no D the stop goes
              ahead; else C moves back to D (a D already there is kept)
@@ -94,7 +111,8 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
              finds no changed test file (a misfit naming them); a misfit appends
              stop.blocked {seat, agent_id, hook_event, block, reason} and
              blocks; the misfit after ${MAX_BLOCKS} blocks of this agent since its
-             seat's last build.committed or its last stop.gave-up
+             seat's last result (build.committed; a tester's plan or
+             test event) or its last stop.gave-up
              appends stop.gave-up and sets the seat gave-up
   3 rename   D to C
   4 stage    the worktree's changes, .gitignore applied; none and no
@@ -108,17 +126,25 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
              iteration: the commit's Iteration with its Agent-Seat, else
              the seat's current one; then C goes; a commit with two
              parents then appends seat.conflicts.resolved {seat, with (the
-             second parent), conflicts (the paths git merge-tree finds
-             conflicting between the parents), commit}, same iteration
+             second parent), conflicts (git merge-tree's conflicting
+             paths), commit}, same iteration
 
-The hook_event is the cksum of the event JSON, the same for every hook
-Claude Code gives that event. stop.* and the seat's faults carry the
-seat's current iteration: iteration.sh's ITERATION less one, none when
-that is 0. Every fault, a commit made
-unsigned and a failed or skipped push included, is a fault.raised by
-events.sh fault {seat, agent_id, hook_event, what}, on stderr before the
-effort is known or when it can't be written. Nothing is read or moved
-through a symbolic link at the draft or a folder from the effort to it.
+A tester, after step 1: P (${PLAN_FILE} beside D) alone is checked
+(pruned, ${PLAN_CHECKER}, no mutation copy, no worktree change) and
+recorded as test-plan.made {P; seat, dispatch, commit null, draft}; P
+goes, no commit. D alone: steps 2 to 6 with ${CHECKER} --kind test,
+${TESTER_SCOPE_RULE##*/}, no mutation copy; a crucible(test) commit pushed
+--seat its build seat; test.committed + test_plan (its newest
+test-plan.made's seq). Both or neither: a misfit.
+
+The hook_event is the event JSON's cksum, the same for every hook of that
+event. stop.* and the seat's faults carry the seat's current iteration:
+iteration.sh's ITERATION less one (a tester's whole), none when 0. Every
+fault, an unsigned commit and a failed or skipped push included, is a
+fault.raised by events.sh fault {seat, agent_id, hook_event, what}, on
+stderr before the effort is known or when it can't be written. Nothing is
+read or moved through a symbolic link at the draft or a folder from the
+effort to it.
 
 stdout: {"decision":"block","reason":"<text>"} to block the stop; nothing
 to let it go ahead.
@@ -129,11 +155,11 @@ exit codes:
 
 needs: POSIX sh, jq 1.6+, git 2.38+, cksum, sha256sum or shasum;
 ../seats/seats.sh and ../seats/iteration.sh from this script's folder;
-procedure-git-worktree's commit/commit-input.sh, commit/commit-message.sh,
-commit/commit.sh and push/push.sh and procedure-git-setup's settings.sh
-beside procedure-seat-run; ${SCOPE_RULE} from this script's folder;
-${PRUNER} and ${CHECKER} at ${CHECKER_DIR};
-the ${CRUCIBLE_SKILL} skill's events.sh
+procedure-git-worktree's commit/{commit-input,commit-message,commit}.sh
+and push/push.sh and procedure-git-setup's settings.sh
+beside procedure-seat-run; ${SCOPE_RULE%/*}/ from this script's folder;
+${PRUNER} and ${CHECKER} (code-builder's report skill), ${PLAN_CHECKER}
+(code-tester's); the ${CRUCIBLE_SKILL} skill's events.sh
 EOF
 }
 
@@ -312,16 +338,16 @@ find_seat() {
 	esac
 }
 
-# Sets role, status, worktree, base, dispatch and bound_agent from seats.sh
-# get.
+# Sets role, status, worktree, base, dispatch, bound_agent and build_seat
+# from seats.sh get.
 read_seat() {
 	run sh "${own_dir}/../seats/seats.sh" get --effort "${effort}" --seat "${seat}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh get'
 	fields=$(printf '%s\n' "${child_out}" |
-		jq -r '.role // "", .status // "", .worktree // "", .base // "", .dispatch // "", .agent_id // ""') ||
+		jq -r '.role // "", .status // "", .worktree // "", .base // "", .dispatch // "", .agent_id // "", .build_seat // ""') ||
 		fault 'jq could not read the seat seats.sh get printed'
 	# $( ) drops trailing empty lines, so a read past them finds the end: empty.
-	role='' status='' worktree='' base='' dispatch='' bound_agent=''
+	role='' status='' worktree='' base='' dispatch='' bound_agent='' build_seat=''
 	{
 		IFS= read -r role || :
 		IFS= read -r status || :
@@ -329,9 +355,22 @@ read_seat() {
 		IFS= read -r base || :
 		IFS= read -r dispatch || :
 		IFS= read -r bound_agent || :
+		IFS= read -r build_seat || :
 	} <<EOF
 ${fields}
 EOF
+}
+
+# Sets what differs by role: the result event types, the commit subject,
+# the write scope rule and its block lead, and the seat a push names.
+set_role() {
+	if [ "${role}" = tester ]; then
+		commit_type=test.committed commit_subject='crucible(test): ' cut_types='["test-plan.made","test.committed"]'
+		scope_rule=${TESTER_SCOPE_RULE} scope_lead=${TESTER_SCOPE_BLOCK_LEAD} push_seat=${build_seat}
+	else
+		commit_type=build.committed commit_subject='crucible(build): ' cut_types='["build.committed"]'
+		scope_rule=${SCOPE_RULE} scope_lead=${SCOPE_BLOCK_LEAD} push_seat=${seat}
+	fi
 }
 
 # Sets checker and pruner to their physical paths; the tree may be
@@ -345,6 +384,14 @@ find_checker() {
 	[ -f "${pruner}" ] || fault "${pruner} is missing; expected the code-builder agent's report skill"
 }
 
+# Sets plan_checker to its physical path.
+find_plan_checker() {
+	plan_checker_dir=$(cd -P -- "${own_dir}/${PLAN_CHECKER_DIR}" 2>/dev/null && pwd -P) ||
+		fault "the plan checker's folder ${PLAN_CHECKER_DIR} is not beside ${own_dir}; expected the software-development tree installed whole"
+	plan_checker="${plan_checker_dir}/${PLAN_CHECKER}"
+	[ -f "${plan_checker}" ] || fault "${plan_checker} is missing; expected the code-tester agent's report skill"
+}
+
 # Sets report, committing and iteration from iteration.sh, and stamp, the
 # seat's current iteration.
 read_iteration() {
@@ -353,8 +400,10 @@ read_iteration() {
 	run sh "${own_dir}/../seats/iteration.sh" --effort "${effort}" --seat "${seat}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'iteration.sh'
 	report=$(printf '%s\n' "${child_out}" | sed -n 's/^REPORT: //p')
+	plan=$(printf '%s\n' "${child_out}" | sed -n 's/^PLAN: //p')
 	iteration=$(printf '%s\n' "${child_out}" | sed -n 's/^ITERATION: //p')
 	[ -n "${report}" ] || fault 'iteration.sh printed no REPORT line'
+	[ "${role}" != tester ] || [ -n "${plan}" ] || fault 'iteration.sh printed no PLAN line for a tester seat'
 	case ${iteration} in
 		'' | *[!0-9]*)
 			shown_iteration=$(printable "${iteration}")
@@ -363,7 +412,10 @@ read_iteration() {
 		*) ;;
 	esac
 	committing="${report%/*}/${COMMITTING_FILE}"
+	# A builder's ITERATION is the one its next commit opens; a tester's is
+	# its build seat's current one, which it joins.
 	current=$((iteration - 1))
+	[ "${role}" != tester ] || current=${iteration}
 	[ "${current}" -lt 1 ] || stamp="${seat}:${current}"
 	shown_report=$(printable "${report}")
 	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
@@ -372,6 +424,11 @@ read_iteration() {
 	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
 	no_link_below "${effort}" "${committing}" ||
 		fault "${shown_report%/*}/${COMMITTING_FILE} is a symbolic link; expected a real file or none"
+	[ -n "${plan}" ] || return 0
+	shown_plan=$(printable "${plan}")
+	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
+	no_link_below "${effort}" "${plan}" ||
+		fault "the plan draft ${shown_plan} or a folder above it is a symbolic link; expected real files in the effort's drafts"
 }
 
 # Succeeds when neither file $2 nor a folder between folder $1 and it is a
@@ -407,16 +464,21 @@ no_link_below() {
 
 # Sets draft to the sha256 of the committing file.
 hash_committing() {
+	hash_file "${committing}"
+}
+
+# Sets draft to the sha256 of file $1.
+hash_file() {
 	if command -v sha256sum >/dev/null 2>&1; then
-		draft=$(sha256sum <"${committing}" 2>/dev/null | cut -d ' ' -f 1) || draft=''
+		draft=$(sha256sum <"$1" 2>/dev/null | cut -d ' ' -f 1) || draft=''
 	else
-		draft=$(shasum -a 256 <"${committing}" 2>/dev/null | cut -d ' ' -f 1) || draft=''
+		draft=$(shasum -a 256 <"$1" 2>/dev/null | cut -d ' ' -f 1) || draft=''
 	fi
 	case ${draft} in
-		*[!0-9a-f]* | '') fault "could not hash ${committing}; expected sha256sum or shasum on PATH" ;;
+		*[!0-9a-f]* | '') fault "could not hash $1; expected sha256sum or shasum on PATH" ;;
 		*) ;;
 	esac
-	[ "${#draft}" -eq 64 ] || fault "the sha256 of ${committing} is not 64 hex digits"
+	[ "${#draft}" -eq 64 ] || fault "the sha256 of $1 is not 64 hex digits"
 }
 
 # Sets events_json to every event of the effort, oldest first.
@@ -431,8 +493,8 @@ recover() {
 	[ -f "${committing}" ] || return 0
 	hash_committing
 	slurp_events
-	recorded=$(printf '%s\n' "${events_json}" | jq -r --arg draft "${draft}" \
-		'[.[] | select(.type == "build.committed" and .draft == $draft)] | length') ||
+	recorded=$(printf '%s\n' "${events_json}" | jq -r --arg draft "${draft}" --arg type "${commit_type}" \
+		'[.[] | select(.type == $type and .draft == $draft)] | length') ||
 		fault 'jq could not read the events events.sh slurp printed'
 	if [ "${recorded}" -gt 0 ]; then
 		rm -f -- "${committing}" || fault "could not remove ${committing}"
@@ -451,12 +513,12 @@ recover() {
 	fi
 }
 
-# Sets unrecorded_commit to the newest crucible(build) commit of the seat on
-# its branch that no event holds.
+# Sets unrecorded_commit to the newest commit of the seat on its branch, of
+# its role's subject, that no event holds.
 find_unrecorded_commit() {
 	unrecorded_commit=''
 	held=$(printf '%s\n' "${events_json}" |
-		jq -r '.[] | select(.type == "build.committed") | .commit | strings') ||
+		jq -r --arg type "${commit_type}" '.[] | select(.type == $type) | .commit | strings') ||
 		fault 'jq could not read the events events.sh slurp printed'
 	range=HEAD
 	[ -z "${base}" ] || range="${base}..HEAD"
@@ -466,7 +528,7 @@ find_unrecorded_commit() {
 	while IFS="${tab}" read -r commit_sha subject commit_seat; do
 		[ "${commit_seat}" = "${seat}" ] || continue
 		case ${subject} in
-			'crucible(build): '*) ;;
+			"${commit_subject}"*) ;;
 			*) continue ;;
 		esac
 		case "${newline}${held}${newline}" in
@@ -485,7 +547,9 @@ EOF
 check_report() {
 	run sh "${pruner}" --report "${report}" --apply
 	[ "${child_rc}" -eq 0 ] || child_fault "${PRUNER}"
-	run sh "${checker}" --report "${report}" --worktree "${worktree}"
+	set -- --report "${report}" --worktree "${worktree}"
+	[ "${role}" != tester ] || set -- "$@" --kind test
+	run sh "${checker}" "$@"
 	case ${child_rc} in
 		0) ;;
 		3)
@@ -514,18 +578,100 @@ check_merge_resolved() {
 	block_or_give_up "${MERGE_BLOCK_LEAD}"
 }
 
-# Blocks while the worktree holds a change to a test file or test data,
+# Blocks while the worktree holds a change outside the role's write scope,
 # merge-brought paths aside, with the rule's text: it names them, and only
-# the builder can undo them.
+# the agent can undo them.
 check_write_scope() {
-	run sh "${own_dir}/${SCOPE_RULE}" --worktree "${worktree}"
+	run sh "${own_dir}/${scope_rule}" --worktree "${worktree}"
 	case ${child_rc} in
 		0) return 0 ;;
 		3) ;;
-		*) child_fault "${SCOPE_RULE##*/}" ;;
+		*) child_fault "${scope_rule##*/}" ;;
 	esac
 	checker_text=$(printable "${child_out}")
-	block_or_give_up "${SCOPE_BLOCK_LEAD}"
+	block_or_give_up "${scope_lead}"
+}
+
+# Blocks a tester's stop while its mutation copy exists, with the rule's
+# text naming how to remove it.
+check_mutation_copy() {
+	run sh "${own_dir}/${MUTATION_RULE}" --effort "${effort}" --seat "${seat}"
+	case ${child_rc} in
+		0) return 0 ;;
+		3) ;;
+		*) child_fault "${MUTATION_RULE##*/}" ;;
+	esac
+	checker_text=$(printable "${child_out}")
+	block_or_give_up "${MUTATION_BLOCK_LEAD}"
+}
+
+# Sets stop_kind for a tester from its drafts: plan with the plan draft
+# alone, report with the report draft alone; blocks with both or neither.
+pick_stop() {
+	stop_kind=report
+	[ "${role}" = tester ] || return 0
+	has_plan=no has_report=no
+	[ ! -e "${plan}" ] || has_plan=yes
+	[ ! -e "${report}" ] || has_report=yes
+	shown_plan=$(printable "${plan}")
+	case ${has_plan}:${has_report} in
+		yes:no) stop_kind=plan ;;
+		no:yes) ;;
+		yes:yes)
+			checker_text="Both ${shown_plan} and ${shown_report} are there: a plan stop has the plan draft alone, a test stop the report draft alone; remove the one this stop is not for."
+			block_or_give_up "${DRAFT_BLOCK_LEAD}"
+			;;
+		*)
+			checker_text="Neither ${shown_plan} nor ${shown_report} is there: write your plan to the first (planning) or your report to the second (testing)."
+			block_or_give_up "${DRAFT_BLOCK_LEAD}"
+			;;
+	esac
+}
+
+# A tester's plan stop: checks the plan draft, records it as test-plan.made
+# and removes it; commits nothing.
+plan_stop() {
+	find_plan_checker
+	run sh "${pruner}" --report "${plan}" --apply
+	[ "${child_rc}" -eq 0 ] || child_fault "${PRUNER}"
+	run sh "${plan_checker}" --report "${plan}" --worktree "${worktree}"
+	case ${child_rc} in
+		0) ;;
+		3)
+			checker_text=$(cat "${work_dir}/stderr" 2>/dev/null) || checker_text=''
+			block_or_give_up "${PLAN_BLOCK_LEAD}"
+			;;
+		*) child_fault "${PLAN_CHECKER}" ;;
+	esac
+	check_mutation_copy
+	check_unchanged
+	record_plan
+}
+
+# Blocks a plan stop while the worktree holds any change: planning writes no
+# file there.
+check_unchanged() {
+	run git -c core.fsmonitor=false -C "${worktree}" status --porcelain --untracked-files=all --ignore-submodules=none
+	[ "${child_rc}" -eq 0 ] || child_fault 'git status'
+	[ -n "${child_out}" ] || return 0
+	joined=$(printf '%s\n' "${child_out}" | cut -c 4- | head -n "${MAX_MARKED_NAMED}" | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+	shown_paths=$(printable "${joined}")
+	checker_text="These files changed in the worktree: ${shown_paths}. A plan writes no file there: remove each file your runs made and undo each change."
+	block_or_give_up "${PLAN_CHANGES_BLOCK_LEAD}"
+}
+
+# Records the plan draft as test-plan.made, then removes it.
+record_plan() {
+	hash_file "${plan}"
+	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg draft "${draft}" \
+		'{seat: $seat, dispatch: $dispatch, commit: null, draft: $draft}') ||
+		fault 'jq could not build the event facts'
+	set -- --type test-plan.made --body-file "${plan}" --facts "${facts}"
+	[ -z "${stamp}" ] || set -- "$@" --iteration "${stamp}"
+	append "$@"
+	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
+	rm -f -- "${plan}" || fault "could not remove ${plan} after recording it"
+	allow
 }
 
 # Counts this misfit, checker_text saying what is wrong after lead $1;
@@ -534,7 +680,7 @@ check_write_scope() {
 # agent is never held uncounted.
 block_or_give_up() {
 	slurp_events
-	blocks=$(printf '%s\n' "${events_json}" | jq -r --arg seat "${seat}" --arg agent "${agent_id}" "${BLOCKS_JQ}") ||
+	blocks=$(printf '%s\n' "${events_json}" | jq -r --arg seat "${seat}" --arg agent "${agent_id}" --argjson cut_types "${cut_types}" "${BLOCKS_JQ}") ||
 		fault 'jq could not count the blocks in the events events.sh slurp printed'
 	blocks=$((blocks + 1))
 	[ "${blocks}" -le "${MAX_BLOCKS}" ] || give_up
@@ -674,15 +820,15 @@ push_branch() {
 		log_fault "push.sh skipped: ${push_seconds} s left of the hook's ${HOOK_LIMIT} s after a ${PUSH_MARGIN} s margin; expected at least ${MIN_PUSH_SECONDS} s"
 		return 0
 	fi
-	set -- --worktree "${worktree}" --remote "${remote}" --effort "${effort}" --seat "${seat}" --timeout "${push_seconds}"
+	set -- --worktree "${worktree}" --remote "${remote}" --effort "${effort}" --seat "${push_seat}" --timeout "${push_seconds}"
 	[ -z "${session_id}" ] || set -- "$@" --session "${session_id}"
 	run sh "${own_dir}/../../../procedure-git-worktree/scripts/push/push.sh" "$@"
 	[ "${child_rc}" -eq 0 ] || log_child_fault 'push.sh'
 }
 
-# Step 6: records the committing file as the build.committed event of commit
-# $1 (empty: none), then removes the file. A record that fails keeps the
-# file, so the next run's recovery writes it.
+# Step 6: records the committing file as the build.committed (a tester's
+# test.committed) event of commit $1 (empty: none), then removes the file. A
+# record that fails keeps the file, so the next run's recovery writes it.
 record() {
 	recorded_commit=$1
 	[ -n "${draft}" ] || hash_committing
@@ -691,12 +837,22 @@ record() {
 	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "${recorded_commit}" --arg draft "${draft}" \
 		'{seat: $seat, dispatch: $dispatch, commit: (if $commit == "" then null else $commit end), draft: $draft}') ||
 		fault 'jq could not build the event facts'
-	set -- --type build.committed --body-file "${committing}" --facts "${facts}"
+	[ "${role}" != tester ] || add_test_plan
+	set -- --type "${commit_type}" --body-file "${committing}" --facts "${facts}"
 	[ -z "${event_stamp}" ] || set -- "$@" --iteration "${event_stamp}"
 	append "$@"
 	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
 	rm -f -- "${committing}" || fault "could not remove ${committing} after recording it"
 	[ -z "${recorded_commit}" ] || record_resolution "${recorded_commit}"
+}
+
+# Adds to facts test_plan, the seq of the seat's newest test-plan.made, the
+# plan these tests came from; null when there is none.
+add_test_plan() {
+	slurp_events
+	facts=$(printf '%s\n' "${events_json}" | jq -c --arg seat "${seat}" --argjson facts "${facts}" \
+		'$facts + {test_plan: ([.[] | select(.type == "test-plan.made" and .seat == $seat)] | last | .seq // null)}') ||
+		fault 'jq could not read the events events.sh slurp printed'
 }
 
 # Appends seat.conflicts.resolved when commit $1 is a merge of two parents;
@@ -770,7 +926,7 @@ on_exit() {
 }
 
 started_seconds=$(date '+%s' 2>/dev/null) || started_seconds=''
-work_dir='' usage_failed=no effort='' seat='' agent_id='' session_id='' event_id='' stamp='' draft=''
+work_dir='' usage_failed=no effort='' seat='' agent_id='' session_id='' event_id='' stamp='' draft='' plan=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -792,16 +948,23 @@ read_event
 find_events_script
 find_seat
 read_seat
-[ "${role}" = builder ] || allow
+case ${role} in
+	builder | tester) ;;
+	*) allow ;;
+esac
 [ "${bound_agent}" = "${agent_id}" ] || allow
 # Only a working seat's stop is checked; nobody woke an idle or gave-up seat.
 [ "${status}" = working ] || allow
+set_role
 find_checker
 read_iteration
 recover
+pick_stop
+[ "${stop_kind}" != plan ] || plan_stop
 check_report
 check_merge_resolved
 check_write_scope
+[ "${role}" != tester ] || check_mutation_copy
 rename_report
 commit_work
 record "${new_commit}"

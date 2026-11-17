@@ -17,11 +17,13 @@
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
 #                "standards": [{"name": "standard-<n>", ...}, ...],
 #                "procedures": [{"name": "procedure-<n>", ...}, ...]},
-#    "reseat_of", "continue_from", "notes": [str, ...]}
+#    "reseat_of", "continue_from", "notes": [str, ...], "test_plan"}
 # context is the context.cut event the dispatch pins, plan the plan.made
-# event it was approved as, each by its seq. A re-seat holds all three last
-# keys: reseat_of the seq of the dispatch.made it repeats, continue_from the
-# worktree's HEAD commit, notes its lines for the agent (left out when none).
+# event it was approved as, each by its seq. A re-seat holds reseat_of, the
+# seq of the dispatch.made it repeats, and continue_from, the worktree's HEAD
+# commit; notes are its lines for the agent (left out when none); test_plan,
+# only on a code-tester re-seat that writes tests, is the seq of the
+# test-plan.made it writes them from.
 # seat names a seat of the effort; the seat holds the mode and the worktree.
 # The plugin rules: frameworks need a language; a name starts with its kind's
 # prefix and is listed once; a code-reviewer dispatch holds one lens: the
@@ -32,9 +34,10 @@ include "dispatch-names" {search: "./"};
 
 # The agents are dispatch-names.jq's dispatched_agents.
 def lens_agent: "code-reviewer";
-def top_keys: ["id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins", "reseat_of", "continue_from", "notes"];
+def test_plan_agent: "code-tester";
+def top_keys: ["id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins", "reseat_of", "continue_from", "notes", "test_plan"];
 # The keys left out when they hold nothing; every other key is required.
-def optional_keys: ["entry_points", "plugins", "reseat_of", "continue_from", "notes"];
+def optional_keys: ["entry_points", "plugins", "reseat_of", "continue_from", "notes", "test_plan"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
 # The name prefix of each plugins kind.
 def kind_prefixes: {language: "language-", frameworks: "framework-", standards: "standard-", procedures: "procedure-"};
@@ -90,9 +93,10 @@ def context_problems:
 		  (if .path | absolute_path then empty else problem(["context", "path"]; " "; "is not an absolute path; expected the context.cut event's path") end)
 	end;
 
-# A re-seat holds reseat_of and continue_from together; notes only with them.
+# A re-seat holds reseat_of and continue_from together; notes and test_plan
+# only with them, test_plan only for test_plan_agent.
 def reseat_problems:
-	if has("reseat_of") or has("continue_from") or has("notes") then
+	if has("reseat_of") or has("continue_from") or has("notes") or has("test_plan") then
 		(if .reseat_of | seq_number then empty
 		 else problem(["reseat_of"]; " "; "is missing or not a whole number from 1; expected the seq of the dispatch.made a re-seat repeats") end),
 		(if .continue_from | commit_hex then empty
@@ -101,7 +105,14 @@ def reseat_problems:
 		 elif .notes | is_empty then empty_problem(["notes"])
 		 elif (.notes | type) != "array" then problem(["notes"]; " "; "is not an array; expected [line, ...]")
 		 else .notes | to_entries[] | select(.value | text_ok | not)
-			| problem(["notes", .key]; " "; "is not a non-empty string; expected a line for the agent") end)
+			| problem(["notes", .key]; " "; "is not a non-empty string; expected a line for the agent") end),
+		(if has("test_plan") | not then empty
+		 elif .test_plan | is_empty then empty_problem(["test_plan"])
+		 elif .test_plan | seq_number | not then
+			problem(["test_plan"]; " "; "is not a whole number from 1; expected the seq of the approved test-plan.made")
+		 elif .agent != test_plan_agent then
+			problem(["test_plan"]; " "; "is on a \(.agent | tostring) dispatch; expected it only on a \(test_plan_agent) re-seat")
+		 else empty end)
 	else empty end;
 
 # The problems of plugin entry . at path $at, a $kind entry.

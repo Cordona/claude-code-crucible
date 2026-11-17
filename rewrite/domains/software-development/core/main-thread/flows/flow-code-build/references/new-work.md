@@ -1,6 +1,6 @@
 # New work on a seat
 
-New work the human asks for on a seat that exists, after its last work was shown; a change to work already shown stays Changes. Its terms are SKILL.md's, and the task's send is `procedure-seat-run`'s New work.
+New work the human asks for on a seat that exists, after its last work was shown; a change to work already shown stays Changes, and a test ask is no new work: it goes to `flow-code-test` (SKILL.md Changes, tests). Its terms are SKILL.md's, and the task's send is `procedure-seat-run`'s New work.
 
 Copy its steps into the todo list, as SKILL.md's Steps do.
 

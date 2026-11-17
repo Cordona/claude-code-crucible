@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 # Prints the iteration a seat is working on, where its report draft goes and
 # the event of its newest recorded report and whether that report is done (the
-# one done test). The iteration is derived from git: the seat's next build is
-# 1 + its own build commits since its base. It reads only; with --checked it
-# also prints, for the human, that done state.
+# one done test). The iteration is derived from git: a build seat's next build
+# is 1 + its own build commits since its base; a tester seat works in its
+# build seat's current iteration and never opens one. It reads only; with
+# --checked it also prints, for the human, that done state.
 # shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../../../../../framework/core/engine/human-view/scripts/lib
 set -eu
 
@@ -24,8 +25,9 @@ usage() {
 usage: sh ${PROG} --effort FOLDER --seat S [--checked TASK]
        sh ${PROG} --help | -h
 
-Prints the iteration seat S is working on, its report draft's path, its
-newest recorded report and whether that report is done; reads only.
+Prints the iteration seat S is working on, its report draft's path (a
+tester's plan draft's too), its newest recorded report and whether that
+report is done; reads only.
 
 --effort FOLDER  the effort folder, absolute
 --seat S      a seat with a worktree; it may be open or bound, not chosen
@@ -33,7 +35,7 @@ newest recorded report and whether that report is done; reads only.
 --checked TASK
               also print the line checked_earlier for the seat's part TASK
 
-stdout, four lines:
+stdout of a build seat, four lines:
   ITERATION: <N>   1 + the crucible(build) commits in <base>..HEAD of the
                    worktree whose Agent-Seat trailer is S, the iteration its
                    next build commit opens
@@ -42,8 +44,24 @@ stdout, four lines:
                    the seat's newest build.committed event, absolute; none
                    when there is none
   LAST_REPORT_STATE: done | blocked
-                   done when LAST_REPORT's body lists no blockers, else
+                   done when LAST_REPORT's body lists no blockers, or only
+                   gate_red ones and its tester's (test-agent-<letter>)
+                   newest test.committed is later and lists none; else
                    blocked (also with none)
+stdout of a tester seat, five lines:
+  ITERATION: <N>   the crucible(build) commits in <base>..HEAD whose
+                   Agent-Seat trailer is its build seat: the build seat's
+                   current iteration, which a test commit joins
+  REPORT: <path>   <effort>/drafts/agents/<S>/report.json, the test report
+  PLAN: <path>     <effort>/drafts/agents/<S>/test-plan.json, the plan draft
+  LAST_REPORT: <path> | none
+                   the seat's newest test-plan.made or test.committed event
+  LAST_REPORT_STATE: planned | done | blocked
+                   planned when it is a test-plan.made with no blocker, done
+                   when a test.committed listing no blockers, or only
+                   production_bug ones and its build seat's newest
+                   build.committed is later and lists none; else blocked
+                   (also with none)
 with --checked, then the line checked_earlier (views/lines.jq) with that
   state, printed by human-view's show.sh and recorded as owed this session
   (CLAUDE_CODE_SESSION_ID) for --effort
@@ -53,12 +71,13 @@ exit codes:
   2  wrong command line: a missing, repeated or unknown option, or a
      missing value
   3  input: the effort, the seat, its worktree or its base does not fit,
-     or the seat is chosen;
+     the seat is chosen, or a tester's build seat has no build commit yet;
      one stderr line per problem (seats.sh's own lines first when it
      refused)
   4  environment: git, jq, seats.sh or events.sh missing or failed, or the
      report event unreadable (nothing printed); with --checked, also the
-     printer missing, or show.sh failed after the four lines (stderr says so)
+     printer missing, or show.sh failed after the four lines (a builder's)
+     or five (a tester's) (stderr says so)
 
 needs: POSIX sh, git 2.26+, jq 1.6+; seats.sh beside this script; the
 ${CRUCIBLE_SKILL} skill's events.sh; with --checked:
@@ -155,8 +174,8 @@ load_printer() {
 	card_load_printer lines || die 4 "${card_problem}"
 }
 
-# Sets worktree and base from seats.sh get, refusing a chosen seat;
-# seats.sh's own lines say why it refused.
+# Sets role, build_seat, worktree and base from seats.sh get, refusing a
+# chosen seat; seats.sh's own lines say why it refused.
 read_seat() {
 	seat_rc=0
 	seat_json=$(sh "${own_dir}/seats.sh" get --effort "${effort_folder}" --seat "${seat}") || seat_rc=$?
@@ -166,10 +185,12 @@ read_seat() {
 		2 | 3 | 6) die 3 "seats.sh get refused seat ${shown_seat} (exit ${seat_rc}); expected a seat of --effort" ;;
 		*) die 4 "seats.sh get failed (exit ${seat_rc})" ;;
 	esac
-	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .worktree // "", .base // ""') ||
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.role // "", .build_seat // "", .status // "", .worktree // "", .base // ""') ||
 		die 4 'jq could not read the seat seats.sh get printed'
-	status='' worktree='' base=''
+	role='' build_seat='' status='' worktree='' base=''
 	{
+		IFS= read -r role || :
+		IFS= read -r build_seat || :
 		IFS= read -r status || :
 		IFS= read -r worktree || :
 		IFS= read -r base || :
@@ -180,8 +201,8 @@ EOF
 	[ -n "${worktree}" ] || die 3 "seat ${shown_seat} has no worktree; expected a seat with a worktree"
 }
 
-# Sets iteration from the seat's own build commits in the worktree's
-# base..HEAD.
+# Sets iteration from the build commits in the worktree's base..HEAD: a build
+# seat's own plus one, a tester's build seat's, refused when none.
 count_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -d "${worktree}" ] || die 3 "seat ${shown_seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
@@ -190,36 +211,87 @@ count_iteration() {
 	build_lines=$(git -c core.fsmonitor=false -C "${worktree}" log \
 		--format='%s%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "${base}..HEAD") ||
 		die 4 "git log failed in ${shown_worktree}"
-	own_builds=0
+	building_seat=${seat}
+	[ "${role}" != tester ] || building_seat=${build_seat}
+	builds=0
 	tab=$(printf '\t')
 	while IFS= read -r line; do
 		case ${line} in
 			"crucible(build): "*) ;;
 			*) continue ;;
 		esac
-		[ "${line#*"${tab}"}" != "${seat}" ] || own_builds=$((own_builds + 1))
+		[ "${line#*"${tab}"}" != "${building_seat}" ] || builds=$((builds + 1))
 	done <<EOF
 ${build_lines}
 EOF
-	iteration=$((own_builds + 1))
+	if [ "${role}" != tester ]; then
+		iteration=$((builds + 1))
+		return 0
+	fi
+	shown_build_seat=$(printable "${building_seat}")
+	[ "${builds}" -gt 0 ] ||
+		die 3 "seat ${shown_seat}'s build seat ${shown_build_seat} has no build commit yet; expected a build to test"
+	iteration=${builds}
 }
 
-# Sets last_report to the seat's newest build.committed event.
+# Sets last_report to the seat's newest result event: a build seat's
+# build.committed, a tester's test-plan.made or test.committed.
 find_last_report() {
-	last_report=$(sh "${events_script}" latest --effort "${effort_folder}" --type build.committed \
-		--where ".seat == \"${seat}\"" </dev/null) ||
+	set -- --type build.committed --where ".seat == \"${seat}\""
+	[ "${role}" != tester ] ||
+		set -- --type 'test*' --where ".seat == \"${seat}\" and (.type == \"test-plan.made\" or .type == \"test.committed\")"
+	last_report=$(sh "${events_script}" latest --effort "${effort_folder}" "$@" </dev/null) ||
 		die 4 'events.sh latest failed (its stderr is above)'
 }
 
-# Sets report_state to done when the last report lists no blockers, else
-# blocked.
+# Sets report_state to done when the last report lists no blockers, planned
+# when it is a plan with no blocker, else blocked; a tester's tests that
+# found only production bugs are done once its build seat fixed them, and a
+# build that turned only existing tests red once its tester updated them.
 read_report_state() {
 	report_state=blocked
 	[ -n "${last_report}" ] || return 0
 	shown_report=$(printable "${last_report}")
-	report_done=$(jq -r '(.body.blockers // []) | length == 0' "${last_report}" </dev/null) ||
+	report_state=$(jq -r 'def only($kind): (.body.blockers | type) == "array"
+			and all(.body.blockers[]; type == "object" and .kind == $kind);
+		if .type == "test-plan.made" then (if .body.blocker == null then "planned" else "blocked" end)
+		elif (.body.blockers // []) | length == 0 then "done"
+		elif .type == "test.committed" and only("production_bug") then "bugs \(.seq)"
+		elif .type == "build.committed" and only("gate_red") then "reds \(.seq)"
+		else "blocked" end' "${last_report}" </dev/null) ||
 		die 4 "jq could not read the report event ${shown_report}"
-	[ "${report_done}" != true ] || report_state='done'
+	case ${report_state} in
+		"bugs "*) read_pair_fix_state build.committed "${build_seat}" "${report_state#bugs }" ;;
+		"reds "*)
+			name_tester_seat
+			read_pair_fix_state test.committed "${tester_seat}" "${report_state#reds }"
+			;;
+		*) ;;
+	esac
+}
+
+# Sets tester_seat to the build seat's tester: the tester prefix and its letter.
+name_tester_seat() {
+	tester_seat=$(jq -nr -L "${own_dir}" --arg seat "${seat}" \
+		'include "seats"; "\(seats_prefixes.tester)-\($seat | ltrimstr("\(seats_prefixes.builder)-"))"' </dev/null) ||
+		die 4 'jq could not name the tester seat; expected seats.jq beside this script'
+}
+
+# Sets report_state to done when the other seat of the pair, $2, has a newest
+# $1 event (build.committed or test.committed) that comes after the report
+# with seq $3 and lists no blockers, else blocked.
+read_pair_fix_state() {
+	report_state=blocked
+	pair_role=${1%%.*}
+	pair_where=$(jq -nr --arg seat "$2" '".seat == \($seat | tojson)"') ||
+		die 4 "jq could not quote the ${pair_role} seat"
+	last_fix=$(sh "${events_script}" latest --effort "${effort_folder}" --type "$1" --where "${pair_where}" </dev/null) ||
+		die 4 'events.sh latest failed (its stderr is above)'
+	[ -n "${last_fix}" ] || return 0
+	shown_fix=$(printable "${last_fix}")
+	report_state=$(jq -r --argjson reported "$3" \
+		'if .seq > $reported and ((.body.blockers // []) | length == 0) then "done" else "blocked" end' "${last_fix}" </dev/null) ||
+		die 4 "jq could not read the ${pair_role} event ${shown_fix}"
 }
 
 parse_args "$@"
@@ -230,9 +302,10 @@ find_last_report
 read_report_state
 printf 'ITERATION: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
 	"${iteration}" "${effort_folder}" "${seat}"
+[ "${role}" != tester ] || printf 'PLAN: %s/drafts/agents/%s/test-plan.json\n' "${effort_folder}" "${seat}"
 printf 'LAST_REPORT: %s\nLAST_REPORT_STATE: %s\n' "${last_report:-none}" "${report_state}"
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
 [ -z "${checked_task}" ] ||
 	hv_show_line "${card_show}" "${card_views}" checked_earlier "${effort_folder}" \
 		--arg state "${report_state}" --arg task "${checked_task}" ||
-	die 4 "${hv_render_problem}; the four lines are printed, the line checked_earlier not shown"
+	die 4 "${hv_render_problem}; the seat's lines are printed, the line checked_earlier not shown"

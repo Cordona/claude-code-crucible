@@ -1,5 +1,5 @@
-# The one place a builder or reviewer title and a seat's name for the human
-# are built; a caller passes the role word and never adds it itself.
+# The one place a build agent, test agent or reviewer title and a seat's name for the
+# human are built; a caller passes the role word and never adds it itself.
 
 # joined_labels
 #   input:  array of labels
@@ -11,7 +11,7 @@ def joined_labels:
 
 # title($role)
 #   input:  {language: label, frameworks: [labels]}, either key absent or null
-#   $role:  the role word, such as builder or reviewer
+#   $role:  the role word, such as build agent, test agent or reviewer
 #   output: "<language> <role>" with no framework; "<language> <role> with
 #           <frameworks>" with one or more; "Generic <role>" with no language
 def title($role):
@@ -56,6 +56,6 @@ def seat_display:
 # seat_title($role; $seat)
 #   input:  as title's
 #   output: title's, with $seat's letter right after the role word: "Rust
-#           builder Alpha", "Kotlin builder Alpha with Spring", "Generic
-#           builder Alpha"
+#           build agent Alpha", "Kotlin build agent Alpha with Spring",
+#           "Generic build agent Alpha"
 def seat_title($role; $seat): title("\($role) \($seat | seat_letter)");

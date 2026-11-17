@@ -1,6 +1,6 @@
 # Move and catch-up
 
-Read when `flow-code-build` points a seat at another commit for new work (a move), or brings a commit into a seat's branch to take in other work (a catch-up). The commit is any commit main picks: a branch it cut, the remote main, a release branch, another MR. Pass it by its name (a branch, a remote-tracking branch such as `origin/main`, a tag) or its sha, and never resolve it with git: the script resolves it in the seat's repository. A remote ref is fetched first, on the human's ask (Never). Treat a non-zero exit as a refusal (Always).
+Read when `flow-code-build` points a seat at another commit for new work (a move), or brings a commit into a seat's branch to take in other work (a catch-up). The commit is any commit main picks: a branch it cut, the remote main, a release branch, another MR. Pass it by its name (a branch, a remote-tracking branch such as `origin/main`, a tag) or its sha, and never resolve it with git: the script resolves it in the seat's repository. A remote ref is fetched first, on the human's ask (Never). Only a build seat moves or catches up: both scripts refuse a tester seat, and a build seat while its tester works in their shared worktree. Treat a non-zero exit as a refusal (Always).
 
 ## Move
 

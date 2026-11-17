@@ -13,7 +13,7 @@ Route by the token a stderr problem leads with, right after its `generate-agent-
 
 ## Step 10: hook denial
 
-The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-code-agent-dispatch:`, in the shape `prepare-agent-prompt.sh --help` sets. Route by the KIND word that starts each problem: `DISPATCH`, `AGENT`, `CONTEXT`, `CONTEXT-STALE`, `PLUGIN`, `SEAT`, `BACKGROUND` or `SKILL`, never by the text after it. Relay the reason to the human word for word, as printed, only on a bullet that stops the dispatch, since a hook's reason can't be recorded as owed; a re-plan or a new step-8 run relays none of it:
+The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-code-agent-dispatch:`, in the shape `prepare-agent-prompt.sh --help` sets. Route by the KIND word that starts each problem: `DISPATCH`, `AGENT`, `CONTEXT`, `CONTEXT-STALE`, `PLUGIN`, `PAIR`, `SEAT`, `BACKGROUND` or `SKILL`, never by the text after it. Relay the reason to the human word for word, as printed, only on a bullet that stops the dispatch, since a hook's reason can't be recorded as owed; a re-plan or a new step-8 run relays none of it:
 
 - `SKILL`, whatever else the reason names: a skill the agent file's frontmatter preloads is not installed: hand it back as SKILL.md's Never sets; installing it is the human's.
 - `PLUGIN`, with no `CONTEXT` or `CONTEXT-STALE`: an approved plugin uninstalled or invalid. Run step 2 again (here an exit 3 naming only that plugin goes on), then:
@@ -22,7 +22,8 @@ The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `fl
   - **`<name>`** in these lines is the plugin's install name, copied from the problem, never typed: the name after the words `plugin folder` in step 8's problem (`PLUGIN plugin folder language-shell uninstalled: …`) or the hook's, never from a path.
 - `CONTEXT-STALE`, with no `CONTEXT`: the context got a new version after the dispatch was written; take its plan back to step 7 with the fingerprint, as step 3 takes it, with any `PLUGIN` problem handled in the same re-plan as the bullet above sets; on Approve, steps 8–9 for it.
 - `CONTEXT`, alone or with `CONTEXT-STALE` or `PLUGIN`: hand it back as SKILL.md's Never sets; the human adds to the context through `procedure-context`.
-- `SEAT`, the dispatch's seat, as `seats.sh get` gives it, missing, not open or with no worktree: hand it back as SKILL.md's Never sets; the seats are the calling flow's.
+- `SEAT`, with `PAIR` or not: the seat, as `seats.sh get` gives it, missing, not open or with no worktree, or a re-seat's test plan no longer the seat's newest `test-plan.made`: hand it back as `stopped: seat not open`, as SKILL.md's Never sets; the seats are the calling flow's.
+- `PAIR`, with no `SEAT`: the seat's pair (the seat sharing its worktree) working or gave-up; only the hook checks it, never step 8. Hand it back as `stopped: pair busy`, as SKILL.md's Never sets; the calling flow routes it to `procedure-seat-run`'s pair hold.
 - Only `BACKGROUND`: `procedure-seat-run`'s Launch called Agent in the foreground; hand back the same entry as step 9 sets, its four step-8 lines (`AGENT:` included) unchanged, for its Launch to call again in the background.
 - Only `DISPATCH` or `AGENT`: run step 8 once more for that dispatch, and hand back its new entry as step 9 sets, the four lines step 8 printed (`DISPATCH:`, `LABELS:`, `TITLE:`, `AGENT:`) copied whole.
 - A reason with no KIND (a fault of the hook, its install or the host): hand it back as SKILL.md's Never sets.

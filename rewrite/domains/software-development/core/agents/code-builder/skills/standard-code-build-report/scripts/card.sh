@@ -1,11 +1,13 @@
 #!/usr/bin/env sh
-# Prints the human's compact card for one builder report the stop hook
-# recorded. Everything comes from the seat's build.committed event: its type
-# gives the kind, its iteration the count, its body the report's counts and
-# gates, its dispatch (through the dispatch.made event) the plugins, and its
-# commit's diff the files; the seat's fault.raised events since its last
-# report, the commit's signature and the branch's upstream say what went
-# wrong, as the effort's settings ask. views/card.jq lays it out and
+# Prints the human's compact card for one report the stop hook recorded: a
+# builder's build.committed or a tester's test.committed event, the seat's
+# role (from its name's prefix in seats.jq) picking which. Everything comes
+# from that event: its type gives the kind, its iteration (a builder's) or
+# the plans of the seat's test.committed events (a tester's) the count, its body
+# the report's counts, gates and a tester's blockers, its dispatch (through
+# the dispatch.made event) the plugins, and its commit's diff the files; the
+# seat's fault.raised events since its last report, the commit's signature
+# and the branch's upstream say what went wrong, as the effort's settings ask. views/card.jq lays it out and
 # human-view's show.sh prints it. No git command here takes the index lock
 # or writes it, and nothing is written to the effort.
 set -eu
@@ -37,21 +39,32 @@ readonly CARD_DATA_JQ='($labels | split("\n")) as $names
 | {report: .body,
 	labels: {language: $names[0], frameworks: $names[1:] | map(select(. != ""))},
 	files: (if $total == "" then null else {total: ($total | tonumber), new: ($new | tonumber)} end),
-	commit: {seat: $seat, count: $count, short: $short, report_path: $report_path,
+	commit: {seat: $seat, role: $role, count: $count, short: $short, report_path: $report_path,
 		warnings: {faults: $faults, unsigned: ($unsigned == "yes"),
 			not_pushed_to: (if $unpushed == "yes" then $remote else null end)}}}'
 
 # The seat's report event: seq $seq, or the newest. Input: the seat's
-# build.committed events, oldest first.
+# report events, oldest first.
 # shellcheck disable=SC2016
 readonly EVENT_JQ='map(select(.seat == $seat and ($seq == "" or .seq == ($seq | tonumber)))) | last // empty'
+
+# The count of distinct test_plan values among the seat's report events up
+# to seq $seq, so a plan's fix rounds keep its number. Input: as EVENT_JQ's.
+# shellcheck disable=SC2016
+readonly NUMBER_JQ='map(select(.seat == $seat and .seq <= ($seq | tonumber)) | .test_plan) | unique | length'
+
+# The role whose seat-name prefix seat $name has; builder when none has.
+# shellcheck disable=SC2016
+readonly ROLE_JQ='include "seats";
+[seats_prefixes | to_entries[] | select(.value as $prefix | $name | startswith($prefix + "-")) | .key]
+| .[0] // "builder"'
 
 # The body.what of each of the seat's faults after its report before this
 # one, up to this one's time, as a JSON array. Input: every event and fault
 # by time.
 # shellcheck disable=SC2016
 readonly FAULTS_JQ='($event | fromjson) as $this
-| ([.[] | select(.type == "build.committed" and .seat == $this.seat and .seq < $this.seq)]
+| ([.[] | select(.type == $this.type and .seat == $this.seat and .seq < $this.seq)]
 	| last | .at // "") as $since
 | [.[] | select(.type == "fault.raised" and .body.seat == $this.seat and .at > $since and .at <= $this.at)
 	| .body.what]'
@@ -93,10 +106,12 @@ usage() {
 usage: sh ${PROG} --effort FOLDER --seat S [--seq N] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
-Prints the compact Markdown card of one builder report: seat S's newest
-build.committed event, or the one with seq N. ${VIEW_LIB}'s show.sh prints
-it from views/${MODULE}.jq and records it as owed this session (see its
---help); nothing is written to the effort.
+Prints the compact Markdown card of one report: seat S's newest report
+event, or the one with seq N: build.committed for a builder seat,
+test.committed for a tester seat (the role whose seat prefix in seats.jq
+starts S; builder when none). ${VIEW_LIB}'s show.sh prints it from
+views/${MODULE}.jq and records it as owed this session (see its --help);
+nothing is written to the effort.
 
 --effort FOLDER   absolute path of the effort folder
 --seat S          the seat, a seat name by seats.jq
@@ -109,10 +124,15 @@ it from views/${MODULE}.jq and records it as owed this session (see its
                   metadata.label titles the card (the plugin name when it
                   has none)
 
-The title's plugins are the language and frameworks of the dispatch.made
-event whose body.id is the event's dispatch; none when there is no such
-event. The files line counts the event's commit's changed and added paths
-in the seat's worktree; with commit null it says no code change.
+Title: "<language> build agent <letter>", or test agent for a tester; its
+plugins are the language and frameworks of the dispatch.made event whose
+body.id is the event's dispatch; none when there is no such event. Then
+"build iteration <the event's iteration>", or "test plan <N>", N the
+count of distinct test_plan values among the seat's test.committed events
+up to this one, so a plan's fix rounds keep its number. The files line
+counts the event's commit's changed and added paths in the seat's worktree
+(seats.sh get names it); with commit null it says no code change. A
+tester's card lists its blockers.
 
 Warning lines, only when needed: one per fault.raised of the seat after
 its report event before this one, up to this one's time; and, from git
@@ -285,14 +305,25 @@ slurp() {
 		die 4 'events.sh slurp failed (its stderr is above)'
 }
 
-# Sets event, the report event, and from it kind_label, count, commit,
-# dispatch and event_path.
+# Sets role, from the seat's name, and event_type, the type of its report
+# events.
+read_role() {
+	role=$(jq -nr -L "${seats_dir}" --arg name "${seat}" "${ROLE_JQ}" </dev/null) ||
+		die 4 "jq failed reading the seat's role; expected jq 1.6+ and ${SEATS_LIB}/seats.jq"
+	case ${role} in
+		tester) event_type=test.committed ;;
+		*) event_type=build.committed role=builder ;;
+	esac
+}
+
+# Sets event, the report event, and from it count, commit, dispatch and
+# event_path.
 read_event() {
-	committed=$(slurp --type build.committed)
+	committed=$(slurp --type "${event_type}")
 	event=$(printf '%s\n' "${committed}" |
 		jq -c --arg seat "${seat}" --arg seq "${seq}" "${EVENT_JQ}") ||
 		die 4 'jq could not read the events events.sh slurp printed'
-	[ -n "${event}" ] || die 3 "seat ${seat} has no build.committed event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
+	[ -n "${event}" ] || die 3 "seat ${seat} has no ${event_type} event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
 	fields=$(printf '%s\n' "${event}" |
 		jq -r '.type, .seq, (.iteration.number // "" | tostring), (.commit // ""), (.dispatch // "" | tostring),
 			(.body | type)') || die 4 'jq could not read the report event'
@@ -308,14 +339,24 @@ read_event() {
 ${fields}
 EOF
 	[ "${body_type}" = object ] || die 3 "event ${event_seq}'s body is a JSON ${body_type}; expected the report the stop hook checked"
-	kind_label="${type%.committed} iteration"
-	if [ -n "${count}" ]; then
-		count="${kind_label} ${count}"
+	set_count
+	event_path=$(printf '%s/events/%06d-%s.json' "${effort}" "${event_seq}" "${type}")
+	[ -f "${event_path}" ] || die 4 "event ${event_seq} is not at ${event_path}; expected events.sh's file name"
+}
+
+# Sets count, the card's kind and number: a tester's "test plan <N>", N the
+# count of the seat's plans committed up to this event; a builder's "build
+# iteration <its iteration>", or "no iteration".
+set_count() {
+	if [ "${role}" = tester ]; then
+		number=$(printf '%s\n' "${committed}" | jq -r --arg seat "${seat}" --arg seq "${event_seq}" "${NUMBER_JQ}") ||
+			die 4 "jq could not count the seat's report events"
+		count="test plan ${number}"
+	elif [ -n "${count}" ]; then
+		count="${type%.committed} iteration ${count}"
 	else
 		count='no iteration'
 	fi
-	event_path=$(printf '%s/events/%06d-%s.json' "${effort}" "${event_seq}" "${type}")
-	[ -f "${event_path}" ] || die 4 "event ${event_seq} is not at ${event_path}; expected events.sh's file name"
 }
 
 # Sets files_total, files_new, short, unsigned and unpushed, entering the
@@ -438,7 +479,7 @@ plugin_label() {
 print_card() {
 	card_data=$(printf '%s\n' "${event}" | jq -c \
 		--arg labels "${labels}" --arg total "${files_total}" --arg new "${files_new}" \
-		--arg seat "${seat}" --arg count "${count}" --arg short "${short}" \
+		--arg seat "${seat}" --arg role "${role}" --arg count "${count}" --arg short "${short}" \
 		--arg report_path "${event_path}" --argjson faults "${faults}" \
 		--arg unsigned "${unsigned}" --arg unpushed "${unpushed}" --arg remote "${remote}" \
 		"${CARD_DATA_JQ}") ||
@@ -451,6 +492,7 @@ print_card() {
 parse_args "$@"
 load_dependencies
 check_seat_name
+read_role
 read_event
 read_labels
 read_faults

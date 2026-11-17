@@ -1,5 +1,6 @@
-# The compact card of one builder report: its heading, task, counts, the
-# gates that did not pass and where the report is. It keeps its own layout
+# The compact card of one seat agent's report, a builder's or a tester's:
+# its heading, task, counts, the gates that did not pass, a tester's
+# blockers and where the report is. It keeps its own layout
 # (a heading, dash bullets and icons on the gates), apart from human-view's
 # layout rules, by the human's decision.
 include "view";
@@ -12,6 +13,12 @@ def card_text: if type == "string" then . elif . == null then "" else tojson end
 def card_items($key): .[$key] | if type == "array" then . else [] end;
 def card_count($key): card_items($key) | length;
 def card_dash_list: map("- " + .) | join("\n");
+
+# Each role's title word and report label.
+def card_roles: {
+	"builder": {title: "build agent", report: "Builder report"},
+	"tester": {title: "test agent", report: "Test report"}
+};
 
 # The lines after the counts: one per fault, then the commit's git state.
 def card_warning_lines($warnings):
@@ -37,17 +44,27 @@ def card_gates:
 		  + (if $note == "" then "" else ": \($note)" end)]
 	| if . == [] then "" else "**Gates**\n" + card_dash_list end;
 
+# A tester's blockers, each as "<kind in words>: <detail>"; "" for a
+# builder, whose card only counts them.
+def card_blockers($role):
+	[select($role == "tester") | card_items("blockers")[] | objects
+		| "\(.kind | card_text | gsub("_"; " ")): \(.detail | card_text)"]
+	| if . == [] then "" else "**Blockers**\n" + card_dash_list end;
+
 # Input: the parsed report. $labels: {language, frameworks} labels for title;
-# $files: {total, new}, null for no commit; $commit: {seat, count ("build
-# iteration 2"), short ("" for no commit), report_path, warnings: {faults
-# (each fault's what), unsigned, not_pushed_to (the remote, or null)}}.
+# $files: {total, new}, null for no commit; $commit: {seat, role (builder or
+# tester), count ("build iteration 2", "test plan 1"), short ("" for no
+# commit), report_path, warnings: {faults (each fault's what), unsigned,
+# not_pushed_to (the remote, or null)}}.
 def card($labels; $files; $commit):
 	(if card_count("blockers") > 0 then "blocked" else "done" end) as $state
-	| ["### \($labels | seat_title("builder"; $commit.seat)) · \($commit.count) · \($state)",
+	| card_roles[$commit.role] as $role
+	| ["### \($labels | seat_title($role.title; $commit.seat)) · \($commit.count) · \($state)",
 	   "Task: \(.summary | card_text)",
 	   (card_count_lines($files) + card_warning_lines($commit.warnings) | card_dash_list),
 	   card_gates,
-	   "**Builder report:** \(if $commit.short == "" then "" else "`\($commit.short)` in " end)\($commit.report_path | path_text)"]
+	   card_blockers($commit.role),
+	   "**\($role.report):** \(if $commit.short == "" then "" else "`\($commit.short)` in " end)\($commit.report_path | path_text)"]
 	| blocks;
 
 # Input: {report, labels, files, commit}, card's arguments beside the report.

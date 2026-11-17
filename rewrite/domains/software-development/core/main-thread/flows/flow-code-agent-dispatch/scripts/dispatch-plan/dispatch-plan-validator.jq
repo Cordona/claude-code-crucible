@@ -15,7 +15,9 @@
 # is in load or skip, once; load_reason only when nothing is loaded; a
 # code-reviewer plan holds one lens: the language with its frameworks, or one
 # standard, or neither.
-# A builder plan always loads a language and at least one standard.
+# A code-builder or code-tester plan always loads a language and at least one
+# standard; a code-tester plan always loads standard-testing, any other plan
+# never. The mode is the agent's, as dispatch-names.jq's agent_modes sets it.
 # Output: one "<where> <problem>; expected <x>" line per problem, nothing when
 # the plan fits. With --arg format json: one {"at": <path>, "problem":
 # "<problem>; expected <x>"} object per problem, at being the field's path in
@@ -29,6 +31,11 @@ include "dispatch-names" {search: "../agent-dispatch"};
 
 def testing_plugin: "standard-testing";
 def lens_agent: "code-reviewer";
+def tester_agent: "code-tester";
+# The agent a plan names, as its rule texts call it.
+def agent_word: if . == tester_agent then "a test agent" else "a build agent" end;
+# The mode of the plan's agent; an agent that is not dispatched is held to BUILD.
+def expected_mode: (if (.agent | type) == "string" then agent_modes[.agent] else null end) // "BUILD";
 # A step-10 re-plan may list, under skip, a plugin list-plugins.sh no longer prints.
 def dropped_reasons: "invalid", "uninstalled after approval";
 def top_keys: ["agent", "mode", "tasks", "plugins", "replan", "context"];
@@ -57,7 +64,8 @@ def field_problems:
 	(if .agent | text_ok | not then problem(["agent"]; " "; "missing or empty; expected a non-empty string")
 	 elif .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
-	(if .mode == "BUILD" then empty else problem(["mode"]; " "; "missing or unknown; expected \"BUILD\"") end);
+	(expected_mode as $mode
+	 | if .mode == $mode then empty else problem(["mode"]; " "; "missing or unknown; expected \($mode | tojson)") end);
 
 def tasks_problems:
 	if (.tasks | type) != "array" or (.tasks | length) == 0 then problem(["tasks"]; " "; "missing or empty; expected an array of one or more strings")
@@ -198,14 +206,18 @@ def lens_problems($plan; $items):
 
 def builder_problems($plan; $items):
 	if $plan.agent == lens_agent or ($plan.plugins | type) != "object" then empty
-	else (if has_language($plan) then empty
-		 else problem(["plugins", "load", "language"]; " "; "missing; expected the language the code is in: a builder always has one") end),
+	else ($plan.agent | agent_word) as $word
+		| (if has_language($plan) then empty
+		 else problem(["plugins", "load", "language"]; " "; "missing; expected the language the code is in: \($word) always has one") end),
 		(if any($items[]; .list == "load" and .list_key == "standards") then empty
-		 else problem(["plugins", "load", "standards"]; " "; "missing; expected at least one standard: a builder always builds to one") end)
+		 else problem(["plugins", "load", "standards"]; " "; "missing; expected at least one standard: \($word) always builds to one") end)
 	end;
 
 def testing_problems($plan; $items):
 	if ($plan.plugins | type) != "object" then empty
+	elif $plan.agent == tester_agent then
+		if any($items[]; .list == "load" and .list_key == "standards" and .plugin == testing_plugin) then empty
+		else problem(["plugins", "load", "standards"]; " "; "lacks \(testing_plugin | tojson); expected it loaded: a \(tester_agent) plan always loads it") end
 	else $items[] | select(.list == "load" and .plugin == testing_plugin)
 		| problem(.at; " "; "\(testing_plugin | tojson) in a mode \"BUILD\" plan; expected it under plugins.skip.standards: a build plan never loads it")
 	end;

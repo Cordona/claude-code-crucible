@@ -1,6 +1,6 @@
 ---
 name: language-rust
-description: "Rust rules: toolchain, errors, panics, casts, std traits, `unsafe`, async, ownership, clippy, plus the builder's verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin. Its gate writes only Cargo's `target/` and what the tests write; needs `cargo`, `rustfmt` and `clippy`. Not for Rust driven only from another file (a Dockerfile `RUN`, a CI step), or rules every language shares (`code-builder`, standard plugins)."
+description: "Rust rules: toolchain, errors, panics, casts, std traits, `unsafe`, async, ownership, clippy, plus the verification gate. Use when writing or reviewing Rust in a Cargo crate. A language plugin. Its gate writes only Cargo's `target/` and what the tests write; needs `cargo`, `rustfmt` and `clippy`. Not for Rust driven only from another file (a Dockerfile `RUN`, a CI step), or rules every language shares (`code-builder`, `code-tester`, standard plugins)."
 disable-model-invocation: true
 user-invocable: false
 metadata:
