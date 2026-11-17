@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "header": "Drop seat",
+      "question": "Drop this seat?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Drop it (Recommended)",
+          "description": "Its plan was never answered and its part is not known here. The seat is removed; ask for the work again if you still want it."
+        },
+        {
+          "label": "Keep it",
+          "description": "The seat stays chosen, with no part to work on; it is offered again at the next resume."
+        }
+      ]
+    }
+  ]
+}

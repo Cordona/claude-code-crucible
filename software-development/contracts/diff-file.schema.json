@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/diff-file.schema.json",
+  "title": "Diff File",
+  "description": "One file in the diff flow-review/scripts/diff-scope.sh wrote: its repo-relative path (from diff-files.txt), or the path with the blob sha recorded for it (from diff-files.tsv). sha is the working-tree blob sha, the same as changes.txt, or \"-\" for a deleted path or a non-file entry (a submodule). Shared by review-artifact.schema.json and test-plan.schema.json (diff_files items). Value shape only.",
+  "oneOf": [
+    { "type": "string", "minLength": 1 },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64}|-)$" }
+      }
+    }
+  ]
+}

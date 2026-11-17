@@ -1,0 +1,45 @@
+# Denials and re-plans
+
+Step numbers are SKILL.md's.
+
+## Step 8: exit 3
+
+Route by the token a stderr problem leads with, right after its `generate-agent-dispatch.sh: <option> <value>: `, never by the text after it.
+
+- **A problem led by `CONTEXT-CHANGED`:** the docs or pending entries changed since the plan was shown; never look into what changed (no `events/`, no docs folder, no `entries.json`) or ask the human about it; take that plan back to step 7 with the fingerprint, as step 3 takes it, then run step 8 for it again. With a `PLUGIN` problem as well: one re-plan for both, as the `PLUGIN` bullet below sets for its plugin.
+- **A problem led by `NO-SPEC`, `DOCS-NAME` or `DOCS-SIZE`,** once per plan: run step 3, whose route settles it; take that plan back to step 7 with the fingerprint step 3 takes, then run step 8 for it again. A second one for that plan, or a stop at step 3: as SKILL.md step 8's any other exit.
+- **A problem led by `NO-GATE-RECORD`:** the plan's approval is not on record (`generate-agent-dispatch.sh --help`); take that plan back to step 7 to ask it again, then run step 8 for it again.
+- **A problem led by `PLUGIN`:** a plugin the plan approved is now uninstalled or invalid. Run step 2 again, then re-plan that plan as step 10's `PLUGIN` bullet below sets, with its stop lines and hand-backs; on Approve, run step 8 for it again.
+
+## Step 10: hook denial
+
+The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `flow-code-agent-dispatch:`, in the shape `prepare-agent-prompt.sh --help` sets. Route by the KIND word that starts each problem: `DISPATCH`, `AGENT`, `CONTEXT`, `CONTEXT-STALE`, `PLUGIN`, `PAIR`, `SEAT`, `BACKGROUND` or `SKILL`, never by the text after it. Relay the reason to the human word for word, as printed, only on a bullet that stops the dispatch, since a hook's reason can't be recorded as owed; a re-plan or a new step-8 run relays none of it:
+
+- `SKILL`, whatever else the reason names: a skill the agent file's frontmatter preloads is not installed: hand it back as SKILL.md's Never sets; installing it is the human's.
+- `PLUGIN`, with no `CONTEXT` or `CONTEXT-STALE`: an approved plugin uninstalled or invalid. Run step 2 again (here an exit 3 naming only that plugin goes on), then:
+  - **A language plugin,** uninstalled or invalid: the part stops, its frameworks with it; show step 5's line `no_language_plugin`, then hand it back as SKILL.md's Never sets.
+  - **Any other plugin:** re-plan at step 7 as Step-10 re-plans below sets; on Approve, steps 8–9 for it.
+  - **`<name>`** in these lines is the plugin's install name, copied from the problem, never typed: the name after the words `plugin folder` in step 8's problem (`PLUGIN plugin folder language-shell uninstalled: …`) or the hook's, never from a path.
+- `CONTEXT-STALE`, with no `CONTEXT`: the context got a new version after the dispatch was written; take its plan back to step 7 with the fingerprint, as step 3 takes it, with any `PLUGIN` problem handled in the same re-plan as the bullet above sets; on Approve, steps 8–9 for it.
+- `CONTEXT`, alone or with `CONTEXT-STALE` or `PLUGIN`: hand it back as SKILL.md's Never sets; the human adds to the context through `procedure-context`.
+- `SEAT`, with `PAIR` or not: the seat, as `seats.sh get` gives it, missing, not open or with no worktree, or a re-seat's test plan no longer the seat's newest `test-plan.made`: hand it back as `stopped: seat not open`, as SKILL.md's Never sets; the seats are the calling flow's.
+- `PAIR`, with no `SEAT`: the seat's pair (the seat sharing its worktree) working or gave-up; only the hook checks it, never step 8. Hand it back as `stopped: pair busy`, as SKILL.md's Never sets; the calling flow routes it to `procedure-seat-run`'s pair hold.
+- Only `BACKGROUND`: `procedure-seat-run`'s Launch called Agent in the foreground; hand back the same entry as step 9 sets, its four step-8 lines (`AGENT:` included) unchanged, for its Launch to call again in the background.
+- Only `DISPATCH` or `AGENT`: run step 8 once more for that dispatch, and hand back its new entry as step 9 sets, the four lines step 8 printed (`DISPATCH:`, `LABELS:`, `TITLE:`, `AGENT:`) copied whole.
+- A reason with no KIND (a fault of the hook, its install or the host): hand it back as SKILL.md's Never sets.
+
+## Step-10 re-plans
+
+A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the reason step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it. It drops the plugin, except an invalid framework plugin, which stays in the plan. Where the plugin goes:
+
+- **A standard or procedure plugin:** to `--skip`, with that reason.
+- **A framework plugin named `invalid`:** it stays as `--framework '<name>' --reason invalid`, with `--replan invalid`.
+- **A framework plugin `uninstalled after approval`:** re-plan the part at step 7 without it, as step 10's `PLUGIN` bullet above sets for a dropped plugin, its language plugin's reason saying the framework has no installed plugin (step 5).
+- **A language plugin:** never re-planned; step 10's `PLUGIN` bullet above stops the part, its frameworks dropped with it.
+
+Then, by the plan's step-10 reasons:
+
+- **`invalid`:** add `--replan invalid` and pipe its renderer into `open-gate.sh --show-only` (SKILL.md's 7.2); then as SKILL.md's Never (a `--replan invalid` plan) sets.
+- **`uninstalled after approval`, for a dropped standard or procedure plugin whose description still matches the task** (as step 5 sets): add `--replan stop-recommended`. Never for a framework plugin: one dropped as `uninstalled after approval` is re-planned under its language plugin as step 5 sets, with no stop recommended.
+- **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; step 10's `CONTEXT` bullet above stops that dispatch. A `CONTEXT-STALE` denial with no `CONTEXT` is re-planned with the fingerprint, as step 10's `CONTEXT-STALE` bullet above sets.
+- **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

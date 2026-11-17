@@ -1,0 +1,59 @@
+{
+  "issues": [
+    {
+      "description": "this construct is discouraged",
+      "file": "src/main.rs",
+      "highlighted_element": "unwrap()",
+      "id": "MyRule",
+      "language": "Rust",
+      "line": 12,
+      "severity": "WARNING"
+    }
+  ],
+  "metadata": {
+    "engine": "intellij-inspect",
+    "excluded_count": 1,
+    "excluded_ids": [
+      "GrazieInspection",
+      "GrazieStyle",
+      "SpellCheckingInspection"
+    ],
+    "generated_at": "2026-08-26T10:34:56Z",
+    "inspection_profile": "Project Default",
+    "language_coverage": [
+      {
+        "language": "Markdown",
+        "plugins": [],
+        "status": "not_installed"
+      },
+      {
+        "language": "Rust",
+        "plugins": [],
+        "status": "not_installed"
+      },
+      {
+        "language": "TOML",
+        "plugins": [
+          {
+            "plugin_id": "org.toml.lang",
+            "plugin_version": "262.8665.337"
+          }
+        ],
+        "status": "covered"
+      }
+    ],
+    "languages_detected_in_project": [
+      "Markdown",
+      "Rust",
+      "TOML"
+    ],
+    "project": "<PROJECT>",
+    "project_name": "basic",
+    "scope": "all",
+    "sonarlint_plugin_installed": false,
+    "sonarlint_rules_enabled_in_profile": false,
+    "sonarlint_rules_registered_in_profile": false,
+    "total_issues": 1,
+    "unparsed_report_files": 0
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "groups": [
+    {
+      "name": "TOML",
+      "inspections": [
+        {
+          "shortName": "TomlUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.toml.lang",
+          "pluginVersion": "262.8665.337",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports unresolved references in TOML files.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Descriptions Carrying A Problems Array",
+  "problems": [
+    {
+      "file": "file://$PROJECT_DIR$/src/main.rs",
+      "line": 1,
+      "problem_class": {
+        "id": "SHOULD_NEVER_BE_COLLECTED",
+        "severity": "ERROR"
+      },
+      "description": "A findings-shaped payload inside the METADATA file. The real .descriptions.json carries no `problems` key, so this array is deliberately synthetic. It exists so that widening collect_intellij_issues' `\"$IDEA_EDIR\"/*.json` glob to also match leading-dot names becomes OBSERVABLE: without it, a run that read this file as a report and one that did not would produce the same issues[]. It is NOT here to guard a `.descriptions`-stem check — no such check exists, and the unreachable one that used to has been deleted."
+    }
+  ]
+}

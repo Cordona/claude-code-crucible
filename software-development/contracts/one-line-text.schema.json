@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crucible.local/contracts/one-line-text.schema.json",
+  "title": "One-Line Text",
+  "description": "A non-empty single-line string: no C0/C1 control characters (so no line breaks) and no DEL. Extracted so every review contract shares one definition. Value shape only.",
+  "type": "string",
+  "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$"
+}

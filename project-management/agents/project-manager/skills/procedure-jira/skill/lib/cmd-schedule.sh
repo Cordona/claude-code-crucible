@@ -171,7 +171,7 @@ cmd_schedule() {
 }
 
 # validate_schedule_args() — `schedule`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_schedule_args() {
 	# schedule takes NO positional — the issue set is named by --keys/--jql

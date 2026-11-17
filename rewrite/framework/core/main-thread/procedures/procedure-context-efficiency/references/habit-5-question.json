@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "header": "Switch",
+      "question": "Switch the model or fast mode now anyway?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "At the next break (Recommended)",
+          "description": "You switch once this task is done, so the switch doesn't make a turn mid-task re-read everything; I carry on with the task until then."
+        },
+        {
+          "label": "Yes",
+          "description": "You switch now; the next turn re-reads the whole conversation from scratch."
+        }
+      ]
+    }
+  ]
+}

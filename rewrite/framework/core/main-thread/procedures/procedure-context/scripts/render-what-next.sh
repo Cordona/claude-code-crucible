@@ -1,0 +1,322 @@
+#!/usr/bin/env sh
+# Renders the "what next?" gate, asked once an effort's spec is approved, so
+# the main thread never hand-formats it. Its input is a plan file naming the
+# effort's draft docs folder and, after a grill, the grill file;
+# views/what-next.jq lays it out and human-view's show.sh renders it. Pipe its
+# stdout into procedure-approval-gate's open-gate.sh, which shows the gate.
+# shellcheck source-path=SCRIPTDIR source-path=SCRIPTDIR/../../../../engine/crucible/scripts/lib
+set -eu
+
+readonly PROG='render-what-next.sh'
+readonly VIEW_LIB='human-view'
+readonly SHOW='scripts/show.sh'
+readonly RENDER_LIB='scripts/lib/render.sh'
+readonly VIEW_NAME='what-next'
+# The draft's docs folder of an effort, the one context.sh docs prints.
+readonly DOCS_PATH='drafts/main-thread/context/docs'
+# The shell's pattern checks stay byte-wise on macOS and Linux.
+LC_ALL=C
+export LC_ALL
+
+# The gate's data for views/what-next.jq.
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+readonly VIEW_DATA_JQ='{docs: $docs, grill: $grill, settled: $settled}'
+
+# Prints one line per problem of the slurped plan file; nothing when it is one
+# object with a docs path and, at most, a grill path.
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+readonly PLAN_CHECK_JQ='
+def expected_plan: "expected one JSON object {\"docs\": PATH[, \"grill\": PATH]}";
+def path_problem($name):
+	if (.[$name] | type) != "string" then "\($name) is a JSON \(.[$name] | type); expected a string holding an absolute path"
+	elif .[$name] == "" then "\($name) is empty; expected an absolute path"
+	else empty end;
+if length != 1 then "the plan file holds \(length) JSON values; \(expected_plan)"
+elif (.[0] | type) != "object" then "the plan file holds a JSON \(.[0] | type); \(expected_plan)"
+else .[0]
+	| ((keys - ["docs", "grill"])[] | "\(tojson) is an unknown field; expected only docs and grill"),
+	  (if has("docs") then path_problem("docs") else "docs missing; expected the absolute path of the effort'\''s next version'\''s docs folder" end),
+	  (if has("grill") then path_problem("grill") else empty end)
+end
+'
+
+# Prints plan field $name, or nothing when absent, plus a trailing "." so
+# command substitution keeps a trailing line break; a NUL, which a shell
+# variable cannot hold, becomes U+0001 so the control-character check sees it.
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+readonly FIELD_JQ='.[0][$name] // "" | explode | map(if . == 0 then 1 else . end) | implode + "."'
+
+# Prints one line per problem of the slurped grill file; nothing when it is one
+# object whose questions, when present, are an array (missing: no question).
+# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+readonly GRILL_CHECK_JQ='
+def expected_grill: "expected one JSON object whose questions, when present, are an array";
+if length != 1 then "grill holds \(length) JSON values; \(expected_grill)"
+elif (.[0] | type) != "object" then "grill holds a JSON \(.[0] | type); \(expected_grill)"
+elif (.[0] | has("questions")) and (.[0].questions | type) != "array" then "grill questions is a JSON \(.[0].questions | type); \(expected_grill)"
+else empty end
+'
+
+# Prints how many of the slurped grill's questions are settled.
+readonly SETTLED_JQ='[(.[0].questions // [])[] | select(type == "object" and .status == "settled")] | length'
+
+usage() {
+	print_page <<EOF
+usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label what-next --effort FOLDER
+       sh ${PROG} --help | -h
+
+Prints the "what next?" gate, asking the human what follows a ready context,
+as Markdown naming the draft's docs folder. stdin and the folder's
+files are never read, the plan file and the grill file only read; no file is
+written.
+
+Options:
+  --plan-file PATH    one JSON object, {"docs": PATH, "grill": PATH}, no
+                      other field; grill only when a grill ran:
+                      docs: the effort's draft docs folder, as context.sh
+                        docs printed it (<effort>/${DOCS_PATH}): an
+                        existing folder, not a symbolic link, with no
+                        control character
+                      grill: the absolute path of an existing regular file,
+                        not a symbolic link, with no control character,
+                        holding one JSON object whose questions, when
+                        present, are an array
+  CLAUDE_CONFIG_DIR   the skills are in \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills
+
+stdout on exit 0 only: the gate's Markdown, with no gate marker, rendered
+  from views/${VIEW_NAME}.jq by ${VIEW_LIB}'s show.sh render
+stderr on exit 2: one "${PROG}: <what>; expected <x>[; try <y>]"
+  line per problem (a usage error adds a "Try" line); a plan field is
+  named docs or grill
+stderr on exits 1, 3, 5: "${PROG}: install:", a prefix no other exit
+  prints, after any show.sh line; tell the human what it names to install,
+  and stop
+
+Exit codes:
+  0  the gate printed; go on
+  1  jq missing
+  2  refused input; fix what stderr names and rerun once, else show the human stderr
+  3  jq or show.sh failed
+  4  stdout closed before the gate was written; stop and show the exit code
+  5  an install fault: a tool or skill file missing or failing
+
+Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the
+  distro's jq package), views/${VIEW_NAME}.jq in this skill, the ${VIEW_LIB}
+  skill's ${SHOW} and ${RENDER_LIB} and the crucible skill's
+  scripts/lib/crucible-space.sh in the skills; CRUCIBLE_HOME, the space
+  (default \$HOME/.crucible).
+EOF
+}
+
+# Prints stdin with builtins only, so the help page prints with cat missing.
+print_page() {
+	while IFS= read -r page_line; do
+		printf '%s\n' "${page_line}"
+	done
+}
+
+warn() {
+	printf '%s: %s\n' "${PROG}" "$1" >&2
+}
+
+# Prints an install or host fault (a missing or failing tool, never a problem
+# of the input) with the "install:" prefix and exits $1.
+install_fault() {
+	warn "install: $2"
+	exit "$1"
+}
+
+usage_error() {
+	warn "$1"
+	printf "Try '%s --help'.\n" "${PROG}" >&2
+	exit 2
+}
+
+# Sets plan_file from the arguments.
+parse_args() {
+	plan_file=''
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			--help | -h)
+				usage
+				exit 0
+				;;
+			--plan-file)
+				[ "$#" -ge 2 ] && [ -n "$2" ] || usage_error '--plan-file needs a value; expected --plan-file PATH'
+				plan_file=$2
+				shift 2
+				;;
+			*) usage_error 'unknown argument; expected --plan-file PATH or --help' ;;
+		esac
+	done
+	[ -n "${plan_file}" ] || usage_error '--plan-file PATH missing; expected --plan-file PATH naming the JSON file; stdin is not read'
+}
+
+# Exits 5 unless file $1 is readable, naming skill $2 to install.
+require_skill_file() {
+	[ -f "$1" ] && [ -r "$1" ] ||
+		install_fault 5 "$3 missing; expected $1; install the $2 skill"
+}
+
+# Sets views_dir and show_script and sources the space rules.
+load_dependencies() {
+	command -v jq >/dev/null 2>&1 ||
+		install_fault 1 'jq missing; expected jq 1.6+ on PATH; try installing jq (macOS: brew install jq; Linux: the distro'\''s jq package)'
+	skills_dir="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/skills"
+	case $0 in
+		*/*) views_dir="${0%/*}/../views" ;;
+		*) views_dir='../views' ;;
+	esac
+	render_lib="${skills_dir}/${VIEW_LIB}/${RENDER_LIB}"
+	require_skill_file "${render_lib}" "${VIEW_LIB}" 'gate printer'
+	# shellcheck source=../../../../engine/human-view/scripts/lib/render.sh
+	. "${render_lib}"
+	# shellcheck disable=SC2310 # its status is the answer; set -e is not relied on inside
+	hv_check_printer "${skills_dir}/${VIEW_LIB}/scripts" "${views_dir}" "${VIEW_NAME}" || install_fault 5 "${hv_printer_problem}"
+	show_script=${hv_show}
+	space_lib="${skills_dir}/crucible/scripts/lib/crucible-space.sh"
+	require_skill_file "${space_lib}" crucible 'space rules'
+	# shellcheck source=crucible-space.sh
+	. "${space_lib}"
+}
+
+# Sets slurped to the plan file read into one array, so an empty file and
+# several values are caught as one problem, or exits 2 when it is unreadable
+# or not JSON.
+read_plan() {
+	[ -f "${plan_file}" ] && [ -r "${plan_file}" ] ||
+		usage_error "plan file not readable: ${plan_file}; expected a readable JSON file"
+	slurped=$(jq -s '.' "${plan_file}" </dev/null 2>/dev/null) || {
+		warn 'the plan file is not valid JSON; expected one JSON object; try checking its quotes, commas and brackets, then rerun'
+		exit 2
+	}
+}
+
+# Prints problem lines $1, when any, to stderr and exits 2.
+refuse_problems() {
+	[ -n "$1" ] || return 0
+	printf '%s\n' "$1" | while IFS= read -r problem; do warn "${problem}"; done
+	exit 2
+}
+
+# Sets field_value to plan field $1, or empty when absent.
+plan_field() {
+	field_value=$(printf '%s' "${slurped}" | jq -r --arg name "$1" "${FIELD_JQ}") ||
+		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
+	field_value=${field_value%.}
+}
+
+# Sets docs and grill from the plan file, or exits 2 on a shape problem.
+load_plan() {
+	read_plan
+	shape_problems=$(printf '%s' "${slurped}" | jq -r "${PLAN_CHECK_JQ}") ||
+		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
+	refuse_problems "${shape_problems}"
+	plan_field docs
+	docs=${field_value}
+	plan_field grill
+	grill=${field_value}
+}
+
+# Prints one line per problem of the docs path; nothing when it names the
+# draft's docs folder of an effort of the space, <effort>/DOCS_PATH, an
+# existing folder, none of its folders a symbolic link.
+docs_problems() {
+	case ${docs} in
+		*[[:cntrl:]]*)
+			printf '%s\n' 'docs holds a control character (such as a line break or tab); expected one path on one line'
+			return 0
+			;;
+		/*) ;;
+		*)
+			printf '%s\n' "docs is not absolute: ${docs}; expected the absolute path context.sh docs printed"
+			return 0
+			;;
+	esac
+	# shellcheck disable=SC2310 # its status says whether the space is usable; the problem is printed
+	if ! crucible_resolve_root; then
+		printf '%s\n' "CRUCIBLE_HOME: ${crucible_root_problem}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status says whether the path lies in an effort
+	if ! crucible_effort_of "${docs}"; then
+		printf '%s\n' "docs is not in an effort folder of ${crucible_root}/efforts/: ${docs}; expected the folder context.sh docs printed"
+		return 0
+	fi
+	next_folder="${crucible_effort}/${DOCS_PATH}"
+	if [ "${docs}" != "${next_folder}" ]; then
+		printf '%s\n' "docs is not the effort's draft docs folder: ${docs}; expected ${next_folder}"
+		return 0
+	fi
+	# shellcheck disable=SC2310 # its status says whether every folder is real
+	if [ ! -d "${docs}" ] || [ -L "${docs}" ] || ! crucible_real_folders_of "${docs}/."; then
+		printf '%s\n' "docs is not an existing folder, or it or a folder above it is a symbolic link: ${docs}; expected the folder context.sh docs created"
+	fi
+}
+
+# Prints one line per problem of the grill path; nothing when it names a
+# readable regular file.
+grill_path_problems() {
+	case ${grill} in
+		*[[:cntrl:]]*)
+			printf '%s\n' 'grill holds a control character (such as a line break or tab); expected one path on one line'
+			return 0
+			;;
+		/*) ;;
+		*) printf '%s\n' "grill is not absolute: ${grill}; expected an absolute path" ;;
+	esac
+	if [ ! -f "${grill}" ] || [ -L "${grill}" ]; then
+		printf '%s\n' "grill is not a regular file, or is a symbolic link: ${grill}; expected an existing grill file"
+	elif [ ! -r "${grill}" ]; then
+		printf '%s\n' "grill is not readable: ${grill}; expected a readable grill file"
+	fi
+}
+
+# Appends problem lines $1, when any, to problems.
+add_problems() {
+	[ -n "$1" ] || return 0
+	problems="${problems:+${problems}
+}$1"
+}
+
+# Reads the grill file once and sets settled to its count of settled
+# questions, or appends its problems to problems.
+load_grill() {
+	path_problems=$(grill_path_problems)
+	if [ -n "${path_problems}" ]; then
+		add_problems "${path_problems}"
+		return 0
+	fi
+	grill_slurped=$(jq -s '.' "${grill}" </dev/null 2>/dev/null) || {
+		add_problems "grill is not valid JSON: ${grill}; expected one JSON object whose questions, when present, are an array; try checking its quotes, commas and brackets"
+		return 0
+	}
+	grill_found=$(printf '%s' "${grill_slurped}" | jq -r "${GRILL_CHECK_JQ}") ||
+		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
+	if [ -n "${grill_found}" ]; then
+		add_problems "${grill_found}"
+		return 0
+	fi
+	settled=$(printf '%s' "${grill_slurped}" | jq "${SETTLED_JQ}") ||
+		install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
+}
+
+# Renders view_data through views/VIEW_NAME.jq to stdout; a show.sh fault
+# is an install fault.
+render_gate() {
+	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
+	hv_render_gate "${show_script}" "${views_dir}" "${VIEW_NAME}" "${view_data}" && return 0
+	[ "${hv_render_status}" != 5 ] || install_fault 5 "${hv_render_problem}; expected the ${VIEW_LIB} skill installed whole"
+	install_fault 3 "${hv_render_problem}; expected the gate rendered from views/${VIEW_NAME}.jq; try reinstalling procedure-context and ${VIEW_LIB}"
+}
+
+parse_args "$@"
+load_dependencies
+load_plan
+problems=$(docs_problems)
+settled=null
+[ -z "${grill}" ] || load_grill
+refuse_problems "${problems}"
+view_data=$(jq -cn --arg docs "${docs}" --arg grill "${grill}" --argjson settled "${settled}" "${VIEW_DATA_JQ}" </dev/null) ||
+	install_fault 3 'jq failed; expected jq 1.6+; try jq --version, then rerun'
+render_gate

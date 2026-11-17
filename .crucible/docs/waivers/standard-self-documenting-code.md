@@ -1,0 +1,1 @@
+- FM-03: standard-documentation is old-tree and not rewritten yet; name another skill only when it is needed (owner)

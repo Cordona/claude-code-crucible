@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Aside",
+      "question": "Answer the side question here anyway?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Ask it with /btw (Recommended)",
+          "description": "You ask it with /btw, which answers it without adding it to the conversation; the task carries on as it was."
+        },
+        {
+          "label": "Yes",
+          "description": "I answer it as a normal turn; it stays in the conversation, and every turn re-reads it."
+        },
+        {
+          "label": "No",
+          "description": "I leave the side question unanswered; the task carries on."
+        }
+      ]
+    }
+  ]
+}

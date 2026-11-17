@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Compact",
+      "question": "Compact this conversation anyway?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "/clear instead (Recommended)",
+          "description": "You run /clear and start clean, without the re-read; the work doesn't need to carry on, so nothing from this conversation has to."
+        },
+        {
+          "label": "Yes",
+          "description": "You run /compact; it re-reads this conversation to summarise it, and the summary carries on."
+        },
+        {
+          "label": "No",
+          "description": "I leave the conversation as it is; nothing is compacted or cleared."
+        }
+      ]
+    }
+  ]
+}

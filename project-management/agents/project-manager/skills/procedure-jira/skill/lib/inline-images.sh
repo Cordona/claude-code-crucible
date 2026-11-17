@@ -9,7 +9,8 @@
 # This unit does the NETWORK half; md-to-adf.sh does the transform. Its fence
 # FSM mirrors md-to-adf.sh's block parser exactly, so the two always agree on
 # which lines are real images (an `![](local)` shown as example code inside a
-# ``` fence is never uploaded).
+# ``` or ~~~ fence — including one nested in a longer fence — is never
+# uploaded).
 #
 # Sourced by jira.sh — never executed directly. Sets no shell options and
 # runs no top-level work beyond its own declarations, so sourcing it always
@@ -35,7 +36,7 @@ trim_ws() {
 # scan_inline_image_paths MARKDOWN_FILE -> prints one own-line LOCAL image PATH
 # per line (in document order; duplicates allowed — the caller dedups against
 # the map). Matches md-to-adf.sh's block parser: a line that trims to SOLELY
-# `![alt](PATH)` with a non-http(s) PATH. Lines inside a ``` fence are skipped
+# `![alt](PATH)` with a non-http(s) PATH. Lines inside a fence are skipped
 # (fence content is literal in md-to-adf.sh, so it is not a media line here).
 scan_inline_image_paths() {
 	sip_markdown_file=$1
@@ -44,18 +45,20 @@ scan_inline_image_paths() {
 		sip_trimmed=$(trim_ws "$sip_line")
 		# Fence FSM — mirror md-to-adf.sh's block parser EXACTLY (asymmetric,
 		# never a blind toggle): while a fence is OPEN every line is literal
-		# fence body and is skipped, and ONLY a line that trims to exactly
-		# ``` closes it (a body line like ```foo is content, not a close);
-		# while CLOSED, a line starting with ``` opens one. A blind toggle
-		# would desync from md-to-adf and could treat an `![](local)` shown
-		# as example code inside a fence as a real image to upload.
+		# fence body and is skipped, and ONLY a line of the opener's own
+		# character, at least as long, closes it (so a ``` inside a ```` fence
+		# is content, not a close); while CLOSED, a CommonMark opener opens
+		# one. A blind toggle would desync from md-to-adf and could treat an
+		# `![](local)` shown as example code inside a fence as a real image to
+		# upload — an attachment left on the issue that nothing references.
 		if [ "$sip_fence" = "1" ]; then
-			if [ "$sip_trimmed" = '```' ]; then sip_fence=0; fi
+			if scan_fence_closes "$sip_trimmed"; then sip_fence=0; fi
 			continue
 		fi
-		case "$sip_trimmed" in
-			'```'*) sip_fence=1; continue ;;
-		esac
+		if scan_fence_opens "$sip_trimmed"; then
+			sip_fence=1
+			continue
+		fi
 		case "$sip_trimmed" in
 			'!['*']('*')')
 				# Same glob + extraction md-to-adf.sh's image branch uses
@@ -81,6 +84,46 @@ scan_inline_image_paths() {
 				;;
 		esac
 	done <"$sip_markdown_file"
+}
+
+# scan_fence_opens TRIMMED_LINE / scan_fence_closes TRIMMED_LINE — md-to-adf.sh's
+# parse_fence_opener / is_fence_closer (see its "Fenced code" note for the
+# CommonMark rule), mirrored here because that script runs as a subprocess and
+# is never sourced. The opener records its character and run length in
+# SCAN_FENCE_CHAR/SCAN_FENCE_LEN for the closer to match. Change both copies
+# together, or the two disagree on which lines are fence content.
+scan_fence_opens() {
+	sfo_line=$1
+	case "$sfo_line" in
+		'```'*) sfo_char='`' ;;
+		'~~~'*) sfo_char='~' ;;
+		*) return 1 ;;
+	esac
+	sfo_rest=$sfo_line
+	sfo_len=0
+	while :; do
+		case "$sfo_rest" in
+			"$sfo_char"*) sfo_rest=${sfo_rest#?}; sfo_len=$((sfo_len + 1)) ;;
+			*) break ;;
+		esac
+	done
+	if [ "$sfo_char" = '`' ]; then
+		case "$sfo_rest" in
+			*'`'*) return 1 ;;
+		esac
+	fi
+	SCAN_FENCE_CHAR=$sfo_char
+	SCAN_FENCE_LEN=$sfo_len
+}
+
+scan_fence_closes() {
+	sfc_line=$1
+	[ -n "$sfc_line" ] || return 1
+	case "$SCAN_FENCE_CHAR" in
+		'`') case "$sfc_line" in *[!'`']*) return 1 ;; esac ;;
+		*)   case "$sfc_line" in *[!'~']*) return 1 ;; esac ;;
+	esac
+	[ "${#sfc_line}" -ge "$SCAN_FENCE_LEN" ]
 }
 
 # merge_media_map MAP_FILE PATH UUID — folds {PATH: UUID} into MAP_FILE in

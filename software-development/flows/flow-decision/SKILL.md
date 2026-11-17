@@ -1,6 +1,6 @@
 ---
 name: flow-decision
-description: The panel — a blind-reviewers-plus-arbiter pattern for neutralizing orchestrator bias on any complex, costly-to-undo, forked decision with multiple defensible answers — of any kind, not architecture only. Invoke ONLY on an explicit user request or a user-APPROVED offer — never auto-run. Owns the role briefings and procedure; the arbiter's own mandate lives in the `decision-arbiter` agent, not here.
+description: The orchestrator's procedure for the panel — a blind-reviewers-plus-arbiter pattern for neutralizing orchestrator bias on any complex, costly-to-undo, forked decision with multiple defensible answers — of any kind, not architecture only. Bind ONLY on an explicit user request or a user-APPROVED offer — never auto-run. Owns the role briefings and procedure. Does NOT define the arbiter's own mandate (`decision-arbiter`), the judge's shared conduct (`standard-judging`), the seat report's schema (`decision-lawyer-finding.schema.json`), or draft the spec a `flow-spec`-originated panel feeds (`flow-spec`).
 ---
 
 # Flow: Decision — the panel (sizes: trio / quartet)
@@ -28,9 +28,9 @@ spend the budget on making each lens genuinely different.
 
 ## 0. Entry — never auto-runs
 
-Starts only one of two ways, both human-gated. **Either way, the orchestrator FIRST renders the
+Starts only one of two ways, both human-gated — an explicit ask (path 1 below), or an orchestrator OFFER (path 2 below), which includes a `flow-spec`-originated contested-interface decision offered from that skill's §1 (its resolution feeds back into `flow-spec` §2's draft rather than ending the turn, per §2 step 5 below). **Either way, the orchestrator FIRST renders the
 Panel Plan (below) as live markdown — a panel NEVER runs until the user has seen it.** A panel spawns
-3–4 Opus lawyers + an arbiter; the user authorizes *why* it runs and *which seats* run, never a bare
+2–3 Opus lawyers + an arbiter (3–4 agents total); the user authorizes *why* it runs and *which seats* run, never a bare
 "pressure-test, y/n?".
 
 ### The Panel Plan (render as LIVE MARKDOWN — never inside a code fence)
@@ -41,7 +41,21 @@ The `>` marks below delimit the spec here; they are not part of what you emit.
 > - **Decision:** *[the fork, framed as a question]*
 > - **Candidate answers:** *[the ≥3 defensible options]*
 > - **Why a panel:** *[the concrete trigger IN THIS decision — forked with ≥3 defensible answers · costly to undo: (name the real cost) · (orchestrator-bias signal, if any)]*
-> - **Seats:** base = `[the §1a-derived agent]` *(why this base fits the fork)* · Soundness (§3a) · Skeptic (§3b) · *[Operability & Evolution (§3c) — quartet only]* · arbiter = `decision-arbiter`
+> - **Size:** *[trio — 2 lawyers, or quartet — 3 lawyers]*
+>
+> ### Seats
+> - Base = `[the §1a-derived agent]` — *[why this base fits the fork]*
+> - Soundness (§3a)
+> - Skeptic (§3b)
+> - *[Operability & Evolution (§3c) — quartet only]*
+> - Arbiter = `decision-arbiter` — neutral synthesizer, read-only, never the orchestrator
+>
+> ### Loop
+> - iterate from step 2 on CHANGES_REQUIRED · capped at 3 cycles · cap reached with disagreement still open = ESCALATE to the user, never a silent stop
+> - a `low` confidence verdict on a costly, hard-to-undo call is ALSO treated as ESCALATE, not APPROVED
+>
+> ### After this panel
+> - you get back a verdict to act on, not a fix — every seat (including the arbiter) is read-only and touches nothing
 
 **Why-a-panel and Seats are BOTH required** — a plan that names neither is the thin "pressure-test?"
 prompt this gate exists to replace. Derive the base per §1a BEFORE rendering; if no single base fits
@@ -68,7 +82,7 @@ why, and the seats live in the plan above, so the question captures only the cho
 - **Question:** "Run the panel above on this decision, or decide normally?"
 - **Options:** "Panel — trio (2 lenses)" · *(if a strong 3rd axis)* "Panel — quartet (+operability lens)" · "Decide normally"
 
-When you offer the **quartet** option, the Panel Plan's **Seats** line MUST already show the
+When you offer the **quartet** option, the Panel Plan's **Seats** block MUST already show the
 bracketed *Operability & Evolution (§3c)* seat — never offer a size whose extra seat the plan did
 not render (the "user has seen the seats" invariant applies to every size on offer).
 
@@ -108,18 +122,17 @@ produced it. One base ⇒ the lens is the only variable ⇒ the disagreement mea
 State the chosen base and WHY in the plan you put to the user. If no single base fits the fork, that
 is a signal the decision is really two decisions — split it rather than mixing bases.
 
-All seats run on the **strongest model (Opus)** — do not downgrade any seat, and do not vary the model across seats (the substrate-diversity exception is WITHDRAWN; see §1a).
+All seats run on the **strongest model (Opus)** — do not downgrade any seat, and do not vary the model across seats (see the Invariants below for why), the same problem that rules out swapping a single seat's base agent below.
 
 The reviewers are the **same** disposition-neutral base agent; independence comes **entirely
 from the differing briefings**, not the model. Because they share a base, two things are
 load-bearing: (1) the briefings must be **genuinely different questions** (Seat B is
 deliberately adversarial — that engineered opposition is a key decorrelator), and (2) the
-**arbiter must read the raw artifact** — its only safety net for a blind spot the reviewers
-share.
+**arbiter must read the raw artifact** — mandated by `standard-judging`, its only safety net
+for a blind spot the reviewers share.
 
-**Do NOT swap a single seat to a different agent.** (An earlier version of this skill offered that
-as a hatch for code-entangled decisions — it is withdrawn: it silently mixes bases and destroys the
-control above.) If the call hinges on code-level facts a call-graph trace would settle, that is not a
+**Do NOT swap a single seat to a different agent** — that silently mixes bases and destroys the
+control above. If the call hinges on code-level facts a call-graph trace would settle, that is not a
 reason to swap ONE seat — it is a signal that the `{tech}`-reviewer is the right base for **all** of
 them. Derive it in §1a and seat it everywhere.
 
@@ -139,24 +152,21 @@ them. Derive it in §1a and seat it everywhere.
    • Neither/none is told the others exist.
 3. COLLECT all reports.
    • Any disagreement → TRIPWIRE: do NOT pick a winner yourself. Spawn the `decision-arbiter`.
-   • Full agreement → STILL spawn the arbiter. (An earlier version allowed "LOW-stakes:
-     you may confirm & proceed" — withdrawn: §0's entry criteria admit no low-stakes
-     run, so that branch only ever let the biased orchestrator this pattern exists to
-     neutralize bless a unanimous verdict without an independent read.) HIGH-stakes (the costly/
-     irreversible calls that justified this): still spawn the arbiter for an independent
-     artifact spot-check — correlated reviewers agreeing is weak evidence, and the biased
-     orchestrator should not bless it.
+   • Full agreement → STILL spawn the arbiter. §0's entry criteria admit no low-stakes run, so
+     a unanimous verdict still needs an independent read — correlated reviewers agreeing is
+     weak evidence, and the biased orchestrator should not bless it alone.
 4. ARBITER returns item-by-item resolutions with reasoning (or ESCALATE).
-   • ACCEPTANCE — REJECT the report and re-dispatch if it omits ANY of: the two
-     standing-duty lines (option-set completeness · shared-substrate blind spot)
-     or the Confidence line. They are the arbiter's mandate, not a template it may
+   • ACCEPTANCE — REJECT the report and re-dispatch if it omits ANY of the three
+     standing-duty lines (option-set completeness · shared-substrate blind spot ·
+     confidence). They are the arbiter's mandate, not a template it may
      trim — and a silent omission is precisely the failure they exist to catch.
      (The `review-arbiter` gets this for free: a missing JSON key is malformed.
      A prose report can drop a line and look complete. Check it.)
    • Confidence `low` on a costly, hard-to-undo call → treat as ESCALATE, not
      APPROVED. Report the uncertainty to the user; do not launder it into a verdict.
-5. CHANGES REQUIRED → iterate from step 2. APPROVED → present to the user. ESCALATE →
-   surface the open question to the user.
+5. CHANGES REQUIRED → iterate from step 2. APPROVED → present to the user — if this panel was
+   triggered from `flow-spec` §1, its verdict is also fed into that skill's §2 draft + Decision
+   log, not just presented and left. ESCALATE → surface the open question to the user.
 6. CAP: 3 cycles → escalate.
 ```
 
@@ -226,10 +236,15 @@ Full mandate (verify-every-claim, decide-*why*-not-*which*, **three STANDING dut
 option-set completeness + name the shared-substrate blind spot + state confidence**, bias guards,
 implementation-review nuance, escape hatch, structured verdict) lives in the **`decision-arbiter`
 agent** — which binds the shared **`standard-judging`** constitution. The three standing duties
-fire on *every* run and are required verdict fields, not behaviors the orchestrator must remember to
-inject. Dispatch it with:
-the decision, ALL reviews labeled neutrally ("Review 1"…"Review N" — **swap their order across
-cycles** to blunt position bias), and the raw artifact paths (never the reviews alone).
+fire on *every* run and are required verdict fields — `standard-judging`'s own "Standing duties"
+section, not behaviors the orchestrator must remember to inject. Dispatch it with **all five inputs that agent's own "You MUST include" list requires**:
+(1) the decision, framed as a question, and the proposal on the table; (2) ALL reviews labeled
+neutrally ("Review 1"…"Review N" — **swap their order across cycles** to blunt position bias); (3)
+the raw artifact paths (never the reviews alone); (4) **whether this is a plan/design review or an
+IMPLEMENTATION review** — mandatory, governs the implementation-review nuance in its mandate; (5)
+**on any cycle ≥2, the prior arbiter verdict plus which findings were meant to be addressed** —
+mandatory on re-dispatch, to the arbiter only, never relayed to a lawyer (that would break the
+blindness invariant).
 
 ### 3e. Ask each lawyer for STRUCTURED findings
 
@@ -238,6 +253,8 @@ structured findings plus a one-line overall recommendation — not a prose essay
 `$HOME/.claude/crucible/contracts/decision-lawyer-finding.schema.json` (framework source:
 software-development/contracts/decision-lawyer-finding.schema.json), which fixes the per-claim shape
 (`claim`, `severity`, `evidence` at `file:line`, `verdict`) and the top-level recommendation.
+
+**For a panel seat, this schema REPLACES that base agent's own default report shape** — most §1a bases (`{tech}-reviewer`, `lens-persistence-reviewer`, `software-architect`) normally bind `review-report-standards` and would otherwise emit that schema instead; state explicitly in the dispatch that this seat reports per `decision-lawyer-finding.schema.json`, findings + a one-line recommendation only, no prose padding — severity is still graded on that base's own consequence scale, just carried in this schema's `severity` field instead of the other one's.
 
 ---
 
@@ -250,10 +267,10 @@ software-development/contracts/decision-lawyer-finding.schema.json), which fixes
 | Reviewers redundant | Same base, but **genuinely different questions** per seat (§3). Seat B stays adversarial. Never give two seats the same lens. |
 | **Too many lawyers** | **3 is the hard ceiling.** Panels degrade past ~4; more count ≠ more signal. Never add a 4th lawyer. |
 | Clone lens (no decorrelation) | If the 3rd lens rarely produces a *distinct* finding across runs, it isn't earning its seat — drop back to the trio. |
-| Over-trusting unanimity | Agreement from same-base reviewers is weak evidence. On high-stakes calls the **arbiter still spot-checks** the artifact. |
+| Over-trusting unanimity | Agreement from same-base reviewers is weak evidence. The **arbiter still spot-checks** the artifact even on full agreement. |
 | **Framing artifact carries the proposer's errors** (the one un-decorrelated input) | Every lawyer briefing is prepended with the **verify-the-framing-doc preamble** (§3): each seat independently checks the framing's load-bearing claims against the code before evaluating. The orchestrator should also self-verify it before dispatch. |
-| **Framing OMITS justifying evidence, or EDITORIALIZES** a component as unchanged / fine / out-of-scope | The verify-preamble catches *wrong* claims but not *missing* evidence or *steering* dismissals (both hid findings in run 2). Orchestrator: front-load all justifying evidence incl. runtime/external facts, and name components neutrally (§2). Seat backstop: the §3 preamble treats any "unchanged / fine / out-of-scope" as a red-flag-to-audit-directly, and the Skeptic returns "justify-or-drop" rather than dropping on possibly-omitted runtime evidence (§3b). |
-| **Shared-substrate blind spot** (all seats + arbiter share one base model) | A model-level blind spot is invisible to everyone at once. Mitigation: the arbiter's **standing duty** to re-derive from the artifact and name what all seats jointly miss (§3d + arbiter agent). Highest-stakes / irreversible calls only: optionally run ONE seat on a **peer-strength model from a different family** (lateral decorrelation, never a downgrade). Within one provider substrate diversity is limited, so the standing duty carries most of the load. |
+| **Framing OMITS justifying evidence, or EDITORIALIZES** a component as unchanged / fine / out-of-scope | The verify-preamble catches *wrong* claims but not *missing* evidence or *steering* dismissals. Orchestrator: front-load all justifying evidence incl. runtime/external facts, and name components neutrally (§2). Seat backstop: the §3 preamble treats any "unchanged / fine / out-of-scope" as a red-flag-to-audit-directly, and the Skeptic returns "justify-or-drop" rather than dropping on possibly-omitted runtime evidence (§3b). |
+| **Shared-substrate blind spot** (all seats + arbiter share one base model) | A model-level blind spot is invisible to everyone at once. Mitigation: the arbiter's **standing duty** to re-derive from the artifact and name what all seats jointly miss (§3d + arbiter agent). Within one provider substrate diversity is limited (§1a forbids varying the model across seats), so the standing duty carries all of the load. |
 | Arbiter context dilution at N=3 | Feed **structured findings** (§3e), not prose; **rotate review order** each cycle. |
 | **Self-arbitration (cardinal sin)** | The instant you weigh one lens against another *in your own voice*, STOP — spawn the `decision-arbiter`. |
 | Briefing drift | Briefings copied verbatim from §3. |
@@ -263,34 +280,32 @@ software-development/contracts/decision-lawyer-finding.schema.json), which fixes
 
 ## Invariants (NEVER break)
 
-- **Never auto-run** — explicit request or user-approved offer only.
-- **Render the Panel Plan before any panel runs** — both entry paths; it names *why a panel* AND *which seats* (§0). The offer gates on it via `AskUserQuestion`; the explicit path shows it as a one-look confirmation. A panel dispatched without the user having seen the seats is an auto-run in disguise.
-- **Blind reviewers** — seats never see each other's briefing or output; never told a counterpart exists.
-- **Different lenses** — every seat gets a different briefing; never the same lens twice.
-- **Max 3 lawyers** — never a 4th. Decorrelate, don't multiply.
-- **All seats on Opus** — never *downgrade* a seat. (WITHDRAWN — see §1a: a different model family reintroduces substrate as a second variable on exactly ONE seat, which is the identical argument that withdrew the agent-swap hatch. The Task tool's model enum is Anthropic-only, so it is likely undispatchable anyway. Former text: Exception — highest-stakes, least-reversible calls only: ONE seat MAY run on a **peer-strength model from a different family** for substrate decorrelation; a lateral swap, never a weaker model.)
-- **No self-arbitration on disagreement** — spawn the `decision-arbiter`. On high-stakes agreement, still let the arbiter make the final call.
-- **The arbiter is never the orchestrator.**
-- **The arbiter's independent artifact read is non-negotiable** — never weaken it to "read the reviews + spot-check." It is the pattern's last line of defense against a framing that misdirects the lawyers (run 2: the arbiter was the only seat to catch a gating, ship-blocking bug).
+- **Never auto-run** — explicit request or user-approved offer only (§0).
+- **Render the Panel Plan before any panel runs** — both entry paths; it names *why a panel* AND *which seats* (§0). The offer gates on it via `AskUserQuestion`; the explicit path shows it as a one-look confirmation. A panel dispatched without the user having seen the seats is an auto-run in disguise (§0).
+- **One derived base for every lawyer seat, never swap a single seat** — this is not a style rule, it is the control that makes a disagreement interpretable (§1a).
+- **Blind reviewers** — seats never see each other's briefing or output; never told a counterpart exists (§2).
+- **Different lenses** — every seat gets a different briefing; never the same lens twice (§3).
+- **Max 3 lawyers** — never a 4th. Decorrelate, don't multiply (§4).
+- **All seats on Opus** — never downgrade a seat, and never vary the model across seats: a different model family would reintroduce substrate as a second variable on exactly one seat, the same problem that rules out swapping a single seat's base agent (§1a). The Task tool's model enum is Anthropic-only regardless.
+- **No self-arbitration on disagreement** — spawn the `decision-arbiter`. On unanimous agreement, still let the arbiter make the final call (§2).
+- **The arbiter is never the orchestrator** (§0/§4).
+- **The arbiter's independent artifact read is non-negotiable** — `standard-judging`'s own mandate; never weaken it to "read the reviews + spot-check." It is the pattern's last line of defense against a framing that misdirects the lawyers (§1a).
+- **Reject and re-dispatch an arbiter report missing any of the three standing-duty lines (option-set completeness · shared-substrate blind spot · confidence)** — a silent omission is precisely the failure those fields exist to catch; a `low` confidence verdict on a costly call is treated as ESCALATE, never APPROVED (§2).
+- **Capped at 3 cycles — hitting the cap with disagreement still open is an escalation to the human, never a silent loop or a silent stop** (§2).
+- **Briefings are injected verbatim, with the framing-verification preamble prepended to every one** — copied from §3, never paraphrased or trimmed run to run (§3).
 
 ---
 
 ## Reference
 
-Empirically validated across n=8 trials (plans, docs, audits, implementations) in the
-`claude-code-agent` project: `claude-code-agent/docs/dual-reviewer-arbiter-pattern.md`.
-
-**Validation log — this implementation:**
-- **2026-07-15 · n=1 · architectural decision (all-in-memory React 19 rendering performance) · trio (Soundness + Skeptic + arbiter):** SUCCESS — orchestrator bias neutralized (reflex answer demoted to #5 of 6; real dominant cost surfaced), verdict sound. Two structural weaknesses observed → **hardened in this version:** the framing artifact shipped 2 factual errors caught only by luck of briefing (→ §3 shared verify-the-framing preamble), and the highest-value finding (a shared-model `useMemo`-isn't-a-cache footgun) fired only because the orchestrator ad-hoc-instructed the arbiter (→ arbiter standing duties + §4 substrate row). See `feedback/2026/07/16/flow-decision-first-run.md`.
-- **2026-07-16 · n=2 · implementation review (async sub-agent token capture + per-turn aggregation, 3 repos) · quartet (Soundness + Skeptic + Operability&Evolution + arbiter):** SUCCESS — the run-1 hardening fired NATIVELY: the arbiter's standing duty re-derived from the raw artifact a GATING, ship-blocking defect no other seat found (backend hydration seed used `.first(delta)` instead of summing per-Stop deltas — the *exact* bug the change existed to fix), which a full dev↔reviewer loop + all 3 lawyers + the framing all missed; all framing errors were independently caught by the lawyers. Residual weakness moved UPSTREAM to the orchestrator's framing — a framing OMISSION (runtime fact absent → one false "drop it") and an attention-steering "unchanged" editorial (hid the gating file; lawyers distrusted the word but none audited the file) that the verify-preamble structurally cannot catch → hardened here: §3 dismissal-as-red-flag + omission caution, §3b justify-or-drop, §2 front-load-evidence + neutral-framing step, §4 editorializing/omission row, and the arbiter-independent-read invariant. See `feedback/2026/07/16/flow-decision-second-run.md`.
-
-Design refinements are drawn from the LLM-as-judge / panel-of-judges / multi-agent-debate
-literature: 3 reviewers is the empirical sweet spot (PoLL, ChatEval, multiagent debate) and
+Design refinements are drawn from the LLM (Large Language Model)-as-judge / panel-of-judges /
+multi-agent-debate literature: 3 reviewers is the empirical sweet spot (PoLL, i.e. Panel of LLM
+evaluators; ChatEval; multiagent debate) and
 5 is the ceiling before error-correlation saturates ("Nine Judges, Two Effective Votes");
 decorrelation — not count — is what buys signal, achieved here via **aspect-different lenses
 + one adversarial stance** (the two schemes shown to actually decorrelate); a **reasoning
-arbiter over voting** (fits few differentiated, information-rich lenses — MoA aggregator /
-red-blue-green adjudicator); blind independence over debate (avoids conformity collapse);
+arbiter over voting** (fits few differentiated, information-rich lenses — a MoA, Mixture-of-Agents,
+aggregator / red-blue-green adjudicator); blind independence over debate (avoids conformity collapse);
 structured findings + order-rotation to keep a 3-input judge reliable; and an
 "insufficient evidence → escalate" hatch.
 

@@ -1,0 +1,1 @@
+{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"abc-123"}},{"type":"text","text":"(https://example.com) and "},{"type":"text","text":"text","marks":[{"type":"link","attrs":{"href":"https://example.com"}}]},{"type":"text","text":"."}]}]}

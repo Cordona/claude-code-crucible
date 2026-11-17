@@ -21,7 +21,7 @@
 #      a SIBLING of the paragraph, never its own top-level block. See the
 #      "Nested lists" design note below.)
 #   ---  (a line that IS exactly "---")  -> a rule node
-#   ```lang / ```           -> a fenced code block (see "Fenced code" below)
+#   ```lang / ~~~lang       -> a fenced code block (see "Fenced code" below)
 #   > ...                   -> a blockquote wrapping ONE OR MORE paragraphs
 #   > [!INFO]/[!NOTE]/[!WARNING]/[!SUCCESS]/[!ERROR] (+ GitHub-alert aliases
 #     [!TIP]->success, [!CAUTION]->error, [!IMPORTANT]->warning), as the
@@ -29,6 +29,8 @@
 #   | a | b | \n |---|---| \n | c | d |   -> a GFM pipe table (see "Tables")
 #   inline **bold**, ***bold+italic***, _italic_/*italic*, `code`,
 #     ~~strike~~, [text](url) -> marks on text runs
+#   [~accountId:<ID>]       -> an inline `mention` node (Jira's own @mention
+#                             syntax). See "Mentions" below.
 #   a line ending in 2+ trailing spaces or a trailing "\" -> an inline
 #     hardBreak node between it and the next line of the SAME paragraph
 #   anything else (a markdown construct we don't recognize) -> degrades to a
@@ -132,6 +134,52 @@
 #       FAIL LOUD (exit 1): a malformed UUID would otherwise become an ADF
 #       value, so it is rejected at the sink (see standard-security).
 #
+# Mentions (inline, no --media-map needed, no network — this converter never
+# makes one):
+#   Jira's own mention syntax `[~accountId:<ID>]` becomes the ADF inline node
+#     {"type":"mention","attrs":{"id":"<ID>"}}
+#   `attrs.id` is the ONLY attribute Atlassian's ADF mention schema requires
+#   (checked against its node reference: `text`, `userType` and `accessLevel`
+#   are all optional, and `localId` — required on taskList/taskItem — is not
+#   part of this node at all). None of the optional three is emitted, for a
+#   reason stronger than the mediaSingle block's "stay on the proven path":
+#   `text` is a DISPLAY name (conventionally "@Jane Doe"), and resolving an
+#   accountId to a display name needs a Jira lookup this converter must never
+#   perform. Jira renders the mention from the id alone.
+#   UNVERIFIED, stated rather than guessed silently (same convention as the
+#   mediaSingle alt-text note above): the id-only shape is what the schema
+#   documents as sufficient, but nothing has been posted to a live site from
+#   here, so how a mention with no `text` renders in a stale client cache or an
+#   email notification is untested. Adding `text` later is additive and breaks
+#   no existing document.
+#
+#   The ID is VALIDATED before it can become an ADF attribute value — the same
+#   sink-specific control is_media_uuid applies to a media UUID: at most 128
+#   characters (Atlassian's documented maximum for an accountId) drawn only from
+#   [A-Za-z0-9:_-], which covers both live forms — the 24-char opaque id
+#   (`5b10ac8d82e05b22cc7d4ef5`) and the prefixed one (`712020:2b7863ea-...`).
+#   Atlassian publishes no character grammar for an accountId (it documents an
+#   OPAQUE identifier), so this allow-list is deliberately conservative rather
+#   than authoritative; its failure mode is a refused mention, never a wrong one.
+#
+#   FALLBACK (no content is ever silently dropped, exactly as for images): text
+#   that is not a valid mention — an out-of-shape or over-long id, `[~accountId:]`
+#   with nothing in it, a quoted example of the syntax — matches no alternative
+#   at all and passes through as plain paragraph text, byte-identical to how it
+#   behaved before mentions were recognized.
+#
+#   WRITE A MENTION BARE — never wrapped in emphasis markers. `**[~accountId:x]**`,
+#   `*…*`, `_…_` and `***…***` SUPPRESS the mention: the emphasis alternative
+#   matches at an earlier offset and consumes the whole bracket expression as its
+#   literal mark text, so the mention branch never sees it (marks do not nest
+#   here — the same leftmost-first rule a wrapped `[text](url)` link already
+#   obeys, see the tokenizer note). `~~[~accountId:x]~~` fails differently and
+#   just as wrongly: strike's `~~([^~]+)~~` content class rejects the mention's
+#   own `~`, so the mention DOES render but the two `~~` pairs survive around it
+#   as literal text. Emphasis on a mention is not a Jira feature anyway (Jira
+#   styles the mention chip itself), so the fix is always to drop the markers,
+#   never to nest them.
+#
 # Exit codes:
 #   0  converted
 #   1  jq absent / jq lacks Oniguruma regex support / an internal jq failure /
@@ -173,6 +221,13 @@
 #      put a third value there. taskItem also wraps NOTHING: its content
 #      is inline nodes directly, so a listItem-shaped paragraph wrapper
 #      there is itself a 400 (see the "Task lists" design note below).
+#   9. mention needs an attrs.id Jira can resolve -> guarded TWICE (see
+#      "Mentions" above for the shape): the tokenizer's mention alternative
+#      cannot MATCH an out-of-shape id, and its emit branch re-checks the
+#      captured id anyway before building the node. That second check cannot
+#      fire today — it is an assertion against a FUTURE widening of the capture
+#      class, at the one place an unvalidated id would become JSON, the same
+#      posture as the sibling engine's host re-check in lib/http.sh.
 #
 # Design notes (POSIX sh has no arrays):
 #   Every node accumulates as ONE COMPACT JSON OBJECT PER LINE in a temp
@@ -291,18 +346,28 @@ trim() {
 # The inline tokenizer — TWO static, hardcoded jq programs (never built from
 # markdown text): tokenize_marks (regex mark-matching) wrapped by tokenize
 # (hardBreak splitting). Recognizes, in priority order, left-to-right,
-# non-overlapping: ***bold+italic***, **bold**, `code`, [text](url),
-# *italic*, _italic_, ~~strike~~ — modeled on the oracle's single combined
-# regex, extended (the oracle has none of bold+italic/strike/hardBreak).
+# non-overlapping: ***bold+italic***, **bold**, `code`, [~accountId:ID],
+# [text](url), *italic*, _italic_, ~~strike~~ — modeled on the oracle's single
+# combined regex, extended (the oracle has none of bold+italic/strike/
+# hardBreak/mention).
 # Untrusted text arrives ONLY via --arg; this string is never interpolated
 # into the jq source.
 #
 # Regex (as Oniguruma sees it, after jq string-literal unescaping):
-#   \*\*\*([^*]+)\*\*\*|\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|
+#   \*\*\*([^*]+)\*\*\*|\*\*(.+?)\*\*|`([^`]+)`|
+#   \[~accountId:([A-Za-z0-9:_-]{1,128})\]|\[([^\]]+)\]\(([^)]+)\)|
 #   \*([^*]+)\*|_([^_]+)_|~~([^~]+)~~
 # capture group 1 = bold+italic text, 2 = bold text, 3 = code text,
-# 4 = link text, 5 = link href, 6 = italic(*) text, 7 = italic(_) text,
-# 8 = strike text.
+# 4 = mention accountId, 5 = link text, 6 = link href, 7 = italic(*) text,
+# 8 = italic(_) text, 9 = strike text.
+#
+# GROUP NUMBERS ARE POSITIONAL AND THE reduce BELOW INDEXES THEM BY OFFSET
+# ($m.captures[N-1]). Inserting an alternative therefore renumbers every group
+# after it — the mention branch above was inserted as group 4 and shifted the
+# link/italic/strike branches from 4-8 to 5-9. Add a new alternative at the END
+# unless its precedence demands otherwise (mention's did — see below), and if
+# you must insert one mid-alternation, move every later captures[] index in the
+# same edit.
 #
 # `***bold+italic***` MUST precede `**bold**`, which MUST precede
 # `*italic*`, in the alternation: alternation tries branches left-to-right
@@ -317,6 +382,19 @@ trim() {
 # unclosed `*only`/`_only` simply never completes any alternative and falls
 # through untouched to plain text, by construction — no special-casing
 # needed.
+#
+# `[~accountId:ID]` MUST precede `[text](url)` for the same leftmost-first
+# reason, and it is the ONLY pair whose order matters here: those two are the
+# only alternatives that can begin at a `[`, so mention's position relative to
+# the other six is immaterial while its position relative to the link branch
+# decides the one input both can claim — `[~accountId:x](http://y)`. Mention
+# first makes that a mention followed by the literal text `(http://y)`, which is
+# the right reading: the mention syntax is explicit and unambiguous, whereas
+# treating it as a link would emit `~accountId:x` as clickable link TEXT and
+# silently lose the mention. Because this branch's capture class is also the id
+# allow-list ("Mentions", in the header), precedence cannot cost content either:
+# an out-of-shape id never matches HERE, so `[~accountId:a b](url)` still reaches
+# the link branch below and `[~accountId:a b]` alone stays plain text.
 #
 # A matched link's href is checked against an http(s)/mailto
 # scheme allow-list (case-insensitive) before it is trusted as a link mark.
@@ -337,7 +415,7 @@ trim() {
 INLINE_TOKENIZE_PROGRAM='
 def tokenize_marks:
   . as $t
-  | [match("\\*\\*\\*([^*]+)\\*\\*\\*|\\*\\*(.+?)\\*\\*|`([^`]+)`|\\[([^\\]]+)\\]\\(([^)]+)\\)|\\*([^*]+)\\*|_([^_]+)_|~~([^~]+)~~"; "g")] as $ms
+  | [match("\\*\\*\\*([^*]+)\\*\\*\\*|\\*\\*(.+?)\\*\\*|`([^`]+)`|\\[~accountId:([A-Za-z0-9:_-]{1,128})\\]|\\[([^\\]]+)\\]\\(([^)]+)\\)|\\*([^*]+)\\*|_([^_]+)_|~~([^~]+)~~"; "g")] as $ms
   | if ($ms | length) == 0 then
       (if ($t | length) == 0 then [] else [{type:"text", text:$t}] end)
     else
@@ -354,18 +432,27 @@ def tokenize_marks:
               elif ($m.captures[2].string != null) then
                 .nodes += [{type:"text", text:$m.captures[2].string, marks:[{type:"code"}]}]
               elif ($m.captures[3].string != null) then
-                ($m.captures[4].string) as $href
-                | if ($href | test("^(?:https?|mailto):"; "i")) then
-                    .nodes += [{type:"text", text:$m.captures[3].string, marks:[{type:"link", attrs:{href:$href}}]}]
+                ($m.captures[3].string) as $mention_id
+                | if (($mention_id | length) > 0)
+                     and (($mention_id | length) <= 128)
+                     and (($mention_id | test("[^A-Za-z0-9:_-]")) | not) then
+                    .nodes += [{type:"mention", attrs:{id:$mention_id}}]
                   else
-                    .nodes += [{type:"text", text:$m.captures[3].string}]
+                    .nodes += [{type:"text", text:$m.string}]
                   end
-              elif ($m.captures[5].string != null) then
-                .nodes += [{type:"text", text:$m.captures[5].string, marks:[{type:"em"}]}]
+              elif ($m.captures[4].string != null) then
+                ($m.captures[5].string) as $href
+                | if ($href | test("^(?:https?|mailto):"; "i")) then
+                    .nodes += [{type:"text", text:$m.captures[4].string, marks:[{type:"link", attrs:{href:$href}}]}]
+                  else
+                    .nodes += [{type:"text", text:$m.captures[4].string}]
+                  end
               elif ($m.captures[6].string != null) then
                 .nodes += [{type:"text", text:$m.captures[6].string, marks:[{type:"em"}]}]
               elif ($m.captures[7].string != null) then
-                .nodes += [{type:"text", text:$m.captures[7].string, marks:[{type:"strike"}]}]
+                .nodes += [{type:"text", text:$m.captures[7].string, marks:[{type:"em"}]}]
+              elif ($m.captures[8].string != null) then
+                .nodes += [{type:"text", text:$m.captures[8].string, marks:[{type:"strike"}]}]
               else .
               end
             )
@@ -503,6 +590,63 @@ emit_code_block() {
 		  content: (if (. | length) == 0 then [] else [{type:"text", text:.}] end)}' \
 		<"$FENCE_BODY_FILE" >>"$BLOCKS_FILE" \
 		|| { error "internal jq failure (code block assembly)"; exit 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Fenced code — CommonMark's fence rule, so a fence can CONTAIN a fence.
+#
+# An opening fence is a run of 3+ of ONE fence character, ` or ~, followed by
+# an optional info string (here: the language); a BACKTICK fence's info string
+# may not itself contain a backtick, or the line is not a fence at all (it
+# degrades to paragraph text). The run's character and length are recorded,
+# and the fence closes ONLY on a line that is nothing but the SAME character,
+# at least as many of it, plus optional surrounding whitespace. Everything in
+# between is literal — which is exactly what lets a ```` block show a ``` block
+# as its content instead of being split by it. An unclosed fence still
+# auto-closes at EOF with whatever it collected.
+#
+# lib/inline-images.sh mirrors these two predicates in jira.sh's own process
+# (this script runs as a separate subprocess and is never sourced), so both
+# agree on which lines are fence content; change them together.
+# ---------------------------------------------------------------------------
+
+# parse_fence_opener TRIMMED_LINE — 0 and sets FENCE_CHAR/FENCE_LEN/FENCE_LANG
+# when TRIMMED_LINE opens a fence; 1 (setting nothing) otherwise.
+parse_fence_opener() {
+	pfo_line=$1
+	case "$pfo_line" in
+		'```'*) pfo_char='`' ;;
+		'~~~'*) pfo_char='~' ;;
+		*) return 1 ;;
+	esac
+	pfo_rest=$pfo_line
+	pfo_len=0
+	while :; do
+		case "$pfo_rest" in
+			"$pfo_char"*) pfo_rest=${pfo_rest#?}; pfo_len=$((pfo_len + 1)) ;;
+			*) break ;;
+		esac
+	done
+	if [ "$pfo_char" = '`' ]; then
+		case "$pfo_rest" in
+			*'`'*) return 1 ;;
+		esac
+	fi
+	FENCE_CHAR=$pfo_char
+	FENCE_LEN=$pfo_len
+	FENCE_LANG=$(trim "$pfo_rest")
+}
+
+# is_fence_closer TRIMMED_LINE — 0 when TRIMMED_LINE closes the OPEN fence:
+# only FENCE_CHAR, at least FENCE_LEN of it.
+is_fence_closer() {
+	ifc_line=$1
+	[ -n "$ifc_line" ] || return 1
+	case "$FENCE_CHAR" in
+		'`') case "$ifc_line" in *[!'`']*) return 1 ;; esac ;;
+		*)   case "$ifc_line" in *[!'~']*) return 1 ;; esac ;;
+	esac
+	[ "${#ifc_line}" -ge "$FENCE_LEN" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1265,6 +1409,8 @@ PARA_TEXT=""
 PARA_PENDING_HARD_BREAK=0
 FENCE_OPEN=0
 FENCE_LANG=""
+FENCE_CHAR=""
+FENCE_LEN=0
 TABLE_STATE="CLOSED"
 QUOTE_OPEN=0
 QUOTE_PANEL_TYPE=""
@@ -1280,7 +1426,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 	# byte-verbatim, untrimmed, with no markdown parsing whatsoever. ---
 	if [ "$FENCE_OPEN" = "1" ]; then
 		fence_trimmed=$(trim "$raw_line")
-		if [ "$fence_trimmed" = '```' ]; then
+		if is_fence_closer "$fence_trimmed"; then
 			emit_code_block
 			FENCE_OPEN=0
 			FENCE_LANG=""
@@ -1366,14 +1512,15 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 			list_close_all
 			emit_rule
 			continue ;;
-		'```'*)
-			flush_paragraph
-			list_close_all
-			FENCE_LANG=$(trim "${trimmed#'```'}")
-			: >"$FENCE_BODY_FILE"
-			FENCE_OPEN=1
-			continue ;;
 	esac
+
+	if parse_fence_opener "$trimmed"; then
+		flush_paragraph
+		list_close_all
+		: >"$FENCE_BODY_FILE"
+		FENCE_OPEN=1
+		continue
+	fi
 
 	# --- own-line inline image (block-level media). ONLY when --media-map is
 	# supplied: a line that is SOLELY `![alt](PATH)` with a LOCAL (non-http(s))

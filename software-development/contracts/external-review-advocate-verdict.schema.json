@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://crucible.local/contracts/external-review-advocate-verdict.schema.json",
   "title": "External-Review Advocate Verdict",
-  "description": "The payload a PRO / CON / single advocate returns for ONE finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the advocacy SEMANTICS (PRO argues real defect, CON argues false-positive, judge against the bound standard-*) live in flow-external-review + the advocate's bound review standards. `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
+  "description": "The payload a PRO / CON / single advocate returns for ONE finding in the external-review pattern. This file defines the SHAPE and value domains ONLY; the advocacy SEMANTICS (what PRO/CON each argue, which standard the ruling judges against) live in flow-external-review + the advocate's bound review standards. `severity` is the ONE anchored scale (see severity.schema.json). Return ONLY an object conforming to this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": ["verdict", "severity", "evidence", "recommended_action", "confidence"],

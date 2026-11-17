@@ -26,7 +26,7 @@ cmd_epic() {
 }
 
 # validate_epic_args() — `epic`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_epic_args() {
 	[ -n "$TICKET_KEY" ] || { usage >&2; error "epic requires a numeric epic id, e.g.: epic 91591 --issues"; exit 2; }

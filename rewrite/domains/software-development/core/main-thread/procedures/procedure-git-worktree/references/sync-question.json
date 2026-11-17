@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "header": "Sync",
+      "question": "Merge the newer work into this seat?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Sync now (Recommended)",
+          "description": "Its builder builds on the latest work of the seats it was cut from."
+        },
+        {
+          "label": "Not now",
+          "description": "Nothing changes; it is offered again at the next commit."
+        }
+      ]
+    }
+  ]
+}

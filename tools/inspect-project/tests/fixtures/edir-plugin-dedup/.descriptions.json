@@ -1,0 +1,59 @@
+{
+  "groups": [
+    {
+      "name": "Rust",
+      "inspections": [
+        {
+          "shortName": "RustUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.rust.lang",
+          "pluginVersion": "1.0",
+          "language": "Rust",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports unresolved references.</body></html>"
+        },
+        {
+          "shortName": "RustUnusedImport",
+          "displayName": "Unused import",
+          "defaultSeverity": "WARNING",
+          "pluginId": "org.rust.lang",
+          "pluginVersion": "1.0",
+          "language": "Rust",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>A SECOND inspection from the SAME plugin+version — the pair must collapse to one plugins[] entry.</body></html>"
+        },
+        {
+          "shortName": "RustExtraLint",
+          "displayName": "Extra lint",
+          "defaultSeverity": "WARNING",
+          "pluginId": "com.other.rust",
+          "pluginVersion": "2.0",
+          "language": "Rust",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>A SECOND plugin contributing to the same language.</body></html>"
+        }
+      ]
+    },
+    {
+      "name": "TOML",
+      "inspections": [
+        {
+          "shortName": "TomlUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.toml.lang",
+          "pluginVersion": "9.9",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>A DIFFERENT language's plugin — it must not leak into Rust's plugins[].</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Dedup Probe"
+}

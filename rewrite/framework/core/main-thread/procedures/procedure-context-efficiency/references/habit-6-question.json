@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Whole file",
+      "question": "Show the whole file or log anyway?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Only what matters (Recommended)",
+          "description": "I find the lines that matter with a search or a line range and show only those; they serve the request without all of it staying in the conversation."
+        },
+        {
+          "label": "Yes",
+          "description": "I show all of it; it stays in the conversation, and every turn re-reads it."
+        },
+        {
+          "label": "No",
+          "description": "I show nothing of the file or log."
+        }
+      ]
+    }
+  ]
+}

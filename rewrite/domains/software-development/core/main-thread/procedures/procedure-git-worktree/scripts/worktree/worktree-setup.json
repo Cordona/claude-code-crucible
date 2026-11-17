@@ -1,0 +1,15 @@
+{
+  "always": {
+    "copy": [".env", ".env.local", ".env.*.local", ".env.testing"],
+    "skip": [".worktrees", ".claude/worktrees"]
+  },
+  "technologies": [
+    { "name": "node", "detect": ["package.json"], "copy": [".npmrc"], "copy-every-dir-named": ["node_modules"] },
+    { "name": "php", "detect": ["composer.json"], "copy": ["vendor", "auth.json"] },
+    { "name": "gradle", "detect": ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"], "copy": ["local.properties"] },
+    { "name": "rust", "detect": ["Cargo.toml"], "copy": [] },
+    { "name": "go", "detect": ["go.mod"], "copy": [] },
+    { "name": "maven", "detect": ["pom.xml"], "copy": [] },
+    { "name": "python", "detect": ["pyproject.toml", "requirements.txt", "Pipfile", "setup.py", "setup.cfg", "venv/pyvenv.cfg", ".venv/pyvenv.cfg", "env/pyvenv.cfg"], "copy-every-dir-containing": ["pyvenv.cfg"], "repoint": ["bin"] }
+  ]
+}

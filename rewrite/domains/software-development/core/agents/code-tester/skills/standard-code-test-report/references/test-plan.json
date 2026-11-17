@@ -1,0 +1,93 @@
+{
+  "behaviours": [
+    {
+      "id": "B-1",
+      "text": "An order for more units than in stock is rejected with 409 and nothing is saved",
+      "at": "src/main/kotlin/orders/OrderService.kt:42"
+    },
+    {
+      "id": "B-2",
+      "text": "An order within stock is accepted",
+      "at": "src/main/kotlin/orders/OrderService.kt:48",
+      "guarded_by": ["src/test/kotlin/orders/OrdersApiTest.kt: should_accept_order_when_stock_is_enough"]
+    }
+  ],
+  "add": [
+    {
+      "id": "T-1",
+      "kind": "new_test",
+      "file": "src/test/kotlin/orders/OrdersApiTest.kt",
+      "name": "should_reject_order_when_stock_is_short",
+      "level": "e2e",
+      "guards": ["B-1"],
+      "breaks_on": "remove the stock check at src/main/kotlin/orders/OrderService.kt:42",
+      "fixtures": ["F-1"]
+    },
+    {
+      "id": "T-2",
+      "kind": "new_rows",
+      "file": "src/test/kotlin/orders/QuantityRulesTest.kt",
+      "name": "rejects_invalid_quantities",
+      "rows": ["stock 0, ordered 1", "stock 2, ordered 3"],
+      "level": "unit",
+      "why": "Too many stock and quantity pairs to drive through the endpoint",
+      "guards": ["B-1"],
+      "breaks_on": "change > to >= at src/main/kotlin/orders/QuantityRules.kt:9"
+    }
+  ],
+  "modify": [
+    {
+      "id": "M-1",
+      "file": "src/test/kotlin/orders/OrdersApiTest.kt",
+      "name": "should_accept_order_when_stock_is_enough",
+      "changes": "Expects the new reservedUntil field in the response golden",
+      "keeps": "Still asserts the order row and the 201 status",
+      "guards": ["B-2"]
+    }
+  ],
+  "remove": [
+    {
+      "id": "R-1",
+      "file": "src/test/kotlin/orders/LegacyStockCheckTest.kt",
+      "name": "stock_check_returns_false",
+      "why": "The boolean stock check was replaced by the reservation call",
+      "covered_by": "T-1"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "F-1",
+      "action": "add",
+      "file": "src/test/resources/orders/short-stock-409.json",
+      "source": "captured",
+      "from": "a local run of T-1 against the containerised database"
+    }
+  ],
+  "support": [],
+  "untested": [
+    {
+      "id": "N-1",
+      "case": "Two orders racing for the last unit",
+      "reason": "Needs a concurrency harness the project lacks",
+      "risk": "Both orders could succeed",
+      "category": "concurrency",
+      "proof": "unproven",
+      "recommend": "test"
+    }
+  ],
+  "no_tests": null,
+  "baseline": {
+    "where": "build seat worktree, database in docker compose",
+    "command": "./gradlew --offline test --tests 'orders.*'",
+    "result": "pass",
+    "tests": 14
+  },
+  "run": [
+    {
+      "where": "build seat worktree, database in docker compose",
+      "command": "./gradlew --offline test --tests 'orders.OrdersApiTest' --tests 'orders.QuantityRulesTest'",
+      "expected": 4
+    }
+  ],
+  "blocker": null
+}
