@@ -5,14 +5,14 @@ Judges what is said and how; emphasis density, time-sensitive phrases and senten
 
 **Applies when:** every skill, command and agent body, and their reference files.
 **MUST lint:** none. SHOULD lint used here: LNT-23, LNT-24, LNT-70.
-**Protection rule:** the lean-pass rule in `SKILL.md` (Never) applies; after the lean pass, re-run 04, 05 and 09.
+**Protection rule:** the lean-pass rule in `SKILL.md` (Never) applies.
 
 **Levels.** Each item takes the level of the heading above it.
 
 ## SHOULD
 
-- **LEAN-01** · Would the agent get each paragraph wrong without it? · Check: strike only paragraphs that define a term found in standard language/tool docs, restate basics, or give generic advice; protected text (above) is never struck. · Fix: delete the struck paragraph; keep protective rationale as one sentence or a code comment.
-- **LEAN-02** · Is each rule grounded — it names a project path, contract or decision, or corrects a model failure that the skill names? · Check: yes if every rule meets one of the two; an unnamed failure counts as generic. · Fix: replace the generic rule with the concrete fact, name the failure it corrects, or cut it.
+- **LEAN-01** · Would the agent get each paragraph wrong without it? · Check: strike only paragraphs that define a term found in standard language/tool docs, restate basics, or give generic advice; protected text (above) and a rule or end-of-body reminder a checklist 13 item requires are never struck. · Fix: delete the struck paragraph; keep protective rationale as one sentence or a code comment.
+- **LEAN-02** · Is each rule grounded — it names a project path, contract or decision, corrects a model failure that the skill names, or is a rule checklist 13 asks for (it bounds an Opus 5 habit the prompting guide names)? · Check: yes if every rule meets one of the three; an unnamed failure counts as generic. · Fix: replace the generic rule with the concrete fact, name the failure it corrects, or cut it; never cut a rule a 13 item requires.
 - **LEAN-03** · Are instructions direct imperatives with at most one sentence of reason in the body, no first person, and "you" only for role framing (an agent body addressing its own agent is role framing)? · Check: yes if any longer rationale sits in a code comment. · Fix: lead with the action; cut the reason to one sentence, keeping any protective reason.
 - **LEAN-04** · Is emphasis (caps, MUST, NEVER) placed only on rules whose single violation is costly, each with its reason? · Check: judge placement only; density is LNT-23. · Fix: drop caps from ordinary rules; add the reason to those that stay.
 - **LEAN-05** · Is the guidance a reusable procedure at moderate detail, leaving non-fragile edge cases (WF-05's test) to judgment? · Check: past cases are allowed when labelled as calibration with their class; unlabelled one-off answers are no. · Fix: generalize to the category, or label the example as calibration.

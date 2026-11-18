@@ -19,6 +19,7 @@ Following it writes only the artifact being authored; each script's `--help` sta
 ## Always
 
 - A script whose `--help` exits non-zero or prints no `usage:` line is a broken install: stop, and leave showing the human its stderr to `flow-harness-authoring`.
+- When `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-harness-authoring` is missing, send `STOPPED: flow-harness-authoring not installed; link its dir from the framework's harness/skills/ dir into ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then invoke this skill again` and stop.
 - Moving, merging or renumbering a section updates every file that cites it in the same change (LNT-46).
 - Reviewers are read-only (Read, Grep, Glob) and judge one checklist each, or one Small-swarm group of checklists.
 - The verdict comes from `merge-verdicts.sh`, never from a tally by a model: a model's count can let a blocking item through.
@@ -33,11 +34,11 @@ Following it writes only the artifact being authored; each script's `--help` sta
 
 | Target | Apply |
 |---|---|
-| Flow (dispatches subagents, gates on the human, drives scripts) | 01–07, 09; 10 if it declares hooks; 11 if it or its agents write or read a JSON contract; 12 if it bundles a reference file; 08 N/A |
-| Procedure (script wrapper, incl. one preloaded by an agent) | 01–05, 07, 08, 09; 11 if its scripts write or read a JSON contract; 12 if it bundles a reference file |
-| Standard / shared conduct (rubric agents bind; language and framework plugins included) | 01, 02, 03, 09; 07 if it bundles scripts or shows the human a view; 12 if it bundles a reference file; DET-08 (N/A with no script), DET-09; WF-03, WF-05, WF-06, WF-10; 08 N/A (it runs only inside an agent) |
-| Command file (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/commands/**`) | 01, 02, 03, 05, 09; 07 if it shows the human a view; 12 if it bundles a reference file |
-| Agent file (`agents/**/*.md`) | agent-01–08 in `references/agents/`, through `flow-harness-authoring`'s Agent flow (`agent-author`, `agent-reviewer`) |
+| Flow (dispatches subagents, gates on the human, drives scripts) | 01–07, 09; 10 if it declares hooks; 11 if it or its agents write or read a JSON contract; 12 if it bundles a reference file; 13, its brief templates included; 08 N/A |
+| Procedure (script wrapper, incl. one preloaded by an agent) | 01–05, 07, 08, 09; 11 if its scripts write or read a JSON contract; 12 if it bundles a reference file; 13 |
+| Standard / shared conduct (rubric agents bind; language and framework plugins included) | 01, 02, 03, 09; 07 if it bundles scripts or shows the human a view; 12 if it bundles a reference file; 13; DET-08 (N/A with no script), DET-09; WF-05, WF-06, WF-10; 08 N/A (it runs only inside an agent) |
+| Command file (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/commands/**`) | 01, 02, 03, 05, 09; 07 if it shows the human a view; 12 if it bundles a reference file; 13 |
+| Agent file (`agents/**/*.md`) | agent-01–08 in `references/agents/`, through `flow-harness-authoring`'s Agent flow (`agent-author`, `agent-reviewer`); 13 through the agent-05 seat |
 | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md` | only as a citer for LNT-46 |
 
 Each checklist's "Applies when" line narrows further; an item that does not apply is N/A.
@@ -50,9 +51,9 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 |---|---|---|
 | Flow | the main thread, loaded before it acts | when it applies → never → always (→ invariants, as the paragraph above sets) → terms (only as the paragraph above sets) → steps → what the steps consult (field tables, reply checks, branches) → who owns what, background |
 | Procedure | whoever runs the tool, before running it | when to use it → never → always (→ invariants, as the paragraph above sets) → terms (only as the paragraph above sets) → run steps (each script's `--help` once, before its first use in a session) → reference |
-| Standard / shared conduct (language and framework plugins included) | a builder or reviewer, preloaded or read by path | intro paragraph (a read-by-path plugin's principles) → scope (its convention lines as one `Project conventions` bullet) → never → always (→ invariants), only as the paragraph above sets → terms (only as the paragraph above sets) → any unnumbered sections the rules are read through (`## Store guarantees`, `## Taint model`) → the rules, the most consequential first (correctness and safety before style), in one `## Rules` section or, when they group, numbered sections `## N. Name`, an external id tagged after the name (`## 6. Insecure design (OWASP A06)`) → gate and self-check → reference (a version ledger) |
+| Standard / shared conduct (language and framework plugins included) | a builder or reviewer, preloaded or read by path | intro paragraph (a read-by-path plugin's principles) → scope (its convention lines as one `Project conventions` bullet) → never → always (→ invariants), only as the paragraph above sets → terms (only as the paragraph above sets) → any unnumbered sections the rules are read through (`## Store guarantees`, `## Taint model`) → the rules, the most consequential first (correctness and safety before style), in one `## Rules` section or, when they group, numbered sections `## N. Name`, an external id tagged after the name (`## 6. Insecure design (OWASP A06)`) → gate → reference (a version ledger) |
 | Command file | the user's command, as it runs | what it does → steps → output |
-| Agent file | the agent, at dispatch | any operational invariant, then the job sentence (AROLE-06) → dispatch check and refusals → ground rules → process → output → self-check (or the process's last step, AJUDG-18) → edge cases and the canonical safety blocks, in either order |
+| Agent file | the agent, at dispatch | any operational invariant, then the job sentence (AROLE-06) → dispatch check and refusals → ground rules → process → output → edge cases and the canonical safety blocks, in either order |
 | `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md` | N/A: judged only as a citer | — |
 
 ## Checklists — read X when Y
@@ -69,6 +70,7 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 - Read `references/skills/10-skill-hooks.md` when a skill or agent declares `hooks:` or ships a hook script.
 - Read `references/skills/11-skill-schemas-and-json.md` when a skill or agent writes or reads JSON whose shape a schema or a validator module owns, or when writing an agent card.
 - Read `references/skills/12-skill-references.md` when a skill bundles a reference file, or when moving text into or out of one.
+- Read `references/skills/13-skill-prompting.md` when writing or judging prose a model reads as instructions: a body, a reference file, or a brief or brief template a flow writes for an agent.
 - Read `references/agents/README.md` first when writing or reviewing an agent file: it says which agent checklists apply to the agent's kind and which one owns a problem.
 - Then read each agent checklist the README applies, when writing that part of the file or when seated on it: `references/agents/01-agent-need-and-role.md`, `references/agents/02-agent-frontmatter-and-tools.md`, `references/agents/03-agent-context-and-load.md`, `references/agents/04-agent-dispatch-contract.md`, `references/agents/05-agent-judgment-quality.md`, `references/agents/06-agent-output-contract.md`, `references/agents/07-agent-safety.md`, `references/agents/08-agent-testing.md`.
 - Read `references/shared/lint-spec.md` when running or hand-checking an `LNT-NN` item.
@@ -83,16 +85,16 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 - `help-check.sh`: beside `lint.sh`, on every changed skill dir with scripts, and by a script's author before hand-back; it runs only each script's `--help` pages, for the lint spec's section J.
 - `merge-verdicts.sh`: after a reviewer swarm, on every seat's saved report; read-only, it applies the blocking rule in Invariants to reports in the Reviewer report format below.
 
-`flow-harness-authoring`, which owns `merge-verdicts.sh`, is installed as a symlink at `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-harness-authoring` to the framework's `harness/skills/flow-harness-authoring`; if it is missing, stop and ask the human to link it.
+`flow-harness-authoring`, which owns `merge-verdicts.sh`, is installed as a symlink at `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-harness-authoring` to the framework's `harness/skills/flow-harness-authoring` (missing: Always).
 
 ## Implementor — order of work
 
 1. Evals first (08), where they apply: a baseline run without the skill, one case per observed gap.
 2. Frontmatter and description (03), then structure (01) and references (12), in the order "Reading order by kind" gives.
 3. Steps, gates, loops (05); scripts and state (04, 07); seats and briefs (06); schemas and agent cards (11); hooks (10). Agent files follow `flow-harness-authoring`'s Agent flow.
-4. Safety pass (09); then the lean pass (02); then re-run 04, 05 and 09.
+4. Safety pass (09); then the prompting pass (13); then the lean pass (02).
 5. Run `lint.sh` on the target, and `help-check.sh` when it has scripts (Scripts). A `MUST` FAIL goes back to step 3; each `SHOULD` FAIL line of the saved output goes to the human through the flow's G3 view (full lines on ask), who fixes or waives it.
-6. Run the implementor self-check (below); run the evals; iterate.
+6. Run the evals; iterate.
 
 ## Reviewer report format
 
@@ -113,28 +115,9 @@ The order STR-09 judges and authors build to: what the reader acts on first come
 - A Fix is one line. For a description or wording item (02 or 03) it is the full replacement text, with ` / ` where the text breaks.
 - A non-blank line in the item block that does not start an item continues the item above it; still write each item on one line.
 - FAIL and UNDECIDABLE evidence quotes the deciding line. Good: `REF-01 FAIL — SKILL.md:12 "see the references folder" gives no trigger · Fix: name the merge-rules file and "read it when two reports disagree"`. Bad: `REF-01 FAIL — references are poorly routed` (no line, no quote, no fix).
-- Notes and Checklist feedback hold only what could change a verdict or the checklist; otherwise `none`.
+- Notes hold every problem another checklist owns, one line each with its `path:line`; Checklist feedback holds only what could change the checklist; otherwise `none`.
 - Verdict line: `VERDICT: PASS` or `VERDICT: BLOCKED (<IDs>)`, by the blocking rule in Invariants.
 - End line: `=== END OF <nn> ===`, naming the header's checklist. Text after it, up to the next header line, is ignored and reported as a `warning:` line.
-
-## Self-check before reporting done
-
-Implementor:
-
-1. Every applicable checklist's `MUST` items were considered.
-2. The last `lint.sh` and `help-check.sh` runs have no `MUST` FAIL, and every `SHOULD` FAIL line reached the human through the flow's G3 view.
-3. Every waiver line came from the human's own words.
-4. Every file that cites a moved or renumbered section was updated (LNT-46).
-5. The evals ran, where they apply.
-
-Reviewer:
-
-1. Every applicable checklist has a line for every item.
-2. Every FAIL has evidence and a one-line Fix.
-3. Every WAIVED cites a waivers-file line.
-4. Every `MUST` lint item listed in the checklist header has a result.
-5. No item is failed twice for the same problem.
-6. The verdict matches the statuses.
 
 ## Flows
 
@@ -160,5 +143,6 @@ One problem fails once, under its owner. Countable problems belong to lint. Othe
 | File layout; where a must-survive rule sits in the body (STR-03) | 01 |
 | Evals | 08 |
 | Wording and size | 02 |
+| Model-behaviour prompting patterns: how wording steers the model (self-checks, finder filters, written-out reasoning, length, update cadence, scope, delegation) | 13 |
 
 When two rows fit, the more specific one wins. If still tied, the row higher in the table wins. A reviewer that finds a problem another checklist owns writes `N/A (owned by <nn>)` and names it in its report's notes, so the owner's reviewer can be checked for it.

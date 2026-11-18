@@ -47,7 +47,7 @@ readonly PAGE_PATH=/usr/bin:/bin
 readonly PAGE_COLUMNS=80
 # LNT-74's excerpt of a wrong line 1: enough to recognise it on one line.
 readonly EXCERPT_CHARS=60
-readonly REQUIRED_TOOLS="awk cat cmp cut env find grep head mkdir mkfifo mktemp rm sleep sort wc"
+readonly REQUIRED_TOOLS="awk cat cmp cut dirname env find grep head mkdir mkfifo mktemp rm sleep sort wc"
 
 usage() {
 	cat <<EOF
@@ -93,9 +93,9 @@ Runtime: up to ${PAGE_TIMEOUT_S} s per hanging page.
 
 Dependencies:
   shell      bash 3.2+ (macOS /bin/bash works)
-  required   awk cat cmp cut env find grep head mkdir mkfifo mktemp rm
-             sleep sort (with -z) wc, in every macOS and Linux base system; git
-             when no --root is given. A missing one exits 5, named
+  required   awk cat cmp cut dirname env find grep head mkdir mkfifo mktemp
+             rm sleep sort (with -z) wc, in every macOS and Linux base system;
+             git when no --root is given. A missing one exits 5, named
   rulebook   references/shared/lint-spec.md under --rulebook (item levels)
 
 Exit codes:

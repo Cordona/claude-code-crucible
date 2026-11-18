@@ -32,8 +32,9 @@ readonly SMALL_SWARM_MAX_LINES=300
 readonly AGENT_FEW_SEATS_BELOW_LINES=150
 readonly AGENT_FEW_SEATS='agent-01+03 agent-02 agent-04 agent-05 agent-06+07+08'
 
-# Author-report section names: skill-author's §0-§8 and agent-author's 0-7.
-readonly REPORT_SECTIONS="Status|Files written|File written|Source trace|Script specs|Field table|Open points|Checklist self-check|Findings|Eval set"
+# Author-report section names: skill-author's §0-§8 and agent-author's 0-7;
+# "Checklist self-check" is the older reports' §6.
+readonly REPORT_SECTIONS="Status|Files written|File written|Source trace|Script specs|Field table|Open points|Not run|Known fails|Checklist self-check|Findings|Eval set"
 readonly SHORT_LINE_MAX=140
 readonly MAX_TARGETS=4
 
@@ -167,9 +168,10 @@ def g2:
 	texts("evals"), texts("field_rows"), need(".left_unset"; .left_unset | maybe_text; "null or a string without control characters"),
 	count("open_points"), texts("unparsed");
 def g3:
-	need(".verdict"; .verdict | is_text; "a string without control characters"),
 	each("blocking"; need(".id"; .id | is_text; "a string without control characters"),
-		(.seat, .location, .fix | select(maybe_text | not) | " has a seat, location or fix that is not null or a string")),
+		need(".seat"; .seat | maybe_text; "null or a string without control characters"),
+		need(".location"; .location | maybe_text; "null or a string without control characters"),
+		need(".fix"; .fix | maybe_text; "null or a string without control characters")),
 	each("should_fix"; need(".id"; .id | is_text; "a string without control characters"), need(".location"; .location | maybe_text; "null or a string without control characters")),
 	texts("invalid_waivers"), texts("warnings"), texts("eval_outcomes"),
 	each("check_fails"; need(".name"; .name | is_text; "a string without control characters"), texts("lines")),
@@ -1104,12 +1106,10 @@ eval_outcome_records() {
 }
 
 gen_g3() {
-	local verdict records
+	local records
 	need_file "--merged file" "${OPT_MERGED}"
 	need_file "--lint file" "${OPT_LINT}"
 	require_line "VERDICT: " "${OPT_MERGED}" "a merge-verdicts.sh output saved as review-r<n>.md"
-	verdict=${LINE#VERDICT: }
-	verdict=${verdict%% *}
 	require_line "SUMMARY " "${OPT_LINT}" "a whole lint.sh output"
 	records=$(merged_records)
 	if [[ $'\n'"${records}"$'\n' == *$'\nN\n'* ]]; then
@@ -1131,8 +1131,7 @@ gen_g3() {
 	build_view '($records | records) as $all
 		| ($all | any(.[0] == "N")) as $no_fix
 		| def tagged($tag): $all | map(select(.[0] == $tag));
-		{verdict: $verdict,
-		 blocking: (tagged("B") | map({id: .[1], seat: (.[2] // "" | or_null), location: (.[3] // "" | or_null),
+		{blocking: (tagged("B") | map({id: .[1], seat: (.[2] // "" | or_null), location: (.[3] // "" | or_null),
 			fix: (if $no_fix then null else (.[4] // "" | or_null) end)})),
 		 should_fix: (tagged("S") | map({id: .[1], location: (.[2] // "" | or_null)})),
 		 invalid_waivers: (tagged("I") | map(.[1] // "")),
@@ -1142,7 +1141,7 @@ gen_g3() {
 		 eval_outcomes: (tagged("E") | map(.[1] // "")),
 		 fields: ($all | map(select(.[0] == "F" or .[0] == "C")
 			| if .[0] == "F" then [.[1], (.[2] // "")] else [.[1], (.[2] | tonumber)] end))}' \
-		--arg verdict "${verdict}" --arg records "${records}"
+		--arg records "${records}"
 }
 
 # ---------------------------------------------------------------------------

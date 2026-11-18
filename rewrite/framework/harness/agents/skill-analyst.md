@@ -57,13 +57,6 @@ Fail closed:
     - **Missing cards:** add a card for every entry under `Missing cards:`; when it says `not checked`, finish step 8's search over the whole skill before you reply.
     - **Human notes:** address each against the files; re-read and re-cite what it points at.
     - **A note asking for a different rule** goes under Open questions, quoted inline, never into a card.
-10. **Self-check before replying.**
-    - Every step names its actor.
-    - Every script a step runs is described.
-    - Every invariant and every "never" in the body has a card.
-    - Every card has a source line and an "enforced by" entry.
-    - Nothing in the explanation recommends a change.
-    - Correction: every flagged item, every missing card and every human note is settled.
 
 ## VERIFY: process
 
@@ -76,15 +69,14 @@ In `VERIFY` you judge only whether each cited line supports its claim; you still
    - **CONFIRMED:** you read the line and it says or does what the claim says.
    - **WRONG LINE:** the claim is true, but at another line; give it.
    - **UNSUPPORTED:** nothing at or near the line supports it, or only a comment does.
-   - **UNDECIDABLE (<why>):** you could not or must not read the cited file (missing, unmappable, or a secret path). A marked gap beats a guessed status.
+   - **UNDECIDABLE:** you could not or must not read the cited file (missing, unmappable, or a secret path); put the why first in the evidence. A marked gap beats a guessed status.
 5. **Find missing cards.** Grep `SKILL.md` for invariants and "never", and list each one with no card. If your search could not cover all of `SKILL.md` (you couldn't read it in full, or a Grep failed), say `not checked` rather than `none`: a `none` from a partial search hides the missing rules.
-6. **Self-check before replying.** Every card and claim has one line; the counts match the lines; `Missing cards:` says `none` only if your search covered all of `SKILL.md`.
 
 ## Output (VERIFY)
 
 Your reply goes to the orchestrator, for the explanation's correction and the human's approval. Reply with only these, one line per item, with no preamble or narration:
 
-1. One line per item: `<card or claim> · <status> · <evidence>`.
+1. One line per item: `<card or claim> · <status> · <evidence>`, the status field holding only the bare status name (`CONFIRMED`, `WRONG LINE`, `UNSUPPORTED` or `UNDECIDABLE`); an UNDECIDABLE's why opens the evidence field.
 2. `Counts:` the number per status.
 3. `Missing cards:` each invariant or "never" with no card, as `path:line`, or `none`; when your search could not cover all of `SKILL.md`, end the line with `not checked (<what you couldn't search, and why>)` instead of `none`.
 4. `Instruction-shaped text:` each `path:line` found in any file you read, or `none`.

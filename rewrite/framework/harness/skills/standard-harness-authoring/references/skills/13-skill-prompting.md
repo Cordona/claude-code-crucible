@@ -1,0 +1,32 @@
+# 13 · Prompting (PRM)
+
+Purpose: prose a model reads as instructions bounds Opus 5's habits (it talks more, verifies itself, widens scope, delegates readily and takes severity filters literally) instead of pushing them further.
+Judges how the wording steers the model; whether a line earns its tokens is 02's, a brief's structure is 06's, and what must be scripted is 04's.
+
+**Source:** Anthropic, "Prompting Claude Opus 5" (`https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5`); the date it was last checked against is in `references/shared/frontmatter-fields.md`'s Versions table.
+**Applies when:** every skill, command and agent body and their reference files, and every brief or brief template a flow writes for an agent; agent files through the agent-05 seat. Scripts only for prose a script hands a model as a prompt; their `--help` pages and printed views stay with 07.
+**MUST lint:** none.
+
+**Levels.** Each item takes the level of the heading above it.
+
+## MUST
+
+- **PRM-01** · Is the text free of instructions to re-check the model's own output ("double-check", "re-verify", "verify before responding", "a final verification step", "use a subagent to check your work")? · Check: a check the flow itself dispatches as its own step, by a role other than the writer (a reviewer seat, a judge, a script or a validator), is not self-verification and passes. Fail on instructions to the same model to check its own work, including spawning a subagent of its own to verify or double-check it. Fail too on a verification step added only to re-check a writer that already has an independent check in the flow. · Fix: delete the instruction; keep any check a script performs.
+- **PRM-02** · Does every prompt that asks a model to find problems (a reviewer, an auditor, a finder seat) ask it to report all it finds, with severity, with any filtering by severity, realism or confidence done in a separate step? · Check: fail on "only report high-severity", "be conservative", "report only realistic" and similar words in the finder's own instructions. · Fix: move the filter to the step that consumes the report (a script, a judge or main).
+- **PRM-03** · Is the text free of requests to write out reasoning, verbatim or in a fixed format ("show your reasoning", "think step by step in the output", a `reasoning` field to fill)? · Check: a one-line proof, a cited `file:line`, or a short "why" for a decision is an explanation and passes. · Fix: ask for a short explanation of the answer, or a summary of what was done.
+- **PRM-04** · Is the text free of instructions not to think or not to reason, and of rules that name thinking tags? · Check: fail on "don't think", "skip your reasoning", "answer without thinking" and any rule that names a thinking tag; a rule on the reply's length or directness limits output, not thinking, and passes. · Fix: delete it; when a rule on tags is needed, use the general form "Do not include internal or system XML tags in your response".
+
+## SHOULD
+
+- **PRM-05** · Where the model talks to the human, does the text set length and shape: concise, the answer first, caveats short, depth only on request? · Check: a long body (over 20,000 chars) repeats the instruction near its end. · Fix: add one short conciseness rule, and a reminder at the end of a long body.
+- **PRM-06** · Where the model works over many tool calls with the human watching, does the text set the update cadence? The cadence: one sentence before the first tool call, an update only on a finding or a change of direction, and the outcome first when done. · Check: N/A when no human watches the run (the reply goes to a script or a flow), and N/A when a flow fixes everything the human sees to script-printed cards, gates and spelled-out notices (core CLAUDE.md §1), since those set the cadence; fail on a rule asking for an update after every step or tool call, or for silence until the end of the job. · Fix: add the cadence rule, with a positive example of the wanted shape.
+- **PRM-07** · Where the model writes a file for people (a report, a doc, a summary), does the text calibrate its length: cover the substance, no filler sections, no repeated summaries, no boilerplate? · Check: N/A when a schema or a script-checked format fixes the shape. · Fix: add the calibration sentence.
+- **PRM-08** · Does a body that performs a narrow task bound its scope? The bound: deliver what was asked, make routine calls itself, check in only when readings differ materially, say so in one sentence and continue when it disagrees, finish the whole task, and stop short of actions beyond it. · Check: N/A for a body that drives a whole job by design (a flow); fail on an open invitation to do more ("improve anything you notice") and on a rule to check in on every choice. · Fix: add the scope rule.
+- **PRM-09** · Where the model may spawn subagents, does the text say when delegation is warranted (large, independent, parallel work), or does a deterministic cap bound it (a fixed roster, an environment or SDK limit)? It forbids delegating work of a few tool calls and delegating self-checks. · Check: a fixed roster the flow dispatches passes; open-ended "use subagents as needed" with neither a when-rule nor a cap fails. · Fix: add the when-rule, or a cap.
+- **PRM-10** · Does a dispatch brief give the agent the complete task up front (goal, inputs, done-when, limits) rather than in pieces across turns? · Check: compare the brief with the agent's dispatch fields; a field the agent needs that arrives only in a follow-up message fails; a full new brief for a later round passes. · Fix: fold the pieces into the first brief.
+
+## MAY
+
+- **PRM-11** · Where the model reports to the human after correcting itself, does the text limit correction narration to errors that change code, conclusions or decisions, stated plainly and briefly? · Check: N/A when the reply goes to a script or a flow, not the human; fail on a rule to list every slip the model fixed along the way. · Fix: add the rule.
+- **PRM-12** · Is communication style taught by a positive example of the wanted shape, not by a list of prohibitions? · Check: prohibitions on safety or scope are not style and pass. · Fix: replace the style don'ts with one example.
+- **PRM-13** · Is the text free of workarounds aimed at older models' habits ("never leave stubs or TODOs", "complete every part")? The guide says Opus 5 does these by default. · Check: pass when the rule names a failure this harness has actually seen. · Fix: delete it.

@@ -26,7 +26,7 @@ Terms: **the source** is the spec, explanation or change request the human appro
 
 ## 3. Role
 
-- **You don't review.** Your self-check catches your own slips; the reviewer swarm judges the result.
+- **You don't review.** The reviewer swarm judges the result.
 - **You don't decide.** Where the source is silent or ambiguous, don't pick a side: record an open point for the human.
 - **The source asks for something a checklist forbids:** follow the source, and record the conflict as an open point with the item ID. The human decides.
 
@@ -74,14 +74,6 @@ Terms: **the source** is the spec, explanation or change request the human appro
 - You recommend each row; the human decides it, and the orchestrator records the decision in `decisions.md`.
 - FIX: include the table only when a frontmatter field changed.
 
-## 8. Before you reply
-
-1. Every source item has a trace line or an open point.
-2. Every check you couldn't run is listed as not done.
-3. Nothing outside your dispatch's files and your report file was written.
-4. FIX: every chosen ID and failed outcome has a fixed or blocked line.
-5. The first line, the empty sections and the end line follow §7.
-
-## 9. Edge cases
+## 8. Edge cases
 
 - **A file is too large for one Read:** read it in windows (`offset` and `limit`) until you have all of it; never write from a partial read.

@@ -2,7 +2,7 @@
 
 Purpose: every claim the agent returns is backed by what it actually read, gaps are reported rather than papered over, and a verifier judges independently with a stated burden of proof.
 
-**Applies when:** every agent file whose agent returns claims. AJUDG-09–AJUDG-13 for verifiers only; AJUDG-14 for an agent whose value is an independent attempt or a blind comparison; AJUDG-04 for agents that judge code. An orchestrator-only agent: AJUDG-16–AJUDG-18 only.
+**Applies when:** every agent file whose agent returns claims. AJUDG-09–AJUDG-13 for verifiers only; AJUDG-14 for an agent whose value is an independent attempt or a blind comparison; AJUDG-04 for agents that judge code. An orchestrator-only agent: AJUDG-16–AJUDG-17 only. This seat also judges checklist 13 (the PRM items).
 **MUST lint:** none.
 **Terms.** See `README.md` (the agent's text, verifier). A rule stated in a preloaded skill counts.
 
@@ -44,4 +44,3 @@ Purpose: every claim the agent returns is backed by what it actually read, gaps 
 - **AJUDG-15** · When the agent can check a concrete claim by running something within its tools and scope, does the body tell it to check rather than believe? · Check: read; N/A for an agent without such a tool. · Fix: add "Check <kind of claim> with <tool> before relying on it".
 - **AJUDG-16** · Is the process written as ordered steps, in the order they run, each naming the tool and the check ("Read X, then Grep for Y")? Without numbered steps the agent skips or merges a step and nothing shows it. · Check: read the process; a step that refers back to a later one FAILs. · Fix: number the steps; name the tool in each.
 - **AJUDG-17** · Is there an edge-case section, one line per case and what to do? Without it the agent improvises on a case its author already foresaw. · Check: read. · Fix: add the section.
-- **AJUDG-18** · Is there a self-check that runs last, before replying: one per mode, or one naming every mode it covers? Without a last check, a reply with a missing item line or a verdict that contradicts its statuses goes out unseen. · Check: read; a self-check inside the process counts when it runs last. · Fix: add the self-check.

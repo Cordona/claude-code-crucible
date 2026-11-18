@@ -52,7 +52,7 @@ Judges who writes and reads each field, what agents are shown and return, and wh
 
 ### MUST
 
-- **SCH-14** · Does every agent-written string and array have an effective cap (`maxLength` / `maxItems` after resolving `$ref` and `allOf`; an `enum`, `const` or fixed-length `pattern` counts), sized to real use? · Check: lint LNT-57; judge beyond it whether the caps fit measured payloads. · Fix: add caps sized from a measured payload (SCH-15).
+- **SCH-14** · Does every agent-written string and array have an effective cap (`maxLength` / `maxItems` after resolving `$ref` and `allOf`; an `enum`, `const` or fixed-length `pattern` counts), sized to real use? On a finder's findings array the cap only guards against runaway output: it sits well above any measured count, and a rejection on it raises the cap, never adds a count rule to the finder's card or brief (PRM-02). · Check: lint LNT-57; judge beyond it whether the caps fit measured payloads, and that no findings cap is low enough to make a finder drop real findings. · Fix: add caps sized from a measured payload (SCH-15); raise a findings cap that a real report has hit.
 
 ### SHOULD
 

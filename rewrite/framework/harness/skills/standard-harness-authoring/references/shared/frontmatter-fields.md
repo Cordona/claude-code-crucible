@@ -73,3 +73,4 @@ Every version- or model-dependent fact the rulebook relies on, in one place. Re-
 | `!` injected command timeout (DET-10) | 2 minutes | docs (skills) | not verified |
 | Hook `onFailure: block` blocks on crash and timeout (HK-04) | Claude Code 2.1.303 | Claude Code behavior, 2.1.303 | 2026-10-19 |
 | `updatedInput` exempt from the 10,000-char cap (HK-06) | Claude Code 2.1.303+ | Claude Code behavior, 2.1.303 | 2026-10-19 |
+| The guide checklist 13 (PRM) is judged against | Anthropic, "Prompting Claude Opus 5" | docs (prompt engineering, the URL in checklist 13's header) | 2026-11-18 |

@@ -31,13 +31,13 @@ Agent checklists for agent files (`agents/**/*.md`), one perspective each, so ea
 | Reviewer / verifier (judges another agent's output) | agent-01–08 in full |
 | Writer / implementer (writes files) | agent-01–04, agent-06–08; agent-05 except AJUDG-09–AJUDG-14 |
 | Analyst (reads and reports, no verdict) | agent-01–04, agent-06–08; agent-05 except AJUDG-09–AJUDG-13 |
-| Orchestrator-only | agent-01; agent-02 except ATOOL-19–ATOOL-21; agent-03 except ALOAD-01; ADISP-10 only; AJUDG-16–AJUDG-18; agent-07; ATEST-01–ATEST-04 |
+| Orchestrator-only | agent-01; agent-02 except ATOOL-19–ATOOL-21; agent-03 except ALOAD-01; ADISP-10 only; AJUDG-16–AJUDG-17; agent-07; ATEST-01–ATEST-04 |
 
 Each file's "Applies when" line narrows further; an item that does not apply is N/A with the reason.
 
 ## Seating and ownership
 
-- Seat `agent-reviewer` per applicable agent checklist, or in the combined seats `flow-harness-authoring`'s Reviewer swarm names for a small agent; a combined seat judges each of its agent checklists' lists in turn. The agent-03 seat also judges 02 (lean writing), STR-05, STR-06 and STR-09 (section order, against the Agent file row of the rulebook's "Reading order by kind"); the agent-07 seat also judges SAFE-01 (with the preloads as context), SAFE-03 and SAFE-07; the agent-02 seat also judges checklist 10 when the agent declares `hooks:`. Borrowed items keep their own MUST or SHOULD level.
+- Seat `agent-reviewer` per applicable agent checklist, or in the combined seats `flow-harness-authoring`'s Reviewer swarm names for a small agent; a combined seat judges each of its agent checklists' lists in turn. The agent-03 seat also judges 02 (lean writing), STR-05, STR-06 and STR-09 (section order, against the Agent file row of the rulebook's "Reading order by kind"); the agent-07 seat also judges SAFE-01 (with the preloads as context), SAFE-03 and SAFE-07; the agent-02 seat also judges checklist 10 when the agent declares `hooks:`; the agent-05 seat also judges checklist 13. Borrowed items keep their own MUST, SHOULD or MAY level.
 - One problem fails once. Tool grants and how they are enforced: agent-02. What the body says about where it writes and what it never touches: agent-07. Whether a claim is backed: agent-05. Whether the reply can be parsed: agent-06. The brief, the seat choice and how the caller treats the reply: 06.
 - A pattern about the dispatching flow (brief templates, escalation, vote merging, fencing data in briefs) is judged in 06 or 04, never here.
 - Writing, reviewing and testing an agent file with `agent-author`, `agent-reviewer` and `eval-grader` is `flow-harness-authoring`'s Agent flow.

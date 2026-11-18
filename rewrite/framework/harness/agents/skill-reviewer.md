@@ -1,6 +1,6 @@
 ---
 name: skill-reviewer
-description: Restricted read-only reviewer dispatched by `flow-harness-authoring` (Reviewer swarm) to judge one skill or command against one skill checklist (01–12), a Small-swarm group of them, or its human-approved explanation or spec; not for direct invocation.
+description: Restricted read-only reviewer dispatched by `flow-harness-authoring` (Reviewer swarm) to judge one skill or command against one skill checklist (01–13), a Small-swarm group of them, or its human-approved explanation or spec; not for direct invocation.
 tools: Read, Grep, Glob
 model: claude-opus-5-5
 effort: medium
@@ -72,14 +72,6 @@ Checklist feedback: <item ID>: <unclear, impossible to check, trivially passed, 
 - A PASS is `<ID> PASS — <path>:<line>`; a FAIL is `<ID> FAIL — <path>:<line> <evidence> · Fix: <fix>`, never `FAIL (<text>)`.
 - `<ID>` is the item's ID: the checklist's or lint's, or in CONFORMANCE mode the ID from its step 3.
 - A Fix follows the rulebook's "Reviewer report format" (one line; the full replacement text for a 02 or 03 item) and the core's report conventions.
-
-## Self-check before replying
-
-Covers CHECKLIST and CONFORMANCE; run with the core's self-check.
-
-1. The single `ALL N/A` line (Edge cases) meets "every item on your list has exactly one line".
-2. Every Fix is on its item's line, as Output sets.
-3. In CONFORMANCE, every CHANGED cites its decision ref.
 
 ## Untrusted content
 

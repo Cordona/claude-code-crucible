@@ -16,7 +16,7 @@ set -Eeuo pipefail
 #   --kind agent  references/agents/[0-9]*.md + references/skills/[0-9]*.md
 #                 + references/shared/lint-spec.md (the skill checklists
 #                 resolve the items an agent seat borrows: 02, STR-05/06/09,
-#                 SAFE-01/03/07, checklist 10)
+#                 SAFE-01/03/07, checklist 10, checklist 13 (agent-05))
 # An ID found in none of them is treated as MUST and listed as unknown-id, so
 # a rulebook gap can never let a report pass silently. An INFO lint item
 # (lint-spec.md: it reports a measured value and never fails) is treated as
@@ -78,8 +78,8 @@ set -Eeuo pipefail
 # counted (blocking:, should-fail:, progress:) and the location is listed
 # once as possible-duplicate, its IDs ordered by rank. Rank only orders that
 # listing: any LNT-* ID first, then the report's checklist:
-#   --kind skill  09 11 04 06 07 05 10 12 03 01 08 02 (the rulebook's "Which
-#                 checklist owns a problem" table)
+#   --kind skill  09 11 04 06 07 05 10 12 03 01 08 02 13 (the rulebook's
+#                 "Which checklist owns a problem" table)
 #   --kind agent  agent-01 ... agent-08: agent seats rank in number order:
 #                 README 'Seating and ownership' gives no total order.
 # The match is on the file:line text exactly as written.
@@ -435,7 +435,7 @@ BEGIN {
 	HARNESS_NOTICE = "^\\[harness: .*\\]$"
 	STATUS_START = "^(PASS|FAIL|N/A|WAIVED|UNDECIDABLE|CHANGED)"
 	WAIVER_LINE = "^(- )?([A-Z][A-Z0-9]*-[0-9]+):[[:space:]]+(.*)[[:space:]][(]owner[)][[:space:]]*$"
-	nprec = split("09 11 04 06 07 05 10 12 03 01 08 02", order, " ")
+	nprec = split("09 11 04 06 07 05 10 12 03 01 08 02 13", order, " ")
 	for (i = 1; i <= nprec; i++) skill_prec[order[i]] = i
 	LEVEL_RANK["MAY"] = 1; LEVEL_RANK["SHOULD"] = 2; LEVEL_RANK["MUST"] = 3
 	nerr = 0; nlevels = 0; nreports = 0

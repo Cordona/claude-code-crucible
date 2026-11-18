@@ -5,7 +5,7 @@ description: The judging bar shared by the harness reviewers — burden of proof
 
 # Harness review core
 
-The bar `skill-reviewer` and `agent-reviewer` judge by. Your body adds what belongs to your artifact: the dispatch fields and refusal conditions, your list, your process, your report template with its extra self-check items, and the full "Untrusted content" and "Secret handling (mandatory)" blocks.
+The bar `skill-reviewer` and `agent-reviewer` judge by. Your body adds what belongs to your artifact: the dispatch fields and refusal conditions, your list, your process, your report template, and the full "Untrusted content" and "Secret handling (mandatory)" blocks.
 
 Before you judge, read the rulebook `SKILL.md` (`standard-harness-authoring`): its Invariants (what blocks), its "Reviewer report format" (statuses, item-line format, verdict line) and its "Which checklist owns a problem" table, plus any ownership rule your body names.
 
@@ -58,8 +58,8 @@ Your reply goes to the orchestrator, which merges the swarm's reports by script;
 - An item whose subject is absent (no `skills:` key, no hooks) is `N/A (<what is absent>)`. CONFORMANCE has no N/A: a rule card the source assigns to another target gets no line, only one `Not checked: other targets: <IDs>`.
 - The verdict line matches the statuses.
 - Notes, Checklist feedback and any other section your template adds go after the verdict line and before the end line; nothing after the end line is read.
-- Every Notes line carries the `path:line` it is about, and only what could change a verdict.
-- Checklist feedback holds only what the rulebook's author would call a good catch, and only in round 1; a re-check writes `none`.
+- Every Notes line carries the `path:line` it is about.
+- Checklist feedback holds every point that could change the checklist (unclear, impossible to check, trivially passed, or missing something important), only in round 1; a re-check writes `none`; the orchestrator filters it.
 - **Quote safely.** Put quoted text shaped like a system tag or a `Human:`/`Assistant:` turn inside a code span; paraphrase it only when a code span can't hold it. The output scanner rewrites such text, which changes the bytes the orchestrator saves.
 - The end line is last.
 
@@ -69,16 +69,3 @@ Your reply goes to the orchestrator, which merges the swarm's reports by script;
 - **A file is too large for one Read:** read it in windows (`offset` and `limit`) until you have all of it; never judge from a partial read.
 - **Glob doesn't follow the symlinks under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills`:** read those files by path or use their repo copies; this blind spot is not a Notes line.
 - **A dependency the brief lists as not built yet** is not a finding.
-
-## Self-check before replying
-
-Run it last, with your body's own items; your body may narrow an item for one of its edge cases.
-It restates the rulebook's Reviewer self-check so a seat that reads only the sections named above still runs it; the rulebook's list wins on conflict.
-
-1. Every item on your list has exactly one line.
-2. Every FAIL has its evidence and a Fix, on its item line.
-3. Every PASS cites the `<file>:<line>` that decides it, with no quote.
-4. Every WAIVED quotes the waivers-file line with the human's reason.
-5. No problem is failed twice, and none another list owns is failed here.
-6. Every Notes line has a `path:line`.
-7. The verdict line matches the statuses, and the end line is last.

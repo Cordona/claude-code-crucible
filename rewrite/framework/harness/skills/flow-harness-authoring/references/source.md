@@ -11,4 +11,4 @@ How the approved source of a skill flow is produced, read at Skill flow step 1: 
 
 ## Specify
 
-Draft `spec.md` with the human in these sections, each a `## ` heading: Purpose; When it fires, and when it doesn't; Steps, in order; Rule cards (`RULE-NNN`, each with its source and what enforces it: script, hook or prose); Inputs, outputs and state; Dependencies; Open questions. `SKILL.md` (Skill flow step 1) adds two rule cards to every source and defines the item IDs.
+Draft `spec.md` with the human in these sections, each a `## ` heading: Purpose; When it fires, and when it doesn't; Steps, in order; Rule cards (`RULE-NNN`, each with its source and what enforces it: script, hook or prose); Inputs, outputs and state; Dependencies; Open questions. `SKILL.md` (Skill flow step 1) adds two rule cards to every source and defines the item IDs. Write each section to its substance: no filler sections, no repeated summary, no boilerplate; a section with nothing to say reads `none`.
