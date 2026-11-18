@@ -10,18 +10,18 @@
 # the flow's step 8.
 # The shape, keys in this order; a key whose value would be null, [] or {} is
 # left out, so entry_points and plugins, and each plugins kind, may be absent:
-#   {"id", "agent", "seat", "task",
+#   {"agent", "seat", "task",
 #    "entry_points": [repo-relative path, ...],
-#    "context": {"seq", "path"}, "plan": {"seq"},
+#    "context", "plan",
 #    "plugins": {"language": {"name": "language-<n>", "paths": [...]},
 #                "frameworks": [{"name": "framework-<n>", "paths": [...]}, ...],
 #                "standards": [{"name": "standard-<n>", ...}, ...],
 #                "procedures": [{"name": "procedure-<n>", ...}, ...]},
-#    "reseat_of", "continue_from", "notes": [str, ...], "test_plan"}
+#    "continue_from", "notes": [str, ...], "test_plan"}
 # context is the context.cut event the dispatch pins, plan the plan.made
-# event it was approved as, each by its seq. A re-seat holds reseat_of, the
-# seq of the dispatch.made it repeats, and continue_from, the worktree's HEAD
-# commit; notes are its lines for the agent (left out when none); test_plan,
+# event it was approved as, each by its seq. A re-seat holds continue_from,
+# the worktree's HEAD commit; notes are its lines for the agent (left out
+# when none); test_plan,
 # only on a code-tester re-seat that writes tests, is the seq of the
 # test-plan.made it writes them from.
 # seat names a seat of the effort; the seat holds the mode and the worktree.
@@ -35,9 +35,9 @@ include "dispatch-names" {search: "./"};
 # The agents are dispatch-names.jq's dispatched_agents.
 def lens_agent: "code-reviewer";
 def test_plan_agent: "code-tester";
-def top_keys: ["id", "agent", "seat", "task", "entry_points", "context", "plan", "plugins", "reseat_of", "continue_from", "notes", "test_plan"];
+def top_keys: ["agent", "seat", "task", "entry_points", "context", "plan", "plugins", "continue_from", "notes", "test_plan"];
 # The keys left out when they hold nothing; every other key is required.
-def optional_keys: ["entry_points", "plugins", "reseat_of", "continue_from", "notes", "test_plan"];
+def optional_keys: ["entry_points", "plugins", "continue_from", "notes", "test_plan"];
 def plugin_kinds: ["language", "frameworks", "standards", "procedures"];
 # The name prefix of each plugins kind.
 def kind_prefixes: {language: "language-", frameworks: "framework-", standards: "standard-", procedures: "procedure-"};
@@ -68,8 +68,6 @@ def keys_problems:
 	(required_keys[] as $key | select(has($key) | not) | problem([$key]; " "; "missing; expected every one of \(required_keys | join(", "))"));
 
 def field_problems:
-	(if (.id | type) == "string" and (.id | test(crucible_id_pattern)) then empty
-	 else problem(["id"]; " "; "is not a Crucible ID; expected <YYYYMMDDTHHMMSS>-<4 lowercase hex>") end),
 	(if .agent | IN(dispatched_agents[]) then empty
 	 else problem(["agent"]; " "; "\(.agent | tojson) is not dispatched through a dispatch file; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
 	(if (.seat | type) == "string" and (.seat | test(seat_pattern)) then empty
@@ -78,27 +76,16 @@ def field_problems:
 
 # The plan a dispatch came from: its plan.made event, by seq.
 def plan_problems:
-	if (.plan | type) != "object" then problem(["plan"]; " "; "is not an object; expected {\"seq\": a whole number from 1}")
-	else .plan
-		| ((keys - ["seq"])[] | problem(["plan", .]; ": "; "unknown field; expected only seq")),
-		  (if .seq | seq_number then empty else problem(["plan", "seq"]; " "; "is not a whole number from 1; expected the seq of the plan.made event") end)
-	end;
+	if .plan | seq_number then empty else problem(["plan"]; " "; "is not a whole number from 1; expected the seq of the plan.made event") end;
 
-# The context version a dispatch pins: its context.cut event, by seq and path.
+# The context version a dispatch pins: its context.cut event, by seq.
 def context_problems:
-	if (.context | type) != "object" then problem(["context"]; " "; "is not an object; expected {\"seq\": a whole number from 1, \"path\": absolute path}")
-	else .context
-		| ((keys - ["seq", "path"])[] | problem(["context", .]; ": "; "unknown field; expected only seq and path")),
-		  (if .seq | seq_number then empty else problem(["context", "seq"]; " "; "is not a whole number from 1; expected the seq of the context.cut event") end),
-		  (if .path | absolute_path then empty else problem(["context", "path"]; " "; "is not an absolute path; expected the context.cut event's path") end)
-	end;
+	if .context | seq_number then empty else problem(["context"]; " "; "is not a whole number from 1; expected the seq of the context.cut event") end;
 
-# A re-seat holds reseat_of and continue_from together; notes and test_plan
-# only with them, test_plan only for test_plan_agent.
+# A re-seat holds continue_from; notes and test_plan only with it, test_plan
+# only for test_plan_agent.
 def reseat_problems:
-	if has("reseat_of") or has("continue_from") or has("notes") or has("test_plan") then
-		(if .reseat_of | seq_number then empty
-		 else problem(["reseat_of"]; " "; "is missing or not a whole number from 1; expected the seq of the dispatch.made a re-seat repeats") end),
+	if has("continue_from") or has("notes") or has("test_plan") then
 		(if .continue_from | commit_hex then empty
 		 else problem(["continue_from"]; " "; "is missing or not 40 lowercase hex digits; expected the worktree's HEAD commit") end),
 		(if has("notes") | not then empty
@@ -180,7 +167,7 @@ def entry_points_problems:
 
 # Every path the agent's message prints in a code span: a backtick would end
 # the span, so a path holding one is refused rather than printed altered.
-def is_printed_path: . == ["context", "path"] or . == ["continue_from"]
+def is_printed_path: . == ["continue_from"]
 	or .[0] == "entry_points" or (.[0] == "plugins" and index(["paths"]) != null);
 def backtick_problems:
 	paths(type == "string") as $at | select($at | is_printed_path) | select(getpath($at) | contains("`"))

@@ -82,13 +82,12 @@ hv_show_card() {
 	hv_end_show
 }
 
-# Prints line $3 of views folder $2's lines.jq with show.sh $1, recorded as
-# owed for effort folder $4 (left out when empty); the arguments after $4 are
-# the line's --arg FIELD VALUE pairs. Ends as hv_end_show does.
+# Prints line $3 of views folder $2's lines.jq with show.sh $1; the
+# arguments after $3 are the line's --arg FIELD VALUE pairs. Ends as
+# hv_end_show does.
 hv_show_line() {
-	hv_line_show=$1 hv_line_views=$2 hv_line_name=$3 hv_line_effort=$4
-	shift 4
-	[ -z "${hv_line_effort}" ] || set -- --effort "${hv_line_effort}" "$@"
+	hv_line_show=$1 hv_line_views=$2 hv_line_name=$3
+	shift 3
 	hv_render_status=0
 	sh "${hv_line_show}" line --views "${hv_line_views}" --name "${hv_line_name}" "$@" </dev/null ||
 		hv_render_status=$?

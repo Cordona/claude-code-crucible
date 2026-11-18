@@ -70,9 +70,9 @@ readonly FAULTS_JQ='($event | fromjson) as $this
 	| .body.what]'
 
 # The language's plugin name, then each framework's, one per line, of the
-# dispatch with id $id. Input: the dispatch.made events.
+# dispatch.made event of seq $id. Input: the dispatch.made events.
 # shellcheck disable=SC2016
-readonly PLUGINS_JQ='map(select(.body.id == $id)) | last // empty
+readonly PLUGINS_JQ='map(select((.seq | tostring) == $id)) | last // empty
 | .body.plugins // {} | (.language.name // ""), (.frameworks // [] | .[] | .name // empty)'
 
 # Prints a plugin SKILL.md's metadata.label by flow-code-agent-dispatch's
@@ -126,7 +126,7 @@ nothing is written to the effort.
 
 Title: "<language> build agent <letter>", or test agent for a tester; its
 plugins are the language and frameworks of the dispatch.made event whose
-body.id is the event's dispatch; none when there is no such event. Then
+seq is the event's dispatch; none when there is no such event. Then
 "build iteration <the event's iteration>", or "test plan <N>", N the
 count of distinct test_plan values among the seat's test.committed events
 up to this one, so a plan's fix rounds keep its number. The files line
@@ -325,7 +325,7 @@ read_event() {
 		die 4 'jq could not read the events events.sh slurp printed'
 	[ -n "${event}" ] || die 3 "seat ${seat} has no ${event_type} event${seq:+ with seq ${seq}}; expected a report the stop hook recorded"
 	fields=$(printf '%s\n' "${event}" |
-		jq -r '.type, .seq, (.iteration.number // "" | tostring), (.commit // ""), (.dispatch // "" | tostring),
+		jq -r '.type, .seq, (.iteration // "" | tostring), (.commit // ""), (.dispatch // "" | tostring),
 			(.body | type)') || die 4 'jq could not read the report event'
 	type='' event_seq='' count='' commit='' dispatch='' body_type=''
 	{

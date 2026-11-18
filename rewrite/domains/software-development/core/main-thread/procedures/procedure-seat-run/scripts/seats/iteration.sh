@@ -64,7 +64,7 @@ stdout of a tester seat, five lines:
                    (also with none)
 with --checked, then the line checked_earlier (views/lines.jq) with that
   state, printed by human-view's show.sh and recorded as owed this session
-  (CLAUDE_CODE_SESSION_ID) for --effort
+  (CLAUDE_CODE_SESSION_ID)
 
 exit codes:
   0  printed
@@ -306,6 +306,6 @@ printf 'ITERATION: %s\nREPORT: %s/drafts/agents/%s/report.json\n' \
 printf 'LAST_REPORT: %s\nLAST_REPORT_STATE: %s\n' "${last_report:-none}" "${report_state}"
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
 [ -z "${checked_task}" ] ||
-	hv_show_line "${card_show}" "${card_views}" checked_earlier "${effort_folder}" \
+	hv_show_line "${card_show}" "${card_views}" checked_earlier \
 		--arg state "${report_state}" --arg task "${checked_task}" ||
 	die 4 "${hv_render_problem}; the seat's lines are printed, the line checked_earlier not shown"

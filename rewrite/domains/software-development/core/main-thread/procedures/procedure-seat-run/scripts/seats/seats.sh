@@ -26,20 +26,18 @@ export LC_ALL
 
 # Prints {exit, problems, rejections, file, out, remove, options}: the exit
 # code, the problem lines (at most $max), each problem as a fault body
-# {refused, rule} (at most $max), the seat list after the change (null when
+# {what} (at most $max), the seat list after the change (null when
 # nothing changes), the stdout text, remove true when drop removed the last
 # seat, and the options given. The new list is pruned, then checked against
 # the contract. Each --base-seat value comes as $base_seat_<n>, n its place
-# from 0; the --task text comes as $task_text, made one line.
+# from 0.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly RUN_JQ='include "seats";
 include "prune";
 ([$ARGS.named | to_entries[] | select(.key | startswith("base_seat_"))
 	| {place: (.key | ltrimstr("base_seat_") | tonumber), value}] | sort_by(.place) | map(.value)) as $base_seats
-| {seat: $seat, role: $role, repo: $repo, base: $base,
-	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "base-seat": $base_seats, "build-seat": $build_seat,
-	branch: $branch, "from-head": $from_head, follows: $follows,
-	task: ($task_text | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))} as $given
+| {seat: $seat, repo: $repo, base: $base,
+	"agent-id": $agent_id, dispatch: $dispatch, status: $status, "base-seat": $base_seats, "build-seat": $build_seat} as $given
 | ($given | with_entries(select(.value != "" and .value != []))) as $options
 | seats_run($command; $options; $effort; $seats_dir;
 	if $exists == "yes" then $current else null end)
@@ -51,17 +49,16 @@ include "prune";
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} choose --effort FOLDER --seat S --role builder --repo DIR --base SHA
+usage: sh ${PROG} choose --effort FOLDER --seat S --repo DIR --base SHA
            [--base-seat S]...
        sh ${PROG} join --effort FOLDER --seat S --build-seat S
-       sh ${PROG} opened --effort FOLDER --seat S --branch NAME
+       sh ${PROG} opened --effort FOLDER --seat S
        sh ${PROG} drop --effort FOLDER --seat S
-       sh ${PROG} bind --effort FOLDER --seat S --agent-id ID --dispatch ID
+       sh ${PROG} bind --effort FOLDER --seat S --agent-id ID --dispatch SEQ
        sh ${PROG} status --effort FOLDER --seat S --status working|idle|gave-up
        sh ${PROG} handover --effort FOLDER --seat S
-       sh ${PROG} move --effort FOLDER --seat S --base SHA --from-head SHA
-           [--follows NAME]
-       sh ${PROG} task --effort FOLDER --seat S --task TEXT
+       sh ${PROG} move --effort FOLDER --seat S --base SHA
+       sh ${PROG} task --effort FOLDER --seat S
        sh ${PROG} get --effort FOLDER --seat S
        sh ${PROG} find --effort FOLDER --agent-id ID [--card]
        sh ${PROG} busy --effort FOLDER
@@ -76,17 +73,12 @@ idle. Reads check shape only. Nothing else is left (a SIGKILL aside).
 
 --effort FOLDER   the effort folder, absolute
 --seat S          the seat, like build-agent-alpha
---role builder    choose: the seat's role
 --build-seat S    join: the tester's build seat
 --repo DIR        choose: the repo's checkout, absolute
 --base SHA        choose, move: the commit the worktree starts from
 --base-seat S     choose: a seat the new one is cut from; repeatable
---branch NAME     opened: the branch the worktree was cut on
 --agent-id ID     bind, find: Claude Code's agent id
---dispatch ID     bind: the dispatch that seated the agent
---from-head SHA   move: the worktree's HEAD before it (a record)
---follows NAME    move: where the new base was taken from (a record)
---task TEXT       task: the new work, made one line (a record)
+--dispatch SEQ    bind: the seq of the dispatch.made that seated the agent
 --card            find: also print its line
 
 choose    a new seat, status chosen, worktree
@@ -154,11 +146,11 @@ printable() {
 # Prints the options command $1 takes.
 command_options() {
 	case $1 in
-		choose) printf -- '--effort --seat --role --repo --base --base-seat' ;;
+		choose) printf -- '--effort --seat --repo --base --base-seat' ;;
 		join) printf -- '--effort --seat --build-seat' ;;
-		opened) printf -- '--effort --seat --branch' ;;
-		move) printf -- '--effort --seat --base --from-head --follows' ;;
-		task) printf -- '--effort --seat --task' ;;
+		opened) printf -- '--effort --seat' ;;
+		move) printf -- '--effort --seat --base' ;;
+		task) printf -- '--effort --seat' ;;
 		bind) printf -- '--effort --seat --agent-id --dispatch' ;;
 		find) printf -- '--effort --agent-id --card' ;;
 		status) printf -- '--effort --seat --status' ;;
@@ -205,8 +197,8 @@ parse_args() {
 	esac
 	shift
 	allowed=$(command_options "${command}")
-	effort_folder='' seat='' role='' repo='' base='' agent_id='' dispatch='' status=''
-	build_seat='' branch='' from_head='' follows='' task='' card=''
+	effort_folder='' seat='' repo='' base='' agent_id='' dispatch='' status=''
+	build_seat='' card=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
 			-h | --help)
@@ -227,10 +219,6 @@ parse_args() {
 			--seat)
 				take_value "$1" "${seat}" "${2-}"
 				seat=${option_value}
-				;;
-			--role)
-				take_value "$1" "${role}" "${2-}"
-				role=${option_value}
 				;;
 			--repo)
 				take_value "$1" "${repo}" "${2-}"
@@ -260,22 +248,6 @@ parse_args() {
 				take_value "$1" "${status}" "${2-}"
 				status=${option_value}
 				;;
-			--branch)
-				take_value "$1" "${branch}" "${2-}"
-				branch=${option_value}
-				;;
-			--from-head)
-				take_value "$1" "${from_head}" "${2-}"
-				from_head=${option_value}
-				;;
-			--follows)
-				take_value "$1" "${follows}" "${2-}"
-				follows=${option_value}
-				;;
-			--task)
-				take_value "$1" "${task}" "${2-}"
-				task=${option_value}
-				;;
 			*)
 				shown_option=$(printable "$1")
 				usage_error "unknown option: ${shown_option}; expected ${allowed} or --help"
@@ -295,22 +267,16 @@ require_options() {
 	esac
 	case ${command} in
 		choose)
-			require --role "${role}" builder
 			require --repo "${repo}" DIR
 			require --base "${base}" SHA
 			;;
 		join) require --build-seat "${build_seat}" S ;;
 		bind)
 			require --agent-id "${agent_id}" ID
-			require --dispatch "${dispatch}" ID
+			require --dispatch "${dispatch}" SEQ
 			;;
 		status) require --status "${status}" 'working|idle|gave-up' ;;
-		opened) require --branch "${branch}" NAME ;;
-		move)
-			require --base "${base}" SHA
-			require --from-head "${from_head}" SHA
-			;;
-		task) require --task "${task}" TEXT ;;
+		move) require --base "${base}" SHA ;;
 		find) require --agent-id "${agent_id}" ID ;;
 		*) ;;
 	esac
@@ -386,17 +352,6 @@ read_seats() {
 	[ "${seat_count}" -ne 0 ] || exists=no
 }
 
-# Refuses a --task of whitespace only.
-check_task() {
-	case ${task} in
-		*[![:space:]]*) ;;
-		*)
-			record_rejections '{"refused": "task --task", "rule": "expected the task'"'"'s text"}'
-			die 3 "--task holds no text; expected the task's text"
-			;;
-	esac
-}
-
 # Sets result to RUN_JQ's output over the seat list as it is now; the arguments
 # are the checked command line after the command, read for --base-seat.
 run_command() {
@@ -417,10 +372,9 @@ run_command() {
 	read_seats
 	result=$(jq -nc -L "${own_dir}" -L "${crucible_lib_dir}" --argjson current "${current}" --arg exists "${exists}" \
 		--arg command "${command}" --arg effort "${effort}" --arg seats_dir "${physical_dir}" --argjson max "${MAX_PROBLEMS}" \
-		--arg seat "${seat}" --arg role "${role}" --arg repo "${repo}" \
+		--arg seat "${seat}" --arg repo "${repo}" \
 		--arg base "${base}" --arg agent_id "${agent_id}" --arg dispatch "${dispatch}" \
-		--arg status "${status}" --arg build_seat "${build_seat}" --arg branch "${branch}" --arg from_head "${from_head}" \
-		--arg follows "${follows}" --arg task_text "${task}" "$@" "${RUN_JQ}") ||
+		--arg status "${status}" --arg build_seat "${build_seat}" "$@" "${RUN_JQ}") ||
 		die 4 "jq failed; expected jq 1.6+, ${MODULE}.jq beside ${PROG} and prune.jq in ${shown_lib_dir}"
 }
 
@@ -465,7 +419,7 @@ EOF
 		*) return 0 ;;
 	esac
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${card_show}" "${card_views}" "${seat_line}" "${effort_folder}" \
+	hv_show_line "${card_show}" "${card_views}" "${seat_line}" \
 		--arg seat "${found_seat}" --arg worktree "${found_worktree}" ||
 		die 4 "${hv_render_problem}; the seat is printed, its line not shown"
 }
@@ -502,8 +456,8 @@ EOF
 # Appends the change as one seat event, checked again under the events lock.
 append_event() {
 	body_file=$(mktemp) || die 4 'mktemp could not create a temp file; expected a writable TMPDIR'
-	printf '%s\n' "${result}" | jq -c -L "${own_dir}" --argjson before "${current}" \
-		--arg command "${command}" 'include "seats-events"; seats_event_body($command; .options; $before; .file // {seats: []})' >"${body_file}" ||
+	printf '%s\n' "${result}" | jq -c -L "${own_dir}" \
+		--arg command "${command}" 'include "seats-events"; seats_event_body($command; .options; .file // {seats: []})' >"${body_file}" ||
 		die 4 'jq failed building the seat event; expected jq 1.6+ and seats-events.jq'
 	event_type=$(jq -nr -L "${own_dir}" --arg command "${command}" 'include "seats-events"; seats_event_types[$command]') ||
 		die 4 'jq failed naming the seat event; expected jq 1.6+'
@@ -540,7 +494,6 @@ if [ "${command}" = list ]; then
 	printf '%s\n' "${current}"
 	exit 0
 fi
-[ "${command}" != task ] || check_task
 shift
 run_command "$@"
 finish

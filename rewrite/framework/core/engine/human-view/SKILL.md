@@ -1,6 +1,6 @@
 ---
 name: human-view
-description: "How scripts show the human a card: `show.sh` prints each card from its skill's template and records it as owed; `show-stop-hook.sh`, a Stop hook, sends main back until the card is in its final message. Also the shared modules `view.jq`, `paths.jq`, `title.jq`, `gate.jq`, `line.jq`. Use when a script prints a card. Never loaded by the model; main runs only `show.sh line` and `render`. Writes only owed records and a `view.missed` event; needs jq 1.6+. Not for input checks or a card's content."
+description: "How scripts show the human a card: `show.sh` prints each card from its skill's template and records it as owed; `show-stop-hook.sh`, a Stop hook, sends main back until the card is in its final message. Also the shared modules `view.jq`, `paths.jq`, `title.jq`, `gate.jq`, `line.jq`. Use when a script prints a card. Never loaded by the model; main runs only `show.sh line` and `render`. Writes only owed records; needs jq 1.6+. Not for input checks or a card's content."
 user-invocable: false
 ---
 
@@ -13,7 +13,7 @@ How a card reaches the human: one script prints it, one Stop hook checks it was 
 In `scripts/`; each one's `--help` is its full contract.
 
 - **`show.sh`:** the only way a script prints a card: it renders the skill's template (`views/<name>.jq`, or a line in `views/lines.jq`), prints it, and records it as owed this session. Its `render` command renders a gate's template and records nothing, for a gate renderer or for main when no data must be built: `open-gate.sh` shows and records the gate.
-- **`show-stop-hook.sh`** (the Stop hook; Claude Code runs it): sends main back while an owed card is missing from its final message (a gate must end it, with only owed cards above it), at most twice; then lets the stop through and writes `view.missed`.
+- **`show-stop-hook.sh`** (the Stop hook; Claude Code runs it): sends main back while an owed card is missing from its final message (a gate must end it, with only owed cards above it), at most twice; then lets the stop through.
 - **A question that follows a card is a gate** (`procedure-approval-gate`): the card goes above the gate in main's final message, and the gate's question waits until both are shown. The hooks check only their own input.
 - **`lib/`:** the owed record's one copy of its paths, checks and limits and the shown check, and `render.sh`, the show.sh calls a script prints a gate, a card or a line through (`open-gate.sh`'s gates included), with one exit mapping, and `hv_check_printer`, the one check that show.sh and the script's templates are in place.
 - **A skill's shared defs:** `show.sh` also loads modules from the card's `views/` folder, so a skill's templates share a def through one module there (`include "common";` reads `views/common.jq`); human-view's modules win a name clash.

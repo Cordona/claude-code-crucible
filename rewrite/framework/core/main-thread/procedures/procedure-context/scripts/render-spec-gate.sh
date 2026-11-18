@@ -178,14 +178,14 @@ readonly FIELD_JQ='.[0][$name] // "" | explode | map(if . == 0 then 1 else . end
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label spec-offer|spec-approval --effort FOLDER
+usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label spec-offer
+         (the approval: --label spec-approval --effort FOLDER)
        sh ${PROG} --plan-file PATH --question
        sh ${PROG} --approval-plan --spec PATH --plan-out PATH [--spec-needed] [--typed-approval]
        sh ${PROG} --help | -h
 
 Prints a spec gate as Markdown, or with --question its question: the
-revision offer (case revision, label spec-offer) or the approval (case
-approval, label spec-approval).
+revision offer (case revision) or the approval (case approval).
 stdin is never read; only --approval-plan writes, to --plan-out.
 
 Options:
@@ -546,13 +546,12 @@ show_pick_approve_option() {
 }
 
 # Prints line $1, with its --arg options after it, for the human after the
-# machine line, recorded as owed for the draft's effort.
+# machine line, recorded as owed.
 show_line() {
 	line_name=$1
 	shift
-	draft_dir=${spec%/*}
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${show_script}" "${views_dir}" "${line_name}" "${draft_dir%/drafts/main-thread}" "$@" ||
+	hv_show_line "${show_script}" "${views_dir}" "${line_name}" "$@" ||
 		install_fault "${hv_render_problem}; expected the line ${line_name} printed from views/lines.jq; try reinstalling procedure-context and ${VIEW_LIB}"
 }
 

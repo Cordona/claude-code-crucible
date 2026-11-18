@@ -8,7 +8,7 @@ Copy its steps into the todo list, as SKILL.md's Steps do.
 2. **Ask:** load `procedure-approval-gate` with the Skill tool, if it isn't in context, and follow its steps, with these inputs:
    - **The plan file:** `{"seat": "<build seat>", "action": "<one line naming only what you ran (the commands, a page the human opened), with no result and no claim it showed anything>"}`, written with the Write tool; no other field (the renderer takes the seat's title from its build card).
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-build/scripts/render-live-check.sh" --plan-file '<the plan file>' --effort '<effort folder>'`; act on each exit as its `--help` sets.
-   - **The gate's label:** `live-check`, with `--effort '<effort folder>'`.
+   - **The gate's label:** `live-check`, with no `--effort`.
    - **Above the gate:** the cards shown this turn, never step 1's output.
    - **On "now ask":** as SKILL.md What next sets, with this renderer.
    - **The gate can't be shown or asked:** show the human what failed, and go no further: no context doc, no tests, no `chains.md`.

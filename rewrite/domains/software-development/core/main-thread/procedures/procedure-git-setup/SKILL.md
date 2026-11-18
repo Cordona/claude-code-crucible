@@ -30,7 +30,7 @@ Copy steps 1–5 into the todo list and tick each.
 
 1. **Set up already?** Run `sh "<gs>/settings.sh" get --effort '<effort folder>'`. Exit 0: hand back `ready`, saying nothing. Exit 5: step 2.
 2. **The plan:** load `procedure-approval-gate` with the Skill tool and follow its steps with steps 2–3's inputs. The plan's generator (its step 1.2): `sh "<gs>/identity-candidates.sh" --plan-out '<the plan path>' --effort '<effort folder>'`.
-3. **The gate:** the renderer `sh "<gs>/render-git-setup.sh" --plan-file '<the plan path>' --repo '<repo>'`, the label `git-setup` with `--effort '<effort folder>'`. On "now ask": run the renderer again with `--question` added, and pass its `questions` to one AskUserQuestion as they are. The gate not shown, as `procedure-approval-gate` reports it: hand back `stopped: git setup not shown`.
+3. **The gate:** the renderer `sh "<gs>/render-git-setup.sh" --plan-file '<the plan path>' --repo '<repo>'`, the label `git-setup` with no `--effort`. On "now ask": run the renderer again with `--question` added, and pass its `questions` to one AskUserQuestion as they are. The gate not shown, as `procedure-approval-gate` reports it: hand back `stopped: git setup not shown`.
 4. **The answer:**
    - **Identity, an option naming an identity:** `--pick-label '<its label, exactly as the answer gives it>'`.
    - **"Set up git first (Recommended)" or "No, set up git first":** as Always.

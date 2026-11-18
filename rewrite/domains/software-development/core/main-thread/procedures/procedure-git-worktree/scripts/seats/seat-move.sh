@@ -59,7 +59,7 @@ exit codes:
 
 needs: POSIX sh, git 2.31+, jq 1.6+; ../worktree/worktree-move.sh and
 ../cards/cards-lib.sh from this script's folder; procedure-seat-run's
-seats/seats.sh and seats/seats.jq beside procedure-git-worktree; this
+seats/seats.sh beside procedure-git-worktree; this
 skill's views/; ${VIEW_LIB}'s scripts/show.sh and
 scripts/lib/render.sh in ${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills/${VIEW_LIB}
 EOF
@@ -140,7 +140,7 @@ load_dependencies() {
 	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
 	own_path=$(script_dir)
 	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
-	for step in ../worktree/worktree-move.sh ../../../procedure-seat-run/scripts/seats/seats.sh ../../../procedure-seat-run/scripts/seats/seats.jq ../cards/cards-lib.sh; do
+	for step in ../worktree/worktree-move.sh ../../../procedure-seat-run/scripts/seats/seats.sh ../cards/cards-lib.sh; do
 		[ -f "${own_dir}/${step}" ] || {
 			shown_step=$(printable "${own_dir}/${step}")
 			whole="the procedure's scripts folders whole"
@@ -156,7 +156,7 @@ load_dependencies() {
 
 # Sets effort_name, the effort folder's name with symlinks resolved, as
 # seat-open.sh names the branch, refusing an effort path that is not
-# absolute.
+# absolute and a --follows holding a control character.
 check_inputs() {
 	shown_effort=$(printable "${effort}")
 	case ${effort} in
@@ -166,17 +166,13 @@ check_inputs() {
 	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
 		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
 	effort_name=${effort_dir##*/}
-}
-
-# Refuses a --follows seats.sh would refuse after the worktree moved.
-check_follows() {
-	[ -n "${follows}" ] || return 0
-	follows_problem=$(jq -nr -L "${own_dir}/../../../procedure-seat-run/scripts/seats" --arg name "${follows}" 'include "seats"; $name | seats_branch_problem' </dev/null) ||
-		die 4 "jq failed checking --follows; expected jq 1.6+ and procedure-seat-run's seats/seats.jq"
-	[ -z "${follows_problem}" ] || {
-		shown_problem=$(printable "${follows_problem}")
-		die 3 "--follows ${shown_problem}"
-	}
+	case ${follows} in
+		*[[:cntrl:]]*)
+			shown_follows=$(printable "${follows}")
+			die 3 "--follows ${shown_follows} holds a control character; expected a branch name"
+			;;
+		*) ;;
+	esac
 }
 
 # Sets status, repo, worktree, role and build_seat from the seat; seats.sh's
@@ -314,9 +310,7 @@ EOF
 }
 
 record_move() {
-	set -- --effort "${effort}" --seat "${seat}" --base "${to_sha}" --from-head "${old_head}"
-	[ -z "${follows}" ] || set -- "$@" --follows "${follows}"
-	run_step ../../../procedure-seat-run/scripts/seats/seats.sh move "$@"
+	run_step ../../../procedure-seat-run/scripts/seats/seats.sh move --effort "${effort}" --seat "${seat}" --base "${to_sha}"
 	[ "${step_rc}" -ne 0 ] || return 0
 	step_exit_code
 	move_rc=${step_rc}
@@ -355,7 +349,6 @@ read_seat
 check_role
 check_status
 resolve_target
-check_follows
 name_keep_ref
 move_worktree
 record_move

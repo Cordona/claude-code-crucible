@@ -76,7 +76,7 @@ def option($label; $description): {label: $label, description: $description};
 
 usage() {
 	cat <<EOF
-usage: sh ${PROG} --plan-file PATH [--repo DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label git-setup --effort FOLDER
+usage: sh ${PROG} --plan-file PATH [--repo DIR] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label git-setup
        sh ${PROG} --plan-file PATH [--repo DIR] --question
        sh ${PROG} --help | -h
 

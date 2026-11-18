@@ -50,7 +50,6 @@
       "id": "R-1",
       "file": "src/test/kotlin/orders/LegacyStockCheckTest.kt",
       "name": "stock_check_returns_false",
-      "why": "The boolean stock check was replaced by the reservation call",
       "covered_by": "T-1"
     }
   ],
@@ -76,17 +75,11 @@
     }
   ],
   "no_tests": null,
-  "baseline": {
-    "where": "build seat worktree, database in docker compose",
-    "command": "./gradlew --offline test --tests 'orders.*'",
-    "result": "pass",
-    "tests": 14
-  },
+  "baseline": "pass",
   "run": [
     {
       "where": "build seat worktree, database in docker compose",
-      "command": "./gradlew --offline test --tests 'orders.OrdersApiTest' --tests 'orders.QuantityRulesTest'",
-      "expected": 4
+      "command": "./gradlew --offline test --tests 'orders.OrdersApiTest' --tests 'orders.QuantityRulesTest'"
     }
   ],
   "blocker": null

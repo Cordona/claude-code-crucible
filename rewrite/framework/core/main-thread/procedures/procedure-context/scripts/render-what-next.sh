@@ -62,7 +62,7 @@ readonly SETTLED_JQ='[(.[0].questions // [])[] | select(type == "object" and .st
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label what-next --effort FOLDER
+usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label what-next
        sh ${PROG} --help | -h
 
 Prints the "what next?" gate, asking the human what follows a ready context,

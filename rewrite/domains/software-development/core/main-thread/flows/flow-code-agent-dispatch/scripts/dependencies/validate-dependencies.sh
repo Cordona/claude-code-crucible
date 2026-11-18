@@ -814,7 +814,7 @@ check_run_tools() {
 	elif command -v shasum >/dev/null 2>&1; then
 		pass shasum
 	else
-		fail 'sha256sum or shasum' 'neither is on PATH; expected one for the context, plan and dispatch generators, render-dispatch-plan.sh and the inject hook' \
+		fail 'sha256sum or shasum' 'neither is on PATH; expected one for the context, plan and dispatch generators and the inject hook' \
 			'install coreutils (Linux), or put the system shasum back on PATH (macOS: it ships in /usr/bin), then rerun'
 	fi
 }
@@ -1291,7 +1291,7 @@ print_card() {
 	hv_show_card "${show_script}" "${views_dir}" "${CARD_NAME}" '' "${card_data}" || card_fault "views/${CARD_NAME}.jq"
 	for line_name in ${line_names}; do
 		# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-		hv_show_line "${show_script}" "${views_dir}" "${line_name}" '' || card_fault "${line_name} of views/${LINE_TEMPLATE}.jq"
+		hv_show_line "${show_script}" "${views_dir}" "${line_name}" || card_fault "${line_name} of views/${LINE_TEMPLATE}.jq"
 	done
 }
 

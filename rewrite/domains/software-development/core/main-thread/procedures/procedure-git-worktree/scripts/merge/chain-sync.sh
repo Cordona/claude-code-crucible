@@ -448,4 +448,4 @@ printf '%s\n' "${result}"
 hv_show_card "${card_show}" "${card_views}" chain-synced "${effort_dir}" "${result}" ||
 	die 4 "${hv_render_problem}; seat ${seat} is synced, its card not shown"
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; seat ${seat} is synced, its unsigned line not shown"
+card_show_unsigned || die 4 "${hv_render_problem}; seat ${seat} is synced, its unsigned line not shown"

@@ -41,11 +41,11 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 readonly WRITE_JQ='include "settings";
 $ARGS.named as $given
 | {identity: "the identity", name: "--name", email: "--email", signing: "the signing key",
-   format: "--signing-format", key: "--signing-key", auto_push: "--auto-push", remote: "the remote"} as $names
+   format: "--signing-format", key: "--signing-key", auto_push: "--auto-push"} as $names
 | def given($fields): reduce $fields[] as $field ({}; if $given | has($field) then .[$field] = $given[$field] else . end);
 (given(["format", "key"]) | if . == {} then null else . end) as $signing
 | {identity: (given(["name", "email"]) + {signing: $signing}),
-   auto_push: ($given.auto_push == "yes"), remote: settings_remote} as $file
+   auto_push: ($given.auto_push == "yes")} as $file
 | {problems: [$file | settings_problems($names)], file: $file,
    identity: ($file.identity + {fingerprint: $given.fingerprint} | settings_identity_text)}'
 
@@ -491,13 +491,13 @@ run_write() {
 	show_saved_line
 }
 
-# Prints the saved line through show.sh, recorded as owed for the effort.
+# Prints the saved line through show.sh, recorded as owed this session.
 show_saved_line() {
 	saved_identity=$(printf '%s\n' "${result}" | jq -r '.identity') ||
 		die 4 'jq failed reading the saved identity; the git setup was saved, its line not shown; expected jq 1.6+; try jq --version'
 	{ true 3>&1; } 2>/dev/null || die 4 'stdout closed; the git setup was saved, its line not shown'
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${show_script}" "${views_dir}" "${SAVED_LINE}" "${effort}" \
+	hv_show_line "${show_script}" "${views_dir}" "${SAVED_LINE}" \
 		--arg identity "${saved_identity}" --arg auto_push "${auto_push}" ||
 		die 4 "${hv_render_problem}; the git setup was saved, its line not shown; expected the line ${SAVED_LINE} printed from views/lines.jq; try reinstalling procedure-git-setup and the ${VIEW_LIB} skill"
 }

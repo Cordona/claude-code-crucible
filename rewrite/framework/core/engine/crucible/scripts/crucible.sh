@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Hands out paths and IDs in the effort folders of the durable Crucible space,
+# Hands out draft paths in the effort folders of the durable Crucible space,
 # finds drafts by ID, opens them and prunes efforts no file changed in for long.
 # Its cards are human-view's show.sh's to print: views/opened.jq for open,
 # views/prune.jq for prune and views/prune-stopped.jq before a failed
@@ -27,7 +27,6 @@ usage() {
 	load_help_rules
 	cat <<EOF
 usage: crucible.sh new --kind KIND --effort FOLDER --label LABEL
-       crucible.sh id --effort FOLDER
        crucible.sh path ID
        crucible.sh find --effort FOLDER --kind KIND [--label LABEL] [--max N]
        crucible.sh open ID [--editor CMD]
@@ -50,7 +49,7 @@ Layout: <root>/efforts/<effort>/drafts/main-thread/<ID>-<label>.md
 
 Options:
   --kind KIND         new, find: a kind of the layout
-  --effort FOLDER     new, id, find: an existing effort folder directly in
+  --effort FOLDER     new, find: an existing effort folder directly in
                       <root>/efforts/, absolute
   --label LABEL       new: the draft's label; find: only drafts with it.
                       ${help_label_rule}
@@ -72,8 +71,6 @@ Commands:
   new    creates an empty file in --effort's KIND folder (made if missing),
          never overwriting, with an ID no other draft of the effort holds;
          stdout: its absolute path.
-  id     stdout: a fresh ID no draft of --effort holds, for the caller
-         (a dispatch ID). Read-only.
   path   stdout: the absolute path of the draft with ID.
   find   read-only; stdout: the absolute path of each KIND draft (with
          --label, of that label) in --effort's folder, one per line, newest
@@ -143,14 +140,13 @@ main() {
 			usage
 			exit 0
 			;;
-		new | id | path | find | open | prune | root) ;;
-		*) usage_error "unknown command: ${command}; expected new, id, path, find, open, prune, root or --help" ;;
+		new | path | find | open | prune | root) ;;
+		*) usage_error "unknown command: ${command}; expected new, path, find, open, prune, root or --help" ;;
 	esac
 	load_space_lib
 	resolve_root
 	case ${command} in
 		new) run_new "$@" ;;
-		id) run_id "$@" ;;
 		path) run_path "$@" ;;
 		find) run_find "$@" ;;
 		open) run_open "$@" ;;
@@ -306,36 +302,6 @@ count_id_holders() {
 	for holder in "${effort}/${DRAFTS_DIR}/$1"-*; do
 		[ -e "${holder}" ] || [ -L "${holder}" ] || continue
 		holders=$((holders + 1))
-	done
-}
-
-run_id() {
-	effort=''
-	while [ "$#" -gt 0 ]; do
-		case $1 in
-			--effort) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for id: $1; expected --effort" ;;
-		esac
-		effort=$2
-		shift 2
-	done
-	check_effort
-	mint_free_id
-	printf '%s\n' "${crucible_id}"
-}
-
-# Sets crucible_id to a fresh ID no item of the effort holds; exits 5 when no
-# ID can be minted, 4 when every try is taken.
-mint_free_id() {
-	id_try=1
-	while :; do
-		# shellcheck disable=SC2310 # its status says whether an ID was minted; the fault is named here
-		crucible_mint_id || install_fault "${crucible_id_problem}"
-		count_id_holders "${crucible_id}"
-		[ "${holders}" -ne 0 ] || return 0
-		[ "${id_try}" -lt "${crucible_max_create_attempts}" ] ||
-			space_fault "${crucible_max_create_attempts} tries in ${effort} found the ID taken; expected a free one; try again"
-		id_try=$((id_try + 1))
 	done
 }
 

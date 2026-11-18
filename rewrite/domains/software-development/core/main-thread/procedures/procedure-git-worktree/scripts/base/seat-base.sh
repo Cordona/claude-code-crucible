@@ -545,4 +545,4 @@ if [ "${card}" = yes ]; then
 		die 4 "${hv_render_problem}; the base is printed above, its card not shown"
 fi
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; the merge is made unsigned, its line not shown"
+card_show_unsigned || die 4 "${hv_render_problem}; the merge is made unsigned, its line not shown"

@@ -4,20 +4,21 @@
 # count. --argjson installed: the installed plugins, installed-plugins.jq's
 # {"<name>": {"kind": "language"|"framework"|"standard"|"procedure", "label":
 # str}, ...}.
-# The plan: {agent, mode, tasks, plugins: {load: {language, frameworks,
-# standards, procedures}, skip: {standards, procedures}, load_reason}, replan,
-# context: {sha256}}; the session that wrote it is its event's;
-# each plugin entry {"plugin": str, "reason": str}; a key holding
-# nothing is left out, never null, [] or {}. Each reason and load_reason are
-# kept in the plan for audit and not rendered.
+# The plan: {agent, tasks, plugins: {load: {language, frameworks, standards,
+# procedures}, skip: {standards, procedures}}, replan, context_fingerprint};
+# the session that wrote it is its event's;
+# each plugin entry {"plugin": str}, plus "state": "invalid" or
+# "uninstalled" under frameworks or skip for a step-10 re-plan's plugin
+# list-plugins.sh no longer lists; a key holding nothing is left out, never
+# null, [] or {}.
 # Plugin rules: at most one language; a framework only with a language; skip
 # holds standards and procedures only; every installed standard and procedure
-# is in load or skip, once; load_reason only when nothing is loaded; a
-# code-reviewer plan holds one lens: the language with its frameworks, or one
-# standard, or neither.
+# is in load or skip, once; a code-reviewer plan holds one lens: the language
+# with its frameworks, or one standard, or neither, and holds no plugins when
+# nothing is installed.
 # A code-builder or code-tester plan always loads a language and at least one
 # standard; a code-tester plan always loads standard-testing, any other plan
-# never. The mode is the agent's, as dispatch-names.jq's agent_modes sets it.
+# never.
 # Output: one "<where> <problem>; expected <x>" line per problem, nothing when
 # the plan fits. With --arg format json: one {"at": <path>, "problem":
 # "<problem>; expected <x>"} object per problem, at being the field's path in
@@ -34,23 +35,21 @@ def lens_agent: "code-reviewer";
 def tester_agent: "code-tester";
 # The agent a plan names, as its rule texts call it.
 def agent_word: if . == tester_agent then "a test agent" else "a build agent" end;
-# The mode of the plan's agent; an agent that is not dispatched is held to BUILD.
-def expected_mode: (if (.agent | type) == "string" then agent_modes[.agent] else null end) // "BUILD";
 # A step-10 re-plan may list, under skip, a plugin list-plugins.sh no longer prints.
-def dropped_reasons: "invalid", "uninstalled after approval";
-def top_keys: ["agent", "mode", "tasks", "plugins", "replan", "context"];
-def plugins_keys: ["load", "skip", "load_reason"];
+def plugin_states: "invalid", "uninstalled";
+def top_keys: ["agent", "tasks", "plugins", "replan", "context_fingerprint"];
+def plugins_keys: ["load", "skip"];
 def load_keys: ["language", "frameworks", "standards", "procedures"];
 def skip_keys: ["standards", "procedures"];
 # The plugin kind each plugins.load or plugins.skip key holds, and back.
 def list_key_kinds: {language: "language", frameworks: "framework", standards: "standard", procedures: "procedure"};
 def kind_list_keys: {language: "language", framework: "frameworks", standard: "standards", procedure: "procedures"};
-def plugin_item_shape: "{\"plugin\": str, \"reason\": str}";
+def plugin_item_shape: "{\"plugin\": str}";
 
 def text_ok: type == "string" and (gsub("[[:cntrl:][:space:]]"; "") | length > 0);
 # A field name from the plan is quoted as JSON and cut, so it prints on one line.
 def quoted_name: tojson | if length > 60 then .[:60] + "…" else . end;
-# A location such as tasks[1] or plugins.load.standards[0].reason; a key other than a plain name is quoted.
+# A location such as tasks[1] or plugins.skip.standards[0].state; a key other than a plain name is quoted.
 def location: reduce .[] as $step ("";
 	if ($step | type) == "number" then . + "[\($step)]"
 	elif ($step | test("^[a-z_][a-z0-9_]*$")) then . + (if . == "" then "" else "." end) + $step
@@ -63,20 +62,22 @@ def field_problems:
 	((keys - top_keys)[] | problem([.]; ": "; "unknown field; expected only \(top_keys | join(", "))")),
 	(if .agent | text_ok | not then problem(["agent"]; " "; "missing or empty; expected a non-empty string")
 	 elif .agent | IN(dispatched_agents[]) then empty
-	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end),
-	(expected_mode as $mode
-	 | if .mode == $mode then empty else problem(["mode"]; " "; "missing or unknown; expected \($mode | tojson)") end);
+	 else problem(["agent"]; " "; "\(.agent | tojson) is not a dispatched agent; expected one of \(dispatched_agents | map(tojson) | join(", "))") end);
 
 def tasks_problems:
 	if (.tasks | type) != "array" or (.tasks | length) == 0 then problem(["tasks"]; " "; "missing or empty; expected an array of one or more strings")
 	else .tasks | to_entries[] | select(.value | text_ok | not) | problem(["tasks", .key]; " "; "is not a non-empty string; expected the task text") end;
 
-# Input: one plugin entry at $at.
+# Input: one plugin entry at $at; a state only under frameworks or skip.
 def item_problems($at):
-	if type != "object" then problem($at; " "; "is a JSON \(type); expected \(plugin_item_shape)")
-	else ((keys - ["plugin", "reason"])[] | problem($at + [.]; ": "; "unknown field; expected only plugin and reason")),
+	($at[1] == "skip" or $at[2] == "frameworks") as $state_ok
+	| if type != "object" then problem($at; " "; "is a JSON \(type); expected \(plugin_item_shape)")
+	else ((keys - ["plugin", "state"])[] | problem($at + [.]; ": "; "unknown field; expected only plugin and state")),
 		(if .plugin | text_ok then empty else problem($at + ["plugin"]; " "; "missing or empty; expected a plugin name") end),
-		(if .reason | text_ok then empty else problem($at + ["reason"]; " "; "missing or empty; expected a non-empty string") end)
+		(if has("state") | not then empty
+		 elif $state_ok | not then problem($at + ["state"]; " "; "is set here; expected a state only under plugins.load.frameworks or plugins.skip")
+		 elif .state | IN(plugin_states) then empty
+		 else problem($at + ["state"]; " "; "\(.state | tojson) is unknown; expected \"invalid\" or \"uninstalled\"") end)
 	end;
 
 # Input: the plugin list at $at.
@@ -108,21 +109,14 @@ def skip_problems:
 		(skip_keys[] as $key | select(has($key)) | .[$key] | list_problems($at + [$key]))
 	  end;
 
-# Input: plugins.
-def load_reason_problems:
-	["plugins", "load_reason"] as $at
-	| if has("load") then (if has("load_reason") then problem($at; " "; "given with plugins loaded; expected it only when nothing is loaded") else empty end)
-	  elif has("load_reason") | not then problem($at; " "; "missing with nothing loaded; expected a non-empty string saying why no plugin is loaded")
-	  elif .load_reason | text_ok | not then problem($at; " "; "is not a non-empty string; expected why no plugin is loaded")
-	  else empty end;
-
+# A code-reviewer plan with nothing installed holds no plugins object.
 def plugins_problems:
-	if (.plugins | type) != "object" then problem(["plugins"]; " "; "missing or not an object; expected {\"load\": {...}, \"skip\": {...}}, with \"load_reason\" instead of \"load\" when nothing is loaded")
+	if .agent == lens_agent and (has("plugins") | not) then empty
+	elif (.plugins | type) != "object" then problem(["plugins"]; " "; "missing or not an object; expected {\"load\": {...}, \"skip\": {...}}")
 	else .plugins
-		| ((keys - plugins_keys)[] | problem(["plugins", .]; ": "; "unknown field; expected only load, skip and load_reason")),
+		| ((keys - plugins_keys)[] | problem(["plugins", .]; ": "; "unknown field; expected only load and skip")),
 		  (select(has("load")) | .load | load_problems),
-		  (select(has("skip")) | .skip | skip_problems),
-		  load_reason_problems
+		  (select(has("skip")) | .skip | skip_problems)
 	end;
 
 def replan_problems:
@@ -133,15 +127,11 @@ def replan_problems:
 # The context the plan pins: the fingerprint procedure-context's context.sh
 # freeze --dry-run printed for the effort's next context version.
 def context_problems:
-	if (.context | type) != "object" then problem(["context"]; " "; "missing or not an object; expected {\"sha256\": 64 lowercase hex}")
-	else .context
-		| ((keys - ["sha256"])[] | problem(["context", .]; ": "; "unknown field; expected only sha256")),
-		  (if (.sha256 | type) == "string" and (.sha256 | test(sha256_pattern)) then empty
-		   else problem(["context", "sha256"]; " "; "missing or not 64 lowercase hex digits; expected the fingerprint context.sh freeze --dry-run printed") end)
-	end;
+	if (.context_fingerprint | type) == "string" and (.context_fingerprint | test(sha256_pattern)) then empty
+	else problem(["context_fingerprint"]; " "; "missing or not 64 lowercase hex digits; expected the fingerprint context.sh freeze --dry-run printed") end;
 
 # Every plugin entry that names a plugin, in plan order: its path, its list
-# (load or skip), its key in that list (list_key), plugin and reason.
+# (load or skip), its key in that list (list_key), plugin and state.
 def named_items:
 	[(.plugins | objects) as $plugins
 	 | ("load", "skip") as $list
@@ -152,18 +142,18 @@ def named_items:
 	 | if ($value | type) == "array" then $value | to_entries[] | {at: ["plugins", $list, $list_key, .key], item: .value}
 	   else {at: ["plugins", $list, $list_key], item: $value} end
 	 | select((.item | type) == "object" and (.item.plugin | text_ok))
-	 | {at: (.at + ["plugin"]), list: $list, list_key: $list_key, plugin: .item.plugin, reason: .item.reason}];
+	 | {at: (.at + ["plugin"]), list: $list, list_key: $list_key, plugin: .item.plugin, state: .item.state}];
 
 # A plugin no longer installed may stay in a re-plan: dropped to skip with its
-# drop reason, or, for a framework, kept in load with reason "invalid" in a
+# state, or, for a framework, kept in load with state "invalid" in a
 # replan "invalid" plan, which is shown blocked and never dispatched.
 def dropped_ok($plan):
-	(.list == "skip" and (.reason | IN(dropped_reasons)))
-	or (.list == "load" and .list_key == "frameworks" and .reason == "invalid" and $plan.replan == "invalid");
+	(.list == "skip" and (.state | IN(plugin_states)))
+	or (.list == "load" and .list_key == "frameworks" and .state == "invalid" and $plan.replan == "invalid");
 
 def not_installed_hint:
-	if .list == "skip" then ", or for a dropped plugin a reason of exactly \"invalid\" or \"uninstalled after approval\""
-	elif .list_key == "frameworks" then ", or for a framework dropped as invalid the reason \"invalid\" in a replan \"invalid\" plan"
+	if .list == "skip" then ", or for a dropped plugin the state \"invalid\" or \"uninstalled\""
+	elif .list_key == "frameworks" then ", or for a framework dropped as invalid the state \"invalid\" in a replan \"invalid\" plan"
 	else "" end;
 
 def kind_hint($kind):
@@ -219,7 +209,7 @@ def testing_problems($plan; $items):
 		if any($items[]; .list == "load" and .list_key == "standards" and .plugin == testing_plugin) then empty
 		else problem(["plugins", "load", "standards"]; " "; "lacks \(testing_plugin | tojson); expected it loaded: a \(tester_agent) plan always loads it") end
 	else $items[] | select(.list == "load" and .plugin == testing_plugin)
-		| problem(.at; " "; "\(testing_plugin | tojson) in a mode \"BUILD\" plan; expected it under plugins.skip.standards: a build plan never loads it")
+		| problem(.at; " "; "\(testing_plugin | tojson) in a build plan; expected it under plugins.skip.standards: a build plan never loads it")
 	end;
 
 def installed_problems:

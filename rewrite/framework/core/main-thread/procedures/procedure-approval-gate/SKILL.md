@@ -15,7 +15,7 @@ Run by the main thread at every approval gate a flow or procedure sets, such as 
 - **Never relay from memory:** relay only the stdout of this turn's `open-gate.sh` run; in a later turn, open the gate again (step 1).
 - **One open gate per session:** a new `open-gate.sh` run replaces the session's earlier gate, so open the next gate only after the last one's question is answered.
 - **Only the main thread's own question closes the gate.**
-- **Never write a `gate.<label>.answered` event yourself:** only `gate-answer-hook.sh` appends it, from the human's answer, and the dispatch and spec checks read it as the approval.
+- **Never write a `gate.<label>.answered` event yourself:** only `gate-answer-hook.sh` appends it, from the human's answer, and the scripts that check a gate's answer read it.
 - **Never guess an unclear answer:** ask the human to clarify (step 6).
 - **After an unconfirmed relay or a blocked question, ask nothing except as `references/gate-failures.md` sets** (read its Step 3 or Step 4 section).
 - **After an unconfirmed relay, open a new gate only on the human's go.**
@@ -39,7 +39,7 @@ Copy steps 1–6 into the todo list and tick each as it completes. A "relay agai
 
    **1.2** A new plan, or a revision after the question (a typed answer, unless the gate's procedure sets otherwise; the question removed the plan file with the gate): Write the renderer's whole input JSON to that path with the Write tool; if a file is already there, Read it first, as Write requires. When the gate's procedure sets a generator script for its plan, run that script on the path instead. A revision before any question (a renderer stderr line): change only the fields it names with the Edit tool, or run the generator again with the corrected options; the renderer (step 1.3) then checks the whole file again.
 
-   **1.3** In one Bash call, run the renderer command the gate's procedure sets, with `--plan-file '<path>'` (or, for a template human-view's `show.sh render` renders, `< '<path>'`), piped into `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --label '<label>'`, plus `--effort '<effort folder>'` when the gate belongs to an effort. The label is the one the gate's procedure sets, such as `dispatch-plan`. The effort folder is its absolute path: the human's answer then becomes one `gate.<label>.answered` event in that effort, which `gate-answer-hook.sh` appends (Never). A gate before any effort, such as the effort offer, takes no `--effort`, and saves no record. A show-only gate (the gate's procedure asks nothing): `--show-only` alone after `open-gate.sh`, with no `--label` or `--effort`.
+   **1.3** In one Bash call, run the renderer command the gate's procedure sets, with `--plan-file '<path>'` (or, for a template human-view's `show.sh render` renders, `< '<path>'`), piped into `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --label '<label>'`, plus `--effort '<effort folder>'` only when a script reads its answer. The label is the one the gate's procedure sets, such as `dispatch-plan`. The effort folder is its absolute path: the human's answer then becomes one `gate.<label>.answered` event in that effort, which `gate-answer-hook.sh` appends (Never). A show-only gate (the gate's procedure asks nothing): `--show-only` alone after `open-gate.sh`, with no `--label` or `--effort`.
 
    - Exit 0: step 2.
    - Any other exit: the plan was not shown; ask nothing. The gate's procedure may fix the renderer's input and run step 1 again, as it sets; otherwise show the human the stderr and exit code, and tell the gate's procedure the plan was not shown.
@@ -66,7 +66,7 @@ All in `scripts/`; each one's `--help` is its full contract.
 - **`open-gate.sh`** (run by you, step 1); it prints the gate through human-view's `show.sh` with the template `views/gate.jq`.
 - **human-view's `show-stop-hook.sh`** (the Stop hook; Claude Code runs it): for a gate, its messages start `procedure-approval-gate:`; act on "now ask" and "relay again" (step 3).
 - **`gate-question-hook.sh`** (`PreToolUse` on AskUserQuestion; Claude Code runs it): holds a gate's question until the gate is shown; its deny or block reasons start `procedure-approval-gate:` (step 4).
-- **`gate-answer-hook.sh`** (`PostToolUse` on AskUserQuestion, and `UserPromptSubmit` for an answer given from a dashboard; Claude Code runs it): appends an effort gate's `gate.<label>.answered` event; it never blocks.
+- **`gate-answer-hook.sh`** (`PostToolUse` on AskUserQuestion, and `UserPromptSubmit` for an answer given from a dashboard; Claude Code runs it): appends the `gate.<label>.answered` event of a gate opened with `--effort`; it never blocks.
 
 Their three `settings.json` entries: `PreToolUse` › `AskUserQuestion`, `PostToolUse` › `AskUserQuestion` and `UserPromptSubmit`, the last two both running `gate-answer-hook.sh`. Apart from them, human-view's card Stop entry (Stop, running `show-stop-hook.sh`), which every card needs, gates included.
 

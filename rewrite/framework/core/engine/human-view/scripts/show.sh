@@ -20,7 +20,7 @@ export LC_ALL
 usage() {
 	cat <<EOF
 usage: sh ${PROG} view --views DIR --name NAME [--effort FOLDER] [--gate LABEL] < data.json
-       sh ${PROG} line --views DIR --name NAME [--effort FOLDER] [--arg FIELD VALUE]...
+       sh ${PROG} line --views DIR --name NAME [--arg FIELD VALUE]...
        sh ${PROG} render --views DIR --name NAME < data.json
        sh ${PROG} --help | -h
 
@@ -46,8 +46,7 @@ Options:
                     record names <skill>
   --name NAME       view, render: a-z, 0-9 and -; line: a-z, 0-9 and _, not
                     starting with a digit
-  --effort FOLDER   the absolute effort folder the card belongs to, where a
-                    missed card is recorded
+  --effort FOLDER   view only: the absolute effort folder the card belongs to
   --gate LABEL      view only: the card is gate LABEL, shown when it ends the
                     message with only owed cards above it, its question held
                     until then
@@ -117,7 +116,7 @@ parse_args() {
 	views='' name='' effort='' gate='' seen='' input='{}'
 	while [ "$#" -gt 0 ]; do
 		case ${command}:$1 in
-			*:--views | *:--name | view:--effort | line:--effort | view:--gate) ;;
+			*:--views | *:--name | view:--effort | view:--gate) ;;
 			line:--arg)
 				[ "$#" -ge 3 ] || usage_error '--arg needs a field and a value; expected --arg FIELD VALUE'
 				add_field "$2" "$3"
@@ -126,7 +125,7 @@ parse_args() {
 				;;
 			view:*) usage_error "unknown argument for view: $1; expected --views, --name, --effort or --gate" ;;
 			render:*) usage_error "unknown argument for render: $1; expected --views or --name" ;;
-			*) usage_error "unknown argument for line: $1; expected --views, --name, --effort or --arg" ;;
+			*) usage_error "unknown argument for line: $1; expected --views, --name or --arg" ;;
 		esac
 		case "${seen} " in
 			*" $1 "*) usage_error "$1 given twice; expected it at most once" ;;

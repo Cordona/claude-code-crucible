@@ -31,6 +31,10 @@ def why_problem($location):
 	if has("why") and (.why | one_line_text) then empty
 	else problem("\($location).why"; " "; "missing or not one line of text; expected a non-empty string without control characters") end;
 
+def path_problem($location):
+	if has("path") and (.path | absolute_path) then empty
+	else problem("\($location).path"; " "; "missing or not an absolute path; expected a string starting with /, without control characters") end;
+
 # The version's own docs folder parent and number: --arg effort's
 # files/context and .version, when both are known; null otherwise.
 def own_version:
@@ -39,22 +43,22 @@ def own_version:
 	  else {files: "\($effort)/files/context", n: .version} end;
 
 # Problems of one paths[] entry $entry at $index: {path, why} for an outside
-# file or folder, {path, sha256, why} for a docs folder.
+# file or folder, {path, sha256} for a docs folder.
 def path_entry_problems($index):
 	"paths[\($index)]" as $location
-	| if type != "object" then problem($location; " "; "is a JSON \(type); expected an object {\"path\": ..., \"why\": ...} or, for a docs folder, {\"path\": ..., \"sha256\": ..., \"why\": ...}")
+	| if type != "object" then problem($location; " "; "is a JSON \(type); expected an object {\"path\": ..., \"why\": ...} or, for a docs folder, {\"path\": ..., \"sha256\": ...}")
+	  elif has("sha256") then
+		((keys - ["path", "sha256"])[] | problem("\($location).\(quoted_name)"; ": "; "unknown field; expected only path and sha256 for a docs folder")),
+		path_problem($location),
+		(if .sha256 | sha256_hex then empty
+		 else problem("\($location).sha256"; " "; "is not 64 lowercase hex digits; expected the docs folder's digest") end),
+		(if (.path | docs_folder) != null then empty
+		 else problem("\($location).path"; " "; "has a sha256 but is not a docs folder; expected <effort>/files/context/v<N>, or no sha256 for an outside path") end)
 	  else
-		((keys - ["path", "sha256", "why"])[] | problem("\($location).\(quoted_name)"; ": "; "unknown field; expected only path, sha256 and why")),
-		(if has("path") and (.path | absolute_path) then empty
-		 else problem("\($location).path"; " "; "missing or not an absolute path; expected a string starting with /, without control characters") end),
-		(if has("sha256") then
-			(if .sha256 | sha256_hex then empty
-			 else problem("\($location).sha256"; " "; "is not 64 lowercase hex digits; expected the docs folder's digest") end),
-			(if (.path | docs_folder) != null then empty
-			 else problem("\($location).path"; " "; "has a sha256 but is not a docs folder; expected <effort>/files/context/v<N>, or no sha256 for an outside path") end)
-		 elif (.path | docs_folder) != null then problem("\($location).sha256"; " "; "missing for a docs folder; expected the folder's digest, as context.sh freeze writes it")
-		 else empty end),
-		why_problem($location)
+		((keys - ["path", "why"])[] | problem("\($location).\(quoted_name)"; ": "; "unknown field; expected only path and why")),
+		path_problem($location),
+		(if (.path | docs_folder) != null then problem("\($location).sha256"; " "; "missing for a docs folder; expected the folder's digest, as context.sh freeze writes it")
+		 else why_problem($location) end)
 	  end;
 
 # Problems of the docs folders together: one parent, in order, and, when the

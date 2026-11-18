@@ -7,28 +7,26 @@
 # file's re-mark rely on, for a file read back: a file written under looser
 # rules stays readable when a write-only rule tightens, since an expired
 # session's file cannot be rebuilt.
-# The file holds ids, names, numbers and true flags only, never a null and
-# never text copied from a transcript beyond a model or agent name.
+# The file holds a UTC time, names, numbers and true flags only, never a null and
+# never text copied from a transcript beyond an agent name.
 
 # harvested_at: the view shows an expired file's own harvest time; every other
 # file it reads was written by the same run.
 # expired: the transcript, or a launched subagent's, is gone, so the figures
 # are those of the file's last harvest.
-def metrics_fields: ["claude_session_id", "harvested_at", "expired", "main_thread", "subagents", "outside"];
-def metrics_required_fields: ["claude_session_id", "harvested_at", "main_thread", "subagents", "outside"];
+def metrics_fields: ["harvested_at", "expired", "main_thread", "subagents", "outside"];
+def metrics_required_fields: ["harvested_at", "main_thread", "subagents", "outside"];
 def metrics_kinds: ["input", "output", "cache_read", "cache_write"];
-# model: kept for audit; the view sums across models.
 # unreliable: an output figure is a placeholder Claude Code left unfinished.
-def metrics_model_fields: ["model", "unreliable"] + metrics_kinds;
+def metrics_sum_fields: ["unreliable"] + metrics_kinds;
 # running: the subagent was unfinished at harvest.
-def metrics_agent_fields: ["agent", "model", "running", "unreliable"] + metrics_kinds;
+def metrics_agent_fields: ["agent", "running", "unreliable"] + metrics_kinds;
 # Each list of the file: its field, its entries' fields and the name fields
 # among them.
-def metrics_lists: [["main_thread", metrics_model_fields, ["model"]], ["subagents", metrics_agent_fields, ["agent", "model"]],
-	["outside", metrics_model_fields, ["model"]]];
+def metrics_lists: [["main_thread", metrics_sum_fields, []], ["subagents", metrics_agent_fields, ["agent"]],
+	["outside", metrics_sum_fields, []]];
 def metrics_utc_pattern: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z";
-def metrics_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\z";
-# A model or agent name: a short word of letters, digits and . _ : @ / -,
+# An agent name: a short word of letters, digits and . _ : @ / -,
 # so no free text from a transcript reaches the file.
 def metrics_name_pattern: "\\A[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}\\z";
 
@@ -77,14 +75,11 @@ def metrics_entry_write_problems:
 			  else "\($where).\($name) is \(metrics_shown); expected a name of letters, digits and . _ : @ / -, up to 80 characters" end),
 		(($fields - $names - metrics_kinds)[] as $flag | metrics_flag_write_problem("\($where)."; $flag));
 
-# The session id and harvest time are the file's identity and format, not caps,
-# so a file read back must still match them.
+# The harvest time is the file's format, not a cap, so a file read back must
+# still match it.
 def metrics_session_shape_problems:
 	if type != "object" then "the file is a JSON \(type); expected an object"
 	else ((metrics_required_fields - keys_unsorted)[] | "\(.) is missing; expected the fields \(metrics_required_fields | join(", "))"),
-		(if has("claude_session_id") | not then empty
-		 elif (.claude_session_id | type) == "string" and (.claude_session_id | test(metrics_session_pattern)) then empty
-		 else "claude_session_id is \(.claude_session_id | metrics_shown); expected a lowercase UUID" end),
 		(if has("harvested_at") | not then empty
 		 elif (.harvested_at | type) == "string" and (.harvested_at | test(metrics_utc_pattern)) then empty
 		 else "harvested_at is \(.harvested_at | metrics_shown); expected a UTC time YYYY-MM-DDTHH:MM:SSZ" end),

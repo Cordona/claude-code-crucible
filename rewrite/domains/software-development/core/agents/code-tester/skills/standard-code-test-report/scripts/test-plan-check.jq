@@ -9,19 +9,15 @@
 # counts as left out, as the stop hook's prune drops it.
 
 def plan_keys: ["behaviours", "add", "modify", "remove", "fixtures", "support", "untested", "no_tests", "baseline", "run", "blocker"];
-# Keys the plan event derives, or an earlier shape had, and why they are not written.
+# Keys the plan event derives, or the plan never holds, and why they are not written.
 def plan_derived_keys: {
 	"seq": "the plan event gives it",
 	"seat": "the seat gives it",
 	"seats": "the seat gives it",
-	"iteration": "the plan event gives it",
-	"base": "the plan event gives it",
-	"head": "the plan event gives it",
-	"draft": "the plan event gives it",
 	"dispatch": "the dispatch gives it",
 	"effort": "the seat gives it",
-	"summary": "dropped from the plan: behaviours say what it guards",
-	"new_files": "dropped from the plan: an add entry carries ci",
+	"summary": "behaviours say what it guards",
+	"new_files": "an add entry carries ci",
 	"unchanged": "a plan lists only what it changes"
 };
 # Each list's id prefix (null: no ids), item keys, those always required,
@@ -35,24 +31,22 @@ def plan_lists: {
 	"modify": {prefix: "M", keys: ["id", "file", "name", "changes", "keeps", "guards", "move", "breaks_on", "fixtures"],
 		required: ["id", "file", "name", "changes", "keeps", "guards"],
 		shape: "{id, file, name, changes, keeps, guards, move, breaks_on, fixtures}"},
-	"remove": {prefix: "R", keys: ["id", "file", "name", "why", "covered_by"], required: ["id", "file", "name", "why", "covered_by"],
-		shape: "{id, file, name, why, covered_by}"},
+	"remove": {prefix: "R", keys: ["id", "file", "name", "covered_by"], required: ["id", "file", "name", "covered_by"],
+		shape: "{id, file, name, covered_by}"},
 	"fixtures": {prefix: "F", keys: ["id", "action", "file", "source", "from", "why", "changes"], required: ["id", "action", "file"],
 		shape: "{id, action, file, source, from, why, changes}"},
 	"support": {prefix: null, keys: ["action", "file", "why"], required: ["action", "file", "why"], shape: "{action, file, why}"},
 	"untested": {prefix: "N", keys: ["id", "case", "reason", "risk", "category", "proof", "recommend"],
 		required: ["id", "case", "reason", "risk", "category", "proof", "recommend"],
 		shape: "{id, case, reason, risk, category, proof, recommend}"},
-	"run": {prefix: null, keys: ["where", "command", "expected"], required: ["where", "command", "expected"],
-		shape: "{where, command, expected}"}
+	"run": {prefix: null, keys: ["where", "command"], required: ["where", "command"],
+		shape: "{where, command}"}
 };
-def plan_baseline_keys: ["where", "command", "result", "tests"];
 def plan_blocker_keys: ["kind", "detail"];
-# Item keys an earlier shape had, and what to do instead.
+# Item keys the plan never holds, and what to do instead.
 def plan_dropped_item_keys: {
 	"add.new_file": "the card tells a new file from the commit",
 	"modify.why": "changes and keeps say it",
-	"fixtures.scrubbed": "dropped from the plan",
 	"untested.recommend_why": "reason and risk say it",
 	"run.tests": "the command names the tests"
 };
@@ -179,7 +173,6 @@ def plan_hint($list; $key; $item):
 		"add.breaks_on": "add the change to production code that must turn the test red, e.g. \"remove the stock check at src/main/App.kt:42\"",
 		"modify.changes": "add what changes in the test, in one line",
 		"modify.keeps": "add what the test still asserts, in one line",
-		"remove.why": "add why the test goes, in one line",
 		"remove.covered_by": "add what still covers its behaviour: a plan id (T-1), an existing test (<file>: <name>) or nothing: <why>",
 		"fixtures.action": "add the action: one of \(plan_fixture_actions | plan_list)",
 		"fixtures.source": "add the source: one of \(plan_sources | plan_list)",
@@ -195,8 +188,7 @@ def plan_hint($list; $key; $item):
 		"untested.proof": "add the proof: a test, a path:line, another repo's test, or unproven",
 		"untested.recommend": "add the recommendation: one of \(plan_recommends | plan_list)",
 		"run.where": "add where the tests run, e.g. \"build seat worktree, database in docker compose\"",
-		"run.command": "add the command, naming the tests, never a pattern",
-		"run.expected": "add the number of tests the command runs, a whole number from 1"
+		"run.command": "add the command, naming the tests, never a pattern"
 	} as $hints
 	| $hints["\($list).\($key)"] // $hints[$key] // "add it";
 
@@ -231,10 +223,6 @@ def plan_value_problems($list; $key; $files; $ids):
 			(keys_unsorted[] | select(IN("row", "from", "to") | not) | "\(plan_name) is not a key of move; remove it. Allowed: row, from, to"),
 			(("row", "from", "to") as $part | if has($part) | not then "has no \($part); write {row, from, to}: the row and the tests it moves between"
 				else .[$part] | plan_text_problem | "\($part) \(.)" end)
-		end
-	elif $key == "expected" then
-		if type == "number" and . >= 1 and . == floor then empty
-		else "\(plan_echo) is not a whole number from 1; write how many tests the command runs"
 		end
 	else
 		(plan_text_problem // (
@@ -302,12 +290,8 @@ def plan_object_problems($key; $keys; $shape):
 		.[$key] as $value
 		| ($value | keys_unsorted[] | select(IN($keys[]) | not) | "\($key).\(plan_name) is not a key of \($key); remove it. Allowed: \($keys | plan_list)"),
 		($keys[] as $part | if $value | plan_has($part) | not then "\($key).\($part) is missing; write \($key) as \($shape)"
-			elif $part == "tests" then
-				($value.tests | if type == "number" and . >= 0 and . == floor then empty
-				else "\($key).tests \(plan_echo) is not a whole number; write how many tests the baseline ran" end)
 			else $value[$part] | (plan_text_problem // (
-				if $part == "result" then plan_enum_problem(plan_baseline_results; "baseline result")
-				elif $part == "kind" then plan_enum_problem(plan_blocker_kinds; "blocker kind")
+				if $part == "kind" then plan_enum_problem(plan_blocker_kinds; "blocker kind")
 				else empty
 				end)) | "\($key).\($part) \(.)"
 			end)
@@ -334,30 +318,29 @@ def plan_whole_problems:
 		| ("behaviours", "baseline", "run") as $key | select(plan_has($key) | not)
 		| "\($key) is missing; \({
 			"behaviours": "add what will be guarded after this plan: {id, text, at} each",
-			"baseline": "add the run of the existing tests the plan builds on: {where, command, result, tests}",
-			"run": "add one {where, command, expected} per place the tests run"
+			"baseline": "add the result of your run of the existing tests: pass or fail",
+			"run": "add one {where, command} per place the tests run"
 		}[$key])"),
-	((.baseline | if type == "object" then .result else null end) as $result
+	(.baseline as $result
 		| (.blocker | if type == "object" then .kind else null end) as $kind
 		| if $result == "fail" and $kind != "gate_red" and ($blocked or ($repairs | not)) then
-			"baseline.result is fail but blocker is not gate_red; write blocker {\"kind\": \"gate_red\", \"detail\": \"<what failed>\"}, or, when the change was meant to turn them red, plan their repair in modify or remove with no blocker, or fix the run and rerun it"
+			"baseline is fail but blocker is not gate_red; write blocker {\"kind\": \"gate_red\", \"detail\": \"<what failed>\"}, or, when the change was meant to turn them red, plan their repair in modify or remove with no blocker, or fix the run and rerun it"
 		elif $kind == "gate_red" and $result == "pass" then
-			"blocker.kind is gate_red but baseline.result is pass; set the failed run's result to fail, or remove the blocker"
+			"blocker.kind is gate_red but baseline is pass; set the failed run's baseline to fail, or remove the blocker"
 		else empty
 		end);
 
-# The free texts a card shows, by list, beside blocker.detail and no_tests.
+# The free texts the human reads, by list, beside blocker.detail and no_tests.
 def plan_shown_item_keys: {
 	"behaviours": ["text"],
 	"add": ["why", "breaks_on"],
 	"modify": ["changes", "keeps"],
-	"remove": ["why"],
 	"untested": ["case", "reason", "risk", "category"]
 };
 # An internal item id such as B-1 or M-2: a capital letter, a dash and digits.
 def plan_internal_id: "\\b[A-Z]-[0-9]+\\b";
 
-# Each shown text naming an id: the human reads the card, which never shows ids.
+# Each text the human reads that names an id: those texts name items in words.
 def plan_id_problems:
 	. as $plan
 	| ((.blocker | objects | .detail | strings | {field: "blocker.detail", text: .}),
@@ -368,7 +351,7 @@ def plan_id_problems:
 	| . as {$field, $text}
 	| [$text | match(plan_internal_id; "g") | .string] | unique
 	| select(. != [])
-	| "\($field) names \(join(" and ")); the card shows this text and never an id, so name the item in words, by what it is or checks";
+	| "\($field) names \(join(" and ")); the human reads this text, so name the item in words, by what it is or checks";
 
 def plan_unknown_key:
 	plan_derived_keys[.] as $why
@@ -382,7 +365,11 @@ def plan_problems($files; $hint):
 		| [
 			(keys_unsorted[] | select(IN(plan_keys[]) | not) | plan_unknown_key),
 			((plan_lists | keys_unsorted[]) as $key | plan_list_problems($key; $files; $ids)),
-			plan_object_problems("baseline"; plan_baseline_keys; "{where, command, result, tests}"),
+			(if plan_has("baseline") then .baseline
+				| if type != "string" then "baseline is a JSON \(type); write it as pass or fail"
+				else plan_enum_problem(plan_baseline_results; "baseline result") | "baseline \(.)"
+				end
+			else empty end),
 			plan_object_problems("blocker"; plan_blocker_keys; "{kind, detail}"),
 			plan_duplicate_problems($ids),
 			plan_whole_problems,

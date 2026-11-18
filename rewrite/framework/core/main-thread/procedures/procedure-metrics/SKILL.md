@@ -22,14 +22,14 @@ Run by the main thread. An effort's **metrics** are the tokens each Claude Code 
 ## Always
 
 - **Relay into your text:** the stderr and exit code a step shows go into your reply's text as printed; the human never sees a Bash result.
-- **Pass the effort folder to `metrics.sh` and `show.sh` as the absolute path a script printed,** in single quotes, never one you typed.
+- **Pass the effort folder to `metrics.sh` as the absolute path a script printed,** in single quotes, never one you typed.
 - **Pass a name or ID to `effort.sh` in single quotes, and only a value step 1's character check lets through,** so the human's words never run as shell.
 
 ## Steps
 
 `<metrics.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/scripts/metrics.sh"` and `<effort.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/effort.sh"`. A `--help` that exits non-zero or prints no `usage:` line: for `metrics.sh`, show the line `procedure-metrics is not installed: install it under ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/, then ask me again.`; for `effort.sh`, show the line `effort_not_installed`; then stop.
 
-`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/views"` (its `lines.jq`); its lines take `--effort '<folder>'` once step 1 found it.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-metrics/views"` (its `lines.jq`).
 
 1. **Find the effort:**
    - **The human names none and the conversation works on one effort:** use that effort's folder.

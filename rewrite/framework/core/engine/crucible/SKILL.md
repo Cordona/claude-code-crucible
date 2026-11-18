@@ -6,7 +6,7 @@ user-invocable: false
 
 # Shared: Crucible space
 
-One folder, outside every repository, for the files Crucible keeps. Every file belongs to one effort and lives in that effort's folder. The main thread holds only their absolute paths, and the human opens a draft by its ID. `<crucible.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`. `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/views"` (its `lines.jq`); its lines go without `--effort`.
+One folder, outside every repository, for the files Crucible keeps. Every file belongs to one effort and lives in that effort's folder. The main thread holds only their absolute paths, and the human opens a draft by its ID. `<crucible.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/scripts/crucible.sh"`. `<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/crucible/views"` (its `lines.jq`).
 
 ## Never
 
@@ -44,7 +44,7 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 - **Events:** each fact of an effort is one JSON file, `events/<seq>-<type>.json`, mode 0444, written once and never changed or removed until `prune` removes the whole effort folder; the one exception is a failed `effort.sh start`, which removes its new folder's `events/`, faults included.
 - **Only `events.sh` writes events,** called by the scripts and hooks that own each fact.
 - **A fault goes to `events/faults/`,** with no seq; a refused `--type`, `--body-file`, `--facts`, `--by`, `--iteration` or event, or a lock timeout, is written there as a fault when it can be (none for a bad `--effort`).
-- **A refusal fault's body, `{refused, rule}`, is kept as the rejection log, for audit:** the refused field and the rule it broke, never the input.
+- **A refusal fault's body, `{what}`, is kept as the rejection log, for audit:** the refused field and the rule it broke, never the input.
 - **Drafts:** work not yet an event lives in `drafts/`; what lands becomes one event (a grill at its end, the next context version at its cut, a seat's report at its commit).
   - `drafts/main-thread/` holds every Markdown artifact the main thread writes in an effort (a spec draft, an issue, PR or MR body, a commit message, a brief, a summary), one `.md` file each, and the context docs below.
   - **Allocate each draft with `new`:** `<crucible.sh> new --kind drafts --effort '<effort folder>' --label '<label>'`; Read the empty file it prints (Write requires it), write the draft into it once, and hand over that path.
@@ -57,11 +57,11 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 - **Worktrees hold code only:** `worktrees/` holds `procedure-git-worktree`'s git working trees, their writers' own; no framework file goes in them.
 - **`prune` removes the worktrees with the effort:** their registrations and local branches stay in the repository; `git worktree prune` there drops the registrations, and nothing in this skill runs it.
 - **A gate before any effort,** such as the effort offer, saves no record.
-- **A gate answered inside an effort becomes a `gate.<label>.answered` event.**
+- **A gate opened with `--effort` becomes a `gate.<label>.answered` event.**
 
 ## The script
 
-`<crucible.sh>` hands out the main thread's draft paths, finds an effort's drafts (`find`, by label), gives or opens a draft by its ID (`path`, `open`), and prunes old efforts; its `id` command serves other scripts.
+`<crucible.sh>` hands out the main thread's draft paths, finds an effort's drafts (`find`, by label), gives or opens a draft by its ID (`path`, `open`), and prunes old efforts.
 
 `events.sh`, beside it in `scripts/`, is run for events only by the scripts and hooks that own each one; its `--help` is the contract they build to.
 

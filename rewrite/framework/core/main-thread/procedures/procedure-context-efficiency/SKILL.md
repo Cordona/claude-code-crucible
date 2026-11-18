@@ -30,7 +30,7 @@ Run by the main thread only. When the human's own message matches a habit in the
 
 ## Steps
 
-`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context-efficiency/views"`; its lines go without `--effort`, and after a non-zero exit's stderr the step goes on.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context-efficiency/views"`; after a non-zero exit's stderr, the step goes on.
 
 1. **Match** the human's message against the Bad habits table, in its order. No match: this skill does nothing more.
 2. **A row with an owner** (habits 1 and 2): load that skill with the Skill tool, never by reading its files in its place, and follow it; it decides when to stay quiet; show no line from this table. If the Skill tool can't load it, show the line `owner_not_installed`, with `--arg skill '<skill>'`, `<skill>` the owner's name, then do the work as CLAUDE.md sets.

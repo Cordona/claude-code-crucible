@@ -48,11 +48,11 @@ UserPromptSubmit. When the main thread's question answered a gate of an
 effort, it appends one event to that effort, through the crucible skill's
 events.sh:
 
-  gate.<label>.answered  {label, plan | view, question, answer, approved}
-    plan      the seq of the latest plan.made whose body is the gate's plan
-              (label ${PLAN_LABEL}); view, the gate's plan, otherwise
-    question  the first question's text; answer: the human's answer to it
-    approved  true when the answer starts with "Approve"
+  gate.<label>.answered  {plan | view, answer}
+    plan      label ${PLAN_LABEL}: the seq of the latest plan.made whose body
+              is the gate's plan, or null when none matches
+    view      every other label: the gate's plan
+    answer    the human's answer to the first question
 
 stdin, one of:
   PostToolUse (session_id, agent_id, tool_name, tool_use_id,
@@ -174,10 +174,9 @@ record_answer() {
 	[ -n "$1" ] || fault 'jq could not read the answer from the hook input; the answer is not recorded'
 	find_plan_seq
 	body_file=$(mktemp) || fault 'mktemp failed; the answer is not recorded'
-	printf '%s\n' "$1" | jq -c --argjson plan_seq "${plan_seq}" --slurpfile handoff "${handoff}" \
-		'{label: $handoff[0].label}
-		+ (if $plan_seq != null then {plan: $plan_seq} else {view: $handoff[0].plan} end)
-		+ . + {approved: (.answer | startswith("Approve"))}' >"${body_file}" ||
+	printf '%s\n' "$1" | jq -c --argjson plan_seq "${plan_seq}" --arg label "${label}" --arg plan_label "${PLAN_LABEL}" --slurpfile handoff "${handoff}" \
+		'(if $label == $plan_label then {plan: $plan_seq} else {view: $handoff[0].plan} end)
+		+ {answer: .answer}' >"${body_file}" ||
 		fault 'jq could not build the gate event; the answer is not recorded'
 	sh "${EVENTS_SCRIPT}" append --effort "${effort}" --type "gate.${label}.answered" --by "${PROG}" \
 		--body-file "${body_file}" --session "${session_id}" >/dev/null </dev/null ||

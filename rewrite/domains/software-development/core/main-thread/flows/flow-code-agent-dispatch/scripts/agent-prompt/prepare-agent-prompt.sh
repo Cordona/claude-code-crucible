@@ -269,6 +269,7 @@ readonly DENIAL_DETAILS_JQ='
 # body), the pretty-printed body of the context copy ($context), the template
 # copy ($template), the
 # seat's $mode ("" for none) and $worktree, the $report path, the
+# $context_file path (the context.cut event's file), the
 # $test_plan event's path ("" for none) and the plugin
 # files, the item list build_message puts between the two halves:
 # [plugin name, "skill"|"reference", file text] triples in the dispatch's
@@ -303,7 +304,7 @@ def work($dispatch):
 	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_tree($worktree) | code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($report | code)\n"
 	+ (if $test_plan == "" then "" else "- **TEST PLAN:** \($test_plan | code)\n" end)
-	+ "- **CONTEXT FILE:** \($dispatch.context.path | code)\n"
+	+ "- **CONTEXT FILE:** \($context_file | code)\n"
 	+ (if $dispatch.continue_from == null then ""
 	   else "- **CONTINUE FROM:** \($dispatch.continue_from | code), the worktree HEAD when the last agent of this seat was handed out: the work so far, yours to continue\n" end)
 	+ (if ($dispatch.notes // []) == [] then ""
@@ -449,7 +450,7 @@ The message, built from the checked bytes: # Your plugins, # Your context,
   none. ENTRY POINTS: none when none. Paths are absolute, in code spans.
 
 Writes only events (events.sh): once all checks pass, ${ALLOWED_EVENT}
-{dispatch: <id>, seq: <its seq>, tool_use_id} for the seat bind hook (a
+{dispatch: <its seq>, tool_use_id} for the seat bind hook (a
 failed write denies); on a deny of a known effort, ${DENIED_EVENT}
 {dispatch: <path>, hint, problems}.
 
@@ -731,20 +732,18 @@ check_dispatch_place() {
 	dispatch_effort="${crucible_root}/efforts/${place_effort_name}"
 }
 
-# Sets dispatch_id, dispatch_agent, dispatch_context, dispatch_context_seq,
+# Sets dispatch_agent, dispatch_context (the seq of its context.cut event),
 # dispatch_seat, dispatch_reseat (yes for a re-seat), dispatch_test_plan (its
 # test_plan seq, "" for none) and plugin_entries
 # (one "<name>\t<path>" line per plugin file: the language, the frameworks,
 # the standards, then the procedures, each kind in the dispatch's order) from
 # the checked dispatch copy. The validator holds each path to one line.
 read_dispatch_fields() {
-	dispatch_fields=$(jq -r '.id, .agent, .context.path, .context.seq, .seat, (if has("reseat_of") then "yes" else "no" end), (.test_plan // "")' "${dispatch_copy}" </dev/null) ||
+	dispatch_fields=$(jq -r '.agent, .context, .seat, (if has("continue_from") then "yes" else "no" end), (.test_plan // "")' "${dispatch_copy}" </dev/null) ||
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 	{
-		IFS= read -r dispatch_id
 		IFS= read -r dispatch_agent
 		IFS= read -r dispatch_context
-		IFS= read -r dispatch_context_seq
 		IFS= read -r dispatch_seat
 		IFS= read -r dispatch_reseat
 		IFS= read -r dispatch_test_plan || :
@@ -756,17 +755,23 @@ EOF
 		fault "jq could not read the dispatch copy; the hook needs jq 1.6+; the cause is on stderr."
 }
 
-# Adds a problem for the first failing check of the context.cut event, and
-# sets context_pretty to its body, pretty-printed, when every check passes.
+# Sets context_path to the context.cut event of the dispatch's effort with
+# the seq the dispatch pins, as events.sh latest finds it, and adds a problem
+# for the first failing check of it, or sets context_pretty to its body,
+# pretty-printed, when every check passes.
 # The read checks copy the file once (one byte over the cap at most, so an
-# oversized file is never read whole); the seq check and the message read
-# that copy. A re-seat keeps the version it was approved with, so a newer
-# version is no problem for it.
+# oversized file is never read whole); the message reads that copy. A re-seat
+# keeps the version it was approved with, so a newer version is no problem
+# for it.
 check_context() {
-	context_path=${dispatch_context}
-	path_problem=$(context_path_problem "${context_path}")
-	if [ -n "${path_problem}" ]; then
-		add_context_problem "${path_problem}; expected ${context_path_expected}"
+	context_reader="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/${EVENTS_SCRIPT}"
+	[ -f "${context_reader}" ] && [ -r "${context_reader}" ] ||
+		fault "the events reader ${context_reader} is missing or unreadable; ${PROG} needs it; the fault is in the crucible install, not in the dispatch."
+	context_path=$(sh "${context_reader}" latest --effort "${dispatch_effort}" --type context.cut --where ".seq == ${dispatch_context}" </dev/null) ||
+		fault "events.sh latest failed reading the effort's context.cut events; the fault is in the crucible install or the host, not in the dispatch; the cause is on stderr."
+	if [ -z "${context_path}" ]; then
+		context_path=${dispatch_path}
+		add_context_problem "the dispatch pins context.cut seq ${dispatch_context}, which its effort does not hold; expected a context.cut event of the dispatch's effort ${dispatch_effort}"
 		return 0
 	fi
 	context_copy="${snapshot_dir}/context"
@@ -779,17 +784,6 @@ check_context() {
 	fi
 	if [ -n "${context_read_fault}" ] && [ "${context_read_fault}" != stale ]; then
 		add_context_problem "${context_read_text}"
-		return 0
-	fi
-	# shellcheck disable=SC2310 # its status is the resolve result; a failure is the answer
-	if ! resolve_dir "${context_location_effort}" 2>/dev/null || [ "${resolved_dir%/}" != "${real_root}/efforts/${place_effort_name}" ]; then
-		add_context_problem "file is a version of another effort; expected a context.cut event of the dispatch's effort ${dispatch_effort}"
-		return 0
-	fi
-	context_seq=$(jq -r '.seq' "${context_copy}" </dev/null) ||
-		fault "jq could not read the context copy; the hook needs jq 1.6+; the cause is on stderr."
-	if [ "${context_seq}" != "${dispatch_context_seq}" ]; then
-		add_context_problem "file holds seq ${context_seq}, not the ${dispatch_context_seq} the dispatch pins; expected the context.cut event the dispatch names, since an event never changes"
 		return 0
 	fi
 	context_pretty="${snapshot_dir}/context.pretty"
@@ -1298,19 +1292,19 @@ EOF
 	jq -nj --rawfile dispatch "${dispatch_copy}" --rawfile context "${context_pretty}" \
 		--rawfile template "${template_copy}" \
 		--arg mode "${seat_mode}" --arg worktree "${seat_worktree}" --arg report "${report_path}" \
-		--arg test_plan "${test_plan_path}" "$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
+		--arg test_plan "${test_plan_path}" --arg context_file "${context_path}" "$@" "${MESSAGE_JQ_HEAD} [${items}] ${MESSAGE_JQ_TAIL}" </dev/null >"${message_file}" ||
 		fault "jq could not build the message; the hook needs jq 1.6+ (--rawfile); the cause is on stderr."
 }
 
-# Appends the dispatch.allowed event {dispatch, seq, tool_use_id} to the
+# Appends the dispatch.allowed event {dispatch, tool_use_id} to the
 # dispatch's effort, for the seat bind hook.
 write_allowed_event() {
 	temp_file=$(mktemp "${snapshot_dir}/allowed.XXXXXX") || {
 		temp_file=''
 		link_failed "mktemp could not create a temp file in ${snapshot_dir}"
 	}
-	jq -n --arg dispatch "${dispatch_id}" --argjson seq "${dispatch_seq}" --arg tool_use_id "${tool_use_id}" \
-		'{dispatch: $dispatch, seq: $seq, tool_use_id: $tool_use_id}' </dev/null >"${temp_file}" ||
+	jq -n --argjson dispatch "${dispatch_seq}" --arg tool_use_id "${tool_use_id}" \
+		'{dispatch: $dispatch, tool_use_id: $tool_use_id}' </dev/null >"${temp_file}" ||
 		link_failed "jq could not build the ${ALLOWED_EVENT} body"
 	# shellcheck disable=SC2310 # its status is events.sh's; a failure denies
 	append_event "${ALLOWED_EVENT}" "${temp_file}" >/dev/null || link_failed "events.sh append ${ALLOWED_EVENT} failed (its stderr is on the hook's stderr)"

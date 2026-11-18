@@ -4,7 +4,7 @@ The branches off SKILL.md's The spec: an approved spec and its revision, a left 
 
 ## The spec's gates
 
-The revision offer and the approval are gates, as SKILL.md's Never and Always set. The offer is shown as The spec step 4 shows the approval, with its own plan file (step 2) and the label `spec-offer`.
+The revision offer and the approval are gates, as SKILL.md's Never and Always set. The offer is shown as The spec step 4 shows the approval, with its own plan file (step 2), the label `spec-offer` and no `--effort`, unlike the approval.
 - **The answer:** match it to an option with `(Recommended)` ignored, and quote a label without it.
 - **The pipe exits non-zero** (the exit is `open-gate.sh`'s, so read the stderr), or `--approval-plan` does (read its stderr the same way): a `render-spec-gate.sh:` line that isn't `install:` is a refused input. At the offer, fix the reasons it names; at the approval, "the draft changed since its plan" means run `--approval-plan` again, and any other draft problem it names means write a new draft (The spec step 3). Then run `procedure-approval-gate`'s step 1 again, once. A second refusal, an `install:` line or no renderer line: show the human the stderr, and end the spec talk with `stopped: spec not settled`.
 - **The gate can't be shown or asked otherwise** (a failed `--question` or stdout that isn't one JSON object with those three fields, or `procedure-approval-gate` won't load or reports the plan not shown): tell the human what failed, word for word, and end the spec talk the same way.
@@ -17,7 +17,7 @@ The revision offer and the approval are gates, as SKILL.md's Never and Always se
    - **`SPEC: approved`, and the human's own ask to revise the spec:** The spec step 2, then The spec step 3 as a revision, with no offer.
    - **`SPEC: approved` and nothing changed it:** settled (step 5).
    - **`SPEC: none` with a draft left:** The spec step 2, then step 3.
-2. **Offer the revision at its gate.** The plan file is `{"case": "revision", "reasons": [...]}`, written with the Write tool, its reasons from your judgment in the shape `render-spec-gate.sh --help` sets: what changed, and where. The label is `spec-offer`. Act on the answer as step 4 sets.
+2. **Offer the revision at its gate.** The plan file is `{"case": "revision", "reasons": [...]}`, written with the Write tool, its reasons from your judgment in the shape `render-spec-gate.sh --help` sets: what changed, and where. The label is `spec-offer`, with no `--effort`. Act on the answer as step 4 sets.
 3. **A draft is left whose text isn't the newest approved spec's** (a talk a break cut off): Read it in full.
    - **No approved spec yet:** go on from it, never from memory, as the current draft of The spec step 3; a complete one goes to The spec step 4 as it is.
    - **An approved spec:** ask one AskUserQuestion, its question giving the draft's absolute path, with the options `Go on from it (Recommended)` and `Start fresh`. Going on: it is the current draft of The spec step 3. Starting fresh: The spec step 3 from the approved spec. A typed answer that is neither: answer it as the turn's last message, and ask the question again at the human's next message.

@@ -81,7 +81,7 @@ def groups($start; $members):
 		 else .groups[(.groups | length) - 1][$pair.option] = $pair.value end)
 	| .groups |= (to_entries | map({group: (.key + 1)} + .value));
 
-def ended_problems: if has("ended") then "--grill \($grill) ended at \(.ended); expected a grill that has not ended; start another with \($prog) new" else empty end;
+def ended_problems: if has("number") then "--grill \($grill) has ended; expected a grill that has not ended; start another with \($prog) new" else empty end;
 
 # The problem of id . named by $where in file $file, or nothing.
 def id_problem($where; $file):
@@ -197,7 +197,7 @@ def status_result:
 # holds the claude_session_id of the file, and the body holds the number.
 def end_result:
 	result(ended_problems;
-		{file: (del(.claude_session_id) | .number = $number | .ended = $at),
+		{file: (del(.claude_session_id) | .number = $number),
 		 out: "GRILL_ENDED: \($grill) · settled \(count_of("settled")) · open \(count_of("open")) · deferred \(count_of("deferred")) · dropped \(count_of("dropped"))"});
 
 # Puts every object of the file in its field order.

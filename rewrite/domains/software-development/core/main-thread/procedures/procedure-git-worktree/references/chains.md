@@ -8,7 +8,7 @@ Read once the caller's What next for a seat's result is answered and no agent wo
 2. **Offer,** one moved seat at a time. A moved seat whose worktree another agent works in: offer nothing, as for `open` or `gave-up`; offer it once that worktree is free (`chain-sync.sh` refuses it until then). For any other moved seat that is `idle`, load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** its generator is `sh "<scripts>/merge/chain.sh" --effort '<effort folder>' --seat '<seat>' > '<the plan file>'`.
    - **The renderer:** `<show.sh> render --views <views> --name sync-offer < '<the plan file>'`.
-   - **The gate's label:** `chain-sync`, with `--effort '<effort folder>'`.
+   - **The gate's label:** `chain-sync`, with no `--effort`.
    - **Above the gate:** the cards shown this turn, such as the seat's work card.
    - **On "now ask":** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-worktree/references/sync-question.json` and pass its `questions` to one AskUserQuestion as written.
    - **The answer:** `Sync now (Recommended)` → step 3; `Not now` → nothing, offered again at the next commit. A typed answer: open the gate again.
@@ -18,7 +18,7 @@ Read once the caller's What next for a seat's result is answered and no agent wo
 3. **Sync:** `sh "<scripts>/merge/chain-sync.sh" --effort '<effort folder>' --seat '<seat>'`. `synced: false`: nothing moved, say nothing. `synced: true`: write its `message` into the seat's todo item as its sync line: `procedure-seat-run`'s Changes sends it first in the next change to that seat. Then run `sh "<scripts>/mount/mount-status.sh" --repo '<repo>'`, `<repo>` the seat's `repo` that `sh "<seat scripts>/seats/seats.sh" get --effort '<effort folder>' --seat '<seat>'` prints; a read that exits non-zero: show its output, and offer no remount. When its `seats` holds that seat, open the remount gate as step 2 does, with these inputs:
    - **The plan file:** `{"seat": "<seat>", "repo": "<repo>"}`, written with the Write tool.
    - **The renderer:** `<show.sh> render --views <views> --name remount-offer < '<the plan file>'`.
-   - **The gate's label:** `remount`, with `--effort '<effort folder>'`.
+   - **The gate's label:** `remount`, with no `--effort`.
    - **Above the gate:** `chain-sync.sh`'s card.
    - **On "now ask":** Read `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-worktree/references/remount-question.json` and pass its `questions` to one AskUserQuestion as written.
    - **The answer:** `Remount (Recommended)` → `sh "<scripts>/mount/unmount.sh" --repo '<repo>'`, then `sh "<scripts>/mount/mount.sh" --effort '<effort folder>'` with one `--seat '<seat>'` per seat in `mount-status.sh`'s `seats`; `Leave it` → nothing. A typed answer: open the gate again.

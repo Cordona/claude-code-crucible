@@ -30,7 +30,7 @@ card_load_printer() {
 }
 
 # Sets card_effort to $1, a mount record's effort folder, when that is still
-# a folder, else "": a missed card is then recorded nowhere.
+# a folder, else "".
 card_effort_of() {
 	card_effort=''
 	[ ! -d "$1" ] || card_effort=$1
@@ -44,9 +44,9 @@ card_read_unsigned() {
 	grep -v '^UNSIGNED: ' "$1" >&2 || :
 }
 
-# Prints the line unsigned for card_unsigned when it is set, recorded as owed
-# for effort folder $1 (left out when empty); fails as hv_show_line does.
+# Prints the line unsigned for card_unsigned when it is set; fails as
+# hv_show_line does.
 card_show_unsigned() {
 	[ -n "${card_unsigned:-}" ] || return 0
-	hv_show_line "${card_show}" "${card_views}" unsigned "$1" --arg reason "${card_unsigned}"
+	hv_show_line "${card_show}" "${card_views}" unsigned --arg reason "${card_unsigned}"
 }

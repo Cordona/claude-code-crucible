@@ -14,16 +14,14 @@ umask 077
 # Every outcome exits 0: a hook fault must allow the stop, never keep Claude
 # going (exit 2 would), so the EXIT trap turns any failure into 0. It also
 # removes the temp files, and a signal exits through it.
-message_file='' cards_file='' body_file=''
-trap 'rm -f -- ${message_file:+"${message_file}"} ${cards_file:+"${cards_file}"} ${body_file:+"${body_file}"}; exit 0' EXIT
+message_file='' cards_file=''
+trap 'rm -f -- ${message_file:+"${message_file}"} ${cards_file:+"${cards_file}"}; exit 0' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 readonly PROG='show-stop-hook.sh'
 readonly ASK_REASON='procedure-approval-gate: the plan was relayed; its approval question is now allowed.'
-readonly EVENTS_SCRIPT="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/events.sh"
-readonly MISSED_TYPE='view.missed'
 
 # The verdict on one record, as "<verdict> <kind> <tries> <name>": bad (not a
 # record), stale, wait (a shown gate, waiting for its question), shown or
@@ -93,9 +91,7 @@ stdout, only when Claude is to continue:
 Writes, in the session's owed folder:
   a shown card's record is removed, unless a gate is sent back; a shown
     gate's becomes status shown
-  a missing card's tries + 1; past ${hv_max_tries-} tries the record is removed and, when
-    it names an effort, one ${MISSED_TYPE} event {name, skill, kind} is
-    appended to it through the crucible skill's events.sh
+  a missing card's tries + 1; past ${hv_max_tries-} tries the record is removed
   a malformed record, or one over ${hv_stale_minutes-} minutes old, is removed
 Nothing else is left behind (a SIGKILL aside).
 
@@ -105,11 +101,10 @@ Exit codes:
 
 Dependencies: POSIX sh, jq 1.6+ (macOS: brew install jq; Linux: the distro's
   jq package), cat, mktemp, mv, rm, rmdir; lib/owed.sh and lib/owed.jq
-  beside it; for an event, the crucible skill's events.sh.
+  beside it.
 
 Environment:
   CLAUDE_CONFIG_DIR  the Claude Code config folder; default \$HOME/.claude
-  CRUCIBLE_HOME  the Crucible space; its rules: see crucible.sh --help
 EOF
 }
 
@@ -185,11 +180,10 @@ EOF
 }
 
 # Counts a try for missing record $1: keeps Claude going to show it, or past
-# the cap removes it and records the miss.
+# the cap removes it.
 send_back() {
 	tries=$((tries + 1))
 	if [ "${tries}" -gt "${hv_max_tries}" ]; then
-		record_missed "$1"
 		rm -f "$1"
 		return 0
 	fi
@@ -245,30 +239,6 @@ update_record() {
 	hv_replace_file "$1" <<EOF || warn "cannot write $1; expected a writable owed folder; left as it was; check its owner and free space"
 ${updated}
 EOF
-}
-
-# Appends one view.missed event for record $1 to the effort it names; a
-# record without an effort writes nothing.
-record_missed() {
-	effort=$(jq -r '.effort // ""' "$1" 2>/dev/null) || effort=''
-	[ -n "${effort}" ] || return 0
-	[ -f "${EVENTS_SCRIPT}" ] || {
-		warn "events.sh missing at ${EVENTS_SCRIPT}; the missed ${name} card is not recorded"
-		return 0
-	}
-	body_file=$(mktemp "${hv_session_dir}/.body.XXXXXX") || {
-		warn "cannot create a temp file in ${hv_session_dir}; the missed ${name} card is not recorded"
-		return 0
-	}
-	if jq -c '{name, skill, kind}' "$1" >"${body_file}" 2>/dev/null &&
-		sh "${EVENTS_SCRIPT}" append --effort "${effort}" --type "${MISSED_TYPE}" --by "${PROG}" \
-			--body-file "${body_file}" --session "${session_id}" >/dev/null </dev/null; then
-		:
-	else
-		warn "events.sh append ${MISSED_TYPE} failed (its stderr is above); the missed ${name} card is not recorded"
-	fi
-	rm -f "${body_file}"
-	body_file=''
 }
 
 case $0 in

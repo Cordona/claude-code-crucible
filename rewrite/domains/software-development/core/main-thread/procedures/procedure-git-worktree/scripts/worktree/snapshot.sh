@@ -77,7 +77,7 @@ output, one stdout line:
 then, for a snapshot written unsigned, the line unsigned (views/lines.jq),
   its reason "signing timed out after ${SIGN_TIMEOUT} s" for the time limit,
   printed by human-view's show.sh and recorded as owed this session
-  (CLAUDE_CODE_SESSION_ID) for --effort
+  (CLAUDE_CODE_SESSION_ID)
 
 exit codes:
   0  printed
@@ -469,5 +469,5 @@ fingerprint
 	die 5 "the checkout ${shown_repo} changed during the run; expected it untouched (no snapshot printed)"
 printf '%s\n' "${result}"
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-[ -z "${card_unsigned}" ] || card_show_unsigned "${effort_dir}" ||
+[ -z "${card_unsigned}" ] || card_show_unsigned ||
 	die 4 "${hv_render_problem}; the snapshot is made unsigned, its line not shown"

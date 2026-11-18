@@ -47,9 +47,9 @@ Without --effort and --seat it never forces and records nothing. With them
 than its last seat.pushed and the branch no longer holds that push's
 commit C: --force-with-lease=refs/heads/<branch>:C, so the remote branch
 is replaced only while it still is at C; then, after a push, it appends
-seat.pushed {seat, remote, branch, commit, forced}. An append that fails
-is a fault.raised, said on stderr; the exit is still 0. Nothing else is
-left behind (a SIGKILL aside).
+seat.pushed {seat, commit}. An append that fails is a fault.raised, said
+on stderr; the exit is still 0. Nothing else is left behind (a SIGKILL
+aside).
 
 --worktree DIR  absolute path of a git worktree's top folder, HEAD on a
                 ${BRANCH_PREFIX}... branch
@@ -66,7 +66,7 @@ left behind (a SIGKILL aside).
 stdout on success: with --card, the line pushed (views/lines.jq), also
   when the remote already held the branch, printed by human-view's show.sh
   after the push is recorded, and recorded as owed this session
-  (CLAUDE_CODE_SESSION_ID) for --effort; else nothing
+  (CLAUDE_CODE_SESSION_ID); else nothing
 
 exit codes:
   0  pushed
@@ -372,12 +372,9 @@ push_failed() {
 # said on stderr, never a failed push.
 record_push() {
 	push_body="${work_dir}/pushed.json"
-	forced=false
-	[ -z "${lease}" ] || forced=true
 	set -- --effort "${effort}" --by "${PROG}"
 	[ -z "${session}" ] || set -- "$@" --session "${session}"
-	if jq -nc --arg seat "${seat}" --arg remote "${remote}" --arg branch "${branch}" --arg commit "${pushed_commit_now}" \
-		--argjson forced "${forced}" '{seat: $seat, remote: $remote, branch: $branch, commit: $commit, forced: $forced}' \
+	if jq -nc --arg seat "${seat}" --arg commit "${pushed_commit_now}" '{seat: $seat, commit: $commit}' \
 		>"${push_body}" 2>/dev/null &&
 		sh "${events_script}" append "$@" --type seat.pushed --body-file "${push_body}" >/dev/null 2>"${work_dir}/stderr" </dev/null; then
 		return 0
@@ -427,5 +424,5 @@ run_push
 [ -z "${effort}" ] || record_push
 [ "${card}" = yes ] || exit 0
 # shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-hv_show_line "${card_show}" "${card_views}" pushed "${effort}" --arg remote "${remote}" --arg branch "${branch}" ||
+hv_show_line "${card_show}" "${card_views}" pushed --arg remote "${remote}" --arg branch "${branch}" ||
 	die 4 "${hv_render_problem}; ${shown_branch} is pushed to ${shown_remote}, its line not shown"

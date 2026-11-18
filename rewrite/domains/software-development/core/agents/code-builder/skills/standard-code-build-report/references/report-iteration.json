@@ -4,13 +4,11 @@
     {
       "gate": "format",
       "result": "pass",
-      "command": "./gradlew --offline ktlintCheck",
       "note": "3 warnings predate this change"
     },
     {
       "gate": "typecheck",
-      "result": "pass",
-      "command": "./gradlew --offline compileKotlin compileTestKotlin"
+      "result": "pass"
     },
     {
       "gate": "lint",
@@ -19,8 +17,7 @@
     },
     {
       "gate": "test",
-      "result": "pass",
-      "command": "./gradlew --offline test"
+      "result": "pass"
     }
   ],
   "deviations": [
@@ -44,15 +41,13 @@
   ],
   "security": [
     {
-      "kind": "secret",
       "at": "src/main/resources/application.yml:8",
       "text": "A live auth client secret is hard-coded (cs-****)"
     }
   ],
   "open": [
     {
-      "text": "Assumed a 401 always means an expired token, never a revoked one; confirm",
-      "ref": "message: TASK"
+      "text": "The task does not say whether a 401 can mean a revoked token; assumed it always means expired, confirm"
     }
   ]
 }

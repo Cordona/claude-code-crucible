@@ -44,9 +44,9 @@ add | sort_by(.seq) as $events
 | {event: $plan, draft: ($events | plan_draft($seat; $plan.seq))}'
 
 # The language's plugin name, then each framework's, one per line, of the
-# dispatch with id $id. Input: the dispatch.made events.
+# dispatch.made event of seq $id. Input: the dispatch.made events.
 # shellcheck disable=SC2016
-readonly PLUGINS_JQ='map(select(.body.id == $id)) | last // empty
+readonly PLUGINS_JQ='map(select((.seq | tostring) == $id)) | last // empty
 | .body.plugins // {} | (.language.name // ""), (.frameworks // [] | .[] | .name // empty)'
 
 # Prints a plugin SKILL.md's metadata.label by flow-code-agent-dispatch's
@@ -96,7 +96,7 @@ its --help); nothing is written to the effort.
                   when it has none)
 
 Title: "<language> test agent <letter> · test plan · draft <N>", the
-plugins those of the dispatch.made event whose body.id is the event's
+plugins those of the dispatch.made event whose seq is the event's
 dispatch (none without one); N counts the seat's ${PLAN_TYPE} events up
 to this one after the later of its last ${TESTS_TYPE} and its last closed
 plan before this one: a ${ANSWER_TYPE} event whose view names S and

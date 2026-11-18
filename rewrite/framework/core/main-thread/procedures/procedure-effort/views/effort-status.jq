@@ -5,7 +5,7 @@ include "common";
 
 # view
 #   input:  {name: the effort's NAME, folder: its absolute folder,
-#           items: [{state, from?, at}, ...], its effort.* events oldest first}
+#           items: [{state, started, at}, ...], its effort.* events oldest first}
 #   output: the status line, the History section and the folder's bare path
 def view:
 	. as $effort

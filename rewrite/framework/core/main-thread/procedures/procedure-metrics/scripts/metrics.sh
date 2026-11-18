@@ -11,7 +11,6 @@ umask 077
 readonly PROG='metrics.sh'
 readonly CRUCIBLE_SKILL='crucible'
 readonly HARVESTED_TYPE='metrics.harvested'
-readonly EVENTS_FORMAT=1
 readonly VIEW_SKILL='human-view'
 readonly RENDER_LIB='scripts/lib/render.sh'
 readonly VIEW_NAME='token-use'
@@ -38,8 +37,8 @@ readonly SESSION_ID_ERE='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 # Turns each pre-filtered transcript line into events, one compact JSON array
 # per line: ["E", "this"|"other", time] when a tool call's input mentions an
 # effort folder (the first one it names; $scan only), ["M", agent id,
-# message id, model, input, output, cache read, cache write, unfinished,
-# time, version] for an API call, ["T", tool use id] for an Agent call and
+# message id, input, output, cache read, cache write, unfinished, time,
+# version] for an API call, ["T", tool use id] for an Agent call and
 # ["L", agent id, time] for the subagent its result names as launched ($scan
 # only). A tool result's text never moves the effort: only the commands the
 # main thread runs do, except one that runs metrics.sh ($prog). With
@@ -71,7 +70,7 @@ def first_mention:
   (if .type == "assistant" and (.message | type) == "object" and (.message.usage | type) == "object"
 	and (.message.id | type) == "string" and .message.model != "<synthetic>" and .isApiErrorMessage != true then
 	.message as $message | $message.usage as $usage
-	| ["M", $agent, $message.id, (($message.model | strings) // "unknown"), ($usage.input_tokens | count), ($usage.output_tokens | count),
+	| ["M", $agent, $message.id, ($usage.input_tokens | count), ($usage.output_tokens | count),
 		($usage.cache_read_input_tokens | count), ($usage.cache_creation_input_tokens | count),
 		($message.stop_reason == null), $time, ((.version | strings) // "")]
    else empty end),
@@ -139,11 +138,11 @@ def launched_before_grace($time):
 def kind_sums: reduce .[] as $message ([0, 0, 0, 0]; [range(0; 4) as $i | .[$i] + $message.kinds[$i]]);
 def kind_fields: {input: .[0], output: .[1], cache_read: .[2], cache_write: .[3]};
 def unreliable_flag: if any(.[]; .unfinished) then {unreliable: true} else {} end;
-def model_entries:
-	group_by(.model) | map({model: .[0].model} + unreliable_flag + (kind_sums | kind_fields));
+def list_entries:
+	if length == 0 then [] else [unreliable_flag + (kind_sums | kind_fields)] end;
 def agent_entries($running):
-	group_by([.name, .model])
-	| map({agent: .[0].name, model: .[0].model}
+	group_by(.name)
+	| map({agent: .[0].name}
 		+ (if any(.[]; $running[.context]) then {running: true} else {} end)
 		+ unreliable_flag + (kind_sums | kind_fields));
 ($finished_since | version_number) as $finished_number
@@ -161,35 +160,36 @@ def agent_entries($running):
 		| if .messages[$event[2]] != null and .messages[$event[2]].context != $context then .
 		  else .messages[$event[2]] = {context: $context, session: .session, agent: $event[1],
 				owner: (if $event[1] == "" then .current else "agent" end),
-				model: $event[3], kinds: $event[4:8], unfinished: $event[8]}
+				kinds: $event[3:7], unfinished: $event[7]}
 			| if $event[1] == "" then .
 			  else .agents[$context] = (new_agent(.session) + (.agents[$context] // {}))
-				| .agents[$context].version = ([.agents[$context].version, ($event[10] | version_number)] | max) end
+				| .agents[$context].version = ([.agents[$context].version, ($event[9] | version_number)] | max) end
 		  end
 	else . end)
 | . as $state
 | (reduce ($state.agents | keys[]) as $key ({}; .[$key] = agent_owner($state; $key; 0))) as $owners
 | ($state.agents | map_values(.finished != true and .version >= $finished_number)) as $running
 | [$state.messages[] | .owner = (if .owner == "agent" then $owners[.context] else .owner end) | select(.owner != "other")
-	| .model |= safe_name | .name = (if .agent == "" then "" else $state.agents[.context].name | safe_name end)] as $counted
+	| .name = (if .agent == "" then "" else $state.agents[.context].name | safe_name end)] as $counted
 | reduce ($state.sessions | keys[]) as $session ({};
 	[$counted[] | select(.session == $session)] as $mine
 	| .[$session] = {
-		main_thread: [$mine[] | select(.agent == "" and .owner == "this")] | model_entries,
+		main_thread: [$mine[] | select(.agent == "" and .owner == "this")] | list_entries,
 		subagents: [$mine[] | select(.agent != "" and .owner == "this")] | agent_entries($running),
-		outside: [$mine[] | select(.owner == "outside")] | model_entries}
+		outside: [$mine[] | select(.owner == "outside")] | list_entries}
 	| $state.sessions[$session] as $read
 	| if any($read.launched | to_entries[]; .key as $id | ($read.files | has($id) | not) and launched_before_grace(.value))
 	  then .[$session].partly_expired = true else . end)'
 
 # Prints the view's data from the $count session figures passed as
-# $ARGS.named pairs p<n> (the metrics.harvested event's path) and f<n> (its
-# body's text), and the ids of sessions expired before any harvest in $missing.
+# $ARGS.named p<n> (the metrics.harvested event's path), s<n> (the session it
+# counts) and f<n> (its body's text), and the ids of sessions expired before
+# any harvest in $missing.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
 readonly VIEW_DATA_JQ='$ARGS.named as $named
 | {name: $name, harvested_at: $at,
    expired_unseen: ($missing | split(" ") | map(select(. != ""))),
-   figures: [range(0; $count) | {path: $named["p\(.)"], body: ($named["f\(.)"] | fromjson)}]}'
+   figures: [range(0; $count) | {path: $named["p\(.)"], session: $named["s\(.)"], body: ($named["f\(.)"] | fromjson)}]}'
 
 usage() {
 	print_block <<'EOF'
@@ -207,8 +207,9 @@ Counts the tokens of every Claude Code session an effort names (each
 distinct claude_session_id in FOLDER/events/, metrics.sh's own events
 aside) from the session transcripts, and appends one metrics.harvested
 event per session through the crucible skill's events.sh, also after
-the effort ended. Its body, shape metrics-validator.jq, holds the counted
-session's claude_session_id; the newest per session is its figure.
+the effort ended. Its body has the shape metrics-validator.jq checks; its
+claude_session_id is the counted session's; the newest per session is its
+figure.
 Not counted: compaction, title generation, prompt suggestions and /btw.
 
   harvest          append the session figures
@@ -237,9 +238,9 @@ Exit codes:
   0  done; go on
   2  refused call; nothing written; show the human stderr, and stop
   4  the effort or a file it reads is unusable, or the effort has no
-     format 1 events/000001-effort.opened.json; or show's reader was
-     gone before the view was written; show the human stderr and the
-     exit code, and stop
+     events/000001-effort.opened.json; or show's reader was gone before
+     the view was written; show the human stderr and the exit code, and
+     stop
   5  install fault; show the human stderr, and stop
   6  the events lock stayed held; a figure is not written; rerun once,
      else show the human stderr, and stop
@@ -445,8 +446,7 @@ load_view_helpers() {
 }
 
 # Exits unless effort is an effort folder of the space whose first event is
-# a known format's effort.opened, so an older or newer effort is never
-# misread; sets events_dir.
+# effort.opened; sets events_dir.
 check_space_effort() {
 	# shellcheck disable=SC2310 # its status says whether the root is usable; the fault is read below
 	if ! crucible_resolve_root; then
@@ -459,9 +459,8 @@ check_space_effort() {
 		folder_fault "${crucible_effort_refusal}"
 	fi
 	events_dir="${effort}/events"
-	jq -e --argjson format "${EVENTS_FORMAT}" '.type == "effort.opened" and .body.format == $format' \
-		"${events_dir}/000001-effort.opened.json" >/dev/null 2>&1 </dev/null ||
-		folder_fault "${effort} has no format ${EVENTS_FORMAT} events/000001-effort.opened.json; expected an effort this version of Crucible started; an older or newer effort cannot be counted"
+	jq -e '.type == "effort.opened"' "${events_dir}/000001-effort.opened.json" >/dev/null 2>&1 </dev/null ||
+		folder_fault "${effort} has no events/000001-effort.opened.json; expected an effort effort.sh started; an effort from before events cannot be counted"
 }
 
 harvest() {
@@ -525,8 +524,8 @@ EOF
 	new_temp_file
 	newest_file=${made}
 	jq -n 'reduce inputs as $event ({};
-		if ($event.body | type) == "object" and ($event.body.claude_session_id | type) == "string"
-		then .[$event.body.claude_session_id] = {path: input_filename, body: $event.body} else . end)' \
+		if ($event.body | type) == "object" and ($event.claude_session_id | type) == "string"
+		then .[$event.claude_session_id] = {path: input_filename, body: $event.body} else . end)' \
 		"$@" </dev/null >"${newest_file}" ||
 		folder_fault "cannot read the ${HARVESTED_TYPE} events of ${effort}; expected JSON files events.sh wrote"
 }
@@ -631,7 +630,7 @@ write_present_sessions() {
 		new_temp_file
 		body_file=${made}
 		jq --arg session "${session}" --arg at "${harvested_at}" \
-			'{claude_session_id: $session, harvested_at: $at}
+			'{harvested_at: $at}
 			+ (.[$session] // {main_thread: [], subagents: [], outside: []} | del(.partly_expired))
 			+ (if .[$session].partly_expired then {expired: true} else {} end)' \
 			"${results_file}" >"${body_file}" ||
@@ -766,7 +765,7 @@ show_view() {
 			warn "${newest_path} is left out of the view"
 			continue
 		fi
-		set -- "$@" --arg "p${file_count}" "${newest_path}" --rawfile "f${file_count}" "${body_file}"
+		set -- "$@" --arg "p${file_count}" "${newest_path}" --arg "s${file_count}" "${session}" --rawfile "f${file_count}" "${body_file}"
 		file_count=$((file_count + 1))
 	done <<EOF
 ${sessions}

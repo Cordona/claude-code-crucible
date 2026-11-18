@@ -85,7 +85,7 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
    **To ask,** load `procedure-approval-gate` with the Skill tool and follow its steps, with these inputs:
    - **The plan file:** one JSON object, `{"docs": "<the docs folder>", "grill": "<the grill's copy>"}`, the docs folder as `<context.sh> docs` prints it at this step; `grill` only after a grill, the `DOCS_FILE:` path the grill hands over.
    - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/scripts/render-what-next.sh" --plan-file '<the plan file>'`.
-   - **The gate's label:** `what-next`, with `--effort '<effort folder>'`.
+   - **The gate's label:** `what-next`, with no `--effort`.
    - **On "now ask":** Read the fixed question, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-context/references/what-next-question.json`, with the folder expanded to an absolute path, and pass its `questions` to one AskUserQuestion as written. A failed Read, or a file that isn't one JSON object with a `questions` array: ask nothing, and act as the gate can't be shown (below).
    - **The gate can't be shown:** the pipe exits non-zero, the Skill tool can't load `procedure-approval-gate`, or it reports the plan not shown. Hand over as step 8 sets, its `latest` with `--line what_next_not_shown`: the work's own plan gate still guards every dispatch.
 

@@ -6,7 +6,7 @@ Step numbers are SKILL.md's.
 
 On the human's next message, run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/scripts/dependencies/validate-dependencies.sh"`. Whatever its exit, show the line `relay_not_confirmed`, then the script's stdout as printed, since human-view's Stop hook, which would hold its card owed, may be what failed. Ask nothing, and tell the gate's procedure the plan was not shown. SKILL.md's Never sets when a new gate may open.
 
-`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/views"`; its lines go without `--effort`. human-view's Stop hook may be what failed here, and so may jq, which `show.sh` needs: when `show.sh` exits non-zero for `relay_not_confirmed`, show its stderr, then `**Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`, without its backticks; for any other line, show its stderr.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/views"`. human-view's Stop hook may be what failed here, and so may jq, which `show.sh` needs: when `show.sh` exits non-zero for `relay_not_confirmed`, show its stderr, then `**Blocked · the plan's relay could not be confirmed:** run /hooks or restart Claude Code, then ask me to show the plan again`, without its backticks; for any other line, show its stderr.
 
 - **`flow-code-agent-dispatch` missing** (the script exits 127): in place of the script's stdout, show the line `hooks_not_checked`, and stop as this section sets.
 

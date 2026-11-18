@@ -24,7 +24,7 @@ def grill_session_pattern: "\\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 # the session that started the grill (the draft), added the question, or gave
 # the answer; an ended grill's body leaves the file's out, as its event's
 # envelope holds it, and holds the grill's number in the effort.
-def grill_file_fields: ["claude_session_id", "number", "topic", "ended", "questions"];
+def grill_file_fields: ["claude_session_id", "number", "topic", "questions"];
 def grill_question_fields: ["id", "claude_session_id", "text", "parent", "round", "recommendation", "status", "answers"];
 def grill_recommendation_fields: ["text", "reason"];
 # An answer's at and change_reason are kept for audit: when and why the human
@@ -121,13 +121,12 @@ def grill_question_problems($index):
 
 def grill_file_problems:
 	if type != "object" then "the file is a JSON \(type); expected an object"
-	else grill_field_problems("the file"; grill_file_fields; if has("ended") then ["topic"] else ["claude_session_id", "topic"] end),
+	else grill_field_problems("the file"; grill_file_fields; if has("number") then ["topic"] else ["claude_session_id", "topic"] end),
 		grill_session_problem("the file"),
 		(if has("number") | not then empty
 		 elif (.number | type) == "number" and .number == (.number | floor) and .number >= 1 then empty
 		 else "number is \(.number | tojson); expected a whole number from 1" end),
 		(if has("topic") then .topic | grill_text_problem(grill_max_chars.topic) | "topic \(.)" else empty end),
-		(if has("ended") then .ended | grill_utc_problem("ended") else empty end),
 		(if has("questions") | not then empty
 		 elif (.questions | type) != "array" then "questions is a JSON \(.questions | type); expected an array; leave the key out for none"
 		 else .questions | to_entries[] | .key as $index | .value | grill_question_problems($index) end)

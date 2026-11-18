@@ -20,7 +20,7 @@ Not for: the task split, the seats and their worktrees (the calling flow's); the
 - **After the human adds or changes a hook entry, dispatch nothing until they confirm under `/hooks` that it is loaded:** step 1 checks only what `settings.json` holds, not what is loaded.
 - **The Agent prompt is only the `DISPATCH:` line:** the hook turns the line into the agent's first message and denies anything else.
 - **One plan per dialog:** one approval never covers another plan.
-- **Only Approve approves a plan:** `procedure-approval-gate`'s PostToolUse hook records the answer; its `gate-answer-hook.sh --help` is the full contract.
+- **Only Approve approves a plan:** `procedure-approval-gate`'s PostToolUse hook records the answer; `generate-agent-dispatch.sh --help` sets which answers approve.
 - **`standard-testing` goes into every `code-tester` plan and never into a `BUILD` plan;** the plan generator refuses either.
 - **Never re-plan, regenerate or add to the context on a hook denial naming `CONTEXT`, `PAIR`, `SEAT` or `SKILL` or with no KIND (step 10), or on a `PLUGIN` problem (step 10, or step 8's exit 3) naming an uninstalled or invalid language plugin:** relay the reason and hand the dispatch back as `stopped` (`stopped: pair busy` for `PAIR` with no `SEAT`, which the calling flow routes to `procedure-seat-run`'s pair hold; `stopped: seat not open` for `SEAT`, with `PAIR` or not; `stopped: preloaded skill missing` for `SKILL`, `stopped: no installed plugin for <name>` for that language plugin, `stopped: hook failed` with no KIND); whether to add to the context is the human's decision. A `SEAT` problem is the seat missing, not open or with no worktree, or a re-seat's test plan no longer the seat's newest `test-plan.made`; a `PAIR` problem, which only the hook checks, never step 8, is its pair (the seat sharing its worktree) working or gave-up.
 - **On a `CONTEXT-CHANGED` problem, never look into what changed or ask the human about it** (no `events/`, no docs folder, no `entries.json`): re-plan, as `references/denials-and-replans.md` sets.
@@ -37,7 +37,7 @@ Not for: the task split, the seats and their worktrees (the calling flow's); the
 
 ## Always
 
-- **Every installed standard and procedure plugin is decided:** each goes into each plan as `--load` or `--skip`, with its reason, kept in the plan for audit; the plan generator refuses a plan that misses one.
+- **Every installed standard and procedure plugin is decided:** each goes into each plan as `--load` or `--skip`; the plan generator refuses a plan that misses one.
 - **A language or framework plugin the part doesn't use is left out, never skipped:** the plan generator refuses one under `--skip`.
 - **Every approval is one AskUserQuestion call:** a typed answer can be misread.
 - **Steps 1 and 2 must pass:** on any result their step doesn't go on from, plan nothing and dispatch nothing, except step 2's re-run on a `PLUGIN` problem, where an exit 3 naming only that plugin goes on.
@@ -45,7 +45,7 @@ Not for: the task split, the seats and their worktrees (the calling flow's); the
 
 ## Steps
 
-`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/views"` (its `lines.jq`); its lines go without `--effort` when no effort folder was handed in.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/flow-code-agent-dispatch/views"` (its `lines.jq`).
 
 Follow them in order for every hand-in from the calling flow. Copy steps 1–9 into the todo list and tick each as it completes. Note each retry in its step's todo item (`retry 1 of 2`): no count lives in memory alone. Step 10 is a branch, on a hook denial.
 
@@ -66,17 +66,15 @@ The calling flow hands in, per task: its agent and mode (`code-builder` with `BU
    - A doc change is no builder's: plan nothing for it and hand the part back as `stopped: a doc change is not a builder task` (step 9).
    - A task in two languages, or in two repositories, becomes one part per language and per repository; each framework goes with the language its code is in.
    - Code whose language has no installed plugin: plan nothing for that part, show the line `no_language_plugin` with `--arg name '<name>'`, `<name>` being that language as the calling flow handed it in, and hand the part back as `stopped: no installed plugin for <name>` (step 9). The human runs a task only with its language installed, so no other path is offered.
-   - A framework with no installed plugin: plan the part under its language plugin, with no framework plugin, and say so in the language plugin's reason.
-6. **Group the parts** that have the same agent, mode and plugins (language, frameworks, standards and procedures) and differ only in task: one plan, with `--task` once per task. Every other part is its own plan. Write the plan count into step 7's todo item, such as `3 plans`.
+   - A framework with no installed plugin: plan the part under its language plugin, with no framework plugin.
+6. **Group the parts** that have the same agent and plugins (language, frameworks, standards and procedures) and differ only in task: one plan, with `--task` once per task. Every other part is its own plan. Write the plan count into step 7's todo item, such as `3 plans`.
 7. **Write, show and ask each plan, one at a time,** through `procedure-approval-gate`: load it with the Skill tool first; it can't be loaded: ask nothing, and hand every part back as `stopped: plan not shown`. On a step-10 re-plan (from step 8's exit 3 or step 10), read `references/denials-and-replans.md`'s Step-10 re-plans, if it is not in context. Per plan, 7.1 to 7.4:
 
    **7.1 Write it:** run `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-approval-gate/scripts/open-gate.sh" --plan-path` (the gate's step 1.1) for the plan file, then `sh "<scripts>/dispatch-plan/generate-dispatch-plan.sh" --plan-file '<that path>'` with the options below, in place of the gate's Write (its step 1.2); fill only its options, never the JSON, the Markdown or the dialog. Generator exit 0 with its `PLAN_FILE:`, `PLAN_SHA256:` and `PLAN_RECORD:` lines: keep the `PLAN_SHA256:` and `PLAN_RECORD:` values for this plan. When `open-gate.sh` exits non-zero or prints anything but one absolute path, or the generator gives anything else: read `references/plan-failures.md`; its default hand-back is `stopped: plan not shown`.
 
-   **Options and reasons** (as `generate-dispatch-plan.sh --help` sets):
-   - `--agent`, `--mode` (the part's mode: `BUILD`, or `PLAN` for `code-tester`), `--effort` and `--fingerprint` (step 3), and one `--task` per task (step 6).
-   - `--language`, `--framework` and `--load`: step 5's picks; `--skip`: every other one (Always); `--load-reason`: only a `code-reviewer` correctness seat (`the correctness seat, no lens`); `--replan`: only a step-10 re-plan (above).
-   - Each `--reason` cites its plugin's description: what matched, or, for `--skip`, what didn't or which "Not for …" excludes it; a boundary-map drop (step 5): `<concern>: owned by <owner>`.
-   - Good: `--skip standard-accessibility --reason 'no UI in the task'`; bad: `--reason 'not relevant'`.
+   **Options** (as `generate-dispatch-plan.sh --help` sets):
+   - `--agent`, `--effort` and `--fingerprint` (step 3), and one `--task` per task (step 6).
+   - `--language`, `--framework` and `--load`: step 5's picks; `--skip`: every other one (Always); `--replan` and `--state`: only a step-10 re-plan (above).
 
    **7.2 Show it** as the gate's step 1.3 sets, its renderer `sh "<scripts>/dispatch-plan/render-dispatch-plan.sh" --plan-file '<the plan file>' --data 'Plan=<the PLAN_RECORD path>'` either way. A plan opens with label `dispatch-plan` and effort `'<effort folder>'` (`open-gate.sh --label dispatch-plan --effort '<effort folder>'`); a `--replan invalid` plan goes through `open-gate.sh --show-only` instead, as `references/denials-and-replans.md`'s Step-10 re-plans sets, and skips 7.3. Then the gate's step 2. On a stderr line starting `render-dispatch-plan.sh: install:`, or the plan not shown for any reason the gate gives: read `references/plan-failures.md`.
 
@@ -84,7 +82,7 @@ The calling flow hands in, per task: its agent and mode (`code-builder` with `BU
 
    **7.4 Act on the answer:**
    - Approve: the plan is approved; go to the next plan.
-   - A typed answer changing only the plan (a plugin, a reason): 7.1 again with the options it changes, then 7.2; never a spec revision.
+   - A typed answer changing only the plan (a plugin): 7.1 again with the options it changes, then 7.2; never a spec revision.
    - A question: answer it as the turn's last message, and ask this plan again from 7.1 at the human's next message.
    - A typed answer changing the work (the task or the spec, never only a plugin): a spec revision through `procedure-context`'s The spec; one adding to its context: through `procedure-context` (load it with the Skill tool either way; it can't be loaded: as a `stopped: no context` hand-back). A `stopped:` hand-back: that plan stops; hand back its parts as `stopped: <its reason>`, and go to the next plan. A hand-over line back: step 3 again, then 7.1 again, since the question removed the plan file: a fresh `open-gate.sh --plan-path`, then the generator with the options the answer changes, the same ones when the human kept the spec as it is (the typed change is not made); show and ask again from 7.2; the new `PLAN_SHA256` replaces the old one.
    - A typed "not now" for this plan: as Skip; one stopping the work: as Stop.

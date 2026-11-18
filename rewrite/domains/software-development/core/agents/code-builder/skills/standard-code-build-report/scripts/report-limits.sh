@@ -20,7 +20,6 @@ def code_spans: map("`\(.)`") | join(", ");
 "- **Summary cap:** \(report_summary_max) characters.",
 "- **Open cap:** \(report_open_max) items.",
 "- **`verification` `result` values:** \(report_results | code_spans).",
-"- **`security` `kind` values:** \(report_security_kinds | code_spans).",
 "- **`blockers` `kind` values:** \(report_blocker_kinds | code_spans)."'
 
 # Marker lines match with surrounding blanks and a CR ignored.
@@ -50,7 +49,7 @@ usage: sh ${PROG} [--write FILE | --check FILE]
        sh ${PROG} --help | -h
 
 Prints the BUILD report's caps (text, summary, open) and the allowed values
-of verification[].result, security[].kind and blockers[].kind as Markdown
+of verification[].result and blockers[].kind as Markdown
 bullet lines, read from ${MODULE}.jq's constants: the block between the
 lines ${START_MARKER} and ${END_MARKER}
 in the ${SKILL} skill's SKILL.md.

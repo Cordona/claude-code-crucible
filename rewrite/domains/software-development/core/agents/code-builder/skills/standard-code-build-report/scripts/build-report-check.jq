@@ -10,7 +10,7 @@
 # names the field, the fault and the repair.
 
 def report_keys: ["summary", "verification", "deviations", "decisions", "noticed", "security", "open", "blockers"];
-# Keys another report or an earlier contract had, and why they are not written.
+# Keys the report never holds, and why they are not written.
 def report_derived_keys: {
 	"files": "git gives the files",
 	"toolchain": "the build files give it",
@@ -24,21 +24,19 @@ def report_derived_keys: {
 	"seat": "the seat gives it",
 	"agent_id": "the seat gives it",
 	"agent-id": "the seat gives it",
-	"base": "the seat gives it",
-	"behavior": "dropped from the contract",
-	"focus": "dropped from the contract"
+	"base": "the seat gives it"
 };
 # Each list's item keys, those always required, and the shape a line shows.
 def report_lists: {
-	"verification": {keys: ["gate", "result", "command", "note"], required: ["gate", "result"], shape: "{gate, result, command, note}"},
+	"verification": {keys: ["gate", "result", "note"], required: ["gate", "result"], shape: "{gate, result, note}"},
 	"deviations": {keys: ["from", "what", "why"], required: ["from", "what", "why"], shape: "{from, what, why}"},
 	"decisions": {keys: ["choice", "why"], required: ["choice", "why"], shape: "{choice, why}"},
 	"noticed": {keys: ["at", "text"], required: ["at", "text"], shape: "{at, text}"},
-	"security": {keys: ["kind", "at", "text"], required: ["kind", "at", "text"], shape: "{kind, at, text}"},
-	"open": {keys: ["text", "at", "ref"], required: ["text"], shape: "{text, at, ref}"},
+	"security": {keys: ["at", "text"], required: ["at", "text"], shape: "{at, text}"},
+	"open": {keys: ["text", "at"], required: ["text"], shape: "{text, at}"},
 	"blockers": {keys: ["kind", "location", "detail"], required: ["kind", "location", "detail"], shape: "{kind, location, detail}"}
 };
-# Item keys an earlier contract had, and what to do instead.
+# Item keys the report never holds, and what to do instead.
 def report_dropped_item_keys: {
 	"open.kind": "refusing part of the task is a deviation; an open item has no kind",
 	"decisions.commit": "the commit records itself"
@@ -53,7 +51,6 @@ def report_kind_rules: {
 	"test": {blocker_kinds: report_blocker_kinds + ["test_red", "production_bug"],
 		red_kinds: ["gate_red", "test_red", "production_bug"], plan_ids: true}
 };
-def report_security_kinds: ["secret", "instruction"];
 # Characters (Unicode code points): the summary is the commit subject's text,
 # and 55 keeps "crucible(build): " plus the summary within 72, whole in git's one-line views.
 def report_summary_max: 55;
@@ -89,16 +86,6 @@ def report_text_fits: [report_text_problem(report_text_max)] == [];
 def report_enum_problem($values; $what):
 	if IN($values[]) then empty
 	else "\(report_echo) is not a known \($what); use one of \($values | report_list)"
-	end;
-
-# The command with its quoted parts and backslash escapes removed, so only
-# what the shell would act on is left.
-def report_unquoted: gsub("'[^']*'|\"(\\\\.|[^\"\\\\])*\"|\\\\."; "");
-
-def report_command_problem:
-	if report_unquoted | test("&&|\\|\\||;") then
-		"chains commands with &&, || or ; outside quotes; give each command its own verification item"
-	else empty
 	end;
 
 def report_is_url: test("^[A-Za-z][A-Za-z0-9+.-]*://");
@@ -177,7 +164,6 @@ def report_hint($list; $key; $item; $rules):
 	{
 		"verification.gate": "add the gate: one of \(report_gates | report_list)",
 		"verification.result": "add the result: one of \(report_results | report_list)",
-		"verification.command": "add the one command you ran, e.g. \"./gradlew test --offline\"",
 		"verification.note": (if $item.result == "fail" then "add a note saying what failed, e.g. \"App.kt:12 unresolved reference\""
 			elif $item.result == "narrowed" then "add a note quoting the task's words that told you to skip the gate"
 			else "add a note saying why the gate was \($item.result), e.g. \"ktlint not installed\""
@@ -189,7 +175,6 @@ def report_hint($list; $key; $item; $rules):
 		"decisions.why": "add why, in one line",
 		"noticed.at": "add the path:line it is at, from the worktree root, e.g. src/App.kt:12",
 		"noticed.text": "add what you noticed, in one line",
-		"security.kind": "add the kind: one of \(report_security_kinds | report_list)",
 		"security.at": "add the path:line it is at, from the worktree root, e.g. src/App.kt:12",
 		"security.text": "add what it is, in one line, a secret masked, e.g. \"A live API key is hard-coded (sk-****)\"",
 		"open.text": "add what you need, in one line",
@@ -198,24 +183,20 @@ def report_hint($list; $key; $item; $rules):
 		"blockers.detail": "add what stops the work, in one line"
 	}["\($list).\($key)"];
 
-# The keys an item must hold: verification's command and note follow its result.
+# The keys an item must hold: verification's note follows its result.
 def report_required_keys($list; $rule):
 	$rule.required + (if $list != "verification" then []
-		elif .result == "pass" then ["command"]
-		elif .result == "fail" then ["command", "note"]
-		elif .result == "not_run" or .result == "narrowed" then ["note"]
+		elif .result == "fail" or .result == "not_run" or .result == "narrowed" then ["note"]
 		else []
 		end);
 
-# The problems of a text that fits: enums, the command, and locations, which
+# The problems of a text that fits: enums and locations, which
 # show their value (one line, by then) ahead of the fault.
 def report_value_problems($list; $key; $files; $rules):
 	(if $list == "open" then ", or drop at" else "" end) as $or_drop
 	| if $key == "gate" then report_enum_problem(report_gates; "gate")
 	elif $key == "result" then report_enum_problem(report_results; "result")
-	elif $key == "kind" and $list == "security" then report_enum_problem(report_security_kinds; "security kind")
 	elif $key == "kind" then report_enum_problem($rules.blocker_kinds; "blocker kind")
-	elif $key == "command" then report_command_problem
 	elif $key == "at" then
 		(if report_is_location then report_shown else report_echo end) as $shown
 		| report_at_problem($files) | "\($shown) \(.)\($or_drop)"
@@ -224,8 +205,6 @@ def report_value_problems($list; $key; $files; $rules):
 		| (report_plan_problem($rules) // report_context_entry_problem // report_maybe_location_problem($files)) | "\($shown) \(.)"
 	elif $key == "location" then
 		report_shown as $shown | (report_context_entry_problem // report_maybe_location_problem($files)) | "\($shown) \(.)"
-	elif $key == "ref" then
-		report_shown as $shown | report_context_entry_problem | "\($shown) \(.)"
 	else empty
 	end;
 
@@ -256,15 +235,13 @@ def report_item_problems($list; $rule; $files; $rules):
 				(if $key | IN($required[]) then empty
 				else "\($where).\($key) is \(tojson); leave the key out when there is nothing to say"
 				end)
-			elif $list == "verification" and $key == "command" and $item.result == "not_run" then
-				"\($where).command is set but result is not_run; leave command out when nothing ran"
 			else report_value_line("\($where).\($key)"; $list; $key; $files; $rules)
 			end)
 	end;
 
 # A gate that did not run is still listed, so no made-up gate stands in for it.
 def report_verification_fix:
-	"add one item per gate, e.g. {\"gate\": \"test\", \"result\": \"pass\", \"command\": \"<the command>\"}; if none ran, add each that applies as {\"gate\": \"typecheck\", \"result\": \"not_run\", \"note\": \"the task said not to run commands\"}";
+	"add one item per gate, e.g. {\"gate\": \"test\", \"result\": \"pass\"}; if none ran, add each that applies as {\"gate\": \"typecheck\", \"result\": \"not_run\", \"note\": \"the task said not to run commands\"}";
 
 # The list $key as a whole: absent, empty or wrong type, else each item.
 def report_list_problems($key; $files; $rules):

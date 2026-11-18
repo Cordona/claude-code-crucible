@@ -112,7 +112,7 @@ readonly CANDIDATE_JQ='
 | def retired($kind; $value): any($gone[]; .kind == $kind and .value == $value);
 (($latest.paths // []) | map(select(has("sha256") or (retired("path"; .path) | not)))) as $kept_paths
 | (($latest.links // []) | map(select(retired("link"; .url) | not))) as $kept_links
-| ($kept_paths + (if $folder == "" then [] else [{path: $folder, sha256: $digest, why: $folder_why}] end)) as $listed
+| ($kept_paths + (if $folder == "" then [] else [{path: $folder, sha256: $digest}] end)) as $listed
 | ($listed + [($entries.paths // [])[] | select(.path as $path | $listed | any(.path == $path) | not)]) as $paths
 | ($kept_links + [($entries.links // [])[] | select(.url as $url | $kept_links | any(.url == $url) | not)]) as $links
 | {version: $version, paths: $paths} + (if $links == [] then {} else {links: $links} end) + {spec: $spec}
@@ -1397,8 +1397,8 @@ text_is_utf8() {
 }
 
 # Succeeds when the effort's newest gate.spec-approval.answered event
-# approves draft $1 at sha256 $2: body.approved true, its at at most
-# APPROVAL_MAX_SECONDS ago, and body.view the approval plan
+# approves draft $1 at sha256 $2: body.answer an Approve option's label, its
+# at at most APPROVAL_MAX_SECONDS ago, and body.view the approval plan
 # render-spec-gate.sh --approval-plan wrote for that draft. An event jq cannot
 # read so matches nothing. events.sh's space fault (exit 4) stays this
 # script's space exit; any other failure is an install fault.
@@ -1416,7 +1416,8 @@ spec_approval_matches() {
 	[ -n "${approval_event}" ] || return 1
 	# shellcheck disable=SC2016 # the program is jq's
 	jq -e --arg spec "$1" --arg sha256 "$2" --argjson max_age "${APPROVAL_MAX_SECONDS}" \
-		'.body.approved == true and (.body.view | type) == "object" and .body.view.case == "approval"
+		'any(.body.answer | strings; test("^Approve(, leave them to the agents)?( [(]Recommended[)])?$"))
+		and (.body.view | type) == "object" and .body.view.case == "approval"
 		and .body.view.spec == $spec and .body.view.sha256 == $sha256
 		and (now - (.at | fromdateiso8601)) <= $max_age' "${approval_event}" </dev/null >/dev/null 2>&1
 }
@@ -1474,7 +1475,7 @@ build_candidate() {
 	[ -n "${candidate_spec}" ] || refuse_no_spec
 	# shellcheck disable=SC2016 # the program is jq's
 	candidate_json=$(jq -n --argjson latest "${latest_json}" --argjson entries "${entries_json}" \
-		--arg folder "${folder_entry}" --arg digest "${next_digest}" --arg folder_why "the effort's docs for v${next_number}" \
+		--arg folder "${folder_entry}" --arg digest "${next_digest}" \
 		--arg spec "${candidate_spec}" --argjson version "${next_number}" "${CANDIDATE_JQ}" </dev/null) ||
 		die 5 'jq failed building the version; expected jq 1.6+; try jq --version, then rerun'
 	check_candidate
@@ -1661,10 +1662,10 @@ latest_command() {
 }
 
 # Prints --line's line for the human after the machine lines, recorded as
-# owed for the effort.
+# owed this session.
 show_line() {
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${show_script}" "${views_dir}" "${line_name}" "${effort_dir}" ||
+	hv_show_line "${show_script}" "${views_dir}" "${line_name}" ||
 		die 5 "${hv_render_problem}; expected the line ${line_name} printed from views/lines.jq; try reinstalling ${PROCEDURE} and ${VIEW_LIB}"
 }
 

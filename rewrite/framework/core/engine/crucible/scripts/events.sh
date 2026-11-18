@@ -6,14 +6,11 @@ set -eu
 umask 077
 
 readonly PROG='events.sh'
-# Stamped into effort.opened; an effort of another format is refused, so a
-# change to the event layout bumps it rather than misreading older efforts.
-readonly FORMAT=1
 # Event types taken after effort.completed or effort.dropped: a reopen, work
-# that lands late, the final harvest, and a card the human was never shown. The line break keeps the --help
+# that lands late and the final harvest. The line break keeps the --help
 # page narrow; the list is read split on blanks.
 readonly AFTER_END_TYPES='effort.reopened build.committed test.committed
-  seat.conflicts.resolved seat.pushed metrics.harvested view.missed'
+  seat.pushed metrics.harvested'
 # An append holds the lock for a few jq runs, well under a second, so a wait
 # this long means a stuck holder, not a busy one.
 readonly DEFAULT_WAIT_SECONDS=5
@@ -27,10 +24,10 @@ export LC_ALL
 usage() {
 	cat <<EOF
 usage: events.sh append --effort FOLDER --type TYPE --by NAME --body-file FILE
-       [--facts JSON] [--iteration SEAT:N] [--guard FILE] [--session ID]
+       [--facts JSON] [--iteration N] [--guard FILE] [--session ID]
        [--wait N]
        events.sh fault --effort FOLDER --by NAME --body-file FILE
-       [--iteration SEAT:N] [--session ID]
+       [--session ID]
        events.sh list --effort FOLDER [--type PATTERN] [--max N]
        events.sh latest --effort FOLDER --type PATTERN [--where JQ]
        events.sh slurp --effort FOLDER [--type PATTERN] [--faults] [--max N]
@@ -44,7 +41,7 @@ Appends to an effort are serialised; a dead holder never blocks.
 append and fault leave only their file and its folder, the lock only
 while held; readers write nothing. A refused --type, --by, --body-file,
 --facts, --iteration or event, or a lock timeout, writes only its fault, by
-design (none for a bad --effort): body {"refused": PATH, "rule": RULE},
+design (none for a bad --effort): body {"what": "refused PATH: RULE"},
 never the input, kept in <effort>/events/faults/ as the rejection log, for
 audit; slurp --faults reads faults/. Nothing else is left behind (a SIGKILL
 aside).
@@ -53,7 +50,7 @@ TYPE: subject[.qualifier].past-verb, parts of a-z, 0-9 and -. PATTERN: a sh
 glob over TYPE.
 
 append  writes {type, seq, at, by, claude_session_id, iteration?, <facts>,
-  body}, refusing a first event but effort.opened with body.format ${FORMAT}, a
+  body}, refusing a first event but effort.opened, a
   second effort.opened, after effort.completed or effort.dropped any type but
   ${AFTER_END_TYPES}.
   stdout: its absolute path.
@@ -73,7 +70,7 @@ Options:
   --by NAME         the writing script's name
   --body-file FILE  a JSON object, the event's body
   --facts JSON      a JSON object of top-level keys beside body
-  --iteration SEAT:N  stamps {"seat": SEAT, "number": N}
+  --iteration N     append: stamps iteration N, a whole number from 1
   --guard FILE      jq over {events: [every event], event: the new one};
                     each string it prints refuses
   --session ID      Claude Code's session (default CLAUDE_CODE_SESSION_ID)
@@ -141,15 +138,15 @@ refuse_field() {
 	refuse "$3"
 }
 
-# Writes field $1 and rule $2 as a fault of the effort, never the input
+# Writes field $1 and rule $2 into a fault's what, never the input
 # itself; does nothing until the effort and session are checked.
 record_refusal() {
 	[ -n "${faults_dir}" ] || return 0
 	# The subshell keeps a failed fault write from replacing the refusal's
 	# exit; each step of write_fault checks its own status.
 	# shellcheck disable=SC2310 # set -e is not relied on inside write_fault
-	jq -n --arg refused "$1" --arg rule "$2" '{refused: $refused, rule: $rule}' |
-		(write_fault "${PROG}" null >/dev/null) || warn 'the refusal below was not written as a fault'
+	jq -n --arg refused "$1" --arg rule "$2" '{what: "refused \($refused): \($rule)"}' |
+		(write_fault "${PROG}" >/dev/null) || warn 'the refusal below was not written as a fault'
 }
 
 # Removes this run's temp file and lets go of the lock if this run holds it.
@@ -276,21 +273,15 @@ check_facts() {
 		reject_field "facts.${envelope_key}" 'no envelope key' "--facts: key ${envelope_key} is an envelope key; expected none of type, seq, at, by, claude_session_id, iteration, body"
 }
 
-# Sets iteration_json from --iteration SEAT:N.
+# Sets iteration_json from --iteration N.
 check_iteration() {
 	iteration_json=null
 	[ -n "${iteration}" ] || return 0
-	iteration_seat=${iteration%:*}
-	iteration_number=${iteration##*:}
-	case ${iteration_seat}:${iteration_number} in
-		*[!abcdefghijklmnopqrstuvwxyz0123456789:-]* | :* | *:) reject_field iteration 'SEAT:N, SEAT of a-z, 0-9 and -' "bad --iteration: ${iteration}; expected SEAT:N" ;;
+	case ${iteration} in
+		*[!0123456789]* | 0*) reject_field iteration 'a whole number from 1' "bad --iteration: ${iteration}; expected a whole number from 1" ;;
 		*) ;;
 	esac
-	case ${iteration_number} in
-		'' | *[!0123456789]* | 0*) reject_field iteration 'N a whole number from 1' "bad --iteration: ${iteration}; expected N a whole number from 1" ;;
-		*) ;;
-	esac
-	iteration_json="{\"seat\":\"${iteration_seat}\",\"number\":${iteration_number}}"
+	iteration_json=${iteration}
 }
 
 check_wait() {
@@ -355,7 +346,7 @@ append_locked() {
 	[ ! -L "${events_dir}" ] || space_fault "${events_dir} is a symbolic link; expected a real folder; try replacing the link with a real folder"
 	clean_dead_temps
 	set_last_seq
-	check_format_and_end
+	check_first_and_end
 	seq=$((last_seq + 1))
 	seq_name=$(printf "%0${SEQ_DIGITS}d" "${seq}")
 	event_file="${events_dir}/${seq_name}-${type}.json"
@@ -399,17 +390,15 @@ set_last_seq() {
 	done
 }
 
-# Refuses an event the format stamp or the effort's end does not allow.
-check_format_and_end() {
+# Refuses an event the effort's first event or its end does not allow.
+check_first_and_end() {
 	if [ "${last_seq}" -eq 0 ]; then
 		[ "${type}" = effort.opened ] || refuse_field type 'effort.opened first' "${effort} has no events; expected effort.opened first; try effort.sh start"
-		jq -e --argjson format "${FORMAT}" '.format == $format' "${body_file}" >/dev/null 2>&1 </dev/null ||
-			refuse_field body.format "format ${FORMAT}" "effort.opened lacks body.format ${FORMAT}; expected a body with \"format\": ${FORMAT}"
 		return 0
 	fi
 	[ "${type}" != effort.opened ] || refuse_field type 'effort.opened only once' "${effort} is open already; expected effort.opened only once; try the effort's next event type, not effort.opened"
-	jq -e --argjson format "${FORMAT}" '.type == "effort.opened" and .body.format == $format' "${first_file}" >/dev/null 2>&1 </dev/null ||
-		refuse_field effort "format ${FORMAT}" "${effort} is not format ${FORMAT}; expected events this version of Crucible wrote; try starting a new effort"
+	jq -e '.type == "effort.opened"' "${first_file}" >/dev/null 2>&1 </dev/null ||
+		refuse_field effort 'effort.opened first' "${effort}'s first event is not effort.opened; expected an effort effort.sh started; try starting a new effort"
 	last_effort_type=''
 	for named in "${events_dir}"/[0-9][0-9][0-9][0-9][0-9][0-9]-effort.*.json; do
 		[ -f "${named}" ] || continue
@@ -511,17 +500,16 @@ release_lock() {
 }
 
 run_fault() {
-	effort='' by='' body_file='' iteration='' session=''
+	effort='' by='' body_file='' session=''
 	while [ "$#" -gt 0 ]; do
 		case $1 in
-			--effort | --by | --body-file | --iteration | --session) require_value "$1" "$#" ;;
-			*) usage_error "unknown argument for fault: $1; expected --effort, --by, --body-file, --iteration or --session" ;;
+			--effort | --by | --body-file | --session) require_value "$1" "$#" ;;
+			*) usage_error "unknown argument for fault: $1; expected --effort, --by, --body-file or --session" ;;
 		esac
 		case $1 in
 			--effort) effort=$2 ;;
 			--by) by=$2 ;;
 			--body-file) body_file=$2 ;;
-			--iteration) iteration=$2 ;;
 			*) session=$2 ;;
 		esac
 		shift 2
@@ -531,21 +519,19 @@ run_fault() {
 	faults_dir="${events_dir}/faults"
 	check_by
 	check_body
-	check_iteration
-	write_fault "${by}" "${iteration_json}" <"${body_file}"
+	write_fault "${by}" <"${body_file}"
 }
 
 # Writes stdin's JSON object as the body of a fault.raised event in
-# faults_dir, by $1 with iteration JSON $2, and prints its path; takes no lock.
+# faults_dir, by $1, and prints its path; takes no lock.
 write_fault() {
 	mkdir -p "${faults_dir}" 2>/dev/null || space_fault "cannot create ${faults_dir}; expected a writable effort folder; try checking its permissions"
 	at=$(now_utc)
 	stamp=$(date -u +%Y%m%dT%H%M%SZ)
 	fault_file="${faults_dir}/${stamp}-$$-$(random_hex).json"
 	temp="${faults_dir}/.tmp-$$-$(random_hex)"
-	jq -c --arg at "${at}" --arg by "$1" --arg session "${session}" --argjson iteration "$2" \
-		'{type: "fault.raised", at: $at, by: $by, claude_session_id: $session}
-		+ (if $iteration == null then {} else {iteration: $iteration} end) + {body: .}' >"${temp}" || {
+	jq -c --arg at "${at}" --arg by "$1" --arg session "${session}" \
+		'{type: "fault.raised", at: $at, by: $by, claude_session_id: $session, body: .}' >"${temp}" || {
 		rm -f "${temp}"
 		space_fault "cannot write ${temp}; expected a writable ${faults_dir}; try checking its permissions"
 	}

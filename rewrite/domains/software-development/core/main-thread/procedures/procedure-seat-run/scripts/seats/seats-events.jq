@@ -8,20 +8,18 @@ include "seats";
 
 # The seats.sh command an event records: {command, options, dir}, dir the
 # effort folder choose puts the worktrees folder in; null for another type.
-# seat.status-changed and seat.handed-over are the earlier names of
-# seat.status.changed and seat.reseated, still read so older efforts fold.
 def seats_event_command:
 	.type as $type | .body as $body
 	| if $type == "seat.chosen" then
-		{command: "choose", options: ({seat: $body.seat, role: $body.role, repo: $body.repo, base: $body.base}
+		{command: "choose", options: ({seat: $body.seat, repo: $body.repo, base: $body.base}
 			+ (if $body.base_seats then {"base-seat": $body.base_seats} else {} end)),
 		 dir: ($body.worktree | sub("/worktrees/[^/]+$"; ""))}
 	  elif $type == "seat.joined" then {command: "join", options: {seat: $body.seat, "build-seat": $body.build_seat}}
 	  elif $type == "seat.opened" then {command: "opened", options: {seat: $body.seat}}
 	  elif $type == "seat.dropped" then {command: "drop", options: {seat: $body.seat}}
 	  elif $type == "seat.bound" then {command: "bind", options: {seat: $body.seat, "agent-id": $body.agent_id, dispatch: $body.dispatch}}
-	  elif $type | IN("seat.status.changed", "seat.status-changed") then {command: "status", options: {seat: $body.seat, status: $body.status}}
-	  elif $type | IN("seat.reseated", "seat.handed-over") then {command: "handover", options: {seat: $body.seat}}
+	  elif $type == "seat.status.changed" then {command: "status", options: {seat: $body.seat, status: $body.status}}
+	  elif $type == "seat.reseated" then {command: "handover", options: {seat: $body.seat}}
 	  elif $type == "seat.moved" then {command: "move", options: {seat: $body.seat, base: $body.base}}
 	  elif $type == "seat.tasked" then {command: "task", options: {seat: $body.seat}}
 	  else null
@@ -72,33 +70,16 @@ def seats_apply($event):
 # The seat list of an array of events, oldest first.
 def seats_fold($effort): reduce .[] as $event ({effort: $effort, seats: []}; seats_apply($event));
 
-# The event body a seats.sh change writes, from the command, its options and
-# the seat list before the change.
-def seats_event_body($command; $options; $before; $after):
-	([$before.seats[] | select(.seat == $options.seat)][0]) as $was
-	| if $command == "choose" then
-		# mode is kept for audit: the replay derives it from role.
-		[$after.seats[] | select(.seat == $options.seat)][0] | {seat, role, mode, worktree, repo, base, base_seats}
+# The event body a seats.sh change writes, from the command and its options,
+# and, for choose, the seat list after the change.
+def seats_event_body($command; $options; $after):
+	if $command == "choose" then
+		[$after.seats[] | select(.seat == $options.seat)][0] | {seat, worktree, repo, base, base_seats}
 		| with_entries(select(.value != null))
-	# role, mode, worktree, repo and base are kept for audit: the replay takes
-	# them from the build seat.
-	elif $command == "join" then
-		[$after.seats[] | select(.seat == $options.seat)][0] | {seat, role, mode, build_seat, worktree, repo, base}
+	elif $command == "join" then {seat: $options.seat, build_seat: $options["build-seat"]}
 	elif $command == "bind" then {seat: $options.seat, agent_id: $options["agent-id"], dispatch: $options.dispatch}
 	elif $command == "status" then {seat: $options.seat, status: $options.status}
-	# agent_id is kept for audit, naming the agent handed over from; the
-	# replay does not read it.
-	elif $command == "handover" then {seat: $options.seat, agent_id: $was.agent_id}
-	# branch and base are kept for the record; the replay does not read them.
-	elif $command == "opened" then {seat: $options.seat, branch: $options.branch, base: $was.base}
-	# follows and from are kept for the record: the replay reads only seat and
-	# base; from.head names the work the move left out of the branch.
-	elif $command == "move" then
-		{seat: $options.seat, base: $options.base, follows: $options.follows, from: {base: $was.base, head: $options["from-head"]}}
-		| with_entries(select(.value != null))
-	# agent_id and task are kept for audit, naming the agent given the work
-	# and the work; the replay does not read them.
-	elif $command == "task" then {seat: $options.seat, agent_id: $was.agent_id, task: $options.task}
+	elif $command == "move" then {seat: $options.seat, base: $options.base}
 	else {seat: $options.seat}
 	end;
 

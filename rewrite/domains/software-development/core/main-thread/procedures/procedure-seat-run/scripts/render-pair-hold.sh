@@ -78,7 +78,7 @@ readonly VIEW_DATA_JQ='{ask: ((.question[:1] | ascii_downcase) + .question[1:]),
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label pair-hold --effort FOLDER
+usage: sh ${PROG} --plan-file PATH | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label pair-hold
        sh ${PROG} --plan-file PATH --question
        sh ${PROG} --help | -h
 

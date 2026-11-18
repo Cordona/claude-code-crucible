@@ -82,7 +82,7 @@ readonly VIEW_DATA_JQ='def trimmed: sub("^[[:space:]]+"; "") | sub("[[:space:]]+
 usage() {
 	print_block <<EOF
 usage: sh ${PROG} --plan-file PATH [--title TEXT] [--open-effort NAME]... [--after-state-offer] | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-offer
-       sh ${PROG} --plan-file PATH --case new-work|done --name NAME | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-state-offer --effort FOLDER
+       sh ${PROG} --plan-file PATH --case new-work|done --name NAME | sh <skills>/procedure-approval-gate/scripts/open-gate.sh --label effort-state-offer
        sh ${PROG} --help | -h
 
 Prints the effort offer, the gate asking the human whether to start an effort,

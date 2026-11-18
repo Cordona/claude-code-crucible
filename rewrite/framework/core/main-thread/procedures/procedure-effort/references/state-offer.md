@@ -8,7 +8,7 @@ SKILL.md step 10: offer to pause, complete or drop the open effort. Read when st
 
 10.3 **Offer it** through `procedure-approval-gate`, loaded with the Skill tool, following its steps with these inputs:
 - **The renderer:** `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/scripts/render-effort-offer.sh" --plan-file '<the plan file>' --case done|new-work --name '<name>'`, with no `--open-effort`, the case as read above.
-- **The gate's label:** `effort-state-offer`, with `--effort '<folder>'`.
+- **The gate's label:** `effort-state-offer`, with no `--effort`.
 - **On "now ask":** Read the question for the case: case `done`, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/state-offer-done-question.json` (it recommends Complete, as the `done` view does); case `new-work`, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-effort/references/state-offer-question.json`; ask it as SKILL.md step 1 asks the offer's question.
 - **The offer can't be shown or asked:** change nothing, go on with the work, and treat it as "Keep going".
 

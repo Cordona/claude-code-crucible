@@ -226,7 +226,7 @@ read_chosen_seat
 create_worktree
 run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
 [ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
-run_step ../../../procedure-seat-run/scripts/seats/seats.sh opened --effort "${effort}" --seat "${seat}" --branch "${branch}"
+run_step ../../../procedure-seat-run/scripts/seats/seats.sh opened --effort "${effort}" --seat "${seat}"
 [ "${step_rc}" -eq 0 ] || step_failed 'seats.sh opened'
 run_step ../../../procedure-seat-run/scripts/seats/seats.sh get --effort "${effort}" --seat "${seat}"
 [ "${step_rc}" -eq 0 ] ||

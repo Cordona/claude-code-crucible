@@ -90,9 +90,9 @@ sort_by(.seq) | map(select(.seat == $seat and .type == $type)) as $own
 readonly SEG_DRAFT_JQ='include "plan-draft"; add | plan_draft($seat; $seq)'
 
 # The language's plugin name, then each framework's, one per line, of the
-# dispatch with id $id. Input: the dispatch.made events.
+# dispatch.made event of seq $id. Input: the dispatch.made events.
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-readonly SEG_PLUGINS_JQ='map(select(.body.id == $id)) | last // empty
+readonly SEG_PLUGINS_JQ='map(select((.seq | tostring) == $id)) | last // empty
 | .body.plugins // {} | (.language.name // ""), (.frameworks // [] | .[] | .name // empty)'
 
 # The title from the labels, one per line, the language's first. Input: none.

@@ -432,7 +432,7 @@ print_caught_up() {
 	hv_show_card "${card_show}" "${card_views}" caught-up "${effort_dir}" "${card_data}" ||
 		die 4 "${hv_render_problem}; seat ${seat} caught up, its card not shown"
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	card_show_unsigned "${effort_dir}" || die 4 "${hv_render_problem}; seat ${seat} caught up, its unsigned line not shown"
+	card_show_unsigned || die 4 "${hv_render_problem}; seat ${seat} caught up, its unsigned line not shown"
 }
 
 # Starts the merge in the seat's worktree and leaves its conflicts there;
@@ -505,7 +505,7 @@ print_out_of_scope() {
 	conflict_files=$(jq -Rsr --argjson max "${MAX_NAMED}" "${NAMED_FILES_JQ}"' | $files' "${work_dir}/conflicts") ||
 		die 4 'jq could not build the line'\''s files; expected jq 1.6+'
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${card_show}" "${card_views}" out_of_scope "${effort_dir}" --arg seat "${seat}" --arg taken "${taken}" \
+	hv_show_line "${card_show}" "${card_views}" out_of_scope --arg seat "${seat}" --arg taken "${taken}" \
 		--arg files "${conflict_files}" --arg needs "${needs}" ||
 		die 4 "${hv_render_problem}; the merge of ${with_short} was cancelled in seat ${seat}, its line not shown"
 }
@@ -530,7 +530,7 @@ print_conflict() {
 print_in_sync() {
 	jq -nc --arg seat "${seat}" '{caught_up: false, seat: $seat, reason: "in_sync"}' || die 4 'jq could not print the result'
 	# shellcheck disable=SC2310 # its status names the fault; set -e is not relied on inside
-	hv_show_line "${card_show}" "${card_views}" in_sync "${effort_dir}" --arg seat "${seat}" --arg taken "${taken}" ||
+	hv_show_line "${card_show}" "${card_views}" in_sync --arg seat "${seat}" --arg taken "${taken}" ||
 		die 4 "${hv_render_problem}; seat ${seat} already holds the commit, its line not shown"
 }
 

@@ -1,7 +1,7 @@
 # The dispatch-plan gate: the slim plan, plugins by label (a plugin
-# list-plugins.sh no longer prints shows its name), every reason staying in the
-# plan JSON. A code-builder or code-tester plan: the Build agent or Test agent
-# title from its valid language and frameworks, then Load and Skip with its
+# list-plugins.sh no longer prints shows its name). A code-builder or
+# code-tester plan: the Build agent or Test agent title from its valid
+# language and frameworks, then Load and Skip with its
 # standards, then procedures, in plan order. A code-reviewer plan holds one lens and shows only the Reviewer
 # line, its seat's title. A replan "invalid" plan shows only the plugins it
 # names as invalid, and no question.
@@ -29,7 +29,7 @@ def view:
 	def kind_labels($group): (($group.standards // []) + ($group.procedures // [])) | map(plugin_label);
 	def installed_only: .plugin as $name | select($installed | has($name));
 	# A plugin installed and not named invalid by the plan.
-	def valid_only: installed_only | select(.reason != "invalid");
+	def valid_only: installed_only | select(.state != "invalid");
 	# The title input, from the valid plugins only (an invalid one shows only
 	# under Invalid): the language label and the framework labels in plugin-name order.
 	def seat_labels: {language: (first(.language // empty | valid_only | plugin_label) // null),
@@ -44,7 +44,7 @@ def view:
 			| section($agent | agent_label; [$load | seat_labels | agent_title($agent | agent_word)]) end;
 	def invalid_labels:
 		[(.plugins.load.language // empty), (.plugins.load.frameworks // [])[], (.plugins.skip.standards // [])[], (.plugins.skip.procedures // [])[]
-		 | select(.reason == "invalid") | plugin_label];
+		 | select(.state == "invalid") | plugin_label];
 	.plan
 	| if .replan == "invalid" then
 		[status_line("blocked"; "Blocked · this plan names an invalid plugin: fix it, then rerun"),

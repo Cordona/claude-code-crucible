@@ -13,12 +13,12 @@ readonly RENDER_LIB='scripts/lib/render.sh'
 readonly CRUCIBLE_SKILL='crucible'
 
 # Prints the cards' data, {name, folder, items}, from the effort.* events read
-# from stdin as one array, oldest first, each item {state, from?, at}. The
+# from stdin as one array, oldest first, each item {state, started, at}. The
 # program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly VIEW_DATA_JQ='include "effort-state-validator";
 {name: $name, folder: $folder,
- items: [.[] | {state: (effort_type_states[.type] // "unknown"), at} + (if .body.from then {from: .body.from} else {} end)]}'
+ items: [.[] | {state: (effort_type_states[.type] // "unknown"), started: (.type == "effort.opened"), at}]}'
 
 usage() {
 	print_block <<EOF

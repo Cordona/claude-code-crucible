@@ -26,17 +26,17 @@ Claude Code's PostToolUse hook on Agent. Reads the event JSON on stdin; with
 a tool_response.agentId and an effort of the space
 \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts holding a ${ALLOWED_EVENT} event
 whose body.tool_use_id is the call's (the crucible skill's events.sh latest),
-reads that event's dispatch id and seq, then the ${DISPATCH_EVENT} event of
-that seq, and runs
+reads that event's body.dispatch, the seq of a ${DISPATCH_EVENT} event, then
+that ${DISPATCH_EVENT} event, and runs
 seats.sh bind --effort <effort> --seat <its seat> --agent-id <agentId>
---dispatch <id>, which appends seat.bound.
+--dispatch <seq>, which appends seat.bound.
 No agentId or no such event: not an effort dispatch, nothing done.
 
 The dispatch is accepted only when the ${DISPATCH_EVENT} event of that seq is
-in the same effort and its body.id is the ${ALLOWED_EVENT} event's dispatch.
+in the same effort.
 
 writes, faults only: a fault.raised event of the effort (events.sh fault)
-{what, tool_use_id, agent_id, dispatch}; a fault before the effort is known,
+{what}; a fault before the effort is known,
 or when the event can't be written, goes to stderr. stdout: nothing.
 The session of the hook input stamps the events when
 CLAUDE_CODE_SESSION_ID is unset.
@@ -86,17 +86,14 @@ finish() {
 	exit 0
 }
 
-# Writes fault $1 as a fault.raised event of the effort, with the call's
-# tool_use_id, agent id and dispatch id; stderr while no effort is known or
-# when the event can't be written.
+# Writes fault $1 as a fault.raised event of the effort; stderr while no
+# effort is known or when the event can't be written.
 log_fault() {
 	if [ -z "${effort_dir}" ] || [ -z "${work_dir}" ]; then
 		warn "fault: $1"
 		return 0
 	fi
-	if jq -n --arg what "$1" --arg tool_use_id "${tool_use_id}" --arg agent_id "${shown_agent}" --arg dispatch "${shown_dispatch}" \
-		'{what: $what, tool_use_id: $tool_use_id, agent_id: $agent_id, dispatch: $dispatch}
-		| with_entries(select(.value != ""))' >"${work_dir}/fault.json" 2>/dev/null &&
+	if jq -n --arg what "$1" '{what: $what}' >"${work_dir}/fault.json" 2>/dev/null &&
 		sh "${events_script}" fault --effort "${effort_dir}" --by "${PROG}" --body-file "${work_dir}/fault.json" \
 			</dev/null >/dev/null 2>&1; then
 		return 0
@@ -149,7 +146,6 @@ read_event() {
 ${fields}
 EOF
 	[ -n "${agent_id}" ] || finish
-	shown_agent=$(printable "${agent_id}")
 	case ${tool_use_id} in
 		'' | *[!A-Za-z0-9_-]*)
 			shown_id=$(printable "${tool_use_id}")
@@ -222,47 +218,28 @@ find_allowed() {
 	finish
 }
 
-# Sets dispatch_id and dispatch_seq from the dispatch.allowed event, then seat
-# from the dispatch.made event of that seq in the same effort, whose id must
-# be dispatch_id.
+# Sets dispatch_seq from the dispatch.allowed event, then seat from the
+# dispatch.made event of that seq in the same effort.
 read_dispatch() {
-	allowed_fields=$(jq -r '(.body.dispatch // "" | strings), (.body.seq // "" | numbers | tostring)' "${allowed_event}" 2>/dev/null) ||
+	dispatch_seq=$(jq -r '.body.dispatch // "" | numbers | tostring' "${allowed_event}" 2>/dev/null) ||
 		fault "jq could not read ${allowed_event}; expected the ${ALLOWED_EVENT} event"
-	dispatch_id='' dispatch_seq=''
-	{
-		IFS= read -r dispatch_id || :
-		IFS= read -r dispatch_seq || :
-	} <<EOF
-${allowed_fields}
-EOF
-	shown_dispatch=$(printable "${dispatch_id}")
 	case ${dispatch_seq} in
 		'' | 0* | *[!0-9]*) fault "${allowed_event##*/} holds no dispatch seq; expected a whole number from 1" ;;
 		*) ;;
 	esac
-	[ -n "${dispatch_id}" ] || fault "${allowed_event##*/} holds no dispatch id; expected the ${DISPATCH_EVENT} body's id"
 	run sh "${events_script}" latest --effort "${effort_dir}" --type "${DISPATCH_EVENT}" --where ".seq == ${dispatch_seq}"
 	[ "${child_rc}" -eq 0 ] || fault "events.sh latest exit ${child_rc} reading the ${DISPATCH_EVENT} of seq ${dispatch_seq}"
 	dispatch_event=$(cat "${work_dir}/stdout")
 	[ -n "${dispatch_event}" ] || fault "no ${DISPATCH_EVENT} event of seq ${dispatch_seq} in the effort; expected the one ${allowed_event##*/} allowed"
-	ids=$(jq -r '(.body.id // "" | strings), (.body.seat // "" | strings)' "${dispatch_event}" 2>/dev/null) ||
+	seat=$(jq -r '.body.seat // "" | strings' "${dispatch_event}" 2>/dev/null) ||
 		fault "jq could not read ${dispatch_event##*/}; expected the ${DISPATCH_EVENT} event"
-	made_id='' seat=''
-	{
-		IFS= read -r made_id || :
-		IFS= read -r seat || :
-	} <<EOF
-${ids}
-EOF
-	shown_made_id=$(printable "${made_id}")
-	[ "${made_id}" = "${dispatch_id}" ] || fault "${dispatch_event##*/} holds dispatch ${shown_made_id}; expected ${shown_dispatch}, the one ${allowed_event##*/} allowed"
 	[ -n "${seat}" ] || fault "${dispatch_event##*/} names no seat; expected the dispatch's seat"
 	seat=$(printable "${seat}")
 }
 
 bind_seat() {
 	run sh "${own_dir}/../seats/seats.sh" bind --effort "${effort_dir}" --seat "${seat}" \
-		--agent-id "${agent_id}" --dispatch "${dispatch_id}"
+		--agent-id "${agent_id}" --dispatch "${dispatch_seq}"
 	[ "${child_rc}" -ne 0 ] || finish
 	first_line=$(head -n 1 "${work_dir}/stderr" | cut -c "1-${MAX_QUOTE_BYTES}") || first_line=''
 	shown_line=$(printable "${first_line}")
@@ -278,7 +255,7 @@ on_exit() {
 	[ "${exit_status}" -eq 0 ] || [ "${usage_failed}" = yes ] || exit 0
 }
 
-work_dir='' usage_failed=no effort_dir='' seat='' tool_use_id='' shown_agent='' shown_dispatch='' events_script=''
+work_dir='' usage_failed=no effort_dir='' seat='' tool_use_id='' events_script=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

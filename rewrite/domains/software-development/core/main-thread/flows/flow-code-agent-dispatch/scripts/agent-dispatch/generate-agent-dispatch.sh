@@ -5,8 +5,8 @@
 # to the digest given; the newest gate.dispatch-plan.answered event of that
 # plan must approve it, at most 7 days old; and the context version it pins
 # must still be the one its effort's docs and pending entries give. The seat
-# --seat names must be one of the effort's seats with the plan's mode, since
-# the plugins the plan chose depend on it; procedure-seat-run's seats.sh
+# --seat names must be one of the effort's seats with the mode of the plan's
+# agent, since the plugins the plan chose depend on it; procedure-seat-run's seats.sh
 # reads it. The plan is checked again by dispatch-plan-validator.jq; its
 # fingerprint against procedure-context's context.sh freeze --dry-run; its
 # plugins are resolved to files by plugin-files.sh, and the agent's title is
@@ -16,12 +16,11 @@
 # nothing in it. Only once every check passes and the effort is open does
 # context.sh freeze --expect cut the version, or return the one already cut;
 # the cut context.cut event passes agent-context-file-checks.sh's checks and
-# the dispatch pins it by seq and path. The dispatch, named by an ID
-# crucible.sh id hands out, is appended through the crucible skill's
-# events.sh; nothing goes into the worktree or git.
+# the dispatch pins it by seq. The dispatch is appended through the crucible
+# skill's events.sh, its seq naming it; nothing goes into the worktree or git.
 # A re-seat (--reseat) needs no plan digest and no gate: once seats.sh
 # handover has freed the seat, it repeats the seat's last dispatch.made with
-# the same plan and context, a fresh ID, and the re-seat keys; a tester
+# the same plan and context, and the re-seat keys; a tester
 # re-seated while it writes tests (--test-plan) also names the seat's newest
 # test-plan.made, the plan it writes them from. Every problem is named by the
 # option behind it.
@@ -49,12 +48,9 @@ readonly EFFORT_SKILL='procedure-effort'
 readonly SEAT_RUN_SKILL='procedure-seat-run'
 # The exit of a write refused because the effort is not open.
 readonly NOT_OPEN_EXIT=6
-# Stands for the ID crucible.sh id hands out once the effort is known open,
-# so the dispatch is checked whole before any file exists.
-readonly PLACEHOLDER_ID='00000000T000000-0000'
-# Stand for the context.cut and plan.made events, for the same check.
+# Stands for the plan.made and context.cut seqs until they are known, so the
+# dispatch is checked whole before any file exists.
 readonly PLACEHOLDER_SEQ=1
-readonly PLACEHOLDER_CONTEXT='/000001-context.cut.json'
 # Lead the problems a caller acts on, so it matches the token exactly, never
 # the sentence after it: a plan no approving gate answer holds, a context
 # whose docs or pending entries changed since the plan was shown, an effort
@@ -98,10 +94,10 @@ def plugins: plugin_entries as $entries
 	{language: (of_kind("language-") | first), frameworks: of_kind("framework-"),
 	 standards: of_kind("standard-"), procedures: of_kind("procedure-")};
 def dispatch: {
-	id: $id, agent: $agent, seat: $seat, task: $task,
+	agent: $agent, seat: $seat, task: $task,
 	entry_points: $ARGS.positional,
-	context: {seq: $context_seq, path: $context_path},
-	plan: {seq: $plan_seq},
+	context: $context_seq,
+	plan: $plan_seq,
 	plugins: plugins}
 	| prune;
 
@@ -173,17 +169,16 @@ def as_line: "line\t\(.)";
   end
 '
 
-# Builds the re-seat dispatch from the seat's last dispatch body on stdin: a
-# fresh $id, the same plan, context, task and plugins, and reseat_of,
-# continue_from, the notes ($notes, a JSON array) and test_plan (null for
-# none) in place of any the last one held.
+# Builds the re-seat dispatch from the seat's last dispatch body on stdin:
+# the same plan, context, task and plugins, and continue_from, the notes
+# ($notes, a JSON array) and test_plan (null for none) in place of any the
+# last one held.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly RESEAT_JQ='
 include "prune";
-del(.reseat_of, .continue_from, .notes, .test_plan)
-| .id = $id
-| . + {reseat_of: $last_seq, continue_from: $head, notes: $notes, test_plan: $test_plan}
+del(.continue_from, .notes, .test_plan)
+| . + {continue_from: $head, notes: $notes, test_plan: $test_plan}
 | prune
 '
 
@@ -201,17 +196,19 @@ at its gate, for seat S of the effort; nothing goes into the worktree or git.
 Options:
   --effort FOLDER     the effort folder (rule: crucible.sh --help)
   --plan-sha256 HEX   the PLAN_SHA256 generate-dispatch-plan.sh printed: the
-      newest ${PLAN_EVENT} whose body (jq -cS .body) hashes to it, approved by
-      the newest ${GATE_EVENT} of its seq, at most 7 days old
+      newest ${PLAN_EVENT} whose body (jq -cS .body) hashes to it, answered
+      Approve by the newest ${GATE_EVENT} of its seq, at most
+      7 days old
   --task N            the task's place in the plan, from 1
   --seat S            a seat of the effort, like build-agent-alpha, with the
-      plan's mode, status open, and a worktree folder in FOLDER/worktrees/
+      mode of the plan's agent, status open, and a worktree folder in
+      FOLDER/worktrees/
   --entry-point REL   a repo-relative path the task starts from; repeatable,
       kept in order; it need not exist
   --reseat            re-seat S after seats.sh handover: repeats the
-      ${DISPATCH_EVENT} of S's last seat.bound with a fresh id, the same plan
-      and context, reseat_of, continue_from (the worktree's HEAD) and notes;
-      no plan digest, no gate
+      ${DISPATCH_EVENT} of S's last seat.bound with the same plan and
+      context, continue_from (the worktree's HEAD) and notes; no plan
+      digest, no gate
   --note TEXT         with --reseat, a line for the agent; repeatable, in order
   --test-plan SEQ     with --reseat, a tester seat's newest test-plan.made,
       whose tests the agent writes
@@ -229,8 +226,8 @@ stderr on exit 3: one line per problem; a line a caller routes on reads
 
 Once every check passes and the effort is open, context.sh freeze --expect
 cuts the plan's version as a context.cut event (or gives the one already
-cut; a refusal is exit 3), and the dispatch pins it as {seq, path}, the plan
-as {seq}. On a non-zero exit no dispatch
+cut; a refusal is exit 3), and the dispatch pins it and the plan by their
+seqs. On a non-zero exit no dispatch
 event is written; a cut version stays.
 
 Exit codes (1, 2, 5, 6: show stderr and stop):
@@ -258,7 +255,7 @@ Dependencies:
   POSIX sh; jq 1.6+ (macOS: brew install jq; Linux: the distro's); git, for
     --reseat; sha256sum (Linux: coreutils) or shasum; awk, cat, date,
     mktemp, rm, tr, wc (base system)
-  the ${CRUCIBLE_SKILL} (crucible.sh, events.sh, scripts/lib/prune.jq),
+  the ${CRUCIBLE_SKILL} (events.sh, scripts/lib/prune.jq),
     ${CONTEXT_PROCEDURE} (context.sh, agent-context-file-checks.sh),
     ${EFFORT_SKILL} (effort.sh), ${SEAT_RUN_SKILL} (scripts/seats/seats.sh)
     and ${VIEW_LIB} (title.jq) skills in the default --skills-dir
@@ -382,7 +379,7 @@ trim_trailing_slashes() {
 	done
 }
 
-# Exits 5 unless jq, a sha256 tool, crucible.sh, events.sh, context.sh,
+# Exits 5 unless jq, a sha256 tool, events.sh, context.sh,
 # list-plugins.sh, crucible's prune module, human-view's title module, this
 # skill's views/common.jq, seats.sh and every shared check and helper are in
 # place; sources the two shell helpers.
@@ -421,9 +418,6 @@ load_dependencies() {
 	context_load_checks "${skills_dir}" || die 5 "${context_load_problem}"
 	# shellcheck source=plugin-files.sh
 	. "${plugin_lib}"
-	crucible_script="${crucible_skill_dir}/scripts/crucible.sh"
-	[ -f "${crucible_script}" ] && [ -r "${crucible_script}" ] ||
-		die 5 "crucible.sh missing; expected ${crucible_script}; install the ${CRUCIBLE_SKILL} skill"
 	events_script="${crucible_skill_dir}/scripts/events.sh"
 	[ -f "${events_script}" ] && [ -r "${events_script}" ] ||
 		die 5 "events.sh missing; expected ${events_script}; install the ${CRUCIBLE_SKILL} skill"
@@ -569,7 +563,7 @@ check_gate_answer() {
 	fi
 	gate_verdict=$(jq -r --argjson max_age "${APPROVAL_MAX_AGE_SECONDS}" '
 		(try (now - (.at | fromdateiso8601)) catch null) as $age
-		| if .body.approved != true then "not approved (answer \(.body.answer // "" | tojson))"
+		| if any(.body.answer | strings; test("^Approve( [(]Recommended[)])?$")) | not then "not approved (answer \(.body.answer // "" | tojson))"
 		  elif $age == null then "approved at an unreadable time \(.at | tojson)"
 		  elif $age > $max_age then "approved at \(.at), more than 7 days ago"
 		  else "" end' "${gate_event}" </dev/null) ||
@@ -607,7 +601,7 @@ check_plan() {
 		add_plan_problems
 		return 0
 	fi
-	plan_fields=$(jq -r '.agent, .mode, (.tasks | length), .context.sha256' "${plan_body_file}" </dev/null) ||
+	plan_fields=$(jq -r -L "${dispatch_dir}" "include \"${NAMES_MODULE}\"; .agent, agent_modes[.agent], (.tasks | length), .context_fingerprint" "${plan_body_file}" </dev/null) ||
 		die 5 'jq failed reading the plan; expected jq 1.6+; try jq --version, then rerun'
 	{
 		IFS= read -r agent
@@ -807,7 +801,7 @@ resolve_space_root() {
 }
 
 # Adds a problem unless the seat --seat names is one of the effort's seats,
-# open, with the plan's mode and a worktree folder directly
+# open, with the mode of the plan's agent and a worktree folder directly
 # in the effort's worktrees/; seats.sh get reads it, and seat_worktree is set
 # from it. A value that is no seat name is left to the dispatch check, which
 # names it.
@@ -829,7 +823,7 @@ check_seat() {
 	[ "${seat_mode}" != "${mode}" ] || return 0
 	seat_mode_text="mode ${seat_mode}"
 	[ -n "${seat_mode}" ] || seat_mode_text='no mode'
-	add_problem --seat "${seat}" "the seat has ${seat_mode_text}, the plan mode ${mode}; expected a seat of the plan's mode"
+	add_problem --seat "${seat}" "the seat has ${seat_mode_text}, the plan's agent mode ${mode}; expected a seat of the plan's agent's mode"
 }
 
 # Sets seat_out (the seat's JSON line), seat_state, seat_mode, seat_worktree
@@ -907,15 +901,15 @@ is_seat_name() {
 	esac
 }
 
-# Runs DISPATCH_JQ in mode $1 with id $2, over the entry points after it.
+# Runs DISPATCH_JQ in mode $1 over the entry points after it.
 run_dispatch_jq() {
-	run_mode=$1 run_id=$2
-	shift 2
-	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" --arg id "${run_id}" \
+	run_mode=$1
+	shift
+	jq -n -L "${prune_lib_dir}" --arg prog "${PROG}" --arg mode_of_run "${run_mode}" \
 		--arg agent "${agent}" --arg seat "${seat}" \
 		--arg plugin_paths "${plugin_paths}" --arg skills_dir "${skills_dir}" \
 		--arg plan_sha256 "${plan_sha256}" --argjson plan_seq "${plan_seq:-${PLACEHOLDER_SEQ}}" \
-		--arg context_path "${context_path}" --argjson context_seq "${context_seq}" \
+		--argjson context_seq "${context_seq}" \
 		--arg task "${task}" --arg task_number "${task_number}" \
 		--arg validator_problem_lines "${validator_problems}" \
 		--arg plan_known "${plan_ok}" --arg task_known "${task_known}" \
@@ -926,12 +920,12 @@ run_dispatch_jq() {
 # the stand-ins, named by option.
 check_planned_dispatch() {
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	planned_dispatch=$(run_dispatch_jq dispatch "${PLACEHOLDER_ID}" "$@") ||
+	planned_dispatch=$(run_dispatch_jq dispatch "$@") ||
 		die 5 "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	validator_problems=$(printf '%s\n' "${planned_dispatch}" | jq -cs --arg format json -f "${dispatch_validator}") ||
 		die 5 'jq failed on the dispatch validator; expected jq 1.6+; try jq --version, then rerun'
 	# shellcheck disable=SC2310 # its status is jq's; a failure exits
-	named_problems=$(run_dispatch_jq report '' "$@") ||
+	named_problems=$(run_dispatch_jq report "$@") ||
 		die 5 "jq failed naming the dispatch problems; expected jq 1.6+; try jq --version, then rerun"
 	[ -z "${named_problems}" ] || problems="${problems}${named_problems}${NL}"
 }
@@ -1046,20 +1040,10 @@ add_cut_problem() {
 	add_context_problem "the cut version ${context_path}: $1; expected a version passing ${CONTEXT_PROCEDURE}'s checks; show the plan again with a fresh fingerprint" "${2:-${CONTEXT_CHANGED_TOKEN}} "
 }
 
-# Sets dispatch_id to a fresh ID crucible.sh id hands out for the effort.
-read_fresh_id() {
-	dispatch_id=$(sh "${crucible_script}" id --effort "${effort_dir}" </dev/null) ||
-		die 1 "crucible.sh id --effort failed; expected it to print a fresh ID for ${effort_dir}; try the crucible.sh error above, then rerun"
-	# shellcheck disable=SC2310 # a pure test; a failure fails the run
-	crucible_is_id "${dispatch_id}" ||
-		die 1 "crucible.sh id printed no Crucible ID; expected one <YYYYMMDDTHHMMSS>-<4 lowercase hex>; try sh ${crucible_script} --help to check its install, reinstall the crucible skill if that fails, then rerun"
-}
-
 # Builds and checks the dispatch, then appends it; sets dispatch_path.
 write_dispatch() {
-	read_fresh_id
 	# shellcheck disable=SC2310 # its status is jq's; a failure fails the run
-	dispatch_json=$(run_dispatch_jq dispatch "${dispatch_id}" "$@") ||
+	dispatch_json=$(run_dispatch_jq dispatch "$@") ||
 		die 1 "jq failed building the dispatch; expected jq 1.6+ (--args, \$ARGS); try jq --version, then rerun"
 	append_dispatch
 }
@@ -1142,7 +1126,7 @@ check_test_plan() {
 	add_problem --test-plan "${test_plan_seq}" "not the seq of seat ${seat}'s newest test-plan.made (${newest_plan_seq:-none}); expected the approved plan"
 }
 
-# Sets last_event, last_seq and last_body_file from the dispatch.made of the
+# Sets last_event and last_body_file from the dispatch.made of the
 # seat's last seat.bound, which must be the agent seats.sh handover moved to
 # the end of previous_agent_ids; else adds a problem and fails.
 find_last_dispatch() {
@@ -1161,19 +1145,19 @@ find_last_dispatch() {
 	bound_dispatch=${bound_fields#*"${NL}"}
 	bound_ok=false
 	# shellcheck disable=SC2310 # a pure test; its status is the answer
-	if [ -n "${last_bound}" ] && [ "${bound_agent}" = "${last_agent}" ] && crucible_is_id "${bound_dispatch}"; then
+	if [ -n "${last_bound}" ] && [ "${bound_agent}" = "${last_agent}" ] && is_seq "${bound_dispatch}"; then
 		bound_ok=true
 	fi
 	if [ "${bound_ok}" = false ]; then
 		shown_agent=$(printable "${last_agent}")
-		add_problem --seat "${seat}" "the seat's last seat.bound event is not the bind of its handed-out agent ${shown_agent} with a dispatch ID; expected the bind seat-bind-hook.sh wrote"
+		add_problem --seat "${seat}" "the seat's last seat.bound event is not the bind of its handed-out agent ${shown_agent} with a dispatch seq; expected the bind seat-bind-hook.sh wrote"
 		return 1
 	fi
 	last_event=$(sh "${events_script}" latest --effort "${effort_dir}" --type "${DISPATCH_EVENT}" \
-		--where ".body.id == \"${bound_dispatch}\" and .body.seat == \"${seat}\"" </dev/null) ||
+		--where ".seq == ${bound_dispatch} and .body.seat == \"${seat}\"" </dev/null) ||
 		die 5 'events.sh latest failed on --effort; its stderr is above; fix what it names, then rerun'
 	if [ -z "${last_event}" ]; then
-		add_problem --seat "${seat}" "no ${DISPATCH_EVENT} event holds the seat's last dispatch ${bound_dispatch}; expected the dispatch its agent was bound with"
+		add_problem --seat "${seat}" "no ${DISPATCH_EVENT} event of seq ${bound_dispatch} is the seat's last dispatch; expected the dispatch its agent was bound with"
 		return 1
 	fi
 	last_body_file=$(mktemp "${TMPDIR:-/tmp}/${PROG}.XXXXXX") ||
@@ -1187,21 +1171,19 @@ find_last_dispatch() {
 		add_problem --seat "${seat}" "the seat's last dispatch ${last_event##*/} no longer fits the dispatch shape (${joined_problems}); expected a dispatch the plan's gate can make again"
 		return 1
 	fi
-	last_seq=$(jq -r '.seq' "${last_event}" </dev/null) ||
-		die 5 "jq could not read ${last_event}; expected jq 1.6+; try jq --version, then rerun"
 }
 
-# Adds a problem unless the last dispatch's context.cut event passes the
-# shared read checks, a newer version aside, and holds the seq it names.
+# Adds a problem unless the effort holds the context.cut event of the seq the
+# last dispatch names and it passes the shared read checks, a newer version
+# aside.
 check_pinned_context() {
-	context_fields=$(jq -r '.context.path, .context.seq' "${last_body_file}" </dev/null) ||
+	pinned_seq=$(jq -r '.context' "${last_body_file}" </dev/null) ||
 		die 5 "jq could not read ${last_body_file}; expected jq 1.6+; try jq --version, then rerun"
-	context_path=${context_fields%%"${NL}"*}
-	pinned_seq=${context_fields#*"${NL}"}
 	plan_option=--seat plan_value=${seat}
-	path_problem=$(context_path_problem "${context_path}")
-	if [ -n "${path_problem}" ]; then
-		add_context_problem "the pinned version ${context_path}: ${path_problem}; expected ${context_path_expected}"
+	context_path=$(sh "${events_script}" latest --effort "${effort_dir}" --type context.cut --where ".seq == ${pinned_seq}" </dev/null) ||
+		die 5 'events.sh latest failed on --effort; its stderr is above; fix what it names, then rerun'
+	if [ -z "${context_path}" ]; then
+		add_context_problem "no context.cut event has the seq ${pinned_seq} the seat's last dispatch names; expected the version it was dispatched with" "${CONTEXT_CHANGED_TOKEN} "
 		return 0
 	fi
 	# shellcheck disable=SC2310 # its status is a tool's; a failure has printed its cause
@@ -1211,18 +1193,14 @@ check_pinned_context() {
 		'' | stale) ;;
 		*)
 			add_context_problem "the pinned version ${context_path}: ${context_read_text}" "${CONTEXT_CHANGED_TOKEN} "
-			return 0
 			;;
 	esac
-	read_context_seq "${context_path}"
-	[ "${context_seq}" = "${pinned_seq}" ] ||
-		add_context_problem "the pinned version ${context_path}: its seq is not the ${pinned_seq} the dispatch names; expected the context.cut event of that seq" "${CONTEXT_CHANGED_TOKEN} "
 }
 
 # Reads the last dispatch's plan.made event and resolves its plugins for the
 # LABELS and TITLE lines, adding a problem for a plan that no longer fits.
 check_reseat_plan() {
-	plan_seq=$(jq -r '.plan.seq' "${last_body_file}" </dev/null) ||
+	plan_seq=$(jq -r '.plan' "${last_body_file}" </dev/null) ||
 		die 5 "jq could not read ${last_body_file}; expected jq 1.6+; try jq --version, then rerun"
 	plan_option=--seat plan_value=${seat}
 	plan_event=$(sh "${events_script}" latest --effort "${effort_dir}" --type "${PLAN_EVENT}" --where ".seq == ${plan_seq}" </dev/null) ||
@@ -1256,9 +1234,7 @@ read_worktree_head() {
 # Builds the re-seat dispatch from the last one and appends it; sets
 # dispatch_path, and agent to the dispatch's.
 write_reseat() {
-	read_fresh_id
-	dispatch_json=$(jq -c -L "${prune_lib_dir}" --arg id "${dispatch_id}" --argjson last_seq "${last_seq}" \
-		--arg head "${worktree_head}" --argjson notes "${notes_json}" \
+	dispatch_json=$(jq -c -L "${prune_lib_dir}" --arg head "${worktree_head}" --argjson notes "${notes_json}" \
 		--argjson test_plan "${test_plan_seq:-null}" "${RESEAT_JQ}" "${last_body_file}" </dev/null) ||
 		die 1 'jq failed building the re-seat dispatch; expected jq 1.6+; try jq --version, then rerun'
 	agent=$(printf '%s\n' "${dispatch_json}" | jq -r '.agent') ||
@@ -1323,7 +1299,7 @@ check_skills_dir
 # options' own problems when the plan is not found or not valid.
 agent=code-builder mode=BUILD plugin_paths='' labels_line='' title_line=''
 plan_fingerprint=''
-context_path=${PLACEHOLDER_CONTEXT} context_sha256='' context_seq=${PLACEHOLDER_SEQ}
+context_path='' context_sha256='' context_seq=${PLACEHOLDER_SEQ}
 task=${TASK_STAND_IN} task_known=false
 check_effort_option
 if [ "${reseat}" = true ]; then

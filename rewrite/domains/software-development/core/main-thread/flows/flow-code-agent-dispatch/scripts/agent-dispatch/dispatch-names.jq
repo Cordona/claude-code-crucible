@@ -12,15 +12,12 @@ def dispatched_agents: ["code-builder", "code-reviewer", "code-tester"];
 # The agents prepare-agent-prompt.sh acts on as a PreToolUse hook. No
 # code-reviewer: no review seat exists to dispatch it into.
 def listed_agents: ["code-builder", "code-tester"];
-# The mode each dispatched agent's plan holds, the mode of the seat it goes
+# The mode of each dispatched agent, the mode of the seat it goes
 # to. A code-tester is dispatched only to PLAN: its TEST work reaches the same
 # running agent by message, never by a dispatch.
 def agent_modes: {"code-builder": "BUILD", "code-reviewer": "BUILD", "code-tester": "PLAN"};
 # \A and \z, not ^ and $: jq's $ also matches before a final newline.
 def sha256_pattern: "\\A[0-9a-f]{64}\\z";
-# A Crucible ID: <YYYYMMDDTHHMMSS>-<4 lowercase hex>, the shape crucible_is_id
-# of the crucible skill's scripts/lib/crucible-space.sh checks.
-def crucible_id_pattern: "\\A[0-9]{8}T[0-9]{6}-[0-9a-f]{4}\\z";
 # A seat name of the effort's seats, as procedure-seat-run's
 # scripts/seats/seats.jq names one (seats_name_pattern, kept the same here):
 # lowercase words joined by dashes, then a letter of alpha ... omega and, from

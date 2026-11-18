@@ -60,16 +60,8 @@ def seats_pattern_problem($pattern; $what):
 def seats_name_problem: seats_pattern_problem(seats_name_pattern;
 	"a seat name like build-agent-alpha: lowercase words joined by dashes, ending in one of \(seats_letters[0]), \(seats_letters[1]) ... \(seats_letters[-1]), from the second round with -2, -3 ...");
 def seats_agent_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "an agent id of letters, digits, _ and -");
-def seats_dispatch_problem: seats_pattern_problem("^[A-Za-z0-9_-]+$"; "a dispatch id of letters, digits, _ and -");
+def seats_dispatch_problem: seats_pattern_problem("^[1-9][0-9]*$"; "the seq of the dispatch.made event");
 def seats_base_problem: seats_pattern_problem("^[0-9a-f]{40}$"; "a 40-character lowercase hex commit sha");
-
-# A branch name, as git takes it, or the name a commit was taken from.
-def seats_branch_problem:
-	if type != "string" then "is a JSON \(type); expected a branch name"
-	elif test("[[:cntrl:][:space:]]") then "\(tojson) holds a space or control character; expected a branch name"
-	elif startswith("-") then "\(tojson) starts with -; expected a branch name"
-	else empty
-	end;
 
 def seats_path_problem:
 	if type != "string" then "is a JSON \(type); expected an absolute path"
@@ -252,10 +244,8 @@ def seats_problems:
 def seats_option_problems:
 	to_entries[] | .key as $name | .value
 	| (if $name == "seat" then seats_name_problem
-	elif $name == "role" then seats_enum_problem(seats_roles)
 	elif $name == "repo" then seats_path_problem
-	elif $name == "base" or $name == "from-head" then seats_base_problem
-	elif $name == "branch" or $name == "follows" then seats_branch_problem
+	elif $name == "base" then seats_base_problem
 	elif $name == "build-seat" then seats_name_problem
 	elif $name == "base-seat" then to_entries[] | .key as $index | .value | seats_name_problem | "item \($index) \(.)"
 	elif $name == "agent-id" then seats_agent_problem
@@ -269,13 +259,12 @@ def seats_option_problems:
 	end)
 	| "--\($name) \(.)";
 
-# Problem line . of command $command as a fault body {refused, rule}: where
-# it is (the command, then the line's first word, an option or a list path)
-# and its "expected ..." rule, never the value refused.
+# Problem line . of command $command as a fault body {what}: "refused " where
+# it is (the command, then the line's first word, an option or a list path),
+# then its "expected ..." rule, never the value refused.
 def seats_rejection($command):
 	(ltrimstr("the seat list: ") | ltrimstr("the change would leave ")) as $line
-	| {refused: "\($command) \($line | split(" ")[0])",
-		rule: ($line | if test("; expected ") then "expected " + (split("; expected ")[1:] | join("; expected ")) else "refused" end)};
+	| {what: "refused \($command) \($line | split(" ")[0]): \($line | if test("; expected ") then "expected " + (split("; expected ")[1:] | join("; expected ")) else "refused" end)"};
 
 def seats_result($exit; $problems; $file; $out): {exit: $exit, problems: $problems, file: $file, out: $out};
 def seats_refused($exit; $problem): seats_result($exit; [$problem]; null; "");
@@ -290,15 +279,15 @@ def seats_taken($name): "seat \($name | tojson) already exists; expected a new s
 # The seat's letter: its name after "<prefix>-", like alpha or alpha-2.
 def seats_letter($options): $options.seat | ltrimstr("\(seats_prefixes[$options.role])-");
 
-# The problem of a --seat whose name does not fit its role, or nothing.
+# The problem of a --seat whose name does not fit a build seat, or nothing.
 def seats_prefix_problem($options):
-	if seats_letter($options) | test("\\A\(seats_letter_pattern)\\z") then empty
-	else "--seat \($options.seat | tojson) does not fit --role \($options.role); expected \(seats_prefixes[$options.role])-<letter>, as seat-name.sh names it"
+	if seats_letter({seat: $options.seat, role: "builder"}) | test("\\A\(seats_letter_pattern)\\z") then empty
+	else "--seat \($options.seat | tojson) does not fit a build seat; expected \(seats_prefixes.builder)-<letter>, as seat-name.sh names it"
 	end;
 
 # The changes, each applied to the seat list with no check.
 def seats_choose_change($options; $worktree):
-	.seats += [{seat: $options.seat, role: $options.role, mode: seats_modes[$options.role],
+	.seats += [{seat: $options.seat, role: "builder", mode: seats_modes.builder,
 		worktree: $worktree, repo: $options.repo, base: $options.base, base_seats: $options["base-seat"],
 		status: "chosen"}];
 # A tester seat beside build seat $build, open so its agent can bind; it
@@ -336,11 +325,9 @@ def seats_seat_change($command; $options; $index):
 # A seat whose worktree is not made yet: <$worktrees_dir>/<letter> is where
 # seat-open.sh makes it, so its letter names the worktree alone.
 def seats_choose($options; $worktrees_dir):
-	if $options.role | IN(seats_chosen_roles[]) | not then
-		seats_refused(3; "--role \($options.role | tojson) is not chosen; expected \(seats_chosen_roles | seats_list): a tester seat joins its build seat (join)")
-	elif [seats_prefix_problem($options)] != [] then seats_refused(3; seats_prefix_problem($options))
+	if [seats_prefix_problem($options)] != [] then seats_refused(3; seats_prefix_problem($options))
 	elif seats_index($options.seat) != null then seats_refused(5; seats_taken($options.seat))
-	else seats_choose_change($options; "\($worktrees_dir)/\(seats_letter($options))") | seats_changed
+	else seats_choose_change($options; "\($worktrees_dir)/\(seats_letter({seat: $options.seat, role: "builder"}))") | seats_changed
 	end;
 
 def seats_not_chosen($seat): seats_refused(5; "seat \($seat.seat | tojson) is \($seat.status); expected a chosen seat");

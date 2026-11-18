@@ -69,11 +69,9 @@ def question_fields:
 def plan_fields:
 	question_fields,
 	field_problem("agent"; .agent | type == "string"; "a string"),
-	field_problem("mode"; .mode | type == "string"; "a string"),
-	field_problem("plugins"; .plugins | is_plugins;
+	field_problem("plugins"; (.plugins | is_plugins) or (.agent == "code-reviewer" and .plugins == null);
 		"an object {\"load\": {...}, \"skip\": {...}} of {\"plugin\": str, ...} entries"),
-	field_problem("context"; (.context | type) == "object" and (.context.sha256 | type) == "string";
-		"an object {\"sha256\": str}");
+	field_problem("context_fingerprint"; .context_fingerprint | type == "string"; "a string");
 checked_object(if $want == "question" then question_fields else plan_fields end)
 '
 
@@ -131,7 +129,7 @@ stdout, a plan: its Markdown from views/${VIEW_NAME}.jq, rendered by
   when the file exists, "Pending entries" (<effort>/${PENDING_FILE})
   for new material, or "Context" (CONTEXT_FILE) when nothing is new;
   a plan whose replan is "invalid" prints as blocked, showing the plugins
-    named with reason "invalid"; it has no question
+    with state "invalid"; it has no question
 stdout, --question: one JSON object {"header": str, "question": str,
   "options": [{"label": str, "description": str}, ...]}; nothing for a
   dispatch plan whose replan is "invalid"

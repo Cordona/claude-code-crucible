@@ -27,19 +27,19 @@ export LC_ALL
 
 # Builds the plan from the options (mode "plan"), or names each validator
 # problem by its option (mode "report": one stderr line each). The options
-# arrive as positional triples in the order given: kind (agent, mode, task,
-# language, framework, load, skip, load_reason or replan), value, reason (""
-# but for language, framework, load and skip). The plan goes through
+# arrive as positional triples in the order given: kind (agent, task,
+# language, framework, load, skip or replan), value, state ("" unless a
+# --state followed the plugin). The plan goes through
 # crucible's prune, so a key with nothing in it is left out.
 # The program is single-quoted on purpose: its $ signs are jq's.
 # shellcheck disable=SC2016
 readonly PLAN_JQ='
 include "prune";
 def entries: $ARGS.positional | [range(0; length / 3) as $n
-	| {kind: .[$n * 3], value: .[$n * 3 + 1], reason: .[$n * 3 + 2]}];
+	| {kind: .[$n * 3], value: .[$n * 3 + 1], state: .[$n * 3 + 2]}];
 def of_kind($kind): [entries[] | select(.kind == $kind)];
 def value_of($kind): of_kind($kind)[0].value;
-def item: {plugin: .value, reason};
+def item: {plugin: .value} + (if .state == "" then {} else {state} end);
 # A --load or --skip plugin installed or named as a procedure goes under
 # procedures, any other under standards, where the validator names a wrong kind.
 def list_key: ($installed[.value].kind // (if .value | startswith("procedure-") then "procedure" else "standard" end))
@@ -47,17 +47,16 @@ def list_key: ($installed[.value].kind // (if .value | startswith("procedure-") 
 def listed($kind; $key): [of_kind($kind)[] | select(list_key == $key)];
 def frameworks: of_kind("framework") | sort_by(.value);
 def plan:
-	{agent: value_of("agent"), mode: value_of("mode"), tasks: of_kind("task") | map(.value),
+	{agent: value_of("agent"), tasks: of_kind("task") | map(.value),
 	 plugins: {
 		load: {language: (of_kind("language") | if . == [] then null else .[0] | item end),
 			frameworks: frameworks | map(item),
 			standards: listed("load"; "standards") | map(item),
 			procedures: listed("load"; "procedures") | map(item)},
 		skip: {standards: listed("skip"; "standards") | map(item),
-			procedures: listed("skip"; "procedures") | map(item)},
-		load_reason: value_of("load_reason")},
+			procedures: listed("skip"; "procedures") | map(item)}},
 	 replan: value_of("replan"),
-	 context: {sha256: $context_fingerprint}}
+	 context_fingerprint: $context_fingerprint}
 	| prune;
 
 # A long value keeps its start and end, where a path differs most; an option
@@ -66,21 +65,20 @@ def max_shown_chars: 80;
 def shown: if . == null then "(not given)"
 	else tojson | gsub("[[:cntrl:]]"; "?") | if length > max_shown_chars then .[:40] + "…" + .[-39:] else . end end;
 def line($option; $value; $problem): "\($prog): \($option) \($value | shown): \($problem)";
-def option: {agent: "--agent", mode: "--mode", replan: "--replan"}[.];
+def option: {agent: "--agent", replan: "--replan"}[.];
 # The option behind a plugin entry at plugins.<list>.<key>[<n>] (language: no
-# index), and its --reason when the problem is the reason.
+# index), and its --state when the problem is the state.
 def plugin_line($at; $problem):
 	(if $at[2] == "language" then ["--language", of_kind("language")[0]]
 	 elif $at[2] == "frameworks" then ["--framework", frameworks[$at[3]]]
 	 else ["--\($at[1])", listed($at[1]; $at[2])[$at[3]]] end) as [$option, $entry]
-	| if $at[-1] == "reason" then line("--reason"; $entry.reason; $problem)
+	| if $at[-1] == "state" then line("--state"; $entry.state; $problem)
 	  else line($option; $entry.value; $problem) end;
 def named_line:
 	.at as $at | .problem as $problem
 	| if $at[0] == "installed" then line("--load or --skip"; $at[1]; $problem)
-	  elif $at[0] == "context" then line("--fingerprint"; $context_fingerprint; $problem)
+	  elif $at[0] == "context_fingerprint" then line("--fingerprint"; $context_fingerprint; $problem)
 	  elif $at[0] == "tasks" then line("--task"; of_kind("task")[$at[1] // -1].value; $problem)
-	  elif $at[:2] == ["plugins", "load_reason"] then line("--load-reason"; value_of("load_reason"); $problem)
 	  elif $at[0] == "plugins" and ($at[2] == "language" or ($at[3] | type) == "number") then plugin_line($at; $problem)
 	  elif ($at[0] | option) != null then line($at[0] | option; value_of($at[0]); $problem)
 	  else "\($prog): plan \($at | tojson): \($problem)" end;
@@ -91,11 +89,10 @@ if $mode == "report" then report else plan end
 
 usage() {
 	print_page <<EOF
-usage: sh ${PROG} --plan-file PATH --agent AGENT --mode MODE --effort FOLDER
-           --fingerprint HEX --task TEXT [--task TEXT]... [--language NAME --reason LINE]
-           [--framework NAME --reason LINE]... [--load NAME --reason LINE]...
-           [--skip NAME --reason LINE]... [--load-reason LINE]
-           [--replan KIND] [--skills-dir DIR]
+usage: sh ${PROG} --plan-file PATH --agent AGENT --effort FOLDER
+           --fingerprint HEX --task TEXT [--task TEXT]... [--language NAME]
+           [--framework NAME [--state STATE]]... [--load NAME]...
+           [--skip NAME [--state STATE]]... [--replan KIND] [--skills-dir DIR]
        sh ${PROG} --help | -h
 
 Writes one dispatch plan to --plan-file and as a ${EVENT_TYPE} event of the
@@ -110,8 +107,6 @@ code-tester: a --language and a standard --load, standard-testing among them.
 Options:
   --plan-file PATH    the gate's session plan file, overwritten; folder writable
   --agent AGENT       a dispatched agent of ../agent-dispatch/dispatch-names.jq
-  --mode MODE         the agent's mode: BUILD for code-builder and
-      code-reviewer, PLAN for code-tester
   --effort FOLDER     the effort folder, as effort.sh start printed it
   --fingerprint HEX   the FINGERPRINT ${CONTEXT_PROCEDURE}'s context.sh freeze
       --dry-run printed for the effort; the dispatch cuts that version
@@ -121,10 +116,8 @@ Options:
       written in plugin-name order
   --load NAME         a standard or procedure plugin to load, in order
   --skip NAME         an installed standard or procedure not loaded, in order
-  --reason LINE       why; exactly one right after each --language,
-      --framework, --load and --skip
-  --load-reason LINE  why nothing loads: required with no --language,
-      --framework or --load, refused with one
+  --state STATE       a step-10 re-plan's plugin list-plugins.sh no longer
+      lists, right after its --framework or --skip: invalid or uninstalled
   --replan KIND       a step-10 re-plan: invalid or stop-recommended
   --skills-dir DIR    default \${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/skills;
       installed: the valid plugins its list-plugins.sh lists
@@ -214,29 +207,22 @@ take_option() {
 			usage
 			exit 0
 			;;
-		--reason)
+		--state)
 			[ -n "${entry_kind}" ] ||
-				usage_error '--reason without a --language, --framework, --load or --skip before it; expected each --reason right after one of their values'
+				usage_error '--state without a --framework or --skip before it; expected each --state right after the --framework or --skip value it marks'
 			;;
-		--plan-file | --agent | --mode | --effort | --fingerprint | --task | --language | --framework | --load | --skip | --load-reason | --replan | --skills-dir)
-			[ -z "${entry_kind}" ] || missing_reason_error
-			;;
+		--plan-file | --agent | --effort | --fingerprint | --task | --language | --framework | --load | --skip | --replan | --skills-dir) ;;
 		*)
 			shown_option=$(printable "$1")
-			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --mode, --effort, --fingerprint, --task, --language, --framework, --load, --skip, --reason, --load-reason, --replan, --skills-dir or --help"
+			usage_error "unknown option: ${shown_option}; expected --plan-file, --agent, --effort, --fingerprint, --task, --language, --framework, --load, --skip, --state, --replan, --skills-dir or --help"
 			;;
 	esac
 	awaited_option=$1
 }
 
-# Exits 2 naming the pending --language, --framework, --load or --skip, which has no --reason.
-missing_reason_error() {
-	shown_entry=$(printable "${entry_value}")
-	usage_error "--${entry_kind} ${shown_entry} has no --reason; expected --reason LINE right after it"
-}
-
 # Takes value $2 of option $1. Sets is_entry_complete=true when the value
-# completes a triple, with entry_kind, entry_value and entry_reason holding it.
+# completes a triple, with entry_kind, entry_value and entry_state holding it.
+# A --language, --framework, --load or --skip value stays pending for a --state.
 take_value() {
 	is_entry_complete=false
 	case $1 in
@@ -249,13 +235,9 @@ take_value() {
 				*) skills_dir=$2 ;;
 			esac
 			;;
-		--agent | --mode | --load-reason | --replan)
+		--agent | --replan)
 			mark_seen "$1"
-			case $1 in
-				--load-reason) option_kind=load_reason ;;
-				*) option_kind=${1#--} ;;
-			esac
-			finish_entry "${option_kind}" "$2" ''
+			finish_entry "${1#--}" "$2" ''
 			;;
 		--task)
 			task_count=$((task_count + 1))
@@ -266,7 +248,10 @@ take_value() {
 			entry_kind=${1#--}
 			entry_value=$2
 			;;
-		*) finish_entry "${entry_kind}" "${entry_value}" "$2" ;;
+		*)
+			[ -n "$2" ] || usage_error '--state is empty; expected --state invalid or --state uninstalled'
+			finish_entry "${entry_kind}" "${entry_value}" "$2"
+			;;
 	esac
 }
 
@@ -295,22 +280,17 @@ mark_seen() {
 finish_entry() {
 	entry_kind=$1
 	entry_value=$2
-	entry_reason=$3
+	entry_state=$3
 	is_entry_complete=true
 }
 
-# Exits 2 on an option left without its value or its --reason, or a required option missing.
+# Exits 2 on an option left without its value, or a required option missing.
 finish_parse() {
 	[ -z "${awaited_option}" ] || usage_error "${awaited_option} needs a value; expected ${awaited_option} VALUE"
-	[ -z "${entry_kind}" ] || missing_reason_error
 	[ -n "${plan_file}" ] || usage_error '--plan-file missing; expected --plan-file PATH, the approval gate'\''s session plan file'
 	case " ${seen_options} " in
 		*' --agent '*) ;;
 		*) usage_error '--agent missing; expected --agent AGENT' ;;
-	esac
-	case " ${seen_options} " in
-		*' --mode '*) ;;
-		*) usage_error '--mode missing; expected --mode MODE' ;;
 	esac
 	[ -n "${given_effort}" ] || usage_error '--effort missing; expected --effort FOLDER, the effort folder'
 	[ -n "${fingerprint}" ] || usage_error '--fingerprint missing; expected --fingerprint HEX, the FINGERPRINT context.sh freeze --dry-run printed'
@@ -533,22 +513,30 @@ trap 'exit 143' TERM
 	exit 2
 }
 plan_file='' given_effort='' fingerprint='' skills_dir='' seen_options='' task_count=0
-awaited_option='' entry_kind='' entry_value='' entry_reason='' validator_problems=''
+awaited_option='' entry_kind='' entry_value='' entry_state='' validator_problems=''
 # Each completed option is appended to the positional parameters as a triple
-# (kind, value, reason); "for" walks the original arguments only, which are
-# shifted away after the loop.
+# (kind, value, state); "for" walks the original arguments only, which are
+# shifted away after the loop. A plugin with no --state after it completes
+# with state "" at the next option or at the end.
 argument_count=$#
 for argument do
 	if [ -z "${awaited_option}" ]; then
+		if [ -n "${entry_kind}" ] && [ "${argument}" != --state ]; then
+			set -- "$@" "${entry_kind}" "${entry_value}" ''
+			entry_kind='' entry_value=''
+		fi
 		take_option "${argument}"
 		continue
 	fi
 	take_value "${awaited_option}" "${argument}"
 	awaited_option=''
 	[ "${is_entry_complete}" = true ] || continue
-	set -- "$@" "${entry_kind}" "${entry_value}" "${entry_reason}"
-	entry_kind='' entry_value='' entry_reason=''
+	set -- "$@" "${entry_kind}" "${entry_value}" "${entry_state}"
+	entry_kind='' entry_value='' entry_state=''
 done
+if [ -n "${entry_kind}" ]; then
+	set -- "$@" "${entry_kind}" "${entry_value}" ''
+fi
 finish_parse
 shift "${argument_count}"
 

@@ -30,16 +30,16 @@ The Agent call returns `PreToolUse:Agent hook error:` with a reason starting `fl
 
 ## Step-10 re-plans
 
-A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the reason step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled after approval` when it no longer lists it. It drops the plugin, except an invalid framework plugin, which stays in the plan. Where the plugin goes:
+A re-plan from step 10 for a `PLUGIN` denial gives the named plugin the `--state` step 2's re-run shows: `invalid` when it names the plugin invalid, `uninstalled` when it no longer lists it. It drops the plugin, except an invalid framework plugin, which stays in the plan. Where the plugin goes:
 
-- **A standard or procedure plugin:** to `--skip`, with that reason.
-- **A framework plugin named `invalid`:** it stays as `--framework '<name>' --reason invalid`, with `--replan invalid`.
-- **A framework plugin `uninstalled after approval`:** re-plan the part at step 7 without it, as step 10's `PLUGIN` bullet above sets for a dropped plugin, its language plugin's reason saying the framework has no installed plugin (step 5).
+- **A standard or procedure plugin:** to `--skip`, with that `--state`.
+- **A framework plugin named `invalid`:** it stays as `--framework '<name>' --state invalid`, with `--replan invalid`.
+- **A framework plugin `uninstalled`:** re-plan the part at step 7 without it, as step 10's `PLUGIN` bullet above sets for a dropped plugin, under its language plugin as step 5 sets for a framework with no installed plugin.
 - **A language plugin:** never re-planned; step 10's `PLUGIN` bullet above stops the part, its frameworks dropped with it.
 
-Then, by the plan's step-10 reasons:
+Then, by the plan's step-10 states:
 
 - **`invalid`:** add `--replan invalid` and pipe its renderer into `open-gate.sh --show-only` (SKILL.md's 7.2); then as SKILL.md's Never (a `--replan invalid` plan) sets.
-- **`uninstalled after approval`, for a dropped standard or procedure plugin whose description still matches the task** (as step 5 sets): add `--replan stop-recommended`. Never for a framework plugin: one dropped as `uninstalled after approval` is re-planned under its language plugin as step 5 sets, with no stop recommended.
+- **`uninstalled`, for a dropped standard or procedure plugin whose description still matches the task** (as step 5 sets): add `--replan stop-recommended`. Never for a framework plugin: one dropped as `uninstalled` is re-planned under its language plugin as step 5 sets, with no stop recommended.
 - **A denial naming `CONTEXT`,** with `PLUGIN` or not: no re-plan; step 10's `CONTEXT` bullet above stops that dispatch. A `CONTEXT-STALE` denial with no `CONTEXT` is re-planned with the fingerprint, as step 10's `CONTEXT-STALE` bullet above sets.
 - **Any other re-plan:** no `--replan`; the one-plan question, `--plans 1`.

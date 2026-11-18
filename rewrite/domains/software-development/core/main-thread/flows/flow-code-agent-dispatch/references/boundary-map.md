@@ -2,7 +2,7 @@
 
 - **The concern goes to its owner:** load the owner for it.
 - **A non-owner is still loaded for a concern of its own** the task also touches: the half a row leaves it, or a concern no row lists. A shared concern alone never pulls it in.
-- **A standard or procedure plugin left out by a row** goes into `--skip` with the reason *(<concern>: owned by `<owner>`)*. A language or framework plugin is never left out by a row: it keeps its own form of the concern.
+- **A standard or procedure plugin left out by a row** goes into `--skip`. A language or framework plugin is never left out by a row: it keeps its own form of the concern.
 
 | Concern | Owner | What the others keep |
 |---|---|---|

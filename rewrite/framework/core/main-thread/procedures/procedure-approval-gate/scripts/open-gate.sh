@@ -33,7 +33,8 @@ Options:
   --effort FOLDER   the absolute effort folder the gate belongs to, as
                     effort.sh start printed, under
                     \${CRUCIBLE_HOME:-\$HOME/.crucible}/efforts/; where
-                    the answer is recorded: see gate-answer-hook.sh --help
+                    the answer is recorded: see gate-answer-hook.sh --help;
+                    pass it only when a script reads the gate's answer
   --show-only       open a gate that shows the plan and asks nothing: a plain
                     card, its question not held; takes no --label or --effort
 

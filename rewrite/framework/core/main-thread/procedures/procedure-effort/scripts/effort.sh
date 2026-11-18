@@ -277,7 +277,7 @@ run_start() {
 	effort=${folder}
 	started_folder=${folder}
 	body_file=$(mktemp) || install_fault 'mktemp failed; expected a writable temp folder; try checking TMPDIR'
-	printf '{"format":1}\n' >"${body_file}"
+	printf '{}\n' >"${body_file}"
 	append_event effort.opened
 	started_folder=''
 	printf 'EFFORT: %s\n' "${folder}"
@@ -381,8 +381,7 @@ count_id_holders() {
 
 # pause, complete, drop and reopen: moves the effort with event type $1 to
 # the state effort_type_states gives it. The move is checked here for a clear
-# refusal, and again by the guard under the events lock, so two moves never
-# race.
+# refusal, and again by the guard under the events lock.
 run_move() {
 	event_type=$1
 	shift
@@ -401,8 +400,8 @@ run_move() {
 		exit "${BAD_MOVE_EXIT}"
 	fi
 	body_file=$(mktemp) || install_fault 'mktemp failed; expected a writable temp folder; try checking TMPDIR'
-	jq -nc --arg from "${current_state}" '{from: $from}' >"${body_file}" </dev/null ||
-		install_fault 'jq failed building the move; expected jq 1.6+; try brew install jq (macOS) or the distro jq package'
+	printf '{}\n' >"${body_file}" ||
+		install_fault 'writing the move failed; expected a writable temp folder; try checking TMPDIR'
 	append_event "${event_type}"
 	printf 'STATE: %s\nEVENT: %s\n' "${target}" "${event_file}"
 	[ "${target}" = open ] || start_metrics_harvest

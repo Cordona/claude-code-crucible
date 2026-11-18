@@ -1,6 +1,6 @@
 # An effort's git settings, kept as settings.set events: the identity its
-# worker commits are authored and signed with, whether the stop hook pushes
-# them, and the remote. A module: load it with jq -L <this folder> and
+# worker commits are authored and signed with and whether the stop hook
+# pushes them. A module: load it with jq -L <this folder> and
 # include "settings".
 # Each *_problems def prints a list of "<field> <problem>; expected <x>"
 # lines, empty when its input fits. $names maps each field to the name a
@@ -22,7 +22,7 @@ def settings_max_key_chars: 2000;
 def settings_file_names: {
 	identity: "identity", name: "identity.name", email: "identity.email",
 	signing: "identity.signing", format: "identity.signing.format", key: "identity.signing.key",
-	auto_push: "auto_push", remote: "remote"};
+	auto_push: "auto_push"};
 
 # A control character, or a line or paragraph separator.
 def settings_has_control: test("[\u0000-\u001f\u007f\u2028\u2029]");
@@ -110,10 +110,9 @@ def settings_candidate_problems($names):
 # The settings object's shape, as a reader checks it.
 def settings_shape_problems($names):
 	if type != "object" then "the settings are a JSON \(type); expected an object"
-	else settings_unknown_keys(["identity", "auto_push", "remote"]; "the settings object"),
+	else settings_unknown_keys(["identity", "auto_push"]; "the settings object"),
 		(if has("identity") then .identity | settings_identity_problems($names) else "\($names.identity) is missing; expected an object" end),
-		(if (.auto_push | type) == "boolean" then empty else "\($names.auto_push) is \(.auto_push | tojson); expected true or false" end),
-		(if .remote == settings_remote then empty else "\($names.remote) is \(.remote | tojson); expected \(settings_remote | tojson)" end)
+		(if (.auto_push | type) == "boolean" then empty else "\($names.auto_push) is \(.auto_push | tojson); expected true or false" end)
 	end;
 
 # The settings object as a writer checks it: its shape, then the length caps.
@@ -128,7 +127,7 @@ def settings_lines:
 	"SIGNING_FORMAT=\(.identity.signing.format // "")",
 	"SIGNING_KEY=\(.identity.signing.key // "")",
 	"AUTO_PUSH=\(if .auto_push then "yes" else "no" end)",
-	"REMOTE=\(.remote)";
+	"REMOTE=\(settings_remote)";
 
 # An SSH key's fingerprint as a label shows it: its hash name and the first
 # 12 characters of its hash, 72 bits, so two keys' labels never match.

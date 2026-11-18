@@ -34,7 +34,7 @@ Run by the main thread. After a compaction, an interruption or a new session, th
 
 ## Steps
 
-`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-resume/views"` (its `lines.jq`); its lines take `--effort '<effort folder>'` once step 1 found it. The install line for `<skill>`: show the line `skill_not_installed`, with `--arg skill '<skill>'`, and stop. A skill this procedure loads that the Skill tool can't load: its install line.
+`<views>` is `"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-resume/views"` (its `lines.jq`). The install line for `<skill>`: show the line `skill_not_installed`, with `--arg skill '<skill>'`, and stop. A skill this procedure loads that the Skill tool can't load: its install line.
 
 `<grill.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-grill/scripts/grill.sh"`, `<settings.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-git-setup/scripts/settings.sh"` and `<seats.sh>` is `sh "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/procedure-seat-run/scripts/seats/seats.sh"`; `grill.sh`'s help is `<grill.sh> list --help`. A `--help` that exits non-zero, or prints no `usage:` line: for `grill.sh`, the install line for `procedure-grill`; for `settings.sh` or `seats.sh`, show the human its stderr and go on without that read.
 

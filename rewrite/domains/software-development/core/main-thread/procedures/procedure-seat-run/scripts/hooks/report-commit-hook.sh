@@ -7,7 +7,6 @@
 # settings ask for it, and records the report as one build.committed or
 # test.committed event, which also sets the seat idle. A tester's plan draft
 # commits nothing: it is checked and recorded as one test-plan.made event.
-# A commit that finishes a merge is also a seat.conflicts.resolved event.
 # The draft is renamed to report.committing.json while it is committed, so a
 # run that dies part way is finished or undone by the next one. A report
 # that does not fit blocks the stop with the checker's lines, MAX_BLOCKS
@@ -99,8 +98,8 @@ seat that holds the agent goes on; every other stop goes ahead.
 
 The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
 (iteration.sh's REPORT); C is ${COMMITTING_FILE} beside it.
-  1 recover  C left by a run that died: an event whose draft is C's
-             sha256 exists: C goes; a crucible(<kind>) commit of the
+  1 recover  C left by a run that died: an event of the seat whose body
+             is C's JSON exists: C goes; a crucible(<kind>) commit of the
              seat on its branch that no event's commit holds: its event is
              written from C (step 6), C goes, and with no D the stop goes
              ahead; else C moves back to D (a D already there is kept)
@@ -109,11 +108,12 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
              included, holds a leftover conflict marker (a misfit naming
              them), then that ${SCOPE_RULE##*/} (${SCOPE_RULE%/*}/)
              finds no changed test file (a misfit naming them); a misfit appends
-             stop.blocked {seat, agent_id, hook_event, block, reason} and
+             stop.blocked {agent_id, hook_event, reason} and
              blocks; the misfit after ${MAX_BLOCKS} blocks of this agent since its
              seat's last result (build.committed; a tester's plan or
              test event) or its last stop.gave-up
-             appends stop.gave-up and sets the seat gave-up
+             appends stop.gave-up {agent_id, hook_event} and sets the
+             seat gave-up
   3 rename   D to C
   4 stage    the worktree's changes, .gitignore applied; none and no
              merge under way: no commit
@@ -122,26 +122,21 @@ The report draft D is <effort>/drafts/agents/<seat>/${REPORT_FILE}
              with AUTO_PUSH=yes push.sh --effort --seat --session --timeout
              the seconds left of ${HOOK_LIMIT} but ${PUSH_MARGIN} (under ${MIN_PUSH_SECONDS}: no push, a fault)
   6 record   build.committed: body C's JSON, facts seat, dispatch
-             (seats.sh get's), commit (sha or null), draft (C's sha256);
-             iteration: the commit's Iteration with its Agent-Seat, else
-             the seat's current one; then C goes; a commit with two
-             parents then appends seat.conflicts.resolved {seat, with (the
-             second parent), conflicts (git merge-tree's conflicting
-             paths), commit}, same iteration
+             (seats.sh get's), commit (sha or null);
+             iteration: the commit's Iteration, else the seat's current
+             one, ITERATION less one (none when 0); then C goes
 
 A tester, after step 1: P (${PLAN_FILE} beside D) alone is checked
 (pruned, ${PLAN_CHECKER}, no mutation copy, no worktree change) and
-recorded as test-plan.made {P; seat, dispatch, commit null, draft}; P
+recorded as test-plan.made {P; seat, dispatch}; P
 goes, no commit. D alone: steps 2 to 6 with ${CHECKER} --kind test,
 ${TESTER_SCOPE_RULE##*/}, no mutation copy; a crucible(test) commit pushed
 --seat its build seat; test.committed + test_plan (its newest
-test-plan.made's seq). Both or neither: a misfit.
+test-plan.made's seq), no iteration. Both or neither: a misfit.
 
 The hook_event is the event JSON's cksum, the same for every hook of that
-event. stop.* and the seat's faults carry the seat's current iteration:
-iteration.sh's ITERATION less one (a tester's whole), none when 0. Every
-fault, an unsigned commit and a failed or skipped push included, is a
-fault.raised by events.sh fault {seat, agent_id, hook_event, what}, on
+event. Every fault, an unsigned commit and a failed or skipped push
+included, is a fault.raised by events.sh fault {seat, what}, on
 stderr before the effort is known or when it can't be written. Nothing is
 read or moved through a symbolic link at the draft or a folder from the
 effort to it.
@@ -153,7 +148,7 @@ exit codes:
   0  done, whatever the outcome
   1  wrong command line (never 2: Claude Code reads 2 as a block)
 
-needs: POSIX sh, jq 1.6+, git 2.38+, cksum, sha256sum or shasum;
+needs: POSIX sh, jq 1.6+, git 2.38+, cksum;
 ../seats/seats.sh and ../seats/iteration.sh from this script's folder;
 procedure-git-worktree's commit/{commit-input,commit-message,commit}.sh
 and push/push.sh and procedure-git-setup's settings.sh
@@ -210,9 +205,8 @@ log_fault() {
 	fault_body="${work_dir}/fault.json"
 	set -- --effort "${effort}" --by "${PROG}" --body-file "${fault_body}"
 	[ -z "${session_id}" ] || set -- "$@" --session "${session_id}"
-	[ -z "${stamp}" ] || set -- "$@" --iteration "${stamp}"
-	if jq -nc --arg seat "${seat}" --arg agent "${agent_id}" --arg event "${event_id}" --arg what "${fault_what}" \
-		'{seat: $seat, agent_id: $agent, hook_event: $event, what: $what}' >"${fault_body}" 2>/dev/null &&
+	if jq -nc --arg seat "${seat}" --arg what "${fault_what}" \
+		'{seat: $seat, what: $what}' >"${fault_body}" 2>/dev/null &&
 		sh "${events_script}" fault "$@" >/dev/null 2>&1 </dev/null; then
 		return 0
 	fi
@@ -258,7 +252,6 @@ check_tools() {
 	need_tool jq 'jq 1.6+'
 	need_tool git 'git 2.38+'
 	need_tool cksum cksum
-	command -v sha256sum >/dev/null 2>&1 || need_tool shasum 'sha256sum or shasum'
 }
 
 # Lets the stop go ahead when command $1 is not on PATH, expecting $2.
@@ -392,8 +385,8 @@ find_plan_checker() {
 	[ -f "${plan_checker}" ] || fault "${plan_checker} is missing; expected the code-tester agent's report skill"
 }
 
-# Sets report, committing and iteration from iteration.sh, and stamp, the
-# seat's current iteration.
+# Sets report, committing and iteration from iteration.sh, and a builder's
+# stamp, the seat's current iteration.
 read_iteration() {
 	shown_worktree=$(printable "${worktree}")
 	[ -n "${worktree}" ] && [ -d "${worktree}" ] || fault "seat ${seat}'s worktree ${shown_worktree} is not a folder; expected its git worktree"
@@ -412,11 +405,9 @@ read_iteration() {
 		*) ;;
 	esac
 	committing="${report%/*}/${COMMITTING_FILE}"
-	# A builder's ITERATION is the one its next commit opens; a tester's is
-	# its build seat's current one, which it joins.
+	# A builder's ITERATION is the one its next commit opens.
 	current=$((iteration - 1))
-	[ "${role}" != tester ] || current=${iteration}
-	[ "${current}" -lt 1 ] || stamp="${seat}:${current}"
+	[ "${role}" = tester ] || [ "${current}" -lt 1 ] || stamp=${current}
 	shown_report=$(printable "${report}")
 	# shellcheck disable=SC2310 # its status is the answer; it checks each step itself
 	no_link_below "${effort}" "${report}" ||
@@ -462,25 +453,6 @@ no_link_below() {
 	done
 }
 
-# Sets draft to the sha256 of the committing file.
-hash_committing() {
-	hash_file "${committing}"
-}
-
-# Sets draft to the sha256 of file $1.
-hash_file() {
-	if command -v sha256sum >/dev/null 2>&1; then
-		draft=$(sha256sum <"$1" 2>/dev/null | cut -d ' ' -f 1) || draft=''
-	else
-		draft=$(shasum -a 256 <"$1" 2>/dev/null | cut -d ' ' -f 1) || draft=''
-	fi
-	case ${draft} in
-		*[!0-9a-f]* | '') fault "could not hash $1; expected sha256sum or shasum on PATH" ;;
-		*) ;;
-	esac
-	[ "${#draft}" -eq 64 ] || fault "the sha256 of $1 is not 64 hex digits"
-}
-
 # Sets events_json to every event of the effort, oldest first.
 slurp_events() {
 	run sh "${events_script}" slurp --effort "${effort}"
@@ -491,11 +463,10 @@ slurp_events() {
 # Step 1: finishes or undoes what a run that died left in the committing file.
 recover() {
 	[ -f "${committing}" ] || return 0
-	hash_committing
 	slurp_events
-	recorded=$(printf '%s\n' "${events_json}" | jq -r --arg draft "${draft}" --arg type "${commit_type}" \
-		'[.[] | select(.type == $type and .draft == $draft)] | length') ||
-		fault 'jq could not read the events events.sh slurp printed'
+	recorded=$(printf '%s\n' "${events_json}" | jq -r --slurpfile c "${committing}" --arg type "${commit_type}" --arg seat "${seat}" \
+		'[.[] | select(.type == $type and .seat == $seat and .body == $c[0])] | length') ||
+		fault "jq could not read the events events.sh slurp printed or ${committing}"
 	if [ "${recorded}" -gt 0 ]; then
 		rm -f -- "${committing}" || fault "could not remove ${committing}"
 		return 0
@@ -662,13 +633,10 @@ check_unchanged() {
 
 # Records the plan draft as test-plan.made, then removes it.
 record_plan() {
-	hash_file "${plan}"
-	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg draft "${draft}" \
-		'{seat: $seat, dispatch: $dispatch, commit: null, draft: $draft}') ||
+	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" \
+		'{seat: $seat, dispatch: $dispatch}') ||
 		fault 'jq could not build the event facts'
-	set -- --type test-plan.made --body-file "${plan}" --facts "${facts}"
-	[ -z "${stamp}" ] || set -- "$@" --iteration "${stamp}"
-	append "$@"
+	append --type test-plan.made --body-file "${plan}" --facts "${facts}"
 	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
 	rm -f -- "${plan}" || fault "could not remove ${plan} after recording it"
 	allow
@@ -697,21 +665,19 @@ block_or_give_up() {
 # ends its wait once the seat is not working, and must find the event then.
 give_up() {
 	# shellcheck disable=SC2310 # its status is the answer; a failure is logged below
-	append_stop stop.gave-up "${checker_text}" || log_fault 'could not record the stop.gave-up event; the seat gives up'
+	append_stop stop.gave-up || log_fault 'could not record the stop.gave-up event; the seat gives up'
 	run sh "${own_dir}/../seats/seats.sh" status --effort "${effort}" --seat "${seat}" --status gave-up
 	[ "${child_rc}" -eq 0 ] || child_fault 'seats.sh status gave-up'
 	allow
 }
 
-# Appends a stop event of type $1 with reason $2; fails when it is not written.
+# Appends a stop event of type $1, with reason $2 when given; fails when it
+# is not written.
 append_stop() {
 	stop_body="${work_dir}/stop.json"
-	jq -nc --arg seat "${seat}" --arg agent "${agent_id}" --arg event "${event_id}" \
-		--argjson block "${blocks}" --arg reason "$2" \
-		'{seat: $seat, agent_id: $agent, hook_event: $event, block: $block, reason: $reason}' >"${stop_body}" || return 1
-	set -- --type "$1" --body-file "${stop_body}"
-	[ -z "${stamp}" ] || set -- "$@" --iteration "${stamp}"
-	append "$@"
+	jq -nc --arg agent "${agent_id}" --arg event "${event_id}" --arg reason "${2-}" \
+		'{agent_id: $agent, hook_event: $event} + (if $reason == "" then {} else {reason: $reason} end)' >"${stop_body}" || return 1
+	append --type "$1" --body-file "${stop_body}"
 	[ "${child_rc}" -eq 0 ] || {
 		log_child_fault 'events.sh append'
 		return 1
@@ -745,7 +711,6 @@ elapsed() {
 # Step 3: the checked report becomes the one being committed.
 rename_report() {
 	mv -f -- "${report}" "${committing}" || fault "could not rename ${report} to ${committing}"
-	hash_committing
 }
 
 # Steps 4 and 5: commits the worktree's changes, pushes the commit when the
@@ -770,9 +735,6 @@ commit_work() {
 	case ${child_rc} in
 		0)
 			new_commit=$(printf '%s\n' "${child_out}" | tail -n 1)
-			# The commit opened its iteration: what follows belongs to it.
-			commit_stamp "${new_commit}"
-			stamp=${event_stamp}
 			log_unsigned
 			[ "${auto_push}" != yes ] || push_branch
 			;;
@@ -831,11 +793,10 @@ push_branch() {
 # record that fails keeps the file, so the next run's recovery writes it.
 record() {
 	recorded_commit=$1
-	[ -n "${draft}" ] || hash_committing
 	event_stamp=${stamp}
-	[ -z "${recorded_commit}" ] || commit_stamp "${recorded_commit}"
-	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "${recorded_commit}" --arg draft "${draft}" \
-		'{seat: $seat, dispatch: $dispatch, commit: (if $commit == "" then null else $commit end), draft: $draft}') ||
+	[ -z "${recorded_commit}" ] || [ "${role}" = tester ] || commit_stamp "${recorded_commit}"
+	facts=$(jq -nc --arg seat "${seat}" --arg dispatch "${dispatch}" --arg commit "${recorded_commit}" \
+		'{seat: $seat, dispatch: $dispatch, commit: (if $commit == "" then null else $commit end)}') ||
 		fault 'jq could not build the event facts'
 	[ "${role}" != tester ] || add_test_plan
 	set -- --type "${commit_type}" --body-file "${committing}" --facts "${facts}"
@@ -843,7 +804,6 @@ record() {
 	append "$@"
 	[ "${child_rc}" -eq 0 ] || child_fault 'events.sh append'
 	rm -f -- "${committing}" || fault "could not remove ${committing} after recording it"
-	[ -z "${recorded_commit}" ] || record_resolution "${recorded_commit}"
 }
 
 # Adds to facts test_plan, the seq of the seat's newest test-plan.made, the
@@ -855,62 +815,19 @@ add_test_plan() {
 		fault 'jq could not read the events events.sh slurp printed'
 }
 
-# Appends seat.conflicts.resolved when commit $1 is a merge of two parents;
-# the conflicts are what git merge-tree finds between them. A failure is a
-# fault: the build is recorded already.
-record_resolution() {
-	run git -c core.fsmonitor=false -C "${worktree}" show -s --no-show-signature --format='%P' "$1"
-	[ "${child_rc}" -eq 0 ] || {
-		log_child_fault 'git show'
-		return 0
-	}
-	first_parent=${child_out%% *}
-	second_parent=${child_out#* }
-	case ${second_parent} in
-		"${child_out}" | *' '*) return 0 ;;
-		*) ;;
-	esac
-	merge_tree_rc=0
-	git -c core.fsmonitor=false -C "${worktree}" merge-tree --write-tree --name-only --no-messages -z \
-		"${first_parent}" "${second_parent}" >"${work_dir}/merge-tree" 2>"${work_dir}/stderr" </dev/null || merge_tree_rc=$?
-	[ "${merge_tree_rc}" -le 1 ] || {
-		child_rc=${merge_tree_rc}
-		log_child_fault 'git merge-tree'
-		return 0
-	}
-	resolution_body="${work_dir}/resolution.json"
-	jq -Rs --arg seat "${seat}" --arg with "${second_parent}" --arg commit "$1" \
-		'{seat: $seat, with: $with, conflicts: (split("\u0000")[1:] | map(select(. != ""))), commit: $commit}' \
-		"${work_dir}/merge-tree" >"${resolution_body}" 2>/dev/null || {
-		log_fault 'jq could not build the seat.conflicts.resolved body'
-		return 0
-	}
-	set -- --type seat.conflicts.resolved --body-file "${resolution_body}"
-	[ -z "${event_stamp}" ] || set -- "$@" --iteration "${event_stamp}"
-	append "$@"
-	[ "${child_rc}" -eq 0 ] || log_child_fault 'events.sh append seat.conflicts.resolved'
-}
-
-# Sets event_stamp from commit $1's Iteration and Agent-Seat trailers.
+# Sets event_stamp from commit $1's Iteration trailer.
 commit_stamp() {
 	run git -c core.fsmonitor=false -C "${worktree}" log -1 \
-		--format='%(trailers:key=Iteration,valueonly,separator=%x2C)%x09%(trailers:key=Agent-Seat,valueonly,separator=%x2C)' "$1"
+		--format='%(trailers:key=Iteration,valueonly,separator=%x2C)' "$1"
 	[ "${child_rc}" -eq 0 ] || child_fault 'git log'
-	commit_iteration=${child_out%%"${tab}"*}
-	commit_seat=${child_out#*"${tab}"}
-	event_stamp="${commit_seat}:${commit_iteration}"
-	case ${commit_iteration} in
-		'' | 0* | *[!0-9]*) event_stamp='' ;;
-		*) ;;
+	event_stamp=${child_out}
+	case ${event_stamp} in
+		'' | 0* | *[!0-9]*) ;;
+		*) return 0 ;;
 	esac
-	case ${commit_seat} in
-		'' | *[!a-z0-9-]*) event_stamp='' ;;
-		*) ;;
-	esac
-	[ -z "${event_stamp}" ] || return 0
-	shown_iteration=$(printable "${commit_iteration}")
-	shown_seat=$(printable "${commit_seat}")
-	log_fault "commit $1 has Iteration ${shown_iteration} and Agent-Seat ${shown_seat}; expected a number from 1 and a seat; the event has no iteration"
+	event_stamp=''
+	shown_iteration=$(printable "${child_out}")
+	log_fault "commit $1 has Iteration ${shown_iteration}; expected a number from 1; the event has no iteration"
 }
 
 # An unexpected failure lets the stop go ahead too, logged.
@@ -926,7 +843,7 @@ on_exit() {
 }
 
 started_seconds=$(date '+%s' 2>/dev/null) || started_seconds=''
-work_dir='' usage_failed=no effort='' seat='' agent_id='' session_id='' event_id='' stamp='' draft='' plan=''
+work_dir='' usage_failed=no effort='' seat='' agent_id='' session_id='' event_id='' stamp='' plan=''
 trap on_exit EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

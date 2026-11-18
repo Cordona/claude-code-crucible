@@ -50,11 +50,11 @@ the last two); fixtures.source captured (with from), hand-written (with
 why) or existing; covered_by a T- or M- id, <file>: <test name> or
 nothing: <why>; blocker {kind: request_unclear or gate_red, detail}.
 no_tests is given iff add, modify and remove are all empty. With neither
-blocker nor no_tests, behaviours, baseline and run are required; a
-baseline result fail goes with a gate_red blocker, or with no blocker
-when modify or remove repairs the tests it ran. Texts are one line, with
-no length cap; those a card shows (blocker.detail, no_tests, behaviours
-text, add why and breaks_on, modify changes and keeps, remove why,
+blocker nor no_tests, behaviours, baseline and run are required;
+baseline pass or fail; a baseline fail goes with a gate_red blocker, or
+with no blocker when modify or remove repairs the tests it ran. Texts are one line, with
+no length cap; those the human reads (blocker.detail, no_tests,
+behaviours text, add why and breaks_on, modify changes and keeps,
 untested case, reason, risk and category) name no id like B-1. at is
 path:line relative to the worktree, a line of a file in it. The shape is
 set out in the ${SKILL} skill and references/test-plan.json;

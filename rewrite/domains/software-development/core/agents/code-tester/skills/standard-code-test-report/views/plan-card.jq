@@ -27,7 +27,7 @@ def plan_no_tests:
 # A failing baseline with no blocker: the plan repairs as many tests as its
 # modify and remove entries name.
 def plan_repair:
-	if (.blocker | type) != "object" and (.baseline | type) == "object" and .baseline.result == "fail" then
+	if (.blocker | type) != "object" and .baseline == "fail" then
 		"**Existing tests:** fail; this plan repairs \(plan_items("modify") + plan_items("remove") | length)"
 	else "" end;
 
