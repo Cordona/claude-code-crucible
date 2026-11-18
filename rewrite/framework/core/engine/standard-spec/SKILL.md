@@ -44,14 +44,4 @@ Each is a `## ` heading, in this order:
 ## Form
 
 - **Free-form Markdown with the five headings,** each version written once to a `--label spec` effort draft, allocated as `crucible` sets for drafts. A revision is a new draft; the newest is the current one.
-
-## Self-check before the approval ask
-
-Check each draft before it goes to its gate; one that fails is fixed in a new draft.
-
-1. The five sections are `## ` headings, in order.
-2. No how (Never).
-3. No tool or technology choice, unless the human requires it, then in Constraints.
-4. None of the project's own rules.
-5. Each Done-when item is something the human can check.
-6. Its size fits the work.
+- **Under each heading, only that section's substance:** nothing restated from another section.

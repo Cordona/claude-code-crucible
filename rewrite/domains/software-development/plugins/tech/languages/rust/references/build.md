@@ -26,11 +26,3 @@ The baseline is steps 1, 2 and 3: each warning, error and finding with its count
 4. The existing tests (gate `test`): `cargo test --offline`.
 
 A build (`cargo build --release`) is not a per-change gate.
-
-## Self-check before reporting
-
-1. The toolchain was settled in the Toolchain order, and library or binary read from `Cargo.toml`.
-2. No `unwrap`, `expect` or `panic!` in library code.
-3. No lossy `as` cast at a boundary.
-4. Every `unsafe` block sits behind a safe API, with its `# Safety` invariants written.
-5. No `std::sync::Mutex` or `RefCell` guard is held across `.await`.

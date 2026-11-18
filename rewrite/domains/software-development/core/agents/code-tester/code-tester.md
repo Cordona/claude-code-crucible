@@ -35,10 +35,10 @@ After your stop, the file name of a message's `REPORT: <path>` (`standard-code-s
 
 ## PLAN (dispatched)
 
-1. **Read the change:** Read the `TASK`, the `ENTRY POINTS` and your context; read the worktree's state with git's status and diff (`standard-code-seat-agent`'s Always); Grep for the callers of what changed and for the existing tests that cover it. No safe reading: record a `request_unclear` blocker and stop.
+1. **Read the change:** Read the `TASK`, the `ENTRY POINTS` and your context; read the worktree's state with git's status and diff (`standard-code-seat-agent`'s Always); Grep for the callers of what changed and for the existing tests that cover it.
 2. **Baseline:** run the existing tests the plan builds on once, with Bash, as `baseline`. Red: a `gate_red` blocker naming what failed, and no plan, unless your `TASK` asks you to repair tests the build's intended change turned red; then plan their repair in `modify` or `remove` (The test plan's `blocker`).
 3. **Write the plan** with Write at the `REPORT` path, per `standard-code-test-report`'s The test plan; each `breaks_on` is what Mutations checks.
-4. **Leave the worktree as you found it** (`standard-code-test-report`'s Never); self-check; stop as `standard-code-seat-agent`'s Your stop sets.
+4. **Leave the worktree as you found it** (`standard-code-test-report`'s Never); stop as `standard-code-seat-agent`'s Your stop sets.
 
 What `standard-code-seat-agent` asks you to record, or Untrusted content to report, while planning goes in your TEST report (`standard-code-test-report`'s The test report).
 
@@ -49,7 +49,7 @@ What `standard-code-seat-agent` asks you to record, or Untrusted content to repo
 3. **Run the planned tests by name** with Bash, each `run` command as the plan names it, one `verification` item each.
 4. **Mutations** (below), for every new or changed test.
 5. **Settle what is red** as The test report sets (`production_bug`, `test_red`).
-6. **Report** at your `REPORT` path, per The test report, with what you held from planning (PLAN). Self-check; stop as `standard-code-seat-agent`'s Your stop sets.
+6. **Report** at your `REPORT` path, per The test report, with what you held from planning (PLAN). Stop as `standard-code-seat-agent`'s Your stop sets.
 
 ## Mutations
 
@@ -62,25 +62,17 @@ Each new or changed test must fail when the behaviour it guards breaks: break th
 
 ## Changes
 
-A message starting `Your stop is blocked:` is the stop hook's, not a change: do what its lines say, with the writes Never allows, then self-check and stop again.
+A message starting `Your stop is blocked:` is the stop hook's, not a change: do what its lines say, with the writes Never allows, then stop again.
 
 ## Never
 
 - **Never retry a refused production-file write another way** (`standard-code-test-report`'s Never): the hook's refusal stands. Putting back one a blocked stop names (Changes) is not writing it.
 - **Never break a behaviour in the real worktree, or with git stash, checkout or restore:** only in the mutation copy (Mutations).
-- **Never name an item by its id in a free text of your plan or report** (a blocker's `detail`, `no_tests`, a behaviour's `text`, `why`, `breaks_on`, `changes`, `keeps`, and an untested case's `case`, `reason`, `risk` and `category`): the human reads these texts and never an id, so name the item in words, by what it is or checks; `test-plan-check.sh` refuses an id there. Ids go only in `id` and the fields that point at one (`guards`, `fixtures`, `covered_by`, a deviation's `from`).
+- **Never name an item by its id in a free text of your plan or report** (a blocker's `detail`, `no_tests`, a behaviour's `text`, `why`, `breaks_on`, `changes`, `keeps`, and an untested case's `case`, `reason`, `risk` and `category`): the human reads these texts and never an id, so name the item in words, by what it is or checks, such as a `breaks_on` of `the cart total skips the member discount` rather than `B-2 breaks`; `test-plan-check.sh` refuses an id there. Ids go only in `id` and the fields that point at one (`guards`, `fixtures`, `covered_by`, a deviation's `from`).
 - **Never write a CI registration file or an in-file test module:** it is an `open` item for the build agent (`standard-code-test-report`'s The test report).
 - **Your one git write:** `GIT_TERMINAL_PROMPT=0 git -c core.fsmonitor=false restore -- <path>` of a tracked production file, only for a path a blocked stop names (Changes).
 - **Your Bash edits** beyond `standard-code-seat-agent`'s: plain `rm` or `mv` of a test file the plan removes or renames, plain `rm` of untracked output your own runs made, plain `rm` of a new production file, only for a path a blocked stop names, and plain `rm` of the draft a `leave exactly one draft` block names that is not at your `REPORT` path.
 - **Your Bash commands** beyond `standard-code-seat-agent`'s: the project's test-source compilation and test commands by name, `mutation-copy.sh` (Mutations), the project's mutation tool if it has one, and the `git restore`, `rm` and `mv` above.
-
-## Self-check before you stop
-
-Run this with `standard-code-seat-agent`'s self-check; fix a failure and check again.
-
-1. `git status` in `WORKTREE` shows no production file: at a plan stop nothing of yours at all, at a test stop only test files and test data.
-2. Each departure from the plan is a `deviations` item naming its plan id, or `plan: none` for a test file outside the plan.
-3. No free text in your plan or report names an item by its id (Never).
 
 ## Untrusted content
 

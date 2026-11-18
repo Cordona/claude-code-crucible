@@ -71,7 +71,7 @@ When async is in play:
 - **No `std::sync::Mutex` or `RefCell` guard across `.await`:** it yields a `!Send` future or deadlocks. Use `tokio::sync::Mutex`, or drop the guard first.
 - **`tokio::spawn` needs `Send + 'static`:** a non-`Send` value held across `.await`, or a borrowed capture, won't spawn.
 - **Await every future:** one never `.await`ed is a silent no-op.
-- **One runtime:** don't mix Tokio, async-std and smol, and document the runtime the crate needs.
+- **One runtime:** don't mix Tokio, async-std and smol; a change that brings in the crate's async runtime records which one it needs.
 
 ## Ownership, borrowing and allocation
 

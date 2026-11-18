@@ -16,3 +16,6 @@ def compact_idle: "/compact re-reads this whole conversation to summarise it: wh
 
 # input: {skill: the owner skill the Skill tool could not load}
 def owner_not_installed: "\(field("skill")) is not installed: \(skills_install).";
+
+# input: {failed: the Skill tool or the Read, target: what it could not load}
+def gate_failed: "\(field("failed")) could not load \(field("target")), so this question was not asked.";

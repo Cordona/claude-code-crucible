@@ -47,8 +47,8 @@ Settle it after TypeScript's toolchain, before writing a line. Take each fact fr
 
 ## State
 
-- **Place state as low as it works:** local, then lifted to the nearest common parent, then a server-cache library (such as TanStack Query or SWR) for server data, then the URL for shareable view state; each step up widens what re-renders.
-- **Never keep server data in `useState`:** the server-cache library tracks staleness and refetching.
+- **Place state as low as it works:** local, then lifted to the nearest common parent, then the project's server-cache library (such as TanStack Query or SWR) for server data, then the URL for shareable view state; each step up widens what re-renders.
+- **Keep server data in the project's server-cache library, not in `useState`:** the library tracks staleness and refetching.
 - **Derive state instead of storing it:** a stored copy of what props or state already determine drifts out of step.
 - **Keep a context provider's `value` stable:** a new value each render re-renders every consumer.
 - **Never expect `useState(prop)` to resync:** it seeds once, so change the subtree's `key` on purpose when the entity it shows changes, and React remounts it with fresh state.
@@ -72,7 +72,7 @@ Settle it after TypeScript's toolchain, before writing a line. Take each fact fr
 - **Keep each input either controlled (a `value` with its `onChange`) or uncontrolled, never both:** a `value` without `onChange` freezes the input, and flipping between `value` and `defaultValue` is a bug.
 - **Key list items by a stable identity, never the index,** where the list reorders, inserts, deletes or is virtualized: an index key binds component state to the wrong row.
 - **Build the loading, empty and error states, with error boundaries and Suspense where they fit,** as part of done: async UI without them breaks on the first slow or failed call.
-- **Share one Zod schema between client and server:** both sides then check the same shape.
+- **Where the project uses Zod and owns both the client and the server code, share one schema between them:** both sides then check the same shape.
 - **Map a parse failure to a field-error state built from the schema's issues, never the raw `ZodError` or its default message in the UI:** each error then shows at its field.
 
 ## Render performance

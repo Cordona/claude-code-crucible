@@ -26,7 +26,7 @@ The revision offer and the approval are gates, as SKILL.md's Never and Always se
    - **"Keep it as it is":** nothing changes, and the change that led to the offer is not made (step 5).
    - **A typed answer at the revision gate:** one that asks to revise is "Revise it"; one that declines is "Keep it as it is"; any other: answer it as the turn's last message, and show the revision gate again at the human's next message.
    - **A typed answer at the approval gate that approves the spec as it is:** like any typed answer, it is no approval: show the approval gate again (The spec step 4), its `--approval-plan` run with `--typed-approval`, which prints the line that names the approve option to pick. Never run `<context.sh> spec --approved` without the gate's recorded answer.
-   - **Any other typed answer at the approval gate:** write the change into a new draft, then The spec step 4.
+   - **Any other typed answer at the approval gate:** one that asks for a change or answers an open point: write it into a new draft, then The spec step 4; any other (a question, a remark): answer it as the turn's last message, and show the approval gate again (The spec step 4) at the human's next message.
    - **`NO-SPEC-GATE`:** show the approval gate again (The spec step 4); never copy the draft or work around it.
    - **The human's own "no spec" or "just build it", at any point** (discovery included): The spec step 3 with a short draft, its first `--approval-plan` with `--spec-needed`; in a revision, show the line `spec_needed`, and drafting ends with nothing changed (step 5).
    - **"Stop the work":** the drafts and the docs folder stay in the effort; stop (`stopped: spec not settled`).

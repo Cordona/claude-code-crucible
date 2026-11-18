@@ -1,7 +1,5 @@
 # Conflicting human instructions
 
-Read every entry in full, however large the context; the time it takes is accepted.
-
 ## Read every entry
 
 Read each entry SKILL.md's step 1 gathered, step 4's spec talk added, or step 5 adds, in this order, in full:
@@ -19,6 +17,6 @@ An entry that can't be read (a Read or WebFetch that fails, a tracker read that 
 
 Compare what the human's words ask with what each source says.
 
-- **A contradiction:** the human's words and a source disagree on something that changes the outcome (what is built, what it must do or must not break), or the human's words disagree with most of the context, or two of the human's own statements differ, even on a detail. Ask the human (SKILL.md step 3).
-- **A small disagreement,** never between two of the human's own statements: following the human's words still builds the same thing with the same behaviour and breaks nothing a source requires beyond that one detail (a message's wording, a name, a format), such as a ticket and the human naming a different log message; in doubt over a pure wording detail, it is small. Don't ask: the human's words win, and go into the spec draft.
+- **A contradiction:** the human's words and a source disagree on something that changes the outcome (what is built, what it must do or must not break), whether one source or most of the context says so, or two of the human's own statements differ on something that changes the outcome. Ask the human (SKILL.md step 3).
+- **A small disagreement:** following one side still builds the same thing with the same behaviour and breaks nothing a source requires beyond that one detail (a message's wording, a name, a format), such as a ticket and the human naming a different log message, or the human naming it two ways; in doubt over a pure wording detail, it is small. Don't ask: the human's words win over a source, and the human's later statement over an earlier one; say which won in one sentence of the spec draft.
 - **No disagreement:** go on.

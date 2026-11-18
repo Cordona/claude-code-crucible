@@ -28,6 +28,7 @@ user-invocable: false
 ## Always
 
 - **Write each artifact once, to a file;** a report a hook sends back is fixed in place until it passes, then never changed. Inside an effort, every Markdown artifact the main thread writes goes in the effort's `drafts/` folder, allocated with `crucible.sh new --kind drafts` as `crucible` sets, spec drafts included; a context doc goes where `crucible` sets. Outside an effort, an artifact goes in a file in the session scratchpad.
+- **Match an artifact's length to what the task needs:** cover the substance, with no filler sections, redundant summaries or boilerplate. Where a schema or a script-checked format fixes the shape, that shape holds.
 - **Hand it over by its full absolute path.** A path to a repository file inside a stored artifact may stay repo-relative when every template that prints it joins it to the repository root and prints it whole.
 - **A subagent's report is a file, never its reply's text:** it reaches the main thread as its agent file and flow set (a path in its reply, or a file a hook checks).
 - **A brief passes every artifact it needs by its full absolute path.**
@@ -38,9 +39,3 @@ user-invocable: false
 
 - **`human-view`, not loaded:** its `show.sh` shows this skill's line from `views/lines.jq` (Always).
 - **Tools:** Bash, for that line, on the main thread only.
-
-## Self-check before handing over
-
-1. Each artifact you produced is in a file, written once.
-2. Each path you hand over is full and absolute.
-3. No artifact's text is in your reply, brief or message, unless the human confirmed they want it in the chat.

@@ -27,7 +27,7 @@ readonly REASON_PREFIX='procedure-approval-gate:'
 readonly DENY_REASON="${REASON_PREFIX} this session's gate is pending: its plan has not been relayed as a turn's last message yet, so the question is denied."
 # The record deny when jq can't build the one naming the cause, so a shown
 # gate without its record never lets the question through.
-readonly RECORD_DENY_FALLBACK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-approval-gate: the gate record could not be saved, so the question is denied; the cause is on the hook'\''s stderr; fix it, then ask again."}}'
+readonly RECORD_DENY_FALLBACK='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"procedure-approval-gate: the gate record could not be saved, so the question is denied; the cause is on the hook'\''s stderr, which only the human can read; ask the human to fix it."}}'
 readonly SPACE_LIB="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/crucible/scripts/lib/crucible-space.sh"
 readonly HV_LIB_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/skills/human-view/scripts/lib"
 # The verdict on one owed record: its status (owed or shown) for a gate,
@@ -63,7 +63,7 @@ stdout on a deny (exit 0): one PreToolUse decision for Claude Code,
   with <reason> one of:
   "${DENY_REASON}"
     the gate is not shown yet; it stays owed
-  "${REASON_PREFIX} the gate record could not be saved (<cause>), so the question is denied; <fix>, then ask again."
+  "${REASON_PREFIX} the gate record could not be saved (<cause>), so the question is denied; <fix>."
     the shown gate stays open; a <fix> starting "open the gate again" means
       the gate's record is bad and the gate must be opened again
 stderr on exit 0: notes on a removed gate, an unsaved record or a missing jq,
@@ -117,7 +117,7 @@ handle_jq_missing() {
 			grep -q '"status":"owed"' "${owed_record}" 2>/dev/null || continue
 			recent=$(find "${owed_record}" -prune ! -mmin "+${hv_stale_minutes}" 2>/dev/null) || recent=''
 			[ -n "${recent}" ] || continue
-			printf '%s jq is missing and a pending gate exists, so the question is denied; the hooks need jq 1.6+.\n' "${REASON_PREFIX}" >&2
+			printf '%s jq is missing and a pending gate exists, so the question is denied; ask the human to install jq 1.6+.\n' "${REASON_PREFIX}" >&2
 			trap - EXIT
 			exit 2
 		done
@@ -135,34 +135,34 @@ save_gate_record() {
 	[ -n "${record_effort}" ] || return 0
 	plan_file="${gate_dir}/plan.json"
 	[ -f "${plan_file}" ] && [ ! -L "${plan_file}" ] ||
-		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer'
+		deny_record "no plan file at ${plan_file}" 'show the plan again through open-gate.sh --plan-path and the renderer, then ask again'
 	jq -se 'length == 1 and (.[0] | type) == "object"' "${plan_file}" >/dev/null 2>&1 ||
-		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh'
+		deny_record "${plan_file} is not one JSON object" 'write the plan again and show it through open-gate.sh, then ask again'
 	make_effort_record
 	# The first question's text, as JSON, by which a dashboard answer finds
 	# the record.
 	question=$(printf '%s' "${hook_input}" | jq -c '(.tool_input.questions[0].question | strings) // ""' 2>/dev/null) ||
-		deny_record "jq could not read the question for ${record_path}" 'check jq 1.6+'
+		deny_record "jq could not read the question for ${record_path}" 'ask the human to check that jq is 1.6+'
 	record=$(jq -c --arg label "${record_label}" --arg effort "${record_effort}" --argjson question "${question}" \
 		'{label: $label, effort: $effort, question: $question, plan: .}' "${plan_file}" 2>/dev/null) ||
-		deny_record "jq could not build the hand-off for ${record_path}" 'check jq 1.6+ and the plan file'
+		deny_record "jq could not build the hand-off for ${record_path}" 'ask the human to check that jq is 1.6+ and the plan file'
 	# Written beside the record and moved onto it, so a record is never half
 	# written.
 	record_temp=$(mktemp "${record_path%/*}/.gate-record.XXXXXX" 2>/dev/null) ||
-		deny_record "cannot create a temp file beside ${record_path}, which stays empty" "make ${record_path%/*} writable"
+		deny_record "cannot create a temp file beside ${record_path}, which stays empty" "ask the human to make ${record_path%/*} writable"
 	if printf '%s\n' "${record}" >"${record_temp}" && mv -f "${record_temp}" "${record_path}"; then
 		record_temp=''
 		return 0
 	fi
 	rm -f "${record_temp}"
 	record_temp=''
-	deny_record "the write to ${record_path} failed, and it stays empty" "make ${record_path%/*} writable"
+	deny_record "the write to ${record_path} failed, and it stays empty" "ask the human to make ${record_path%/*} writable"
 }
 
 # Sources the crucible skill's space rules, or denies.
 load_space_lib() {
 	[ -f "${SPACE_LIB}" ] && [ -r "${SPACE_LIB}" ] ||
-		deny_record "the space rules are missing at ${SPACE_LIB}" 'install the crucible skill'
+		deny_record "the space rules are missing at ${SPACE_LIB}" 'ask the human to install the crucible skill'
 	# shellcheck source=../../../../engine/crucible/scripts/lib/crucible-space.sh
 	. "${SPACE_LIB}"
 }
@@ -183,9 +183,9 @@ read_gate_target() {
 # in the gate folder, or denies.
 make_effort_record() {
 	answers_dir="${gate_dir}/answers"
-	[ ! -L "${answers_dir}" ] || deny_record "${answers_dir} is a symbolic link" 'remove the link'
+	[ ! -L "${answers_dir}" ] || deny_record "${answers_dir} is a symbolic link" 'ask the human to remove the link'
 	mkdir -p "${answers_dir}" 2>/dev/null && [ ! -L "${answers_dir}" ] ||
-		deny_record "cannot create ${answers_dir}" 'make the gate folder writable'
+		deny_record "cannot create ${answers_dir}" 'ask the human to make the gate folder writable'
 	record_path="${answers_dir}/${tool_use_id}.json"
 }
 
@@ -199,7 +199,7 @@ clear_gate() {
 # Denies the question because the record could not be saved (cause $1, fix $2);
 # the gate stays, so the next question tries again.
 deny_record() {
-	record_reason="${REASON_PREFIX} the gate record could not be saved ($1), so the question is denied; $2, then ask again."
+	record_reason="${REASON_PREFIX} the gate record could not be saved ($1), so the question is denied; $2."
 	warn "gate record not saved: $1"
 	jq -cn --arg reason "${record_reason}" \
 		'{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}' ||

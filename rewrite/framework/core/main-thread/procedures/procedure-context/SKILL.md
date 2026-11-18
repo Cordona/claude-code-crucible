@@ -94,7 +94,6 @@ Copy the steps this run uses into the todo list and tick each as it completes; n
    - **"Stop here":** step 8's stop, `stopped: stopped after the context`; the context stays in the effort.
    - **A typed answer:** a reply, not a choice: answer it as the turn's last message and hand nothing over, since the question closed the gate; at the human's next message, ask again from "To ask", unless their reply chose an option: take it.
 8. **Hand over, or report the stop,** to the calling flow:
-   - **Complete first:** before handing over, every file, link and path the human gave for the work, outside a change to a dispatched part, is added, and every doc it needs is written. One missing: add it or write it as step 1 sets, then this step again.
    - **Which line:** run `<context.sh> latest --effort '<effort folder>'`. A `CONTEXT_FILE:` line: one line, `CONTEXT_FILE: <path>`. No `CONTEXT_FILE:` line, no version cut yet: one line, `CONTEXT_DOCS: <the docs folder>`. Each path absolute, exactly as `context.sh` printed it, never shortened with `…` or `~`; never a copy of the entries. After an addition, also tell it the context changed.
    - **A stop,** any in this skill, an install stop included: one line, `stopped: <reason> (step <n>, exit <code>)`, the exit only when a script's exit ended the run; each reason as its step names it, a step of The spec named `The spec step <n>`, one of its branches `references/settle-spec.md` step `<n>`.
 
@@ -145,3 +144,5 @@ After a compaction, an interruption or a new session, load this skill again with
   - `procedure-read-trackers`, not loaded: only its `read-link.sh` runs (steps 1 and 5); missing: a tracker link is not read, as `references/tracker-links.md` sets.
   - `procedure-jira-auth`, for a Jira link (step 1); missing: as `references/entry-kinds.md` sets.
 - **Tools:** Read, Write, WebFetch, Bash, Skill and AskUserQuestion.
+
+**Keep each question and reply to the human short, the point first,** as core CLAUDE.md §1 sets.

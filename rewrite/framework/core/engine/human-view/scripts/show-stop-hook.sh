@@ -77,16 +77,16 @@ stdout, only when Claude is to continue:
   one line per card, each one of:
   "${ASK_REASON}"
     a gate was shown; its question may now be asked
-  "show: show the <name> card as printed, nothing changed: <record path>"
+  "show: show the <name> card as printed, nothing changed, in this turn's
+    last message: <record path>"
     a card is missing, and no gate is sent back
   "procedure-approval-gate: relay try <n> of ${hv_max_tries-} failed: relay again. The
     <label> gate is still pending; its question stays denied until a turn's
-    last message ends with the gate text, as printed, nothing below it and
-    only owed cards above it: <record path>"
+    last message is the gate text alone, as printed: <record path>"
     a gate is missing, followed by text, or below text that is no owed card;
-    while a card is owed, the line ends instead "nothing below it and above
-    it every owed card, as printed, and nothing else; owed: <name>[ ×<n>],
-    ...: <record path>", and is the reply's only line
+    while a card is owed, the line ends instead "is each owed card, as
+    printed, then the gate text, as printed, last, and nothing else; owed:
+    <name>[ ×<n>], ...: <record path>", and is the reply's only line
 
 Writes, in the session's owed folder:
   a shown card's record is removed, unless a gate is sent back; a shown
@@ -194,7 +194,7 @@ send_back() {
 		add_relay_again "$1"
 	else
 		card_context="${card_context}${card_context:+
-}show: show the ${name} card as printed, nothing changed: $1"
+}show: show the ${name} card as printed, nothing changed, in this turn's last message: $1"
 	fi
 }
 
@@ -215,11 +215,11 @@ EOF
 # starts procedure-approval-gate: and says relay again.
 add_relay_again() {
 	if [ -n "${owed_card_names}" ]; then
-		above="above it every owed card, as printed, and nothing else; owed: ${owed_card_names}"
+		shape="each owed card, as printed, then the gate text, as printed, last, and nothing else; owed: ${owed_card_names}"
 	else
-		above='only owed cards above it'
+		shape='the gate text alone, as printed'
 	fi
-	add_context "procedure-approval-gate: relay try ${tries} of ${hv_max_tries} failed: relay again. The ${name} gate is still pending; its question stays denied until a turn's last message ends with the gate text, as printed, nothing below it and ${above}: $1"
+	add_context "procedure-approval-gate: relay try ${tries} of ${hv_max_tries} failed: relay again. The ${name} gate is still pending; its question stays denied until a turn's last message is ${shape}: $1"
 }
 
 # Adds the missing cards' send-backs, unless a gate was sent back: its

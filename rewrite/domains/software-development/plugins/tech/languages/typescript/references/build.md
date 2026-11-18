@@ -24,11 +24,3 @@ Steps 1, 2 and 3 carry a baseline of each warning, error and finding with its co
 4. The existing tests (gate `test`): the project's `test` script in its non-updating CI form (`CI=true <pm> test`), so no snapshot is written. None: it doesn't run, for the reason "no test command".
 
 A build (`<pm> run build`) is not a per-change gate.
-
-## Self-check before reporting
-
-1. The toolchain was settled in the Toolchain order.
-2. No bare `any`, and each `as` and `!` is justified.
-3. Each `switch` over a union is exhaustive, with a `never`-typed default.
-4. Each caught value is narrowed before use.
-5. No floating promise.

@@ -28,11 +28,3 @@ The baseline is steps 1, 2 and 3: each warning, error and finding with its count
 4. The existing tests (gate `test`): the project's `test` script (`composer test`); else `vendor/bin/pest` when the project has it, otherwise `vendor/bin/phpunit`. None: it doesn't run, for the reason "no test command".
 
 PHP has no build step.
-
-## Self-check before reporting
-
-1. The toolchain was settled in the Toolchain order.
-2. Every new file declares `strict_types=1`.
-3. No loose `==` or `!=` on a value that matters, and each `in_array` and `array_search` passes strict mode.
-4. Each `match` over an enum is exhaustive, with no `default`.
-5. No empty or over-broad `catch`, and no swallowed exception.

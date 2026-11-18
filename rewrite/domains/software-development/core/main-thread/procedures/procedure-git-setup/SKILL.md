@@ -1,6 +1,6 @@
 ---
 name: procedure-git-setup
-description: "An effort's git setup: which of this machine's signing identities authors and signs its agents' commits, and whether each commit is pushed, asked before its first plan. Use from the flow that opens an effort's first seat (`flow-code-build`), or when the human asks which identity a repo uses. Writes the effort's git settings as an event, the gate's plan and the identities draft, by script; never a repo's git config. Needs git. Not for commits, branches or pushes (`procedure-git-worktree`)."
+description: "An effort's git setup: which of this machine's signing identities authors and signs its agents' commits, and whether each commit is pushed, asked before its first plan. Use from `flow-code-build` before an effort's first seat, or when the human asks which identity a repo uses or to change the setup. Writes the effort's git settings as an event, the gate's plan and the identities draft by script, never a repo's git config. Needs git. Not for commits, branches or pushes (`procedure-git-worktree`)."
 user-invocable: false
 ---
 
@@ -36,12 +36,16 @@ Copy steps 1–5 into the todo list and tick each.
    - **"Set up git first (Recommended)" or "No, set up git first":** as Always.
    - **"Type name and email":** show the line `type_name_and_email`, end the turn, and take the reply as a typed Identity answer.
    - **A typed Identity answer:** a name and an email: `--name '<name>' --email '<email>'`, plus `--signing-format '<openpgp or ssh>' --signing-key '<key>'` when it gives a key; a stop: as Always; a question about a repository's identity: The human's ask, then the gate again from step 2; unclear: ask the human to clarify with AskUserQuestion.
-   - **Auto-push:** "Yes": `--auto-push yes`; "No (Recommended)": `--auto-push no`; a typed answer: clarify it as a typed Identity answer; no Auto-push question: neither.
+   - **Auto-push:** "Yes": `--auto-push yes`; "No (Recommended)": `--auto-push no`; a typed answer: a plain yes or no as that option, a stop: as Always, anything else: ask the human to clarify with AskUserQuestion; no Auto-push question: neither.
 5. **Save:** `sh "<gs>/settings.sh" write --effort '<effort folder>'` with step 4's options, plus `--repo '<repo>'` with an Auto-push option. Exit 0: hand back `ready`. Exit 3: show its stderr as it is and end the turn; at the human's next message, the gate again from step 2.
 
 ## The human's ask: which identity a repository uses
 
 At the git setup question or in chat ("what's this repo's identity?", `<repo>` unless they name another): run `sh "<gs>/render-identity.sh" --repo '<that repository>'`; it changes nothing. Asked at the question: then the gate again from step 2, where the human picks.
+
+## The human's ask: change the git setup
+
+The human asks to change a saved identity or auto-push ("turn auto-push on"): steps 2–5, skipping step 1; the human picks again at the gate, and step 5's write replaces the saved settings.
 
 ## Resume
 

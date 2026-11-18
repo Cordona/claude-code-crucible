@@ -113,7 +113,7 @@ Only where the shape needs metrics (Pillars by shape).
 - **Bound cardinality: no high-cardinality dimension,** such as a user or request id, a raw URL or an email as a label. It is the top metrics defect.
 - **Give each metric a consistent, namespaced semantic-convention name** (`orders.placed.count`).
 - **Give each metric an explicit base unit** (seconds, not milliseconds; bytes): a wrong unit silently breaks dashboards and cross-service aggregation.
-- **Remove a dead metric:** one on no dashboard or alert.
+- **Remove a metric this change leaves dead:** one whose last emit site or alert the change removes. Never delete an existing metric on a guess about dashboards or alerts you cannot see.
 
 ## 9. Traces
 

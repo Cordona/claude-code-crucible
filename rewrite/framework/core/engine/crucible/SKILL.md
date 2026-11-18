@@ -67,16 +67,6 @@ One folder, outside every repository, for the files Crucible keeps. Every file b
 
 - **A draft's path:** hand a draft over by its whole absolute path, from `<crucible.sh> path <ID>`. `path` and `open` take a draft's ID, never an event's seq.
 
-## Self-check
-
-Before reporting a step that used the space done, check:
-
-1. Each file written in an effort is in a folder Rules lists.
-2. Each Markdown draft the main thread wrote, other than a context doc, came from `crucible.sh new` and was written once.
-3. Nothing in `events/` was written, edited or removed, and `events.sh` was not run directly, but for a lone `--help`.
-4. No secret is in a file of the space.
-5. `prune --apply` ran only on the human's go, after a dry run they were shown, and only on folders that view listed.
-
 ## The prune module
 
 `scripts/lib/prune.jq` holds `prune`, the clean-up a script runs on a JSON record whose keys are optional, just before writing it, so a reader treats a missing key as empty. It ships here, beside the space's rules, so a script writing a record into the space needs no second library skill.

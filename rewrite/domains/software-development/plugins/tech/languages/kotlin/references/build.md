@@ -21,10 +21,3 @@ The baseline is steps 1, 2 and 3: each warning, error and finding with its count
 4. The existing tests (gate `test`): `./gradlew --offline test`, or `./mvnw -o test`.
 
 A build (`./gradlew build`) is not a per-change gate.
-
-## Self-check before reporting
-
-1. The toolchain was settled in the Toolchain order.
-2. No `!!` in production code, and each Java platform type is checked at the boundary.
-3. No `GlobalScope`, no `runBlocking` on a production path, and no blocking call on `Dispatchers.Default`.
-4. Each data class invariant sits in `init {}`, so `copy()` re-checks it.

@@ -300,7 +300,7 @@ def work($dispatch):
 	+ (if $mode == "" then "" else "- **MODE:** \($mode)\n" end)
 	+ "- **TASK:** \($dispatch.task)\n"
 	+ "- **WORKTREE:** \($worktree | code)\n"
-	+ "- **ENTRY POINTS** (where to begin, not a limit): "
+	+ "- **ENTRY POINTS** (where to begin reading; the TASK sets the scope): "
 	+ (($dispatch.entry_points // []) | if length == 0 then "none" | code else map(in_tree($worktree) | code) | join(", ") end) + "\n"
 	+ "- **REPORT:** \($report | code)\n"
 	+ (if $test_plan == "" then "" else "- **TEST PLAN:** \($test_plan | code)\n" end)

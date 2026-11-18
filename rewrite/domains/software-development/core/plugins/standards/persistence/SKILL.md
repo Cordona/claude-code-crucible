@@ -28,12 +28,12 @@ What a correct data layer holds, for any durable store.
 
 Do this first, for each piece of code that touches a store.
 
-- **Write the one-liner:** the store, then the guarantees that matter here. Example: `DynamoDB: single-item atomic by default; multi-item only through a bounded transaction API; eventual reads by default; conditional writes for concurrency.`
+- **Pin down the store's guarantees:** the store, then the guarantees that matter here, such as `DynamoDB: single-item atomic by default; multi-item only through a bounded transaction API; eventual reads by default; conditional writes for concurrency.` Where a decision rests on one of them, name it in one line.
 - **Headline capabilities: trust general knowledge,** with no lookup. Postgres is ACID; Redis is single-node atomic through `MULTI` or Lua; DynamoDB is single-item atomic by default; Cassandra is eventually consistent.
 - **Version- or edition-conditional nuance: verify it (`mcp__context7` or WebFetch), and only then.** The traps live there: Mongo multi-document transactions need a replica set or sharded cluster and are discouraged on a hot path; Postgres isolation is configurable; a driver's default read and write concern varies. Never lean on a stale headline where the answer is "yes, but only under X".
-- **Verify whenever the one-liner would deny a capability, not only when it asserts one:** stores gain multi-item transactions, consistency modes and index types over time.
+- **Verify whenever your reading of the store would deny a capability, not only when it asserts one:** stores gain multi-item transactions, consistency modes and index types over time.
 
-Establish each axis for the target store; each changes what a rule requires:
+Establish the axes this code touches; each changes what a rule requires:
 
 | Axis | The question | What it decides |
 |---|---|---|

@@ -1,6 +1,6 @@
 ---
 name: human-view
-description: "How scripts show the human a card: `show.sh` prints each card from its skill's template and records it as owed; `show-stop-hook.sh`, a Stop hook, sends main back until the card is in its final message. Also the shared modules `view.jq`, `paths.jq`, `title.jq`, `gate.jq`, `line.jq`. Use when a script prints a card. Never loaded by the model; main runs only `show.sh line` and `render`. Writes only owed records; needs jq 1.6+. Not for input checks or a card's content."
+description: "How scripts show the human a card: `show.sh` prints each card from its skill's template and records it as owed; `show-stop-hook.sh`, a Stop hook, sends main back until the card is in its final message. Also the shared modules `view.jq`, `paths.jq`, `title.jq`, `gate.jq`, `line.jq`. Use when writing or changing a script or template that prints a card. Main never loads it; it runs only `show.sh line` and `render`. Writes only owed records; needs jq 1.6+. Not for input checks or a card's content."
 user-invocable: false
 ---
 

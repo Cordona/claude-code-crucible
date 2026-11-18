@@ -4,8 +4,8 @@
 
 - **Needs root:** check `id -u` at the start, and stop with a message on stderr when it isn't 0.
 - **Root only where needed:** run each step that doesn't need root as the invoking user, `sudo -u "$SUDO_USER" …`.
-- **Changes system state:** offer a `--dry-run` that prints each change instead of making it.
-- **Destructive step:** the script asks for confirmation before it runs.
+- **Changes system state:** a script the task creates offers a `--dry-run` that prints each change instead of making it; add one to an existing script only when the task asks.
+- **Destructive step:** a script the task creates asks for confirmation before that step runs; add a prompt to an existing script only when the task asks.
 
 ## Verification gate
 
@@ -25,11 +25,3 @@ Before step 1, read the file's shebang (`head -1 <file>`): it names the shell fo
 4. The guarded run (gate `manual`): the script's own `--help`, or `--dry-run` where it has one, only when its code (not its usage text) shows that flag makes no write, delete, network call or change to system state; otherwise, or when you didn't check the code, don't run it.
 
 Shell has no build step.
-
-## Self-check before reporting
-
-1. The target shell was settled in the Toolchain order, and the shebang matches the features used.
-2. Strict mode is set, or the file is a sourced library that sets nothing.
-3. Every expansion that splits is quoted, and every built command is an array.
-4. No untrusted value reaches `eval`, `sh -c` or arithmetic before validation.
-5. Every temp file comes from `mktemp`, with an `EXIT` trap removing it.

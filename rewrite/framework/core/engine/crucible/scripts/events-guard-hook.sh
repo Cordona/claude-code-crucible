@@ -9,10 +9,10 @@ set -eu
 
 readonly PROG='events-guard-hook.sh'
 # The reasons hold no " or \, so print_deny's literal fallback stays valid JSON.
-readonly DENY_REASON='crucible: events are written only by their owning scripts, so a Bash command that runs events.sh is denied; run the script that owns the event instead.'
-readonly NO_JQ_REASON='crucible: jq is not on PATH, so the events guard cannot check this Bash command and denies it; install jq 1.6+ (macOS: brew install jq; Linux: the distro'\''s jq), then rerun the command.'
-readonly BAD_INPUT_REASON='crucible: the events guard could not read its hook input as a JSON object, so it denies the call; rerun it, and if this repeats, show the human this reason.'
-readonly STOPPED_REASON='crucible: the events guard stopped before it decided, so it denies the call; rerun it, and if this repeats, show the human this reason.'
+readonly DENY_REASON='crucible: events are written only by their owning scripts, so a Bash command that runs events.sh is denied; run the script your skill step names for this event instead, and when no step names one, tell the human and stop; never run events.sh by another route.'
+readonly NO_JQ_REASON='crucible: jq is not on PATH, so the events guard cannot check this Bash command and denies it; tell the human jq 1.6+ is missing (macOS: brew install jq; Linux: the distro'\''s jq) and stop; do not install it yourself.'
+readonly BAD_INPUT_REASON='crucible: the events guard could not read its hook input as a JSON object, so it denies the call; rerun it once, and if it is denied again, show the human this reason as printed, and stop.'
+readonly STOPPED_REASON='crucible: the events guard stopped before it decided, so it denies the call; rerun it once, and if it is denied again, show the human this reason as printed, and stop.'
 # shellcheck disable=SC2016 # $reason is jq's
 readonly DENY_JQ='{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}'
 # Splits the command into its simple commands, with quotes, backslashes and a
