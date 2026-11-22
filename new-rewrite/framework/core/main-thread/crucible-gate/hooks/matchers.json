@@ -1,0 +1,6 @@
+{
+  "stop/require-card-shown.sh": null,
+  "pre-tool-use/hold-question-until-card-shown.sh": "AskUserQuestion",
+  "pre-tool-use/check-question-shape.sh": "AskUserQuestion",
+  "post-tool-use/record-gate-answer.sh": "AskUserQuestion"
+}

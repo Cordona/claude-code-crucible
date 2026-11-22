@@ -1,0 +1,179 @@
+--- nothing yet
+$ sh context-status.sh --effort <F>
+    VERSION: none
+    PENDING: no
+    [exit 0]
+$ sh context-fingerprint.sh --effort <F>
+    context-fingerprint.sh: CONTEXT-NONE: nothing to cut: the docs folder is empty and nothing is pending
+    [exit 2]
+--- the path rule
+$ sh context-path-check.sh <S>/repo/rules.md
+    
+    [exit 0]
+$ sh context-path-check.sh <S>/repo/.env
+    context-path-check.sh: <S>/repo/.env names a key, credential or secrets file
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/.env.local
+    context-path-check.sh: <S>/repo/.env.local names a key, credential or secrets file
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/.git/config
+    context-path-check.sh: <S>/repo/.git/config is under .git or .ssh
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/id_rsa
+    context-path-check.sh: <S>/repo/id_rsa names a key, credential or secrets file
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/CLAUDE.md
+    context-path-check.sh: <S>/repo/CLAUDE.md is an instruction file, which an agent may follow as instructions
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/.claude/settings.json
+    
+    [exit 0]
+$ sh context-path-check.sh <S>/repo/.claude/settings.local.json
+    context-path-check.sh: <S>/repo/.claude/settings.local.json is a personal settings file, private and may hold secrets
+    [exit 2]
+$ sh context-path-check.sh <S>/cfg/settings.json
+    context-path-check.sh: <S>/cfg/settings.json is a personal settings file, private and may hold secrets
+    [exit 2]
+$ sh context-path-check.sh <S>/cfg/agents/a.md
+    context-path-check.sh: <S>/cfg/agents/a.md is a Claude skill or agent, which an agent may follow as instructions
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/skills/x/SKILL.md
+    context-path-check.sh: <S>/repo/skills/x/SKILL.md is an instruction file, which an agent may follow as instructions
+    [exit 2]
+$ sh context-path-check.sh relative/x.md
+    context-path-check.sh: relative/x.md not absolute
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/../repo/rules.md
+    context-path-check.sh: <S>/repo/../repo/rules.md holds a .. segment
+    [exit 2]
+$ sh context-path-check.sh <S>/repo/it's.md
+    context-path-check.sh: <S>/repo/it's.md holds a quote
+    [exit 2]
+--- add: a path, a link, the same again, refusals
+$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why the retention rule the prune must follow
+    added
+    [exit 0]
+$ sh context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
+    added
+    [exit 0]
+$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why again
+    already pending
+    [exit 0]
+$ sh context-add.sh --effort <F> --path <S>/repo/missing.md --why x
+    context-add.sh: --path <S>/repo/missing.md doesn't exist or can't be read
+    [exit 2]
+$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why 
+    context-add.sh: --why is empty
+    [exit 2]
+$ sh context-add.sh --effort <F> --link https://example.com/$(id) --why x
+    context-add.sh: --link https://example.com/$(id) is not an http(s) URL of shell-safe characters
+    [exit 2]
+$ sh context-add.sh --effort <F> --path <F>/context --why x
+    context-add.sh: --path <F>/context is inside the effort's context
+    [exit 2]
+$ sh context-status.sh --effort <F>
+    VERSION: none
+    PENDING: yes
+    [exit 0]
+--- the docs folder: a note, a name it may not hold, too much
+    docs: <F>/context/draft/docs
+$ sh context-fingerprint.sh --effort <F>
+    context-fingerprint.sh: NO-SPEC: no docs folder holds a spec.md; approve the spec first
+    [exit 2]
+$ sh crucible-spec/scripts/spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    <F>/events/000003-spec.approved.json
+    [exit 0]
+$ sh context-fingerprint.sh --effort <F>
+    context-fingerprint.sh: DOCS-NAME: notes.txt may not be in a docs folder; expected spec.md, <name>.md or diff-<sha>.patch
+    [exit 2]
+$ sh context-fingerprint.sh --effort <F>
+    context-fingerprint.sh: DOCS-SIZE: the docs files hold 1100178 bytes; expected at most 1048576
+    [exit 2]
+--- cut v1: a stale fingerprint is refused, the pinned one cuts
+$ sh context-cut.sh --effort <F> --expect 0000000000000000000000000000000000000000000000000000000000000000
+    context-cut.sh: CONTEXT-CHANGED: the context changed since the plan pinned it; show the plan again
+    [exit 2]
+$ sh context-cut.sh --effort <F> --expect 50232773e03b84031de1178f877095f4cff43ebe5bf5eb3d5eb402a3c9f2cb4f
+    CONTEXT_FILE: <F>/events/000004-context.cut.json
+    CONTEXT_SHA256: 7b826592ccacd5d63c23bf23b25e1c4190c13f81a2c9ea471c78036795e4e3d3
+    [exit 0]
+    body: {"version":1,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"cf1e4a33781b0b889c45651ee64e292d71b408f5b21f79928f58e2f5ca9a05a3"}],"links":[{"url":"https://example.com/runbook","why":"how the nightly job is run"}],"spec":"<F>/context/v1/spec.md"}
+    -r--r--r-- decisions.md
+    -r--r--r-- spec.md
+$ sh context-status.sh --effort <F>
+    VERSION: v1
+    CONTEXT_FILE: <F>/events/000004-context.cut.json
+    PENDING: no
+    [exit 0]
+--- the same cut again: nothing new, the latest version, nothing written
+$ sh context-cut.sh --effort <F> --expect 50232773e03b84031de1178f877095f4cff43ebe5bf5eb3d5eb402a3c9f2cb4f
+    CONTEXT_FILE: <F>/events/000004-context.cut.json
+    CONTEXT_SHA256: 7b826592ccacd5d63c23bf23b25e1c4190c13f81a2c9ea471c78036795e4e3d3
+    [exit 0]
+    no event written
+$ sh context-verify.sh --effort <F> --file <F>/events/000004-context.cut.json
+    CONTEXT_FILE: <F>/events/000004-context.cut.json
+    CONTEXT_SHA256: 7b826592ccacd5d63c23bf23b25e1c4190c13f81a2c9ea471c78036795e4e3d3
+    [exit 0]
+--- after the cut: pending changes go to v2; drop, retire, undo
+$ sh context-add.sh --effort <F> --link https://example.com/dashboard --why where the runs of the job show
+    added
+    [exit 0]
+$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why already there
+    already in v1
+    [exit 0]
+$ sh context-drop.sh --effort <F> --link https://example.com/dashboard --why the human: not needed
+    dropped
+    [exit 0]
+$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated
+    retired
+    [exit 0]
+$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why again
+    retired already
+    [exit 0]
+$ sh context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
+    retirement undone
+    [exit 0]
+$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated after all
+    retired
+    [exit 0]
+$ sh context-drop.sh --effort <F> --link https://example.com/never-added --why x
+    context-drop.sh: https://example.com/never-added is neither pending nor in the latest version
+    [exit 2]
+$ sh context-cut.sh --effort <F> --expect 50232773e03b84031de1178f877095f4cff43ebe5bf5eb3d5eb402a3c9f2cb4f
+    context-cut.sh: CONTEXT-CHANGED: the context changed since the plan pinned it; show the plan again
+    [exit 2]
+$ sh context-cut.sh --effort <F> --expect ef63e569a209c1afc1ea461aba04db68fbaf5dcbf5e56841ca6830abbcdc17d6
+    CONTEXT_FILE: <F>/events/000005-context.cut.json
+    CONTEXT_SHA256: 7708bcc6feb8a95e28bbf5d9fda4c02f73cb9622c81d1e4e1daaa1d749ad5d3a
+    [exit 0]
+    body: {"version":2,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"cf1e4a33781b0b889c45651ee64e292d71b408f5b21f79928f58e2f5ca9a05a3"}],"spec":"<F>/context/v1/spec.md"}
+--- verify: the older version is stale, the newest is usable, tampering is caught
+$ sh context-verify.sh --effort <F> --file <F>/events/000004-context.cut.json
+    context-verify.sh: STALE: a newer version exists: <F>/events/000005-context.cut.json
+    [exit 2]
+$ sh context-verify.sh --effort <F> --file <F>/events/000005-context.cut.json
+    CONTEXT_FILE: <F>/events/000005-context.cut.json
+    CONTEXT_SHA256: 7708bcc6feb8a95e28bbf5d9fda4c02f73cb9622c81d1e4e1daaa1d749ad5d3a
+    [exit 0]
+$ sh context-verify.sh --effort <F> --file <S>/repo/rules.md
+    context-verify.sh: NOT-CONTEXT: <S>/repo/rules.md is not a context.cut event of this effort
+    [exit 2]
+$ sh context-verify.sh --effort <F> --file <F>/events/000005-context.cut.json
+    context-verify.sh: CONTEXT-CHANGED: <F>/context/v1 no longer gives its digest
+    [exit 2]
+--- a paused effort: writes refused, reads still work
+$ sh crucible-effort/scripts/effort-pause.sh --effort <F> --words break
+    <F>/events/000006-effort.paused.json
+    [exit 0]
+$ sh context-add.sh --effort <F> --link https://example.com/x --why x
+    context-add.sh: the effort is paused; the context changes only while it's open
+    [exit 2]
+$ sh context-docs.sh --effort <F>
+    context-docs.sh: the effort is paused; the context changes only while it's open
+    [exit 2]
+$ sh context-status.sh --effort <F>
+    VERSION: v2
+    CONTEXT_FILE: <F>/events/000005-context.cut.json
+    PENDING: no
+    [exit 0]

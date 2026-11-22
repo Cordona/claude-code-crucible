@@ -1,0 +1,110 @@
+=== install, with install-entries.sh's own output
+    linked: code-context
+    linked: crucible-context
+    linked: crucible-discovery
+    linked: crucible-dynamic-flow
+    linked: crucible-effort
+    linked: crucible-gate
+    linked: crucible-grill
+    linked: crucible-spec
+    linked: trackers
+$ sh <R>/framework/core/install/install-check.sh --settings <S>/settings.json
+    installed
+    [exit 0]
+=== effort, through its link
+    started: <S>/space/efforts/<id>-installed
+$ sh <skills>/crucible-effort/scripts/effort-state.sh --effort <S>/space/efforts/<id>-installed
+    open
+    [exit 0]
+=== flow and gate
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-card.sh --file <S>/flow.json
+    Flow to agree: Know the work
+      1. Grill it [crucible-grill]
+         done when: event grill.ended
+      The flow is done when: the human says so (you confirm)
+    [exit 0]
+$ sh <skills>/crucible-gate/scripts/gate-answer.sh --effort <S>/space/efforts/<id>-installed --record flow-agree --subject <hex>
+    ACCEPTED: 2
+    [exit 0]
+    agreed: <S>/space/efforts/<id>-installed:3
+$ sh <skills>/crucible-dynamic-flow/scripts/open-work.sh --effort <S>/space/efforts/<id>-installed
+    flow 3 "Know the work"
+    [exit 0]
+=== grill
+    draft: <S>/space/efforts/<id>-installed/grills/1.json
+$ sh <skills>/crucible-grill/scripts/grill-add.sh --grill <S>/space/efforts/<id>-installed/grills/1.json --question Which limits? --recommendation All --reason One call
+    q1
+    [exit 0]
+$ sh <skills>/crucible-grill/scripts/grill-answer.sh --grill <S>/space/efforts/<id>-installed/grills/1.json --id q1 --text All of them
+    q1 settled
+    [exit 0]
+    ended: <S>/space/efforts/<id>-installed/events/000004-grill.ended.json
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-step-done.sh --flow <S>/space/efforts/<id>-installed:3 --step 1
+    <S>/space/efforts/<id>-installed/events/000005-flow.step.done.json
+    [exit 0]
+=== code-context, in full
+$ sh <skills>/code-context/scripts/context-add-commit.sh --effort <S>/space/efforts/<id>-installed --repo <S>/repo --ref HEAD
+    <S>/space/efforts/<id>-installed/context/draft/docs/diff-a145726.patch
+    [exit 0]
+=== trackers, in full (reads GitHub)
+$ sh <skills>/trackers/scripts/tracker-read.sh --url https://example.com/page
+    tracker-read.sh: not a tracker link: example.com/page
+    [exit 3]
+    first line: # interactive pr list
+$ sh <skills>/trackers/scripts/context-add-ticket.sh --effort <S>/space/efforts/<id>-installed --url https://github.com/cli/cli/issues/1
+    <S>/space/efforts/<id>-installed/context/draft/docs/ticket-github.com-cli-cli-issues-1.md
+    [exit 0]
+=== context
+$ sh <skills>/crucible-context/scripts/context-add.sh --effort <S>/space/efforts/<id>-installed --path <S>/space/efforts/<id>-installed/events/000004-grill.ended.json --why the grill on what to fetch
+    added
+    [exit 0]
+$ sh <skills>/crucible-context/scripts/context-status.sh --effort <S>/space/efforts/<id>-installed
+    VERSION: none
+    PENDING: yes
+    [exit 0]
+=== spec, then the cut
+$ sh <skills>/crucible-spec/scripts/spec-approve.sh --effort <S>/space/efforts/<id>-installed --draft <S>/space/efforts/<id>-installed/spec/1.md
+    <S>/space/efforts/<id>-installed/events/000007-spec.approved.json
+    [exit 0]
+$ sh <skills>/crucible-context/scripts/context-cut.sh --effort <S>/space/efforts/<id>-installed --expect <hex>
+    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000008-context.cut.json
+    CONTEXT_SHA256: <hex>
+    [exit 0]
+    v1 holds: diff-a145726.patch
+    v1 holds: spec.md
+    v1 holds: ticket-github.com-cli-cli-issues-1.md
+$ sh <skills>/crucible-context/scripts/context-verify.sh --effort <S>/space/efforts/<id>-installed --file <S>/space/efforts/<id>-installed/events/000008-context.cut.json
+    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000008-context.cut.json
+    CONTEXT_SHA256: <hex>
+    [exit 0]
+=== effort-close sees a domain neighbour's open work
+$ sh <skills>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-installed --outcome done --words done
+    effort-close.sh: open work: flow 3 "Know the work"; probe 1 "left running"; end it first, or close with --leave-open on the human's word
+    [exit 2]
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-end.sh --flow <S>/space/efforts/<id>-installed:3 --outcome done --evidence The human says so
+    <S>/space/efforts/<id>-installed/events/000009-flow.ended.json
+    [exit 0]
+$ sh <skills>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-installed --outcome done --words done
+    <S>/space/efforts/<id>-installed/events/000010-effort.closed.json
+    [exit 0]
+$ sh <skills>/crucible-effort/scripts/effort-status.sh --effort <S>/space/efforts/<id>-installed
+    installed · closed, done, <at>: done
+    [exit 0]
+=== a domain script where core isn't beside it: refused plainly
+$ sh <S>/lonely/trackers/scripts/context-add-ticket.sh --effort <S>/space/efforts/<id>-installed --url https://github.com/cli/cli/issues/1
+    context-add-ticket.sh: core's context isn't beside this skill (expected <S>/lonely/crucible-context); install first
+    [exit 2]
+$ sh <R>/domains/software-development/core/main-thread/code-context/scripts/context-add-commit.sh --effort <S>/space/efforts/<id>-installed --repo <S>/repo --ref HEAD
+    context-add-commit.sh: core's context isn't beside this skill (expected <R>/domains/software-development/core/main-thread/crucible-context); install first
+    [exit 2]
+=== the event log, read through the installed reader
+    1 effort.opened by effort-start.sh
+    2 gate.answered by record-gate-answer.sh
+    3 flow.agreed by flow-agree.sh
+    4 grill.ended by grill-end.sh
+    5 flow.step.done by flow-step-done.sh
+    6 gate.answered by record-gate-answer.sh
+    7 spec.approved by spec-approve.sh
+    8 context.cut by context-cut.sh
+    9 flow.ended by flow-end.sh
+    10 effort.closed by effort-close.sh

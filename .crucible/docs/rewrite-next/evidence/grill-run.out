@@ -1,0 +1,129 @@
+    draft: <F>/grills/1.json
+$ sh grill-add.sh --grill <F>/grills/1.json --question Who runs the prune: a person or a cron job? --recommendation A cron job --reason It runs nightly
+    q1
+    [exit 0]
+$ sh grill-add.sh --grill <F>/grills/1.json --question Should it email on failure? --recommendation Yes --reason No one watches cron --parent q1 --question Dry run by default? --recommendation Yes --reason Safe first run
+    q2,q3
+    [exit 0]
+$ sh grill-add.sh --grill <F>/grills/1.json --question Orphan? --recommendation x --reason y --parent q9
+    grill-add.sh: questions[3].parent must be an earlier question's id
+    [exit 2]
+$ sh grill-add.sh --grill <F>/grills/1.json --question No reason? --recommendation x
+    grill-add.sh: questions[3].recommendation must be {text, reason}, each one line
+    [exit 2]
+$ sh grill-show.sh --grill <F>/grills/1.json --open
+    grill 1 · How the prune command should behave · settled 0 · open 3 · deferred 0 · dropped 0
+    q1 [open] Who runs the prune: a person or a cron job?
+       recommended: A cron job (It runs nightly)
+    q2 [open] (from q1) Should it email on failure?
+       recommended: Yes (No one watches cron)
+    q3 [open] Dry run by default?
+       recommended: Yes (Safe first run)
+    [exit 0]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q1 --text A cron job --id q2 --text No
+    q1 settled
+    q2 settled
+    [exit 0]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q1 --text A person
+    grill-answer.sh: q1 is settled; changing it needs --change-reason
+    [exit 2]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q3 --text Yes --change-reason x
+    grill-answer.sh: q3 is not settled; --change-reason is only for a change
+    [exit 2]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q7 --text x
+    grill-answer.sh: q7 is not a question of this grill
+    [exit 2]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q1 --text x --id q1 --text y --change-reason z
+    grill-answer.sh: an --id is given twice
+    [exit 2]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q1 --text A person, on demand --change-reason Ops runs it by hand
+    q1 settled
+    q2 open
+    [exit 0]
+$ sh grill-mark.sh --grill <F>/grills/1.json --id q3 --to deferred --reason needs the ops team
+    q3 deferred
+    [exit 0]
+$ sh grill-mark.sh --grill <F>/grills/1.json --id q3 --to deferred --reason again
+    grill-mark.sh: q3 is already deferred
+    [exit 2]
+$ sh grill-mark.sh --grill <F>/grills/1.json --id q2 --to dropped --reason no cron, no email
+    q2 dropped
+    [exit 0]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q2 --text x
+    grill-answer.sh: q2 is dropped; reopen it first
+    [exit 2]
+$ sh grill-mark.sh --grill <F>/grills/1.json --id q2 --to open --reason it matters again
+    q2 open
+    [exit 0]
+$ sh grill-answer.sh --grill <F>/grills/1.json --id q3 --text Yes, dry run first
+    q3 settled
+    [exit 0]
+$ sh grill-show.sh --grill <F>/grills/1.json
+    grill 1 · How the prune command should behave · settled 2 · open 1 · deferred 0 · dropped 0
+    q1 [settled] Who runs the prune: a person or a cron job?
+       recommended: A cron job (It runs nightly)
+       answer: A person, on demand
+    q2 [open] (from q1) Should it email on failure?
+       recommended: Yes (No one watches cron)
+       last note: Dropped: no cron, no email
+    q3 [settled] Dry run by default?
+       recommended: Yes (Safe first run)
+       answer: Yes, dry run first
+    [exit 0]
+--- draft
+{"id":"q1","text":"Who runs the prune: a person or a cron job?","recommendation":{"text":"A cron job","reason":"It runs nightly"},"status":"settled","answers":[{"text":"A cron job"},{"text":"A person, on demand","change_reason":"Ops runs it by hand"}]}
+{"id":"q2","parent":"q1","text":"Should it email on failure?","recommendation":{"text":"Yes","reason":"No one watches cron"},"status":"open","answers":[{"text":"No"},{"text":"Dropped: no cron, no email"}]}
+{"id":"q3","text":"Dry run by default?","recommendation":{"text":"Yes","reason":"Safe first run"},"status":"settled","answers":[{"text":"Deferred: needs the ops team"},{"text":"Yes, dry run first"}]}
+    draft: <F>/grills/2.json
+--- five concurrent adds on grill 2: each gets its own id
+    exit 0, id q1
+    exit 0, id q2
+    exit 0, id q3
+    exit 0, id q4
+    exit 0, id q5
+    ids in the draft: q1,q2,q3,q4,q5; questions: Q1? Q2? Q3? Q4? Q5?
+$ sh grill-list.sh --effort <F>
+    <F>/grills/2.json	open	5	second grill
+    <F>/grills/1.json	open	1	How the prune command should behave
+    [exit 0]
+    ended: <F>/events/000002-grill.ended.json
+$ sh grill-end.sh --grill <F>/grills/1.json
+    grill-end.sh: <F>/grills/1.json is not an open grill: it has ended, or never existed
+    [exit 2]
+$ sh grill-show.sh --grill <F>/events/000002-grill.ended.json --open
+    grill 1 · How the prune command should behave · settled 2 · open 1 · deferred 0 · dropped 0
+    q2 [open] (from q1) Should it email on failure?
+       recommended: Yes (No one watches cron)
+       last note: Dropped: no cron, no email
+    [exit 0]
+$ sh grill-list.sh --effort <F>
+    <F>/grills/2.json	open	5	second grill
+    <F>/events/000002-grill.ended.json	ended	1	How the prune command should behave
+    [exit 0]
+$ sh grill-new.sh --effort <F> --topic third
+    <F>/grills/3.json
+    [exit 0]
+--- hand-off to the context, then a cut
+$ sh context-add.sh --effort <F> --path <F>/events/000002-grill.ended.json --why grill: How the prune command should behave
+    added
+    [exit 0]
+$ sh crucible-spec/scripts/spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    <F>/events/000004-spec.approved.json
+    [exit 0]
+$ sh context-cut.sh --effort <F> --expect dc4a92a01f7145b18e2f8ea5ee39260b79c381844e285ab660c0038d5cb8fa4f
+    CONTEXT_FILE: <F>/events/000005-context.cut.json
+    CONTEXT_SHA256: 8e4f9742496fb14e7f7d7a7c9946df9dc1d6c18528c8c2591697bc936605e976
+    [exit 0]
+[{"path":"<F>/events/000002-grill.ended.json","why":"grill: How the prune command should behave"},{"path":"<F>/context/v1","sha256":"07d04f9e0310edb4786df33e6ce39e63ece219568c48e6fd14437404a8cd5700"}]
+--- paused effort
+$ sh effort-pause.sh --effort <F> --words later
+    <F>/events/000006-effort.paused.json
+    [exit 0]
+$ sh grill-add.sh --grill <F>/grills/2.json --question x? --recommendation r --reason w
+    grill-add.sh: the effort is paused; grills change only while it's open
+    [exit 2]
+$ sh grill-list.sh --effort <F>
+    <F>/grills/3.json	open	0	third
+    <F>/grills/2.json	open	5	second grill
+    <F>/events/000002-grill.ended.json	ended	1	How the prune command should behave
+    [exit 0]

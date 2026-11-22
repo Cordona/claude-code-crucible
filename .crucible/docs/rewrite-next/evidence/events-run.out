@@ -1,0 +1,50 @@
+    started: <S>/space/efforts/<id>-events
+$ sh crucible-effort/scripts/effort-pause.sh --effort <S>/space/efforts/<id>-events --words a
+    <S>/space/efforts/<id>-events/events/000002-effort.paused.json
+    [exit 0]
+$ sh crucible-effort/scripts/effort-resume.sh --effort <S>/space/efforts/<id>-events --words b
+    <S>/space/efforts/<id>-events/events/000003-effort.resumed.json
+    [exit 0]
+=== the reader
+$ sh crucible-events/scripts/events-read.sh --effort <S>/space/efforts/<id>-events --paths
+    <S>/space/efforts/<id>-events/events/000001-effort.opened.json
+    <S>/space/efforts/<id>-events/events/000002-effort.paused.json
+    <S>/space/efforts/<id>-events/events/000003-effort.resumed.json
+    [exit 0]
+    array: [{"seq":1,"type":"effort.opened"},{"seq":2,"type":"effort.paused"},{"seq":3,"type":"effort.resumed"}]
+    effort.paused: [2]
+    effort.*: [1,2,3]
+    none of a type: []
+$ sh crucible-events/scripts/events-read.sh --effort <S>/space/efforts/<id>-events --type grill.ended --paths
+    
+    [exit 0]
+    no events: []
+$ sh crucible-events/scripts/events-read.sh --effort relative
+    events-read.sh: --effort must be an absolute folder
+    [exit 2]
+$ sh crucible-events/scripts/events-read.sh --effort <S>
+    events-read.sh: <S> is not an effort folder
+    [exit 2]
+$ sh crucible-events/scripts/events-read.sh --effort <S>/space/efforts/<id>-events --type Effort.paused
+    events-read.sh: --type Effort.paused is not a type: lowercase words joined by dots, as effort.closed, or a family, as effort.*
+    [exit 2]
+=== the writer finds the rule itself
+$ sh crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-events --type effort.paused --by evidence --body-file <S>/b.json
+    <S>/space/efforts/<id>-events/events/000004-effort.paused.json
+    [exit 0]
+$ sh crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-events --type nothing.here --by evidence --body-file <S>/b.json
+    event-write.sh: no rule for nothing.here: expected one <component>/events/nothing.here.jq beside crucible-events
+    [exit 2]
+$ sh crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-events --type effort.paused --by evidence --rules /tmp --body-file <S>/b.json
+    event-write.sh: unknown argument --rules; try --help
+    [exit 2]
+--- two rules for one type, in a scratch copy: refused, naming both
+$ sh <copy>/crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-events --type effort.resumed --by evidence --body-file <S>/b.json
+    event-write.sh: 2 rules for effort.resumed: crucible-effort/events/effort.resumed.jq, zz-second/events/effort.resumed.jq; expected exactly one
+    [exit 2]
+    the repository tree is untouched
+--- the log after all of it
+    1 effort.opened
+    2 effort.paused
+    3 effort.resumed
+    4 effort.paused

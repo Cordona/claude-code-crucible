@@ -1,0 +1,42 @@
+--- show-card refusals for a recorded gate
+    show-card.sh: a recorded gate needs --effort, an absolute folder
+    show-card.sh: --record must be lowercase words joined by dashes
+    show-card.sh: a recorded gate needs --accept, the option that means yes
+--- a recorded gate: the question must be one, single-select, offering the yes option
+    A recorded gate asks exactly one question.
+    A recorded gate asks a single-select question.
+    The question must offer the yes option the card named: Approve the spec (Recommended)
+  the good question: allowed, a hand-off left
+    [no output = allowed]
+    t1.json
+--- the human picks the yes option: accepted true
+    000001-effort.opened.json
+    000002-gate.answered.json
+    {"by":"record-gate-answer.sh","body":{"record":"spec-approval","subject":"9f2c","question":"Approve this spec?","accept":"Approve the spec (Recommended)","answer":"Approve the spec (Recommended)","accepted":true}}
+           0
+--- the human types their own answer: accepted false
+    {"answer":"Approve, but fix section 2 first","accepted":false}
+--- an ordinary gate (no --record): no event
+    events before        3, after        3
+--- a subagent's answer: no event
+    [no output]
+--- only the hook may write gate.answered
+    event-write.sh: gate.answered refused: gate.answered is written only by record-gate-answer.sh
+    event-write.sh: gate.answered refused: accepted must say whether the answer is the accept option
+--- junk input: exit 0
+    [exit 0]
+--- the shared reader: the newest answer counts
+  spec-approval on 9f2c: the newest is the typed answer (no)
+    gate-answer.sh: the newest answer (event 3) did not accept: Approve, but fix section 2 first
+    [exit 1]
+  then a yes: accepted
+    ACCEPTED: 4
+    [exit 0]
+  then a no: the earlier yes no longer counts
+    gate-answer.sh: the newest answer (event 5) did not accept: Change it
+    [exit 1]
+  another subject, and no answer at all
+    gate-answer.sh: no answer for spec-approval on other
+    [exit 1]
+    gate-answer.sh: no answer for effort-start on 9f2c
+    [exit 1]
