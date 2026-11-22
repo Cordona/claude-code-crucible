@@ -13,7 +13,7 @@ include "flow-replay" {search: "../scripts/lib"};
 		else ($all | map(select(.seq == $b.event)) | first) as $e
 			| if $e == null then "event \($b.event) is not in this effort"
 			  elif ($e | fits($s.done_when) | not) then "event \($b.event) is not a \($s.done_when.event)\(if $s.done_when.match then " matching \($s.done_when.match | tojson)" else "" end)"
-			  elif $e.seq <= $s.since then "event \($b.event) is older than the step's start or reopen"
+			  elif $e.seq <= $s.floor then "event \($b.event) is older than the step's reopen"
 			  elif ($all | used_evidence | index([$b.event])) then "event \($b.event) is already evidence for another step"
 			  else empty end
 		end

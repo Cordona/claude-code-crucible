@@ -39,6 +39,6 @@ A question with no real options, such as a name or a fact only the human holds, 
 
 Record only direct answers. A hedge, a question back, or a "yes, but" stays open, and a bare "yes" accepts your recommendation. A question that turned out wrong is dropped and asked again as a new one, with the old one as its parent. Drop what no longer matters, and defer what needs someone else. Never put a secret in a question or an answer: every agent reads the ended grill.
 
-End when the human says you share one understanding, and add the ended grill to the effort's context so the agents read its decisions. You may end with questions still open or deferred.
+End when the human says you share one understanding. You may end with questions still open or deferred.
 
 The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract.

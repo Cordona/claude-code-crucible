@@ -1,4 +1,4 @@
-# Evidence run for crucible-grill, and its hand-off to the context.
+# Evidence run for crucible-grill: the grill is its own fact, never a context entry.
 C=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite/framework/core/main-thread; G=$C/crucible-grill/scripts; E=$C/crucible-effort/scripts; X=$C/crucible-context/scripts
 S="/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/grill test"; rm -rf "$S"; mkdir -p "$S"; export CRUCIBLE_HOME="$S/space" CLAUDE_CONFIG_DIR="$S/cfg" CLAUDE_CODE_SESSION_ID=sess-g
 . /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/lib-decide.sh
@@ -36,14 +36,9 @@ run sh $G/grill-end.sh --grill "$D"
 run sh $G/grill-show.sh --grill "$EV" --open
 run sh $G/grill-list.sh --effort "$F"
 run sh $G/grill-new.sh --effort "$F" --topic "third"
-echo "--- hand-off to the context, then a cut"
+echo "--- the ended grill is its own fact: read from the events, never added to the context"
+sh $C/crucible-events/scripts/events-read.sh --effort "$F" --type grill.ended | jq -r '.[] | "    grill.ended seq \(.seq): grill \(.body.number) \"\(.body.topic)\""'
 run sh $X/context-add.sh --effort "$F" --path "$EV" --why "grill: How the prune command should behave"
-mkdir -p "$F/spec"; printf '## Goal\nPrune on demand\n## Done when\nOld data gone\n## Scope\nIn: the command\n## Constraints\nDry run first\n## Open points\nNone\n' >"$F/spec/1.md"
-decide "$F" spec-approval "$(shasum -a 256 "$F/spec/1.md" | cut -d ' ' -f 1)" "$F/spec/1.md" "Approve (Recommended)" | tail -n 1 | sed 's|^|    gate: |'
-run sh $C/crucible-spec/scripts/spec-approve.sh --effort "$F" --draft "$F/spec/1.md"
-FP=$(sh $X/context-fingerprint.sh --effort "$F" | sed -n 's/FINGERPRINT: //p')
-run sh $X/context-cut.sh --effort "$F" --expect "$FP"
-jq -c '.body.paths' "$(ls "$F/events/"*context.cut.json | tail -1)" | sed "s|$F|<F>|g"
 echo "--- paused effort"
 run sh $E/effort-pause.sh --effort "$F" --words later
 run sh $G/grill-add.sh --grill "$D2" --question "x?" --recommendation r --reason w

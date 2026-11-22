@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
-# Claude Code PreToolUse hook for AskUserQuestion, three steps as one
-# question goes out: it holds the question until its card is shown, checks a
-# recorded gate's question and leaves the hand-off for its answer, then
-# clears the session's cards. One hook, not three: hooks on one matcher run
-# side by side, and the hand-off and the clearing both need the card's record
-# at the moment the question is allowed.
+# Claude Code PreToolUse hook for AskUserQuestion, four steps as one
+# question goes out: it holds the question until its card is shown, runs the
+# shape check, checks a recorded gate's question and leaves the hand-off for
+# its answer, then clears the session's cards. One hook, not several: hooks
+# on one matcher run side by side, and nothing may be cleared while another
+# check could still refuse the question.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
@@ -18,20 +18,23 @@ usage: sh hold-question-until-card-shown.sh < pre-tool-use-input.json
        sh hold-question-until-card-shown.sh --help | -h
 
 A Claude Code PreToolUse hook for AskUserQuestion. In order, as one
-question goes out:
+question goes out, each deny ending the run before anything is written or
+removed:
   1. Holds the question: denied while this session has no card, or a card
      not yet shown in main's final message.
-  2. For a recorded card: denies a question that isn't one single-select
+  2. Runs scripts/check-question-shape.sh on the same input and passes on
+     its deny. If that script can't run, this step is skipped.
+  3. For a recorded card: denies a question that isn't one single-select
      question offering the card's yes label; otherwise writes the hand-off
      for the answer hook, <the session's cache folder>/answers/
      <tool_use_id>.json, holding the card's record and the question's text.
-  3. Removes every card record of the session (<the session's cache
+  4. Removes every card record of the session (<the session's cache
      folder>/owed/*), so the next question needs a new card.
 The session's cache folder is
   ${CLAUDE_CONFIG_DIR:-~/.claude}/cache/crucible-gate/<session_id>.
-Nothing else is written or removed. It is one hook, not three: hooks on one
-matcher run side by side, and steps 2 and 3 both need the card's record at
-the moment the question is allowed.
+Nothing else is written or removed. It is one hook, not several: hooks on one
+matcher run side by side, and nothing may be cleared while another check
+could still refuse the question.
 
 stdin: the hook JSON; reads session_id, agent_id, tool_name, tool_use_id,
   tool_input.questions
@@ -74,6 +77,10 @@ done <<EOF2
 ${records}
 EOF2
 [ "${shown}" = true ] || deny 'Every question needs a card. Write one, run show-card.sh, end your turn with the card, then ask.'
+# The shape check: its deny goes out before anything is touched. A check
+# that can't run is skipped, so a fault never blocks the human.
+shape=$(sh "$(dirname -- "$0")/../../scripts/check-question-shape.sh" <"${input}" 2>/dev/null) || shape=''
+[ -z "${shape}" ] || { printf '%s\n' "${shape}"; exit 0; }
 # A recorded card: check the question, and leave the hand-off.
 recorded=$(printf '%s\n' "${records}" | while IFS= read -r record; do
 	[ -z "${record}" ] || jq -c 'select(.status == "shown" and .record) | .record' "${record}" 2>/dev/null

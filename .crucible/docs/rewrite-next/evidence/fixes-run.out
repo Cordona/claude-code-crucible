@@ -98,7 +98,7 @@ $ sh crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-shap
 $ sh install-check.sh --settings <S>/missing.json
     install-check.sh: --settings <S>/missing.json is not a readable file
     [exit 2]
-    empty settings: exit 1, 18 lines missing
+    empty settings: exit 1, 17 lines missing
 --- complete, from install-entries.sh's own output
 $ sh install-check.sh --settings <S>/settings.json
     installed

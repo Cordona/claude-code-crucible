@@ -10,16 +10,15 @@ usage: sh context-fingerprint.sh --effort FOLDER
        sh context-fingerprint.sh --help | -h
 
 Builds the version a cut would write now and prints its fingerprint: the
-latest version's own when nothing is new. Writes nothing.
+latest version's own when nothing is new, an empty first version's when
+there is nothing at all. It is the subject of the human's context-done
+gate. Writes nothing.
 
   --effort FOLDER   the effort's folder, absolute
 
 stdout: FINGERPRINT: <64 lowercase hex digits>, then VERSION: v<N>
 Exit: 0 printed; 2 refused, the reason on stderr, led by a token:
-  NO-SPEC  no docs folder holds a spec.md
-  NOT-APPROVED  spec.md is not the spec the human approved last
   DOCS-NAME, DOCS-SIZE  a file the docs folder may not hold, or too much
-  CONTEXT-NONE  nothing at all: no docs, nothing pending, no version
 USAGE
 }
 

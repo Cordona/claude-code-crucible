@@ -11,8 +11,8 @@ usage: sh grill-end.sh --grill PATH
 
 Writes the grill as the body of one grill.ended event, then removes the
 draft. Open and deferred questions stay as they are: an ended grill is not
-all decisions. To give it to the agents, add the event's path to the
-effort's context.
+all decisions. The event is the grill's one copy; whoever sends agents
+reads it from the effort's events.
 
   --grill PATH   the open grill's draft
 

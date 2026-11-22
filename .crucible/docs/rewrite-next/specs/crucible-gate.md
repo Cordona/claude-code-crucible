@@ -12,11 +12,11 @@ Every question main asks follows a card the human has seen. A decision a piece a
 | `scripts/gate-answer.sh` | Says whether the newest answer to a recorded gate accepted it |
 | `scripts/lib/owed.sh` | The owed-card store: path, safe ids, 30-minute stale age, 2-try cap |
 | `hooks/stop/require-card-shown.sh` | Keeps main going until its final message holds the owed card, then tells it to ask |
-| `hooks/pre-tool-use/hold-question-until-card-shown.sh` | Holds the question until its card is shown, checks a recorded gate's question and leaves the hand-off, then clears the session's cards |
-| `hooks/pre-tool-use/check-question-shape.sh` | Denies a question that breaks the shape rules, naming each broken rule |
+| `hooks/pre-tool-use/hold-question-until-card-shown.sh` | Holds the question until its card is shown, runs the shape check, checks a recorded gate's question and leaves the hand-off, then clears the session's cards |
+| `scripts/check-question-shape.sh` | Run by the hold hook, not by main: denies a question that breaks the shape rules, naming each broken rule |
 | `hooks/post-tool-use/record-gate-answer.sh` | Writes a recorded gate's answer as one `gate.answered` event |
 | `events/gate.answered.jq` | The event's rule: its writer and its body's shape |
-| `hooks/matchers.json` | The event and matcher for each hook: Stop with no matcher, the other three on `AskUserQuestion` |
+| `hooks/matchers.json` | The event and matcher for each hook: Stop with no matcher, the other two on `AskUserQuestion` |
 
 ## A card and its question
 
@@ -24,14 +24,14 @@ Every question main asks follows a card the human has seen. A decision a piece a
 2. Main ends its turn with the card. The Stop hook compares the final message with each owed card, ignoring trailing spaces and blank lines:
    - card missing: main is sent back to show it exactly as printed, at most 2 times. After that the record is dropped and the human gets a notice saying so;
    - card present: marked shown, and main is told to ask; again at most 2 times if it stops without asking.
-3. Main calls AskUserQuestion. The hold hook denies it while there is no card or a card is still owed. Once a card is shown, the question goes out and the session's card records are removed, so the next question needs a new card.
-4. At the same time, the shape hook checks each question:
+3. Main calls AskUserQuestion. The hold hook denies it while there is no card or a card is still owed. Once a card is shown, the hold hook runs the shape check (4), then a recorded gate's check. Only when nothing refuses does the question go out and the session's card records are removed, so the next question needs a new card. A refused question leaves the card in place, so main fixes the question and asks again without showing the card again.
+4. The shape check, as a step of the hold hook, checks each question:
    - the question text is not empty;
    - the first option's label ends with `(Recommended)`, and no other option's label does, unless the question is multi-select;
    - every option has a non-empty description, which says why;
    - no hand-made "Other" or "Something else": the dialog always offers one.
 
-   The 2–4 option count is the tool's own check.
+   The 2–4 option count is the tool's own check. The refusal for a missing recommendation also says that a question with no real options comes out of the dialog and is asked in a plain sentence. If the shape check can't run, the step is skipped: a hook fault never blocks the human.
 
 All hooks ignore other tools and any call or stop from a subagent (a non-empty `agent_id`). Records older than 30 minutes are removed as stale.
 
@@ -67,7 +67,7 @@ The skill gives main the sign: its turn ended with the card and nothing told it 
 
 - **Every question needs a card:** a hook can check that; a narrower rule would make the hook judge which questions deserve one. A quick question stays a plain sentence.
 - **Main writes the question:** no templates; it is built from the situation, and hooks check only its shape.
-- **One hold hook, not three:** hooks on one matcher run side by side, and the hand-off and the clearing both need the card's record at the moment the question is allowed.
+- **One hold hook, not several:** hooks on one matcher run side by side, so the shape check is a step of the hold hook, not a hook of its own: nothing is cleared while another check could still refuse the question. The hand-off and the clearing need the card's record at the moment the question is allowed.
 - **Hooks fail open:** a fault exits 0, so a bug never blocks the human.
 - **2 tries:** a copy slip is fixed in one or two; then the stop goes through instead of looping, and a dropped card is told to the human.
 - **Card records are throwaway cache, not events:** edited and removed freely; only the answer is a fact.

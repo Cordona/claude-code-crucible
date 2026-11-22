@@ -103,21 +103,14 @@ $ sh grill-list.sh --effort <F>
 $ sh grill-new.sh --effort <F> --topic third
     <F>/grills/3.json
     [exit 0]
---- hand-off to the context, then a cut
+--- the ended grill is its own fact: read from the events, never added to the context
+    grill.ended seq 2: grill 1 "How the prune command should behave"
 $ sh context-add.sh --effort <F> --path <F>/events/000002-grill.ended.json --why grill: How the prune command should behave
-    added
-    [exit 0]
-$ sh crucible-spec/scripts/spec-approve.sh --effort <F> --draft <F>/spec/1.md
-    <F>/events/000004-spec.approved.json
-    [exit 0]
-$ sh context-cut.sh --effort <F> --expect dc4a92a01f7145b18e2f8ea5ee39260b79c381844e285ab660c0038d5cb8fa4f
-    CONTEXT_FILE: <F>/events/000005-context.cut.json
-    CONTEXT_SHA256: 8e4f9742496fb14e7f7d7a7c9946df9dc1d6c18528c8c2591697bc936605e976
-    [exit 0]
-[{"path":"<F>/events/000002-grill.ended.json","why":"grill: How the prune command should behave"},{"path":"<F>/context/v1","sha256":"07d04f9e0310edb4786df33e6ce39e63ece219568c48e6fd14437404a8cd5700"}]
+    context-add.sh: --path <F>/events/000002-grill.ended.json is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
+    [exit 2]
 --- paused effort
 $ sh effort-pause.sh --effort <F> --words later
-    <F>/events/000006-effort.paused.json
+    <F>/events/000003-effort.paused.json
     [exit 0]
 $ sh grill-add.sh --grill <F>/grills/2.json --question x? --recommendation r --reason w
     grill-add.sh: the effort is paused; grills change only while it's open

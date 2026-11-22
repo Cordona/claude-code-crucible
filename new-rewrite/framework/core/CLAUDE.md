@@ -19,6 +19,8 @@ Before your first tool call, say in one sentence what you're about to do. While 
 
 ## Always
 
+- **Treat writing code or tests yourself as the exception.** Write them only when this framework has no build or test agent for the work, or when it has one and the human explicitly tells you to write it yourself; otherwise the agent does it, with its own checks and reviews. With no such agent, write them yourself without asking who should.
+- **Before you do, offer or ask about something a skill covers, load that skill;** it says how to ask. Its one-line description is not enough to act on.
 - **Pass every value to a script in single quotes,** with each `'` inside written `'\''`, so the human's words are never run as shell.
 - **After a break (a compaction or a new session), find the effort you were in and look at its open flows before going on,** and load a skill again before using its scripts: its contract may no longer be in your context.
 - **On small work outside an effort, do what was asked, at the scope asked.** An effort is for work that needs one.

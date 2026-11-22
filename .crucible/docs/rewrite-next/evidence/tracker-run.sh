@@ -80,12 +80,7 @@ ls "$(sh $X/context-docs.sh --effort "$F")" | sed 's|^|    |'
 echo "--- a cut-off copy says so in its header"
 run sh $T/context-add-ticket.sh --effort "$F" --url 'https://github.com/golang/go/issues/15292'
 sed -n '1,4p' "$(sh $X/context-docs.sh --effort "$F")/ticket-github.com-golang-go-issues-15292.md" | sed 's|^|    |'
-echo "--- the docs rule takes the names: with an approved spec, the fingerprint is given"
-. /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/lib-decide.sh
-mkdir -p "$F/spec"; printf '## Goal\nRead tickets\n## Done when\nRead\n## Scope\nIn: all\n## Constraints\nNone\n## Open points\nNone\n' >"$F/spec/1.md"
-SHA=$(shasum -a 256 "$F/spec/1.md" | cut -d ' ' -f 1)
-decide "$F" spec-approval "$SHA" "$F/spec/1.md" "Approve (Recommended)" >/dev/null
-run sh $C/crucible-spec/scripts/spec-approve.sh --effort "$F" --draft "$F/spec/1.md"
+echo "--- the docs rule takes the names: the fingerprint is given"
 run sh $X/context-fingerprint.sh --effort "$F"
 echo "--- not a tracker link: exit 3, nothing written"
 run sh $T/context-add-ticket.sh --effort "$F" --url 'https://example.com/page'

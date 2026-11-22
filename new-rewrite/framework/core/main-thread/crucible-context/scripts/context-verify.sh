@@ -9,7 +9,7 @@ usage: sh context-verify.sh --effort FOLDER --file EVENT
        sh context-verify.sh --help | -h
 
 Checks that EVENT is one of the effort's context.cut events, a regular file
-of at most 65536 bytes, of the right shape, with its spec in place, every
+of at most 65536 bytes, of the right shape, every
 docs folder still giving its digest, and the newest version.
 
   --effort FOLDER   the effort's folder, absolute
@@ -18,7 +18,7 @@ docs folder still giving its digest, and the newest version.
 stdout: CONTEXT_FILE: <EVENT>, then CONTEXT_SHA256: <its sha256>
 Exit: 0 usable; 2 not, the reason on stderr, led by a token:
   NOT-CONTEXT  not a context.cut event of this effort, or not a plain file
-  SHAPE  the event breaks the context.cut rule; NO-SPEC  its spec is missing
+  SHAPE  the event breaks the context.cut rule
   CONTEXT-CHANGED  a docs folder no longer gives its digest
   STALE  a newer version exists: use it
 USAGE
@@ -51,11 +51,8 @@ problems=$(sh "${cx_reader}" --effort "${cx_effort}" \
 	| jq --slurpfile e "${file}" '{event: $e[0], prior: [.[] | select(.seq < $e[0].seq)]}' \
 	| jq -r -f "${cx_rules}/context.cut.jq")
 if [ -n "${problems}" ]; then
-	case ${problems} in NO-SPEC*) cx_refuse "$(printf '%s' "${problems}" | head -n 1)" ;; esac
 	cx_refuse "SHAPE: $(printf '%s' "${problems}" | head -n 1)"
 fi
-spec=$(jq -r '.body.spec' "${file}")
-[ -f "${spec}" ] || cx_refuse "NO-SPEC: ${spec} is missing"
 changed=$(jq -r '.body.paths[] | select(has("sha256")) | "\(.sha256) \(.path)"' "${file}" | while read -r want folder; do
 	[ "$(bd_digest "${folder}")" = "${want}" ] || { printf '%s\n' "${folder}"; break; }
 done)

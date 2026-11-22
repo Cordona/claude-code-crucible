@@ -10,9 +10,11 @@ usage: sh flow-step-done.sh --flow NAME --step ID [--event SEQ | --evidence LINE
        sh flow-step-done.sh --help | -h
 
 Writes flow.step.done once the evidence is checked:
-  an event step: the matching event, newer than the step's start or reopen,
-    and not already evidence for another step. Without --event, the one
-    waiting event is taken; with several waiting, they are named: pick one.
+  an event step: the matching event, not already evidence for another step.
+    With --event, the event named, which may be older than the flow (work
+    done before the flow was agreed) but not older than the step's reopen.
+    Without --event, the one waiting event newer than the step's start or
+    reopen is taken; with several waiting, they are named: pick one.
   a criteria step: --evidence, one line: how main verified it, or, for
     "by": "human", the human's words.
 Any open step may be marked, in any order.

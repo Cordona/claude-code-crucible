@@ -15,7 +15,7 @@ retirement has the retirement undone.
 
   --effort FOLDER   the effort's folder, absolute; the effort must be open
   --path ABS        an existing file or folder, not a symlink, outside the
-                    effort's context/, allowed by context-path-check.sh
+                    effort's own folder, allowed by context-path-check.sh
   --link URL        an http(s) URL of shell-safe characters only
   --why LINE        one line: why the agents need it
 
@@ -50,7 +50,7 @@ if [ -n "${path}" ]; then
 	[ -z "${problem}" ] || cx_refuse "--path ${path} ${problem}"
 	[ ! -L "${path}" ] || cx_refuse "--path ${path} is a symlink"
 	[ -e "${path}" ] && [ -r "${path}" ] || cx_refuse "--path ${path} doesn't exist or can't be read"
-	case ${path}/ in "${cx_dir}"/*) cx_refuse "--path ${path} is inside the effort's context" ;; esac
+	case ${path}/ in "${cx_effort}"/*) cx_refuse "--path ${path} is inside the effort's own folder: its facts reach the agents through the sender, never as a reference" ;; esac
 	key=path value=${path} list=paths
 else
 	jq -en -L "${cx_here}/lib" --arg url "${link}" 'include "link-rule"; $url | safe_link' >/dev/null 2>&1 \

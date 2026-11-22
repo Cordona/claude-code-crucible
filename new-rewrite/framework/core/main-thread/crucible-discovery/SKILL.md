@@ -7,7 +7,7 @@ description: How main finds out what an effort's work is about, what it must ach
 
 Discovery is how you come to understand the work well enough to write it down: what it must achieve, what it must not break, and what already exists.
 
-Read first, ask second. Read what the human points to and what you can find yourself, such as the files, the documents and the linked pages, so that no question asks a fact you could have looked up. Then ask the human only what the material can't answer, a few short questions at a time.
+Read first, ask second. Read what the human points to and what you can find yourself, such as the files, the documents and the linked pages, so that no question asks a fact you could have looked up. Then ask the human only the facts the material can't answer, a few short questions at a time; a choice that changes the outcome goes to a gate.
 
 Put what you find into the effort's context.
 
@@ -35,4 +35,4 @@ When two sources, or two things the human said, contradict each other in a way t
 }
 ```
 
-Discovery is done when the human confirms the goal and what must not break.
+Discovery is done when the human confirms the goal and what must not break; where there is a context, that confirmation is their yes at its "done?" gate.

@@ -39,7 +39,7 @@ An open grill is a mutable file, `<effort>/grills/<n>.json`:
 
 `grill-end.sh` writes the draft as the body of one `grill.ended` event and then removes the draft, so the event is the single copy of an ended grill. Its rule checks the same shape, refuses a number already ended in the effort, and caps the event at 65536 bytes. Open and deferred questions stay as they are: an ended grill is not all decisions.
 
-The grill does not call the context. Main gives the grill to the agents by adding the event's path with `context-add.sh --path <event> --why <line>`; it becomes a pending entry and reaches the agents with the next context version.
+The grill does not call the context, and the context refuses the grill's event as an entry. `grill.ended` is the grill's one copy; whoever sends agents reads every ended grill of the effort from its events, oldest first.
 
 ## Reading a grill
 
@@ -55,8 +55,8 @@ The `answers` list holds answers and notes alike. A reader reads `status` first:
 
 - One script per job, so each is callable alone and its `--help` is its whole contract.
 - The draft stays mutable until the end and only the end is an event: answers change often during a grill; the ended grill is the fact agents read.
-- One copy, the event, referenced from the context: two copies would drift.
-- `grill-end.sh` only writes the event; main adds it to the context, so the grill knows nothing about the context.
+- One copy, the event, read by the sender: two copies would drift, and nothing depends on main remembering to hand it on.
+- `grill-end.sh` only writes the event; the grill and the context know nothing of each other.
 - A lock, not a prose rule, keeps writers from racing; it is the shared lock from `crucible-events`.
 - Rounds are not in the shape and no script asks them: main builds each round from `grill-show.sh --open`, as a small card and one question dialog, or a plain sentence when there are no real options.
 - Text limits are only "one line" and the event size, so the human's meaning is never cut.

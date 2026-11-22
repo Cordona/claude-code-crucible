@@ -23,7 +23,7 @@ echo "--- a recorded gate: the question must be one, single-select, offering the
 sh $SC --record spec-approval --effort "$F" --subject 9f2c --accept "Approve the spec (Recommended)" "$S/card.md" >/dev/null; shown
 q t1 "[$(echo "$ONE" | jq -c '.[0]'),$(echo "$ONE" | jq -c '.[0] | .question = "Second?"')]" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
 q t1 "$(echo "$ONE" | jq -c '.[0].multiSelect = true')" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
-q t1 "$(echo "$ONE" | jq -c '.[0].options[0].label = "Approve"')" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
+q t1 "$(echo "$ONE" | jq -c '.[0].options[0].label = "Approve it (Recommended)"')" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
 echo "  the good question: allowed, a hand-off left"
 q t1 "$ONE" | sh $HOLD; echo "    [no output = allowed]"; ls "$S/cfg/cache/crucible-gate/sess-g/answers/" | show
 echo "--- the human picks the yes option: accepted true"
@@ -59,3 +59,27 @@ sh $SC --record spec-approval --effort "$F" --subject 9f2c --accept "Approve the
 q t5 "$ONE" | sh $HOLD; answer t5 "Change it"
 echo "  then a no: the earlier yes no longer counts"; rd spec-approval 9f2c
 echo "  another subject, and no answer at all"; rd spec-approval other; rd effort-start 9f2c
+
+echo "--- the shape check runs inside the hold hook: a refusal keeps the card"
+OWED="$S/cfg/cache/crucible-gate/sess-g/owed"
+BAD='[{"question":"Which tools?","header":"Tools","options":[{"label":"Scripts","description":"x"},{"label":"CI","description":"y"}]}]'
+echo "  an ordinary gate: a question with no recommendation is refused for its shape"
+sh $SC "$S/card.md" >/dev/null; shown
+q t6 "$BAD" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
+echo "    card records left: $(ls "$OWED" | wc -l | tr -d ' ')"
+echo "  the fixed question goes out with no new card"
+q t6 "$ONE" | sh $HOLD; echo "    [no output = allowed]; card records left: $(ls "$OWED" 2>/dev/null | wc -l | tr -d ' ')"
+echo "  a question with no card is still refused"
+q t7 "$ONE" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
+echo "  a recorded gate: a badly shaped question is refused, the card stays"
+sh $SC --record spec-approval --effort "$F" --subject 9f2c --accept "Approve the spec (Recommended)" "$S/card.md" >/dev/null; shown
+q t8 "$(echo "$ONE" | jq -c '.[0].options[1].description = ""')" | sh $HOLD | jq -r '.hookSpecificOutput.permissionDecisionReason' | show
+echo "    card records left: $(ls "$OWED" | wc -l | tr -d ' '); hand-offs: $(ls "$S/cfg/cache/crucible-gate/sess-g/answers/" | wc -l | tr -d ' ')"
+echo "  the fixed question goes out with no new card, and its answer is recorded"
+q t8 "$ONE" | sh $HOLD; answer t8 "Approve the spec (Recommended)"
+jq -c '.body | {record, subject, answer, accepted}' "$(ls "$F"/events/*gate.answered.json | tail -1)" | show
+echo "  with the shape script gone, the step is skipped: even a badly shaped question goes out"
+mv $GT/scripts/check-question-shape.sh "$S/shape.sh.away"
+sh $SC "$S/card.md" >/dev/null; shown
+q t9 "$BAD" | sh $HOLD; echo "    [no output = allowed]; card records left: $(ls "$OWED" 2>/dev/null | wc -l | tr -d ' ')"
+mv "$S/shape.sh.away" $GT/scripts/check-question-shape.sh

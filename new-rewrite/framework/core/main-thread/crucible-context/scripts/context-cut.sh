@@ -1,30 +1,32 @@
 #!/usr/bin/env sh
-# Cuts a sealed context version, once the human approved sending agents with
-# the fingerprint their plan pinned.
+# Cuts a sealed context version, once the human said the context is done:
+# their newest answer at the context-done gate for this fingerprint.
 # shellcheck source-path=SCRIPTDIR
 set -eu
 umask 077
 
 usage() {
 	cat <<'USAGE'
-usage: sh context-cut.sh --effort FOLDER --expect HEX
+usage: sh context-cut.sh --effort FOLDER
        sh context-cut.sh --help | -h
 
-Run after the human approves sending agents, seated or spun off, with the
-fingerprint context-fingerprint.sh printed for that plan. When the context
-still gives HEX, it moves the draft's docs to <effort>/context/v<N>/ with
-their files read-only, writes the context.cut event and clears the pending
-entries. With nothing new, it prints the latest version and writes nothing.
+Cuts the context's draft into a sealed version once the human said it is
+done. The gate must have recorded the decision as context-done, with the
+draft's fingerprint (context-fingerprint.sh) as its subject, and the
+human's newest answer to it must be the option named as yes. A draft
+changed since that answer has another fingerprint, so the human is asked
+again. The cut moves the draft's docs to <effort>/context/v<N>/ with their
+files read-only, writes the context.cut event and clears the pending
+entries. An empty context is cut as a version with no paths. With nothing
+new since the latest version, it prints that version and writes nothing.
 
   --effort FOLDER   the effort's folder, absolute; the effort must be open
-  --expect HEX      the fingerprint the approved plan pinned
 
 stdout: CONTEXT_FILE: <the context.cut event, absolute>, then
   CONTEXT_SHA256: <its sha256>
-Exit: 0 cut, or nothing new; 2 refused, nothing written, the reason on
-  stderr, led by a token: CONTEXT-CHANGED (the context no longer gives HEX:
-  show the plan again), NO-SPEC, NOT-APPROVED, DOCS-NAME, DOCS-SIZE,
-  CONTEXT-NONE
+Exit: 0 cut, or nothing new; 1 NOT-CONFIRMED: the human's newest answer
+  for this fingerprint is not a yes, or there is none; 2 refused, nothing
+  written, the reason on stderr, led by a token: DOCS-NAME, DOCS-SIZE
 USAGE
 }
 
@@ -32,24 +34,25 @@ cx_prog='context-cut.sh'
 . "$(dirname -- "$0")/lib/context.sh"
 . "$(dirname -- "$0")/lib/path-rule.sh"
 . "$(dirname -- "$0")/lib/body.sh"
-effort='' expect=''
+effort=''
 while [ $# -gt 0 ]; do
 	case $1 in
 		-h | --help) usage; exit 0 ;;
-		--effort | --expect)
-			[ $# -ge 2 ] || cx_refuse "$1 needs a value"
-			case $1 in --effort) effort=$2 ;; --expect) expect=$2 ;; esac
-			shift 2 ;;
+		--effort) [ $# -ge 2 ] || cx_refuse '--effort needs a value'; effort=$2; shift 2 ;;
 		*) cx_refuse "unknown argument $1; try --help" ;;
 	esac
 done
 cx_set "${effort}"
-printf '%s' "${expect}" | grep -Eq '^[0-9a-f]{64}$' || cx_refuse '--expect must be 64 lowercase hex digits'
 cx_require_open
 cx_lock
 body=$(bd_build)
-[ "$(bd_fingerprint "${body}")" = "${expect}" ] \
-	|| cx_refuse 'CONTEXT-CHANGED: the context changed since the plan pinned it; show the plan again'
+# The human's yes on exactly this would-be version.
+fingerprint=$(bd_fingerprint "${body}")
+if ! reason=$(sh "${cx_gate_answer}" --effort "${cx_effort}" --record context-done --subject "${fingerprint}" 2>&1 >/dev/null); then
+	printf '%s: NOT-CONFIRMED: the human has not said yes to this context (fingerprint %s): %s; ask at a context-done gate\n' \
+		"${cx_prog}" "${fingerprint}" "$(printf '%s' "${reason}" | head -n 1 | sed 's/^[^:]*: //')" >&2
+	exit 1
+fi
 
 latest=$(cx_latest)
 show() { printf 'CONTEXT_FILE: %s\nCONTEXT_SHA256: %s\n' "$1" "$(sh_sha256 "$1")"; }

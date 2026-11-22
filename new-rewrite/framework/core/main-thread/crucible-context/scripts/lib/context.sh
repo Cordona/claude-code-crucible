@@ -13,6 +13,7 @@ cx_here=$(cd -- "$(dirname -- "$0")" && pwd)
 cx_effort_state="${cx_here}/../../crucible-effort/scripts/effort-state.sh"
 cx_writer="${cx_here}/../../crucible-events/scripts/event-write.sh"
 cx_reader="${cx_here}/../../crucible-events/scripts/events-read.sh"
+cx_gate_answer="${cx_here}/../../crucible-gate/scripts/gate-answer.sh"
 cx_rules="${cx_here}/../events"
 
 cx_refuse() {

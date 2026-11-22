@@ -5,7 +5,9 @@ description: How main asks the human to decide, and shows a card before the ques
 
 # Gates
 
-A gate is worth it for a decision that matters and that you initiate, for example: starting an effort, agreeing how to reach a goal, choosing what to act on, anything hard to undo. Otherwise act, or ask in a plain sentence.
+A gate is worth it for a decision that matters and that you initiate, for example: starting an effort, agreeing how to reach a goal, choosing what to act on, anything hard to undo.
+
+A question whose answer changes the outcome is a gate when it is a choice between real options, even in the middle of other work; several go in one question dialog, up to four, behind one small card. An open question with no real options is asked plainly. Never ask for the go in passing, as an "OK to go ahead?" at the end of a message: if you need the human's go to start something, such as an effort, that is a decision and goes to a gate; if you don't need it, go on. Anything else that needs the human, such as a fact only they know, is asked in a plain sentence.
 
 The human switches between several sessions and often arrives at this one cold. A gate's job is to let them decide fast and well: in one look they see what's at stake, what you recommend and why, and what the alternative costs.
 

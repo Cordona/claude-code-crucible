@@ -67,6 +67,7 @@ A change needs no recorded yes: the human's words are the agreement.
 
 ## Decided, and why
 
+- **The skill's example is a context flow** whose steps end in `context.cut`, `grill.ended` and `spec.approved`, so a flow main offers there is checked by events, not claims. These are the only event names prose holds; an evidence check confirms each still has its one rule file.
 - **A done_when's event is checked only as one line, not by its form:** how types are named belongs to crucible-events alone. A name that is no real type simply never gets evidence, which the track shows.
 - **Explicit marks with checked evidence, not derived progress:** derived progress silently credits the wrong step when event types repeat.
 - **Order advisory, fan-out inside pieces:** one node shape fits every flow.

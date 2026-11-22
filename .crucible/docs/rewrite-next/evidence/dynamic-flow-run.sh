@@ -173,3 +173,21 @@ agree "$FC" "$S/flow.json" >/dev/null
 for f in "$FC"/events/*.json; do chmod u+w "$f"; jq -c . "$f" >"$f.c" && mv "$f.c" "$f"; chmod 444 "$f"; done
 grep -c '"claude_session_id":"sess-1"' "$FC"/events/*.json | awk -F: '{n += $2} END {print "    events with the compact field: " n}'
 hook sess-1 | sed "s|$FC|<FC>|g"
+echo "--- a flow agreed after work began: an older event may be named for a step, never one older than its reopen"
+FL2=$(sh $E/effort-start.sh --name late)
+LG=$(sh $G/grill-new.sh --effort "$FL2" --topic 'done before the flow'); sh $G/grill-end.sh --grill "$LG" >/dev/null
+OLD=$(sh $C/crucible-events/scripts/events-read.sh --effort "$FL2" --type grill.ended | jq '.[0].seq')
+cat > "$S/late.json" <<'J'
+{ "goal": "Finish what was started", "done_when": { "criteria": "the human says so", "by": "human" },
+  "steps": [ { "id": 1, "do": "Grill the goal", "uses": "crucible-grill", "done_when": { "event": "grill.ended" } } ] }
+J
+LF=$(agree "$FL2" "$S/late.json")
+run sh $FL/flow-step-done.sh --flow "$LF" --step 1
+run sh $FL/flow-step-done.sh --flow "$LF" --step 1 --event "$OLD"
+echo '[{"reopen":1}]' > "$S/late-r.json"; run sh $FL/flow-change.sh --flow "$LF" --file "$S/late-r.json" --reason "the human: it needs another round"
+run sh $FL/flow-step-done.sh --flow "$LF" --step 1 --event "$OLD"
+echo "--- the skill's example names only real events: each has exactly one rule file"
+sed -n '/^```json/,/^```/p' $C/crucible-dynamic-flow/SKILL.md | sed '1d;$d' | jq -r '.. | objects | .event? // empty' | while IFS= read -r ev; do
+	n=$(ls $C/*/events/"$ev".jq 2>/dev/null | wc -l | tr -d ' ')
+	echo "    $ev: $n rule file(s)"
+done

@@ -56,17 +56,19 @@ run sh "$K/trackers/scripts/tracker-read.sh" --url 'https://example.com/page'
 sh "$K/trackers/scripts/tracker-read.sh" --url 'https://github.com/cli/cli/issues/1' | head -n 1 | sed 's|^|    first line: |'
 run sh "$K/trackers/scripts/context-add-ticket.sh" --effort "$F" --url 'https://github.com/cli/cli/issues/1'
 
-echo "=== context"
+echo "=== context: the grill is no entry; the cut on the human's \"done\""
 run sh "$K/crucible-context/scripts/context-add.sh" --effort "$F" --path "$GE" --why 'the grill on what to fetch'
 run sh "$K/crucible-context/scripts/context-status.sh" --effort "$F"
+printf 'Context to cut, draft at %s/context/draft\n' "$F" >"$S/ctx-card.md"
+FP=$(sh "$K/crucible-context/scripts/context-fingerprint.sh" --effort "$F" | sed -n 's/FINGERPRINT: //p')
+decide "$F" context-done "$FP" "$S/ctx-card.md" "Approve (Recommended)" >/dev/null
+run sh "$K/crucible-context/scripts/context-cut.sh" --effort "$F"
 
-echo "=== spec, then the cut"
+echo "=== spec, from the cut context and the grill, sealed in place"
 mkdir -p "$F/spec"; printf '## Goal\nFetch the limits\n## Done when\nThey show\n## Scope\nIn: the fetch\n## Constraints\nNone\n## Open points\nNone\n' >"$F/spec/1.md"
 SSHA=$(shasum -a 256 "$F/spec/1.md" | cut -d ' ' -f 1)
 decide "$F" spec-approval "$SSHA" "$F/spec/1.md" "Approve (Recommended)" >/dev/null
 run sh "$K/crucible-spec/scripts/spec-approve.sh" --effort "$F" --draft "$F/spec/1.md"
-FP=$(sh "$K/crucible-context/scripts/context-fingerprint.sh" --effort "$F" | sed -n 's/FINGERPRINT: //p')
-run sh "$K/crucible-context/scripts/context-cut.sh" --effort "$F" --expect "$FP"
 V=$(sh "$K/crucible-context/scripts/context-status.sh" --effort "$F" | sed -n 's/CONTEXT_FILE: //p')
 ls "$F/context/v1" | sed 's|^|    v1 holds: |'
 run sh "$K/crucible-context/scripts/context-verify.sh" --effort "$F" --file "$V"

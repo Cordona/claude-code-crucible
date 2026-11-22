@@ -46,20 +46,21 @@ def fits($dw): . as $e
 	| $e.type == $dw.event and (($dw.match // {}) | to_entries | all(. as $m | $e.body[$m.key] == $m.value));
 
 # The flow named by seq $seq, replayed: {seq, goal, done_when, steps, ended}.
-# Each step gains status (open, done, skipped), since (the seq after which its
-# evidence must come) and, when done, kind, event, evidence.
+# Each step gains status (open, done, skipped), since (the seq after which
+# waiting evidence is looked for), floor (the seq after which named evidence
+# must come: its latest reopen, or 0) and, when done, kind, event, evidence.
 def flow_state($seq):
 	. as $all
 	| ($all[] | select(.seq == $seq and .type == "flow.agreed")) as $agreed
 	| reduce ($all[] | select(.seq > $seq and (.type | startswith("flow.")) and .body.flow == $seq)) as $e (
 		{seq: $seq, goal: $agreed.body.goal, done_when: $agreed.body.done_when, ended: null,
 		 ids: [$agreed.body.steps[].id],
-		 steps: [$agreed.body.steps[] | . + {status: "open", since: $seq}]};
+		 steps: [$agreed.body.steps[] | . + {status: "open", since: $seq, floor: 0}]};
 		if $e.type == "flow.changed" then
 			reduce $e.body.ops[] as $op (.;
 				if $op.add then
 					.ids += [$op.add.id]
-					| ($op.add + {status: "open", since: $e.seq}) as $node
+					| ($op.add + {status: "open", since: $e.seq, floor: 0}) as $node
 					| if $op.before then
 						(.steps | map(.id) | index($op.before)) as $i | .steps = .steps[:$i] + [$node] + .steps[$i:]
 					  else .steps += [$node] end
@@ -72,7 +73,7 @@ def flow_state($seq):
 					if $op.revise.step then .steps |= map(if .id == $op.revise.step then .done_when = $op.revise.done_when else . end)
 					else .done_when = $op.revise.done_when end
 				elif $op.reopen then
-					.steps |= map(if .id == $op.reopen then {id, do, done_when} + (if .uses then {uses} else {} end) + {status: "open", since: $e.seq} else . end)
+					.steps |= map(if .id == $op.reopen then {id, do, done_when} + (if .uses then {uses} else {} end) + {status: "open", since: $e.seq, floor: $e.seq} else . end)
 				else . end)
 		elif $e.type == "flow.step.done" then
 			.steps |= map(if .id == $e.body.step then . + {status: "done", kind: $e.body.kind}

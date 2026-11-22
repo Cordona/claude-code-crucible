@@ -40,3 +40,18 @@
     [exit 1]
     gate-answer.sh: no answer for effort-start on 9f2c
     [exit 1]
+--- the shape check runs inside the hold hook: a refusal keeps the card
+  an ordinary gate: a question with no recommendation is refused for its shape
+    Fix the question, then ask again: Tools: the first option must be the recommended one, its label ending with (Recommended). If there are no real options to recommend, take this question out of the dialog and ask it in a plain sentence
+    card records left: 1
+  the fixed question goes out with no new card
+    [no output = allowed]; card records left: 0
+  a question with no card is still refused
+    Every question needs a card. Write one, run show-card.sh, end your turn with the card, then ask.
+  a recorded gate: a badly shaped question is refused, the card stays
+    Fix the question, then ask again: Spec: option "Change it" needs a description saying why
+    card records left: 1; hand-offs: 0
+  the fixed question goes out with no new card, and its answer is recorded
+    {"record":"spec-approval","subject":"9f2c","answer":"Approve the spec (Recommended)","accepted":true}
+  with the shape script gone, the step is skipped: even a badly shaped question goes out
+    [no output = allowed]; card records left: 0
