@@ -12,11 +12,14 @@ Scans the new-rewrite tree (framework and domains) and prints what an
 install needs, for the human to put in place:
   - settings entries to merge into a Claude Code settings file: every hook
     a component declares in its hooks/matchers.json (the event comes from
-    the hook's folder: stop, pre-tool-use, post-tool-use), the space as an
-    additional directory, and an Edit deny rule on its events (Claude Code
-    applies an Edit rule to every tool that edits files);
-  - link commands, one per line: every folder holding a SKILL.md into the
-    skills folder, and the core CLAUDE.md;
+    the hook's folder: stop, pre-tool-use, post-tool-use), each run through
+    its component's link in the skills folder, so hooks and scripts find
+    their neighbours the same way; the space as an additional directory;
+    and an Edit deny rule on its events (Claude Code applies an Edit rule to
+    every tool that edits files);
+  - link commands, one per line: every component (each folder directly in
+    a main-thread folder, crucible-events included) into the skills folder,
+    and the core CLAUDE.md;
   - jq 1.6 or later on PATH, which every hook needs.
 Changes nothing.
 
@@ -51,16 +54,22 @@ for file in $(find "${root}" -path '*/hooks/matchers.json' -type f); do
 		and (.value == null or (.value | type) == "string"))' "${file}" >/dev/null 2>&1 \
 		|| refuse "${file} is not a valid matchers.json; expected {\"<event folder>/<hook>.sh\": <matcher or null>}"
 done
+# path is the hook in the tree; command_path the same hook through its
+# component's skill link, which the settings entry runs.
 hooks=$(find "${root}" -path '*/hooks/matchers.json' -type f | LC_ALL=C sort | while IFS= read -r file; do
-	jq -c --arg dir "${file%/matchers.json}" 'to_entries[] | {
+	component=${file%/hooks/matchers.json}
+	jq -c --arg dir "${file%/matchers.json}" --arg link "${config}/skills/${component##*/}/hooks" 'to_entries[] | {
 		event: ({"stop": "Stop", "pre-tool-use": "PreToolUse", "post-tool-use": "PostToolUse"}[.key | split("/")[0]]),
-		matcher: .value, path: ($dir + "/" + .key)}' "${file}"
+		matcher: .value, path: ($dir + "/" + .key), command_path: ($link + "/" + .key)}' "${file}"
 done | jq -s .)
-# Every skill: {name, path}, from each folder holding a SKILL.md.
-skills=$(find "${root}" -name SKILL.md -type f | LC_ALL=C sort | while IFS= read -r file; do
-	dir=${file%/SKILL.md}
-	jq -cn --arg name "${dir##*/}" --arg path "${dir}" '{name: $name, path: $path}'
-done | jq -s .)
+# Every component: {name, path}, each folder directly in a main-thread folder.
+skills=$(find "${root}" -type d -name main-thread | LC_ALL=C sort | while IFS= read -r parent; do
+	for dir in "${parent}"/*/; do
+		[ -d "${dir}" ] || continue
+		dir=${dir%/}
+		jq -cn --arg name "${dir##*/}" --arg path "${dir}" '{name: $name, path: $path}'
+	done
+done | jq -s 'sort_by(.name)')
 
 needs=$(jq -n --argjson hooks "${hooks}" --argjson skills "${skills}" \
 	--arg claude_md "${root}/framework/core/CLAUDE.md" --arg config "${config}" --arg space "${space}" '
@@ -79,7 +88,7 @@ echo '# Settings entries: merge into your settings.json'
 printf '%s\n' "${needs}" | jq --arg sq "'" "${quote_jq}"' {
 	hooks: (.hooks | group_by(.event) | map({key: .[0].event, value: (group_by(.matcher) | map(
 		(if .[0].matcher == null then {} else {matcher: .[0].matcher} end)
-		+ {hooks: map({type: "command", command: ("sh " + (.path | q))})}))}) | from_entries),
+		+ {hooks: map({type: "command", command: ("sh " + (.command_path | q))})}))}) | from_entries),
 	permissions: {additionalDirectories: [.space], deny: .deny}}'
 echo
 echo '# Links: run these'

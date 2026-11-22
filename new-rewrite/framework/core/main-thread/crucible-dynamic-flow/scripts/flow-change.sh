@@ -10,16 +10,16 @@ usage: sh flow-change.sh --flow NAME --file OPS --reason TEXT
        sh flow-change.sh --help | -h
 
 Writes a flow.changed event. OPS is a JSON array of ops, applied in order:
-  {"add": NODE, "before"?: ID}   a new step, appended when no before
+  {"add": {"id": N, "step": "<key>"}, "before"?: ID}
+                                 a declared step (flow-candidates.sh), appended
+                                 when no before; its does, skills and ends_with
+                                 are copied from its entry
   {"skip": ID}                   an open step will not be done
   {"move": ID, "before": ID}     a step moves
   {"reopen": ID}                 a done or skipped step is open again; only
                                  evidence newer than the reopen counts
-  {"revise": {"step"?: ID, "done_when": DONE_WHEN}}
-                                 an open step's check, or with no step the
-                                 flow's own, is replaced; evidence written
-                                 before the revise still counts
-The agreed flow is never edited; the change is its own event.
+A step that isn't declared is refused. The agreed flow is never edited; the
+change is its own event.
 
   --flow NAME     the flow, as flow-agree.sh printed it
   --file OPS      the ops, one JSON array
@@ -33,6 +33,7 @@ USAGE
 
 fl_prog='flow-change.sh'
 . "$(dirname -- "$0")/lib/flow.sh"
+. "$(dirname -- "$0")/lib/catalogue.sh"
 flow='' file='' reason=''
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -46,8 +47,22 @@ while [ $# -gt 0 ]; do
 done
 fl_set_flow "${flow}"
 jq -e 'type == "array"' "${file}" >/dev/null 2>&1 || fl_refuse '--file must hold one JSON array of ops'
+problems=$(jq -r -L "${fl_lib}" 'include "flow-replay";
+	to_entries[] | select(.value | type == "object" and has("add")) | .value.add | proposed_problems("add")' "${file}")
+[ -z "${problems}" ] || fl_refuse "$(printf '%s' "${problems}" | paste -sd '|' - | sed 's/|/; /g')"
 fl_require_open
+if jq -e 'any(.[]; type == "object" and has("add"))' "${file}" >/dev/null; then
+	cat=$(ct_catalogue) || exit 2
+	resolved=$(jq -c '[.[] | select(type == "object" and has("add")) | .add]' "${file}" | ct_resolve "${cat}")
+	problems=$(printf '%s' "${resolved}" | jq -r '.problems[]')
+	[ -z "${problems}" ] || fl_refuse "$(printf '%s' "${problems}" | paste -sd '|' - | sed 's/|/; /g')"
+else
+	resolved='{"steps": []}'
+fi
 body=$(mktemp)
 trap 'rm -f -- "${body}"' EXIT
-jq --argjson flow "${fl_seq}" --arg reason "${reason}" '{flow: $flow, reason: $reason, ops: .}' "${file}" >"${body}"
+jq --argjson flow "${fl_seq}" --arg reason "${reason}" --argjson resolved "${resolved}" '
+	($resolved.steps | map({key: (.id | tostring), value: .}) | from_entries) as $by
+	| {flow: $flow, reason: $reason,
+	   ops: map(if type == "object" and has("add") then .add = $by[.add.id | tostring] else . end)}' "${file}" >"${body}"
 fl_write flow.changed "${body}"

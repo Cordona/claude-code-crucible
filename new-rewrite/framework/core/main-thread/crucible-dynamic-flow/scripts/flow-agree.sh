@@ -9,14 +9,17 @@ usage() {
 usage: sh flow-agree.sh --effort FOLDER --file FLOW
        sh flow-agree.sh --help | -h
 
-Writes FLOW as a flow.agreed event, once its shape is checked and the human
+Writes FLOW as a flow.agreed event, once its shape is checked, each of its
+steps is found among the declared steps (flow-candidates.sh), and the human
 accepted it. The gate must have recorded the decision as flow-agree, with
 FLOW's sha256 as its subject, and the human's newest answer to it must be the
-option named as yes; one yes agrees one flow. The flow:
-  {"goal": "<one line>", "done_when": DONE_WHEN, "steps": [NODE, ...]}
-  NODE: {"id": N, "do": "<one line>", "uses"?: "<one line>", "done_when": DONE_WHEN}
-  DONE_WHEN: {"event": "<type>", "match"?: {<body field>: <value>}}
-    or {"criteria": "<one line, true or false>", "by"?: "human"}
+option named as yes; one yes agrees one flow. The flow names steps, never
+describes them:
+  {"goal": "<one line>", "steps": [{"id": N, "step": "<component>/<name>"}, ...]}
+The same step may appear twice, under two ids. The event holds each step's
+does, skills and ends_with, copied from its entry, so it reads the same later.
+A step that isn't declared is refused; one whose entry was left out of the
+catalogue is refused with the reason.
 
   --effort FOLDER   the effort's folder, absolute; the effort must be open
   --file FLOW       the flow as one JSON object
@@ -29,6 +32,7 @@ USAGE
 
 fl_prog='flow-agree.sh'
 . "$(dirname -- "$0")/lib/flow.sh"
+. "$(dirname -- "$0")/lib/catalogue.sh"
 effort='' file=''
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -42,7 +46,11 @@ while [ $# -gt 0 ]; do
 done
 fl_set_effort "${effort}"
 [ -f "${file}" ] || fl_refuse "--file ${file} is not a file"
-problems=$(jq -r -L "${fl_lib}" 'include "flow-replay"; flow_problems' "${file}" 2>/dev/null) || fl_refuse "--file ${file} is not JSON"
+problems=$(jq -r -L "${fl_lib}" 'include "flow-replay"; proposal_problems' "${file}" 2>/dev/null) || fl_refuse "--file ${file} is not JSON"
+[ -z "${problems}" ] || fl_refuse "$(printf '%s' "${problems}" | paste -sd '|' - | sed 's/|/; /g')"
+cat=$(ct_catalogue) || exit 2
+resolved=$(jq -c '.steps' "${file}" | ct_resolve "${cat}")
+problems=$(printf '%s' "${resolved}" | jq -r '.problems[]')
 [ -z "${problems}" ] || fl_refuse "$(printf '%s' "${problems}" | paste -sd '|' - | sed 's/|/; /g')"
 fl_require_open
 . "${fl_here}/../../crucible-events/scripts/lib/sha256.sh"
@@ -53,7 +61,8 @@ answer=$(sh "${gate_answer}" --effort "${fl_effort}" --record flow-agree --subje
 answer=${answer#ACCEPTED: }
 body=$(mktemp)
 trap 'rm -f -- "${body}"' EXIT
-jq --argjson answer "${answer}" '. + {answer: $answer}' "${file}" >"${body}" 2>/dev/null || fl_refuse "--file ${file} is not JSON"
+printf '%s' "${resolved}" | jq --argjson answer "${answer}" --arg goal "$(jq -r '.goal' "${file}")" \
+	'{goal: $goal, steps: .steps, answer: $answer}' >"${body}"
 event=$(fl_write flow.agreed "${body}") || exit $?
 seq=${event##*/}
 printf '%s:%s\n' "${fl_effort}" "$(printf '%s' "${seq%%-*}" | sed 's/^0*//')"

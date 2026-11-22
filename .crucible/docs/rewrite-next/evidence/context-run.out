@@ -12,7 +12,7 @@ $ sh context-cut.sh --effort <F0>
     [exit 1]
 $ sh context-cut.sh --effort <F0>
     CONTEXT_FILE: <F0>/events/000003-context.cut.json
-    CONTEXT_SHA256: b853096aa71a28df1180bd32a04134785a22b000b691c7d35d7c1102957b0559
+    CONTEXT_SHA256: 8cd1bbe8d6c50f189d65b036066ca2e85438a90947f0e702731c0f7aa0e9f1dd
     [exit 0]
     empty body: {"version":1,"paths":[]}
 --- the path rule
@@ -94,7 +94,7 @@ $ sh context-status.sh --effort <F>
 --- the docs folder: a note, a name it may not hold, too much
     docs: <F>/context/draft/docs
 $ sh context-fingerprint.sh --effort <F>
-    FINGERPRINT: c14a1209f8168dc48af3f569468f8a2493436cec10874a9e78a975f3a2647086
+    FINGERPRINT: 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c
     VERSION: v1
     [exit 0]
 $ sh context-fingerprint.sh --effort <F>
@@ -108,24 +108,24 @@ $ sh context-fingerprint.sh --effort <F>
     [exit 2]
 --- cut v1: only on the human's yes to this fingerprint
 $ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint c14a1209f8168dc48af3f569468f8a2493436cec10874a9e78a975f3a2647086): no answer for context-done on c14a1209f8168dc48af3f569468f8a2493436cec10874a9e78a975f3a2647086; ask at a context-done gate
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): no answer for context-done on 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c; ask at a context-done gate
     [exit 1]
 $ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint c14a1209f8168dc48af3f569468f8a2493436cec10874a9e78a975f3a2647086): the newest answer (event 3) did not accept: Something else, typed by the human; ask at a context-done gate
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): the newest answer (event 3) did not accept: Something else, typed by the human; ask at a context-done gate
     [exit 1]
 $ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint c14a1209f8168dc48af3f569468f8a2493436cec10874a9e78a975f3a2647086): the newest answer (event 5) did not accept: Change it; ask at a context-done gate
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): the newest answer (event 5) did not accept: Change it; ask at a context-done gate
     [exit 1]
 --- an entry added after the yes: a new fingerprint, so refused and asked again
 $ sh context-add.sh --effort <F> --link https://example.com/alerts --why who is paged when the job fails
     added
     [exit 0]
 $ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint d96960106a1f881cb77a75c8cefd92ab015eda314af3f5401485faf441997645): no answer for context-done on d96960106a1f881cb77a75c8cefd92ab015eda314af3f5401485faf441997645; ask at a context-done gate
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint ac6e8417f75dd93087f3f1dc2107a93381042a9ec81a384d4de3d53542014cd6): no answer for context-done on ac6e8417f75dd93087f3f1dc2107a93381042a9ec81a384d4de3d53542014cd6; ask at a context-done gate
     [exit 1]
 $ sh context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: f5157180d2436962bb9f217038e32656a471d8a12ac15dfc89183fa4d518a84a
+    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
     [exit 0]
     body: {"version":1,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"e3d7d0655a938f68ad186a23801afd6b331576eb98d53e151613e23a0917b24c"}],"links":[{"url":"https://example.com/runbook","why":"how the nightly job is run"},{"url":"https://example.com/alerts","why":"who is paged when the job fails"}]}
     -r--r--r-- decisions.md
@@ -137,12 +137,12 @@ $ sh context-status.sh --effort <F>
 --- the same cut again: nothing new, the latest version, nothing written
 $ sh context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: f5157180d2436962bb9f217038e32656a471d8a12ac15dfc89183fa4d518a84a
+    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
     [exit 0]
     no event written
 $ sh context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: f5157180d2436962bb9f217038e32656a471d8a12ac15dfc89183fa4d518a84a
+    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
     [exit 0]
 --- after the cut: pending changes go to v2; drop, retire, undo
 $ sh context-add.sh --effort <F> --link https://example.com/dashboard --why where the runs of the job show
@@ -170,11 +170,11 @@ $ sh context-drop.sh --effort <F> --link https://example.com/never-added --why x
     context-drop.sh: https://example.com/never-added is neither pending nor in the latest version
     [exit 2]
 $ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 24161d0b0d0d6348e641dfd7dd82e7090498c90f6c1e8565eb1f0e2391196e1c): no answer for context-done on 24161d0b0d0d6348e641dfd7dd82e7090498c90f6c1e8565eb1f0e2391196e1c; ask at a context-done gate
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 72e13143cd7f0fd5f4bea4f86a73e3d5b81a7a3802816f8b5c28a6538a5611c6): no answer for context-done on 72e13143cd7f0fd5f4bea4f86a73e3d5b81a7a3802816f8b5c28a6538a5611c6; ask at a context-done gate
     [exit 1]
 $ sh context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000010-context.cut.json
-    CONTEXT_SHA256: 2c93c48d798dbc9918aa81ae7430be8c91ed7f2a3677d4673d66ccbd38872de8
+    CONTEXT_SHA256: 78a9b24e8a9b9bfbc9b88e38fa7d46dc5ac0dfad7571fe2eea23cbaece53f0da
     [exit 0]
     body: {"version":2,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"e3d7d0655a938f68ad186a23801afd6b331576eb98d53e151613e23a0917b24c"}],"links":[{"url":"https://example.com/alerts","why":"who is paged when the job fails"}]}
 --- verify: the older version is stale, the newest is usable, tampering is caught
@@ -183,7 +183,7 @@ $ sh context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
     [exit 2]
 $ sh context-verify.sh --effort <F> --file <F>/events/000010-context.cut.json
     CONTEXT_FILE: <F>/events/000010-context.cut.json
-    CONTEXT_SHA256: 2c93c48d798dbc9918aa81ae7430be8c91ed7f2a3677d4673d66ccbd38872de8
+    CONTEXT_SHA256: 78a9b24e8a9b9bfbc9b88e38fa7d46dc5ac0dfad7571fe2eea23cbaece53f0da
     [exit 0]
 $ sh context-verify.sh --effort <F> --file <S>/repo/rules.md
     context-verify.sh: NOT-CONTEXT: <S>/repo/rules.md is not a context.cut event of this effort

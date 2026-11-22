@@ -14,7 +14,7 @@ agree() { # $1 effort, $2 flow file: agreed through a recorded gate, the real ho
 	decide "$1" flow-agree "$sha" "$S/card.md" "Approve (Recommended)" | tail -n 1 >/dev/null
 	sh $FL/flow-agree.sh --effort "$1" --file "$2"
 }
-printf '{"goal":"Prune nightly","done_when":{"criteria":"the human says it works","by":"human"},"steps":[{"id":1,"do":"Write the job","done_when":{"criteria":"the job exists"}}]}\n' >"$S/flow.json"
+printf '{"goal":"Prune nightly","steps":[{"id":1,"step":"crucible-grill/grill"}]}\n' >"$S/flow.json"
 
 echo "=== B1: events are read-only"
 F=$(sh $E/effort-start.sh --name fixes); show "    started: $F"

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "specify",
+    "stage": [
+      "prepare"
+    ],
+    "does": "Draft the spec with the human and seal it at the approval gate",
+    "propose_when": "before an effort's work is built or sent to agents, when no approved spec covers it",
+    "ends_with": {
+      "event": "spec.approved"
+    },
+    "skills": [
+      "crucible-spec"
+    ]
+  }
+]

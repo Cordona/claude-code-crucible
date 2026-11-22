@@ -1,6 +1,6 @@
 ---
 name: crucible-discovery
-description: How main finds out what an effort's work is about, what it must achieve, what it must not break, and what already exists, before anything is specified or built. Use at the start of an effort's work, or when the human brings in material that may change what the work is about. Not for interviewing a human who doesn't yet know what they want, or for writing the spec.
+description: How main finds out what an effort's work is about, what it must achieve, what it must not break, and what already exists, before anything is specified or built. Use while building an effort's context, or when the human brings in material that may change what the work is about. Not for interviewing a human who doesn't yet know what they want, or for writing the spec.
 ---
 
 # Discovery

@@ -67,10 +67,10 @@ for effort in "${efforts}"/*; do
 			| {seq: $seq,
 			   key: "\($open[0].id // "end"):\($done):\($w | map(.id) | tostring)",
 			   line: ("Flow \($effort):\($seq) \"\($f.goal)\": "
-				+ (if ($open | length) == 0 then "every step is done or skipped; end it when its goal is met."
+				+ (if ($open | length) == 0 then "every step is done or skipped; end it."
 				   elif ($w | length) > 0 then "step \($w[0].id) has its evidence waiting (event \($w[0].events | map(tostring) | join(", "))): mark it."
 					+ (if ($w[0].events | any(. as $e | $shared | index([$e]))) then " That event also fits another open step, and can prove only one of them." else "" end)
-				   else "step \($open[0].id) \"\($open[0].do)\" is next (\($done) of \($f.steps | length) done). Go on, mark it, or wait for what is running." end))}')
+				   else "step \($open[0].id) \"\($open[0].does)\" is next (\($done) of \($f.steps | length) done). Go on, mark it, or wait for what is running." end))}')
 	[ -n "${positions}" ] || continue
 	mkdir -p -- "${memory}"
 	while IFS= read -r position; do

@@ -23,13 +23,31 @@ sh $R/framework/core/install/install-entries.sh | sed -n '/^# Links/,/^$/p' | se
 sh "$S/links.sh"
 ls "$K" | sed 's|^|    linked: |'
 run sh $R/framework/core/install/install-check.sh --settings "$S/settings.json"
+echo "--- every hook runs through its component's link"
+jq -r '.hooks[][].hooks[].command' "$S/settings.json" | while IFS= read -r c; do show "    $c"; done
+echo "--- crucible-events is linked like every component; without its link, writes refuse plainly"
+ls -l "$K/crucible-events" | sed 's|.* -> |    crucible-events -> |' | sed "s|$R|<R>|"
+mv "$K/crucible-events" "$S/events-link-away"
+run sh "$K/crucible-effort/scripts/effort-start.sh" --name unlinked
+mv "$S/events-link-away" "$K/crucible-events"
+echo "--- the install check names a missing component link"
+mv "$K/crucible-events" "$S/events-link-away"
+run sh $R/framework/core/install/install-check.sh --settings "$S/settings.json"
+mv "$S/events-link-away" "$K/crucible-events"
+echo "--- a stand-in domain component beside core: the scan sees its step"
+mkdir -p "$S/zz-domain-steps"
+printf '[{"name":"take-a-break","stage":["setup"],"does":"Pause the effort while a repository is set up","propose_when":"when set-up has to wait","ends_with":{"event":"effort.paused"},"skills":["crucible-effort"]}]\n' >"$S/zz-domain-steps/flow-step.json"
+ln -s "$S/zz-domain-steps" "$K/zz-domain-steps"
+run sh "$K/crucible-dynamic-flow/scripts/flow-candidates.sh" --stages
+run sh "$K/crucible-dynamic-flow/scripts/flow-candidates.sh" --stage setup
+run sh "$R/framework/core/main-thread/crucible-dynamic-flow/scripts/flow-candidates.sh" --stages
 
 echo "=== effort, through its link"
 F=$(sh "$K/crucible-effort/scripts/effort-start.sh" --name installed); show "    started: $F"
 run sh "$K/crucible-effort/scripts/effort-state.sh" --effort "$F"
 
 echo "=== flow and gate"
-printf '{"goal":"Know the work","done_when":{"criteria":"the human says so","by":"human"},"steps":[{"id":1,"do":"Grill it","uses":"crucible-grill","done_when":{"event":"grill.ended"}}]}\n' >"$S/flow.json"
+printf '{"goal":"Know the work","steps":[{"id":1,"step":"crucible-grill/grill"},{"id":2,"step":"zz-domain-steps/take-a-break"}]}\n' >"$S/flow.json"
 run sh "$K/crucible-dynamic-flow/scripts/flow-card.sh" --file "$S/flow.json"
 sh "$K/crucible-dynamic-flow/scripts/flow-card.sh" --file "$S/flow.json" >"$S/card.md"
 FSHA=$(shasum -a 256 "$S/flow.json" | cut -d ' ' -f 1)
@@ -45,6 +63,9 @@ run sh "$K/crucible-grill/scripts/grill-answer.sh" --grill "$D" --id q1 --text '
 GE=$(sh "$K/crucible-grill/scripts/grill-end.sh" --grill "$D"); show "    ended: $GE"
 
 run sh "$K/crucible-dynamic-flow/scripts/flow-step-done.sh" --flow "$FLOW" --step 1
+echo "--- the domain step, ended by its event"
+sh "$K/crucible-effort/scripts/effort-pause.sh" --effort "$F" --words 'set-up waits' >/dev/null; sh "$K/crucible-effort/scripts/effort-resume.sh" --effort "$F" --words 'back' >/dev/null
+run sh "$K/crucible-dynamic-flow/scripts/flow-step-done.sh" --flow "$FLOW" --step 2
 
 echo "=== code-context, in full"
 git -C "$S/repo" init -q; printf 'one\n' >"$S/repo/a.txt"; git -C "$S/repo" add a.txt; git -C "$S/repo" -c user.name=t -c user.email=t@t commit -qm one
@@ -78,7 +99,7 @@ mkdir -p "$S/zz-domain-probe/scripts"; printf '#!/bin/sh\necho "probe 1 \\"left 
 ln -s "$S/zz-domain-probe" "$K/zz-domain-probe"
 run sh "$K/crucible-effort/scripts/effort-close.sh" --effort "$F" --outcome done --words 'done'
 rm "$K/zz-domain-probe"
-run sh "$K/crucible-dynamic-flow/scripts/flow-end.sh" --flow "$FLOW" --outcome done --evidence 'The human says so'
+run sh "$K/crucible-dynamic-flow/scripts/flow-end.sh" --flow "$FLOW" --outcome done
 run sh "$K/crucible-effort/scripts/effort-close.sh" --effort "$F" --outcome done --words 'done'
 run sh "$K/crucible-effort/scripts/effort-status.sh" --effort "$F"
 

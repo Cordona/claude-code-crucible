@@ -1,28 +1,29 @@
 ---
 name: crucible-dynamic-flow
-description: Agrees with the human the steps toward a goal inside an effort, records changes to them, and tracks what is done and what is left, from the effort's events. Use when a goal inside an effort needs several steps, when the human changes the plan, when returning to an effort, or when a flow reminder names a step. Writes only flow events, through its scripts. Not for small goals.
+description: Proposes to the human a flow of declared steps toward a goal inside an effort, agrees it at a gate, records changes, and tracks what is done and left from the effort's events. Use when an effort's work is about to start, when the pre-work is done and the next work is chosen, when the human changes the plan, when returning to an effort, or when a flow reminder names a step. Writes only flow events, through its scripts.
 ---
 
 # Dynamic flows
 
-When a goal needs several steps, propose a flow built from the skills and pieces you know, agree it with the human at a gate, then follow it. For routine work, recommend a flow the human can accept as it is; a small goal needs no flow.
+A flow is the steps toward one goal that you and the human agree before the work, each a step a piece of the framework declares and each ended by that piece's own event. You choose the steps and suggest an order; the human agrees it at a gate, or says no flow.
 
-A step is an outcome the human would ask about, not a task of yours; keep your own tasks in your to-do list. Each step's `done_when`, and the flow's own, is a yes or no: an event a piece writes, or a short criterion. Name an event only when you know a piece writes it; otherwise use a criterion. For example:
+Before an effort's work starts, run `flow-candidates.sh --stage prepare` and propose a flow from the steps it lists that fit the work. Once those steps are done, run `flow-candidates.sh --stages` and scan the stage the next work belongs to; when no stage fits it, go on without a flow.
+
+A flow names only the steps the scan lists, by their keys, for example:
 
 ```json
 {
-  "goal": "Know enough about the work to specify it",
-  "done_when": { "criteria": "the human says the spec says what they want", "by": "human" },
+  "goal": "Know the work well enough to build it",
   "steps": [
-    { "id": 1, "do": "Find out what the work is about and gather what it needs", "uses": "crucible-discovery", "done_when": { "event": "context.cut" } },
-    { "id": 2, "do": "Grill the open goal", "uses": "crucible-grill", "done_when": { "event": "grill.ended" } },
-    { "id": 3, "do": "Draft and approve the spec", "uses": "crucible-spec", "done_when": { "event": "spec.approved" } }
+    { "id": 1, "step": "crucible-context/build-context" },
+    { "id": 2, "step": "crucible-grill/grill" },
+    { "id": 3, "step": "crucible-spec/specify" }
   ]
 }
 ```
 
-A grill belongs only where the goal is still open. A check no piece proves takes a criterion, as the flow's own does here.
+What each step does, and the event that ends it, come from its declaration. The same step may appear twice, under two ids. `flow-agree.sh` records the agreement; its `--help` says what the gate must record. Read it, then ask at that recorded gate with the card `flow-card.sh` prints for the flow file.
 
-Mark each step as it finishes, and end the flow: done when its own check is met, or dropped with the human's reason. When the human changes the plan, record the change; their words are the agreement. A change you want yourself, such as skipping a step or revising a check, goes to the human first. When you return to an effort, look at its open flows first.
+Mark each step when its event is there, and end the flow once every step is done or skipped, or drop it with the human's words. When the human changes the plan, record the change; a change you want yourself goes to the human first. When you return to an effort, look at its open flows first.
 
 The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract.

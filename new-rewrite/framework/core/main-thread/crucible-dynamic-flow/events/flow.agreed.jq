@@ -1,4 +1,5 @@
-# flow.agreed: a flow the human agreed, {goal, done_when, steps, answer}:
+# flow.agreed: a flow the human agreed, {goal, steps, answer}: each step is a
+# declared step resolved by flow-agree.sh, {id, step, does, skills, ends_with};
 # answer is the seq of the human's accepted answer, used once. Whether it
 # accepted this flow is flow-agree.sh's question to the gate's reader.
 include "flow-replay" {search: "../scripts/lib"};

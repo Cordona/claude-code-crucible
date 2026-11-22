@@ -11,11 +11,10 @@ usage: sh flow-show.sh --flow NAME [--all]
 
 Replays the effort's events and prints each flow: its goal, then one line
 per step in order, marked
-  [x] done, checked by the script (an event)   [m] done, verified by main
-  [h] done, confirmed by the human             [-] skipped
-  [ ] open                                      [!] open, evidence waiting
+  [x] done, by its event   [-] skipped
+  [ ] open                 [!] open, its event waiting
 then what is next, and whether the flow can end. --effort prints every
-open flow; --all adds each done step's evidence. Reads only.
+open flow; --all adds the event that ended each done step. Reads only.
 
 Exit: 0 printed; 2 refused, the reason on stderr
 USAGE
@@ -55,12 +54,12 @@ fl_events | jq -r -L "${fl_lib}" --argjson seqs "${seqs}" --argjson all "${all}"
 	  | ([$f.steps[] | select(.status == "open")]) as $open
 	  | "flow \($effort):\($seq) · \($f.goal)\(if $f.ended then " · ended \($f.ended.outcome)" else "" end)",
 	    ($f.steps[] | . as $s
-		| (if .status == "done" then {event: "x", main: "m", human: "h"}[.kind]
+		| (if .status == "done" then "x"
 		   elif .status == "skipped" then "-"
 		   elif (.id as $i | $wids | index([$i])) then "!" else " " end) as $mark
-		| "  [\($mark)] \(.id) \(.do)\(if $mark == "!" then "  (evidence waiting: event \($w | map(select(.id == $s.id)) | first | .events | map(tostring) | join(", ")))" else "" end)",
-		  (if $all and .status == "done" then "      \(if .kind == "event" then "event \(.event)" else .evidence end)" else empty end)),
+		| "  [\($mark)] \(.id) \(.does)\(if $mark == "!" then "  (evidence waiting: event \($w | map(select(.id == $s.id)) | first | .events | map(tostring) | join(", ")))" else "" end)",
+		  (if $all and .status == "done" then "      event \(.event)" else empty end)),
 	    (if $f.ended then empty
-	     elif ($open | length) == 0 then "  every step is done or skipped: end the flow when its goal is met (\($f.done_when.criteria // $f.done_when.event))"
-	     else "  next: \($open[0].id) \($open[0].do)" end)
+	     elif ($open | length) == 0 then "  every step is done or skipped: end the flow"
+	     else "  next: \($open[0].id) \($open[0].does)" end)
 	  end'

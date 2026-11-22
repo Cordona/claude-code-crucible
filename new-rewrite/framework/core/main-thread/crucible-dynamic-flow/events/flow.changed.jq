@@ -23,10 +23,5 @@ include "flow-replay" {search: "../scripts/lib"};
 			if (($ids | index([$op.move])) | not) or (($ids | index([$op.before])) | not) then .p += ["move: \($op.move) and before \($op.before) must both be steps"] else . end
 		  elif $op.reopen then
 			if (($s.steps | map(select(.id == $op.reopen and .status != "open")) | length) == 0) then .p += ["reopen: \($op.reopen) is not a done or skipped step"] else . end
-		  elif $op.revise then
-			if ([$op.revise.done_when | done_when_problems("revise")] | length) > 0 then .p += [$op.revise.done_when | done_when_problems("revise")]
-			elif (($op.revise | keys) - ["step", "done_when"]) != [] then .p += ["revise holds only step and done_when"]
-			elif $op.revise.step and (($s.steps | map(select(.id == $op.revise.step and .status == "open")) | length) == 0) then .p += ["revise: \($op.revise.step) is not an open step; reopen a done one first"]
-			else (if $op.revise.step then .f.steps |= map(if .id == $op.revise.step then .done_when = $op.revise.done_when else . end) else . end) end
-		  else .p += ["an op must be add, skip, move, reopen or revise"] end) | .p[])
+		  else .p += ["an op must be add, skip, move or reopen"] end) | .p[])
   end

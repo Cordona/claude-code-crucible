@@ -18,8 +18,8 @@ says an install needs, and prints one line per thing missing:
   missing: additional directory <space>
   missing: deny rule <rule>
 A hook counts when an entry for its event and matcher runs a command naming
-its script's absolute path. A link counts when it resolves to the
-framework's file or folder; CLAUDE.md may be linked in the Claude folder or
+its script through its component's link in the skills folder. A link counts
+when it resolves to the framework's file or folder; CLAUDE.md may be linked in the Claude folder or
 as ./CLAUDE.md. A Claude folder whose CLAUDE.md is the human's own file
 reads as missing until they move over: that is expected, not a fault. Nothing is changed: the human installs, using
 install-entries.sh's output.
@@ -83,9 +83,9 @@ jq -r --slurpfile s "${work}/settings.json" '$s[0] as $set
 	| (.hooks[] as $h
 		| ($set.hooks[$h.event] // []) as $groups
 		| if any($groups[]; ((.matcher // null) as $m | $m == $h.matcher or ($h.matcher == null and $m == ""))
-			and any(.hooks[]?; (.command // "") | contains($h.path)))
+			and any(.hooks[]?; (.command // "") | contains($h.command_path)))
 		  then empty
-		  else "missing: \($h.event) hook \(if $h.matcher then "[\($h.matcher)] " else "" end)\($h.path)" end),
+		  else "missing: \($h.event) hook \(if $h.matcher then "[\($h.matcher)] " else "" end)\($h.command_path)" end),
 	(.space as $space | if any($set.dirs[]; . == $space) then empty else "missing: additional directory \($space)" end),
 	(.deny[] as $rule | if any($set.deny[]; . == $rule) then empty else "missing: deny rule \($rule)" end)' \
 	"${work}/needs.json" >"${work}/missing"

@@ -53,7 +53,7 @@ $ sh spec-approve.sh --effort <F> --draft <F>/spec/big.md
 --- the context is independent: it cuts with no spec, and refuses a stray spec.md
 $ sh context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000011-context.cut.json
-    CONTEXT_SHA256: 669205b6c26864e0fb75f8f98c18c00e670a680ea082a55f3899ae9c9a6f488d
+    CONTEXT_SHA256: 9889da632f4b31be09418a839bbe6d23fcc72c4d31a0e4f409f2e861f1acabc3
     [exit 0]
 $ sh context-fingerprint.sh --effort <F>
     context-fingerprint.sh: DOCS-NAME: spec.md may not be in a docs folder; the spec lives in the effort's spec/ folder

@@ -4,12 +4,39 @@
     linked: crucible-discovery
     linked: crucible-dynamic-flow
     linked: crucible-effort
+    linked: crucible-events
     linked: crucible-gate
     linked: crucible-grill
     linked: crucible-spec
     linked: trackers
 $ sh <R>/framework/core/install/install-check.sh --settings <S>/settings.json
     installed
+    [exit 0]
+--- every hook runs through its component's link
+    sh '<skills>/crucible-gate/hooks/post-tool-use/record-gate-answer.sh'
+    sh '<skills>/crucible-gate/hooks/pre-tool-use/hold-question-until-card-shown.sh'
+    sh '<skills>/crucible-events/hooks/pre-tool-use/deny-direct-event-write.sh'
+    sh '<skills>/crucible-dynamic-flow/hooks/stop/remind-flow-position.sh'
+    sh '<skills>/crucible-gate/hooks/stop/require-card-shown.sh'
+--- crucible-events is linked like every component; without its link, writes refuse plainly
+    crucible-events -> <R>/framework/core/main-thread/crucible-events
+$ sh <skills>/crucible-effort/scripts/effort-start.sh --name unlinked
+    event-write.sh: the components folder beside crucible-events is not there
+    [exit 1]
+--- the install check names a missing component link
+$ sh <R>/framework/core/install/install-check.sh --settings <S>/settings.json
+    missing: skill link <skills>/crucible-events -> <R>/framework/core/main-thread/crucible-events
+    [exit 1]
+--- a stand-in domain component beside core: the scan sees its step
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-candidates.sh --stages
+    prepare 3
+    setup 1
+    [exit 0]
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-candidates.sh --stage setup
+    zz-domain-steps/take-a-break · Pause the effort while a repository is set up · ends with effort.paused · stages: setup · skills: crucible-effort · propose when: when set-up has to wait
+    [exit 0]
+$ sh <R>/framework/core/main-thread/crucible-dynamic-flow/scripts/flow-candidates.sh --stages
+    prepare 3
     [exit 0]
 === effort, through its link
     started: <S>/space/efforts/<id>-installed
@@ -19,9 +46,10 @@ $ sh <skills>/crucible-effort/scripts/effort-state.sh --effort <S>/space/efforts
 === flow and gate
 $ sh <skills>/crucible-dynamic-flow/scripts/flow-card.sh --file <S>/flow.json
     Flow to agree: Know the work
-      1. Grill it [crucible-grill]
-         done when: event grill.ended
-      The flow is done when: the human says so (you confirm)
+      1. Interview the human, a few questions at a time, until the open goal becomes recorded decisions [crucible-grill]
+         ends with: grill.ended
+      2. Pause the effort while a repository is set up [crucible-effort]
+         ends with: effort.paused
     [exit 0]
 $ sh <skills>/crucible-gate/scripts/gate-answer.sh --effort <S>/space/efforts/<id>-installed --record flow-agree --subject <hex>
     ACCEPTED: 2
@@ -42,9 +70,13 @@ $ sh <skills>/crucible-grill/scripts/grill-answer.sh --grill <S>/space/efforts/<
 $ sh <skills>/crucible-dynamic-flow/scripts/flow-step-done.sh --flow <S>/space/efforts/<id>-installed:3 --step 1
     <S>/space/efforts/<id>-installed/events/000005-flow.step.done.json
     [exit 0]
+--- the domain step, ended by its event
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-step-done.sh --flow <S>/space/efforts/<id>-installed:3 --step 2
+    <S>/space/efforts/<id>-installed/events/000008-flow.step.done.json
+    [exit 0]
 === code-context, in full
 $ sh <skills>/code-context/scripts/context-add-commit.sh --effort <S>/space/efforts/<id>-installed --repo <S>/repo --ref HEAD
-    <S>/space/efforts/<id>-installed/context/draft/docs/diff-33d01e0.patch
+    <S>/space/efforts/<id>-installed/context/draft/docs/diff-84c2f11.patch
     [exit 0]
 === trackers, in full (reads GitHub)
 $ sh <skills>/trackers/scripts/tracker-read.sh --url https://example.com/page
@@ -63,28 +95,28 @@ $ sh <skills>/crucible-context/scripts/context-status.sh --effort <S>/space/effo
     PENDING: yes
     [exit 0]
 $ sh <skills>/crucible-context/scripts/context-cut.sh --effort <S>/space/efforts/<id>-installed
-    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000007-context.cut.json
+    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000010-context.cut.json
     CONTEXT_SHA256: <hex>
     [exit 0]
 === spec, from the cut context and the grill, sealed in place
 $ sh <skills>/crucible-spec/scripts/spec-approve.sh --effort <S>/space/efforts/<id>-installed --draft <S>/space/efforts/<id>-installed/spec/1.md
-    <S>/space/efforts/<id>-installed/events/000009-spec.approved.json
+    <S>/space/efforts/<id>-installed/events/000012-spec.approved.json
     [exit 0]
-    v1 holds: diff-33d01e0.patch
+    v1 holds: diff-84c2f11.patch
     v1 holds: ticket-github.com-cli-cli-issues-1.md
-$ sh <skills>/crucible-context/scripts/context-verify.sh --effort <S>/space/efforts/<id>-installed --file <S>/space/efforts/<id>-installed/events/000007-context.cut.json
-    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000007-context.cut.json
+$ sh <skills>/crucible-context/scripts/context-verify.sh --effort <S>/space/efforts/<id>-installed --file <S>/space/efforts/<id>-installed/events/000010-context.cut.json
+    CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000010-context.cut.json
     CONTEXT_SHA256: <hex>
     [exit 0]
 === effort-close sees a domain neighbour's open work
 $ sh <skills>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-installed --outcome done --words done
     effort-close.sh: open work: flow 3 "Know the work"; probe 1 "left running"; end it first, or close with --leave-open on the human's word
     [exit 2]
-$ sh <skills>/crucible-dynamic-flow/scripts/flow-end.sh --flow <S>/space/efforts/<id>-installed:3 --outcome done --evidence The human says so
-    <S>/space/efforts/<id>-installed/events/000010-flow.ended.json
+$ sh <skills>/crucible-dynamic-flow/scripts/flow-end.sh --flow <S>/space/efforts/<id>-installed:3 --outcome done
+    <S>/space/efforts/<id>-installed/events/000013-flow.ended.json
     [exit 0]
 $ sh <skills>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-installed --outcome done --words done
-    <S>/space/efforts/<id>-installed/events/000011-effort.closed.json
+    <S>/space/efforts/<id>-installed/events/000014-effort.closed.json
     [exit 0]
 $ sh <skills>/crucible-effort/scripts/effort-status.sh --effort <S>/space/efforts/<id>-installed
     installed · closed, done, <at>: done
@@ -102,9 +134,12 @@ $ sh <R>/domains/software-development/core/main-thread/code-context/scripts/cont
     3 flow.agreed by flow-agree.sh
     4 grill.ended by grill-end.sh
     5 flow.step.done by flow-step-done.sh
-    6 gate.answered by record-gate-answer.sh
-    7 context.cut by context-cut.sh
-    8 gate.answered by record-gate-answer.sh
-    9 spec.approved by spec-approve.sh
-    10 flow.ended by flow-end.sh
-    11 effort.closed by effort-close.sh
+    6 effort.paused by effort-pause.sh
+    7 effort.resumed by effort-resume.sh
+    8 flow.step.done by flow-step-done.sh
+    9 gate.answered by record-gate-answer.sh
+    10 context.cut by context-cut.sh
+    11 gate.answered by record-gate-answer.sh
+    12 spec.approved by spec-approve.sh
+    13 flow.ended by flow-end.sh
+    14 effort.closed by effort-close.sh

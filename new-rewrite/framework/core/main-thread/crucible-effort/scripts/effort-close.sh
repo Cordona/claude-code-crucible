@@ -11,7 +11,8 @@ usage: sh effort-close.sh --effort FOLDER --outcome done|dropped --words TEXT
        sh effort-close.sh --help | -h
 
 Writes effort.closed to an open or paused effort. First it runs every
-open-work.sh found in the component folders beside this skill's; each
+open-work.sh found in the component folders beside this skill's (the
+folder holding it, as this script was called: installed, the skills folder); each
 prints one line per open thing of the effort (a flow, a grill). While any
 prints a line, or fails, the close is refused, naming them.
 
@@ -47,7 +48,8 @@ open=$(mktemp)
 trap 'rm -f -- "${body}" "${open}"' EXIT
 
 # Open work, from each component's own open-work.sh: effort names none of them.
-components="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+. "$(dirname -- "$0")/../../crucible-events/scripts/lib/beside.sh"
+components=$(bs_components "$0" 1) || ef_refuse 'the components folder beside crucible-effort is not there'
 for check in "${components}"/*/scripts/open-work.sh; do
 	[ -f "${check}" ] || continue
 	component=${check%/scripts/open-work.sh}

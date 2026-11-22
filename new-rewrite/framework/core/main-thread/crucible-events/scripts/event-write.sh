@@ -6,6 +6,7 @@ umask 077
 # shellcheck disable=SC1091 # the shared lock, beside this script
 . "$(dirname -- "$0")/lib/lock.sh"
 . "$(dirname -- "$0")/lib/listing.sh"
+. "$(dirname -- "$0")/lib/beside.sh"
 
 usage() {
 	cat <<'EOF'
@@ -25,7 +26,8 @@ seq counts from 1 with no gaps; concurrent writers are serialised.
   --iteration N     a whole number from 1, stamped when given
 
 Each type has one rule, <component>/events/<TYPE>.jq, in one of the
-components beside crucible-events; it is found there, never passed in. A
+components beside crucible-events (the folder holding it, as this script
+was called: installed, the skills folder); it is found there, never passed in. A
 type with no rule, or with more than one, is refused, naming them. A rule
 gets {event, prior} (prior: the earlier events, in seq order) and prints one
 plain reason per broken rule; printing nothing accepts.
@@ -64,7 +66,7 @@ ls_is_type "${type}" \
 	|| refuse "--type ${type} must be lowercase words joined by dots"
 printf '%s' "${by}" | grep -Eq '^[A-Za-z0-9._-]+$' || refuse '--by must be a script name'
 # The type's one rule, among the components beside this one.
-components=$(cd -P -- "$(dirname -- "$0")/../.." && pwd -P)
+components=$(bs_components "$0" 1) || refuse 'the components folder beside crucible-events is not there'
 rule='' found=0 named=''
 for candidate in "${components}"/*/events/"${type}.jq"; do
 	[ -f "${candidate}" ] || continue

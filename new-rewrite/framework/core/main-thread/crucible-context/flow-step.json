@@ -1,0 +1,17 @@
+[
+  {
+    "name": "build-context",
+    "stage": [
+      "prepare"
+    ],
+    "does": "Find out what the work is about and gather the material it needs, then cut the context on the human's yes",
+    "propose_when": "before work starts, whenever the work needs outside material or its goal and limits aren't yet confirmed",
+    "ends_with": {
+      "event": "context.cut"
+    },
+    "skills": [
+      "crucible-discovery",
+      "crucible-context"
+    ]
+  }
+]
