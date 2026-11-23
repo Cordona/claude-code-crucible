@@ -1,7 +1,7 @@
 # The Crucible commit message, a jq module: load it with jq -L <this folder>
 # and include "commit-message". commit_problems lists what is wrong with a
 # parsed input, empty when it fits; commit_message builds the message of an
-# input that fits.
+# input that fits; commit_is_snapshot tells a snapshot's subject.
 
 def commit_fields: ["kind", "text", "trailers"];
 # Characters (Unicode code points): 72 keeps the subject whole in git's one-line views.
@@ -11,6 +11,9 @@ def commit_kind_rule: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$";
 def commit_key_rule: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$";
 
 def commit_subject_prefix($kind): "crucible(\($kind)): ";
+# A snapshot, a commit of a checkout's uncommitted work, is made with this kind.
+def commit_snapshot_kind: "snapshot";
+def commit_is_snapshot: startswith(commit_subject_prefix(commit_snapshot_kind));
 def commit_trim: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
 
 # The problem of a one-line text of at most $max characters, or nothing.

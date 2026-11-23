@@ -19,7 +19,7 @@ Reads:     stdin, the Stop hook JSON: session_id, agent_id (a subagent's
            stop is silent); CRUCIBLE_HOME, default $HOME/.crucible;
            CLAUDE_CONFIG_DIR, default $HOME/.claude
 Writes:    its memory, per session, under
-           $CLAUDE_CONFIG_DIR/cache/crucible-dynamic-flow/
+           $CLAUDE_CONFIG_DIR/cache/crucible-adaptive-flow/
 Stdout:    nothing, or {"hookSpecificOutput":{"hookEventName":"Stop",
            "additionalContext":LINES}}
 Exit:
@@ -37,7 +37,7 @@ input=$(cat)
 [ -z "$(printf '%s' "${input}" | jq -r '.agent_id // empty')" ] || exit 0
 session=$(printf '%s' "${input}" | jq -r '.session_id // empty')
 case ${session} in '' | *[!A-Za-z0-9._-]*) exit 0 ;; esac
-memory="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/crucible-dynamic-flow/${session}"
+memory="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/crucible-adaptive-flow/${session}"
 efforts="${CRUCIBLE_HOME:-${HOME}/.crucible}/efforts"
 [ -d "${efforts}" ] || exit 0
 

@@ -63,7 +63,7 @@ done | jq -s .)
 usable=$(printf '%s' "${checked}" | jq '[.[] | select(.said == "SIGNS: yes")] | length')
 
 printf '%s' "${checked}" | jq -r --arg repo "${gi_repo}" --argjson q "${question:-0}" '
-	[.[] | select(.said == "SIGNS: yes")] as $ok | [.[] | select(.said != "SIGNS: yes")] as $not
+	[.[] | select(.said == "SIGNS: yes")] as $ok | [.[] | select(.said != "SIGNS: yes")] as $unusable
 	| if $q == 1 then
 		{questions: [{header: "Identity", multiSelect: false,
 		  question: "Which identity signs this effort'"'"'s commits in \($repo)?",
@@ -75,7 +75,7 @@ printf '%s' "${checked}" | jq -r --arg repo "${gi_repo}" --argjson q "${question
 		"Pick the identity this effort'"'"'s commits in \($repo) are signed as.",
 		(if ($ok | length) == 0 then "  No identity on this machine can sign here." else
 			($ok | to_entries[] | "  \(.key + 1). \(.value.label)", "     key \(if .value.fingerprint == "" then .value.signing.key else .value.fingerprint end)") end),
-		(if ($not | length) > 0 then "Not usable here:", ($not[] | "  - \(.label): \(.said | sub("^SIGNS: no: "; ""))") else empty end)
+		(if ($unusable | length) > 0 then "Not usable here:", ($unusable[] | "  - \(.label): \(.said | sub("^SIGNS: no: "; ""))") else empty end)
 	  end'
 if [ "${usable}" -eq 0 ]; then
 	printf '%s: no identity on this machine can sign in %s; set up a signing key first\n' "${gi_prog}" "${gi_repo}" >&2

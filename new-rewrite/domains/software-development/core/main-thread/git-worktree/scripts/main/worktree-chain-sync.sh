@@ -18,7 +18,7 @@ Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
 Requires:  open effort, an identity (git-identity) for the repository; NAME
-           clean, no git operation under way, not busy (worktree-busy.sh)
+           clean, no git operation under way, nothing working in it
 Writes:    if any moved, NAME's branch and folder and one worktree.synced event
 Stdout:    {"result":"in_sync"} if none moved; else {event (its path), result,
            commit?, signed?, conflicts? (paths)}; exit 3: {"conflicts": [PATH]}

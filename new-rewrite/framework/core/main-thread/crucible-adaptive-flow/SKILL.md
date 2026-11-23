@@ -1,9 +1,9 @@
 ---
-name: crucible-dynamic-flow
+name: crucible-adaptive-flow
 description: Proposes to the human a flow of declared steps toward a goal inside an effort, agrees it at a gate, records changes, and tracks what is done and left from the effort's events. Use when an effort's work is about to start, when the pre-work is done and the next work is chosen, when the human changes the plan, when returning to an effort, or when a flow reminder names a step. Writes only flow events, through its scripts.
 ---
 
-# Dynamic flows
+# Adaptive flows
 
 A flow is the steps toward one goal that you and the human agree before the work, each a step a piece of the framework declares and each ended by that piece's own event. You choose the steps and suggest an order; the human agrees it at a gate, or says no flow.
 

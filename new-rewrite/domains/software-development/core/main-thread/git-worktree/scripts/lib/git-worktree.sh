@@ -1,6 +1,6 @@
-# Shared by the git-worktree scripts: the refusal and problem lines, core
-# and the neighbour components found beside this skill, the repository
-# through dev-base, the name and commit checks, the work folder, the event
+# Shared by the git-worktree scripts: the refusal lines, core and the
+# neighbour components found beside this skill, the repository through
+# dev-base, the name and commit checks, the work folder, the event
 # write, and thin calls to this component's own job scripts.
 # Sourced, so it sets no shell option; its names start with gw_.
 # shellcheck shell=sh
@@ -20,8 +20,6 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
 
 # A tree's name: lowercase words joined by dashes.
 GW_NAME_RULE='^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
-# Bounds stderr so a list of problems stays readable.
-GW_MAX_PROBLEMS=20
 
 gw_refuse() {
 	printf '%s: %s\n' "${gw_prog}" "$1" >&2
@@ -209,26 +207,6 @@ gw_changes_tree() {
 	gw_said=$(sh "${gw_scripts}/internal/worktree-changes.sh" --dir "$1" --head "$2") || exit $?
 	gw_changes=$(printf '%s' "${gw_said}" | jq -r '.tree')
 	gw_head_tree=$(printf '%s' "${gw_said}" | jq -r '.head_tree')
-}
-
-# Adds problem $1 to gw_work/problems, for a script that reports every
-# problem it finds before it stops.
-gw_add_problem() {
-	printf '%s: %s\n' "${gw_prog}" "$1" >>"${gw_work}/problems"
-}
-
-# Prints the problems kept, at most GW_MAX_PROBLEMS with a last line
-# counting the rest, and exits with $1; returns when there is none.
-gw_exit_on_problems() {
-	[ -s "${gw_work}/problems" ] || return 0
-	gw_problem_count=$(($(wc -l <"${gw_work}/problems")))
-	if [ "${gw_problem_count}" -le "${GW_MAX_PROBLEMS}" ]; then
-		cat "${gw_work}/problems" >&2
-	else
-		head -n "$((GW_MAX_PROBLEMS - 1))" "${gw_work}/problems" >&2
-		printf '%s: %s more problems not shown; expected none\n' "${gw_prog}" "$((gw_problem_count - GW_MAX_PROBLEMS + 1))" >&2
-	fi
-	exit "$1"
 }
 
 # Writes event type $1 with body file $2 through core's writer, as this

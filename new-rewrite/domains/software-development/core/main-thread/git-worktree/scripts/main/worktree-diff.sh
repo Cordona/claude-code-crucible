@@ -17,8 +17,8 @@ Uncommitted changes are left out: commit first to include them.
 Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
-  --base COMMIT    any commit of the tree's repository; default the tree's
-                   base as worktree-trees.sh reports it
+  --base COMMIT    any commit of the tree's repository; default the target
+                   of the tree's latest move, else the commit it was cut at
 Requires:  the tree's branch still exists
 Writes:    <effort>/diffs/NAME-<base12>-<tip12>.patch, replacing one of that
            name; no repository change, no event

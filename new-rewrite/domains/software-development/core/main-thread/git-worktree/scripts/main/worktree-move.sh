@@ -19,8 +19,7 @@ Options:
   --name NAME      a live tree of the effort
   --to REF         a commit name in the tree's repository: sha, branch, tag
 Requires:  the effort is open; the tree is on its branch, clean, with no
-           merge, pick, revert or rebase under way, and not busy
-           (worktree-busy.sh)
+           merge, pick, revert or rebase under way, and nothing working in it
 Writes:    the tree's branch and files; when the old tip holds commits REF
            lacks, refs/crucible/moved/<effort folder>/NAME/<n> at the old
            tip; the event worktree.moved {name, from, to, kept?}. Nothing

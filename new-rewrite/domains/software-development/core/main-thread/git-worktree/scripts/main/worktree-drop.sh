@@ -18,7 +18,7 @@ Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
 Requires:  no uncommitted changes (commit them, or keep them with
-           worktree-discard.sh) and nothing working in it (worktree-busy.sh);
+           worktree-discard.sh) and nothing working in it;
            the human's recorded yes, unused and given since the cut, when its
            branch or kept refs hold commits the checkout and bases lack (today,
            any it made) or its folder and branch are both gone: record

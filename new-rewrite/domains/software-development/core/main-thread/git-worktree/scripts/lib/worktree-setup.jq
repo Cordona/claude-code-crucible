@@ -125,8 +125,8 @@ def setup_include_problems($text):
 	else .pattern | setup_path_problem("glob") | "\($where) \(.)"
 	end;
 
-def setup_problems($include):
-	setup_data_problems, setup_include_problems($include);
+def setup_problems($worktree_include):
+	setup_data_problems, setup_include_problems($worktree_include);
 
 def setup_detect_names:
 	[.technologies // [] | .[].detect[]] | unique[];
@@ -139,13 +139,13 @@ def setup_detect_names:
 #   containing <technology> <name>  copy every folder holding a file of this name
 #   repoint <technology> <subdir> rewrite the launchers in this subfolder
 # $present lists the detect paths that exist under the --from root.
-def setup_plan($present; $include):
+def setup_plan($present; $worktree_include):
 	(.always // {}) as $always
 	| [.technologies // [] | .[] | select(any(.detect[]; IN($present[])))] as $applying
 	| ($applying[] | "detected\t\(.name)"),
 	($always.copy // [] | .[] | "copy\tany\t\(.)"),
 	($applying[] | .copy // [] | .[] | "copy\tany\t\(.)"),
-	(setup_include_lines($include) | setup_include_entry | "copy\t\(if .dir then "dir" else "any" end)\t\(.pattern)"),
+	(setup_include_lines($worktree_include) | setup_include_entry | "copy\t\(if .dir then "dir" else "any" end)\t\(.pattern)"),
 	($always.skip // [] | .[] | "skip\t\(.)"),
 	($applying[] | .name as $name
 		| (."copy-every-dir-named" // [] | .[] | "named\t\($name)\t\(.)"),

@@ -12,8 +12,8 @@ usage: sh effort-commits.sh --repo FOLDER --from SHA --to SHA --effort FOLDER
 
 Run by mount-apply.sh; not for main to call.
 Proves every commit after --from up to --to has the trailer
-"Effort: <effort folder name>". Gives the start: the newest snapshot (subject
-"crucible(snapshot): uncommitted changes" on --from), else --from.
+"Effort: <effort folder name>". Gives the start: the newest snapshot whose
+parent is --from, else --from.
 
 Options:
   --repo FOLDER    a folder in the git checkout, absolute
@@ -33,7 +33,6 @@ USAGE
 
 gm_prog='effort-commits.sh'
 . "$(dirname -- "$0")/../lib/mount.sh"
-SNAPSHOT_SUBJECT='crucible(snapshot): uncommitted changes'
 repo_in='' from='' to='' effort=''
 while [ $# -gt 0 ]; do
 	case $1 in
@@ -48,6 +47,8 @@ done
 gm_find_self "$0"
 gm_check_effort "${effort}"
 gm_set_repo "${repo_in}"
+commit_snapshots="${gm_skills}/git-commit/scripts/internal/commit-snapshots.sh"
+gm_require_files "${commit_snapshots}"
 
 # Prints the full sha of commit $1, given as option $2.
 resolve() {
@@ -85,15 +86,32 @@ esac
 git -C "${gm_repo}" log -z --no-show-signature \
 	--format='%H%n%P%n%T%n%(trailers:key=Effort,valueonly,unfold,separator=%x1f)%n%s' \
 	"${from_sha}..${to_sha}" -- >"${gm_work}/range" 2>"${gm_work}/stderr" || gm_git_failed 'git log of the range'
+
+# Sets snapshots to the JSON array of the range's snapshots whose only
+# parent is --from, as git-commit tells them.
+find_snapshots() {
+	snapshots='[]'
+	# shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
+	jq -Rrs --arg from "${from_sha}" 'split("\u0000")[] | select(. != "") | split("\n") | select(.[1] == $from) | .[0]' \
+		"${gm_work}/range" >"${gm_work}/on-from" || gm_fail 'jq could not read the range'
+	[ -s "${gm_work}/on-from" ] || return 0
+	set --
+	while IFS= read -r commit; do set -- "$@" --commit "${commit}"; done <"${gm_work}/on-from"
+	told_rc=0
+	told=$(sh "${commit_snapshots}" --repo "${gm_repo}" "$@") || told_rc=$?
+	[ "${told_rc}" -eq 0 ] || gm_fail "commit-snapshots.sh failed (exit ${told_rc})"
+	snapshots=$(printf '%s' "${told}" | jq -c '.snapshots') || gm_fail 'jq could not read the snapshots'
+}
+find_snapshots
 # shellcheck disable=SC2016 # the program is single-quoted on purpose: its $ signs are jq's
-verdict=$(jq -Rsc --arg effort "${gm_effort_name}" --arg from "${from_sha}" --arg subject "${SNAPSHOT_SUBJECT}" '
+verdict=$(jq -Rsc --arg effort "${gm_effort_name}" --argjson snapshots "${snapshots}" '
 	split("\u0000") | map(select(. != "") | split("\n")
 		| {commit: .[0], parents: (.[1] | split(" ") | map(select(. != ""))), tree: .[2],
 		   efforts: (.[3] | split("\u001f")), subject: (.[4:] | join("\n"))})
 	| reduce .[] as $c ({commits: length, snapshot: null, refusal: null};
 		if .refusal != null then .
 		elif any($c.efforts[]; . == $effort) | not then .refusal = {reason: "foreign_commit", commit: $c}
-		elif ($c.subject != $subject or $c.parents != [$from]) then .
+		elif ($c.commit | IN($snapshots[]) | not) then .
 		elif .snapshot == null then .snapshot = $c
 		elif .snapshot.tree != $c.tree then .refusal = {reason: "snapshot_mismatch", commit: $c}
 		else . end)' "${gm_work}/range") || gm_fail 'jq could not judge the range'

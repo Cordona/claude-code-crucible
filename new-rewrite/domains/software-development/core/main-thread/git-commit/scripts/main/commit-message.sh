@@ -7,8 +7,8 @@ usage() {
 	cat <<'USAGE'
 usage: sh commit-message.sh --input FILE --out FILE
 
-Writes a Crucible commit message file, the --message-file for commit-tree.sh,
-commits-merge.sh or commit-object.sh.
+Writes a Crucible commit message file, the --message-file for commit-tree.sh
+and for the other git-commit scripts that take one.
 
 Options:
   --input FILE  one JSON object {kind, text, trailers?}: kind is lowercase

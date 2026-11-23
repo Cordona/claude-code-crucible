@@ -65,7 +65,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "${url}" ] || usage_error '--url missing'
 
-# The safe-link rule: the same characters core's context accepts for a link.
+# This script's own input check, before the URL goes on gh's or glab's
+# command line: only a plain http(s) link of these characters is taken.
 printf '%s' "${url}" | grep -Eq '^[Hh][Tt][Tt][Pp][Ss]?://[A-Za-z0-9.-]+(:[0-9]+)?([/?#][A-Za-z0-9._~/?#=%:+,@-]*)?$' \
 	|| fail 2 'the URL is not of the accepted form; expected an http(s) link of letters, digits and . _ ~ / ? # = % : + , @ - only'
 command -v jq >/dev/null 2>&1 || fail 1 'jq missing; expected jq 1.6 or later on PATH'

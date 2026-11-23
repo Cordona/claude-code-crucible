@@ -23,7 +23,7 @@ Options:
                    sync commit made as the effort, or to REF), or conflict
                    (merge left: resolve, then git-commit's commit-tree.sh)
   --abort          cancel that merge; result aborted, the tree clean at tip
-Requires:  open effort; tree not busy (worktree-busy.sh); --with: clean, no
+Requires:  open effort; nothing working in the tree; --with: clean, no
            op under way, REF fetched, an identity (git-identity) to merge
 Writes:    the tree's branch, index and files; one worktree.synced event
 Stdout:    {event (its path), result, commit?, signed?, conflicts? (paths)}

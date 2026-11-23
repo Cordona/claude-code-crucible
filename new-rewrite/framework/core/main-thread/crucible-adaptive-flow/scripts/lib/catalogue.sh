@@ -11,7 +11,7 @@
 # Prints the catalogue as one JSON object, {entries, rejected}, as
 # catalogue.jq's catalogue sets. Every flow script sits in scripts/.
 ct_catalogue() {
-	ct_components=$(bs_components "$0" 2) || fl_refuse 'the components folder beside crucible-dynamic-flow is not there'
+	ct_components=$(bs_components "$0" 2) || fl_refuse 'the components folder beside crucible-adaptive-flow is not there'
 	ct_files=$(mktemp)
 	ct_rules=$(mktemp)
 	# Each flow-step.json as {component, file, entries}, or invalid when not JSON.
