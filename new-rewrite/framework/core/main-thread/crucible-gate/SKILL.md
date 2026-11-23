@@ -13,7 +13,7 @@ The human switches between several sessions and often arrives at this one cold. 
 
 ## The card
 
-Every gate starts with a card: what the human looks at before deciding. The card is a file, either one a script produced or a short one you write in your own words. Run `sh <this skill's folder>/scripts/show-card.sh <card file>`, end your turn with the card exactly as printed, and ask once told to. If your turn ended with the card and nothing told you to ask, the gate's hooks aren't running: at the human's next message, say so, suggest the install check in the framework's `install/` folder, and then ask.
+Every gate starts with a card: what the human looks at before deciding. The card is a file, either one a script produced or a short one you write in your own words. Run `sh <this skill's folder>/scripts/main/show-card.sh <card file>`, end your turn with the card exactly as printed, and ask once told to. If your turn ended with the card and nothing told you to ask, the gate's hooks aren't running: at the human's next message, say so, suggest the install check in the framework's `install/` folder, and then ask.
 
 ## The question
 

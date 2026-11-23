@@ -14,35 +14,23 @@ trap 'rm -f -- ${input:+"${input}"}; exit 0' EXIT
 
 usage() {
 	cat <<'EOF'
-usage: sh hold-question-until-card-shown.sh < pre-tool-use-input.json
-       sh hold-question-until-card-shown.sh --help | -h
+usage: sh hold-question-until-card-shown.sh < HOOK_JSON
 
-A Claude Code PreToolUse hook for AskUserQuestion. In order, as one
-question goes out, each deny ending the run before anything is written or
-removed:
-  1. Holds the question: denied while this session has no card, or a card
-     not yet shown in main's final message.
-  2. Runs scripts/check-question-shape.sh on the same input and passes on
-     its deny. If that script can't run, this step is skipped.
-  3. For a recorded card: denies a question that isn't one single-select
-     question offering the card's yes label; otherwise writes the hand-off
-     for the answer hook, <the session's cache folder>/answers/
-     <tool_use_id>.json, holding the card's record and the question's text.
-  4. Removes every card record of the session (<the session's cache
-     folder>/owed/*), so the next question needs a new card.
-The session's cache folder is
-  ${CLAUDE_CONFIG_DIR:-~/.claude}/cache/crucible-gate/<session_id>.
-Nothing else is written or removed. It is one hook, not several: hooks on one
-matcher run side by side, and nothing may be cleared while another check
-could still refuse the question.
+Run by Claude Code as the PreToolUse hook for AskUserQuestion; not for main
+to call. Denies main's question until a show-card.sh card is in main's final
+message, passes on check-question-shape.sh's deny, and for a recorded gate
+denies all but one single-select question offering the card's yes label.
+Other tools and subagents' calls pass.
 
-stdin: the hook JSON; reads session_id, agent_id, tool_name, tool_use_id,
-  tool_input.questions
-  Another tool, or a subagent's call (non-empty agent_id), passes untouched.
-stdout on a deny:
-  {"hookSpecificOutput":{"hookEventName":"PreToolUse",
-   "permissionDecision":"deny","permissionDecisionReason":"<reason>"}}
-Exit: always 0
+Reads:     stdin, the hook JSON: session_id, agent_id, tool_name,
+           tool_use_id, tool_input.questions; env CLAUDE_CONFIG_DIR
+Writes:    for a recorded gate, the hand-off record-gate-answer.sh reads; a
+           question let through clears the session's cards
+Stdout:    on a deny, one JSON object {hookSpecificOutput: {hookEventName,
+           permissionDecision: "deny", permissionDecisionReason}}; else nothing
+Exit:
+  0  always: the question goes ahead unless stdout holds a deny; a fault
+     lets it through, writing nothing
 EOF
 }
 
@@ -77,18 +65,24 @@ done <<EOF2
 ${records}
 EOF2
 [ "${shown}" = true ] || deny 'Every question needs a card. Write one, run show-card.sh, end your turn with the card, then ask.'
-# The shape check: its deny goes out before anything is touched. A check
-# that can't run is skipped, so a fault never blocks the human.
-shape=$(sh "$(dirname -- "$0")/../../scripts/check-question-shape.sh" <"${input}" 2>/dev/null) || shape=''
-[ -z "${shape}" ] || { printf '%s\n' "${shape}"; exit 0; }
-# A recorded card: check the question, and leave the hand-off.
+# The shown card's record, when it is a recorded gate.
 recorded=$(printf '%s\n' "${records}" | while IFS= read -r record; do
 	[ -z "${record}" ] || jq -c 'select(.status == "shown" and .record) | .record' "${record}" 2>/dev/null
 done | tail -n 1)
+# The shape check: its deny goes out before anything is touched. A choice
+# card's question needs no recommended option. A check that can't run is
+# skipped, so a fault never blocks the human.
+choice=''
+[ -z "${recorded}" ] || [ "$(printf '%s' "${recorded}" | jq -r '.choice // false')" != true ] || choice='--choice'
+# shellcheck disable=SC2086 # ${choice} is one word or none
+shape=$(sh "$(dirname -- "$0")/../../scripts/internal/check-question-shape.sh" ${choice} <"${input}" 2>/dev/null) || shape=''
+[ -z "${shape}" ] || { printf '%s\n' "${shape}"; exit 0; }
+# A recorded card: check the question, and leave the hand-off.
 if [ -n "${recorded}" ]; then
 	problem=$(jq -r --argjson r "${recorded}" '(.tool_input.questions // []) as $q
 		| if ($q | length) != 1 then "A recorded gate asks exactly one question."
 		  elif $q[0].multiSelect == true then "A recorded gate asks a single-select question."
+		  elif $r.choice then empty
 		  elif ([$q[0].options[]?.label] | index([$r.accept])) == null then "The question must offer the yes option the card named: \($r.accept)"
 		  else empty end' "${input}")
 	[ -z "${problem}" ] || deny "${problem}"

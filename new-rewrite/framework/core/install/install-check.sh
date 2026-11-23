@@ -6,33 +6,22 @@ set -eu
 usage() {
 	cat <<'USAGE'
 usage: sh install-check.sh [--settings FILE]...
-       sh install-check.sh --help | -h
 
-Compares what is installed with what install-entries.sh (beside this script)
-says an install needs, and prints one line per thing missing:
-  missing: jq 1.6 or later on PATH
-  missing: <event> hook [<matcher>] <script>
-  missing: hook script <script> (named in the settings, but not there)
-  missing: skill link <skills folder>/<name> -> <folder>
-  missing: CLAUDE.md link -> <core CLAUDE.md>
-  missing: additional directory <space>
-  missing: deny rule <rule>
-A hook counts when an entry for its event and matcher runs a command naming
-its script through its component's link in the skills folder. A link counts
-when it resolves to the framework's file or folder; CLAUDE.md may be linked in the Claude folder or
-as ./CLAUDE.md. A Claude folder whose CLAUDE.md is the human's own file
-reads as missing until they move over: that is expected, not a fault. Nothing is changed: the human installs, using
-install-entries.sh's output.
+Checks the framework is installed, against what install-entries.sh says an
+install needs; gaps are fixed from that script's output. Run it from the
+project folder, after installing.
 
-  --settings FILE   a settings file to read; repeatable. Default: the
-                    Claude folder's settings.json, and ./.claude/settings.json
-                    and ./.claude/settings.local.json, each when present.
-                    Their entries count together, as Claude Code merges them.
-
-Environment: CLAUDE_CONFIG_DIR (default ~/.claude), CRUCIBLE_HOME (default
-  ~/.crucible)
-stdout: the missing lines, or "installed" when nothing is
-Exit: 0 everything in place; 1 something missing; 2 a usage error
+Options:
+  --settings FILE  a settings file to read; repeatable; replaces the defaults
+                   $CLAUDE_CONFIG_DIR/settings.json, ./.claude/settings*.json
+Reads:     CLAUDE_CONFIG_DIR (default ~/.claude), CRUCIBLE_HOME (~/.crucible)
+Writes:    nothing
+Stdout:    "installed", or one "missing: <what>" line per gap; a CLAUDE.md
+           that is the human's own file shows as missing, as expected
+Exit:
+  0  everything in place
+  1  something missing
+  2  refused, nothing changed; the reason is on stderr
 USAGE
 }
 

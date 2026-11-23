@@ -8,28 +8,22 @@ trap 'exit 0' EXIT
 
 usage() {
 	cat <<'USAGE'
-usage: sh remind-flow-position.sh < stop-hook-input.json
-       sh remind-flow-position.sh --help | -h
+usage: sh remind-flow-position.sh < STOP_HOOK_JSON
 
-A Claude Code Stop hook. For each open flow in an open effort that this
-session wrote an event to, it speaks one line when a signal is new since it
-last spoke for that flow in this session:
-  an open step's evidence is waiting unmarked;
-  the position moved (the next step, or how many are done);
-  every step is done or skipped and the flow is still open.
-A new session speaks each open flow once. Its memory of the last position
-spoken is the only loop guard: it speaks a position once, so a second stop
-in the same turn stays silent. It speaks also when another hook already
-continued the turn (stop_hook_active), as after every gate. A subagent's
-stop passes.
+Run by the Stop hook on main; not for main to call.
+For each open flow in an open effort holding an event of this session, adds
+one line where the flow stands, only when that changed since the hook last
+spoke for that flow.
 
-stdin: the Stop hook JSON; reads session_id, agent_id
-Environment: CRUCIBLE_HOME (default $HOME/.crucible), CLAUDE_CONFIG_DIR
-Writes: ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/cache/crucible-dynamic-flow/<session>/
-  one file per flow: the last position spoken
-stdout, only when it speaks:
-  {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"<lines>"}}
-Exit: always 0
+Reads:     stdin, the Stop hook JSON: session_id, agent_id (a subagent's
+           stop is silent); CRUCIBLE_HOME, default $HOME/.crucible;
+           CLAUDE_CONFIG_DIR, default $HOME/.claude
+Writes:    its memory, per session, under
+           $CLAUDE_CONFIG_DIR/cache/crucible-dynamic-flow/
+Stdout:    nothing, or {"hookSpecificOutput":{"hookEventName":"Stop",
+           "additionalContext":LINES}}
+Exit:
+  0  always; the stop goes through, and any fault is silent
 USAGE
 }
 
@@ -37,8 +31,8 @@ case ${1-} in -h | --help) usage; exit 0 ;; esac
 command -v jq >/dev/null 2>&1 || exit 0
 here=$(cd -- "$(dirname -- "$0")" && pwd)
 lib="${here}/../../scripts/lib"
-effort_state="${here}/../../../crucible-effort/scripts/effort-state.sh"
-reader="${here}/../../../crucible-events/scripts/events-read.sh"
+effort_state="${here}/../../../crucible-effort/scripts/main/effort-state.sh"
+reader="${here}/../../../crucible-events/scripts/internal/events-read.sh"
 input=$(cat)
 [ -z "$(printf '%s' "${input}" | jq -r '.agent_id // empty')" ] || exit 0
 session=$(printf '%s' "${input}" | jq -r '.session_id // empty')

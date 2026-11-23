@@ -18,16 +18,16 @@ When two sources, or two things the human said, contradict each other in a way t
   "questions": [
     {
       "header": "Retention",
-      "question": "The ticket says prune after 30 days; you said 90. Which holds?",
+      "question": "The issue says prune after 30 days; you said 90. Which holds?",
       "multiSelect": false,
       "options": [
         {
           "label": "90 days (Recommended)",
-          "description": "Your word is newer, and the ticket predates the retention change"
+          "description": "Your word is newer, and the issue predates the retention change"
         },
         {
           "label": "30 days",
-          "description": "Keeps the ticket as written; more data is deleted"
+          "description": "Keeps the issue as written; more data is deleted"
         }
       ]
     }

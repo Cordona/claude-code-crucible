@@ -5,10 +5,10 @@
 # shellcheck disable=SC2154 # fl_prog is set by each sourcing script
 # shellcheck disable=SC2034 # the fl_ values are read by the sourcing scripts
 
-fl_here=$(cd -- "$(dirname -- "$0")" && pwd)
+fl_here=$(cd -- "$(dirname -- "$0")/.." && pwd)
 fl_lib="${fl_here}/lib"
-fl_effort_state="${fl_here}/../../crucible-effort/scripts/effort-state.sh"
-fl_writer="${fl_here}/../../crucible-events/scripts/event-write.sh"
+fl_effort_state="${fl_here}/../../crucible-effort/scripts/main/effort-state.sh"
+fl_writer="${fl_here}/../../crucible-events/scripts/internal/event-write.sh"
 
 fl_refuse() {
 	printf '%s: %s\n' "${fl_prog}" "$1" >&2
@@ -31,9 +31,10 @@ fl_set_flow() {
 	fl_set_effort "${1%:*}"
 }
 
-# Prints every event of the effort as one JSON array, in seq order.
-fl_events() {
-	sh "${fl_here}/../../crucible-events/scripts/events-read.sh" --effort "${fl_effort}"
+# Sets fl_all to every event of the effort as one JSON array, in seq order;
+# exits 2 when the events can't be read.
+fl_read_events() {
+	fl_all=$(sh "${fl_here}/../../crucible-events/scripts/internal/events-read.sh" --effort "${fl_effort}") || exit 2
 }
 
 # Refuses unless the effort is open.

@@ -7,8 +7,9 @@
 # shellcheck shell=sh
 
 # Prints the folder holding the component of script $1 (its "$0"), where $2
-# is how many folders the script sits below its component: 1 for
-# scripts/x.sh, 2 for hooks/stop/x.sh. Fails when that folder isn't there.
+# is how many folders the script sits below its component: 2 for
+# scripts/main/x.sh, scripts/internal/x.sh or hooks/stop/x.sh. Fails when
+# that folder isn't there.
 bs_components() {
 	bs_dir=$(dirname -- "$1")
 	bs_up=$2

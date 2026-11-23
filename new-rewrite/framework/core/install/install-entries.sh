@@ -6,29 +6,26 @@ set -eu
 usage() {
 	cat <<'USAGE'
 usage: sh install-entries.sh [--json]
-       sh install-entries.sh --help | -h
 
-Scans the new-rewrite tree (framework and domains) and prints what an
-install needs, for the human to put in place:
-  - settings entries to merge into a Claude Code settings file: every hook
-    a component declares in its hooks/matchers.json (the event comes from
-    the hook's folder: stop, pre-tool-use, post-tool-use), each run through
-    its component's link in the skills folder, so hooks and scripts find
-    their neighbours the same way; the space as an additional directory;
-    and an Edit deny rule on its events (Claude Code applies an Edit rule to
-    every tool that edits files);
-  - link commands, one per line: every component (each folder directly in
-    a main-thread folder, crucible-events included) into the skills folder,
-    and the core CLAUDE.md;
-  - jq 1.6 or later on PATH, which every hook needs.
-Changes nothing.
+Prints what an install of the framework it sits in needs, for the human to
+apply. Use it to install or to see what an install needs; install-check.sh,
+beside it, checks the result.
 
-  --json   print the same as one JSON object, for install-check.sh
-
-Environment: CLAUDE_CONFIG_DIR (default ~/.claude), CRUCIBLE_HOME (default
-  ~/.crucible)
-Exit: 0 printed; 2 a usage error or a matchers.json that isn't valid
-Needs: POSIX sh, jq 1.6+
+Options:
+  --json   print one JSON object instead: {hooks:[{event, matcher, path,
+           command_path}], skills:[{name, path}], claude_md, config, space,
+           deny}; install-check.sh reads it
+Reads:     CLAUDE_CONFIG_DIR (default ~/.claude), where links and hook
+           commands point; CRUCIBLE_HOME (default ~/.crucible), the space
+Writes:    nothing
+Stdout:    three sections, separated by blank lines:
+           "# Settings entries: merge into your settings.json", then one
+           JSON object {hooks, permissions:{additionalDirectories, deny}};
+           "# Links: run these", then shell-quoted mkdir -p and ln -s lines;
+           "# Needed on PATH: jq 1.6 or later"
+Exit:
+  0  printed
+  2  refused, nothing printed; the reason is on stderr
 USAGE
 }
 

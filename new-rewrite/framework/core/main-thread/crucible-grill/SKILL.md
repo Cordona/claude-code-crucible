@@ -41,4 +41,4 @@ Record only direct answers. A hedge, a question back, or a "yes, but" stays open
 
 End when the human says you share one understanding. You may end with questions still open or deferred.
 
-The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract.
+The scripts you run are in this skill's `scripts/main/` folder; each one's `--help` is its contract.

@@ -11,22 +11,21 @@ trap 'rm -f -- ${input:+"${input}"}; exit 0' EXIT
 
 usage() {
 	cat <<'EOF'
-usage: sh require-card-shown.sh < stop-hook-input.json
-       sh require-card-shown.sh --help | -h
+usage: sh require-card-shown.sh < STOP_HOOK_JSON
 
-A Claude Code Stop hook. For each card owed this session:
-  not in the final message: main is sent back to show it exactly as
-    printed, at most 2 times; then the card is dropped and the human is
-    told so
-  in the final message: the card is marked shown and main is told to ask
-  shown, question not asked yet: main is told again to ask, at most 2 times
+Run by Claude Code as the Stop hook; not for main to call.
+Sends main back until its final message holds each card show-card.sh owes
+this session, then tells it to ask.
 
-stdin: the Stop hook JSON; reads session_id, agent_id, last_assistant_message
-  A subagent's stop (non-empty agent_id) passes untouched.
-stdout, only when main is to continue or the human is told of a drop:
-  {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"<text>"},
-   "systemMessage":"<notice>"}, each part only when it applies
-Exit: always 0
+Reads:     stdin, the Stop hook JSON {session_id, agent_id,
+           last_assistant_message}; a non-empty agent_id passes untouched.
+           Env CLAUDE_CONFIG_DIR, default ~/.claude
+Writes:    owed records: marks found cards shown, removes one after 2 tries
+Stdout:    nothing, or one JSON object {hookSpecificOutput: {hookEventName:
+           "Stop", additionalContext}, systemMessage: a dropped-card notice},
+           each key only when it applies
+Exit:
+  0  always, faults too; main continues only if additionalContext is printed
 EOF
 }
 

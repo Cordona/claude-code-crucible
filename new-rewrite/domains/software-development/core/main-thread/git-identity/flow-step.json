@@ -1,0 +1,10 @@
+[
+  {
+    "name": "set-identity",
+    "stage": ["setup"],
+    "does": "The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as",
+    "propose_when": "before the first commit an agent makes in a repository that has no identity in this effort yet",
+    "ends_with": { "event": "identity.set" },
+    "skills": ["git-identity"]
+  }
+]

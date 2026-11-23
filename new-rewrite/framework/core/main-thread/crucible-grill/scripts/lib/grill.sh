@@ -5,13 +5,13 @@
 # shellcheck disable=SC2154 # gr_prog is set by each sourcing script
 # shellcheck disable=SC2034 # the gr_ values are read by the sourcing scripts
 
-gr_here=$(cd -- "$(dirname -- "$0")" && pwd)
+gr_here=$(cd -- "$(dirname -- "$0")/.." && pwd)
 # shellcheck disable=SC1091 # the shared lock, in crucible-events
 . "${gr_here}/../../crucible-events/scripts/lib/lock.sh"
 . "${gr_here}/../../crucible-events/scripts/lib/atomic-write.sh"
-gr_effort_state="${gr_here}/../../crucible-effort/scripts/effort-state.sh"
-gr_writer="${gr_here}/../../crucible-events/scripts/event-write.sh"
-gr_reader="${gr_here}/../../crucible-events/scripts/events-read.sh"
+gr_effort_state="${gr_here}/../../crucible-effort/scripts/main/effort-state.sh"
+gr_writer="${gr_here}/../../crucible-events/scripts/internal/event-write.sh"
+gr_reader="${gr_here}/../../crucible-events/scripts/internal/events-read.sh"
 gr_lib="${gr_here}/lib"
 
 gr_refuse() {

@@ -13,4 +13,4 @@ When the context looks complete, ask the human whether it is done, at the record
 
 Take an entry out only with the human's reason.
 
-The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract.
+The scripts you run are in this skill's `scripts/main/` folder; each one's `--help` is its contract.

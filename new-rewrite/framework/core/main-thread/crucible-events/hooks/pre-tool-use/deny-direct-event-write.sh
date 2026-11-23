@@ -8,30 +8,20 @@ trap 'exit 0' EXIT
 
 usage() {
 	cat <<'EOF'
-usage: sh deny-direct-event-write.sh < pre-tool-use-input.json
-       sh deny-direct-event-write.sh --help | -h
+usage: sh deny-direct-event-write.sh < HOOK_JSON
 
-A Claude Code PreToolUse hook for Bash. Denies a command that runs
-event-write.sh: a command word ending in event-write.sh, or one given to a
-shell (sh, bash, dash, zsh, ., source; a -c string is read the same
-way), after any VAR=value and the wrappers env, exec, nice, nohup, time, command, sudo and timeout <n>. Allowed: a run
-with only --help or -h, any command that only reads or names the file (cat,
-sed, grep, ls, echo, ...), and every component script that calls the writer
-itself, which is no Bash tool call.
+Run by Claude Code as a PreToolUse hook on Bash; not for main to call.
+Denies a Bash command that runs event-write.sh directly, through a shell (or
+its -c string), or behind a wrapper such as env or sudo. A run with only
+--help or -h, and a command that only reads or names the file, are allowed.
 
-It guards against a run by mistake, not a determined one: a name the shell
-builds (expansion, variables, eval) or a run by indirection (a copy, a pipe
-into a shell) is not caught.
-
-A command that doesn't mention event-write.sh is allowed at once. On any
-fault (jq missing, input it can't read) the call is allowed, with a note on
-stderr.
-
-stdin: the hook JSON; reads tool_name, tool_input.command
-stdout on a deny:
-  {"hookSpecificOutput":{"hookEventName":"PreToolUse",
-   "permissionDecision":"deny","permissionDecisionReason":"<why>"}}
-Exit: always 0
+Reads:   the hook JSON on stdin: tool_name, tool_input.command
+Writes:  nothing
+Stdout:  nothing, or one JSON object {hookSpecificOutput: {hookEventName:
+         "PreToolUse", permissionDecision: "deny", permissionDecisionReason}}
+Exit:
+  0  always; empty stdout lets the call run, the deny JSON blocks it. On a
+     fault (jq missing, input not JSON) the call runs, a note on stderr.
 EOF
 }
 

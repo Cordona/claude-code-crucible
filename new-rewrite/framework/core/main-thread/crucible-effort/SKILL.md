@@ -13,4 +13,4 @@ Only the human changes an effort's state: pause, resume and close happen on thei
 
 Keep track of which efforts this conversation works on, so a second one doesn't creep in unnoticed. When new work needs its own effort while this conversation already works on one, recommend starting it in a new session. Never guess which effort the human means: when two fit, or none, ask.
 
-The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract. Pass the effort folder exactly as a script printed it.
+The scripts you run are in this skill's `scripts/main/` folder; each one's `--help` is its contract. Pass the effort folder exactly as a script printed it.

@@ -26,4 +26,4 @@ What each step does, and the event that ends it, come from its declaration. The 
 
 Mark each step when its event is there, and end the flow once every step is done or skipped, or drop it with the human's words. When the human changes the plan, record the change; a change you want yourself goes to the human first. When you return to an effort, look at its open flows first.
 
-The scripts are in this skill's `scripts/` folder, one per job; each one's `--help` is its contract.
+The scripts you run are in this skill's `scripts/main/` folder; each one's `--help` is its contract.

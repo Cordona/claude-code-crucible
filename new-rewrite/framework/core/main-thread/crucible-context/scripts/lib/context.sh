@@ -5,15 +5,15 @@
 # shellcheck disable=SC2154 # cx_prog is set by each sourcing script
 # shellcheck disable=SC2034 # the cx_ values are read by the sourcing scripts
 
-cx_here=$(cd -- "$(dirname -- "$0")" && pwd)
+cx_here=$(cd -- "$(dirname -- "$0")/.." && pwd)
 # shellcheck disable=SC1091 # the shared lock, in crucible-events
 . "${cx_here}/../../crucible-events/scripts/lib/lock.sh"
 . "${cx_here}/../../crucible-events/scripts/lib/sha256.sh"
 . "${cx_here}/../../crucible-events/scripts/lib/atomic-write.sh"
-cx_effort_state="${cx_here}/../../crucible-effort/scripts/effort-state.sh"
-cx_writer="${cx_here}/../../crucible-events/scripts/event-write.sh"
-cx_reader="${cx_here}/../../crucible-events/scripts/events-read.sh"
-cx_gate_answer="${cx_here}/../../crucible-gate/scripts/gate-answer.sh"
+cx_effort_state="${cx_here}/../../crucible-effort/scripts/main/effort-state.sh"
+cx_writer="${cx_here}/../../crucible-events/scripts/internal/event-write.sh"
+cx_reader="${cx_here}/../../crucible-events/scripts/internal/events-read.sh"
+cx_gate_answer="${cx_here}/../../crucible-gate/scripts/internal/gate-answer.sh"
 cx_rules="${cx_here}/../events"
 
 cx_refuse() {

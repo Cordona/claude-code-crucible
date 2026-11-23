@@ -24,4 +24,4 @@ None.
 
 At approval, no open point is left, unless the human chooses to leave it to the agents. A tool or technology goes in only when the human requires it, and the project's own rules never do.
 
-Draft it with the human, from the effort's context and grills where they exist. Each revision is a new file in the effort's `spec/` folder; an approved one is sealed where it is. The script in this skill's `scripts/` folder records the approval; its `--help` says what the gate must record. Read it, ask at that recorded gate with the draft itself as the card, then run it. Revise an approved spec only when the goal, done-when or scope changes, never for a small change.
+Draft it with the human, from the effort's context and grills where they exist. Each revision is a new file in the effort's `spec/` folder; an approved one is sealed where it is. The script in this skill's `scripts/main/` folder records the approval; its `--help` says what the gate must record. Read it, ask at that recorded gate with the draft itself as the card, then run it. Revise an approved spec only when the goal, done-when or scope changes, never for a small change.

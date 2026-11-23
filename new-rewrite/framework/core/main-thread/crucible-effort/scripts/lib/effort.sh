@@ -4,9 +4,9 @@
 # shellcheck shell=sh
 # shellcheck disable=SC2154 # ef_prog is set by each sourcing script
 
-ef_here=$(cd -- "$(dirname -- "$0")" && pwd)
-ef_writer="${ef_here}/../../crucible-events/scripts/event-write.sh"
-ef_reader="${ef_here}/../../crucible-events/scripts/events-read.sh"
+ef_here=$(cd -- "$(dirname -- "$0")/.." && pwd)
+ef_writer="${ef_here}/../../crucible-events/scripts/internal/event-write.sh"
+ef_reader="${ef_here}/../../crucible-events/scripts/internal/events-read.sh"
 ef_efforts="${CRUCIBLE_HOME:-${HOME}/.crucible}/efforts"
 
 ef_refuse() {
@@ -25,8 +25,10 @@ ef_check() {
 # Prints effort $1 as one JSON object {folder, name, state, outcome, words,
 # at}: state is open, paused or closed; at is the newest effort event's time;
 # outcome and words come from that event when it is a pause or a close.
+# Exits 2 when the events can't be read; call it in $( ) and pass that on.
 ef_summary() {
-	sh "${ef_reader}" --effort "$1" --type 'effort.*' \
+	ef_events=$(sh "${ef_reader}" --effort "$1" --type 'effort.*') || exit 2
+	printf '%s\n' "${ef_events}" \
 		| jq --arg folder "$1" '
 			last as $now
 			| {folder: $folder, name: (first.body.name),

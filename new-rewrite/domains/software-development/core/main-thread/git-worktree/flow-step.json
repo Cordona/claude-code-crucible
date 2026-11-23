@@ -1,0 +1,10 @@
+[
+  {
+    "name": "cut-worktree",
+    "stage": ["setup"],
+    "does": "Cuts one tree for the coming work, from the base the human agreed, and sets it up",
+    "propose_when": "whenever the coming work writes code",
+    "ends_with": { "event": "worktree.cut" },
+    "skills": ["git-worktree"]
+  }
+]
