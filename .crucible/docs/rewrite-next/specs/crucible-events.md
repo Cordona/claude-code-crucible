@@ -6,8 +6,8 @@ crucible-events writes and reads an effort's events, facts written once and neve
 
 | Piece | Its one job |
 |---|---|
-| `scripts/event-write.sh` | The only writer: appends one event after its type's rule accepts it |
-| `scripts/events-read.sh` | The one reader: prints an effort's events as a JSON array, or their paths |
+| `scripts/internal/event-write.sh` | The only writer: appends one event after its type's rule accepts it |
+| `scripts/internal/events-read.sh` | The one reader: prints an effort's events as a JSON array, or their paths |
 | `scripts/lib/listing.sh` | `ls_events`: lists an effort's event files in seq order, optionally by type or family; `ls_is_type` and `ls_is_family`: the one rule for a type's name |
 | `scripts/lib/lock.sh` | `lk_take` / `lk_release`: a folder lock, one writer at a time |
 | `scripts/lib/sha256.sh` | `sh_sha256`: the sha256 of a file |
@@ -27,13 +27,17 @@ Each event is `FOLDER/events/<seq>-<TYPE>.json`, seq padded to six digits:
 
 `by` is the writing script's name; `claude_session_id` comes from `CLAUDE_CODE_SESSION_ID` (null when unset); `iteration` is stamped only when given; `body` is the object from `--body-file`.
 
-Each type has exactly one rule, `<component>/events/<TYPE>.jq`, in one of the components beside crucible-events. The writer finds it there and is never given it. "Beside" is one rule, held by `scripts/lib/beside.sh` (`bs_components`): the folder that holds the component, as the script was called, read as text with no link resolved. Installed, that is the skills folder, so core and domain components see each other; run by its real path, it is core's own folder. The writer, `effort-close.sh`'s open-work scan and the flow catalogue's scan all use it. No rule, or more than one, is refused, naming what it found. The rule gets `{event, prior}`, prior being every earlier event in seq order, and prints one plain reason per broken rule. Printing nothing accepts. A refusal writes nothing and exits 2 with the reasons joined on stderr.
+Each type has exactly one rule, `<component>/events/<TYPE>.jq`, in one of the components beside crucible-events. The writer finds it there and is never given it. "Beside" is one rule, held by `scripts/lib/beside.sh` (`bs_components`): the folder that holds the component, as the script was called, read as text with no link resolved. Installed, that is the skills folder, so core and domain components see each other; run by its real path, it is core's own folder. The writer, `effort-close.sh`'s open-work scan and the flow catalogue's scan all use it. No rule, or more than one, is refused, naming what it found. The rule gets `{event, prior}`, prior being every earlier event in seq order, read through the reader: on a damaged log the writer refuses and writes nothing. The rule prints one plain reason per broken rule. Printing nothing accepts. A refusal writes nothing and exits 2 with the reasons joined on stderr.
 
 Under the lock, seq is the count of existing events plus one, so it runs from 1 with no gaps. The event is built in a temp file, checked, set to mode 444, then moved into place. The lock is a `.lock` folder holding its owner's pid. A dead owner's lock is broken. A lock that stays held for about 5 seconds exits 6, with nothing written.
 
 ## Reading
 
 `events-read.sh --effort FOLDER [--type TYPE] [--paths]` is the one reader. It prints the array (`[]` when empty), or with `--paths` the absolute file paths. A trailing `.*` takes a family (`effort.*`). Both scripts list through `lib/listing.sh`, the only place that knows the file name pattern, and check a type's name with its one rule: lowercase words of letters and hyphens, joined by dots.
+
+The array is all or nothing. When any matching event can't be read or isn't one valid JSON value, the reader prints nothing, names the first such file on stderr and says which it is, and exits 5. `--paths` only lists, so it checks nothing. Core's scripts that read events pass that on as a refusal, exit 2, and never act on or report a log they couldn't read whole; a hook that reads events stays silent on a damaged log.
+
+`effort-list.sh` is the one reader that does not refuse: each effort is its own log, so it lists every effort it can read whole, skips each one it can't, names it on stderr with the reader's reason, and exits 3.
 
 ## The guard
 
@@ -61,6 +65,7 @@ Both scripts find this by scanning the `new-rewrite` tree, framework and domains
 ## Decided, and why
 
 - One writer, one reader: each event's shape and listing live in one place, so callers cannot drift.
+- All or nothing, one exit for both damages: every caller treats what it reads as the whole log, so part of it is worse than none; and no caller acts differently on an unreadable event than on an invalid one, since a human must look either way.
 - The writer finds the rule itself: a caller cannot pass the wrong rule or skip one.
 - Mode 444: "written once" holds by the file, not by habit.
 - Seq under a lock: concurrent writers never collide or leave gaps.

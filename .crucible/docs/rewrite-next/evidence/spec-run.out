@@ -1,5 +1,5 @@
 --- no context at all, and no answer yet: refused for the answer only
-$ sh crucible-events/scripts/events-read.sh --effort <F> --type context.cut --paths
+$ sh crucible-events/scripts/internal/events-read.sh --effort <F> --type context.cut --paths
     
     [exit 0]
 $ sh spec-approve.sh --effort <F> --draft <F>/spec/1.md
@@ -51,17 +51,25 @@ $ sh spec-approve.sh --effort <F> --draft <F>/spec/big.md
     spec-approve.sh: --draft <F>/spec/big.md is over 1048576 bytes
     [exit 2]
 --- the context is independent: it cuts with no spec, and refuses a stray spec.md
-$ sh context-cut.sh --effort <F>
+$ sh main/context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000011-context.cut.json
-    CONTEXT_SHA256: 9889da632f4b31be09418a839bbe6d23fcc72c4d31a0e4f409f2e861f1acabc3
+    CONTEXT_SHA256: b26b764fa913f45efd7ef9a36b6990cd515da5fc778fa1adb3b2412cf386473f
     [exit 0]
-$ sh context-fingerprint.sh --effort <F>
+$ sh main/context-fingerprint.sh --effort <F>
     context-fingerprint.sh: DOCS-NAME: spec.md may not be in a docs folder; the spec lives in the effort's spec/ folder
     [exit 2]
 --- a paused effort: refused
-$ sh crucible-effort/scripts/effort-pause.sh --effort <F> --words later
+$ sh crucible-effort/scripts/main/effort-pause.sh --effort <F> --words later
     <F>/events/000013-effort.paused.json
     [exit 0]
 $ sh spec-approve.sh --effort <F> --draft <F>/spec/3.md
     spec-approve.sh: the effort is paused; a spec is approved only while it's open
     [exit 2]
+--- the events lock held: refused with exit 6, the draft already read-only, no spec.approved; the rerun approves
+$ sh spec-approve.sh --effort <H> --draft <H>/spec/1.md
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    spec.approved events: 0; the draft: -r--r--r--
+$ sh spec-approve.sh --effort <H> --draft <H>/spec/1.md
+    <H>/events/000003-spec.approved.json
+    [exit 0]

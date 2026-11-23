@@ -1,0 +1,252 @@
+=== set-up: a scratch ssh key, a repository whose main is one commit past v1, an effort with an identity
+  PASS: the effort's identity is set through git-identity's real scripts
+  trees: mover (one commit main lacks), syncer (one commit, behind main), clearer (an edit, a deletion, an untracked file, a staged file)
+
+=== worktree-move.sh: mover to main, its commit kept under refs/crucible/moved/
+--- before
+  git:
+    tree mover branch tip: f7a25294951fb17c91e48dae23e9eef7ee250f23 (crucible/<id>-rollback/mover)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      7a3552c2ec68 ./m.txt
+    status:
+    kept refs:
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+--- the events lock held
+  (the events lock is held, by this run's live PID 1256)
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-rollback --name mover --to main
+    err: event-write.sh: the events lock stayed held
+    err: worktree-move.sh: worktree.moved was not written; tree mover is back at f7a25294951fb17c91e48dae23e9eef7ee250f23
+    [exit 6]
+  (the events lock is released)
+  git:
+    tree mover branch tip: f7a25294951fb17c91e48dae23e9eef7ee250f23 (crucible/<id>-rollback/mover)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      7a3552c2ec68 ./m.txt
+    status:
+    kept refs:
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+  PASS: exit 6
+  PASS: the git state is byte-identical to before
+  PASS: the event log is byte-identical to before
+--- the lock released: the same command again
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-rollback --name mover --to main
+    out: <S>/space/efforts/<id>-rollback/events/000007-worktree.moved.json
+    [exit 0]
+  git:
+    tree mover branch tip: b31377e3c8963277db5e00eec680cf62756d6f01 (crucible/<id>-rollback/mover)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      1ddf3d34d7e1 ./main.txt
+    status:
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+  PASS: exit 0
+  PASS: the change is made: the git state differs from before
+  PASS: exactly one new event, worktree.moved, after the earlier ones
+  PASS: after the rerun: mover is at main
+
+=== worktree-catch-up.sh: syncer takes in main through a sync commit
+--- before
+  git:
+    tree syncer branch tip: 41593523cb45a2552cd48b8d3bfca9fd8cc56616 (crucible/<id>-rollback/syncer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      add04e4e4d3b ./s.txt
+    status:
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+--- the events lock held
+  (the events lock is held, by this run's live PID 1256)
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-rollback --name syncer --with main
+    err: event-write.sh: the events lock stayed held
+    err: worktree-catch-up.sh: worktree.synced was not written; tree syncer is back at 41593523cb45a2552cd48b8d3bfca9fd8cc56616
+    [exit 6]
+  (the events lock is released)
+  git:
+    tree syncer branch tip: 41593523cb45a2552cd48b8d3bfca9fd8cc56616 (crucible/<id>-rollback/syncer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      add04e4e4d3b ./s.txt
+    status:
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+  PASS: exit 6
+  PASS: the git state is byte-identical to before
+  PASS: the event log is byte-identical to before
+--- the lock released: the same command again
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-rollback --name syncer --with main
+    out: {"event":"<S>/space/efforts/<id>-rollback/events/000008-worktree.synced.json","result":"merged","commit":"7ebd4573d8003100aedd9e8852966c719594d96c","signed":true}
+    [exit 0]
+  git:
+    tree syncer branch tip: 7ebd4573d8003100aedd9e8852966c719594d96c (crucible/<id>-rollback/syncer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      1ddf3d34d7e1 ./main.txt
+      add04e4e4d3b ./s.txt
+    status:
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+    8 worktree.synced
+  PASS: exit 0
+  PASS: the change is made: the git state differs from before
+  PASS: exactly one new event, worktree.synced, after the earlier ones
+  PASS: after the rerun: syncer's tip holds main
+
+=== worktree-discard.sh: clearer's changes kept under refs/crucible/discarded/, the tree cleared
+--- before
+  git:
+    tree clearer branch tip: b31377e3c8963277db5e00eec680cf62756d6f01 (crucible/<id>-rollback/clearer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      2325363b0ca1 ./f.txt
+      1ddf3d34d7e1 ./main.txt
+      4440ca7bb2bb ./new.txt
+      bb9d9839e06f ./staged.txt
+    status:
+       M f.txt
+       D gone.txt
+      A  staged.txt
+      ?? new.txt
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+    8 worktree.synced
+--- the events lock held
+  (the events lock is held, by this run's live PID 1256)
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-rollback --name clearer
+    err: event-write.sh: the events lock stayed held
+    err: worktree-discard.sh: worktree.discarded was not written; tree clearer holds its changes again
+    [exit 6]
+  (the events lock is released)
+  git:
+    tree clearer branch tip: b31377e3c8963277db5e00eec680cf62756d6f01 (crucible/<id>-rollback/clearer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      2325363b0ca1 ./f.txt
+      1ddf3d34d7e1 ./main.txt
+      4440ca7bb2bb ./new.txt
+      bb9d9839e06f ./staged.txt
+    status:
+       M f.txt
+       D gone.txt
+      A  staged.txt
+      ?? new.txt
+    kept refs:
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+    8 worktree.synced
+  PASS: exit 6
+  PASS: the git state is byte-identical to before
+  PASS: the event log is byte-identical to before
+--- the lock released: the same command again
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-rollback --name clearer
+    out: <S>/space/efforts/<id>-rollback/events/000009-worktree.discarded.json
+    [exit 0]
+  git:
+    tree clearer branch tip: b31377e3c8963277db5e00eec680cf62756d6f01 (crucible/<id>-rollback/clearer)
+    base main tip:      b31377e3c8963277db5e00eec680cf62756d6f01
+    files:
+      0c251ef2fca4 ./a.txt
+      51c64a6f4fc3 ./f.txt
+      281bac2b7046 ./gone.txt
+      1ddf3d34d7e1 ./main.txt
+    status:
+    kept refs:
+      refs/crucible/discarded/<id>-rollback/clearer/1 0004a7e8df22a822afce7d0868dd7c1d770fd44c
+      refs/crucible/moved/<id>-rollback/mover/1 f7a25294951fb17c91e48dae23e9eef7ee250f23
+  events (seq type):
+    1 effort.opened
+    2 gate.answered
+    3 identity.set
+    4 worktree.cut
+    5 worktree.cut
+    6 worktree.cut
+    7 worktree.moved
+    8 worktree.synced
+    9 worktree.discarded
+  PASS: exit 0
+  PASS: the change is made: the git state differs from before
+  PASS: exactly one new event, worktree.discarded, after the earlier ones
+  PASS: after the rerun: clearer is clean
+
+=== 22 PASS, 0 FAIL

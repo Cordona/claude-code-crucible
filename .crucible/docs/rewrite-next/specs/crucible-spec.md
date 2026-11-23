@@ -11,7 +11,7 @@ The spec is independent of the context and the grill. It is written from them wh
 | Piece | Job |
 |---|---|
 | `SKILL.md` | The how: the five sections (Goal, Done when, Scope, Constraints, Open points), one short example, drafting with the human from the context and grills where they exist, when to revise |
-| `scripts/spec-approve.sh --effort FOLDER --draft FILE` | Seals a draft the human accepted and records it as the effort's spec |
+| `scripts/main/spec-approve.sh --effort FOLDER --draft FILE` | Seals a draft the human accepted and records it as the effort's spec |
 | `events/spec.approved.jq` | The rule for `spec.approved`: its shape, and that one yes approves once |
 
 ## Approving a draft
@@ -22,9 +22,9 @@ The draft itself is the card. Main asks at a recorded gate whose record is `spec
 
 `spec-approve.sh` then:
 
-1. Asks `crucible-effort/scripts/effort-state.sh` for the effort's state, and refuses unless it is open.
+1. Asks `crucible-effort/scripts/main/effort-state.sh` for the effort's state, and refuses unless it is open.
 2. Checks the draft: a regular file, not a symlink, directly in the `spec/` folder of the effort named by `--effort`, non-empty text, at most 1048576 bytes. It takes the draft's sha256.
-3. Asks `crucible-gate/scripts/gate-answer.sh` for the human's newest answer on `spec-approval` and that sha256. A later no cancels an earlier yes.
+3. Asks `crucible-gate/scripts/internal/gate-answer.sh` for the human's newest answer on `spec-approval` and that sha256. A later no cancels an earlier yes.
 4. Checks that this yes did not already approve a draft.
 5. Makes the draft read-only (mode 444) where it is.
 6. Writes `spec.approved {sha256, answer, path}` last, and prints the event's path.

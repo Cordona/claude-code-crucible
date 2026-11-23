@@ -1,6 +1,6 @@
 # Spec: crucible-context
 
-The context is the outside material the work needs: references to outside files, folders and links, each with a one-line why, and draft docs written or copied for the work (notes, ticket copies, patches). It never holds the spec or a grill. Main gathers it as a draft; when the human says it is done, it is cut into a sealed version, and an agent reads that one version.
+The context is the outside material the work needs: references to outside files, folders and links, each with a one-line why, and draft docs written or copied for the work (notes, issue copies, patches). It never holds the spec or a grill. Main gathers it as a draft; when the human says it is done, it is cut into a sealed version, and an agent reads that one version.
 
 ## The pieces
 

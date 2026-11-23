@@ -8,12 +8,12 @@ Every question main asks follows a card the human has seen. A decision a piece a
 
 | Piece | Its one job |
 |---|---|
-| `scripts/show-card.sh` | Prints a card for main to relay, and records it as owed this session |
-| `scripts/gate-answer.sh` | Says whether the newest answer to a recorded gate accepted it |
+| `scripts/main/show-card.sh` | Prints a card for main to relay, and records it as owed this session |
+| `scripts/internal/gate-answer.sh` | Says whether the newest answer to a recorded gate accepted it, or lists the subjects starting with a given text whose newest answer accepted |
 | `scripts/lib/owed.sh` | The owed-card store: path, safe ids, 30-minute stale age, 2-try cap |
 | `hooks/stop/require-card-shown.sh` | Keeps main going until its final message holds the owed card, then tells it to ask |
 | `hooks/pre-tool-use/hold-question-until-card-shown.sh` | Holds the question until its card is shown, runs the shape check, checks a recorded gate's question and leaves the hand-off, then clears the session's cards |
-| `scripts/check-question-shape.sh` | Run by the hold hook, not by main: denies a question that breaks the shape rules, naming each broken rule |
+| `scripts/internal/check-question-shape.sh` | Run by the hold hook, not by main: denies a question that breaks the shape rules, naming each broken rule |
 | `hooks/post-tool-use/record-gate-answer.sh` | Writes a recorded gate's answer as one `gate.answered` event |
 | `events/gate.answered.jq` | The event's rule: its writer and its body's shape |
 | `hooks/matchers.json` | The event and matcher for each hook: Stop with no matcher, the other two on `AskUserQuestion` |
@@ -41,21 +41,23 @@ A gate whose answer a piece will act on adds options to `show-card.sh`:
 
 - `--record NAME`: what is decided, lowercase words joined by dashes, such as `spec-approval` or `flow-agree`;
 - `--effort FOLDER`: the absolute folder of the effort whose log receives the answer;
-- `--accept LABEL`: the option label that means yes;
+- `--accept LABEL`: the option label that means yes; or `--choice` in its place, when the human picks one of several real options and none of them is a yes;
 - `--subject TEXT` (optional): what exactly is decided on, such as a file's sha256.
 
-They are kept in the owed record. For a recorded card the hold hook denies anything but one single-select question offering the accept label, then writes a hand-off, `<session cache>/answers/<tool_use_id>.json`, holding the record and the question text. After the answer, the answer hook writes the event through `event-write.sh` and removes the hand-off; if the write fails, it says on stderr to ask again.
+They are kept in the owed record. For a recorded card the hold hook denies anything but one single-select question offering the accept label, or, for a choice card, anything but one single-select question. A choice card's question needs no recommended option: the hold hook runs the shape check with `--choice`, which skips only the two recommendation rules, since the piece that reads the answer checks it against its own list. Then the hook writes a hand-off, `<session cache>/answers/<tool_use_id>.json`, holding the record and the question text. After the answer, the answer hook writes the event through `event-write.sh` and removes the hand-off; if the write fails, it says on stderr to ask again.
 
 The `gate.answered` body:
 
 | Field | Read by |
 |---|---|
 | `record`, `subject` | `gate-answer.sh`, which matches on both |
-| `accepted` | `gate-answer.sh`; true only when the answer equals `accept` |
+| `accepted` | `gate-answer.sh`; true only when the answer equals `accept`. A choice gate's answer has neither `accept` nor `accepted`: the rule requires both or neither. |
 | `question`, `accept`, `answer` | no script; they show the human what was asked and what counted as yes |
 | envelope `by` | `gate-answer.sh` and the rule; only `record-gate-answer.sh` may write this event |
 
-A piece never reads these events itself; it runs `gate-answer.sh --effort --record --subject`. The newest matching answer counts, so a later "no" cancels an earlier "yes": `ACCEPTED: <seq>` and exit 0, or exit 1 with the reason. `spec-approve.sh` and `flow-agree.sh` use it, with the file's sha256 as subject. Whether an acceptance may be used twice is the caller's rule.
+A piece never reads these events itself; it runs `gate-answer.sh --effort --record --subject`, adding `--choice` for a choice gate, which prints `ANSWER_SEQ: <seq>` and `ANSWER: <text>` for the newest answer. Each form refuses the other's records, so a choice is never read as a yes or the other way round. The newest matching answer counts, so a later "no" cancels an earlier "yes": `ACCEPTED: <seq>` and exit 0, or exit 1 with the reason. `spec-approve.sh` and `flow-agree.sh` use it, with the file's sha256 as subject; the domain's `identity-set.sh` uses the choice form. Whether an acceptance may be used twice is the caller's rule.
+
+A piece that knows only the start of the subject runs `gate-answer.sh --effort --record --subject-prefix TEXT [--after SEQ]`. For each subject that starts with TEXT, compared as text, not as a pattern, it takes the newest answer by the same rule, and lists it when it accepted and its seq is above SEQ (default 0): one JSON object `{answers: [{seq, subject}]}`, oldest first, exit 0 even when empty. The caller puts any separator into TEXT itself, so `ab:` never matches `abc:1`. A choice gate's answer among those subjects is refused, as in the yes form. The domain's `worktree-drop.sh` uses it on a rerun, with `<name>:` and the tree's cut.
 
 A typed answer never counts as acceptance, because it can't equal the accept label. The answer is written even while the effort is paused, since neither the writer nor the rule checks the effort's state.
 
@@ -72,7 +74,7 @@ The skill gives main the sign: its turn ended with the card and nothing told it 
 - **2 tries:** a copy slip is fixed in one or two; then the stop goes through instead of looping, and a dropped card is told to the human.
 - **Card records are throwaway cache, not events:** edited and removed freely; only the answer is a fact.
 - **`--accept` is declared before the answer:** no script can tell from a label that it means yes. The hook works out `accepted`; main never claims it.
-- **One reader:** the reading rule lives in `gate-answer.sh` for every deciding piece.
+- **One reader:** the reading rule lives in `gate-answer.sh` for every deciding piece, including one that knows only the start of a subject; the gate owns its event's shape, so no piece outside it reads `gate.answered`.
 
 ## Known limits
 

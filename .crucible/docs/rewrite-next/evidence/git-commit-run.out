@@ -1,0 +1,235 @@
+=== set-up: scratch keys (one GPG key, one SSH key in a scratch agent), a scratch repository, three efforts
+  $ sh git-identity/scripts/main/identity-get.sh --effort <S>/space/efforts/<id>-ssh-work --repo <S>/repo
+    out: {"repo":"<S>/repo","name":"Ssh Tester","email":"ssh@example.test","signing":{"format":"ssh","key":"key::ssh-ed25519 <b64>"},"fingerprint":"SHA256:<fp>"}
+    [exit 0]
+  PASS: the ssh effort's identity is set through git-identity
+  $ sh git-identity/scripts/main/identity-get.sh --effort <S>/space/efforts/<id>-gpg-work --repo <S>/repo
+    out: {"repo":"<S>/repo","name":"Gpg Tester","email":"gpg@example.test","signing":{"format":"openpgp","key":"<KEYID>"},"fingerprint":"<FPR>"}
+    [exit 0]
+  PASS: the gpg effort's identity is set through git-identity
+
+=== commit-message.sh
+  $ sh main/commit-message.sh --input <S>/in1.json --out <S>/msg/m1
+    [exit 0]
+  PASS: exit 0, nothing printed
+    file: crucible(build): add the parser
+    file: 
+    file: Iteration: 2
+    file: Change-Id: abc
+  PASS: subject crucible(<kind>): <text>, a blank line, the trailers in order
+  $ sh main/commit-message.sh --input <S>/in2.json --out <S>/msg/m2
+    [exit 0]
+  PASS: no trailers: the subject alone
+  $ sh main/commit-message.sh --input <S>/in3.json --out <S>/msg/m3
+    err: commit-message.sh: "extra" is not a field; expected only kind, text and trailers
+    err: commit-message.sh: kind "Build!" is not lowercase words joined by dashes
+    err: commit-message.sh: the subject "crucible(Build!): <text>" has more than 72 characters
+    err: commit-message.sh: trailers["Bad Key"] is not lowercase words joined by dashes
+    err: commit-message.sh: trailers["effort"] holds a line break; expected one line
+    [exit 2]
+  PASS: an invalid input: exit 2, one line per problem, no file
+  $ sh main/commit-message.sh --input <S>/in4.json --out <S>/msg/m4
+    err: commit-message.sh: the input is not valid JSON; expected one JSON object
+    [exit 2]
+  PASS: not JSON: exit 2
+
+=== commit-tree.sh: a tree's changes, signed with the SSH identity
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-ssh-work/worktrees/one --message-file <S>/msg/m1 --effort <S>/space/efforts/<id>-ssh-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: exit 0 and signed: true
+  PASS: git verify-commit accepts the SSH signature
+  PASS: the commit is the tree's branch tip
+  PASS: author and committer are the identity
+  PASS: the Effort trailer names the effort folder
+  PASS: the message keeps the given trailers before Effort
+  PASS: added, modified and deleted are all in it
+  PASS: the tree is clean after the commit
+  PASS: the human's checkout (HEAD, index, status) is untouched
+
+=== commit-tree.sh: signed with the GPG identity
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/m2 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: exit 0 and signed: true
+  PASS: git verify-commit accepts the OpenPGP signature
+  PASS: the Effort trailer is added to a message with none
+
+=== commit-tree.sh: the refusals
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/m2 --effort <S>/space/efforts/<id>-gpg-work
+    err: commit-tree.sh: nothing to commit in <S>/space/efforts/<id>-gpg-work/worktrees/two
+    [exit 3]
+  PASS: nothing to commit: exit 3
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/foreign --effort <S>/space/efforts/<id>-gpg-work
+    err: commit-tree.sh: --message-file names another effort in its Effort trailer; expected Effort: <id>-gpg-work or none
+    [exit 2]
+  PASS: an Effort trailer naming another effort: exit 2, nothing committed
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/own --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: an Effort trailer naming this effort is kept, not repeated
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-ssh-work/worktrees/plain --message-file <S>/msg/m1 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-tree.sh: --worktree <S>/space/efforts/<id>-ssh-work/worktrees/plain has HEAD on feature/x; expected a branch under crucible/<id>-ssh-work/
+    [exit 2]
+  PASS: a branch not under crucible/<effort>/: exit 2
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/m2 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-tree.sh: --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two has HEAD on crucible/<id>-gpg-work/two; expected a branch under crucible/<id>-ssh-work/
+    [exit 2]
+  PASS: another effort's crucible/ branch: exit 2
+  $ sh main/commit-tree.sh --worktree <S>/repo --message-file <S>/msg/m1 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-tree.sh: --worktree <S>/repo is a main checkout; expected a linked worktree
+    [exit 2]
+  PASS: the human's main checkout: exit 2
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-no-identity/worktrees/three --message-file <S>/msg/m1 --effort <S>/space/efforts/<id>-no-identity
+    err: commit-tree.sh: the effort has no identity for the repository of <S>/space/efforts/<id>-no-identity/worktrees/three; set the identity first (git-identity)
+    [exit 2]
+  PASS: an effort with no identity for the repository: exit 2, set the identity first
+  PASS:   ... and nothing was staged
+
+=== commit-tree.sh: finishing a merge under way
+  PASS: the merge conflicts in the tree
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-ssh-work/worktrees/one --message-file <S>/msg/m1 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-tree.sh: the merge of <sha> still has conflict markers in: f.txt
+    [exit 2]
+  PASS: a path still holding conflict markers: exit 2, naming it
+  $ sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-ssh-work/worktrees/one --message-file <S>/msg/m5 --effort <S>/space/efforts/<id>-ssh-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: exit 0, signed: true
+  PASS: the merge commit's parents are HEAD and MERGE_HEAD
+  PASS: the merge is finished, the tree clean
+  PASS: git verify-commit accepts the merge commit
+
+=== commits-merge.sh: two and three commits into one commit object
+  $ sh internal/commits-merge.sh --repo <S>/space/efforts/<id>-gpg-work/worktrees/two --commit <sha> --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","new":true,"signed":true}
+    [exit 0]
+  PASS: exit 0, new: true, signed: true
+  PASS: its parents are the two commits, in order
+  PASS: its tree holds both changes
+  PASS: git verify-commit accepts it
+  PASS: the Effort trailer names the effort
+  PASS: no ref, index, status or config changed
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> <sha> <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-ssh-work
+    out: {"commit":"<sha>","new":true,"signed":true}
+    [exit 0]
+  PASS: three commits after one --commit: exit 0, signed, three parents in order
+  PASS: its tree holds all three changes
+  PASS: git verify-commit accepts it (SSH)
+  PASS: no ref, index, status or config changed
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","new":false,"signed":true}
+    [exit 0]
+  PASS: one commit holding the other: it is the answer, new: false
+
+=== commits-merge.sh: the refusals
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"conflicts":["x.txt"]}
+    err: commits-merge.sh: the commits conflict in: x.txt
+    [exit 3]
+  PASS: a conflict: exit 3, naming the path
+  PASS:   ... and no ref, index, status or config changed
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-no-identity
+    err: commits-merge.sh: the effort has no identity for the repository of <S>/repo; set the identity first (git-identity)
+    [exit 2]
+  PASS: an effort with no identity for the repository: exit 2, set the identity first
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    err: commits-merge.sh: --commit given 1 commit(s); expected at least two
+    [exit 2]
+  PASS: one commit: exit 2
+  $ sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --commit nosuch --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    err: commits-merge.sh: --commit nosuch is not a commit in <S>/repo
+    [exit 2]
+  PASS: a value that is no commit: exit 2
+
+=== the signing fallback: a signer that hangs is given up after 10 s, the commit made unsigned
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.program GIT_CONFIG_VALUE_0=<S>/hang-gpg sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/m2 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":false}
+    err: commit-tree.sh: unsigned: signing timed out after 10 s
+    [exit 0]
+    took 11 s
+  PASS: commit-tree: exit 0, signed: false
+  PASS: commit-tree: stderr says signing timed out after 10 s
+  PASS: commit-tree: it took about 10 s, not the signer's 30
+  PASS: commit-tree: the commit carries no signature, has the Effort trailer, the tree is clean
+  PASS: commit-tree: the signer and the program it started are both stopped
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.program GIT_CONFIG_VALUE_0=<S>/hang-gpg sh internal/commits-merge.sh --repo <S>/repo --commit <sha> --commit <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","new":true,"signed":false}
+    err: commits-merge.sh: unsigned: signing timed out after 10 s
+    [exit 0]
+    took 10 s
+  PASS: commits-merge: exit 0, new: true, signed: false
+  PASS: commits-merge: stderr says signing timed out after 10 s
+  PASS: commits-merge: the commit carries no signature, parents in order
+  PASS: commits-merge: no ref, index, status or config changed
+  PASS: commits-merge: the signer and the program it started are both stopped
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.program GIT_CONFIG_VALUE_0=/usr/bin/false sh main/commit-tree.sh --worktree <S>/space/efforts/<id>-gpg-work/worktrees/two --message-file <S>/msg/m2 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":false}
+    err: commit-tree.sh: unsigned: (no gpg output)
+    [exit 0]
+  PASS: a signer that fails: committed with signed: false, the reason on stderr
+
+=== commit-object.sh: one commit object from a tree and its parents
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-ssh-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: SSH: exit 0, signed: true
+  PASS: SSH: git verify-commit accepts it
+  PASS: its tree and parent are the ones given
+  PASS: its author is the identity, its Effort trailer the effort
+  $ sh internal/commit-object.sh --repo <S>/space/efforts/<id>-gpg-work/worktrees/two --tree <sha> --parent <sha> <sha> --parent <sha> --message-file <S>/msg/m6 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: OpenPGP, three parents: exit 0, signed: true
+  PASS: OpenPGP: git verify-commit accepts it
+  PASS: its parents are the three given, in order
+  PASS: no ref, index, status or config changed
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-object.sh: --tree <sha> is not a tree in <S>/repo
+    [exit 2]
+  PASS: a commit given as the tree: exit 2
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-object.sh: --tree <sha> is not a tree in <S>/repo
+    [exit 2]
+  PASS: a tree that is no object: exit 2
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-object.sh: --parent <sha> is not a commit in <S>/repo
+    [exit 2]
+  PASS: a tree given as a parent: exit 2
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-ssh-work
+    err: commit-object.sh: --parent missing; expected one or more
+    [exit 2]
+  PASS: no parent: exit 2
+  $ sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-no-identity
+    err: commit-object.sh: the effort has no identity for the repository of <S>/repo; set the identity first (git-identity)
+    [exit 2]
+  PASS: an effort with no identity for the repository: exit 2, set the identity first
+  PASS:   ... and no ref, index, status or config changed by the refusals
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.program GIT_CONFIG_VALUE_0=<S>/hang-gpg sh internal/commit-object.sh --repo <S>/repo --tree <sha> --parent <sha> --message-file <S>/msg/m7 --effort <S>/space/efforts/<id>-gpg-work
+    out: {"commit":"<sha>","signed":false}
+    err: commit-object.sh: unsigned: signing timed out after 10 s
+    [exit 0]
+    took 10 s
+  PASS: a hanging signer: exit 0, signed: false, timed out after 10 s
+  PASS:   ... about 10 s, no signature on the object, its tree and parent as given
+  PASS:   ... and the signer and the program it started are both stopped
+  PASS:   ... and no ref, index, status or config changed
+
+=== the human's git config
+  PASS: the global and repository config files are as before the run
+  PASS: no Crucible key was written to any config
+
+=== the scripts' contracts
+  PASS: commit-message.sh: --help exits 0, an unknown option exits 2
+  PASS: commit-tree.sh: --help exits 0, an unknown option exits 2
+  PASS: commits-merge.sh: --help exits 0, an unknown option exits 2
+  PASS: commit-object.sh: --help exits 0, an unknown option exits 2
+  PASS: shellcheck -x -o all is clean
+
+=== coverage: every script under scripts/ ran on a case
+  PASS: commit-message.sh ran on a case (4 runs)
+  PASS: commit-tree.sh ran on a case (13 runs)
+  PASS: commit-object.sh ran on a case (8 runs)
+  PASS: commits-merge.sh ran on a case (8 runs)
+
+=== 89 PASS, 0 FAIL

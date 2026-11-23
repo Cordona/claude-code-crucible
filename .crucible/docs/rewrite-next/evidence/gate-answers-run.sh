@@ -1,10 +1,10 @@
 # Evidence run for the gate answer events: every case through the real hooks.
 C=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite/framework/core/main-thread
 GT=$C/crucible-gate; E=$C/crucible-effort/scripts
-SC=$GT/scripts/show-card.sh; STOP=$GT/hooks/stop/require-card-shown.sh; HOLD=$GT/hooks/pre-tool-use/hold-question-until-card-shown.sh; POST=$GT/hooks/post-tool-use/record-gate-answer.sh
+SC=$GT/scripts/main/show-card.sh; STOP=$GT/hooks/stop/require-card-shown.sh; HOLD=$GT/hooks/pre-tool-use/hold-question-until-card-shown.sh; POST=$GT/hooks/post-tool-use/record-gate-answer.sh
 S="/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/gate answers test"; rm -rf "$S"; mkdir -p "$S"
 export CRUCIBLE_HOME="$S/space" CLAUDE_CONFIG_DIR="$S/cfg" CLAUDE_CODE_SESSION_ID=sess-g
-F=$(sh $E/effort-start.sh --name gates)
+F=$(sh $E/main/effort-start.sh --name gates)
 show() { sed "s|$F|<F>|g;s|$S|<S>|g;s|^|    |"; }
 printf 'Approve the spec?\n\n- draft 9f2c\n' > "$S/card.md"
 q() { # $1 tool_use_id, $2 questions JSON
@@ -43,13 +43,13 @@ echo "--- a subagent's answer: no event"
 printf '{"session_id":"sess-g","agent_id":"sub","tool_name":"AskUserQuestion","tool_use_id":"t1","tool_response":{"answers":{}}}' | sh $POST; echo "    [no output]"
 echo "--- only the hook may write gate.answered"
 echo '{"record":"spec-approval","subject":"9f2c","question":"q","accept":"a","answer":"a","accepted":true}' > "$S/forged.json"
-sh $C/crucible-events/scripts/event-write.sh --effort "$F" --type gate.answered --by main.sh --body-file "$S/forged.json" 2>&1 | show
+sh $C/crucible-events/scripts/internal/event-write.sh --effort "$F" --type gate.answered --by main.sh --body-file "$S/forged.json" 2>&1 | show
 echo '{"record":"spec-approval","subject":"9f2c","question":"q","accept":"a","answer":"b","accepted":true}' > "$S/lie.json"
-sh $C/crucible-events/scripts/event-write.sh --effort "$F" --type gate.answered --by record-gate-answer.sh --body-file "$S/lie.json" 2>&1 | show
+sh $C/crucible-events/scripts/internal/event-write.sh --effort "$F" --type gate.answered --by record-gate-answer.sh --body-file "$S/lie.json" 2>&1 | show
 echo "--- junk input: exit 0"
 echo nope | sh $POST 2>/dev/null; echo "    [exit $?]"
 echo "--- the shared reader: the newest answer counts"
-RD=$GT/scripts/gate-answer.sh
+RD=$GT/scripts/internal/gate-answer.sh
 rd() { out=$(sh $RD --effort "$F" --record "$1" --subject "$2" 2>&1); e=$?; echo "$out" | show; echo "    [exit $e]"; }
 echo "  spec-approval on 9f2c: the newest is the typed answer (no)"; rd spec-approval 9f2c
 sh $SC --record spec-approval --effort "$F" --subject 9f2c --accept "Approve the spec (Recommended)" "$S/card.md" >/dev/null; shown
@@ -79,7 +79,64 @@ echo "  the fixed question goes out with no new card, and its answer is recorded
 q t8 "$ONE" | sh $HOLD; answer t8 "Approve the spec (Recommended)"
 jq -c '.body | {record, subject, answer, accepted}' "$(ls "$F"/events/*gate.answered.json | tail -1)" | show
 echo "  with the shape script gone, the step is skipped: even a badly shaped question goes out"
-mv $GT/scripts/check-question-shape.sh "$S/shape.sh.away"
+mv $GT/scripts/internal/check-question-shape.sh "$S/shape.sh.away"
 sh $SC "$S/card.md" >/dev/null; shown
 q t9 "$BAD" | sh $HOLD; echo "    [no output = allowed]; card records left: $(ls "$OWED" 2>/dev/null | wc -l | tr -d ' ')"
-mv "$S/shape.sh.away" $GT/scripts/check-question-shape.sh
+mv "$S/shape.sh.away" $GT/scripts/internal/check-question-shape.sh
+
+echo "--- the events lock held: the hook exits 0, the answer unrecorded, the hand-off kept; delivered again, it is recorded"
+sh $SC --record spec-approval --effort "$F" --subject 9f2c --accept "Approve the spec (Recommended)" "$S/card.md" >/dev/null; shown
+q t10 "$ONE" | sh $HOLD
+before=$(ls "$F/events" | wc -l | tr -d ' ')
+mkdir "$F/events/.lock"; echo $$ >"$F/events/.lock/pid"
+out=$(answer t10 "Approve the spec (Recommended)" 2>&1); e=$?; echo "$out" | show; echo "    [exit $e]"
+rm -rf "$F/events/.lock"
+echo "    events before $before, after $(ls "$F/events" | wc -l | tr -d ' '); hand-off t10 kept: $([ -f "$S/cfg/cache/crucible-gate/sess-g/answers/t10.json" ] && echo yes || echo no)"
+answer t10 "Approve the spec (Recommended)"; jq -c '.body | {record, subject, answer, accepted}' "$(ls "$F"/events/*gate.answered.json | tail -1)" | show
+echo "    hand-off t10 kept: $([ -f "$S/cfg/cache/crucible-gate/sess-g/answers/t10.json" ] && echo yes || echo no)"
+
+echo "--- the shared reader by the start of a subject: each subject's newest answer, when it accepted"
+. /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/lib-decide.sh
+P=$(sh $E/main/effort-start.sh --name prefixes)
+pf() { out=$(sh $RD --effort "$P" --record drop-thing "$@" 2>&1); e=$?; echo "$out" | sed "s|$P|<P>|g;s|$S|<S>|g;s|^|    |"; echo "    [exit $e]"; }
+printf 'Drop it?\n' >"$S/drop.md"
+decide "$P" drop-thing abc:1 "$S/drop.md" "Approve (Recommended)"
+decide "$P" drop-thing ab:1 "$S/drop.md" "Approve (Recommended)"
+decide "$P" drop-thing abc:2 "$S/drop.md" "Approve (Recommended)"
+decide "$P" drop-thing abc:2 "$S/drop.md" "Change it"
+decide "$P" drop-thing abc:3 "$S/drop.md" "Change it"
+decide "$P" other-thing abc:4 "$S/drop.md" "Approve (Recommended)"
+jq -c '{seq, subject: .body.subject, record: .body.record, accepted: .body.accepted}' "$P"/events/*gate.answered.json | sed 's|^|    |'
+echo "  prefix abc: : abc:1 only; abc:2's newest is a no, abc:3 never accepted, abc:4 is another record"; pf --subject-prefix abc:
+echo "  prefix ab: : ab:1 only, never abc:"; pf --subject-prefix ab:
+echo "  prefix ab, no colon: the text as written, so abc: subjects match too"; pf --subject-prefix ab
+echo "  a prefix that is text, not a pattern: a.c: matches nothing"; pf --subject-prefix a.c:
+echo "  no subject starts so: an empty list"; pf --subject-prefix zzz:
+echo "  --after the event of abc:1's yes: it is left out"
+first=$(sh $RD --effort "$P" --record drop-thing --subject-prefix abc: | jq '.answers[0].seq')
+pf --subject-prefix abc: --after "$first"
+echo "  a later yes for abc:3 now counts, after the same event"
+decide "$P" drop-thing abc:3 "$S/drop.md" "Approve (Recommended)"
+pf --subject-prefix abc: --after "$first"
+echo "  --after 0 is the default"; pf --subject-prefix abc: --after 0
+echo "--- refusals of the prefix form, nothing read"
+pf --subject-prefix ''
+pf --subject-prefix abc: --subject abc:1
+pf --subject-prefix abc: --choice
+pf --after 3
+pf --subject abc:1 --after 3
+pf --subject-prefix abc: --after 3x
+pf --subject-prefix abc: --after -1
+pf --subject-prefix
+pf --subject-prefix abc: --after
+echo "  a choice gate's answer among the subjects: refused, read it with --choice"
+sh $SC --record drop-thing --effort "$P" --subject ch:1 --choice "$S/drop.md" >/dev/null
+jq -cn --rawfile m "$S/drop.md" '{session_id: "sess-g", last_assistant_message: $m}' | sh $STOP >/dev/null
+q t20 "$ONE" | sh $HOLD; answer t20 "Change it"
+pf --subject-prefix ch:
+pf --subject ch:1 --choice
+echo "--- a damaged log: the prefix form refuses, exit 2"
+damaged=$(ls "$P"/events/*gate.answered.json | head -n 1); chmod 000 "$damaged"
+pf --subject-prefix abc:
+chmod 444 "$damaged"
+echo "  repaired: listed again"; pf --subject-prefix abc:

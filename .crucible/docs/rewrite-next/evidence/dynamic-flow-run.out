@@ -1,18 +1,18 @@
 === 1. The catalogue
 --- core alone, by its real path: the three prepare steps
-$ sh flow-candidates.sh
+$ sh main/flow-candidates.sh
     crucible-context/build-context · Find out what the work is about and gather the material it needs, then cut the context on the human's yes · ends with context.cut · stages: prepare · skills: crucible-discovery, crucible-context · propose when: before work starts, whenever the work needs outside material or its goal and limits aren't yet confirmed
     crucible-grill/grill · Interview the human, a few questions at a time, until the open goal becomes recorded decisions · ends with grill.ended · stages: prepare · skills: crucible-grill · propose when: when the goal is still open, or the human asks to be grilled
     crucible-spec/specify · Draft the spec with the human and seal it at the approval gate · ends with spec.approved · stages: prepare · skills: crucible-spec · propose when: before an effort's work is built or sent to agents, when no approved spec covers it
     [exit 0]
-$ sh flow-candidates.sh --stages
+$ sh main/flow-candidates.sh --stages
     prepare 3
     [exit 0]
-$ sh flow-candidates.sh --stage build
+$ sh main/flow-candidates.sh --stage build
     
     [exit 0]
 --- installed, through the links: core and the stand-ins; the wrong ones left out, named on stderr, exit 0
-$ sh flow-candidates.sh
+$ sh main/flow-candidates.sh
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.criteria is not an ends_with field: a step ends in an event
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.event must be an event type, such as context.cut
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/raw-gate: ends_with.event can't be gate.answered: a step ends in its own piece's event
@@ -30,7 +30,7 @@ $ sh flow-candidates.sh
     probe/pause · Pause the effort for a while · ends with effort.paused · stages: setup · skills: crucible-effort · propose when: when the work must wait
     probe/wanted-grill · Grill the topic that matters · ends with grill.ended matching {"topic":"wanted"} · stages: build, test · skills: crucible-grill · propose when: when the wanted topic is open
     [exit 0]
-$ sh flow-candidates.sh --stages
+$ sh main/flow-candidates.sh --stages
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.criteria is not an ends_with field: a step ends in an event
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.event must be an event type, such as context.cut
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/raw-gate: ends_with.event can't be gate.answered: a step ends in its own piece's event
@@ -47,7 +47,7 @@ $ sh flow-candidates.sh --stages
     setup 1
     test 1
     [exit 0]
-$ sh flow-candidates.sh --stage prepare
+$ sh main/flow-candidates.sh --stage prepare
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.criteria is not an ends_with field: a step ends in an event
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.event must be an event type, such as context.cut
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/raw-gate: ends_with.event can't be gate.answered: a step ends in its own piece's event
@@ -63,7 +63,7 @@ $ sh flow-candidates.sh --stage prepare
     crucible-grill/grill · Interview the human, a few questions at a time, until the open goal becomes recorded decisions · ends with grill.ended · stages: prepare · skills: crucible-grill · propose when: when the goal is still open, or the human asks to be grilled
     crucible-spec/specify · Draft the spec with the human and seal it at the approval gate · ends with spec.approved · stages: prepare · skills: crucible-spec · propose when: before an effort's work is built or sent to agents, when no approved spec covers it
     [exit 0]
-$ sh flow-candidates.sh --stage build
+$ sh main/flow-candidates.sh --stage build
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.criteria is not an ends_with field: a step ends in an event
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/criterion: ends_with.event must be an event type, such as context.cut
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/broken/flow-step.json broken/raw-gate: ends_with.event can't be gate.answered: a step ends in its own piece's event
@@ -77,34 +77,34 @@ $ sh flow-candidates.sh --stage build
     flow-candidates.sh: left out /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow-links/skills/notjson/flow-step.json: not JSON
     probe/wanted-grill · Grill the topic that matters · ends with grill.ended matching {"topic":"wanted"} · stages: build, test · skills: crucible-grill · propose when: when the wanted topic is open
     [exit 0]
-$ sh flow-candidates.sh --stage x --stages
+$ sh main/flow-candidates.sh --stage x --stages
     flow-candidates.sh: --stage and --stages go alone
     [exit 2]
 === 2. Agreeing
 --- free text, a criterion, a flow-level check: refused, at the card and at agree
-$ sh flow-card.sh --file <S>/free.json
+$ sh main/flow-card.sh --file <S>/free.json
     flow-card.sh: steps[1].does is not a field of a proposed step: name a declared step by its key; steps[1].ends_with is not a field of a proposed step: name a declared step by its key; steps[1].step must be a step key, <component>/<name>, from flow-candidates.sh
     [exit 2]
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/free.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/free.json
     flow-agree.sh: steps[1].does is not a field of a proposed step: name a declared step by its key; steps[1].ends_with is not a field of a proposed step: name a declared step by its key; steps[1].step must be a step key, <component>/<name>, from flow-candidates.sh
     [exit 2]
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/own-check.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/own-check.json
     flow-agree.sh: ends_with is not a flow field
     [exit 2]
 --- a key not declared, and keys whose entries the scan left out: refused, with the scan's reason
-$ sh flow-card.sh --file <S>/unknown.json
+$ sh main/flow-card.sh --file <S>/unknown.json
     flow-card.sh: step 1: nobody/nothing is not a declared step; run flow-candidates.sh to see them; step 2: broken/raw-gate was left out of the catalogue: ends_with.event can't be gate.answered: a step ends in its own piece's event; step 3: broken/twice was left out of the catalogue: name twice is used twice in the file; name twice is used twice in the file
     [exit 2]
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/unknown.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/unknown.json
     flow-agree.sh: step 1: nobody/nothing is not a declared step; run flow-candidates.sh to see them; step 2: broken/raw-gate was left out of the catalogue: ends_with.event can't be gate.answered: a step ends in its own piece's event; step 3: broken/twice was left out of the catalogue: name twice is used twice in the file; name twice is used twice in the file
     [exit 2]
 --- without the human's recorded yes: refused
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/flow.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/flow.json
     gate-answer.sh: no answer for flow-agree on ddde22ae273896eafdd4b6178f26781b42089e76cdf29fcd0e5bf7be542d7c65
     flow-agree.sh: the human has not accepted this flow file (sha256 ddde22ae273896eafdd4b6178f26781b42089e76cdf29fcd0e5bf7be542d7c65); ask them first
     [exit 2]
 --- the card, resolved from the catalogue; the same step twice under two ids
-$ sh flow-card.sh --file <S>/flow.json
+$ sh main/flow-card.sh --file <S>/flow.json
     Flow to agree: Know the prune work well enough to build it
       1. Interview the human, a few questions at a time, until the open goal becomes recorded decisions [crucible-grill]
          ends with: grill.ended
@@ -117,12 +117,12 @@ $ sh flow-card.sh --file <S>/flow.json
 flow: <F>:3
     {"goal":"Know the prune work well enough to build it","steps":[{"id":1,"step":"crucible-grill/grill","does":"Interview the human, a few questions at a time, until the open goal becomes recorded decisions","skills":["crucible-grill"],"ends_with":{"event":"grill.ended"}},{"id":2,"step":"probe/wanted-grill","does":"Grill the topic that matters","skills":["crucible-grill"],"ends_with":{"event":"grill.ended","match":{"topic":"wanted"}}},{"id":3,"step":"crucible-grill/grill","does":"Interview the human, a few questions at a time, until the open goal becomes recorded decisions","skills":["crucible-grill"],"ends_with":{"event":"grill.ended"}}],"answer":2}
 --- yes, then no on the same file: the no counts
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/flow-yn.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/flow-yn.json
     gate-answer.sh: the newest answer (event 5) did not accept: Change it
     flow-agree.sh: the human has not accepted this flow file (sha256 00637afced774cc4798d073f7c39ca32fe3a19c406561411d2969c0f3aba4e53); ask them first
     [exit 2]
 --- the same yes can't agree a second flow
-$ sh flow-agree.sh --effort <S>/space/efforts/20261122T162900-f883-prune --file <S>/flow.json
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/flow.json
     event-write.sh: flow.agreed refused: answer 2 already agreed another flow
     [exit 2]
 $ stop hook (sess-1)
@@ -131,37 +131,37 @@ $ stop hook (sess-1)
 $ stop hook (sess-1)
     [end]
 === 3. Marking
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 1
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 1
     flow-step-done.sh: no grill.ended is waiting for step 1
     [exit 2]
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 1 --evidence the human said so
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 1 --evidence the human said so
     flow-step-done.sh: unknown argument --evidence; try --help
     [exit 2]
 $ stop hook (sess-1)
     Flow <F>:3 "Know the prune work well enough to build it": step 1 has its evidence waiting (event 6): mark it. That event also fits another open step, and can prove only one of them.
     [end]
 --- a grill on another topic doesn't end the step that matches topic wanted
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 2
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 2
     flow-step-done.sh: no grill.ended is waiting for step 2
     [exit 2]
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 1
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 1
     <F>/events/000007-flow.step.done.json
     [exit 0]
 --- the same step's second occurrence needs its own event
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 3 --event 6
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 3 --event 6
     event-write.sh: flow.step.done refused: event 6 is already evidence for another step
     [exit 2]
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 2 --event 8
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 2 --event 8
     <F>/events/000009-flow.step.done.json
     [exit 0]
 --- two events waiting for one step: pick one
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 3
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 3
     flow-step-done.sh: several events fit step 3: 10, 11; pick one with --event
     [exit 2]
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 3 --event 11
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 3 --event 11
     <F>/events/000012-flow.step.done.json
     [exit 0]
-$ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3
+$ sh main/flow-show.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3
     flow <F>:3 · Know the prune work well enough to build it
       [x] 1 Interview the human, a few questions at a time, until the open goal becomes recorded decisions
       [x] 2 Grill the topic that matters
@@ -169,30 +169,35 @@ $ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3
       every step is done or skipped: end the flow
     [exit 0]
 === 4. Changing
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops-free.json --reason x
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops-free.json --reason x
     flow-change.sh: add.does is not a field of a proposed step: name a declared step by its key; add.ends_with is not a field of a proposed step: name a declared step by its key; add.step must be a step key, <component>/<name>, from flow-candidates.sh
     [exit 2]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops-unknown.json --reason x
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops-unknown.json --reason x
     flow-change.sh: step 4: nobody/nothing is not a declared step; run flow-candidates.sh to see them
     [exit 2]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops-revise.json --reason x
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops-revise.json --reason x
     event-write.sh: flow.changed refused: an op must be add, skip, move or reopen
     [exit 2]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops1.json --reason The human wants a pause before the last grill
+--- the events lock held: refused with exit 6, nothing written
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops1.json --reason The human wants a pause before the last grill
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    events before 12, after 12
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops1.json --reason The human wants a pause before the last grill
     <F>/events/000013-flow.changed.json
     [exit 0]
     {"flow":3,"reason":"The human wants a pause before the last grill","ops":[{"add":{"id":4,"step":"probe/pause","does":"Pause the effort for a while","skills":["crucible-effort"],"ends_with":{"event":"effort.paused"}},"before":3}]}
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops3.json --reason The goal changed after the grill
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops3.json --reason The goal changed after the grill
     <F>/events/000014-flow.changed.json
     [exit 0]
 --- after a reopen, an older event no longer counts
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 1 --event 10
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 1 --event 10
     event-write.sh: flow.step.done refused: event 10 is older than the step's reopen
     [exit 2]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops4.json --reason The pause comes first
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops4.json --reason The pause comes first
     <F>/events/000015-flow.changed.json
     [exit 0]
-$ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3
+$ sh main/flow-show.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3
     flow <F>:3 · Know the prune work well enough to build it
       [ ] 4 Pause the effort for a while
       [ ] 1 Interview the human, a few questions at a time, until the open goal becomes recorded decisions
@@ -201,25 +206,25 @@ $ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3
       next: 4 Pause the effort for a while
     [exit 0]
 === 5. Ending
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --outcome done
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --outcome done
     event-write.sh: flow.ended refused: steps 4, 1 are still open
     [exit 2]
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --outcome done --evidence x
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --outcome done --evidence x
     flow-end.sh: unknown argument --evidence; try --help
     [exit 2]
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --step 4
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --step 4
     <F>/events/000018-flow.step.done.json
     [exit 0]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops2.json --reason The human says one grill was enough
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops2.json --reason The human says one grill was enough
     <F>/events/000019-flow.changed.json
     [exit 0]
 $ stop hook (sess-1)
     Flow <F>:3 "Know the prune work well enough to build it": every step is done or skipped; end it.
     [end]
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --outcome done
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --outcome done
     <F>/events/000020-flow.ended.json
     [exit 0]
-$ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --all
+$ sh main/flow-show.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --all
     flow <F>:3 · Know the prune work well enough to build it · ended done
       [x] 4 Pause the effort for a while
           event 16
@@ -229,21 +234,21 @@ $ sh flow-show.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --all
       [x] 3 Interview the human, a few questions at a time, until the open goal becomes recorded decisions
           event 11
     [exit 0]
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --outcome done
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --outcome done
     event-write.sh: flow.ended refused: flow 3 has already ended
     [exit 2]
-$ sh flow-change.sh --flow <S>/space/efforts/20261122T162900-f883-prune:3 --file <S>/ops2.json --reason after end
+$ sh main/flow-change.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:3 --file <S>/ops2.json --reason after end
     event-write.sh: flow.changed refused: flow 3 has ended
     [exit 2]
 --- a second flow, dropped with the human's words
 flow 2: 22
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:22 --outcome dropped
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:22 --outcome dropped
     event-write.sh: flow.ended refused: a dropped flow needs the human's words
     [exit 2]
-$ sh flow-end.sh --flow <S>/space/efforts/20261122T162900-f883-prune:22 --outcome dropped --words The human moved to other work
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:22 --outcome dropped --words The human moved to other work
     <F>/events/000023-flow.ended.json
     [exit 0]
-$ sh flow-show.sh --effort <S>/space/efforts/20261122T162900-f883-prune
+$ sh main/flow-show.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune
     
     [exit 0]
 === 6. The stop hook across sessions
@@ -257,8 +262,33 @@ $ stop hook (sess-1)
     Flow <F>:25 "A third flow": step 1 has its evidence waiting (event 26): mark it.
     [end]
     [subagent: no output]
+--- a damaged log: the flow scripts refuse; the hook stays silent and lets the stop through
+    unreadable: 000002-gate.answered.json
+$ sh main/flow-show.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:25
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/flow-show.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh internal/open-work.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:25 --step 1
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/flow-end.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:25 --outcome dropped --words x
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/flow-agree.sh --effort <S>/space/efforts/20261123T102949-cbb3-prune --file <S>/flow3.json
+    events-read.sh: <F>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+    [exit 0, no output]
+  repaired: the hook speaks again
+$ stop hook (sess-2)
+    Flow <F>:25 "A third flow": step 1 has its evidence waiting (event 26): mark it.
+    [end]
 --- paused effort: no writes, the hook silent
-$ sh flow-step-done.sh --flow <S>/space/efforts/20261122T162900-f883-prune:25 --step 1
+$ sh main/flow-step-done.sh --flow <S>/space/efforts/20261123T102949-cbb3-prune:25 --step 1
     flow-step-done.sh: the effort is paused; flows change only while it's open
     [exit 2]
 $ stop hook (sess-2)
@@ -268,7 +298,7 @@ jq: parse error: Invalid numeric literal at EOF at line 1, column 4
 jq: parse error: Invalid numeric literal at EOF at line 1, column 4
     [exit 0]
 === 7. The skill's example names only declared steps
-$ sh flow-card.sh --file <S>/example.json
+$ sh main/flow-card.sh --file <S>/example.json
     Flow to agree: Know the work well enough to build it
       1. Find out what the work is about and gather the material it needs, then cut the context on the human's yes [crucible-discovery, crucible-context]
          ends with: context.cut

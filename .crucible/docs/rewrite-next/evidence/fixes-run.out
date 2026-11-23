@@ -1,10 +1,10 @@
 === B1: events are read-only
     started: <S>/space/efforts/<id>-fixes
     -r--r--r-- 000001-effort.opened.json
-$ sh crucible-effort/scripts/effort-pause.sh --effort <S>/space/efforts/<id>-fixes --words the next event, after a read-only one
+$ sh crucible-effort/scripts/main/effort-pause.sh --effort <S>/space/efforts/<id>-fixes --words the next event, after a read-only one
     <S>/space/efforts/<id>-fixes/events/000002-effort.paused.json
     [exit 0]
-$ sh crucible-effort/scripts/effort-resume.sh --effort <S>/space/efforts/<id>-fixes --words back
+$ sh crucible-effort/scripts/main/effort-resume.sh --effort <S>/space/efforts/<id>-fixes --words back
     <S>/space/efforts/<id>-fixes/events/000003-effort.resumed.json
     [exit 0]
     -r--r--r-- 000001-effort.opened.json
@@ -12,93 +12,93 @@ $ sh crucible-effort/scripts/effort-resume.sh --effort <S>/space/efforts/<id>-fi
     -r--r--r-- 000003-effort.resumed.json
     lock files left: 0
 === B2: effort-close refuses while work is open
-$ sh crucible-dynamic-flow/scripts/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-dynamic-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     
     [exit 0]
-$ sh crucible-grill/scripts/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-grill/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     
     [exit 0]
     agreed: <S>/space/efforts/<id>-fixes:5
     grill: <S>/space/efforts/<id>-fixes/grills/1.json
-$ sh crucible-dynamic-flow/scripts/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-dynamic-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     flow 5 "Prune nightly"
     [exit 0]
-$ sh crucible-grill/scripts/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-grill/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     grill 1 "second thoughts"
     [exit 0]
-$ sh crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words all done
+$ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words all done
     effort-close.sh: open work: flow 5 "Prune nightly"; grill 1 "second thoughts"; end it first, or close with --leave-open on the human's word
     [exit 2]
 --- the grill ends: only the flow is left
     ended: <F>/events/000006-grill.ended.json
-$ sh crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words all done
+$ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words all done
     effort-close.sh: open work: flow 5 "Prune nightly"; end it first, or close with --leave-open on the human's word
     [exit 2]
 --- --leave-open on the human's word: closed, what was open recorded by the script
-$ sh crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome dropped --words stop here, leave the flow --leave-open
+$ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome dropped --words stop here, leave the flow --leave-open
     <S>/space/efforts/<id>-fixes/events/000007-effort.closed.json
     [exit 0]
     body: {"outcome":"dropped","words":"stop here, leave the flow","left_open":["flow 5 \"Prune nightly\""]}
-$ sh crucible-effort/scripts/effort-status.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-effort/scripts/main/effort-status.sh --effort <S>/space/efforts/<id>-fixes
     fixes · closed, dropped, <at>: stop here, leave the flow; left open: flow 5 "Prune nightly"
     [exit 0]
 --- reopened, the flow ended: closes normally, nothing recorded
-$ sh crucible-effort/scripts/effort-resume.sh --effort <S>/space/efforts/<id>-fixes --words one more go
+$ sh crucible-effort/scripts/main/effort-resume.sh --effort <S>/space/efforts/<id>-fixes --words one more go
     <S>/space/efforts/<id>-fixes/events/000008-effort.resumed.json
     [exit 0]
-$ sh crucible-dynamic-flow/scripts/flow-end.sh --flow <S>/space/efforts/<id>-fixes:5 --outcome dropped --words replaced by a new plan
+$ sh crucible-dynamic-flow/scripts/main/flow-end.sh --flow <S>/space/efforts/<id>-fixes:5 --outcome dropped --words replaced by a new plan
     <S>/space/efforts/<id>-fixes/events/000009-flow.ended.json
     [exit 0]
-$ sh crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words finished --leave-open
+$ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words finished --leave-open
     <S>/space/efforts/<id>-fixes/events/000010-effort.closed.json
     [exit 0]
     body: {"outcome":"done","words":"finished"}
 --- a paused effort with an open grill: refused the same way
     started: <S>/space/efforts/<id>-paused
     grill opened
-$ sh crucible-effort/scripts/effort-pause.sh --effort <S>/space/efforts/<id>-paused --words later
+$ sh crucible-effort/scripts/main/effort-pause.sh --effort <S>/space/efforts/<id>-paused --words later
     <S>/space/efforts/<id>-paused/events/000002-effort.paused.json
     [exit 0]
-$ sh crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-paused --outcome dropped --words not needed
+$ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-paused --outcome dropped --words not needed
     effort-close.sh: open work: grill 1 "open question"; end it first, or close with --leave-open on the human's word
     [exit 2]
 --- a component whose open-work check fails: refused; --leave-open records it
     started: <S>/space/efforts/<id>-failing
-$ sh <copy>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-failing --outcome done --words done
-    effort-close.sh: open work: zz-broken/scripts/open-work.sh: check failed; end it first, or close with --leave-open on the human's word
+$ sh <copy>/crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-failing --outcome done --words done
+    effort-close.sh: open work: zz-broken/scripts/internal/open-work.sh: check failed; end it first, or close with --leave-open on the human's word
     [exit 2]
-$ sh <copy>/crucible-effort/scripts/effort-close.sh --effort <S>/space/efforts/<id>-failing --outcome done --words close anyway --leave-open
+$ sh <copy>/crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-failing --outcome done --words close anyway --leave-open
     <S>/space/efforts/<id>-failing/events/000002-effort.closed.json
     [exit 0]
-    body: {"outcome":"done","words":"close anyway","left_open":["zz-broken/scripts/open-work.sh: check failed"]}
+    body: {"outcome":"done","words":"close anyway","left_open":["zz-broken/scripts/internal/open-work.sh: check failed"]}
     the repository tree is untouched
 --- the rule: a hand-made left_open of the wrong shape is refused
-$ sh crucible-events/scripts/event-write.sh --effort <S>/space/efforts/<id>-shape --type effort.closed --by evidence --body-file <S>/body.json
+$ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-shape --type effort.closed --by evidence --body-file <S>/body.json
     event-write.sh: effort.closed refused: body.left_open must be a non-empty list of one-line strings
     [exit 2]
 === C1: the event-writer guard (PreToolUse on Bash)
-    deny   [Bash] sh crucible-events/scripts/event-write.sh --effort x --type a.b
-    deny   [Bash] bash 'crucible-events/scripts/event-write.sh' --effort x
-    deny   [Bash] crucible-events/scripts/event-write.sh --effort x
+    deny   [Bash] sh crucible-events/scripts/internal/event-write.sh --effort x --type a.b
+    deny   [Bash] bash 'crucible-events/scripts/internal/event-write.sh' --effort x
+    deny   [Bash] crucible-events/scripts/internal/event-write.sh --effort x
     deny   [Bash] cd crucible-events/scripts && ./event-write.sh --effort x
-    deny   [Bash] FOO=1 env nice sh crucible-events/scripts/event-write.sh --effort x
-    deny   [Bash] sh -c "sh crucible-events/scripts/event-write.sh --effort x"
-    deny   [Bash] ls; sh crucible-events/scripts/event-write.sh --effort x | cat
-    allow  [Bash] sh crucible-events/scripts/event-write.sh --help
-    allow  [Bash] cat crucible-events/scripts/event-write.sh
-    allow  [Bash] grep -n refuse crucible-events/scripts/event-write.sh
-    allow  [Bash] sed -n 1,20p crucible-events/scripts/event-write.sh
+    deny   [Bash] FOO=1 env nice sh crucible-events/scripts/internal/event-write.sh --effort x
+    deny   [Bash] sh -c "sh crucible-events/scripts/internal/event-write.sh --effort x"
+    deny   [Bash] ls; sh crucible-events/scripts/internal/event-write.sh --effort x | cat
+    allow  [Bash] sh crucible-events/scripts/internal/event-write.sh --help
+    allow  [Bash] cat crucible-events/scripts/internal/event-write.sh
+    allow  [Bash] grep -n refuse crucible-events/scripts/internal/event-write.sh
+    allow  [Bash] sed -n 1,20p crucible-events/scripts/internal/event-write.sh
     allow  [Bash] echo 'event-write.sh is the only writer'
-    allow  [Bash] sh crucible-effort/scripts/effort-pause.sh --effort x --words y
+    allow  [Bash] sh crucible-effort/scripts/main/effort-pause.sh --effort x --words y
     allow  [Bash] git status
-    allow  [Edit] sh crucible-events/scripts/event-write.sh --effort x
+    allow  [Edit] sh crucible-events/scripts/internal/event-write.sh --effort x
     bad JSON: stdout '', note: deny-direct-event-write.sh: the hook input is not JSON; the call is allowed unchecked, exit 0
     jq missing: stdout '', note: deny-direct-event-write.sh: jq missing; the call is allowed unchecked
 === A2: the install check (read-only)
 $ sh install-check.sh --settings <S>/missing.json
     install-check.sh: --settings <S>/missing.json is not a readable file
     [exit 2]
-    empty settings: exit 1, 18 lines missing
+    empty settings: exit 1, 25 lines missing
 --- complete, from install-entries.sh's own output
 $ sh install-check.sh --settings <S>/settings.json
     installed

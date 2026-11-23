@@ -2,115 +2,115 @@
     started: <S>/space/efforts/<id>-prune-old-data
     last event: {"type":"effort.opened","by":"effort-start.sh","body":{"name":"Prune old data!"}}
     started: <S>/space/efforts/<id>-effort
-$ sh effort-start.sh --name a name that is far longer than forty characters in all
+$ sh main/effort-start.sh --name a name that is far longer than forty characters in all
     effort-start.sh: --name is over 40 characters
     [exit 2]
-$ sh effort-start.sh --name 
+$ sh main/effort-start.sh --name 
     effort-start.sh: --name is empty
     [exit 2]
 --- state and status while open
-$ sh effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
     open
     [exit 0]
-$ sh effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
     Prune old data! · open since <at>
     [exit 0]
 --- pause: words required, then paused
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words 
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words 
     event-write.sh: effort.paused refused: body.words must hold the human's words
     [exit 2]
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words waiting on the DBA
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words waiting on the DBA
     <S>/space/efforts/<id>-prune-old-data/events/000002-effort.paused.json
     [exit 0]
     last event: {"type":"effort.paused","by":"effort-pause.sh","body":{"words":"waiting on the DBA"}}
-$ sh effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
     paused
     [exit 0]
-$ sh effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
     Prune old data! · paused <at>: waiting on the DBA
     [exit 0]
 --- pause again: refused
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words again
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words again
     event-write.sh: effort.paused refused: the effort is not open, so it can't be paused
     [exit 2]
 --- resume from paused
-$ sh effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words DBA answered
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words DBA answered
     <S>/space/efforts/<id>-prune-old-data/events/000003-effort.resumed.json
     [exit 0]
-$ sh effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
     Prune old data! · resumed <at>: DBA answered
     [exit 0]
 --- resume and close need words too
-$ sh effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words 
+$ sh main/effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words 
     event-write.sh: effort.closed refused: body.words must hold the human's words
     [exit 2]
 --- resume while open: refused
-$ sh effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words again
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words again
     event-write.sh: effort.resumed refused: the effort is not paused or closed, so it can't be resumed
     [exit 2]
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words one more pause
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words one more pause
     <S>/space/efforts/<id>-prune-old-data/events/000004-effort.paused.json
     [exit 0]
-$ sh effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words 
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words 
     event-write.sh: effort.resumed refused: body.words must hold the human's words
     [exit 2]
-$ sh effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words back again
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words back again
     <S>/space/efforts/<id>-prune-old-data/events/000005-effort.resumed.json
     [exit 0]
 --- close: bad outcome refused, then done
-$ sh effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome finished --words x
+$ sh main/effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome finished --words x
     event-write.sh: effort.closed refused: body.outcome must be done or dropped
     [exit 2]
-$ sh effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words shipped
+$ sh main/effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words shipped
     <S>/space/efforts/<id>-prune-old-data/events/000006-effort.closed.json
     [exit 0]
     last event: {"type":"effort.closed","by":"effort-close.sh","body":{"outcome":"done","words":"shipped"}}
-$ sh effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
     closed
     [exit 0]
-$ sh effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-status.sh --effort <S>/space/efforts/<id>-prune-old-data
     Prune old data! · closed, done, <at>: shipped
     [exit 0]
 --- close again: refused; pause a closed effort: refused
-$ sh effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words again
+$ sh main/effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome done --words again
     event-write.sh: effort.closed refused: the effort is already closed
     [exit 2]
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words x
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words x
     event-write.sh: effort.paused refused: the effort is not open, so it can't be paused
     [exit 2]
 --- resume from closed (reopen)
-$ sh effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words a bug came back
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words a bug came back
     <S>/space/efforts/<id>-prune-old-data/events/000007-effort.resumed.json
     [exit 0]
-$ sh effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
+$ sh main/effort-state.sh --effort <S>/space/efforts/<id>-prune-old-data
     open
     [exit 0]
 --- close a paused effort as dropped
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words parked
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-prune-old-data --words parked
     <S>/space/efforts/<id>-prune-old-data/events/000008-effort.paused.json
     [exit 0]
-$ sh effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome dropped --words no longer needed
+$ sh main/effort-close.sh --effort <S>/space/efforts/<id>-prune-old-data --outcome dropped --words no longer needed
     <S>/space/efforts/<id>-prune-old-data/events/000009-effort.closed.json
     [exit 0]
 --- list: open and paused only; --all adds closed
-$ sh effort-pause.sh --effort <S>/space/efforts/<id>-effort --words later
+$ sh main/effort-pause.sh --effort <S>/space/efforts/<id>-effort --words later
     <S>/space/efforts/<id>-effort/events/000002-effort.paused.json
     [exit 0]
-$ sh effort-list.sh
+$ sh main/effort-list.sh
     <S>/space/efforts/<id>-effort	paused	***	<at>
     [exit 0]
-$ sh effort-list.sh --all
+$ sh main/effort-list.sh --all
     <S>/space/efforts/<id>-effort	paused	***	<at>
     <S>/space/efforts/<id>-prune-old-data	closed:dropped	Prune old data!	<at>
     [exit 0]
-$ sh effort-list.sh --bogus
+$ sh main/effort-list.sh --bogus
     effort-list.sh: unknown argument --bogus; try --help
     [exit 2]
 --- not an effort folder
-$ sh effort-state.sh --effort <S>
+$ sh main/effort-state.sh --effort <S>
     effort-state.sh: <S> is not in <S>/space/efforts
     [exit 2]
-$ sh effort-pause.sh --effort relative/path --words x
+$ sh main/effort-pause.sh --effort relative/path --words x
     effort-pause.sh: relative/path is not in <S>/space/efforts
     [exit 2]
 --- the event log: seq in order, every move after opening has words
@@ -123,3 +123,11 @@ $ sh effort-pause.sh --effort relative/path --words x
     7 effort.resumed a bug came back
     8 effort.paused parked
     9 effort.closed no longer needed
+--- the events lock held: refused with exit 6, nothing written; the rerun writes
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words one more look
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    events before 9, after 9
+$ sh main/effort-resume.sh --effort <S>/space/efforts/<id>-prune-old-data --words one more look
+    <S>/space/efforts/<id>-prune-old-data/events/000010-effort.resumed.json
+    [exit 0]

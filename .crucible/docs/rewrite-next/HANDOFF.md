@@ -2,6 +2,66 @@
 
 Where the new Crucible framework stands, so nothing depends on chat memory. Read this, then `constitution.md` (the 17 values every choice is judged by). The earlier, layered hand-off is in `history/handoff-history.md`.
 
+## Next changes 1–5, built (2026-11-23, owner's go)
+
+The contract is in `reviews/next-changes-design.md` and `next-changes-verdict.md`. Nothing is committed.
+
+1. **events-read fails closed.** It prints all events or none, with exit 5 and the file named. Every core and domain caller now refuses on a damaged log instead of reading it as "nothing there", and the event writer refuses too. Several callers used to swallow the failure: gate-answer, spec-approve, open-work, grill-new and context-verify among them.
+2. **`scripts/main/` and `scripts/internal/`** in every component; `lib/` holds sourced code and data files. The placement was checked by callers. The help checker, which also enforces folder against help, is `/Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/tools/help-check.sh` (a development tool, not shipped).
+3. **`dev-base`**, a domain base component with no skill. It holds `repo-of.sh` (the repository rule; 4 copies removed) and `run-timed.sh` (the time-limit runner; 3 copies removed). The runner now stops a signer's whole process tree.
+   - Liveness is out of the seven event rules; the writing scripts ask `worktree-trees.sh`, and ask again just before writing. The trade is recorded as a known limit in the spec.
+4. **A held-lock case for every write path.** context-cut and grill-end used to swallow the 6.
+   - Owner's decision: move, catch-up and discard **roll back** on a failed write. `evidence/rollback-run.out` shows the timeline. Exit 6 now comes in three kinds, and each help says which:
+     - **Rolled back, rerun:** cut, move, catch-up, discard, mount-apply, identity, and core's writers.
+     - **The change stays, a rerun records it:** push and drop.
+     - **The change stays, never recorded:** mount-undo. This is a known limit in the spec.
+5. **`crucible-events/hooks/pre-tool-use/deny-internals-read.sh`.** It denies main reading `scripts/internal/`, `scripts/lib/`, `hooks/` and `events/` under the framework's real path. It stands aside when the session works inside the framework's repository, and it skips subagents.
+   - Evidence: `internals-guard-run` (49 PASS) and the live sandbox record `evidence/internals-guard-live.out`.
+
+**Evidence:** all 18 runs exit 0.
+
+| Run | PASS |
+|---|---|
+| dev-base | 67 |
+| git-commit | 89 |
+| git-mount | 163 |
+| git-push | 85 |
+| git-worktree | 321 |
+| internals-guard | 49 |
+| rollback | 22 |
+
+The other 11 runs are narrative.
+
+**Closing round (Fable's fixes, owner-approved):**
+- The drop rerun records the human's yes. It asks the gate through `gate-answer.sh --subject-prefix NAME: --after SEQ`; no piece outside the gate reads `gate.answered`.
+- `effort-list.sh` lists the healthy efforts and exits 3 when one effort is damaged.
+- Every help lost its `--help | -h` usage line and its `Needs:` section (1,682 → 1,531 lines across main and internal scripts); the rule and the checker match.
+- `setup-plan.sh` says git 2.31+.
+- Final evidence on a still tree: all 18 runs exit 0 (git-worktree 332, git-mount 163, git-commit 89, git-push 85, dev-base 67, internals-guard 49, rollback 22).
+
+**Next, as discussed with the owner:** agent-run, meaning what happens when a dispatched agent works. Then dispatch. After that, a separate effort reviews the past splits against the split/don't-split test.
+
+## Overnight help trim (2026-11-23)
+
+- **Done:** every script's --help in `new-rewrite/` (87) follows one template, set out in `help-rule.md`. Each was checked by two blind reviewers, a writer and two blind verifiers. All 87 pass both verifiers and the checker; only help text changed.
+- **Size:** 1,624 lines before, 1,761 after. Large helps shrank (45 to 25); small ones grew because they gained Exit, Requires and Writes.
+- **Proof by execution:**
+  - All 15 evidence runs exit 0. A logging `sh` shim shows all 87 scripts ran with real arguments.
+  - Three runs' own help-length checks (15, 17 and 18 lines) were raised to the rule's 25 lines.
+  - Outputs match the baseline except for hashes, ids, fresh keys and help text.
+- **Found, not fixed (code, needs the owner's go):**
+  - `git-worktree/scripts/setup-plan.sh` says "git 2.26+" in an error message, but the script needs 2.31+.
+  - `events-read.sh` drops an unreadable event file silently (Fable's change 4).
+- **The coverage record:** `evidence/exec-coverage.out` gives each script's count of runs with real arguments; all 87 are above zero.
+- **Fable's elevated review: aligned with changes** (`reviews/elevated-review-verdict.md`). Fable reran 14 of the 15 evidence runs; all matched. Already applied: the four core helps that quoted the gate script's options now use the domain's neutral wording (Fable's F7 point); the evidence is unchanged.
+- **Waiting for the owner's go, in Fable's order:**
+  1. `events-read.sh` fails closed. Fable found that an unreadable event drops every later event too, still exiting 0.
+  2. A folder for main's tools, kept apart from internal jobs.
+  3. One home for the repository rule and for the time-limit runner; liveness moved out of `mount.made` and `push.made`.
+  4. Three cuts in every help: drop the `--help | -h` usage line and `Needs:` lines that state install facts, and either show or drop exits that no evidence shows. Then meet the rule's "8 to 15 lines", or change the rule to what the template yields. This changes the template.
+  5. Two shared evidence cases: a held events lock (exit 6) and a missing tool (exit 4).
+  6. The fat-script splits: mount-apply, setup-plan, the git-worktree lib, tracker-read.
+
 ## Where things stand (2026-11-22)
 
 - **The tree:** `new-rewrite/` in the repository. `rewrite/` is the paused older rewrite, now a quarry. `~/.claude` is the legacy framework, untouched.
@@ -91,7 +151,32 @@ Where the new Crucible framework stands, so nothing depends on chat memory. Read
     - 11 dialogs before `spec.approved`, none denied.
     - One slip: the flow gate was first asked unrecorded, and `flow-agree.sh` refused. Fixed in the flow skill with the spec skill's proven sentence (read `flow-agree.sh --help`, ask at that recorded gate); Fable passed the fix.
     - To watch: main offered "no flow" as "no pre-work".
-    - The owner decided (2026-11-22): a flow is offered on every effort, small ones included; it is worth the click. Until dispatch brings build steps, a build main writes itself has no flow. The owner (2026-11-22): "Do not try to implement the dispatch. We need to talk. A lot." No design or build before that conversation.
+    - The owner decided (2026-11-22): a flow is offered on every effort, small ones included; it is worth the click.
+  - **Git identity, the first set-up piece** (design `reviews/git-identity-design.md`, Fable passed it with fixes A–E, built on the owner's go, uncommitted):
+    - the domain component `git-identity`: list, card, check, set and get scripts, the `identity.set` event, and the step `set-identity` in stage `setup`;
+    - core's gate gains a recorded choice (`show-card.sh --choice`, `gate-answer.sh --choice`);
+    - evidence in `evidence/git-identity-run.sh`, which uses scratch keys only;
+    - specs `crucible-gate.md` and `software-development-domain.md`.
+    Fable reproduced the evidence and accepted it. The rule was then trimmed so it no longer reads gate events; the pick is identity-set.sh's check, the same position as `flow.agreed` and `spec.approved`. That is a known limit, and it becomes worth more thought once agents write events.
+    - `code-context` and `trackers` declare no step, deliberately. Neither writes an event; both are tools inside "build the context", like discovery (Fable agrees).
+    - `context-add-ticket.sh` was renamed to `context-add-issue.sh` (owner: "ticket" is Jira's word).
+    - Next: the worktrees. Design `reviews/git-worktree-design.md`, agreed between Beta and Fable on 2026-11-22. The step is proposed only when the base is a real choice. On the owner's word, every old tool moves across, free of seats: four components (`git-commit`, `git-worktree`, `git-mount`, `git-push`), about sixteen scripts, and a map of all 46 old files. Fable has confirmed it. The build order is commit, then worktree, then mount, then push, each with its own evidence run. It waits for the owner's go.
+    - **The owner held the go to discuss (2026-11-22) and decided:**
+      - cutting trees is always a step, all trees on one card behind one gate, never quiet;
+      - the agent-run logic (stop-hook chain, report check, commit input, write scope, blocked-stop relay) is parked for a later domain component `agent-run` (revised the same day: "we stay very focused on the WT stuff and move the agent run stuff when time is ready"); every old file it covers, and every other non-tree part, is mapped in `reviews/agent-run-parked-map.md`;
+      - the old misplacement is corrected by the split commit / worktree / agent-run.
+
+      Done (2026-11-22): the parked map, its eight tree gaps written into sections 4.2 and 4.3, the cut step changed, and Fable's five changes taken (sender enforces no quiet cuts; N trees are N steps; discard keeps the work under a ref; a `busy.sh` neighbour scan; no "job" in the step). **Overnight 2026-11-22, the owner's standing order, no human in the loop and no approval needed:** trim every script's --help in new-rewrite/ (87 scripts) to `help-rule.md` beside this file. Per script: two blind reviewers, a writer, two blind verifiers, up to two fix rounds; no Fable. Then re-run every evidence run against the baseline taken before (scratchpad `baseline/`) and fix what the trim broke. Backup of new-rewrite and evidence before the trim: scratchpad `help-backup/`. Then, still overnight:
+  - **prove every script works by execution:** every one of the 87 scripts must run in an evidence run (a coverage audit across all runs; any script no run executes gets cases added), and every evidence run must pass;
+  - **Fable reviews from elevated ground, never the implementation:** the live execution evidence, and compliance with the constitution, for the new software-development pieces (git-identity, git-commit, git-worktree, git-mount, git-push, trackers, code-context) and the changes in core (the gate's recorded choice, the step catalogue, the help trim).
+Report all of it to the owner in the morning. Progress: the git-commit 4 were trimmed and passed both verifiers; the run over the other 83 hit the weekly usage limit at night (805 of 910 agents failed, no file left broken) and was resumed at 06:10 on 2026-11-23 from workflow run wf_ab20f611-255 (finished agents replay from cache). The toolbelt (all four git components) is built and proven: git-commit 86, git-worktree 311, git-mount 161, git-push 85, all PASS; Fable's review of it was requested and is pending. Fable's verdict on the toolbelt (2026-11-22): aligned with the constitution, with changes, for the owner's go:
+  1. one home each for "what a repository is" (in git-identity, git-worktree, git-mount) and the time-limit runner (git-commit, git-push, already drifted); liveness replay out of the mount.made and push.made rules (their scripts already ask worktree-trees.sh);
+  2. main's tools kept apart from internal job scripts (git-worktree's scripts/ holds 23 entries, about 8 for main);
+  3. events-read.sh fails closed on an unreadable event file (core, a few lines plus one evidence case).
+  Fat files still to split, ranked: mount-apply.sh (read-only checks vs apply), setup-plan.sh, git-worktree's lib, tracker-read.sh.
+  **Recorded, not built:** the sender refusing a tree not cut as a done cut-worktree step (built with the sender); any component answering the busy scan (built with agent-run). Until then "no quiet cuts" and "busy" are not enforced.
+
+The owner gave the go (2026-11-22): git-commit and git-worktree are built and proven by their evidence runs; git-mount is being built, then git-push, each script proven by execution, then Fable reviews: the toolbelt against the constitution, and fat scripts and verbose --help across the whole new rewrite, so the good example is set before the separate effort applies it. Owner rules for the build: a SKILL.md never lists its scripts; a --help stays at about 10-15 lines in caller terms. A separate effort, after this build, trims every existing --help across the new rewrite and adds a help-check script, and splits every fat script or lib (one that bundles several jobs) the way git-mount's lib was split: thin plumbing in lib/, each job its own script with a --help contract, proven by execution. The decisions sit at the top of that design document. Until dispatch brings build steps, a build main writes itself has no flow. The owner (2026-11-22): "Do not try to implement the dispatch. We need to talk. A lot." No design or build before that conversation.
 - **Run 5's scope, kept for reference:** One run tests both: a goal reading can't settle (no stated pain, two opposite products behind it, the repo favouring neither), so a grill is needed; and the run goes on past `spec.approved` into the build, to show whether main proposes a flow there, follows the code rule and marks steps. The sandbox must not see the owner's real data (run 4 read `~/.c4-daemon`): a separate HOME for the sandbox, and a task whose answer isn't in the owner's data. Fable's additions (passed the code rule; scope sound with these):
   - Fable reviews the brief's exact opening sentence before the run: the two opposite products named, and neither the sentence nor a short read of the repo favouring one.
   - When a card or question states a reading the human hasn't chosen, the scripted human answers only "I'm not sure that's what I want", never "grill me". Scored apart: grill offered unprompted, offered after that hedge, never offered.

@@ -1,208 +1,236 @@
 --- nothing yet: an empty context has a fingerprint, and is cut only with a yes
-$ sh context-status.sh --effort <F>
+$ sh main/context-status.sh --effort <F>
     VERSION: none
     PENDING: no
     [exit 0]
-$ sh context-fingerprint.sh --effort <F0>
+$ sh main/context-fingerprint.sh --effort <F0>
     FINGERPRINT: 6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7
     VERSION: v1
     [exit 0]
-$ sh context-cut.sh --effort <F0>
+$ sh main/context-cut.sh --effort <F0>
     context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7): no answer for context-done on 6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7; ask at a context-done gate
     [exit 1]
-$ sh context-cut.sh --effort <F0>
+$ sh main/context-cut.sh --effort <F0>
     CONTEXT_FILE: <F0>/events/000003-context.cut.json
-    CONTEXT_SHA256: 8cd1bbe8d6c50f189d65b036066ca2e85438a90947f0e702731c0f7aa0e9f1dd
+    CONTEXT_SHA256: fde8af00be28c60305d27fd54c2128007e3e0b1156f47fa0b53599558dc222b7
     [exit 0]
     empty body: {"version":1,"paths":[]}
 --- the path rule
-$ sh context-path-check.sh <S>/repo/rules.md
+$ sh main/context-path-check.sh <S>/repo/rules.md
     
     [exit 0]
-$ sh context-path-check.sh <S>/repo/.env
+$ sh main/context-path-check.sh <S>/repo/.env
     context-path-check.sh: <S>/repo/.env names a key, credential or secrets file
     [exit 2]
-$ sh context-path-check.sh <S>/repo/.env.local
+$ sh main/context-path-check.sh <S>/repo/.env.local
     context-path-check.sh: <S>/repo/.env.local names a key, credential or secrets file
     [exit 2]
-$ sh context-path-check.sh <S>/repo/.git/config
+$ sh main/context-path-check.sh <S>/repo/.git/config
     context-path-check.sh: <S>/repo/.git/config is under .git or .ssh
     [exit 2]
-$ sh context-path-check.sh <S>/repo/id_rsa
+$ sh main/context-path-check.sh <S>/repo/id_rsa
     context-path-check.sh: <S>/repo/id_rsa names a key, credential or secrets file
     [exit 2]
-$ sh context-path-check.sh <S>/repo/CLAUDE.md
+$ sh main/context-path-check.sh <S>/repo/CLAUDE.md
     context-path-check.sh: <S>/repo/CLAUDE.md is an instruction file, which an agent may follow as instructions
     [exit 2]
-$ sh context-path-check.sh <S>/repo/.claude/settings.json
+$ sh main/context-path-check.sh <S>/repo/.claude/settings.json
     
     [exit 0]
-$ sh context-path-check.sh <S>/repo/.claude/settings.local.json
+$ sh main/context-path-check.sh <S>/repo/.claude/settings.local.json
     context-path-check.sh: <S>/repo/.claude/settings.local.json is a personal settings file, private and may hold secrets
     [exit 2]
-$ sh context-path-check.sh <S>/cfg/settings.json
+$ sh main/context-path-check.sh <S>/cfg/settings.json
     context-path-check.sh: <S>/cfg/settings.json is a personal settings file, private and may hold secrets
     [exit 2]
-$ sh context-path-check.sh <S>/cfg/agents/a.md
+$ sh main/context-path-check.sh <S>/cfg/agents/a.md
     context-path-check.sh: <S>/cfg/agents/a.md is a Claude skill or agent, which an agent may follow as instructions
     [exit 2]
-$ sh context-path-check.sh <S>/repo/skills/x/SKILL.md
+$ sh main/context-path-check.sh <S>/repo/skills/x/SKILL.md
     context-path-check.sh: <S>/repo/skills/x/SKILL.md is an instruction file, which an agent may follow as instructions
     [exit 2]
-$ sh context-path-check.sh relative/x.md
+$ sh main/context-path-check.sh relative/x.md
     context-path-check.sh: relative/x.md not absolute
     [exit 2]
-$ sh context-path-check.sh <S>/repo/../repo/rules.md
+$ sh main/context-path-check.sh <S>/repo/../repo/rules.md
     context-path-check.sh: <S>/repo/../repo/rules.md holds a .. segment
     [exit 2]
-$ sh context-path-check.sh <S>/repo/it's.md
+$ sh main/context-path-check.sh <S>/repo/it's.md
     context-path-check.sh: <S>/repo/it's.md holds a quote
     [exit 2]
 --- add: a path, a link, the same again, refusals
-$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why the retention rule the prune must follow
+$ sh main/context-add.sh --effort <F> --path <S>/repo/rules.md --why the retention rule the prune must follow
     added
     [exit 0]
-$ sh context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
+$ sh main/context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
     added
     [exit 0]
-$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why again
+$ sh main/context-add.sh --effort <F> --path <S>/repo/rules.md --why again
     already pending
     [exit 0]
-$ sh context-add.sh --effort <F> --path <S>/repo/missing.md --why x
+$ sh main/context-add.sh --effort <F> --path <S>/repo/missing.md --why x
     context-add.sh: --path <S>/repo/missing.md doesn't exist or can't be read
     [exit 2]
-$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why 
+$ sh main/context-add.sh --effort <F> --path <S>/repo/rules.md --why 
     context-add.sh: --why is empty
     [exit 2]
-$ sh context-add.sh --effort <F> --link https://example.com/$(id) --why x
+$ sh main/context-add.sh --effort <F> --link https://example.com/$(id) --why x
     context-add.sh: --link https://example.com/$(id) is not an http(s) URL of shell-safe characters
     [exit 2]
 --- the effort's own facts are never references: its context, its spec file, a grill's event
-$ sh context-add.sh --effort <F> --path <F>/context --why x
+$ sh main/context-add.sh --effort <F> --path <F>/context --why x
     context-add.sh: --path <F>/context is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
     [exit 2]
-$ sh context-add.sh --effort <F> --path <F>/spec/draft.md --why the spec
+$ sh main/context-add.sh --effort <F> --path <F>/spec/draft.md --why the spec
     context-add.sh: --path <F>/spec/draft.md is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
     [exit 2]
-$ sh context-add.sh --effort <F> --path <F>/events/000002-grill.ended.json --why the grill
+$ sh main/context-add.sh --effort <F> --path <F>/events/000002-grill.ended.json --why the grill
     context-add.sh: --path <F>/events/000002-grill.ended.json is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
     [exit 2]
-$ sh context-status.sh --effort <F>
+$ sh main/context-status.sh --effort <F>
     VERSION: none
     PENDING: yes
     [exit 0]
 --- the docs folder: a note, a name it may not hold, too much
     docs: <F>/context/draft/docs
-$ sh context-fingerprint.sh --effort <F>
-    FINGERPRINT: 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c
+$ sh main/context-fingerprint.sh --effort <F>
+    FINGERPRINT: 18371fa7daaa5c5c5a4d0ad77b58ceb296c65e0e29682b8094594c21becfd0fd
     VERSION: v1
     [exit 0]
-$ sh context-fingerprint.sh --effort <F>
+$ sh main/context-fingerprint.sh --effort <F>
     context-fingerprint.sh: DOCS-NAME: notes.txt may not be in a docs folder; expected <name>.md or diff-<sha>.patch
     [exit 2]
-$ sh context-fingerprint.sh --effort <F>
+$ sh main/context-fingerprint.sh --effort <F>
     context-fingerprint.sh: DOCS-NAME: spec.md may not be in a docs folder; the spec lives in the effort's spec/ folder
     [exit 2]
-$ sh context-fingerprint.sh --effort <F>
+$ sh main/context-fingerprint.sh --effort <F>
     context-fingerprint.sh: DOCS-SIZE: the docs files hold 1100039 bytes; expected at most 1048576
     [exit 2]
 --- cut v1: only on the human's yes to this fingerprint
-$ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): no answer for context-done on 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c; ask at a context-done gate
+$ sh main/context-cut.sh --effort <F>
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 18371fa7daaa5c5c5a4d0ad77b58ceb296c65e0e29682b8094594c21becfd0fd): no answer for context-done on 18371fa7daaa5c5c5a4d0ad77b58ceb296c65e0e29682b8094594c21becfd0fd; ask at a context-done gate
     [exit 1]
-$ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): the newest answer (event 3) did not accept: Something else, typed by the human; ask at a context-done gate
+$ sh main/context-cut.sh --effort <F>
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 18371fa7daaa5c5c5a4d0ad77b58ceb296c65e0e29682b8094594c21becfd0fd): the newest answer (event 3) did not accept: Something else, typed by the human; ask at a context-done gate
     [exit 1]
-$ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 50d6c43ec323153c09f8d17d4ebcde4712be9fdb2bc524969b98eca78be2c90c): the newest answer (event 5) did not accept: Change it; ask at a context-done gate
+$ sh main/context-cut.sh --effort <F>
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 18371fa7daaa5c5c5a4d0ad77b58ceb296c65e0e29682b8094594c21becfd0fd): the newest answer (event 5) did not accept: Change it; ask at a context-done gate
     [exit 1]
 --- an entry added after the yes: a new fingerprint, so refused and asked again
-$ sh context-add.sh --effort <F> --link https://example.com/alerts --why who is paged when the job fails
+$ sh main/context-add.sh --effort <F> --link https://example.com/alerts --why who is paged when the job fails
     added
     [exit 0]
-$ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint ac6e8417f75dd93087f3f1dc2107a93381042a9ec81a384d4de3d53542014cd6): no answer for context-done on ac6e8417f75dd93087f3f1dc2107a93381042a9ec81a384d4de3d53542014cd6; ask at a context-done gate
+$ sh main/context-cut.sh --effort <F>
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint bd982b9ee2c6c1e390662d7317aaf61d5d9ffafddb6ef641c950eda9cbea04c5): no answer for context-done on bd982b9ee2c6c1e390662d7317aaf61d5d9ffafddb6ef641c950eda9cbea04c5; ask at a context-done gate
     [exit 1]
-$ sh context-cut.sh --effort <F>
+$ sh main/context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
+    CONTEXT_SHA256: 85b2805abd3e076b258236a49851f4ec77ef2cf212724b78bc5e39e8f14979f6
     [exit 0]
     body: {"version":1,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"e3d7d0655a938f68ad186a23801afd6b331576eb98d53e151613e23a0917b24c"}],"links":[{"url":"https://example.com/runbook","why":"how the nightly job is run"},{"url":"https://example.com/alerts","why":"who is paged when the job fails"}]}
     -r--r--r-- decisions.md
-$ sh context-status.sh --effort <F>
+$ sh main/context-status.sh --effort <F>
     VERSION: v1
     CONTEXT_FILE: <F>/events/000008-context.cut.json
     PENDING: no
     [exit 0]
 --- the same cut again: nothing new, the latest version, nothing written
-$ sh context-cut.sh --effort <F>
+$ sh main/context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
+    CONTEXT_SHA256: 85b2805abd3e076b258236a49851f4ec77ef2cf212724b78bc5e39e8f14979f6
     [exit 0]
     no event written
-$ sh context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
+$ sh main/context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
     CONTEXT_FILE: <F>/events/000008-context.cut.json
-    CONTEXT_SHA256: 20d6702c8137a550e87649944cc906a8a8a8c2b8585c2102f275d65dc6e48b49
+    CONTEXT_SHA256: 85b2805abd3e076b258236a49851f4ec77ef2cf212724b78bc5e39e8f14979f6
     [exit 0]
 --- after the cut: pending changes go to v2; drop, retire, undo
-$ sh context-add.sh --effort <F> --link https://example.com/dashboard --why where the runs of the job show
+$ sh main/context-add.sh --effort <F> --link https://example.com/dashboard --why where the runs of the job show
     added
     [exit 0]
-$ sh context-add.sh --effort <F> --path <S>/repo/rules.md --why already there
+$ sh main/context-add.sh --effort <F> --path <S>/repo/rules.md --why already there
     already in v1
     [exit 0]
-$ sh context-drop.sh --effort <F> --link https://example.com/dashboard --why the human: not needed
+$ sh main/context-drop.sh --effort <F> --link https://example.com/dashboard --why the human: not needed
     dropped
     [exit 0]
-$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated
+$ sh main/context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated
     retired
     [exit 0]
-$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why again
+$ sh main/context-drop.sh --effort <F> --link https://example.com/runbook --why again
     retired already
     [exit 0]
-$ sh context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
+$ sh main/context-add.sh --effort <F> --link https://example.com/runbook --why how the nightly job is run
     retirement undone
     [exit 0]
-$ sh context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated after all
+$ sh main/context-drop.sh --effort <F> --link https://example.com/runbook --why the human: outdated after all
     retired
     [exit 0]
-$ sh context-drop.sh --effort <F> --link https://example.com/never-added --why x
+$ sh main/context-drop.sh --effort <F> --link https://example.com/never-added --why x
     context-drop.sh: https://example.com/never-added is neither pending nor in the latest version
     [exit 2]
-$ sh context-cut.sh --effort <F>
-    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 72e13143cd7f0fd5f4bea4f86a73e3d5b81a7a3802816f8b5c28a6538a5611c6): no answer for context-done on 72e13143cd7f0fd5f4bea4f86a73e3d5b81a7a3802816f8b5c28a6538a5611c6; ask at a context-done gate
+$ sh main/context-cut.sh --effort <F>
+    context-cut.sh: NOT-CONFIRMED: the human has not said yes to this context (fingerprint 1d09d37f340b835ade765b3f0b15f48a4d00d789c05eef317953ff4c32196370): no answer for context-done on 1d09d37f340b835ade765b3f0b15f48a4d00d789c05eef317953ff4c32196370; ask at a context-done gate
     [exit 1]
-$ sh context-cut.sh --effort <F>
+$ sh main/context-cut.sh --effort <F>
     CONTEXT_FILE: <F>/events/000010-context.cut.json
-    CONTEXT_SHA256: 78a9b24e8a9b9bfbc9b88e38fa7d46dc5ac0dfad7571fe2eea23cbaece53f0da
+    CONTEXT_SHA256: a70921b831603c57c0c7d99217f460e36c115ce04c78a14c3f5b435f5dddb0fd
     [exit 0]
     body: {"version":2,"paths":[{"path":"<S>/repo/rules.md","why":"the retention rule the prune must follow"},{"path":"<F>/context/v1","sha256":"e3d7d0655a938f68ad186a23801afd6b331576eb98d53e151613e23a0917b24c"}],"links":[{"url":"https://example.com/alerts","why":"who is paged when the job fails"}]}
 --- verify: the older version is stale, the newest is usable, tampering is caught
-$ sh context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
+$ sh main/context-verify.sh --effort <F> --file <F>/events/000008-context.cut.json
     context-verify.sh: STALE: a newer version exists: <F>/events/000010-context.cut.json
     [exit 2]
-$ sh context-verify.sh --effort <F> --file <F>/events/000010-context.cut.json
+$ sh main/context-verify.sh --effort <F> --file <F>/events/000010-context.cut.json
     CONTEXT_FILE: <F>/events/000010-context.cut.json
-    CONTEXT_SHA256: 78a9b24e8a9b9bfbc9b88e38fa7d46dc5ac0dfad7571fe2eea23cbaece53f0da
+    CONTEXT_SHA256: a70921b831603c57c0c7d99217f460e36c115ce04c78a14c3f5b435f5dddb0fd
     [exit 0]
-$ sh context-verify.sh --effort <F> --file <S>/repo/rules.md
+$ sh main/context-verify.sh --effort <F> --file <S>/repo/rules.md
     context-verify.sh: NOT-CONTEXT: <S>/repo/rules.md is not a context.cut event of this effort
     [exit 2]
-$ sh context-verify.sh --effort <F> --file <F>/events/000010-context.cut.json
+$ sh main/context-verify.sh --effort <F> --file <F>/events/000010-context.cut.json
     context-verify.sh: CONTEXT-CHANGED: <F>/context/v1 no longer gives its digest
     [exit 2]
 --- a paused effort: writes refused, reads still work
-$ sh crucible-effort/scripts/effort-pause.sh --effort <F> --words break
+$ sh crucible-effort/scripts/main/effort-pause.sh --effort <F> --words break
     <F>/events/000011-effort.paused.json
     [exit 0]
-$ sh context-add.sh --effort <F> --link https://example.com/x --why x
+$ sh main/context-add.sh --effort <F> --link https://example.com/x --why x
     context-add.sh: the effort is paused; the context changes only while it's open
     [exit 2]
-$ sh context-docs.sh --effort <F>
+$ sh main/context-docs.sh --effort <F>
     context-docs.sh: the effort is paused; the context changes only while it's open
     [exit 2]
-$ sh context-status.sh --effort <F>
+$ sh main/context-status.sh --effort <F>
     VERSION: v2
     CONTEXT_FILE: <F>/events/000010-context.cut.json
     PENDING: no
+    [exit 0]
+--- a damaged log: verify and cut refuse, never a NOT-CONFIRMED
+$ sh main/context-verify.sh --effort <F0> --file <F0>/events/000003-context.cut.json
+    CONTEXT_FILE: <F0>/events/000003-context.cut.json
+    CONTEXT_SHA256: fde8af00be28c60305d27fd54c2128007e3e0b1156f47fa0b53599558dc222b7
+    [exit 0]
+$ sh main/context-verify.sh --effort <F0> --file <F0>/events/000003-context.cut.json
+    events-read.sh: <F0>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/context-cut.sh --effort <F0>
+    events-read.sh: <F0>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+$ sh main/context-cut.sh --effort <F0>
+    CONTEXT_FILE: <F0>/events/000003-context.cut.json
+    CONTEXT_SHA256: fde8af00be28c60305d27fd54c2128007e3e0b1156f47fa0b53599558dc222b7
+    [exit 0]
+--- the events lock held: the cut refused with exit 6, the draft left as it was; the rerun cuts
+$ sh main/context-cut.sh --effort <F2>
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    events before 2, after 2; v1: none; the draft note: a note, writable: yes
+$ sh main/context-status.sh --effort <F2>
+    VERSION: none
+    PENDING: yes
+    [exit 0]
+$ sh main/context-cut.sh --effort <F2>
+    CONTEXT_FILE: <F2>/events/000003-context.cut.json
+    CONTEXT_SHA256: 7776428044bd1f4e503ce0646aadab76af14c00aae8984268de437df2293865d
     [exit 0]

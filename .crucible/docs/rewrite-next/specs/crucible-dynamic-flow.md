@@ -9,14 +9,14 @@ Main and the human agree a flow: the steps toward a goal inside an effort, each 
 | Piece | Its one job |
 |---|---|
 | `<component>/flow-step.json` (in each component that offers steps) | The steps that component declares |
-| `scripts/flow-candidates.sh [--stage NAME] \| --stages` | Lists the declared steps, or the stage names with their counts. Reads only. |
-| `scripts/flow-card.sh --file` | Prints the card for agreeing a flow not yet agreed, each step resolved from the catalogue. Reads only. |
-| `scripts/flow-agree.sh --effort --file` | Writes `flow.agreed` once every step is declared and the human's recorded yes is found; prints the flow's name |
-| `scripts/flow-change.sh --flow --file --reason` | Writes `flow.changed`: one array of ops, one reason |
-| `scripts/flow-step-done.sh --flow --step [--event]` | Writes `flow.step.done` once the step's event is checked |
-| `scripts/flow-end.sh --flow --outcome done\|dropped` | Writes `flow.ended` |
-| `scripts/flow-show.sh --flow [--all] \| --effort` | Replays the events and prints each flow's track, what is next, and whether it can end. Reads only. |
-| `scripts/open-work.sh --effort` | One line per open flow, for `effort-close.sh`. Reads only. |
+| `scripts/main/flow-candidates.sh [--stage NAME] \| --stages` | Lists the declared steps, or the stage names with their counts. Reads only. |
+| `scripts/main/flow-card.sh --file` | Prints the card for agreeing a flow not yet agreed, each step resolved from the catalogue. Reads only. |
+| `scripts/main/flow-agree.sh --effort --file` | Writes `flow.agreed` once every step is declared and the human's recorded yes is found; prints the flow's name |
+| `scripts/main/flow-change.sh --flow --file --reason` | Writes `flow.changed`: one array of ops, one reason |
+| `scripts/main/flow-step-done.sh --flow --step [--event]` | Writes `flow.step.done` once the step's event is checked |
+| `scripts/main/flow-end.sh --flow --outcome done\|dropped` | Writes `flow.ended` |
+| `scripts/main/flow-show.sh --flow [--all] \| --effort` | Replays the events and prints each flow's track, what is next, and whether it can end. Reads only. |
+| `scripts/internal/open-work.sh --effort` | One line per open flow, for `effort-close.sh`. Reads only. |
 | `scripts/lib/catalogue.sh`, `catalogue.jq` | The one reader of the catalogue, and its shape rules |
 | `scripts/lib/flow.sh`, `flow-replay.jq` | Shared shell, and the one home of the flow's shape checks and its replay |
 | `events/flow.*.jq` | One rule per event type, applied by `event-write.sh` |
@@ -102,7 +102,7 @@ A change needs no recorded yes yet. It will once dispatch enforces flows.
 - **Which flows:** the open flows of open efforts holding an event this session wrote. It finds them with a cheap search for the bare session id in the event files, then a real test on `claude_session_id` through `events-read.sh`.
 - **When it speaks:** only on a signal: an open step's event is waiting unmarked; the position moved (the next step, or how many are done); every step is done or skipped and the flow is still open. It remembers the last position spoken per session and flow, so each change speaks once and a new session speaks each open flow once.
 - **What it says:** one line per flow with a signal, warning when a waiting event also fits another open step.
-- **Its contract:** a subagent's stop passes, and a fault lets the stop through. It never blocks; it adds context. Its memory of the last position spoken is its only loop guard.
+- **Its contract:** a subagent's stop passes, and a fault lets the stop through, a damaged log included: an effort whose events can't be read whole is skipped in silence. It never blocks; it adds context. Its memory of the last position spoken is its only loop guard.
 
 ## Decided, and why
 
