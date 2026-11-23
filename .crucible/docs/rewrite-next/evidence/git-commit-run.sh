@@ -314,13 +314,47 @@ check "  ... and the signer and the program it started are both stopped" is "$(h
 check "  ... and no ref, index, status or config changed" is "$(state)" "$S2"
 
 echo
+echo "=== commit-snapshots.sh: which commits are snapshots"
+printf '{"kind":"snapshot","text":"other words"}' >"$S/in8.json"; sh $GC/main/commit-message.sh --input "$S/in8.json" --out "$S/msg/m8"
+printf '{"kind":"snapshots","text":"uncommitted changes"}' >"$S/in9.json"; sh $GC/main/commit-message.sh --input "$S/in9.json" --out "$S/msg/m9"
+O8=$(sh $GC/internal/commit-object.sh --repo "$S/repo" --tree "$TX" --parent "$B" --message-file "$S/msg/m8" --effort "$SSHE" 2>/dev/null | jq -r .commit)
+O9=$(sh $GC/internal/commit-object.sh --repo "$S/repo" --tree "$TX" --parent "$B" --message-file "$S/msg/m9" --effort "$SSHE" 2>/dev/null | jq -r .commit)
+S3=$(state)
+run sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit "$B" --commit "$O8" --commit "$O9" --commit "$(git -C "$S/repo" rev-parse --short "$O1")"
+check "exit 0: the commits of kind snapshot, whatever their text, as full shas in the order given" is "$rc:$(echo "$out" | jq -c .snapshots)" "0:[\"$O8\",\"$O1\"]"
+check "  ... a plain commit and one of kind snapshots are not snapshots, and nothing changed" is "$(echo "$out" | jq -c '[.snapshots[] | select(. == "'"$B"'" or . == "'"$O9"'")]'):$(state)" "[]:$S3"
+run sh $GC/internal/commit-snapshots.sh --repo "$W2" --commit "$O2"
+check "from a worktree, a commit of another kind: exit 0, no snapshot" is "$rc:$(echo "$out" | jq -c .snapshots)" "0:[]"
+run sh $GC/internal/commit-snapshots.sh --commit "$O1"
+check "no --repo: exit 2" is "$rc:$(has "$err" '\-\-repo missing' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo "$S/repo"
+check "no --commit: exit 2" is "$rc:$(has "$err" '\-\-commit missing' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit
+check "--commit with no value: exit 2" is "$rc:$(has "$err" 'needs a value' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit --all
+check "--commit starting with -: exit 2" is "$rc:$(has "$err" 'starts with -' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit "$TX"
+check "--commit naming a tree: exit 2" is "$rc:$(has "$err" 'is no commit' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo relative --commit "$O1"
+check "--repo not absolute: exit 2" is "$rc:$(has "$err" 'must be an absolute folder' && echo y)" "2:y"
+run sh $GC/internal/commit-snapshots.sh --repo "$S" --commit "$O1"
+check "--repo in no repository: exit 2" is "$rc" 2
+mkdir -p "$S/cs-nogit" "$S/cs-nojq"
+for t in dirname mktemp rm; do ln -s "$(command -v $t)" "$S/cs-nogit/$t"; ln -s "$(command -v $t)" "$S/cs-nojq/$t"; done
+ln -s "$(command -v git)" "$S/cs-nojq/git"
+run env PATH="$S/cs-nogit" /bin/sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit "$O1"
+check "without git: exit 4" is "$rc:$(has "$err" 'git not found' && echo y)" "4:y"
+run env PATH="$S/cs-nojq" /bin/sh $GC/internal/commit-snapshots.sh --repo "$S/repo" --commit "$O1"
+check "without jq: exit 4" is "$rc:$(has "$err" 'jq not found' && echo y)" "4:y"
+
+echo
 echo "=== the human's git config"
 check "the global and repository config files are as before the run" is "$(shasum "$GIT_CONFIG_GLOBAL" "$S/repo/.git/config")" "$BEFORE_CONFIG"
 check "no Crucible key was written to any config" is "$(git -C "$S/repo" config --list --show-origin | grep -c -i 'signingkey\|gpg.format\|hookspath' || true)" 0
 
 echo
 echo "=== the scripts' contracts"
-for s in commit-message.sh commit-tree.sh commits-merge.sh commit-object.sh; do
+for s in commit-message.sh commit-tree.sh commits-merge.sh commit-object.sh commit-snapshots.sh; do
 	sh "$GC"/*/"$s" --help >/dev/null 2>&1; h=$?
 	sh "$GC"/*/"$s" --bogus >/dev/null 2>&1; b=$?
 	check "$s: --help exits 0, an unknown option exits 2" is "$h:$b" "0:2"

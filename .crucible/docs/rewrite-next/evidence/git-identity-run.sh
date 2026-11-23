@@ -125,23 +125,23 @@ run sh $K/crucible-events/scripts/internal/event-write.sh --effort "$F" --type i
 run sh $K/crucible-events/scripts/internal/event-write.sh --effort "$F" --type identity.set --by identity-set.sh --body-file "$S/forged.json"
 
 echo "=== the step catalogue lists the domain's step"
-run sh $K/crucible-dynamic-flow/scripts/main/flow-candidates.sh --stages
-run sh $K/crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage setup
+run sh $K/crucible-adaptive-flow/scripts/main/flow-candidates.sh --stages
+run sh $K/crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
 
 echo "=== a flow holding the identity step, ended by identity.set"
 G=$(sh $K/crucible-effort/scripts/main/effort-start.sh --name flowed)
 echo '{"goal":"Sign the commits of this effort","steps":[{"id":1,"step":"git-identity/set-identity"}]}' > "$S/flow.json"
-sh $K/crucible-dynamic-flow/scripts/main/flow-card.sh --file "$S/flow.json" > "$S/flow-card.md"
+sh $K/crucible-adaptive-flow/scripts/main/flow-card.sh --file "$S/flow.json" > "$S/flow-card.md"
 FSHA=$(shasum -a 256 "$S/flow.json" | cut -d ' ' -f 1)
 sh $GT/scripts/main/show-card.sh --record flow-agree --effort "$G" --subject "$FSHA" --accept "Agree the flow (Recommended)" "$S/flow-card.md" >/dev/null
 jq -cn --rawfile m "$S/flow-card.md" '{session_id: "sess-gid", last_assistant_message: $m}' | sh $GT/hooks/stop/require-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gid", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_input: {questions: [{question: "Agree the flow?", header: "Flow", multiSelect: false, options: [{label: "Agree the flow (Recommended)", description: "yes"}, {label: "Change it", description: "no"}]}]}}' | sh $GT/hooks/pre-tool-use/hold-question-until-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gid", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_response: {answers: {"Agree the flow?": "Agree the flow (Recommended)"}}}' | sh $GT/hooks/post-tool-use/record-gate-answer.sh
-FLOW=$(sh $K/crucible-dynamic-flow/scripts/main/flow-agree.sh --effort "$G" --file "$S/flow.json")
+FLOW=$(sh $K/crucible-adaptive-flow/scripts/main/flow-agree.sh --effort "$G" --file "$S/flow.json")
 pick "$G" "$SUB" "$S/card.md" "$S/q.json" "$SSHLABEL"
 sh $GI/main/identity-set.sh --effort "$G" --repo "$S/repo" --list "$S/list.json" >/dev/null
-run sh $K/crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
-run sh $K/crucible-dynamic-flow/scripts/main/flow-show.sh --flow "$FLOW" --all
+run sh $K/crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
+run sh $K/crucible-adaptive-flow/scripts/main/flow-show.sh --flow "$FLOW" --all
 
 echo "=== the event log"
 sh $K/crucible-events/scripts/internal/events-read.sh --effort "$F" | jq -r '.[] | "    \(.seq) \(.type) by \(.by)\(if .type == "gate.answered" then ": \(.body.answer)" else "" end)"' | show

@@ -6,7 +6,7 @@ gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u
 $ sh main/identity-list.sh
     [
       {
-        "label": "Gpg Tester <gpg@example.test> · openpgp 77F51A2C",
+        "label": "Gpg Tester <gpg@example.test> · openpgp A05C45C7",
         "name": "Gpg Tester",
         "email": "gpg@example.test",
         "signing": {
@@ -16,7 +16,7 @@ $ sh main/identity-list.sh
         "fingerprint": "<FPR>"
       },
       {
-        "label": "Ssh Tester <ssh@example.test> · ssh 56YcNIX5",
+        "label": "Ssh Tester <ssh@example.test> · ssh Ibr9xqdu",
         "name": "Ssh Tester",
         "email": "ssh@example.test",
         "signing": {
@@ -34,22 +34,22 @@ $ sh main/identity-list.sh
 $ sh main/identity-card.sh --list <S>/list.json --repo <S>/repo
     Git identity for <S>/repo
     Pick the identity this effort's commits in <S>/repo are signed as.
-      1. Gpg Tester <gpg@example.test> · openpgp 77F51A2C
+      1. Gpg Tester <gpg@example.test> · openpgp A05C45C7
          key <FPR>
-      2. Ssh Tester <ssh@example.test> · ssh 56YcNIX5
+      2. Ssh Tester <ssh@example.test> · ssh Ibr9xqdu
          key SHA256:<fp>
     [exit 0]
 --- the card from the worktree names the checkout's repository
 $ sh main/identity-card.sh --list <S>/list.json --repo <S>/wt
     Git identity for <S>/repo
     Pick the identity this effort's commits in <S>/repo are signed as.
-      1. Gpg Tester <gpg@example.test> · openpgp 77F51A2C
+      1. Gpg Tester <gpg@example.test> · openpgp A05C45C7
          key <FPR>
-      2. Ssh Tester <ssh@example.test> · ssh 56YcNIX5
+      2. Ssh Tester <ssh@example.test> · ssh Ibr9xqdu
          key SHA256:<fp>
     [exit 0]
 $ sh main/identity-card.sh --list <S>/list.json --repo <S>/repo --question
-    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp 77F51A2C","description":"openpgp key <FPR>"},{"label":"Ssh Tester <ssh@example.test> · ssh 56YcNIX5","description":"ssh key SHA256:<fp>"}]}]}
+    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp A05C45C7","description":"openpgp key <FPR>"},{"label":"Ssh Tester <ssh@example.test> · ssh Ibr9xqdu","description":"ssh key SHA256:<fp>"}]}]}
     [exit 0]
 === the gate's recorded choice
 --- show-card refuses --accept with --choice
@@ -60,15 +60,15 @@ $ sh crucible-gate/scripts/main/show-card.sh --record set-identity --effort <S>/
     A recorded gate asks exactly one question.
 --- with no answer yet: identity-set refuses
 $ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
-    gate-answer.sh: no answer for set-identity on <S>/repo:882f6d74dba8ea12983d3edd4cd37ac922d567b9d69b32d7f30cfa45c20c6258
+    gate-answer.sh: no answer for set-identity on <S>/repo:672d93a15b766a4e4e273535957ebc00b1676af7f40ab9291d9b4f260678455c
     identity-set.sh: the human has not picked an identity from this list for <S>/repo; ask at the recorded choice gate first
     [exit 2]
 --- a typed answer is recorded, and refused by identity-set
-$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:882f6d74dba8ea12983d3edd4cd37ac922d567b9d69b32d7f30cfa45c20c6258 --choice
+$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:672d93a15b766a4e4e273535957ebc00b1676af7f40ab9291d9b4f260678455c --choice
     ANSWER_SEQ: 2
     ANSWER: Me, with my laptop key
     [exit 0]
-$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:882f6d74dba8ea12983d3edd4cd37ac922d567b9d69b32d7f30cfa45c20c6258
+$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:672d93a15b766a4e4e273535957ebc00b1676af7f40ab9291d9b4f260678455c
     gate-answer.sh: the answer for set-identity is a choice; read it with --choice
     [exit 2]
 $ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
@@ -115,14 +115,14 @@ $ sh internal/identity-check.sh --repo <S>/repo --name Gpg Tester --email nobody
 $ sh main/identity-card.sh --list <S>/list.json --repo <S>/other
     Git identity for <S>/other
     Pick the identity this effort's commits in <S>/other are signed as.
-      1. Gpg Tester <gpg@example.test> · openpgp 77F51A2C
+      1. Gpg Tester <gpg@example.test> · openpgp A05C45C7
          key <FPR>
     Not usable here:
-      - Ssh Tester <ssh@example.test> · ssh 56YcNIX5: the allowed-signers file <S>/missing is not there
+      - Ssh Tester <ssh@example.test> · ssh Ibr9xqdu: the allowed-signers file <S>/missing is not there
     [exit 0]
 === one usable identity: the question adds None of these
 $ sh main/identity-card.sh --list <S>/one.json --repo <S>/repo --question
-    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp 77F51A2C","description":"openpgp key <FPR>"},{"label":"None of these","description":"Stop: set up another signing key first"}]}]}
+    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp A05C45C7","description":"openpgp key <FPR>"},{"label":"None of these","description":"Stop: set up another signing key first"}]}]}
     [exit 0]
 === no usable identity: exit 3
 $ sh main/identity-card.sh --list <S>/none.json --repo <S>/repo
@@ -139,20 +139,20 @@ $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/
     <S>/space/efforts/<id>-identity/events/000007-identity.set.json
     [exit 0]
 === the step catalogue lists the domain's step
-$ sh crucible-dynamic-flow/scripts/main/flow-candidates.sh --stages
+$ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stages
     deliver 2
     prepare 3
     setup 2
     [exit 0]
-$ sh crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage setup
+$ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
     git-identity/set-identity · The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as · ends with identity.set · stages: setup · skills: git-identity · propose when: before the first commit an agent makes in a repository that has no identity in this effort yet
     git-worktree/cut-worktree · Cuts one tree for the coming work, from the base the human agreed, and sets it up · ends with worktree.cut · stages: setup · skills: git-worktree · propose when: whenever the coming work writes code
     [exit 0]
 === a flow holding the identity step, ended by identity.set
-$ sh crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
+$ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
     <S>/space/efforts/<id>-flowed/events/000006-flow.step.done.json
     [exit 0]
-$ sh crucible-dynamic-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
+$ sh crucible-adaptive-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
     flow <S>/space/efforts/<id>-flowed:3 · Sign the commits of this effort
       [x] 1 The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as
           event 5
@@ -161,9 +161,9 @@ $ sh crucible-dynamic-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<i
 === the event log
     1 effort.opened by effort-start.sh
     2 gate.answered by record-gate-answer.sh: Me, with my laptop key
-    3 gate.answered by record-gate-answer.sh: Ssh Tester <ssh@example.test> · ssh 56YcNIX5
+    3 gate.answered by record-gate-answer.sh: Ssh Tester <ssh@example.test> · ssh Ibr9xqdu
     4 identity.set by identity-set.sh
-    5 gate.answered by record-gate-answer.sh: Gpg Tester <gpg@example.test> · openpgp 77F51A2C
+    5 gate.answered by record-gate-answer.sh: Gpg Tester <gpg@example.test> · openpgp A05C45C7
     6 identity.set by identity-set.sh
     7 identity.set by identity-set.sh
 === a damaged log: identity-get and identity-set refuse, never "no identity" or "not picked"

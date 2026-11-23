@@ -53,6 +53,7 @@ When only other scripts or a hook run it, say so first: `Run by <caller>; not fo
 - The full list of refusals: each refusal prints its own reason when it happens. Name only the refusals a caller can prevent by acting first, as the preconditions above.
 - Validation details: give an input's shape (its keys, its type, one-line meaning), never every check the script makes on it. A value the script refuses with a clear reason needs no rule in the help.
 - Why it was designed this way, history, other scripts' internals.
+- The name of an internal script: main can neither run nor read one, so a main help never names an internal script. Say what happens in caller terms instead.
 - Install facts: tool versions (jq 1.6+, git 2.31+) and the neighbour skills a script calls. The install check owns them; there is no `Needs:` section.
 - Repetition: say each thing once.
 
@@ -66,4 +67,4 @@ Trimming a help touches only the help text. The code, its options, its output an
 
 ## The checker
 
-`tools/help-check.sh SCRIPT...` checks the template's shape: the usage lines, the labels and their order, no `--help | -h` usage line and no `Needs:` section, `Exit:`, the width, the length, every parsed option, and that a script's folder matches its help's first line. It prints nothing when every help passes.
+`tools/help-check.sh SCRIPT...` checks the template's shape: the usage lines, the labels and their order, no `--help | -h` usage line and no `Needs:` section, `Exit:`, the width, the length, every parsed option, that a script's folder matches its help's first line, and that a main help names no internal script. It prints nothing when every help passes.

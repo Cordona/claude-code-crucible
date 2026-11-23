@@ -28,7 +28,7 @@ cd /
 K="$S/cfg/skills"
 for d in "$R"/framework/core/main-thread/*/ "$R"/domains/software-development/core/main-thread/*/; do d=${d%/}; ln -s "$d" "$K/${d##*/}"; done
 GP=$K/git-push/scripts; GW=$K/git-worktree/scripts; GT=$K/crucible-gate
-EV=$K/crucible-events/scripts; EF=$K/crucible-effort/scripts; DF=$K/crucible-dynamic-flow/scripts
+EV=$K/crucible-events/scripts; EF=$K/crucible-effort/scripts; DF=$K/crucible-adaptive-flow/scripts
 
 pass=0 fail=0
 : >"$S/ran"

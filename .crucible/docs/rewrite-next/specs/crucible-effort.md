@@ -39,7 +39,7 @@ The envelope (`type`, `seq`, `at`, `by`, `claude_session_id`) comes from the wri
 
 Every move after opening carries the human's words: the rules refuse `words` that are missing or blank. `outcome` must be `done` or `dropped`. `left_open`, when present, must be a non-empty list of one-line strings.
 
-Other components read the state through `effort-state.sh`: grill, context and dynamic-flow scripts, and the dynamic-flow Stop hook.
+Other components read the state through `effort-state.sh`: grill, context and adaptive-flow scripts, and the adaptive-flow Stop hook.
 
 ## The folder
 
@@ -48,7 +48,7 @@ Efforts live in `${CRUCIBLE_HOME:-$HOME/.crucible}/efforts/`, one folder each, h
 ## Open work at close
 
 **The contract.** A component that can hold open work ships `scripts/internal/open-work.sh --effort FOLDER`. It reads only, prints one line per open thing and nothing when there is none. Today:
-- dynamic-flow prints `flow <seq> "<goal>"` per flow agreed and not ended, oldest first;
+- adaptive-flow prints `flow <seq> "<goal>"` per flow agreed and not ended, oldest first;
 - grill prints `grill <n> "<topic>"` per draft not yet ended, by number.
 
 **The close.** `effort-close.sh` runs every `*/scripts/internal/open-work.sh` in the component folders beside its own. It names no component. Blank lines are dropped, and a check that exits non-zero adds `<component>/scripts/internal/open-work.sh: check failed`. If anything was found, the close is refused with the lines in the reason. A paused effort is checked the same way.

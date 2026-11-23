@@ -1,4 +1,4 @@
-# Evidence run for crucible-dynamic-flow with the step catalogue: every case
+# Evidence run for crucible-adaptive-flow with the step catalogue: every case
 # through the real scripts and hooks, from /, every path from stdout.
 C=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite/framework/core/main-thread
 S="/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/flow test"; rm -rf "$S"; mkdir -p "$S"
@@ -23,8 +23,8 @@ cat > "$K/broken/flow-step.json" <<'J'
   { "name": "skills-string", "stage": ["build"], "does": "Names skills the old way", "propose_when": "never", "ends_with": { "event": "grill.ended" }, "uses": "crucible-grill, crucible-spec" } ]
 J
 printf '[ { "name": ' > "$K/notjson/flow-step.json"
-FL=$K/crucible-dynamic-flow/scripts; HK=$K/crucible-dynamic-flow/hooks/stop/remind-flow-position.sh
-RFL=$C/crucible-dynamic-flow/scripts
+FL=$K/crucible-adaptive-flow/scripts; HK=$K/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh
+RFL=$C/crucible-adaptive-flow/scripts
 E=$C/crucible-effort/scripts; G=$C/crucible-grill/scripts; GT=$C/crucible-gate
 F=$(sh $E/main/effort-start.sh --name prune)
 run() { echo "\$ $(echo "$*" | sed "s|$RFL/||g;s|$FL/||g;s|$K|<K>|g;s|$E/||g;s|$G/||g;s|$S|<S>|g;s|$F|<F>|g")"; out=$("$@" 2>&1); e=$?; echo "$out" | sed "s|$F|<F>|g;s|$S|<S>|g;s|^|    |"; echo "    [exit $e]"; }
@@ -158,7 +158,7 @@ hook sess-1 true
 printf '{"session_id":"sess-1","agent_id":"sub","stop_hook_active":false}' | sh "$HK"; echo "    [subagent: no output]"
 echo "--- a damaged log: the flow scripts refuse; the hook stays silent and lets the stop through"
 damaged=$(ls "$F"/events/*.json | sed -n 2p); chmod 000 "$damaged"; echo "    unreadable: ${damaged##*/}"
-rm -rf "$S/cfg/cache/crucible-dynamic-flow"
+rm -rf "$S/cfg/cache/crucible-adaptive-flow"
 run sh "$FL"/main/flow-show.sh --flow "$F3"
 run sh "$FL"/main/flow-show.sh --effort "$F"
 run sh "$FL"/internal/open-work.sh --effort "$F"
@@ -176,5 +176,5 @@ hook sess-2
 echo "--- junk input"; echo nope | sh "$HK"; echo "    [exit $?]"
 
 echo "=== 7. The skill's example names only declared steps"
-sed -n '/^```json/,/^```/p' $C/crucible-dynamic-flow/SKILL.md | sed '1d;$d' > "$S/example.json"
+sed -n '/^```json/,/^```/p' $C/crucible-adaptive-flow/SKILL.md | sed '1d;$d' > "$S/example.json"
 run sh $RFL/main/flow-card.sh --file "$S/example.json"

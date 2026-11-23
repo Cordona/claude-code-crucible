@@ -1,8 +1,8 @@
-# Spec: crucible-dynamic-flow
+# Spec: crucible-adaptive-flow
 
 Main and the human agree a flow: the steps toward a goal inside an effort, each a step that a piece of the framework declares and each ended by that piece's own event. Then they change it on the go and see what is done and left. A flow is a tracked agreement, not an engine: it never runs a step or enforces order. It can't carry free text, criteria or acceptance criteria.
 
-**Home:** `new-rewrite/framework/core/main-thread/crucible-dynamic-flow/`
+**Home:** `new-rewrite/framework/core/main-thread/crucible-adaptive-flow/`
 
 ## The pieces
 

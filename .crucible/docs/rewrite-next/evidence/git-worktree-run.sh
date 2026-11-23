@@ -183,7 +183,7 @@ rm "$S/repo/.worktreeinclude"
 git -C "$S/repo" worktree remove --force "$S/plain"
 
 echo
-echo "=== setup-plan.sh, setup-copy.sh and setup-repoint.sh on their own"
+echo "=== worktree-setup.sh on a checkout of its own: the plan, then the copy and the repoint"
 # A checkout of its own: dependency folders, a tracked folder named like
 # one, an absolute link into the checkout, a launcher and a binary.
 git init -q -b main "$S/sr"
@@ -199,149 +199,98 @@ printf 'VIRTUAL_ENV="%s/.venv"\n' "$S/sr" >"$S/sr/.venv/bin/activate"
 printf 'bin\000%s/.venv\n' "$S/sr" >"$S/sr/.venv/bin/python"
 printf 'SECRET=hush\n' >"$S/sr/.env"; printf '{"t":1}\n' >"$S/sr/auth.json"
 printf '.worktreeinclude\n' >>"$S/sr/.git/info/exclude"
-git -C "$S/sr" worktree add -q --detach "$S/sw" HEAD 2>/dev/null
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-echo "$out" >"$S/plan.json"
-check "setup-plan.sh: exit 0, node and python detected, from, from_given and to" is "$rc:$(echo "$out" | jq -c '[.detected, .from == "'"$S/sr"'", .from_given == "'"$S/sr"'", .to == "'"$S/sw"'"]')" '0:[["node","python"],true,true,true]'
-check "  ... node_modules for node, .venv for python, the tracked lib/node_modules marked, bin to repoint" is "$(echo "$out" | jq -c '[.items[] | [.do, .path, .technology]], .repoint')" '[["copy","node_modules","node"],["copy",".venv","python"],["tracked","lib/node_modules",null]]
-{"python":["bin"]}'
-check "  ... read only: nothing in the tree yet" is "$([ -e "$S/sw/node_modules" ] && echo nm)" ""
-run sh $GW/internal/setup-plan.sh --from "$S/sr/" --to "$S/sw"
-check "--from with a trailing /: from_given without it" is "$rc:$(echo "$out" | jq -r .from_given)" "0:$S/sr"
-printf '.env\nauth.json\n' >"$S/sr/.worktreeinclude"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-check "a .worktreeinclude listing .env and auth.json: both planned as copies with no technology" is "$(echo "$out" | jq -c '[.items[] | select(.technology == null and .do == "copy") | .path]')" '[".env","auth.json"]'
-mkdir -p "$S/sr/cfg"; : >"$S/sr/cfg/$(printf 'a\tb')"; printf 'cfg/*\n' >"$S/sr/.worktreeinclude"
-mkdir -p "$S/sr/$(printf 'odd\nenv')"; : >"$S/sr/$(printf 'odd\nenv')/pyvenv.cfg"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-check "names holding a control character, from a glob and from the search, planned as bad" is "$rc:$(echo "$out" | jq -c '[.items[] | select(.do == "bad") | .path]')" '0:["cfg/a?b","odd?env/pyvenv.cfg"]'
-echo "$out" >"$S/plan-bad.json"
-rm -rf "$S/sr/cfg" "$S/sr/$(printf 'odd\nenv')" "$S/sr/.worktreeinclude"
-git -C "$S/sr" worktree add -q --detach "$S/sr/inner" HEAD 2>/dev/null; mkdir -p "$S/sr/inner/node_modules"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sr/inner"
-check "a --to inside --from is never searched" is "$rc:$(echo "$out" | jq -c '[.items[].path | select(startswith("inner"))]')" '0:[]'
-git -C "$S/sr" worktree remove --force "$S/sr/inner"
+# A new tree $1 of the checkout, as worktree-cut.sh adds one.
+fresh() { git -C "$S/sr" worktree add -q --detach "$S/$1" HEAD 2>/dev/null; }
+fresh sw
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check "exit 0: node and python detected" is "$rc:$(echo "$out" | grep -Ec '^detected (node|python)$')" "0:2"
+check "  ... node_modules for node and .venv for python copied, .venv repointed, the tracked lib/node_modules left" is "$(echo "$out" | grep -Ec '^(copied node_modules|copied \.venv|repointed 1 \.venv|tracked lib/node_modules)$')" 4
+check "  ... a copy method: cp -c, reflink or plain" is "$(echo "$out" | grep -Ec '^method (cp -c|reflink|plain)$')" 1
+check "  ... the absolute link into the checkout flagged with its target" is "$(echo "$out" | grep -Fxc "flag symlink node_modules/.bin/left-pad -> $S/sr/node_modules/left-pad/index.js")" 1
+check "  ... the copies are there, the launcher names the tree, the binary left alone" is "$(cat "$S/sw/node_modules/left-pad/index.js"):$(cat "$S/sw/.venv/bin/activate"):$(grep -c "$S/sr" "$S/sw/.venv/bin/python")" "module:VIRTUAL_ENV=\"$S/sw/.venv\":1"
+check "  ... the checkout's own launcher unchanged" is "$(cat "$S/sr/.venv/bin/activate")" "VIRTUAL_ENV=\"$S/sr/.venv\""
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check "a second run overwrites nothing: exists for both, nothing repointed" is "$rc:$(echo "$out" | grep -Ec '^exists (node_modules|\.venv)$'):$(echo "$out" | grep -c '^repointed')" "0:2:0"
 mkdir -p "$S/sr/locked"; chmod 000 "$S/sr/locked"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
 check "a folder find can't read: exit 0, said on stderr" is "$rc:$(has "$err" 'find could not read 1 places' && echo y)" "0:y"
 chmod 755 "$S/sr/locked"; rmdir "$S/sr/locked"
-run sh $GW/internal/setup-plan.sh --from
-check "--from with no value: exit 2" is "$rc:$(has "$err" 'needs a value' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --to "$S/sw"
-check "no --from: exit 2" is "$rc:$(has "$err" '--from needs a value' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$S/sr"
-check "no --to: exit 2" is "$rc:$(has "$err" '--to needs a value' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$(printf '/tmp/a\tb')" --to "$S/sw"
-check "--from holding a control character: exit 2" is "$rc:$(has "$err" 'holds a control character' && echo y)" "2:y"
-mkdir -p "$S/plan-nogit" "$S/plan-nojq"
-for t in dirname tr mktemp rm; do ln -s "$(command -v $t)" "$S/plan-nogit/$t"; ln -s "$(command -v $t)" "$S/plan-nojq/$t"; done
-ln -s "$(command -v git)" "$S/plan-nojq/git"
-run env PATH="$S/plan-nogit" /bin/sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-check "setup-plan.sh without git: exit 4, git 2.31+ asked for" is "$rc:$(has "$err" 'git not found; expected git 2.31+ on PATH' && echo y)" "4:y"
-run env PATH="$S/plan-nojq" /bin/sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-check "setup-plan.sh without jq: exit 4" is "$rc:$(has "$err" 'jq not found; expected jq 1.6+ on PATH' && echo y)" "4:y"
-run sh $GW/internal/setup-plan.sh --from "$S/nothing" --to "$S/sw"
-check "--from not a folder: exit 2" is "$rc:$(has "$err" 'is not a folder' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$S/sr/lib" --to "$S/sw"
-check "--from not a work tree's top folder: exit 2" is "$rc:$(has "$err" 'is not the top folder' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$S/sw" --to "$S/sr"
-check "--from a linked worktree: exit 2" is "$rc:$(has "$err" 'linked worktree' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sr"
-check "--to the same as --from: exit 2" is "$rc:$(has "$err" 'same folder' && echo y)" "2:y"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to relative
-check "--to not absolute, every problem listed: exit 2" is "$rc:$(has "$err" '--to relative is not absolute' && echo y)" "2:y"
-mkdir "$S/sr/.worktreeinclude"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
-check ".worktreeinclude not a readable file: exit 2" is "$rc:$(has "$err" 'not a readable file' && echo y)" "2:y"
-rmdir "$S/sr/.worktreeinclude"; printf '!x\nnode_modules/**\n' >"$S/sr/.worktreeinclude"
-run sh $GW/internal/setup-plan.sh --from "$S/sr" --to "$S/sw"
+ln -s "$S/sr" "$S/sr-link"; printf '%s/.venv\n' "$S/sr-link" >"$S/sr/.venv/bin/given"
+fresh sw-given
+run sh $GW/internal/worktree-setup.sh --from "$S/sr-link/" --to "$S/sw-given"
+check "--from through a link with a trailing /: a launcher naming the given path repointed too" is "$rc:$(echo "$out" | grep -c '^repointed 2 \.venv$'):$(cat "$S/sw-given/.venv/bin/given")" "0:1:$S/sw-given/.venv"
+rm "$S/sr/.venv/bin/given"
+printf '.env\nauth.json\n' >"$S/sr/.worktreeinclude"
+fresh sw-secrets
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw-secrets"
+check "a .worktreeinclude listing .env and auth.json: both reach the copy" is "$rc:$(echo "$out" | grep -Ec '^(copied \.env|unignored auth\.json)$')" "0:2"
+check "  ... the .env git ignores in the tree copied, the auth.json it doesn't left out" is "$(cat "$S/sw-secrets/.env"):$([ -e "$S/sw-secrets/auth.json" ] && echo auth)" "SECRET=hush:"
+mkdir -p "$S/sr/cfg"; : >"$S/sr/cfg/$(printf 'a\tb')"; printf 'cfg/*\n' >"$S/sr/.worktreeinclude"
+mkdir -p "$S/sr/$(printf 'odd\nenv')"; : >"$S/sr/$(printf 'odd\nenv')/pyvenv.cfg"
+fresh sw-bad
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw-bad"
+check "names holding a control character, from a glob and from the search: exit 4, one line each" is "$rc:$(has "$err" 'cfg/a?b was not copied: its name holds a control character' && echo y):$(has "$err" 'odd?env/pyvenv.cfg was not copied: its name holds a control character' && echo y)" "4:y:y"
+check "  ... the rest copied and repointed" is "$(echo "$out" | grep -Ec '^(copied node_modules|copied \.venv|repointed 1 \.venv)$')" 3
+rm -rf "$S/sr/cfg" "$S/sr/$(printf 'odd\nenv')" "$S/sr/.worktreeinclude"
+git -C "$S/sr" worktree add -q --detach "$S/sr/inner" HEAD 2>/dev/null; mkdir -p "$S/sr/inner/node_modules"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sr/inner"
+check "a --to inside --from is never searched" is "$rc:$(echo "$out" | grep -c inner)" "0:0"
+git -C "$S/sr" worktree remove --force "$S/sr/inner"
+mkdir -p "$S/elsewhere" "$S/sr/out" "$S/sr/ro/a" "$S/sw/ro"; : >"$S/sr/out/x"; : >"$S/sr/ro/a/b"; printf 'fine\n' >"$S/sr/fine.txt"
+printf 'locked\n' >"$S/sr/unreadable"; chmod 000 "$S/sr/unreadable"
+ln -s "$S/elsewhere" "$S/sw/out"; chmod 555 "$S/sw/ro"
+printf 'out/x\nro/a/b\nunreadable\nfine.txt\n' >"$S/sr/.worktreeinclude"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check "exit 4, the rest copied, one line per problem: a folder leading outside, a failed mkdir, a failed cp" is "$rc:$(echo "$out" | grep -c '^copied fine\.txt$'):$(for w in 'out/x was not copied: its folder in --to is not a folder inside --to' 'ro/a/b was not copied: mkdir' 'unreadable was not copied: cp'; do has "$err" "$w" || echo "miss $w"; done):$([ -e "$S/elsewhere/x" ] && echo leaked)" "4:1::"
+chmod 755 "$S/sw/ro"; chmod 644 "$S/sr/unreadable"
+rm -rf "$S/sr/out" "$S/sr/ro" "$S/sr/fine.txt" "$S/sr/unreadable" "$S/sw/out" "$S/sw/ro"
+fresh sw-refused
+printf '!x\nnode_modules/**\n' >"$S/sr/.worktreeinclude"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw-refused"
 check "a negation and a ** line: exit 2, one line each" is "$rc:$(echo "$err" | grep -c 'negation\|holds \*\*')" "2:2"
-rm "$S/sr/.worktreeinclude"
-# The data file lives in the scripts' lib folder, so its own problems run
-# from a copy of the scripts folder; the plan needs nothing else beside it.
+check "  ... the plan refuses before any copy: no line on stdout, nothing in the tree" is "$out:$(ls -A "$S/sw-refused" | grep -Ec '^(node_modules|\.venv)$')" ":0"
+rm "$S/sr/.worktreeinclude"; mkdir "$S/sr/.worktreeinclude"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check ".worktreeinclude not a readable file: exit 2" is "$rc:$(has "$err" 'not a readable file' && echo y)" "2:y"
+rmdir "$S/sr/.worktreeinclude"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to
+check "--to with no value: exit 2" is "$rc:$(has "$err" 'needs a value' && echo y)" "2:y"
+run sh $GW/internal/worktree-setup.sh --from "$(printf '/tmp/a\tb')" --to "$S/sw"
+check "--from holding a control character: exit 2" is "$rc:$(has "$err" 'holds a control character' && echo y)" "2:y"
+run sh $GW/internal/worktree-setup.sh --from "$S/nothing" --to "$S/sw"
+check "--from not a folder: exit 2" is "$rc:$(has "$err" 'is not a folder' && echo y)" "2:y"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr/lib" --to "$S/sw"
+check "--from not a work tree's top folder: exit 2" is "$rc:$(has "$err" 'is not the top folder' && echo y)" "2:y"
+run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to relative
+check "--to not absolute, every problem listed: exit 2" is "$rc:$(has "$err" '--to relative is not absolute' && echo y)" "2:y"
+mkdir -p "$S/setup-nogit" "$S/setup-nojq"
+for t in dirname tr mktemp rm; do ln -s "$(command -v $t)" "$S/setup-nogit/$t"; ln -s "$(command -v $t)" "$S/setup-nojq/$t"; done
+ln -s "$(command -v git)" "$S/setup-nojq/git"
+run env PATH="$S/setup-nogit" /bin/sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check "without git: exit 4, git 2.31+ asked for" is "$rc:$(has "$err" 'git not found; expected git 2.31+ on PATH' && echo y)" "4:y"
+run env PATH="$S/setup-nojq" /bin/sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw"
+check "without jq: exit 4" is "$rc:$(has "$err" 'jq not found; expected jq 1.6+ on PATH' && echo y)" "4:y"
+# The data file lives in the scripts' lib folder, so its own cases run from
+# a copy of the scripts folder.
 mkdir -p "$S/alt"; cp -R "$R/domains/software-development/core/main-thread/git-worktree/scripts" "$S/alt/scripts"
 rm "$S/alt/scripts/lib/worktree-setup.json"
-run sh "$S/alt/scripts/internal/setup-plan.sh" --from "$S/sr" --to "$S/sw"; echo setup-plan.sh >>"$S/ran"
+run sh "$S/alt/scripts/internal/worktree-setup.sh" --from "$S/sr" --to "$S/sw"; echo worktree-setup.sh >>"$S/ran"
 check "the data file missing: exit 2" is "$rc:$(has "$err" 'the data file' && echo y)" "2:y"
 printf '{' >"$S/alt/scripts/lib/worktree-setup.json"
-run sh "$S/alt/scripts/internal/setup-plan.sh" --from "$S/sr" --to "$S/sw"; echo setup-plan.sh >>"$S/ran"
+run sh "$S/alt/scripts/internal/worktree-setup.sh" --from "$S/sr" --to "$S/sw"; echo worktree-setup.sh >>"$S/ran"
 check "the data file not JSON: exit 2" is "$rc:$(has "$err" 'not valid JSON' && echo y)" "2:y"
 printf '{"technologies":5,"x":1}' >"$S/alt/scripts/lib/worktree-setup.json"
-run sh "$S/alt/scripts/internal/setup-plan.sh" --from "$S/sr" --to "$S/sw"; echo setup-plan.sh >>"$S/ran"
+run sh "$S/alt/scripts/internal/worktree-setup.sh" --from "$S/sr" --to "$S/sw"; echo worktree-setup.sh >>"$S/ran"
 check "the data file of the wrong shape: exit 2, one line per problem" is "$rc:$(echo "$err" | grep -c 'technologies is a JSON number\|field "x" is not known')" "2:2"
+jq '(.technologies[] | select(.name == "python") | .repoint) = ["bin", "Scripts", "lnk/bin"]' "$GW/lib/worktree-setup.json" >"$S/alt/scripts/lib/worktree-setup.json"
+mkdir -p "$S/outside-venv/bin"; printf '%s/.venv/lnk\n' "$S/sr" >"$S/outside-venv/bin/act"; ln -s "$S/outside-venv" "$S/sr/.venv/lnk"
+fresh sw-links
+run sh "$S/alt/scripts/internal/worktree-setup.sh" --from "$S/sr" --to "$S/sw-links"; echo worktree-setup.sh >>"$S/ran"
+check "launcher subfolders bin, Scripts and lnk/bin: bin repointed, the missing Scripts skipped" is "$rc:$(echo "$out" | grep -c '^repointed 1 \.venv$'):$(has "$err" 'Scripts' && echo said)" "4:1:"
+check "  ... lnk/bin, a link leading outside the copy: one line, nothing written there" is "$(has "$err" '.venv/lnk/bin was not repointed: it leads outside the copy' && echo y):$(cat "$S/outside-venv/bin/act")" "y:$S/sr/.venv/lnk"
+rm "$S/sr/.venv/lnk"
 
-echo "--- setup-copy.sh"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan.json"
-check "exit 0: a copy method, node_modules and .venv copied for their technology, lib/node_modules tracked" is "$rc:$(echo "$out" | jq -c '[(.method | IN("cp -c", "reflink", "plain")), [.done[] | select(.did != "flag") | [.did, .path, .technology]]]')" '0:[true,[["copied","node_modules","node"],["copied",".venv","python"],["tracked","lib/node_modules",null]]]'
-check "  ... the absolute link into the checkout flagged with its target" is "$(echo "$out" | jq -c '[.done[] | select(.did == "flag") | [.path, .target == "'"$S/sr/node_modules/left-pad/index.js"'"]]')" '[["node_modules/.bin/left-pad",true]]'
-check "  ... the copies are there, the launcher not yet repointed" is "$(cat "$S/sw/node_modules/left-pad/index.js"):$(cat "$S/sw/.venv/bin/activate")" "module:VIRTUAL_ENV=\"$S/sr/.venv\""
-run sh $GW/internal/setup-copy.sh --plan "$S/plan.json"
-check "a second run overwrites nothing: exists for both" is "$rc:$(echo "$out" | jq -c '[.done[] | select(.did == "exists") | .path]')" '0:["node_modules",".venv"]'
-jq -c '.items = [{do: "copy", path: ".env"}, {do: "copy", path: "auth.json"}]' "$S/plan.json" >"$S/plan-secret.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-secret.json"
-check "a .env git ignores in the tree copied, an auth.json it doesn't left out as unignored" is "$rc:$(echo "$out" | jq -c '[.done[] | [.did, .path]]'):$(cat "$S/sw/.env"):$([ -e "$S/sw/auth.json" ] && echo auth)" '0:[["copied",".env"],["unignored","auth.json"]]:SECRET=hush:'
-mkdir -p "$S/elsewhere" "$S/sr/out" "$S/sr/ro/a" "$S/sw/ro"; : >"$S/sr/out/x"; : >"$S/sr/ro/a/b"
-ln -s "$S/elsewhere" "$S/sw/out"; chmod 555 "$S/sw/ro"
-jq -c '.items = [{do: "bad", path: "odd?env"}, {do: "copy", path: "out/x"}, {do: "copy", path: "missing-thing"}, {do: "copy", path: "ro/a/b"}, {do: "copy", path: "package.json", technology: "node"}]' "$S/plan.json" >"$S/plan-problems.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-problems.json"
-check "exit 4, the rest copied, one line per problem: a bad name, a folder leading outside, a failed cp, a failed mkdir" is "$rc:$(echo "$out" | jq -c '[.done[] | [.did, .path]]'):$(for w in 'odd?env was not copied: its name holds a control character' 'out/x was not copied: its folder in --to is not a folder inside --to' 'missing-thing was not copied: cp' 'ro/a/b was not copied: mkdir'; do has "$err" "$w" || echo "miss $w"; done):$([ -e "$S/elsewhere/x" ] && echo leaked)" '4:[["exists","package.json"]]::'
-chmod 755 "$S/sw/ro"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-bad.json"
-check "the plan with bad names: exit 4 after copying the rest" is "$rc:$(echo "$err" | grep -c 'its name holds a control character')" "4:2"
-run sh $GW/internal/setup-copy.sh
-check "setup-copy.sh with no --plan: exit 2" is "$rc" 2
-run sh $GW/internal/setup-copy.sh --plan
-check "--plan with no value: exit 2" is "$rc" 2
-run sh $GW/internal/setup-copy.sh --plan "$S/no-plan.json"
-check "--plan not a readable file: exit 2" is "$rc:$(has "$err" 'not a readable file' && echo y)" "2:y"
-printf '{' >"$S/plan-broken.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-broken.json"
-check "--plan not JSON: exit 2" is "$rc:$(has "$err" 'is not a plan setup-plan.sh prints' && echo y)" "2:y"
-jq -c '.items = [{do: "copy", path: "/etc/passwd"}]' "$S/plan.json" >"$S/plan-shape.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-shape.json"
-check "a plan item with an absolute path: exit 2, nothing copied" is "$rc:$(has "$err" 'is not a plan' && echo y)" "2:y"
-jq -c '.from = "'"$S/nothing"'"' "$S/plan.json" >"$S/plan-from.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-from.json"
-check "a plan whose checkout is no folder: exit 2" is "$rc:$(has "$err" "checkout" && echo y)" "2:y"
-jq -c '.to = "'"$S/nothing"'"' "$S/plan.json" >"$S/plan-to.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-to.json"
-check "a plan whose tree is no folder: exit 2" is "$rc:$(has "$err" "tree" && echo y)" "2:y"
-jq -c '.to = .from' "$S/plan.json" >"$S/plan-same.json"
-run sh $GW/internal/setup-copy.sh --plan "$S/plan-same.json"
-check "a plan whose tree is its checkout: exit 2" is "$rc:$(has "$err" 'is its checkout' && echo y)" "2:y"
-
-echo "--- setup-repoint.sh"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder .venv --subfolder bin
-check "exit 0: one launcher repointed, the binary left alone" is "$rc:$out:$(cat "$S/sw/.venv/bin/activate"):$(grep -c "$S/sr" "$S/sw/.venv/bin/python")" "0:{\"folder\":\".venv\",\"repointed\":1}:VIRTUAL_ENV=\"$S/sw/.venv\":1"
-check "  ... the checkout's own launcher unchanged" is "$(cat "$S/sr/.venv/bin/activate")" "VIRTUAL_ENV=\"$S/sr/.venv\""
-run sh $GW/internal/setup-repoint.sh --from "$S/sr/" --to "$S/sw" --folder .venv --subfolder bin --subfolder Scripts
-check "again, with a second --subfolder not there: nothing left to repoint" is "$rc:$(echo "$out" | jq -r .repointed)" "0:0"
-mkdir -p "$S/outside-venv/bin"; printf '%s/.venv/lnk\n' "$S/sr" >"$S/outside-venv/bin/act"; ln -s "$S/outside-venv" "$S/sw/.venv/lnk"
-printf '%s/.venv\n' "$S/sr" >"$S/sr/.venv/bin/hard"; ln "$S/sr/.venv/bin/hard" "$S/sw/.venv/bin/hard"
-printf '%s/.venv\n' "$S/sr" >"$S/sw/.venv/bin/locked"; chmod 444 "$S/sw/.venv/bin/locked"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder .venv --subfolder bin --subfolder lnk/bin
-check "exit 4, one line each: a subfolder leading outside, a launcher that is the source, one not writable" is "$rc:$(for w in 'lnk/bin was not repointed: it leads outside' 'hard was not repointed: it is the source file itself' 'locked was not repointed: it could not be written'; do has "$err" "$w" || echo "miss $w"; done):$(cat "$S/outside-venv/bin/act")" "4::$S/sr/.venv/lnk"
-rm -f "$S/sw/.venv/lnk" "$S/sw/.venv/bin/hard" "$S/sr/.venv/bin/hard"; chmod 644 "$S/sw/.venv/bin/locked"; rm "$S/sw/.venv/bin/locked"
-run sh $GW/internal/setup-repoint.sh --to "$S/sw" --folder .venv --subfolder bin
-check "setup-repoint.sh with no --from: exit 2" is "$rc" 2
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder .venv
-check "no --subfolder: exit 2" is "$rc" 2
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder
-check "--folder with no value: exit 2" is "$rc" 2
-run sh $GW/internal/setup-repoint.sh --from relative --to "$S/sw" --folder .venv --subfolder bin
-check "--from not absolute: exit 2" is "$rc:$(has "$err" 'is not absolute' && echo y)" "2:y"
-run sh $GW/internal/setup-repoint.sh --from "$(printf '/tmp/a\tb')" --to "$S/sw" --folder .venv --subfolder bin
-check "--from holding a control character: exit 2" is "$rc:$(has "$err" 'control character' && echo y)" "2:y"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/nothing" --folder .venv --subfolder bin
-check "--to not a folder: exit 2" is "$rc:$(has "$err" 'is not a folder' && echo y)" "2:y"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder /etc --subfolder bin
-check "--folder absolute: exit 2" is "$rc:$(has "$err" 'not a plain relative path' && echo y)" "2:y"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder .venv --subfolder /bin
-check "--subfolder absolute: exit 2" is "$rc:$(has "$err" 'not a plain relative path' && echo y)" "2:y"
-run sh $GW/internal/setup-repoint.sh --from "$S/sr" --to "$S/sw" --folder ../sr --subfolder bin
-check "--folder leading outside --to: exit 2, nothing changed" is "$rc:$(has "$err" 'is not a folder inside --to' && echo y):$(cat "$S/sr/.venv/bin/activate")" "2:y:VIRTUAL_ENV=\"$S/sr/.venv\""
-
-echo "--- worktree-setup.sh through the three"
+echo "--- worktree-setup.sh: the lines in order, and its own refusals"
 git -C "$S/sr" worktree add -q --detach "$S/sw2" HEAD 2>/dev/null
 chmod 444 "$S/sr/.venv/bin/activate"
 run sh $GW/internal/worktree-setup.sh --from "$S/sr" --to "$S/sw2"
@@ -359,7 +308,7 @@ run sh $GW/internal/worktree-setup.sh --to "$S/sw3"
 check "--from missing: exit 2" is "$rc:$(has "$err" '--from missing' && echo y)" "2:y"
 run sh $GW/internal/worktree-setup.sh --from
 check "--from with no value: exit 2" is "$rc:$(has "$err" 'needs a value' && echo y)" "2:y"
-for w in sw sw2 sw3; do git -C "$S/sr" worktree remove --force "$S/$w"; done
+for w in sw sw-given sw-secrets sw-bad sw-refused sw-links sw2 sw3; do git -C "$S/sr" worktree remove --force "$S/$w"; done
 
 echo
 echo "=== worktree-uncommitted.sh and worktree-changes.sh"
@@ -927,24 +876,24 @@ done
 
 echo
 echo "=== the flow step"
-run sh $K/crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage setup
+run sh $K/crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
 check "git-worktree/cut-worktree is listed under setup, ending with worktree.cut" has "$out" 'git-worktree/cut-worktree · .* · ends with worktree.cut · stages: setup · skills: git-worktree · propose when: whenever the coming work writes code'
 H=$(sh $K/crucible-effort/scripts/main/effort-start.sh --name flowed)
 echo '{"goal":"Two trees for the work","steps":[{"id":1,"step":"git-worktree/cut-worktree"},{"id":2,"step":"git-worktree/cut-worktree"}]}' >"$S/flow.json"
-sh $K/crucible-dynamic-flow/scripts/main/flow-card.sh --file "$S/flow.json" >"$S/flow-card.md"
+sh $K/crucible-adaptive-flow/scripts/main/flow-card.sh --file "$S/flow.json" >"$S/flow-card.md"
 FSHA=$(shasum -a 256 "$S/flow.json" | cut -d ' ' -f 1)
 sh $GT/scripts/main/show-card.sh --record flow-agree --effort "$H" --subject "$FSHA" --accept "Agree the flow (Recommended)" "$S/flow-card.md" >/dev/null
 jq -cn --rawfile m "$S/flow-card.md" '{session_id: "sess-gw", last_assistant_message: $m}' | sh $GT/hooks/stop/require-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gw", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_input: {questions: [{question: "Agree the flow?", header: "Flow", multiSelect: false, options: [{label: "Agree the flow (Recommended)", description: "yes"}, {label: "Change it", description: "no"}]}]}}' | sh $GT/hooks/pre-tool-use/hold-question-until-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gw", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_response: {answers: {"Agree the flow?": "Agree the flow (Recommended)"}}}' | sh $GT/hooks/post-tool-use/record-gate-answer.sh
-FLOW=$(sh $K/crucible-dynamic-flow/scripts/main/flow-agree.sh --effort "$H" --file "$S/flow.json")
+FLOW=$(sh $K/crucible-adaptive-flow/scripts/main/flow-agree.sh --effort "$H" --file "$S/flow.json")
 run sh $GW/main/worktree-cut.sh --effort "$H" --repo "$S/repo" --name builder --from checkout
-run sh $K/crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
+run sh $K/crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
 check "a step of two cut-worktree lines is ended by the first worktree.cut" is "$rc" 0
 run sh $GW/main/worktree-cut.sh --effort "$H" --repo "$S/repo" --name other --from checkout
-run sh $K/crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 2
+run sh $K/crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 2
 check "the second line by the second tree's worktree.cut" is "$rc" 0
-run sh $K/crucible-dynamic-flow/scripts/main/flow-show.sh --flow "$FLOW" --all
+run sh $K/crucible-adaptive-flow/scripts/main/flow-show.sh --flow "$FLOW" --all
 
 echo
 echo "=== the rules: writer, shape and used-once answer"
@@ -1001,7 +950,7 @@ for p in "$GW"/main/*.sh "$GW"/internal/*.sh; do
 	echo "$s" >>"$S/ran"
 	check "$s: --help exits 0, an unknown option exits 2" is "$h:$b" "0:2"
 	case $s in
-		setup-*.sh | worktree-busy.sh | worktree-changes.sh | worktree-kept.sh | worktree-trees.sh | worktree-uncommitted.sh)
+		worktree-setup.sh | worktree-busy.sh | worktree-changes.sh | worktree-kept.sh | worktree-trees.sh | worktree-uncommitted.sh)
 			check "  ... and its --help is short: at most 25 lines of at most 80 characters" is "$([ "$(wc -l <"$S/help")" -le 25 ] && echo lines):$(awk 'length > 80' "$S/help" | wc -l | tr -d ' ')" "lines:0" ;;
 		*) ;;
 	esac

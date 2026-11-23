@@ -239,7 +239,7 @@
     [exit 2]
   PASS: an option without its value: exit 2
   $ env TMPDIR=/nonexistent-gp sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
-    err: mktemp: mkdtemp failed on /nonexistent-gp/git-push.7JZ87L: No such file or directory
+    err: mktemp: mkdtemp failed on /nonexistent-gp/git-push.EdSjlC: No such file or directory
     err: push-tree.sh: mktemp could not make a work folder
     [exit 4]
   PASS: no work folder: exit 4
@@ -292,7 +292,7 @@
   PASS: a right one, in the closed effort: accepted
 
 === the step and the scripts' contracts
-  $ sh crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage deliver
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage deliver
     out: git-mount/mount · Puts one or more trees' committed work into the human's checkout as uncommitted changes, to try it there · ends with mount.made · stages: deliver · skills: git-mount · propose when: the human wants to try a tree's work in their own checkout
     out: git-push/push-tree · Pushes one tree's branch to a remote under the same name, on the human's recorded yes · ends with push.made · stages: deliver · skills: git-push · propose when: the human wants a tree's work on a remote, to share it or open a pull request from it
     [exit 0]

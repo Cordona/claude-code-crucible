@@ -147,7 +147,7 @@
     out: {"commit":"<sha>","signed":false}
     err: commit-tree.sh: unsigned: signing timed out after 10 s
     [exit 0]
-    took 11 s
+    took 10 s
   PASS: commit-tree: exit 0, signed: false
   PASS: commit-tree: stderr says signing timed out after 10 s
   PASS: commit-tree: it took about 10 s, not the signer's 30
@@ -157,7 +157,7 @@
     out: {"commit":"<sha>","new":true,"signed":false}
     err: commits-merge.sh: unsigned: signing timed out after 10 s
     [exit 0]
-    took 10 s
+    took 11 s
   PASS: commits-merge: exit 0, new: true, signed: false
   PASS: commits-merge: stderr says signing timed out after 10 s
   PASS: commits-merge: the commit carries no signature, parents in order
@@ -215,6 +215,53 @@
   PASS:   ... and the signer and the program it started are both stopped
   PASS:   ... and no ref, index, status or config changed
 
+=== commit-snapshots.sh: which commits are snapshots
+  $ sh internal/commit-snapshots.sh --repo <S>/repo --commit <sha> --commit <sha> --commit <sha> --commit 856b046
+    out: {"snapshots":["<sha>","<sha>"]}
+    [exit 0]
+  PASS: exit 0: the commits of kind snapshot, whatever their text, as full shas in the order given
+  PASS:   ... a plain commit and one of kind snapshots are not snapshots, and nothing changed
+  $ sh internal/commit-snapshots.sh --repo <S>/space/efforts/<id>-gpg-work/worktrees/two --commit <sha>
+    out: {"snapshots":[]}
+    [exit 0]
+  PASS: from a worktree, a commit of another kind: exit 0, no snapshot
+  $ sh internal/commit-snapshots.sh --commit <sha>
+    err: commit-snapshots.sh: --repo missing
+    [exit 2]
+  PASS: no --repo: exit 2
+  $ sh internal/commit-snapshots.sh --repo <S>/repo
+    err: commit-snapshots.sh: --commit missing; expected one or more
+    [exit 2]
+  PASS: no --commit: exit 2
+  $ sh internal/commit-snapshots.sh --repo <S>/repo --commit
+    err: commit-snapshots.sh: --commit needs a value
+    [exit 2]
+  PASS: --commit with no value: exit 2
+  $ sh internal/commit-snapshots.sh --repo <S>/repo --commit --all
+    err: commit-snapshots.sh: --commit --all starts with -; expected a commit
+    [exit 2]
+  PASS: --commit starting with -: exit 2
+  $ sh internal/commit-snapshots.sh --repo <S>/repo --commit <sha>
+    err: commit-snapshots.sh: --commit <sha> is no commit in <S>/repo
+    [exit 2]
+  PASS: --commit naming a tree: exit 2
+  $ sh internal/commit-snapshots.sh --repo relative --commit <sha>
+    err: commit-snapshots.sh: --repo must be an absolute folder
+    [exit 2]
+  PASS: --repo not absolute: exit 2
+  $ sh internal/commit-snapshots.sh --repo <S> --commit <sha>
+    err: commit-snapshots.sh: --repo <S> is not in a git repository
+    [exit 2]
+  PASS: --repo in no repository: exit 2
+  $ env PATH=<S>/cs-nogit /bin/sh internal/commit-snapshots.sh --repo <S>/repo --commit <sha>
+    err: commit-snapshots.sh: git not found
+    [exit 4]
+  PASS: without git: exit 4
+  $ env PATH=<S>/cs-nojq /bin/sh internal/commit-snapshots.sh --repo <S>/repo --commit <sha>
+    err: commit-snapshots.sh: jq not found
+    [exit 4]
+  PASS: without jq: exit 4
+
 === the human's git config
   PASS: the global and repository config files are as before the run
   PASS: no Crucible key was written to any config
@@ -224,12 +271,14 @@
   PASS: commit-tree.sh: --help exits 0, an unknown option exits 2
   PASS: commits-merge.sh: --help exits 0, an unknown option exits 2
   PASS: commit-object.sh: --help exits 0, an unknown option exits 2
+  PASS: commit-snapshots.sh: --help exits 0, an unknown option exits 2
   PASS: shellcheck -x -o all is clean
 
 === coverage: every script under scripts/ ran on a case
   PASS: commit-message.sh ran on a case (4 runs)
   PASS: commit-tree.sh ran on a case (13 runs)
   PASS: commit-object.sh ran on a case (8 runs)
+  PASS: commit-snapshots.sh ran on a case (11 runs)
   PASS: commits-merge.sh ran on a case (8 runs)
 
-=== 89 PASS, 0 FAIL
+=== 103 PASS, 0 FAIL

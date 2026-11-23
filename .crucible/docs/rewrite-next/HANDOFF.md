@@ -39,7 +39,9 @@ The other 11 runs are narrative.
 - `setup-plan.sh` says git 2.31+.
 - Final evidence on a still tree: all 18 runs exit 0 (git-worktree 332, git-mount 163, git-commit 89, git-push 85, dev-base 67, internals-guard 49, rollback 22).
 
-**Next, as discussed with the owner:** agent-run, meaning what happens when a dispatched agent works. Then dispatch. After that, a separate effort reviews the past splits against the split/don't-split test.
+**The split evaluation, done (2026-11-23, owner-approved verdict `reviews/split-evaluation-verdict.md`):** nothing is split. The worktree setup chain is merged back into `worktree-setup.sh`, the plan still made whole before any copy; git-commit's `commit-snapshots.sh` tells a snapshot and git-mount's `effort-commits.sh` asks it; `tracker-read.sh`'s link comment says what its check is for. Evidence on a still tree: all 18 runs exit 0 (git-worktree 302, git-mount 165, git-commit 103, git-push 85, dev-base 67, internals-guard 49, rollback 22). No further structural change to the toolbelt before a live run uses it.
+
+**Next, as discussed with the owner:** agent-run, meaning what happens when a dispatched agent works. Then dispatch.
 
 ## Overnight help trim (2026-11-23)
 
@@ -60,7 +62,7 @@ The other 11 runs are narrative.
   3. One home for the repository rule and for the time-limit runner; liveness moved out of `mount.made` and `push.made`.
   4. Three cuts in every help: drop the `--help | -h` usage line and `Needs:` lines that state install facts, and either show or drop exits that no evidence shows. Then meet the rule's "8 to 15 lines", or change the rule to what the template yields. This changes the template.
   5. Two shared evidence cases: a held events lock (exit 6) and a missing tool (exit 4).
-  6. The fat-script splits: mount-apply, setup-plan, the git-worktree lib, tracker-read.
+  6. ~~The fat-script splits~~: settled by the split evaluation (see above). Nothing is split; the setup chain is merged back.
 
 ## Where things stand (2026-11-22)
 
@@ -95,7 +97,7 @@ The other 11 runs are narrative.
     - Two gate-hook defects, fixed (design `reviews/gate-hook-fixes-design.md`; built on the owner's go; evidence accepted by Fable): the shape check is now a step of the hold hook, so a shape refusal keeps the card; and the missing-recommendation refusal now says a question with no real options is asked in a plain sentence.
     - Accepted, no change: a grill only after the human hedges; steps marked together at the end of one long turn, which matters once agents do the steps; 9 dialogs before the first code edit.
     - The owner chose (2026-11-22): the fixes, then dispatch. A mid-build flow change and a resume after a break are tested in dispatch's live run.
-- **Next, before dispatch (owner, 2026-11-22):** make dynamic flows work as Fable proposed. Each floating skill declares its step in a `step.json`; `flow-candidates.sh` lists them; `flow-agree.sh` refuses any other step. Main proposes a flow once there is enough evidence, before any work starts, for example: context, grill, spec. Git identity and worktree cuts later become floating steps too. Proving this on the context phase comes first. Then dispatch, talk first.
+- **Next, before dispatch (owner, 2026-11-22):** make adaptive flows work as Fable proposed. Each floating skill declares its step in a `step.json`; `flow-candidates.sh` lists them; `flow-agree.sh` refuses any other step. Main proposes a flow once there is enough evidence, before any work starts, for example: context, grill, spec. Git identity and worktree cuts later become floating steps too. Proving this on the context phase comes first. Then dispatch, talk first.
   - The owner's decisions (2026-11-22, on Fable's view):
     1. Discovery has no step of its own: the step is "build the context", ended by `context.cut`, and discovery is how it is done.
     2. The flow skill tells main to run `flow-candidates.sh`, and its description claims "when an effort's work is about to start". The effort skill doesn't mention it and no hook runs it; a hook line is added only if a live run shows main skipping it.
@@ -141,7 +143,7 @@ The other 11 runs are narrative.
     - `skills` is a checked list;
     - `ends_with` replaces `done_when`, in flow events too.
 
-    The specs (`specs/crucible-dynamic-flow.md`, `specs/crucible-events.md`) describe what is built; the design keeps the old field names. Every evidence run is rerun; Fable reproduced them and accepted the catalogue, and its one prose fix is in ("Once those steps are done"). The preflight passed: linking a component folder with no `SKILL.md` gives no warning, and the skill list is unchanged.
+    The specs (`specs/crucible-adaptive-flow.md`, `specs/crucible-events.md`) describe what is built; the design keeps the old field names. Every evidence run is rerun; Fable reproduced them and accepted the catalogue, and its one prose fix is in ("Once those steps are done"). The preflight passed: linking a component folder with no `SKILL.md` gives no warning, and the skill list is unchanged.
   - **Live run 6** (`run6/`, prepare stage only, judged by Fable):
     - main proposed a flow of declared steps before any work (context, then spec, with the grill left out because the goal was clear), on the card `flow-card.sh` prints;
     - when the human hesitated, main added the grill through a flow change;
@@ -173,7 +175,7 @@ Report all of it to the owner in the morning. Progress: the git-commit 4 were tr
   1. one home each for "what a repository is" (in git-identity, git-worktree, git-mount) and the time-limit runner (git-commit, git-push, already drifted); liveness replay out of the mount.made and push.made rules (their scripts already ask worktree-trees.sh);
   2. main's tools kept apart from internal job scripts (git-worktree's scripts/ holds 23 entries, about 8 for main);
   3. events-read.sh fails closed on an unreadable event file (core, a few lines plus one evidence case).
-  Fat files still to split, ranked: mount-apply.sh (read-only checks vs apply), setup-plan.sh, git-worktree's lib, tracker-read.sh.
+  The fat files Fable ranked were judged by the split evaluation (2026-11-23): nothing is split, and the worktree setup chain is merged back.
   **Recorded, not built:** the sender refusing a tree not cut as a done cut-worktree step (built with the sender); any component answering the busy scan (built with agent-run). Until then "no quiet cuts" and "busy" are not enforced.
 
 The owner gave the go (2026-11-22): git-commit and git-worktree are built and proven by their evidence runs; git-mount is being built, then git-push, each script proven by execution, then Fable reviews: the toolbelt against the constitution, and fat scripts and verbose --help across the whole new rewrite, so the good example is set before the separate effort applies it. Owner rules for the build: a SKILL.md never lists its scripts; a --help stays at about 10-15 lines in caller terms. A separate effort, after this build, trims every existing --help across the new rewrite and adds a help-check script, and splits every fat script or lib (one that bundles several jobs) the way git-mount's lib was split: thin plumbing in lib/, each job its own script with a --help contract, proven by execution. The decisions sit at the top of that design document. Until dispatch brings build steps, a build main writes itself has no flow. The owner (2026-11-22): "Do not try to implement the dispatch. We need to talk. A lot." No design or build before that conversation.
@@ -199,13 +201,13 @@ All core components are in `new-rewrite/framework/core/main-thread/`, and both d
 | `crucible-effort` | An effort's life: opened, paused, resumed, closed; refuses to close over open work | `specs/crucible-effort.md` |
 | `crucible-context` | The outside material the work needs: references and notes, cut on the human's "done" into sealed versions; the path and link rules | `specs/crucible-context.md` |
 | `crucible-grill` | Interviewing the human, question by question, into decisions | `specs/crucible-grill.md` |
-| `crucible-dynamic-flow` | A flow agreed at a gate, tracked step by step from events | `specs/crucible-dynamic-flow.md` |
+| `crucible-adaptive-flow` | A flow agreed at a gate, tracked step by step from events | `specs/crucible-adaptive-flow.md` |
 | `crucible-spec` | The approved what and why, sealed in place in `spec/` at a recorded gate | `specs/crucible-spec.md` |
 | `crucible-discovery` | A how only: read first, ask second | none: the SKILL.md is the whole of it |
 | domain `trackers`, `code-context` | A GitHub or GitLab issue, or a commit, copied into the context | `specs/software-development-domain.md` |
 | core `CLAUDE.md` | The rules that hold everywhere: how main talks, Never and Always | the file itself |
 
-**Evidence**, each a run script with its full output, run from `/`, in `evidence/`: `events`, `effort`, `context`, `grill`, `spec`, `gate-answers`, `dynamic-flow`, `fixes`, `tracker` (through the installed layout; it reads GitHub), and `installed` (every component through its skill link). `lib-decide.sh` answers one recorded gate through the real hooks. Every run takes each folder and path from a script's stdout and hides no output.
+**Evidence**, each a run script with its full output, run from `/`, in `evidence/`: `events`, `effort`, `context`, `grill`, `spec`, `gate-answers`, `adaptive-flow`, `fixes`, `tracker` (through the installed layout; it reads GitHub), and `installed` (every component through its skill link). `lib-decide.sh` answers one recorded gate through the real hooks. Every run takes each folder and path from a script's stdout and hides no output.
 
 **Reviews by Fable**, in `reviews/`: `core-completeness-review.md` and `compliance-audit.md`, with `compliance-fixes.md`. Every finding is built or recorded below.
 
@@ -218,7 +220,7 @@ Each item waits for its trigger.
 | ~~What "beside" means~~: settled and built with the step catalogue (`crucible-events/scripts/lib/beside.sh`; the install links every component and runs hooks through the links). | done |
 | Remove core `CLAUDE.md`'s "never send agents" line. Its rule "never write code or tests yourself when a suitable build or test agent exists, unless the human explicitly tells you to" then takes effect; today no agents are installed, so main writes code as usual. Decide then whether small work outside an effort goes to an agent, is done by main, or needs the human's "do it yourself" each time. | The dispatch build |
 | The sender's inputs. It harvests the newest `context.cut`, every `grill.ended` (oldest first) and the newest `spec.approved`, and gives agents their event paths. Only the sender checks: the newest of each, still intact, the spec file still giving its sha256; one freshness check covers every pinned input. It refuses when the context's draft holds uncut content, naming it; only an empty draft with no cut shows as "none". The plan shows work in progress (an open grill, a spec draft newer than the approved one) beside any "none". Each agent kind declares the event types it takes, in one file of its own. The plan's inputs are designed once, not as three special cases. Whether the flow's agreement and the plan's approval are one gate or two. | The dispatch build |
-| **Finding, owner 2026-11-22: a flow must never replicate the spec.** In run 5, main's build flow (events 8–12) restated the spec's acceptance criteria as steps and then marked them itself. That made a second, unsealed contract, approved at a gate, changeable through `flow-change.sh`. A dynamic flow is a sequence of the framework's floating pieces (skills), each ended by its own event; for the context phase: discovery, building the context, grill, spec. Two things caused it: the run-3 sentence "a step is an outcome the human would ask about", and `flow-agree.sh` accepting free-text steps. Direction: flow steps come only from the step catalogue, enforced by the script. To settle in the dispatch conversation. | Before any further live run |
+| **Finding, owner 2026-11-22: a flow must never replicate the spec.** In run 5, main's build flow (events 8–12) restated the spec's acceptance criteria as steps and then marked them itself. That made a second, unsealed contract, approved at a gate, changeable through `flow-change.sh`. An adaptive flow is a sequence of the framework's floating pieces (skills), each ended by its own event; for the context phase: discovery, building the context, grill, spec. Two things caused it: the run-3 sentence "a step is an outcome the human would ask about", and `flow-agree.sh` accepting free-text steps. Direction: flow steps come only from the step catalogue, enforced by the script. To settle in the dispatch conversation. | Before any further live run |
 | ~~The step catalogue~~: built 2026-11-22 (`flow-step.json` per component, `flow-candidates.sh`); see "Where things stand". | done |
 | Watch in run 5: is a grill offered when the goal is open (its trigger is only the skill's one-line description); after `spec.approved`, does main build without asking who builds, propose a flow for the build, and mark its steps. Entries added unread are a known limit and are not scored. | Run 5 |
 | Count in run 5: the gates before the first code edit (the effort, the context's "done?", each grill round, the spec, any flow); outcome-changing questions asked as gates. | Run 5 |

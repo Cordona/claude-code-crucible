@@ -12,7 +12,7 @@ $ sh crucible-effort/scripts/main/effort-resume.sh --effort <S>/space/efforts/<i
     -r--r--r-- 000003-effort.resumed.json
     lock files left: 0
 === B2: effort-close refuses while work is open
-$ sh crucible-dynamic-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-adaptive-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     
     [exit 0]
 $ sh crucible-grill/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
@@ -20,7 +20,7 @@ $ sh crucible-grill/scripts/internal/open-work.sh --effort <S>/space/efforts/<id
     [exit 0]
     agreed: <S>/space/efforts/<id>-fixes:5
     grill: <S>/space/efforts/<id>-fixes/grills/1.json
-$ sh crucible-dynamic-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
+$ sh crucible-adaptive-flow/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
     flow 5 "Prune nightly"
     [exit 0]
 $ sh crucible-grill/scripts/internal/open-work.sh --effort <S>/space/efforts/<id>-fixes
@@ -46,7 +46,7 @@ $ sh crucible-effort/scripts/main/effort-status.sh --effort <S>/space/efforts/<i
 $ sh crucible-effort/scripts/main/effort-resume.sh --effort <S>/space/efforts/<id>-fixes --words one more go
     <S>/space/efforts/<id>-fixes/events/000008-effort.resumed.json
     [exit 0]
-$ sh crucible-dynamic-flow/scripts/main/flow-end.sh --flow <S>/space/efforts/<id>-fixes:5 --outcome dropped --words replaced by a new plan
+$ sh crucible-adaptive-flow/scripts/main/flow-end.sh --flow <S>/space/efforts/<id>-fixes:5 --outcome dropped --words replaced by a new plan
     <S>/space/efforts/<id>-fixes/events/000009-flow.ended.json
     [exit 0]
 $ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-fixes --outcome done --words finished --leave-open
@@ -105,7 +105,7 @@ $ sh install-check.sh --settings <S>/settings.json
     [exit 0]
 --- partial: two hooks taken out
 $ sh install-check.sh --settings <S>/partial.json
-    missing: Stop hook <S>/cfg/skills/crucible-dynamic-flow/hooks/stop/remind-flow-position.sh
+    missing: Stop hook <S>/cfg/skills/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh
     missing: Stop hook <S>/cfg/skills/crucible-gate/hooks/stop/require-card-shown.sh
     [exit 1]
 --- split across two files, as Claude Code merges them

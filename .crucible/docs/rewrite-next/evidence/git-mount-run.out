@@ -15,7 +15,7 @@
 
 === the reading scripts on a fresh mount
   $ sh internal/mount-record.sh --repo <S>/repo/dir
-    out: {"version":3,"effort":"<S>/space/efforts/<id>-mount-work","repo":"<S>/repo","trees":[{"name":"one","branch":"crucible/<id>-mount-work/one","tip":"<sha>"}],"start":"<sha>","start_is_snapshot":false,"target":"<sha>","head":"<sha>","branch":"main","mounted_at":"2026-11-23T10:32:00Z","paths":[{"path":"del.txt","before":"100644 <sha>","after":"absent","saved":true},{"path":"dir/sub/new.txt","before":"absent","after":"100644 <sha>"},{"path":"eol.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true},{"path":"f.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true}]}
+    out: {"version":3,"effort":"<S>/space/efforts/<id>-mount-work","repo":"<S>/repo","trees":[{"name":"one","branch":"crucible/<id>-mount-work/one","tip":"<sha>"}],"start":"<sha>","start_is_snapshot":false,"target":"<sha>","head":"<sha>","branch":"main","mounted_at":"2026-11-23T12:00:37Z","paths":[{"path":"del.txt","before":"100644 <sha>","after":"absent","saved":true},{"path":"dir/sub/new.txt","before":"absent","after":"100644 <sha>"},{"path":"eol.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true},{"path":"f.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true}]}
     [exit 0]
   PASS: mount-record.sh from a subfolder: the record, its trees and paths
   $ sh internal/mount-paths.sh --repo <S>/repo
@@ -252,6 +252,14 @@
     err: effort-commits.sh: --to needs a value
     [exit 2]
   PASS: --to with no value: exit 2
+  $ sh <S>/k3/skills/git-mount/scripts/internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: a neighbour isn't beside this skill (expected <S>/k3/skills/git-commit/scripts/internal/commit-snapshots.sh); install first
+    [exit 2]
+  PASS: with git-commit not beside it: exit 2, install first
+  $ sh <S>/k3/skills/git-mount/scripts/internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: commit-snapshots.sh failed (exit 1)
+    [exit 4]
+  PASS: git-commit's answer failing: exit 4, nothing printed
   $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name foreign
     err: effort-commits.sh: commit <sha> (no trailer) carries no Effort: <id>-mount-work trailer; expected only this effort's work
     [exit 2]
@@ -593,7 +601,7 @@
   PASS: mount-undo.sh with core not beside it: exit 2, install first
 
 === the flow step
-  $ sh crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage deliver
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage deliver
     out: git-mount/mount · Puts one or more trees' committed work into the human's checkout as uncommitted changes, to try it there · ends with mount.made · stages: deliver · skills: git-mount · propose when: the human wants to try a tree's work in their own checkout
     out: git-push/push-tree · Pushes one tree's branch to a remote under the same name, on the human's recorded yes · ends with push.made · stages: deliver · skills: git-push · propose when: the human wants a tree's work on a remote, to share it or open a pull request from it
     [exit 0]
@@ -601,7 +609,7 @@
   $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
     out: {"event":"<S>/space/efforts/<id>-mount-work/events/000034-mount.made.json","target":"<sha>","start":"<sha>","paths":5,"left_alone":1}
     [exit 0]
-  $ sh crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-mount-work:33 --step 1
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-mount-work:33 --step 1
     out: <S>/space/efforts/<id>-mount-work/events/000035-flow.step.done.json
     [exit 0]
   PASS: the step is ended by mount.made
@@ -658,4 +666,4 @@
   PASS: mount-states.sh ran on a case (6 runs)
   PASS: open-work.sh ran on a case (8 runs)
 
-=== 163 PASS, 0 FAIL
+=== 165 PASS, 0 FAIL

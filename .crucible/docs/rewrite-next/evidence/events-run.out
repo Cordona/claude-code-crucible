@@ -100,7 +100,7 @@ $ sh crucible-effort/scripts/main/effort-status.sh --effort <S>/space/efforts/<i
 $ sh crucible-effort/scripts/main/effort-list.sh
     events-read.sh: <S>/space/efforts/<id>-damaged/events/000001-effort.opened.json is not valid JSON
     effort-list.sh: skipped <S>/space/efforts/<id>-damaged: its events cannot be read
-    <S>/space/efforts/<id>-events	paused	events	2026-11-23T10:30:23Z
+    <S>/space/efforts/<id>-events	paused	events	2026-11-23T11:42:45Z
     [exit 3]
 --- repaired: every reader reads it again
 $ sh crucible-effort/scripts/main/effort-state.sh --effort <S>/space/efforts/<id>-damaged

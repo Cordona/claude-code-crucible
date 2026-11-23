@@ -53,15 +53,15 @@
    15  framework/core/main-thread/crucible-context/scripts/main/context-path-check.sh
     6  framework/core/main-thread/crucible-context/scripts/main/context-status.sh
     8  framework/core/main-thread/crucible-context/scripts/main/context-verify.sh
-   12  framework/core/main-thread/crucible-dynamic-flow/hooks/stop/remind-flow-position.sh
-   15  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-agree.sh
-   16  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-candidates.sh
-   15  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-card.sh
-    8  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-change.sh
-    9  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-end.sh
-    8  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-show.sh
-   18  framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-step-done.sh
-   21  framework/core/main-thread/crucible-dynamic-flow/scripts/internal/open-work.sh
+   12  framework/core/main-thread/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh
+   15  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-agree.sh
+   16  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-candidates.sh
+   15  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-card.sh
+    8  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-change.sh
+    9  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-end.sh
+    8  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-show.sh
+   18  framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-step-done.sh
+   21  framework/core/main-thread/crucible-adaptive-flow/scripts/internal/open-work.sh
    17  framework/core/main-thread/crucible-effort/scripts/main/effort-close.sh
     4  framework/core/main-thread/crucible-effort/scripts/main/effort-list.sh
    19  framework/core/main-thread/crucible-effort/scripts/main/effort-pause.sh

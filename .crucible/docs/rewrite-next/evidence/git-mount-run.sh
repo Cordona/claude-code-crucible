@@ -303,6 +303,15 @@ run sh $GM/internal/effort-commits.sh --repo "$S" --from "$HEAD0" --to "$ONE" --
 check "--repo in no repository: exit 2" is "$rc" 2
 run sh $GM/internal/effort-commits.sh --repo "$S/repo" --from "$HEAD0" --to
 check "--to with no value: exit 2" is "$rc" 2
+# git-commit tells the snapshots; a scratch skills folder without it, then
+# with a stand-in whose answer fails.
+K3="$S/k3/skills"; mkdir -p "$K3"; for d in dev-base git-mount; do ln -s "$(readlink "$K/$d")" "$K3/$d"; done
+run sh $K3/git-mount/scripts/internal/effort-commits.sh --repo "$S/repo" --from "$HEAD0" --to "$ONE2" --effort "$F"
+check "with git-commit not beside it: exit 2, install first" is "$rc:$(has "$err" "a neighbour isn't beside this skill" && echo y)" "2:y"
+mkdir -p "$K3/git-commit/scripts/internal"; printf '#!/bin/sh\nexit 1\n' >"$K3/git-commit/scripts/internal/commit-snapshots.sh"
+run sh $K3/git-mount/scripts/internal/effort-commits.sh --repo "$S/repo" --from "$HEAD0" --to "$ONE2" --effort "$F"
+check "git-commit's answer failing: exit 4, nothing printed" is "$rc:$(has "$err" 'commit-snapshots.sh failed (exit 1)' && echo y):$out" "4:y:"
+rm -rf "$S/k3"
 run sh $GM/main/mount-apply.sh --effort "$F" --name foreign
 check "mount-apply.sh of a tree holding a foreign commit: exit 2, effort-commits.sh's line, nothing written" is "$rc:$(has "$err" 'carries no Effort' && echo y):$([ -e "$REC" ] && echo there):$([ -e "$S/repo/foreign.txt" ] && echo f)" "2:y::"
 
@@ -618,18 +627,18 @@ check "mount-undo.sh with core not beside it: exit 2, install first" is "$rc:$(h
 
 echo
 echo "=== the flow step"
-run sh $K/crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage deliver
+run sh $K/crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage deliver
 check "git-mount/mount is listed under deliver, ending with mount.made" has "$out" 'git-mount/mount · .* · ends with mount.made · stages: deliver · skills: git-mount · propose when: the human wants to try a tree'"'"'s work in their own checkout'
 echo '{"goal":"Try the work","steps":[{"id":1,"step":"git-mount/mount"}]}' >"$S/flow.json"
-sh $K/crucible-dynamic-flow/scripts/main/flow-card.sh --file "$S/flow.json" >"$S/flow-card.md"
+sh $K/crucible-adaptive-flow/scripts/main/flow-card.sh --file "$S/flow.json" >"$S/flow-card.md"
 FSHA=$(shasum -a 256 "$S/flow.json" | cut -d ' ' -f 1)
 sh $GT/scripts/main/show-card.sh --record flow-agree --effort "$F" --subject "$FSHA" --accept "Agree the flow (Recommended)" "$S/flow-card.md" >/dev/null
 jq -cn --rawfile m "$S/flow-card.md" '{session_id: "sess-gm", last_assistant_message: $m}' | sh $GT/hooks/stop/require-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gm", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_input: {questions: [{question: "Agree the flow?", header: "Flow", multiSelect: false, options: [{label: "Agree the flow (Recommended)", description: "yes"}, {label: "Change it", description: "no"}]}]}}' | sh $GT/hooks/pre-tool-use/hold-question-until-card-shown.sh >/dev/null
 jq -cn '{session_id: "sess-gm", tool_name: "AskUserQuestion", tool_use_id: "t-flow", tool_response: {answers: {"Agree the flow?": "Agree the flow (Recommended)"}}}' | sh $GT/hooks/post-tool-use/record-gate-answer.sh
-FLOW=$(sh $K/crucible-dynamic-flow/scripts/main/flow-agree.sh --effort "$F" --file "$S/flow.json")
+FLOW=$(sh $K/crucible-adaptive-flow/scripts/main/flow-agree.sh --effort "$F" --file "$S/flow.json")
 run sh $GM/main/mount-apply.sh --effort "$F" --name one
-run sh $K/crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
+run sh $K/crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow "$FLOW" --step 1
 check "the step is ended by mount.made" is "$rc" 0
 run sh $GM/main/mount-undo.sh --repo "$S/repo"
 

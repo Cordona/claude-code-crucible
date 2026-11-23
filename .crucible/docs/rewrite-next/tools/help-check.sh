@@ -11,7 +11,8 @@ the section labels and their order, no Needs: section, an Exit: section,
 the width, the length, that every option the script parses is in its help,
 and that a script's folder matches its help: under scripts/internal/ the
 help starts "Run by <caller>; not for main to call.", under scripts/main/
-it doesn't.
+it doesn't and names no script under any scripts/internal/ of its framework
+tree (the nearest folder above it holding framework/).
 
 Stdout:    one line per problem, "SCRIPT: problem"; nothing when all pass
 Exit:
@@ -24,6 +25,22 @@ USAGE
 case ${1-} in -h | --help) usage; exit 0 ;; '') usage >&2; exit 2 ;; esac
 bad=0
 say() { printf '%s: %s\n' "$1" "$2"; bad=1; }
+
+# The framework tree a script sits in: the nearest folder above it that holds
+# framework/. Prints nothing when there is none.
+framework_root() {
+	d=$(cd "$(dirname "$1")" 2>/dev/null && pwd -P) || return 0
+	while [ "$d" != / ]; do
+		[ -d "$d/framework" ] && { printf '%s\n' "$d"; return 0; }
+		d=$(dirname "$d")
+	done
+}
+
+# The names of the scripts under any scripts/internal/ of a tree, one per line.
+internal_names() {
+	find "$1" -path '*/scripts/internal/*.sh' -type f | sed 's|.*/||' | sort -u
+}
+internal_root='' internal=''
 
 for f in "$@"; do
 	name=${f##*/}
@@ -54,7 +71,19 @@ for f in "$@"; do
 		!NF { started = 1 } END { print line }' | sed 's/\. .*/./')
 	case $f in
 		*/scripts/main/*)
-			case $said in *'not for main'*) say "$f" "in scripts/main/, but its help says it is not for main" ;; esac ;;
+			case $said in *'not for main'*) say "$f" "in scripts/main/, but its help says it is not for main" ;; esac
+			root=$(framework_root "$f")
+			if [ -n "${root}" ] && [ "${root}" != "${internal_root}" ]; then
+				internal_root=${root} internal=$(internal_names "${root}")
+			fi
+			if [ -n "${root}" ]; then
+				# Whole names only, a sentence's closing dot dropped.
+				printf '%s\n' "$help" | grep -oE '[A-Za-z0-9_.-]+' | sed 's/\.*$//' | sort -u \
+					| while IFS= read -r n; do
+						printf '%s\n' "${internal}" | grep -qxF -- "$n" \
+							&& printf '%s: in scripts/main/, but its help names the internal script %s\n' "$f" "$n"
+					done | grep . && bad=1
+			fi ;;
 		*/scripts/internal/*)
 			case $said in 'Run by '*'; not for main to call.') ;; *) say "$f" "in scripts/internal/, but its help does not start 'Run by <caller>; not for main to call.'" ;; esac ;;
 	esac

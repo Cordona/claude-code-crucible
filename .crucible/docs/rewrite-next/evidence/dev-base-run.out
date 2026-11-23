@@ -273,11 +273,11 @@
     err: identity-card.sh: --repo <S>/bare-wt belongs to no checkout (a bare repository)
     [exit 2]
   PASS: identity-card.sh on a bare repository's worktree: exit 2
-  $ sh git-commit/scripts/internal/commit-object.sh --repo <S>/bare.git --tree x --parent y --message-file <S>/msg --effort <S>/space/efforts/20261123T102948-387c-dev-base
+  $ sh git-commit/scripts/internal/commit-object.sh --repo <S>/bare.git --tree x --parent y --message-file <S>/msg --effort <S>/space/efforts/20261123T114233-935c-dev-base
     err: commit-object.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
     [exit 2]
   PASS: commit-object.sh on a bare repository: exit 2
-  $ sh git-commit/scripts/internal/commits-merge.sh --repo <S>/plain --commit x y --message-file <S>/msg --effort <S>/space/efforts/20261123T102948-387c-dev-base
+  $ sh git-commit/scripts/internal/commits-merge.sh --repo <S>/plain --commit x y --message-file <S>/msg --effort <S>/space/efforts/20261123T114233-935c-dev-base
     err: commits-merge.sh: --repo <S>/plain is not in a git repository
     [exit 2]
   PASS: commits-merge.sh on a plain folder: exit 2

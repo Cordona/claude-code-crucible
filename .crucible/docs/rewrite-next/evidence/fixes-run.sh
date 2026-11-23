@@ -1,7 +1,7 @@
 # Evidence run for the completeness review's fixes: B1 read-only events,
 # B2 effort-close and open work, C1 the event-writer guard, A2 the install.
 R=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite
-C=$R/framework/core/main-thread; E=$C/crucible-effort/scripts; FL=$C/crucible-dynamic-flow/scripts; G=$C/crucible-grill/scripts
+C=$R/framework/core/main-thread; E=$C/crucible-effort/scripts; FL=$C/crucible-adaptive-flow/scripts; G=$C/crucible-grill/scripts
 HOOK=$C/crucible-events/hooks/pre-tool-use/deny-direct-event-write.sh; I=$R/framework/core/install
 . /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/lib-decide.sh
 S="/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/fixes test"; rm -rf "$S"; mkdir -p "$S/cfg" "$S/bin"

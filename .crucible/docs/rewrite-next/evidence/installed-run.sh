@@ -38,9 +38,9 @@ echo "--- a stand-in domain component beside core: the scan sees its step"
 mkdir -p "$S/zz-domain-steps"
 printf '[{"name":"take-a-break","stage":["setup"],"does":"Pause the effort while a repository is set up","propose_when":"when set-up has to wait","ends_with":{"event":"effort.paused"},"skills":["crucible-effort"]}]\n' >"$S/zz-domain-steps/flow-step.json"
 ln -s "$S/zz-domain-steps" "$K/zz-domain-steps"
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-candidates.sh" --stages
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-candidates.sh" --stage setup
-run sh "$R/framework/core/main-thread/crucible-dynamic-flow/scripts/main/flow-candidates.sh" --stages
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-candidates.sh" --stages
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-candidates.sh" --stage setup
+run sh "$R/framework/core/main-thread/crucible-adaptive-flow/scripts/main/flow-candidates.sh" --stages
 
 echo "=== effort, through its link"
 F=$(sh "$K/crucible-effort/scripts/main/effort-start.sh" --name installed); show "    started: $F"
@@ -48,13 +48,13 @@ run sh "$K/crucible-effort/scripts/main/effort-state.sh" --effort "$F"
 
 echo "=== flow and gate"
 printf '{"goal":"Know the work","steps":[{"id":1,"step":"crucible-grill/grill"},{"id":2,"step":"zz-domain-steps/take-a-break"}]}\n' >"$S/flow.json"
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-card.sh" --file "$S/flow.json"
-sh "$K/crucible-dynamic-flow/scripts/main/flow-card.sh" --file "$S/flow.json" >"$S/card.md"
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-card.sh" --file "$S/flow.json"
+sh "$K/crucible-adaptive-flow/scripts/main/flow-card.sh" --file "$S/flow.json" >"$S/card.md"
 FSHA=$(shasum -a 256 "$S/flow.json" | cut -d ' ' -f 1)
 decide "$F" flow-agree "$FSHA" "$S/card.md" "Approve (Recommended)" >/dev/null
 run sh "$K/crucible-gate/scripts/internal/gate-answer.sh" --effort "$F" --record flow-agree --subject "$FSHA"
-FLOW=$(sh "$K/crucible-dynamic-flow/scripts/main/flow-agree.sh" --effort "$F" --file "$S/flow.json"); show "    agreed: $FLOW"
-run sh "$K/crucible-dynamic-flow/scripts/internal/open-work.sh" --effort "$F"
+FLOW=$(sh "$K/crucible-adaptive-flow/scripts/main/flow-agree.sh" --effort "$F" --file "$S/flow.json"); show "    agreed: $FLOW"
+run sh "$K/crucible-adaptive-flow/scripts/internal/open-work.sh" --effort "$F"
 
 echo "=== grill"
 D=$(sh "$K/crucible-grill/scripts/main/grill-new.sh" --effort "$F" --topic 'what to fetch'); show "    draft: $D"
@@ -62,10 +62,10 @@ run sh "$K/crucible-grill/scripts/main/grill-add.sh" --grill "$D" --question 'Wh
 run sh "$K/crucible-grill/scripts/main/grill-answer.sh" --grill "$D" --id q1 --text 'All of them'
 GE=$(sh "$K/crucible-grill/scripts/main/grill-end.sh" --grill "$D"); show "    ended: $GE"
 
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-step-done.sh" --flow "$FLOW" --step 1
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-step-done.sh" --flow "$FLOW" --step 1
 echo "--- the domain step, ended by its event"
 sh "$K/crucible-effort/scripts/main/effort-pause.sh" --effort "$F" --words 'set-up waits' >/dev/null; sh "$K/crucible-effort/scripts/main/effort-resume.sh" --effort "$F" --words 'back' >/dev/null
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-step-done.sh" --flow "$FLOW" --step 2
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-step-done.sh" --flow "$FLOW" --step 2
 
 echo "=== code-context, in full"
 git -C "$S/repo" init -q; printf 'one\n' >"$S/repo/a.txt"; git -C "$S/repo" add a.txt; git -C "$S/repo" -c user.name=t -c user.email=t@t commit -qm one
@@ -99,7 +99,7 @@ mkdir -p "$S/zz-domain-probe/scripts/internal"; printf '#!/bin/sh\necho "probe 1
 ln -s "$S/zz-domain-probe" "$K/zz-domain-probe"
 run sh "$K/crucible-effort/scripts/main/effort-close.sh" --effort "$F" --outcome done --words 'done'
 rm "$K/zz-domain-probe"
-run sh "$K/crucible-dynamic-flow/scripts/main/flow-end.sh" --flow "$FLOW" --outcome done
+run sh "$K/crucible-adaptive-flow/scripts/main/flow-end.sh" --flow "$FLOW" --outcome done
 run sh "$K/crucible-effort/scripts/main/effort-close.sh" --effort "$F" --outcome done --words 'done'
 run sh "$K/crucible-effort/scripts/main/effort-status.sh" --effort "$F"
 

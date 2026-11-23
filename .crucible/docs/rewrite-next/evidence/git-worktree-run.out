@@ -54,15 +54,15 @@
   PASS: the venv's launcher is repointed at the copy
   PASS: .env and .npmrc are not copied without .worktreeinclude
   $ sh internal/worktree-setup.sh --from <S>/repo --to <S>/repo
-    err: setup-plan.sh: --to <S>/repo is the same folder as --from; expected the worktree
+    err: worktree-setup.sh: --to <S>/repo is the same folder as --from; expected the worktree
     [exit 2]
   PASS: --to the same as --from: exit 2
   $ sh internal/worktree-setup.sh --from <S>/plain --to <S>/repo
-    err: setup-plan.sh: --from <S>/plain is a linked worktree; expected the main checkout
+    err: worktree-setup.sh: --from <S>/plain is a linked worktree; expected the main checkout
     [exit 2]
   PASS: --from a linked worktree: exit 2
   $ sh internal/worktree-setup.sh --from relative --to <S>/plain
-    err: setup-plan.sh: --from relative is not absolute; expected an absolute path
+    err: worktree-setup.sh: --from relative is not absolute; expected an absolute path
     [exit 2]
   PASS: --from not absolute: exit 2
   $ sh internal/worktree-setup.sh --from <S>/repo
@@ -71,222 +71,176 @@
     [exit 2]
   PASS: --to missing: exit 2
   $ sh internal/worktree-setup.sh --from <S>/repo --to <S>/plain
-    err: setup-plan.sh: .worktreeinclude line 1 "!.env" is a negation; expected only paths to copy
+    err: worktree-setup.sh: .worktreeinclude line 1 "!.env" is a negation; expected only paths to copy
     [exit 2]
   PASS: a .worktreeinclude negation line: exit 2, nothing copied
 
-=== setup-plan.sh, setup-copy.sh and setup-repoint.sh on their own
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sw","detected":["node","python"],"items":[{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
+=== worktree-setup.sh on a checkout of its own: the plan, then the copy and the repoint
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
     [exit 0]
-  PASS: setup-plan.sh: exit 0, node and python detected, from, from_given and to
-  PASS:   ... node_modules for node, .venv for python, the tracked lib/node_modules marked, bin to repoint
-  PASS:   ... read only: nothing in the tree yet
-  $ sh internal/setup-plan.sh --from <S>/sr/ --to <S>/sw
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sw","detected":["node","python"],"items":[{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
+  PASS: exit 0: node and python detected
+  PASS:   ... node_modules for node and .venv for python copied, .venv repointed, the tracked lib/node_modules left
+  PASS:   ... a copy method: cp -c, reflink or plain
+  PASS:   ... the absolute link into the checkout flagged with its target
+  PASS:   ... the copies are there, the launcher names the tree, the binary left alone
+  PASS:   ... the checkout's own launcher unchanged
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
     [exit 0]
-  PASS: --from with a trailing /: from_given without it
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sw","detected":["node","python"],"items":[{"do":"copy","path":".env"},{"do":"copy","path":"auth.json"},{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
-    [exit 0]
-  PASS: a .worktreeinclude listing .env and auth.json: both planned as copies with no technology
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sw","detected":["node","python"],"items":[{"do":"bad","path":"cfg/a?b"},{"do":"bad","path":"odd?env/pyvenv.cfg"},{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
-    [exit 0]
-  PASS: names holding a control character, from a glob and from the search, planned as bad
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sr/inner
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sr/inner","detected":["node","python"],"items":[{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
-    [exit 0]
-  PASS: a --to inside --from is never searched
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    out: {"from":"<S>/sr","from_given":"<S>/sr","to":"<S>/sw","detected":["node","python"],"items":[{"do":"copy","path":"node_modules","technology":"node"},{"do":"copy","path":".venv","technology":"python"},{"do":"tracked","path":"lib/node_modules"}],"repoint":{"python":["bin"]}}
-    err: setup-plan.sh: find could not read 1 places under --from; folders inside them were not searched
+  PASS: a second run overwrites nothing: exists for both, nothing repointed
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: find could not read 1 places under --from; folders inside them were not searched
     [exit 0]
   PASS: a folder find can't read: exit 0, said on stderr
-  $ sh internal/setup-plan.sh --from
-    err: setup-plan.sh: --from needs a value
-    [exit 2]
-  PASS: --from with no value: exit 2
-  $ sh internal/setup-plan.sh --to <S>/sw
-    err: setup-plan.sh: --from needs a value: the main checkout
-    [exit 2]
-  PASS: no --from: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr
-    err: setup-plan.sh: --to needs a value: the new tree
-    [exit 2]
-  PASS: no --to: exit 2
-  $ sh internal/setup-plan.sh --from /tmp/a	b --to <S>/sw
-    err: setup-plan.sh: --from /tmp/a?b holds a control character; expected a plain path
-    [exit 2]
-  PASS: --from holding a control character: exit 2
-  $ env PATH=<S>/plan-nogit /bin/sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: git not found; expected git 2.31+ on PATH
+  $ sh internal/worktree-setup.sh --from <S>/sr-link/ --to <S>/sw-given
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 2 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: --from through a link with a trailing /: a launcher naming the given path repointed too
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-secrets
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied .env
+    out: unignored auth.json
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: a .worktreeinclude listing .env and auth.json: both reach the copy
+  PASS:   ... the .env git ignores in the tree copied, the auth.json it doesn't left out
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-bad
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
+    err: worktree-setup.sh: odd?env/pyvenv.cfg was not copied: its name holds a control character; expected printable names
     [exit 4]
-  PASS: setup-plan.sh without git: exit 4, git 2.31+ asked for
-  $ env PATH=<S>/plan-nojq /bin/sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: jq not found; expected jq 1.6+ on PATH
+  PASS: names holding a control character, from a glob and from the search: exit 4, one line each
+  PASS:   ... the rest copied and repointed
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sr/inner
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: a --to inside --from is never searched
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied fine.txt
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
+    err: mkdir: <S>/sw/ro/a: Permission denied
+    err: cp: <S>/sr/unreadable: Permission denied
+    err: worktree-setup.sh: out/x was not copied: its folder in --to is not a folder inside --to; expected one
+    err: worktree-setup.sh: ro/a/b was not copied: mkdir could not create its folder in --to; expected a writable --to
+    err: worktree-setup.sh: unreadable was not copied: cp (cp -c) failed; expected a readable source and free space
     [exit 4]
-  PASS: setup-plan.sh without jq: exit 4
-  $ sh internal/setup-plan.sh --from <S>/nothing --to <S>/sw
-    err: setup-plan.sh: --from <S>/nothing is not a folder; expected an existing folder
-    [exit 2]
-  PASS: --from not a folder: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr/lib --to <S>/sw
-    err: setup-plan.sh: --from <S>/sr/lib is not the top folder of a git work tree; expected one
-    [exit 2]
-  PASS: --from not a work tree's top folder: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sw --to <S>/sr
-    err: setup-plan.sh: --from <S>/sw is a linked worktree; expected the main checkout
-    [exit 2]
-  PASS: --from a linked worktree: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sr
-    err: setup-plan.sh: --to <S>/sr is the same folder as --from; expected the worktree
-    [exit 2]
-  PASS: --to the same as --from: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr --to relative
-    err: setup-plan.sh: --to relative is not absolute; expected an absolute path
-    [exit 2]
-  PASS: --to not absolute, every problem listed: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: --from/.worktreeinclude is not a readable file; expected a file of paths
-    [exit 2]
-  PASS: .worktreeinclude not a readable file: exit 2
-  $ sh internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: .worktreeinclude line 1 "!x" is a negation; expected only paths to copy
-    err: setup-plan.sh: .worktreeinclude line 2 "node_modules/**" holds **; expected * within one segment
+  PASS: exit 4, the rest copied, one line per problem: a folder leading outside, a failed mkdir, a failed cp
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-refused
+    err: worktree-setup.sh: .worktreeinclude line 1 "!x" is a negation; expected only paths to copy
+    err: worktree-setup.sh: .worktreeinclude line 2 "node_modules/**" holds **; expected * within one segment
     [exit 2]
   PASS: a negation and a ** line: exit 2, one line each
-  $ sh <S>/alt/scripts/internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: the data file <S>/alt/scripts/internal/../lib/worktree-setup.json is not a readable file; expected the scripts' lib/worktree-setup.json
+  PASS:   ... the plan refuses before any copy: no line on stdout, nothing in the tree
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: --from/.worktreeinclude is not a readable file; expected a file of paths
     [exit 2]
-  PASS: the data file missing: exit 2
-  $ sh <S>/alt/scripts/internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: the data file is not valid JSON; expected one JSON object
+  PASS: .worktreeinclude not a readable file: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr --to
+    err: worktree-setup.sh: --to needs a value; expected --to VALUE
+    err: Try 'sh worktree-setup.sh --help'.
     [exit 2]
-  PASS: the data file not JSON: exit 2
-  $ sh <S>/alt/scripts/internal/setup-plan.sh --from <S>/sr --to <S>/sw
-    err: setup-plan.sh: the data file field "x" is not known; expected only always, technologies
-    err: setup-plan.sh: technologies is a JSON number; expected an array of objects
-    [exit 2]
-  PASS: the data file of the wrong shape: exit 2, one line per problem
---- setup-copy.sh
-  $ sh internal/setup-copy.sh --plan <S>/plan.json
-    out: {"method":"cp -c","done":[{"did":"copied","path":"node_modules","technology":"node"},{"did":"flag","path":"node_modules/.bin/left-pad","target":"<S>/sr/node_modules/left-pad/index.js"},{"did":"copied","path":".venv","technology":"python"},{"did":"tracked","path":"lib/node_modules"}]}
-    [exit 0]
-  PASS: exit 0: a copy method, node_modules and .venv copied for their technology, lib/node_modules tracked
-  PASS:   ... the absolute link into the checkout flagged with its target
-  PASS:   ... the copies are there, the launcher not yet repointed
-  $ sh internal/setup-copy.sh --plan <S>/plan.json
-    out: {"method":"cp -c","done":[{"did":"exists","path":"node_modules"},{"did":"exists","path":".venv"},{"did":"tracked","path":"lib/node_modules"}]}
-    [exit 0]
-  PASS: a second run overwrites nothing: exists for both
-  $ sh internal/setup-copy.sh --plan <S>/plan-secret.json
-    out: {"method":"cp -c","done":[{"did":"copied","path":".env"},{"did":"unignored","path":"auth.json"}]}
-    [exit 0]
-  PASS: a .env git ignores in the tree copied, an auth.json it doesn't left out as unignored
-  $ sh internal/setup-copy.sh --plan <S>/plan-problems.json
-    out: {"method":"cp -c","done":[{"did":"exists","path":"package.json"}]}
-    err: cp: <S>/sr/missing-thing: No such file or directory
-    err: mkdir: <S>/sw/ro/a: Permission denied
-    err: setup-copy.sh: odd?env was not copied: its name holds a control character; expected printable names
-    err: setup-copy.sh: out/x was not copied: its folder in --to is not a folder inside --to; expected one
-    err: setup-copy.sh: missing-thing was not copied: cp (cp -c) failed; expected a readable source and free space
-    err: setup-copy.sh: ro/a/b was not copied: mkdir could not create its folder in --to; expected a writable --to
-    [exit 4]
-  PASS: exit 4, the rest copied, one line per problem: a bad name, a folder leading outside, a failed cp, a failed mkdir
-  $ sh internal/setup-copy.sh --plan <S>/plan-bad.json
-    out: {"method":"cp -c","done":[{"did":"exists","path":"node_modules"},{"did":"exists","path":".venv"},{"did":"tracked","path":"lib/node_modules"}]}
-    err: setup-copy.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
-    err: setup-copy.sh: odd?env/pyvenv.cfg was not copied: its name holds a control character; expected printable names
-    [exit 4]
-  PASS: the plan with bad names: exit 4 after copying the rest
-  $ sh internal/setup-copy.sh
-    err: setup-copy.sh: --plan needs a value: the file setup-plan.sh printed
-    [exit 2]
-  PASS: setup-copy.sh with no --plan: exit 2
-  $ sh internal/setup-copy.sh --plan
-    err: setup-copy.sh: --plan needs a value
-    [exit 2]
-  PASS: --plan with no value: exit 2
-  $ sh internal/setup-copy.sh --plan <S>/no-plan.json
-    err: setup-copy.sh: --plan <S>/no-plan.json is not a readable file
-    [exit 2]
-  PASS: --plan not a readable file: exit 2
-  $ sh internal/setup-copy.sh --plan <S>/plan-broken.json
-    err: setup-copy.sh: --plan <S>/plan-broken.json is not a plan setup-plan.sh prints
-    [exit 2]
-  PASS: --plan not JSON: exit 2
-  $ sh internal/setup-copy.sh --plan <S>/plan-shape.json
-    err: setup-copy.sh: --plan <S>/plan-shape.json is not a plan setup-plan.sh prints
-    [exit 2]
-  PASS: a plan item with an absolute path: exit 2, nothing copied
-  $ sh internal/setup-copy.sh --plan <S>/plan-from.json
-    err: setup-copy.sh: the plan's checkout <S>/nothing is not a folder
-    [exit 2]
-  PASS: a plan whose checkout is no folder: exit 2
-  $ sh internal/setup-copy.sh --plan <S>/plan-to.json
-    err: setup-copy.sh: the plan's tree <S>/nothing is not a folder
-    [exit 2]
-  PASS: a plan whose tree is no folder: exit 2
-  $ sh internal/setup-copy.sh --plan <S>/plan-same.json
-    err: setup-copy.sh: the plan's tree <S>/sr is its checkout
-    [exit 2]
-  PASS: a plan whose tree is its checkout: exit 2
---- setup-repoint.sh
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder .venv --subfolder bin
-    out: {"folder":".venv","repointed":1}
-    [exit 0]
-  PASS: exit 0: one launcher repointed, the binary left alone
-  PASS:   ... the checkout's own launcher unchanged
-  $ sh internal/setup-repoint.sh --from <S>/sr/ --to <S>/sw --folder .venv --subfolder bin --subfolder Scripts
-    out: {"folder":".venv","repointed":0}
-    [exit 0]
-  PASS: again, with a second --subfolder not there: nothing left to repoint
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder .venv --subfolder bin --subfolder lnk/bin
-    out: {"folder":".venv","repointed":0}
-    err: <S>/cfg/skills/git-worktree/scripts/internal/setup-repoint.sh: line 119: <S>/sw/.venv/bin/locked: Permission denied
-    err: setup-repoint.sh: .venv/bin/hard was not repointed: it is the source file itself; expected a separate copy
-    err: setup-repoint.sh: .venv/bin/locked was not repointed: it could not be written; expected a writable copy
-    err: setup-repoint.sh: .venv/lnk/bin was not repointed: it leads outside the copy; expected a folder inside it
-    [exit 4]
-  PASS: exit 4, one line each: a subfolder leading outside, a launcher that is the source, one not writable
-  $ sh internal/setup-repoint.sh --to <S>/sw --folder .venv --subfolder bin
-    err: setup-repoint.sh: --from needs a value
-    [exit 2]
-  PASS: setup-repoint.sh with no --from: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder .venv
-    err: setup-repoint.sh: --subfolder needs a value
-    [exit 2]
-  PASS: no --subfolder: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder
-    err: setup-repoint.sh: --folder needs a value
-    [exit 2]
-  PASS: --folder with no value: exit 2
-  $ sh internal/setup-repoint.sh --from relative --to <S>/sw --folder .venv --subfolder bin
-    err: setup-repoint.sh: --from relative is not absolute
-    [exit 2]
-  PASS: --from not absolute: exit 2
-  $ sh internal/setup-repoint.sh --from /tmp/a	b --to <S>/sw --folder .venv --subfolder bin
-    err: setup-repoint.sh: --from holds a control character; expected a plain path
+  PASS: --to with no value: exit 2
+  $ sh internal/worktree-setup.sh --from /tmp/a	b --to <S>/sw
+    err: worktree-setup.sh: --from /tmp/a?b holds a control character; expected a plain path
     [exit 2]
   PASS: --from holding a control character: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/nothing --folder .venv --subfolder bin
-    err: setup-repoint.sh: --to <S>/nothing is not a folder
+  $ sh internal/worktree-setup.sh --from <S>/nothing --to <S>/sw
+    err: worktree-setup.sh: --from <S>/nothing is not a folder; expected an existing folder
     [exit 2]
-  PASS: --to not a folder: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder /etc --subfolder bin
-    err: setup-repoint.sh: --folder /etc is not a plain relative path
+  PASS: --from not a folder: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr/lib --to <S>/sw
+    err: worktree-setup.sh: --from <S>/sr/lib is not the top folder of a git work tree; expected one
     [exit 2]
-  PASS: --folder absolute: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder .venv --subfolder /bin
-    err: setup-repoint.sh: --subfolder /bin is not a plain relative path
+  PASS: --from not a work tree's top folder: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr --to relative
+    err: worktree-setup.sh: --to relative is not absolute; expected an absolute path
     [exit 2]
-  PASS: --subfolder absolute: exit 2
-  $ sh internal/setup-repoint.sh --from <S>/sr --to <S>/sw --folder ../sr --subfolder bin
-    err: setup-repoint.sh: --folder ../sr is not a folder inside --to
+  PASS: --to not absolute, every problem listed: exit 2
+  $ env PATH=<S>/setup-nogit /bin/sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: git not found; expected git 2.31+ on PATH
+    [exit 4]
+  PASS: without git: exit 4, git 2.31+ asked for
+  $ env PATH=<S>/setup-nojq /bin/sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: jq not found; expected jq 1.6+ on PATH
+    [exit 4]
+  PASS: without jq: exit 4
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file <S>/alt/scripts/internal/../lib/worktree-setup.json is not a readable file; expected the scripts' lib/worktree-setup.json
     [exit 2]
-  PASS: --folder leading outside --to: exit 2, nothing changed
---- worktree-setup.sh through the three
+  PASS: the data file missing: exit 2
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file is not valid JSON; expected one JSON object
+    [exit 2]
+  PASS: the data file not JSON: exit 2
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file field "x" is not known; expected only always, technologies
+    err: worktree-setup.sh: technologies is a JSON number; expected an array of objects
+    [exit 2]
+  PASS: the data file of the wrong shape: exit 2, one line per problem
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw-links
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: .venv/lnk/bin was not repointed: it leads outside the copy; expected a folder inside it
+    [exit 4]
+  PASS: launcher subfolders bin, Scripts and lnk/bin: bin repointed, the missing Scripts skipped
+  PASS:   ... lnk/bin, a link leading outside the copy: one line, nothing written there
+--- worktree-setup.sh: the lines in order, and its own refusals
   $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw2
     out: detected node
     out: detected python
@@ -296,8 +250,8 @@
     out: copied .venv
     out: repointed 0 .venv
     out: tracked lib/node_modules
-    err: <S>/cfg/skills/git-worktree/scripts/internal/setup-repoint.sh: line 119: <S>/sw2/.venv/bin/activate: Permission denied
-    err: setup-repoint.sh: .venv/bin/activate was not repointed: it could not be written; expected a writable copy
+    err: <S>/cfg/skills/git-worktree/scripts/internal/worktree-setup.sh: line 574: <S>/sw2/.venv/bin/activate: Permission denied
+    err: worktree-setup.sh: .venv/bin/activate was not repointed: it could not be written; expected a writable copy
     [exit 4]
   PASS: a launcher copied read-only: copied, repointed 0, exit 4 with the problem after the lines
   PASS:   ... the lines in order: detected, method, then each thing done, the flag after its copy
@@ -310,7 +264,7 @@
     out: copied .venv
     out: repointed 1 .venv
     out: tracked lib/node_modules
-    err: setup-copy.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
+    err: worktree-setup.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
     [exit 4]
   PASS: a bad name: the rest copied and repointed, exit 4
   $ sh internal/worktree-setup.sh --from <S>/sr --from <S>/sr --to <S>/sw3
@@ -506,7 +460,7 @@
 
 === worktree-cut.sh: a failing setup leaves no tree and no event
   $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name failing --from checkout
-    err: setup-plan.sh: .worktreeinclude line 1 "!bad" is a negation; expected only paths to copy
+    err: worktree-setup.sh: .worktreeinclude line 1 "!bad" is a negation; expected only paths to copy
     err: worktree-cut.sh: worktree-setup.sh failed (exit 2)
     err: worktree-cut.sh: removed the tree failing, its registration and its branch again
     [exit 4]
@@ -1277,7 +1231,7 @@
   PASS: a closed effort: worktree-chain-sync.sh is refused
 
 === the flow step
-  $ sh crucible-dynamic-flow/scripts/main/flow-candidates.sh --stage setup
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
     out: git-identity/set-identity · The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as · ends with identity.set · stages: setup · skills: git-identity · propose when: before the first commit an agent makes in a repository that has no identity in this effort yet
     out: git-worktree/cut-worktree · Cuts one tree for the coming work, from the base the human agreed, and sets it up · ends with worktree.cut · stages: setup · skills: git-worktree · propose when: whenever the coming work writes code
     [exit 0]
@@ -1291,7 +1245,7 @@
     err: copied .venv
     err: repointed 1 .venv
     [exit 0]
-  $ sh crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
     out: <S>/space/efforts/<id>-flowed/events/000005-flow.step.done.json
     [exit 0]
   PASS: a step of two cut-worktree lines is ended by the first worktree.cut
@@ -1304,11 +1258,11 @@
     err: copied .venv
     err: repointed 1 .venv
     [exit 0]
-  $ sh crucible-dynamic-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 2
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 2
     out: <S>/space/efforts/<id>-flowed/events/000007-flow.step.done.json
     [exit 0]
   PASS: the second line by the second tree's worktree.cut
-  $ sh crucible-dynamic-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
+  $ sh crucible-adaptive-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
     out: flow <S>/space/efforts/<id>-flowed:3 · Two trees for the work
     out:   [x] 1 Cuts one tree for the coming work, from the base the human agreed, and sets it up
     out:       event 4
@@ -1408,12 +1362,6 @@
   PASS: worktree-move.sh: --help exits 0, an unknown option exits 2
   PASS: worktree-snapshot.sh: --help exits 0, an unknown option exits 2
   PASS: open-work.sh: --help exits 0, an unknown option exits 2
-  PASS: setup-copy.sh: --help exits 0, an unknown option exits 2
-  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
-  PASS: setup-plan.sh: --help exits 0, an unknown option exits 2
-  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
-  PASS: setup-repoint.sh: --help exits 0, an unknown option exits 2
-  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
   PASS: worktree-busy.sh: --help exits 0, an unknown option exits 2
   PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
   PASS: worktree-changes.sh: --help exits 0, an unknown option exits 2
@@ -1421,6 +1369,7 @@
   PASS: worktree-kept.sh: --help exits 0, an unknown option exits 2
   PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
   PASS: worktree-setup.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
   PASS: worktree-trees.sh: --help exits 0, an unknown option exits 2
   PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
   PASS: worktree-uncommitted.sh: --help exits 0, an unknown option exits 2
@@ -1452,14 +1401,11 @@
   PASS: worktree-move.sh ran on a case (14 runs)
   PASS: worktree-snapshot.sh ran on a case (6 runs)
   PASS: open-work.sh ran on a case (3 runs)
-  PASS: setup-copy.sh ran on a case (13 runs)
-  PASS: setup-plan.sh ran on a case (22 runs)
-  PASS: setup-repoint.sh ran on a case (12 runs)
   PASS: worktree-busy.sh ran on a case (9 runs)
   PASS: worktree-changes.sh ran on a case (11 runs)
   PASS: worktree-kept.sh ran on a case (10 runs)
-  PASS: worktree-setup.sh ran on a case (11 runs)
+  PASS: worktree-setup.sh ran on a case (32 runs)
   PASS: worktree-trees.sh ran on a case (9 runs)
   PASS: worktree-uncommitted.sh ran on a case (6 runs)
 
-=== 332 PASS, 0 FAIL
+=== 302 PASS, 0 FAIL
