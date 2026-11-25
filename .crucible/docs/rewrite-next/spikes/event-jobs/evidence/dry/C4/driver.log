@@ -1,0 +1,52 @@
+human (request) @0: build a.sh and b.sh in the repo
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/repo --task 'build a.sh and b.sh in the repo'
+main: Agent lab-builder -> ag011
+agent ag011: job 2 ends idle
+stop fact: build 4 has no review
+main: card review-no-review-4.md
+human (answer) @4: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --kind code --targets 4 --kinds shell,security,clean-code
+main: Agent lab-reviewer -> ag021
+main: Agent lab-reviewer -> ag031
+main: Agent lab-reviewer -> ag041
+agent-stop refused ag021: write your report as JSON to /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort/reports/20ac1f53313ce619.json before you stop
+agent ag021: job 7 ends bad
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --job 7
+hot check ag011: {"ok":false,"refusal":"own-commit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --job 7
+main: Agent lab-reviewer -> ag051
+human (request) @15: stop the security reviewer, it is taking too long
+main: TaskStop ag031
+agent ag041: job 9 ends idle
+agent ag051: job 14 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --round 6
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --round 6
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --choice --subject merge:19 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort/cards/fix-choice-merge-19.md
+main: card fix-choice-merge-19.md
+human (answer) @19: fix high, two rounds
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --merge 19 --severity high --cap 2
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --merge 19 --side production
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --merge 19 --side production --delivery hot --hot-agent ag011
+main: SendMessage -> ag011
+agent ag011: job 22 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --kind code --targets 24
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --kind code --targets 24
+main: SendMessage -> ag041
+main: SendMessage -> ag051
+agent-stop refused ag041: write your report as JSON to /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort/reports/90d53a5d8a2f9605.json before you stop
+agent ag041: job 26 ends bad
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --job 26
+hot check ag011: {"ok":false,"refusal":"own-commit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --job 26
+main: Agent lab-reviewer -> ag061
+agent ag051: job 27 ends idle
+agent-stop refused ag061: write your report as JSON to /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort/reports/36cf04fdce3cd7f3.json before you stop
+agent ag061: job 31 ends bad
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --round 25
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort --round 25
+stop held: real/crucible-gate/scripts/main/show-card.sh --record end-card --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --accept 'Close the loop (Recommended)' --subject loop:21 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort/cards/end-card-loop-21.md
+main: card end-card-loop-21.md
+human (answer) @35: yes, close it
+main: loop-end.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.BpcZ0L/effort --loop 21 --reason replacement-failed

@@ -1,0 +1,56 @@
+{
+  "type": "job.dispatched",
+  "seq": 17,
+  "at": "2026-11-24T07:59:55Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "kind": "review",
+    "target": 16,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "hot",
+    "hot_agent": "ag021",
+    "slot": 1,
+    "replaces": null,
+    "approval": 12,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "f636a5c53a781037016b9000a661097c689a7dc4..f636a5c53a781037016b9000a661097c689a7dc4",
+      "earlier": [
+        {
+          "id": "SHELL-01",
+          "status": "open",
+          "title": "unquoted variable",
+          "answer": "declined",
+          "decline": "the variable never holds spaces"
+        },
+        {
+          "id": "SHELL-02",
+          "status": "open",
+          "title": "loop over unquoted words",
+          "answer": "declined",
+          "decline": "the loop words are fixed names"
+        }
+      ],
+      "skipped": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort/reports/ed3b4dc04a028d0f.json",
+    "act": {
+      "report": {
+        "findings": [],
+        "answers": {
+          "SHELL-01": "withdrawn",
+          "SHELL-02": "insisted"
+        }
+      }
+    },
+    "root": 4,
+    "round": 16,
+    "job": null,
+    "agent": null
+  }
+}

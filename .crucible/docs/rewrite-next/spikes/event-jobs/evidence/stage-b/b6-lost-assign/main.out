@@ -1,0 +1,5 @@
+Step 1 dispatched; waiting for the builder to finish.
+
+- **Step 1** ✅ The `lab-builder` agent finished and reported `DONE`.
+- **Step 2** ✅ `mid.sh` ran and printed a `lab-reviewer` Agent call with job `000007-job.dispatched.json`.
+- **Step 3** ⚠️ I made that call exactly as printed and the agent finished, but its report write was blocked. A PreToolUse hook refused it with "no open job for this agent: wait for your JOB line". The agent didn't retry, so nothing was written to `effort/reports/fd152fe578e1a19c.json`.

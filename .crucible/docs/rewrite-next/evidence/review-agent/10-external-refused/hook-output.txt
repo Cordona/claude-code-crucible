@@ -1,0 +1,2 @@
+{"decision":"block","reason":"Your report <S>/space/efforts/20261125T104145-fd0c-upload-retries/reports/external-review/46.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\njudge thread n11373: valid, rejected, already-fixed, deferred, answered or noted\nitems[0] is valid: remove its reply; it's drafted from the fix"}
+exit 0

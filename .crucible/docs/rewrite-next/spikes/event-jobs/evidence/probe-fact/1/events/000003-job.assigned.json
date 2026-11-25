@@ -1,0 +1,15 @@
+{
+  "type": "job.assigned",
+  "seq": 3,
+  "at": "2026-11-23T20:00:59Z",
+  "by": "ev.sh",
+  "claude_session_id": "probe",
+  "body": {
+    "name": "build-probe",
+    "tool_use_id": "tu",
+    "root": null,
+    "round": null,
+    "job": 2,
+    "agent": "probe-builder"
+  }
+}

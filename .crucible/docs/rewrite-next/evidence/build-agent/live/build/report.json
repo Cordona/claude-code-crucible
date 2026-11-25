@@ -1,0 +1,9 @@
+{
+  "summary": "add a retry limit to the upload client, backoff on 5xx",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

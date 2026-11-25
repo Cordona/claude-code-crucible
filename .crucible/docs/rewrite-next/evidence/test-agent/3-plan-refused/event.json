@@ -1,0 +1,20 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 53,
+    "at": "2026-11-25T10:42:05Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 51,
+      "iteration": 1,
+      "agent": "3a3a3a3a00",
+      "try": 1,
+      "lines": [
+        "tests[0].why names T-2: say it in words; the IDs are for scripts",
+        "tests[0].guards names B-9, which isn't a behaviour in this plan",
+        "tests[1] modifies a test: add keeps, what it must still assert"
+      ]
+    }
+  }
+]

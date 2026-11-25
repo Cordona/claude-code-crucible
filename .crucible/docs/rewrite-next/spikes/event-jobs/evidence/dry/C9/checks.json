@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "holds": 4,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"pr.posted\")] | length) == 2",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"round.made\" and any(.body.targets[]; . as $t | true) and .body.base != null)",
+      "ok": true
+    },
+    {
+      "check": ". as $e | any(.[]; .type == \"pr.head-moved\" and (.seq as $h | any($e[]; .type == \"round.made\" and any(.body.targets[]; . == $h))))",
+      "ok": true
+    },
+    {
+      "check": "all(.[]; .type != \"fix.chosen\")",
+      "ok": true
+    }
+  ]
+}

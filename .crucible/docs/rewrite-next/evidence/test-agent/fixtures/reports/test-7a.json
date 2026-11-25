@@ -1,0 +1,14 @@
+{
+  "summary": "cover the retry limit",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "pass",
+      "note": "12 breaks, all caught"
+    }
+  ]
+}

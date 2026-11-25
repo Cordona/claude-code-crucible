@@ -1,0 +1,2 @@
+Your report /Users/Shared/crucible-sandbox/build-agent-live/run/space/efforts/20261124T174618-d135-live-build-agent/reports/build/4.json was not accepted. Repair each line, then stop again; a second refusal ends this job.
+summary is 61 characters; shorten it to 55 or fewer

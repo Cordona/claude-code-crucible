@@ -1,0 +1,7 @@
+The harness blocked a foreground `sleep 25`, so I started it in the background. I'll stop the agent once it finishes.
+
+TaskStop returned "Task … is not running (status: completed)", because the agent finished on its own before I could stop it. Its completion notice said it wrote the report (`{"summary": "ok"}`), but its own `sleep 120` step was blocked, so `b.txt` was never written. Both sleeps had to run in the background because foreground `sleep` is blocked, and the 10s one was still running when I replied.
+
+The 10s sleep has now finished (exit 0); my earlier one-line answer still holds.
+
+The 25s sleep has also finished (exit 0). The steps didn't run in the order you asked: the agent finished before the 25s sleep did, and I called TaskStop at that point, not after the sleep.

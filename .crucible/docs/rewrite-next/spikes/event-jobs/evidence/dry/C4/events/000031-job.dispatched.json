@@ -1,0 +1,43 @@
+{
+  "type": "job.dispatched",
+  "seq": 31,
+  "at": "2026-11-24T08:29:23Z",
+  "by": "job-dispatch.sh",
+  "claude_session_id": "dry-C4-1",
+  "body": {
+    "kind": "review",
+    "target": 25,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": 1,
+    "replaces": 26,
+    "approval": 21,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "f4432010f6efcc4b2b7b020ef313d65392e68751..f3ae7d31a1825ee7973b027961a7776770fc7a69",
+      "earlier": [
+        {
+          "id": "CLEAN-CODE-01",
+          "status": "open",
+          "title": "loop over unquoted words",
+          "answer": "done",
+          "decline": null
+        }
+      ],
+      "skipped": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.BpcZ0L/effort/reports/36cf04fdce3cd7f3.json",
+    "act": {
+      "report": null
+    },
+    "root": 4,
+    "round": 25,
+    "job": null,
+    "agent": null
+  }
+}

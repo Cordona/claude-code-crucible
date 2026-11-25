@@ -1,0 +1,15 @@
+{
+  "type": "job.assigned",
+  "seq": 20,
+  "at": "2026-11-24T08:29:56Z",
+  "by": "post-agent.sh",
+  "claude_session_id": "dry-C10-3",
+  "body": {
+    "name": "fix-builder-ag053",
+    "tool_use_id": "tu-8",
+    "root": 4,
+    "round": null,
+    "job": 19,
+    "agent": "ag053"
+  }
+}

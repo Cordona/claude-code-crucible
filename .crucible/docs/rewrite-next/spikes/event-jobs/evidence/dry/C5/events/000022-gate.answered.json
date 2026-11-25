@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 22,
+  "at": "2026-11-24T08:29:41Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C5-1",
+  "body": {
+    "record": "end-card",
+    "subject": "loop:12",
+    "question": "The fix loop of choice 12 is over: stopped.",
+    "accept": "Close the loop (Recommended)",
+    "answer": "Close the loop (Recommended)",
+    "accepted": true
+  }
+}

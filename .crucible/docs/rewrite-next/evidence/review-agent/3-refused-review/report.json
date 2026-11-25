@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "realism": "edge-case",
+      "at": [
+        "b.sh:2"
+      ],
+      "claim": "a glob in the input expands",
+      "suggestion": "set -f around the loop"
+    },
+    {
+      "severity": "high",
+      "realism": "realistic",
+      "at": [
+        "x.sh:3"
+      ],
+      "claim": "the variable is unquoted, so a path with a space splits",
+      "suggestion": "quote it: \"$1\""
+    },
+    {
+      "severity": "low",
+      "realism": "hypothetical",
+      "claim": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "suggestion": "log to stderr",
+      "real_if": "these scripts run unattended in cron"
+    }
+  ]
+}

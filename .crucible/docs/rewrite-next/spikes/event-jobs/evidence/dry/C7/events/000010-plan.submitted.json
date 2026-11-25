@@ -1,0 +1,15 @@
+{
+  "type": "plan.submitted",
+  "seq": 10,
+  "at": "2026-11-24T08:01:16Z",
+  "by": "agent-stop.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "draft": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort/reports/b111c73c30662ea3.json",
+    "answers": {},
+    "root": 4,
+    "round": null,
+    "job": 8,
+    "agent": "ag021"
+  }
+}

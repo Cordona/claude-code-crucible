@@ -1,0 +1,2 @@
+{"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test/77.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
+exit 0

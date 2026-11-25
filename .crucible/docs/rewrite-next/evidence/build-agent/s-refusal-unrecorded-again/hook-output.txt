@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end"}
+stderr: submit-agent-work.sh: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end
+exit 0

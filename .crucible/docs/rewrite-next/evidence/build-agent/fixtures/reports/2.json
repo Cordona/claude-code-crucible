@@ -1,0 +1,21 @@
+{
+  "summary": "add a retry limit to the upload client",
+  "gates": [
+    { "gate": "test", "where": "php8.4", "result": "narrowed", "note": "--filter UploadClientTest only" },
+    { "gate": "test", "where": "php8.1", "result": "fail", "failing": ["TranslationsImportServiceTest::testImport"] },
+    { "gate": "lint", "result": "not_run", "note": "the local image lacks ext-redis" }
+  ],
+  "decisions": [
+    { "at": "app/Upload/Client.php:42", "choice": "retry only on 5xx, never on 4xx", "why": "a 4xx will not change on retry" }
+  ],
+  "impact": [
+    { "text": "a new env var UPLOAD_RETRY_LIMIT, needed on UAT and PROD before release", "at": ".deploy/helm/values.prod.yaml:31" }
+  ],
+  "noticed": [
+    { "at": "app/Upload/Auth.php:17", "text": "the token is refreshed on every call, outside this task" },
+    { "at": "config/dev.env:3", "kind": "secret", "text": "a hard-coded cloud access key" }
+  ],
+  "questions": [
+    { "text": "should the limit be configurable per tenant?" }
+  ]
+}

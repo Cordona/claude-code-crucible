@@ -1,0 +1,16 @@
+crucible(test): cover the retry limit
+
+Effort: 20261125T104146-4788-upload-retries
+Job: 73 test-php-7d7d7d
+Iteration: 1
+Language: php
+Framework: laravel
+Standards: testing, security
+
+commit d60e5b170547a5b3302cf49501f2e8df986535e3
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ tests/Upload/HelperTest.php       | 1 +
+ tests/Upload/UploadClientTest.php | 1 +
+ 2 files changed, 2 insertions(+)

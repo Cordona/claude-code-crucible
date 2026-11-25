@@ -1,0 +1,21 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "a.sh",
+    "severity": "high",
+    "realism": "realistic",
+    "title": "unquoted variable"
+   },
+   {
+    "kind": "shell",
+    "file": "b.sh",
+    "severity": "medium",
+    "realism": "realistic",
+    "title": "loop over unquoted words"
+   }
+  ],
+  "answers": {}
+ }
+}

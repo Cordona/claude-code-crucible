@@ -1,0 +1,2 @@
+{"ok":false,"refusal":"done-already","by":15}
+{"root":4,"owed":null,"facts":[],"waiting":[{"job":16,"since":17}],"loop":{"chosen":11,"rounds":1,"cap":3}}

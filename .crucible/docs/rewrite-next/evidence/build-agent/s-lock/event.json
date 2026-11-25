@@ -1,0 +1,16 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 83,
+    "at": "2026-11-25T10:45:37Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 81,
+      "iteration": 1,
+      "agent": "fl00000001",
+      "step": "lock",
+      "fault": "another agent's stop held job 81 (build-php-fl0000)'s effort too long"
+    }
+  }
+]

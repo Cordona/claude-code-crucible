@@ -1,0 +1,36 @@
+{
+  "type": "job.dispatched",
+  "seq": 12,
+  "at": "2026-11-24T08:01:17Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "kind": "challenge",
+    "target": 11,
+    "tree": null,
+    "agent_type": "lab-challenger",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": 1,
+    "replaces": null,
+    "approval": 7,
+    "payload": {
+      "draft": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort/reports/b111c73c30662ea3.json"
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort/reports/389bfa07356a82d2.json",
+    "act": {
+      "report": {
+        "challenges": [
+          {
+            "target": "B-1",
+            "title": "the empty-input case is not covered"
+          }
+        ]
+      }
+    },
+    "root": 4,
+    "round": 11,
+    "job": null,
+    "agent": null
+  }
+}

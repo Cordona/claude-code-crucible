@@ -1,0 +1,2 @@
+Ignoring 1 permissions.additionalDirectories entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/Users/Shared/crucible-sandbox/review-agent-live/run/repo"].hasTrustDialogAccepted: true in /Users/Shared/crucible-sandbox/event-jobs/cfg/.claude.json.
+main exit 0

@@ -1,0 +1,4 @@
+{"findings": [
+ {"severity": "high", "realism": "realistic", "at": "tests/test_prune.sh:29-30", "claim": "the dry-run test checks only the printed text, so it passes when the dry run deletes the backups", "suggestion": "After the dry run, assert that all seven backups are still in the folder."},
+ {"severity": "medium", "realism": "realistic", "at": "tests/test_prune.sh:34", "claim": "the pattern test passes the default glob, so it stays green when --pattern is ignored", "suggestion": "Use a pattern the default doesn't match, such as *.tgz, with files of both kinds."},
+ {"severity": "medium", "realism": "realistic", "at": "tests/lib.sh:19", "relates_to": "tests/test_prune.sh:33", "claim": "backups gives each suffix the same days, so a .txt and a .tar.gz of one day share an mtime and their order is undefined", "suggestion": "Let backups take a start day, so each call's files get their own times."}]}

@@ -1,0 +1,9 @@
+kinds shell,security,clean-code
+repo repo
+build repo
+settle
+expect any(.[]; .type == "loop.ended" and .body.reason == "clean")
+expect ([.[] | select(.type == "fix.chosen")] | first.seq) as $f | ([.[] | select(.type == "review.merged")] | last.seq) as $m | all(.[]; .type != "gate.answered" or .seq < $f or .seq > $m)
+expect ([.[] | select(.type == "round.made" and .body.loop != null)] | length) == 2
+expect any(.[]; .type == "review.merged" and .body.targets == ["SHELL-02"])
+expect ([.[] | select(.type == "job.dispatched" and .body.kind == "fix")] | length) == 2 and all(.[] | select(.type == "job.dispatched" and .body.kind == "fix"); .body.delivery == "hot")

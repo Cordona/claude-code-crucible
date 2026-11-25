@@ -1,0 +1,5 @@
+build a.sh and b.sh in the repo
+yes, build it
+yes, review it
+fix high and medium, one round
+yes, close it

@@ -1,0 +1,53 @@
+{
+  "type": "job.dispatched",
+  "seq": 7,
+  "at": "2026-11-24T07:59:49Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "kind": "review",
+    "target": 6,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": 1,
+    "replaces": null,
+    "approval": 5,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "11bc56445b4606fa7dc5c42eb0d73f10d0a6a2d8..f636a5c53a781037016b9000a661097c689a7dc4",
+      "skipped": [],
+      "earlier": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort/reports/98333ee9b05adf5c.json",
+    "act": {
+      "report": {
+        "findings": [
+          {
+            "kind": "shell",
+            "file": "a.sh",
+            "severity": "high",
+            "realism": "realistic",
+            "title": "unquoted variable"
+          },
+          {
+            "kind": "shell",
+            "file": "b.sh",
+            "severity": "medium",
+            "realism": "realistic",
+            "title": "loop over unquoted words"
+          }
+        ],
+        "answers": {}
+      }
+    },
+    "root": 4,
+    "round": 6,
+    "job": null,
+    "agent": null
+  }
+}

@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: submit-agent-work.sh ended unexpectedly at its check step for job 86 (build-php-fh0000); the job ends, nothing handed in"}
+stderr: submit-agent-work.sh: submit-agent-work.sh ended unexpectedly at its check step for job 86 (build-php-fh0000); the job ends, nothing handed in
+exit 0

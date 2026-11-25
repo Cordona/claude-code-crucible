@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 1,
+  "at": "2026-11-24T07:59:46Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "record": "build",
+    "subject": "build",
+    "question": "Build in /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo: build a.sh and b.sh in the repo",
+    "accept": "Build it (Recommended)",
+    "answer": "Build it (Recommended)",
+    "accepted": true
+  }
+}

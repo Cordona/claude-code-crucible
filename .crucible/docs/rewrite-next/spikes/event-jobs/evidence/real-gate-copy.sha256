@@ -1,0 +1,10 @@
+dabf635a639cfac172a92a61c6617426ccf1d6f02523e37264d9c82ae24c48f6  ./SKILL.md
+d9eb37c7ba80c577f7d0d7b7684f7ee1157dd570bab24c891681f2fc6c790e18  ./events/gate.answered.jq
+67cb74ac1107b62a699911e668be67af953473c68b8e71a724b3c4fcc1773ba1  ./hooks/matchers.json
+6d2110932064d7e4374af6af7a653f0e56231b1453e948f0c0a1fb668dddc583  ./hooks/post-tool-use/record-gate-answer.sh
+9de0c3587398904fa6932916d656a8f868e47fb84d84a58efb8db477c76167cf  ./hooks/pre-tool-use/hold-question-until-card-shown.sh
+f49e7ec9151988dca1b857d625ec22f39330e3bd9fa2b6ed0aa97401fb75dee0  ./hooks/stop/require-card-shown.sh
+3e437b5f534d64d6cca53df32cca8306bf56e060092083b322908cd81d087484  ./scripts/internal/check-question-shape.sh
+45e9e62ece1bb8c131e4f3cb92c86c625a4299465f7c4e08dafcb17be7f1b9e3  ./scripts/internal/gate-answer.sh
+81c63753622790650be7b459051d81ef73352c7c59513585bbfc9551a11ec7e1  ./scripts/lib/owed.sh
+db143642b0a28d5dfba650bddc41484cb1445ceca963c0da70f54a464199be69  ./scripts/main/show-card.sh

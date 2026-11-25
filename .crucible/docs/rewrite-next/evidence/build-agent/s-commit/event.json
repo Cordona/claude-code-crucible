@@ -1,0 +1,16 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 73,
+    "at": "2026-11-25T10:45:31Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 71,
+      "iteration": 1,
+      "agent": "fm00000001",
+      "step": "commit",
+      "fault": "job 71 (build-php-fm0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-commit/index.lock': File exists."
+    }
+  }
+]

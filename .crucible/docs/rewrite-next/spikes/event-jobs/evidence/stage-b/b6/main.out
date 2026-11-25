@@ -1,0 +1,9 @@
+Step 1 dispatched; waiting for it to finish.
+
+Step 2 is done and the step 3 reviewer is running; I'll reply once it finishes.
+
+All three steps ran, but the step 3 reviewer stopped early because the repo had changed under it.
+
+1. ✅ The `lab-builder` job finished and returned `DONE`.
+2. ✅ `mid.sh` printed an Agent call for a `lab-reviewer` job (`000007-job.dispatched.json`).
+3. ⚠️ I made that call as printed and the reviewer finished, but it stopped short. It wrote its report to `/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/ej-b6c/effort/reports/2345da8b8d0c3423.json`, then halted: the repo was no longer at the commit it expected (`6413b11`). HEAD is now `e027ec3` with a clean working tree, so new commits landed but nothing is uncommitted. I didn't touch the repo, so I don't know what moved it.

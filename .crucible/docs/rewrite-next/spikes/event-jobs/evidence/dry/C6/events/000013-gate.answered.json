@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 13,
+  "at": "2026-11-24T09:06:15Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "record": "review",
+    "subject": "no-review:12",
+    "question": "Fact: build 12 has no review; it can be reviewed now.",
+    "accept": "Review it (Recommended)",
+    "answer": "Review it (Recommended)",
+    "accepted": true
+  }
+}

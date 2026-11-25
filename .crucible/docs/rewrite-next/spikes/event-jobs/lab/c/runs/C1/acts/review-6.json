@@ -1,0 +1,8 @@
+{
+ "report": {
+  "findings": [],
+  "answers": {
+   "SECURITY-01": "fixed"
+  }
+ }
+}

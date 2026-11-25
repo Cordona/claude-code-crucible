@@ -1,0 +1,18 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 56,
+    "at": "2026-11-25T10:42:07Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 54,
+      "iteration": 1,
+      "agent": "4b4b4b4b00",
+      "try": 1,
+      "lines": [
+        "a plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"
+      ]
+    }
+  }
+]

@@ -1,0 +1,8 @@
+kinds shell,security,clean-code
+repo repo
+build repo
+settle
+expect any(.[]; .type == "loop.ended" and .body.reason == "clean")
+expect any(.[]; .type == "job.dispatched" and .body.kind == "fix" and .body.delivery == "hot")
+expect . as $e | [.[] | select(.type == "job.ended" and (.body.reason | IN("gave-up", "died"))) | .job as $j | $e[] | select(.type == "job.assigned" and .job == $j) | .agent] as $bad | all(.[] | select(.type == "job.dispatched" and .body.delivery == "hot"); .body.hot_agent | IN($bad[]) | not)
+expect any(.[]; .type == "job.ended" and .body.reason == "gave-up")

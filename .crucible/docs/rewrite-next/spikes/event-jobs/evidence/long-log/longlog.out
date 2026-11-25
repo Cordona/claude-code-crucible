@@ -1,0 +1,9 @@
+400 events at 58 s
+800 events at 128 s
+1200 events at 218 s
+1600 events at 327 s
+2000 events at 460 s
+one write at 2001 events: 0 s
+     500
+owes.sh at 2001 events: 98 s
+read+normalize: 0 s

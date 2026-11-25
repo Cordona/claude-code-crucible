@@ -1,0 +1,20 @@
+{
+  "type": "build.submitted",
+  "seq": 4,
+  "at": "2026-11-23T20:00:59Z",
+  "by": "ev.sh",
+  "claude_session_id": "probe",
+  "body": {
+    "commit": "b30d1af593544c4410f121600409d68d9f5d2f4f",
+    "files": [
+      "a.txt"
+    ],
+    "report": "/Users/Shared/crucible-sandbox/event-jobs/probe-fact-1/effort/reports/b.json",
+    "answers": {},
+    "declines": {},
+    "root": "self",
+    "round": null,
+    "job": 2,
+    "agent": "probe-builder"
+  }
+}

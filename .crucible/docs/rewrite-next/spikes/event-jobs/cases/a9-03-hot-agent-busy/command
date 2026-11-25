@@ -1,0 +1,1 @@
+lab/job-dispatch.sh --effort "$EFFORT" --check --kind review --round 6 --slot 2 --replaces 8 --delivery hot --hot-agent ar1

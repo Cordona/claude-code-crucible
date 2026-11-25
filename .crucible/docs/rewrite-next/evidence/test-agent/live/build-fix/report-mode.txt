@@ -1,0 +1,1 @@
+-r--r--r--  1 cordona  wheel  190 Nov 24 19:47 /Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/reports/build-fix/14.json

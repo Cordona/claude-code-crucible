@@ -1,0 +1,2 @@
+stderr: events-view.sh: event 12 (build.submitted) pinned reports/build/10.json at sha256 7e043df96927, but it changed after it was submitted: it is now ce9ada898dba; nothing reads it until a human looks
+exit 5

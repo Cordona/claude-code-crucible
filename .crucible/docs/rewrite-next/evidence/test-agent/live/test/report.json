@@ -1,0 +1,14 @@
+{
+  "summary": "cover the retry limit",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "not_run",
+      "note": "no mutation tool in this sandbox"
+    }
+  ]
+}

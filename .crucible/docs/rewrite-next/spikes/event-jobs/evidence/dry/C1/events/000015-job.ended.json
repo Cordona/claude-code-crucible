@@ -1,0 +1,14 @@
+{
+  "type": "job.ended",
+  "seq": 15,
+  "at": "2026-11-24T07:59:03Z",
+  "by": "agent-stop.sh",
+  "claude_session_id": "dry-C1-1",
+  "body": {
+    "reason": "gave-up",
+    "root": 4,
+    "round": 6,
+    "job": 9,
+    "agent": "ag041"
+  }
+}

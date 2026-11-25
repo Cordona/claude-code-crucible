@@ -1,0 +1,4 @@
+   2 agent-stop
+   1 post-agent
+   1 pre-agent
+   6 scope

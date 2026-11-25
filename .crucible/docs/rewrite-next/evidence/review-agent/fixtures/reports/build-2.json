@@ -1,0 +1,9 @@
+{
+  "summary": "log each retry",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

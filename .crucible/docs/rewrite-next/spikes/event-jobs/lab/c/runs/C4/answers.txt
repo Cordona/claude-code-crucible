@@ -1,0 +1,6 @@
+build a.sh and b.sh in the repo
+yes, build it
+yes, review it
+stop the security reviewer, it is taking too long
+fix high, two rounds
+yes, close it

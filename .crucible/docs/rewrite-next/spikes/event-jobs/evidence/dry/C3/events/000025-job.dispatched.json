@@ -1,0 +1,40 @@
+{
+  "type": "job.dispatched",
+  "seq": 25,
+  "at": "2026-11-24T08:00:00Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "kind": "arbiter",
+    "target": 24,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo",
+    "agent_type": "lab-arbiter",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": 1,
+    "replaces": null,
+    "approval": 12,
+    "payload": {
+      "keys": [
+        {
+          "id": "SHELL-02",
+          "finding": "loop over unquoted words",
+          "decline": "the loop words are fixed names",
+          "insist": null
+        }
+      ]
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort/reports/0c850d1a6e1f4810.json",
+    "act": {
+      "report": {
+        "rulings": {
+          "SHELL-02": "fix"
+        }
+      }
+    },
+    "root": 4,
+    "round": 24,
+    "job": null,
+    "agent": null
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "type": "fix.none",
+  "seq": 24,
+  "at": "2026-11-24T09:06:21Z",
+  "by": "choose.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "merge": 22,
+    "root": 12,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

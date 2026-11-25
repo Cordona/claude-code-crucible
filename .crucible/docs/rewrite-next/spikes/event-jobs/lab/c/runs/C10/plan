@@ -1,0 +1,12 @@
+kinds shell,security
+repo repo
+build repo
+settle
+close-session
+close-at-owed merge
+settle
+expect any(.[]; .type == "loop.ended" and .body.reason == "clean")
+expect ([.[] | select(.type == "job.ended" and .body.reason == "died")] | length) == 1
+expect any(.[]; .type == "job.ended" and .body.reason == "died" and .session == "dry-C10-2")
+expect-log stop held: merge.sh.*
+expect-log session closed; reopened as dry-C10-3

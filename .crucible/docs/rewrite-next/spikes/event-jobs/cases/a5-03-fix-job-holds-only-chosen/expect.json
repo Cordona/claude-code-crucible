@@ -1,0 +1,1 @@
+{"findings":[{"id":"SHELL-01","kind":"shell","file":"a.sh","severity":"high","title":"unquoted variable"}],"side":"production"}

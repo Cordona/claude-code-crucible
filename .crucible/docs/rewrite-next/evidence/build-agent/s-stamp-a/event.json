@@ -1,0 +1,16 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 58,
+    "at": "2026-11-25T10:45:23Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 56,
+      "iteration": 1,
+      "agent": "fa00000001",
+      "step": "stamp",
+      "fault": "job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop"
+    }
+  }
+]

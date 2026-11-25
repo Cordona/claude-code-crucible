@@ -1,0 +1,1 @@
+{"session_id":"dry-C10-2","tool_name":"Agent","tool_use_id":"tu-6","tool_input":{"subagent_type":"lab-reviewer","prompt":"JOB: /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort/events/000013-job.dispatched.json","run_in_background":true},"tool_response":{"agentId":"ag042"}}

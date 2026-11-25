@@ -1,0 +1,40 @@
+{
+  "type": "round.made",
+  "seq": 6,
+  "at": "2026-11-24T08:29:47Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C10-1",
+  "body": {
+    "kind": "code",
+    "targets": [
+      4
+    ],
+    "base": "fe96b1e6cab718856934c745e26ea54c1e2076c2",
+    "head": "1db506816b78d08bdd6fc3831eec9e6cc73037e3",
+    "slots": [
+      {
+        "slot": 1,
+        "kind": "shell",
+        "agent_type": "lab-reviewer",
+        "cover": [
+          "a.sh",
+          "b.sh"
+        ]
+      },
+      {
+        "slot": 2,
+        "kind": "security",
+        "agent_type": "lab-reviewer",
+        "cover": [
+          "a.sh",
+          "b.sh"
+        ]
+      }
+    ],
+    "loop": null,
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

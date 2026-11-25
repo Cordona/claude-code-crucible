@@ -1,0 +1,53 @@
+human (request) @0: build a.sh and b.sh in the repo
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo --task 'build a.sh and b.sh in the repo'
+main: Agent lab-builder -> ag011
+agent ag011: job 2 ends idle
+stop fact: build 4 has no review
+main: card review-no-review-4.md
+human (answer) @4: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --kind code --targets 4 --kinds shell
+main: Agent lab-reviewer -> ag021
+agent ag021: job 7 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 6
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 6
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --choice --subject merge:10 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort/cards/fix-choice-merge-10.md
+main: card fix-choice-merge-10.md
+human (answer) @10: fix high and medium, three rounds
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --merge 10 --severity high,medium --cap 3
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 10 --side production
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 10 --side production --delivery hot --hot-agent ag011
+main: SendMessage -> ag011
+agent ag011: job 13 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 15
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 15
+main: SendMessage -> ag021
+agent ag021: job 17 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 16
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 16
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 20 --side production
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 20 --side production --delivery hot --hot-agent ag011
+main: SendMessage -> ag011
+agent ag011: job 21 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 23
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 23
+main: Agent lab-arbiter -> ag031
+agent ag031: job 25 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 24
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 24
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 28 --side production
+hot check ag021: {"ok":false,"refusal":"type-misfit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --merge 28 --side production --delivery hot --hot-agent ag011
+main: SendMessage -> ag011
+agent ag011: job 29 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 31
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --kind code --targets 31
+main: SendMessage -> ag021
+agent ag021: job 33 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 32
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort --round 32
+stop held: real/crucible-gate/scripts/main/show-card.sh --record end-card --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --accept 'Close the loop (Recommended)' --subject loop:12 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort/cards/end-card-loop-12.md
+main: card end-card-loop-12.md
+human (answer) @36: yes, close it
+main: loop-end.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.15ShlU/effort --loop 12 --reason clean

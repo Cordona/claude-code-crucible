@@ -1,0 +1,15 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 69,
+    "at": "2026-11-25T10:42:16Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 67,
+      "agent": "n1n1n1n1n1",
+      "step": "stamp",
+      "fault": "job 67 (review-n1n1n1)'s report could not be stamped: report-stamp.sh: job 67 names no lens, so its findings can't be given IDs; the dispatch must name one"
+    }
+  }
+]

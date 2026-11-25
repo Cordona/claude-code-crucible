@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "holds": 10,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"loop.ended\" and .body.reason == \"clean\")",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"fix.chosen\")] | first.seq) as $f | ([.[] | select(.type == \"review.merged\")] | last.seq) as $m | all(.[]; .type != \"gate.answered\" or .seq < $f or .seq > $m)",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"round.made\" and .body.loop != null)] | length) == 2",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"review.merged\" and .body.targets == [\"SHELL-02\"])",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"job.dispatched\" and .body.kind == \"fix\")] | length) == 2 and all(.[] | select(.type == \"job.dispatched\" and .body.kind == \"fix\"); .body.delivery == \"hot\")",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+Your report /Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/reports/test/11.json was not accepted. Repair each line, then stop again; a second refusal ends this job.
+list the mutation gate: pass with a note, fail with what survived, or not_run with why

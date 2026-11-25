@@ -1,0 +1,1 @@
+lab/choose.sh --effort "$EFFORT" --merge 10 --severity high --cap 3; lab/owes.sh --effort "$EFFORT"

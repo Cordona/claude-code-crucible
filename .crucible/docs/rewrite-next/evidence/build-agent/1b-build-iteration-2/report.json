@@ -1,0 +1,15 @@
+{
+  "summary": "log each upload retry with its attempt number",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "app/Upload/Auth.php:17",
+      "text": "the token is refreshed on every call, outside this task"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "type": "test.submitted",
+  "seq": 13,
+  "at": "2026-11-24T17:47:22Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "bdb81d82-8356-4ddb-ad59-d368ef786654",
+  "body": {
+    "job": 11,
+    "iteration": 1,
+    "agent": "aa47910e2b8de8f11",
+    "report": {
+      "path": "reports/test/11.json",
+      "sha256": "2bd3d2c59044013f82d0411d971e36cc7be54dda2963cea2936dd857b77845c7"
+    },
+    "commit": "5cd9eeb49086d00c8f2d06052b52f69af464cd95"
+  }
+}

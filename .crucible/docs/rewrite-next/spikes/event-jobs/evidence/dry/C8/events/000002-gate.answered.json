@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 2,
+  "at": "2026-11-24T08:01:34Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C8-1",
+  "body": {
+    "record": "review",
+    "subject": "external-review:1",
+    "question": "Fact: external review 1 has no judging round; it can be reviewed now.",
+    "accept": "Review it (Recommended)",
+    "answer": "Review it (Recommended)",
+    "accepted": true
+  }
+}

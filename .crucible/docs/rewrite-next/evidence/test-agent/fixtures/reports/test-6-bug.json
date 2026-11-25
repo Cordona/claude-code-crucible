@@ -1,0 +1,24 @@
+{
+  "summary": "cover the retry limit and the 4xx case",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "fail",
+      "failing": [
+        "UploadClientTest::testRetriesA503ThreeTimes"
+      ]
+    },
+    {
+      "gate": "mutation",
+      "result": "not_run",
+      "note": "the new tests are red, so no breaks were tried"
+    }
+  ],
+  "blockers": [
+    {
+      "kind": "production_bug",
+      "at": "app/Upload/Client.php:42",
+      "detail": "the loop retries four times, not three"
+    }
+  ]
+}

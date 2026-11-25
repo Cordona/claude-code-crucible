@@ -1,0 +1,7 @@
+root 1: 397 events at 57 s
+root 2: 794 events at 136 s
+root 3: 1191 events at 236 s
+root 4: 1588 events at 364 s
+root 5: 1984 events at 506 s
+one write at 1985 events: 0 s
+owes.sh: 1 s, 0 root(s) printed

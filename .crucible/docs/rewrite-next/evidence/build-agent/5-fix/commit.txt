@@ -1,0 +1,16 @@
+crucible(build-fix): quote variables in a.sh and b.sh
+
+Effort: 20261125T104459-fdf1-upload-retries
+Job: 31 fix-shell-f05b2c
+Iteration: 1
+Fix-Round: 1
+Language: shell
+Standards: security, clean-code
+Model: opus
+
+commit 6b593633894158cad7106d5cb13a12bd4e39bbf5
+Author: Build Agent <build-agent@example.test>
+Signed: N
+
+ a.sh | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)

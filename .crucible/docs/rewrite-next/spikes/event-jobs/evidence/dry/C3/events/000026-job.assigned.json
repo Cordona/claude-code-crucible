@@ -1,0 +1,15 @@
+{
+  "type": "job.assigned",
+  "seq": 26,
+  "at": "2026-11-24T08:00:01Z",
+  "by": "post-agent.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "name": "arbiter-arbiter-ag031",
+    "tool_use_id": "tu-9",
+    "root": 4,
+    "round": 24,
+    "job": 25,
+    "agent": "ag031"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "type": "review.submitted",
+  "seq": 19,
+  "at": "2026-11-24T07:59:57Z",
+  "by": "agent-stop.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort/reports/ed3b4dc04a028d0f.json",
+    "findings": [],
+    "answers": {
+      "SHELL-01": "withdrawn",
+      "SHELL-02": "insisted"
+    },
+    "rulings": {},
+    "challenges": [],
+    "threads": {},
+    "root": 4,
+    "round": 16,
+    "job": 17,
+    "agent": "ag021"
+  }
+}

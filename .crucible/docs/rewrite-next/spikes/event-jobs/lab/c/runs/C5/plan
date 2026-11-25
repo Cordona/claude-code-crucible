@@ -1,0 +1,7 @@
+kinds shell
+repo repo
+build repo
+settle
+expect any(.[]; .type == "loop.stopped")
+expect any(.[]; .type == "loop.ended" and .body.reason == "stopped")
+expect ([.[] | select(.type == "loop.stopped")] | first.seq) as $s | all(.[]; .type != "job.dispatched" or .seq < $s)

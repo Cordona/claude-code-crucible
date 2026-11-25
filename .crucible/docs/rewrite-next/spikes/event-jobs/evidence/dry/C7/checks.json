@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "holds": 5,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"fact.answered\")",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"plan.submitted\")] | length) == 2",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"plan.approved\")",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"job.dispatched\" and .body.kind == \"test-plan\")] | .[1].body.approval) == ([.[] | select(.type == \"job.dispatched\" and .body.kind == \"test-plan\")] | .[0].body.approval)",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"test.submitted\")",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"fix.none\")",
+      "ok": true
+    }
+  ]
+}

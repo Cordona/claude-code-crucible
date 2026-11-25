@@ -1,0 +1,1 @@
+{"slots":[{"kind":"shell","agent_type":"lab-reviewer"},{"kind":"arbiter","agent_type":"lab-arbiter"}],"jobs":[{"slot":1,"earlier":[{"id":"SHELL-02","answer":"declined"}],"keys":[]},{"slot":2,"earlier":[],"keys":["SHELL-01"]}]}

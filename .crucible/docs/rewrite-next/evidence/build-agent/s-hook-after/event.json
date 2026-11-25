@@ -1,0 +1,16 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 92,
+    "at": "2026-11-25T10:45:47Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 90,
+      "iteration": 1,
+      "agent": "fi00000001",
+      "step": "hook",
+      "fault": "submit-agent-work.sh ended unexpectedly at its stamp step for job 90 (build-php-fi0000)"
+    }
+  }
+]

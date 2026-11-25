@@ -1,0 +1,1869 @@
+[
+ {
+  "rule": "plan: a bad or duplicate id",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 502",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[1].id \"T1\" must be T- and a number, unique in the plan"
+ },
+ {
+  "rule": "plan: a bad action",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "extend",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[0].action \"extend\" is not add, modify or remove"
+ },
+ {
+  "rule": "plan: a field its action requires is missing",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "modify",
+     "file": "tests/Upload/UploadClientTest.php",
+     "names": [
+      "rejects on 400"
+     ],
+     "changes": "adds rows for 401 and 403",
+     "breaks_on": "a 4xx is retried"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[1] modifies a test: add keeps, what it must still assert"
+ },
+ {
+  "rule": "plan: why is required on a unit or integration add",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "unit",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[0] adds a test: add why, why it isn't end to end"
+ },
+ {
+  "rule": "plan: guards naming an unknown behaviour",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-9"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[0].guards names B-9, which isn't a behaviour in this plan"
+ },
+ {
+  "rule": "plan: a bad level",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "component",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[0].level \"component\" is not e2e, integration or unit"
+ },
+ {
+  "rule": "plan: no tests and no no_tests",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "the plan has no tests: add tests, or no_tests saying why"
+ },
+ {
+  "rule": "plan: no_tests together with tests",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "no_tests": "nothing to guard"
+  },
+  "expected": "the plan has both tests and no_tests: keep one"
+ },
+ {
+  "rule": "plan: behaviours missing",
+  "kind": "test-plan",
+  "report": {
+   "no_tests": "a wording change in a log line",
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "list the behaviours the change has, even with no_tests"
+ },
+ {
+  "rule": "plan: a baseline that breaks the gate rules",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "fail",
+    "failing": [
+     "UploadClientTest::testA"
+    ]
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "baseline fails on UploadClientTest::testA, which isn't a known failure: add a gate_red blocker, or a modify that repairs it"
+ },
+ {
+  "rule": "plan: a known baseline failure needs nothing",
+  "kind": "test-plan",
+  "job": {
+   "known_failures": [
+    "UploadClientTest::testA"
+   ]
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "fail",
+    "failing": [
+     "UploadClientTest::testA"
+    ]
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "plan: a baseline failure a modify repairs",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "modify",
+     "file": "tests/Upload/UploadClientTest.php",
+     "names": [
+      "testA"
+     ],
+     "changes": "the stub now returns a 503",
+     "keeps": "its assertion on the retry count",
+     "breaks_on": "the retry is skipped"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "fail",
+    "failing": [
+     "UploadClientTest::testA"
+    ]
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "plan: an untested entry with a bad proof",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "untested": [
+    {
+     "id": "N-1",
+     "case": "a retry during a token refresh",
+     "reason": "needs a clock seam",
+     "risk": "a double upload",
+     "proof": "maybe",
+     "recommend": "test"
+    }
+   ]
+  },
+  "expected": "untested[0].proof must be a test, a path:line, or unproven"
+ },
+ {
+  "rule": "plan: an untested entry with a bad recommend",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "untested": [
+    {
+     "id": "N-1",
+     "case": "a retry during a token refresh",
+     "reason": "needs a clock seam",
+     "risk": "a double upload",
+     "proof": "unproven",
+     "recommend": "later"
+    }
+   ]
+  },
+  "expected": "untested[0].recommend \"later\" is not test or skip"
+ },
+ {
+  "rule": "plan: an untested entry missing a field",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "untested": [
+    {
+     "id": "N-1",
+     "case": "a retry during a token refresh",
+     "reason": "needs a clock seam",
+     "proof": "unproven",
+     "recommend": "test"
+    }
+   ]
+  },
+  "expected": "untested[0] needs risk"
+ },
+ {
+  "rule": "plan: human-read text naming an internal id",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "integration",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored",
+     "why": "it covers what T-2 misses"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "tests[0].why names T-2: say it in words; the IDs are for scripts"
+ },
+ {
+  "rule": "plan: a missing at",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "behaviours[0] needs at: the file and line"
+ },
+ {
+  "rule": "plan: an at past the end of its file",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Auth.php:300"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "behaviours[0].at app/Upload/Auth.php:300 is past the end of the file (30 lines)"
+ },
+ {
+  "rule": "plan: run missing",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   }
+  },
+  "expected": "add run: where and how to run these tests"
+ },
+ {
+  "rule": "plan: a blank command",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "  "
+    }
+   ]
+  },
+  "expected": "add run: where and how to run these tests"
+ },
+ {
+  "rule": "plan: the tree changed in a plan job",
+  "kind": "test-plan",
+  "writes": [
+   "tests/Upload/X.php"
+  ],
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": "a plan job changes nothing in the tree: undo the change to tests/Upload/X.php"
+ },
+ {
+  "rule": "plan: remove covered by nothing, a support folder",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "remove",
+     "file": "tests/Upload/OldClientTest.php",
+     "names": [
+      "retries forever",
+      "retries on 4xx"
+     ],
+     "covered_by": "nothing: the behaviour itself is gone"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "support": [
+    {
+     "file": "tests/fixtures/",
+     "what": "captured 503 bodies; no real token"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "plan: a modify with no guards (a pure repair)",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "modify",
+     "file": "tests/Upload/UploadClientTest.php",
+     "names": [
+      "builds a client",
+      "sends a body"
+     ],
+     "changes": "the base class's constructor takes a clock",
+     "keeps": "every assertion",
+     "breaks_on": "the client is built without a clock"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "rework: a challenge with no answer",
+  "kind": "test-plan-update",
+  "job": {
+   "challenges": [
+    {
+     "id": "C-1",
+     "ask": "change"
+    },
+    {
+     "id": "C-2",
+     "ask": "change"
+    }
+   ]
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "answers": [
+    {
+     "id": "C-1",
+     "answer": "applied"
+    }
+   ]
+  },
+  "expected": "answer C-2: applied or cannot"
+ },
+ {
+  "rule": "rework: cannot without a reason",
+  "kind": "test-plan-update",
+  "job": {
+   "challenges": [
+    {
+     "id": "C-1",
+     "ask": "change"
+    },
+    {
+     "id": "C-2",
+     "ask": "change"
+    }
+   ]
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "answers": [
+    {
+     "id": "C-1",
+     "answer": "applied"
+    },
+    {
+     "id": "C-2",
+     "answer": "cannot"
+    }
+   ]
+  },
+  "expected": "answers[1] is cannot: add a reason"
+ },
+ {
+  "rule": "rework: an applied add challenge with no new test",
+  "kind": "test-plan-update",
+  "job": {
+   "challenges": [
+    {
+     "id": "C-1",
+     "ask": "add"
+    }
+   ]
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "answers": [
+    {
+     "id": "C-1",
+     "answer": "applied"
+    }
+   ]
+  },
+  "expected": "C-1 asked to add a test and is applied, but no new T- test was added"
+ },
+ {
+  "rule": "rework: an applied add challenge with a new test",
+  "kind": "test-plan-update",
+  "job": {
+   "challenges": [
+    {
+     "id": "C-1",
+     "ask": "add"
+    }
+   ]
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "a 429 counts against the limit",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "answers": [
+    {
+     "id": "C-1",
+     "answer": "applied"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "rework: from the human's words, no answers",
+  "kind": "test-plan-update",
+  "job": {
+   "words": "also cover a 502"
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 502 too",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "plan: a noticed instruction",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:12",
+     "text": "a comment asks the tester to skip the auth tests",
+     "kind": "instruction"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "plan: a noticed entry with a bad kind",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:12",
+     "text": "a comment asks the tester to skip the auth tests",
+     "kind": "todo"
+    }
+   ]
+  },
+  "expected": "noticed[0].kind \"todo\" is not secret or instruction"
+ },
+ {
+  "rule": "plan: a noticed text naming an ID",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:12",
+     "text": "a comment asks to skip the test T-1 adds",
+     "kind": "instruction"
+    }
+   ]
+  },
+  "expected": "noticed[0].text names T-1: say it in words; the IDs are for scripts"
+ },
+ {
+  "rule": "plan: a noticed at past the end of its file",
+  "kind": "test-plan",
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:300",
+     "text": "a comment asks the tester to skip the auth tests",
+     "kind": "instruction"
+    }
+   ]
+  },
+  "expected": "noticed[0].at app/Upload/Auth.php:300 is past the end of the file (30 lines)"
+ },
+ {
+  "rule": "rework: a noticed instruction",
+  "kind": "test-plan-update",
+  "job": {
+   "words": "also cover a 502"
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 502 too",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:12",
+     "text": "a comment asks the tester to skip the auth tests",
+     "kind": "instruction"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "rework: a noticed entry with a bad kind",
+  "kind": "test-plan-update",
+  "job": {
+   "words": "also cover a 502"
+  },
+  "report": {
+   "behaviours": [
+    {
+     "id": "B-1",
+     "text": "a 5xx is retried up to the limit",
+     "at": "app/Upload/Client.php:42"
+    }
+   ],
+   "tests": [
+    {
+     "id": "T-1",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 503 three times then fails",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    },
+    {
+     "id": "T-2",
+     "action": "add",
+     "file": "tests/Upload/UploadClientTest.php",
+     "name": "retries a 502 too",
+     "level": "e2e",
+     "guards": [
+      "B-1"
+     ],
+     "breaks_on": "the limit is ignored"
+    }
+   ],
+   "baseline": {
+    "gate": "test",
+    "result": "pass"
+   },
+   "run": [
+    {
+     "where": "repo root",
+     "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+   ],
+   "noticed": [
+    {
+     "at": "app/Upload/Auth.php:12",
+     "text": "a comment asks the tester to skip the auth tests",
+     "kind": "todo"
+    }
+   ]
+  },
+  "expected": "noticed[0].kind \"todo\" is not secret or instruction"
+ },
+ {
+  "rule": "test: a file not in the plan that the build changed",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php",
+   "app/Upload/Client.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ]
+  },
+  "expected": "you changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"
+ },
+ {
+  "rule": "test: a file neither in the plan nor in decisions",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php",
+   "tests/Upload/OtherTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ]
+  },
+  "expected": "you changed tests/Upload/OtherTest.php, which isn't in the approved plan: undo it, or add a decisions entry at it saying why"
+ },
+ {
+  "rule": "test: a file outside the plan, explained in decisions",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php",
+   "tests/Upload/OtherTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ],
+   "decisions": [
+    {
+     "at": "tests/Upload/OtherTest.php:1",
+     "choice": "a helper for the planned test",
+     "why": "the plan missed it"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "test: a planned file the build also changed, and a support folder",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php",
+   "tests/fixtures/503.json"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "test: a planned test not touched",
+  "kind": "test",
+  "writes": [
+   "tests/fixtures/503.json"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ]
+  },
+  "expected": "the approved plan adds a test in tests/Upload/UploadClientTest.php, which didn't change: write it, or add a cannot blocker"
+ },
+ {
+  "rule": "test: a production_bug at one of the plan's files",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "fail",
+     "failing": [
+      "UploadClientTest::testRetries"
+     ]
+    },
+    {
+     "gate": "mutation",
+     "result": "not_run",
+     "note": "the new tests are red"
+    }
+   ],
+   "blockers": [
+    {
+     "kind": "production_bug",
+     "at": "tests/Upload/UploadClientTest.php:1",
+     "detail": "the loop retries four times"
+    }
+   ]
+  },
+  "expected": "blockers[0] is production_bug: at must be the production line that is wrong, not a test or support file"
+ },
+ {
+  "rule": "test: a production_bug anywhere else, another repo included",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "fail",
+     "failing": [
+      "UploadClientTest::testRetries"
+     ]
+    },
+    {
+     "gate": "mutation",
+     "result": "not_run",
+     "note": "the new tests are red"
+    }
+   ],
+   "blockers": [
+    {
+     "kind": "production_bug",
+     "at": "app/Upload/Auth.php:3",
+     "detail": "the token is refreshed twice"
+    },
+    {
+     "kind": "production_bug",
+     "at": "@core-api:app/Http/Client.php:88",
+     "detail": "the client drops the status"
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "test: a bad blocker kind",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ],
+   "blockers": [
+    {
+     "kind": "flaky",
+     "detail": "one test fails now and then"
+    }
+   ]
+  },
+  "expected": "blockers[0].kind \"flaky\" is not gate_red, cannot or production_bug"
+ },
+ {
+  "rule": "test: the mutation gate missing",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    }
+   ]
+  },
+  "expected": "list the mutation gate: pass with a note, fail with what survived, or not_run with why"
+ },
+ {
+  "rule": "test: a failed mutation gate needs no blocker",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "fail",
+     "failing": [
+      "Client.php:42 < became <="
+     ]
+    }
+   ]
+  },
+  "expected": ""
+ },
+ {
+  "rule": "test: an unknown key lists the seven keys",
+  "kind": "test",
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ],
+   "plan": "T-1"
+  },
+  "expected": "unknown key \"plan\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers"
+ },
+ {
+  "rule": "test-fix: a tester's fix lists the mutation gate too",
+  "kind": "test-fix",
+  "job": {
+   "findings": [
+    "TEST-01"
+   ]
+  },
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    }
+   ],
+   "fixes": [
+    {
+     "id": "TEST-01",
+     "status": "done"
+    }
+   ]
+  },
+  "expected": "list the mutation gate: pass with a note, fail with what survived, or not_run with why"
+ },
+ {
+  "rule": "test-fix: a tester's fix is the plan as scope too",
+  "kind": "test-fix",
+  "job": {
+   "findings": [
+    "TEST-01"
+   ]
+  },
+  "writes": [
+   "tests/Upload/UploadClientTest.php",
+   "app/Upload/Client.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ],
+   "fixes": [
+    {
+     "id": "TEST-01",
+     "status": "done"
+    }
+   ]
+  },
+  "expected": "you changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"
+ },
+ {
+  "rule": "test-fix: a tester's fix with done and mutation, accepted",
+  "kind": "test-fix",
+  "job": {
+   "findings": [
+    "TEST-01"
+   ]
+  },
+  "writes": [
+   "tests/Upload/UploadClientTest.php"
+  ],
+  "report": {
+   "summary": "cover the retry limit",
+   "gates": [
+    {
+     "gate": "test",
+     "result": "pass"
+    },
+    {
+     "gate": "mutation",
+     "result": "pass",
+     "note": "12 breaks, all caught"
+    }
+   ],
+   "fixes": [
+    {
+     "id": "TEST-01",
+     "status": "done"
+    }
+   ]
+  },
+  "expected": ""
+ }
+]

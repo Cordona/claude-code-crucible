@@ -1,0 +1,1 @@
+lab/harvest.sh --effort "$EFFORT" --merge 19

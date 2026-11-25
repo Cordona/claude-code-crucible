@@ -1,0 +1,34 @@
+{
+  "type": "review.merged",
+  "seq": 17,
+  "at": "2026-11-24T08:01:43Z",
+  "by": "merge.sh",
+  "claude_session_id": "dry-C8-1",
+  "body": {
+    "findings": [
+      {
+        "id": "SHELL-01",
+        "kind": "shell",
+        "file": "a.sh",
+        "severity": "medium",
+        "realism": "realistic",
+        "status": "fixed"
+      },
+      {
+        "id": "SHELL-02",
+        "kind": "shell",
+        "file": "a.sh",
+        "severity": "low",
+        "realism": "realistic",
+        "status": "skipped"
+      }
+    ],
+    "verdict": "pass",
+    "targets": [],
+    "gaps": [],
+    "root": 1,
+    "round": 13,
+    "job": null,
+    "agent": null
+  }
+}

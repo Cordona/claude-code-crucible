@@ -1,0 +1,9 @@
+{
+  "summary": "quote the upload target in a.sh and b.sh",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

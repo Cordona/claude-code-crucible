@@ -1,0 +1,1 @@
+lab/orphans.sh --effort "$EFFORT" --session S2 >/dev/null; lab/view.sh --effort "$EFFORT" | jq -c '[.[] | select(.type=="job.ended") | {job, round, root, session, reason: .body.reason}]'

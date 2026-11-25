@@ -1,0 +1,1 @@
+{"session_id":"dry-C5-1","tool_name":"Agent","tool_use_id":"tu-2","tool_input":{"subagent_type":"lab-builder","prompt":"JOB: /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort/events/000002-job.dispatched.json","run_in_background":true},"tool_response":{"agentId":"ag011"}}

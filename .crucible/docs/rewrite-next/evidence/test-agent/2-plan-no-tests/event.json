@@ -1,0 +1,18 @@
+[
+  {
+    "type": "test-plan.submitted",
+    "seq": 41,
+    "at": "2026-11-25T10:42:00Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 39,
+      "iteration": 1,
+      "agent": "77de01a0b1",
+      "report": {
+        "path": "reports/test-plan/39.json",
+        "sha256": "18706ba93d9874889ef2a9384614048e120c74df91b0a51dd31504f98f14ab3a"
+      }
+    }
+  }
+]

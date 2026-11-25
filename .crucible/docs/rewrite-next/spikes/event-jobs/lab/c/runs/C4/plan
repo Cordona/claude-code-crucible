@@ -1,0 +1,8 @@
+kinds shell,security,clean-code
+repo repo
+build repo
+settle
+expect any(.[]; .type == "job.ended" and .body.reason == "cancelled")
+expect ([.[] | select(.type == "job.ended" and .body.reason == "gave-up")] | length) == 3
+expect any(.[]; .type == "review.merged" and .body.gaps == [2])
+expect any(.[]; .type == "loop.ended" and .body.reason == "replacement-failed")

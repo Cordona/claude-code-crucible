@@ -1,0 +1,44 @@
+human (request) @0: please write the two lab scripts
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/repo --task 'please write the two lab scripts'
+main: Agent lab-builder -> ag011
+agent ag011: job 2 ends idle
+stop fact: build 4 has no review
+main: card review-no-review-4.md
+human (answer) @4: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --kind code --targets 4 --kinds shell,security
+main: Agent lab-reviewer -> ag021
+main: Agent lab-reviewer -> ag031
+agent ag021: job 7 ends idle
+agent ag031: works on job 8 and does not end
+human (reopen) @11: I'm back, carry on
+session closed; reopened as dry-C10-2
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --job 8
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --job 8
+main: Agent lab-reviewer -> ag042
+agent ag042: job 13 ends idle
+stop held: Owed now, decided already: run each line as given and make the calls it prints; do not ask the human.
+owed: sh /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/spikes/event-jobs/lab/merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --round 6
+human (reopen) @15: I'm back again
+session closed; reopened as dry-C10-3
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --round 6
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --round 6
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --choice --subject merge:16 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort/cards/fix-choice-merge-16.md
+main: card fix-choice-merge-16.md
+human (answer) @16: fix high, one round
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --merge 16 --severity high --cap 1
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --merge 16 --side production
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --merge 16 --side production
+main: Agent lab-builder -> ag053
+agent ag053: job 19 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --kind code --targets 21
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --kind code --targets 21
+main: Agent lab-reviewer -> ag063
+agent ag063: job 23 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --round 22
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.i30lVr/effort --round 22
+stop held: real/crucible-gate/scripts/main/show-card.sh --record end-card --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --accept 'Close the loop (Recommended)' --subject loop:18 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort/cards/end-card-loop-18.md
+main: card end-card-loop-18.md
+human (answer) @26: yes, close it
+main: loop-end.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.i30lVr/effort --loop 18 --reason clean

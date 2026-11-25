@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 54,
+    "at": "2026-11-25T10:42:08Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 52,
+      "agent": "f2f2f2f2f2",
+      "try": 1,
+      "lines": [
+        "unknown key \"fixes\"; the keys are findings, noticed, notes"
+      ]
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "run": "C1",
+  "sequence": {
+    "ok": true,
+    "why": ""
+  },
+  "typed_in_loop": [],
+  "answered_unasked": [],
+  "holds_dropped": [],
+  "unnamed_steps": [
+    "Bash L=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrit",
+    "Bash cd /Users/Shared/crucible-sandbox/event-jobs/runs/C1-2/repo; cat a.sh b.sh; sh /",
+    "ToolSearch "
+  ],
+  "passed": false
+}

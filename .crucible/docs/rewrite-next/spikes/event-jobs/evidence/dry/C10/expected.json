@@ -1,0 +1,189 @@
+{
+  "run": "C10",
+  "compare": "per root, in order; the events of one round may interleave; \"any\" matches anything",
+  "roots": [
+    {
+      "root": "none",
+      "events": [
+        {
+          "type": "gate.answered",
+          "step": "build",
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "root": "build.submitted",
+      "events": [
+        {
+          "type": "job.dispatched",
+          "kind": "build",
+          "role": "lab-builder",
+          "delivery": "any",
+          "replaces": false
+        },
+        {
+          "type": "job.assigned",
+          "kind": "build",
+          "role": "lab-builder"
+        },
+        {
+          "type": "build.submitted",
+          "kind": "build",
+          "role": "lab-builder"
+        },
+        {
+          "type": "gate.answered",
+          "step": "review",
+          "accepted": true
+        },
+        {
+          "type": "round.made",
+          "kind": "code",
+          "slots": [
+            "shell",
+            "security"
+          ],
+          "loop": false
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": false,
+          "round": 1
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": false,
+          "round": 1
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "review.submitted",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "job.ended",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1,
+          "reason": "died"
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": true,
+          "round": 1
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "review.submitted",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "review.merged",
+          "round": 1,
+          "verdict": "changes",
+          "targets": 1,
+          "gaps": 0
+        },
+        {
+          "type": "gate.answered",
+          "step": "fix-choice",
+          "accepted": null
+        },
+        {
+          "type": "fix.chosen"
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "fix",
+          "role": "lab-builder",
+          "delivery": "any",
+          "replaces": false
+        },
+        {
+          "type": "job.assigned",
+          "kind": "fix",
+          "role": "lab-builder"
+        },
+        {
+          "type": "build.submitted",
+          "kind": "fix",
+          "role": "lab-builder"
+        },
+        {
+          "type": "round.made",
+          "kind": "code",
+          "slots": [
+            "shell"
+          ],
+          "loop": true
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": false,
+          "round": 2
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 2
+        },
+        {
+          "type": "review.submitted",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 2
+        },
+        {
+          "type": "review.merged",
+          "round": 2,
+          "verdict": "pass",
+          "targets": 0,
+          "gaps": 0
+        },
+        {
+          "type": "gate.answered",
+          "step": "end-card",
+          "accepted": true
+        },
+        {
+          "type": "loop.ended",
+          "reason": "clean"
+        }
+      ]
+    }
+  ]
+}

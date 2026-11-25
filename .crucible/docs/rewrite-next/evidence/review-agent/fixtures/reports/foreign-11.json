@@ -1,0 +1,19 @@
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "realism": "realistic",
+      "at": [
+        "src/upload/Client.kt:20"
+      ],
+      "claim": "the client opens a connection per upload",
+      "suggestion": "reuse one client across uploads"
+    }
+  ],
+  "notes": [
+    {
+      "text": "why a fixed retry count here, not the server's Retry-After?",
+      "at": "src/upload/Client.kt:42"
+    }
+  ]
+}

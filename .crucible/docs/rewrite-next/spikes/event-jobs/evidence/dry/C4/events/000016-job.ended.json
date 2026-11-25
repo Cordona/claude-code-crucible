@@ -1,0 +1,14 @@
+{
+  "type": "job.ended",
+  "seq": 16,
+  "at": "2026-11-24T08:29:14Z",
+  "by": "job-end.sh",
+  "claude_session_id": "dry-C4-1",
+  "body": {
+    "reason": "cancelled",
+    "root": 4,
+    "round": 6,
+    "job": 8,
+    "agent": null
+  }
+}

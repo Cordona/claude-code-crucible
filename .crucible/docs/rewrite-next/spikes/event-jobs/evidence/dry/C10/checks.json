@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "holds": 8,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "log: stop held: merge.sh.*",
+      "ok": true
+    },
+    {
+      "check": "log: session closed; reopened as dry-C10-3",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"loop.ended\" and .body.reason == \"clean\")",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"job.ended\" and .body.reason == \"died\")] | length) == 1",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"job.ended\" and .body.reason == \"died\" and .session == \"dry-C10-2\")",
+      "ok": true
+    }
+  ]
+}

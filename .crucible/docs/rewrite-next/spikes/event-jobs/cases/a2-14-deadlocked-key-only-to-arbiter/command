@@ -1,0 +1,1 @@
+lab/round.sh --effort "$EFFORT" --kind code --targets 22 >/dev/null && lab/view.sh --effort "$EFFORT" | jq -c '(map(select(.type=="round.made"))|last) as $r | {slots: [$r.body.slots[] | {kind, agent_type}], jobs: [.[] | select(.type=="job.dispatched" and .round==$r.seq) | {slot: .body.slot, earlier: [.body.payload.earlier[]? | {id, answer}], keys: [.body.payload.keys[]?.id]}]}'

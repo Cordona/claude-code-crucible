@@ -1,0 +1,34 @@
+human (request) @0: build a.sh and b.sh in the repo
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/repo --task 'build a.sh and b.sh in the repo'
+main: Agent lab-builder -> ag011
+agent ag011: job 2 ends idle
+stop fact: build 4 has no review
+main: card review-no-review-4.md
+human (answer) @4: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --kind code --targets 4 --kinds shell
+main: Agent lab-reviewer -> ag021
+agent ag021: job 7 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --round 6
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --round 6
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --choice --subject merge:10 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort/cards/fix-choice-merge-10.md
+main: card fix-choice-merge-10.md
+human (answer) @10: fix high, three rounds
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --merge 10 --severity high --cap 3
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --merge 10 --side production
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --merge 10 --side production --delivery hot --hot-agent ag011
+main: SendMessage -> ag011
+agent ag011: job 13 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --kind code --targets 15
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --kind code --targets 15
+main: SendMessage -> ag021
+human (request in loop) @18: stop the loop
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --stop --reason 'stop the loop'
+agent ag021: job 17 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --round 16
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort --round 16
+stop held: real/crucible-gate/scripts/main/show-card.sh --record end-card --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --accept 'Close the loop (Recommended)' --subject loop:12 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort/cards/end-card-loop-12.md
+main: card end-card-loop-12.md
+human (answer) @21: yes, close it
+main: loop-end.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.VJYCVW/effort --loop 12 --reason stopped

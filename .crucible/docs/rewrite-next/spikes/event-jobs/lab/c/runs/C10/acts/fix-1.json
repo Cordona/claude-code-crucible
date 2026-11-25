@@ -1,0 +1,12 @@
+{
+ "files": {
+  "a.sh": "#!/bin/sh\nprintf '%s\\n' \"$1\"\n",
+  "b.sh": "#!/bin/sh\nfor f in \"$@\"; do echo \"$f\"; done\n"
+ },
+ "report": {
+  "answers": {
+   "SHELL-01": "done"
+  },
+  "declines": {}
+ }
+}

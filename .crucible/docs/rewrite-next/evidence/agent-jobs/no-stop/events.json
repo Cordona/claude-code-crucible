@@ -1,0 +1,42 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 30,
+    "at": "2026-11-25T10:41:50Z",
+    "by": "end-gone-jobs.sh",
+    "claude_session_id": "sess-main",
+    "body": {
+      "job": 13,
+      "iteration": 1,
+      "agent": "a0000003",
+      "reason": "no-stop"
+    }
+  },
+  {
+    "type": "job.ended",
+    "seq": 31,
+    "at": "2026-11-25T10:41:50Z",
+    "by": "end-gone-jobs.sh",
+    "claude_session_id": "sess-main",
+    "body": {
+      "job": 21,
+      "iteration": 1,
+      "agent": "g0000001",
+      "reason": "no-stop"
+    }
+  },
+  {
+    "type": "job.stalled",
+    "seq": 32,
+    "at": "2026-11-25T10:41:51Z",
+    "by": "end-gone-jobs.sh",
+    "claude_session_id": "sess-main",
+    "body": {
+      "job": 23,
+      "iteration": 1,
+      "agent": "g0000002",
+      "step": "event",
+      "fault": "the agent ended after its report was pinned"
+    }
+  }
+]

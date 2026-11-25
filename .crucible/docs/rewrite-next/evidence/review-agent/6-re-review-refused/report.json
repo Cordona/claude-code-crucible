@@ -1,0 +1,12 @@
+{
+  "fixes": [
+    {
+      "id": "SHELL-01",
+      "status": "fixed"
+    },
+    {
+      "id": "SHELL-03",
+      "status": "fixed"
+    }
+  ]
+}

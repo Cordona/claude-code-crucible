@@ -1,0 +1,9 @@
+kinds shell
+repo repo
+build repo
+settle
+expect any(.[]; .type == "loop.ended" and .body.reason == "clean")
+expect ([.[] | select(.type == "job.dispatched" and .body.kind == "arbiter")] | length) == 1
+expect any(.[]; .type == "round.made" and ([.body.slots[].kind] == ["arbiter"]))
+expect any(.[]; .type == "review.merged" and any(.body.findings[]; .id == "SHELL-01" and .status == "withdrawn"))
+expect any(.[]; .type == "review.merged" and any(.body.findings[]; .id == "SHELL-02" and .status == "ruled-fix"))

@@ -1,0 +1,15 @@
+crucible(build): read the upload target from the first argument
+
+Effort: 20261125T104459-fdf1-upload-retries
+Job: 28 build-shell-f05b2c
+Iteration: 1
+Language: shell
+Standards: security, clean-code
+Model: opus
+
+commit f59c8ff77ee8b38a383594412364a7f352163840
+Author: Build Agent <build-agent@example.test>
+Signed: N
+
+ a.sh | 1 +
+ 1 file changed, 1 insertion(+)

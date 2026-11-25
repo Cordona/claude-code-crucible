@@ -1,0 +1,18 @@
+{
+  "type": "build-fix.submitted",
+  "seq": 16,
+  "at": "2026-11-24T17:47:25Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "sess-live-fixture",
+  "body": {
+    "job": 14,
+    "iteration": 1,
+    "fix_round": 1,
+    "agent": "b0b0b0b0b0",
+    "report": {
+      "path": "reports/build-fix/14.json",
+      "sha256": "7262ee80e78afd67f55f4adbdab66f4379059d0d2653ed5f961bc0455de9528a"
+    },
+    "commit": "ec8028780fbcee965cdc7367a9ad24dc0dd9c5d2"
+  }
+}

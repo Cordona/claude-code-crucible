@@ -1,0 +1,14 @@
+crucible(build): add a retry limit to the upload client, backoff on 5xx
+
+Effort: 20261124T174618-d135-live-build-agent
+Job: 4 build-php-ad288b
+Iteration: 1
+Language: php
+Standards: security, observability
+
+commit e584b6f2a610068b4e3a85b41082843adad23b2e
+Author: Build Agent <build-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php | 1 +
+ 1 file changed, 1 insertion(+)

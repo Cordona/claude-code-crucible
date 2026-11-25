@@ -1,0 +1,2 @@
+{"decision":"block","reason":"Your report <S>/space/efforts/20261125T104459-fdf1-upload-retries/reports/build/95.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\nsummary is 60 characters; shorten it to 55 or fewer\ngates[0] is not_run: add a note saying why"}
+exit 0

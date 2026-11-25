@@ -1,0 +1,105 @@
+{
+  "behaviours": [
+    {
+      "id": "B-1",
+      "text": "a 5xx is retried up to the limit",
+      "at": "app/Upload/Client.php:42"
+    },
+    {
+      "id": "B-2",
+      "text": "a 4xx is never retried",
+      "at": "app/Upload/Client.php:48",
+      "guarded_by": [
+        "tests/Upload/UploadClientTest.php: rejects on 400"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "id": "T-1",
+      "action": "add",
+      "file": "tests/Upload/UploadClientTest.php",
+      "name": "retries a 503 three times then fails",
+      "level": "integration",
+      "why": "the retry loop needs the real HTTP stub",
+      "guards": [
+        "B-1"
+      ],
+      "breaks_on": "the limit is ignored"
+    },
+    {
+      "id": "T-2",
+      "action": "modify",
+      "file": "tests/Upload/UploadClientTest.php",
+      "names": [
+        "rejects on 400"
+      ],
+      "changes": "adds rows for 401 and 403",
+      "keeps": "every existing row and its assertion",
+      "guards": [
+        "B-2"
+      ],
+      "breaks_on": "a 4xx is retried"
+    },
+    {
+      "id": "T-3",
+      "action": "remove",
+      "file": "tests/Upload/OldClientTest.php",
+      "names": [
+        "retries forever"
+      ],
+      "covered_by": "T-1"
+    },
+    {
+      "id": "T-4",
+      "action": "add",
+      "file": "tests/Upload/UploadClientTest.php",
+      "name": "a 429 counts against the limit",
+      "level": "unit",
+      "why": "the counting is pure logic, no I/O",
+      "guards": [
+        "B-1"
+      ],
+      "breaks_on": "a 429 is not counted"
+    }
+  ],
+  "support": [
+    {
+      "file": "tests/fixtures/",
+      "what": "captured 503 bodies, hand-trimmed; they hold no real token"
+    }
+  ],
+  "untested": [
+    {
+      "id": "N-1",
+      "case": "a retry during a token refresh",
+      "reason": "needs a clock seam the code doesn't have",
+      "risk": "a double upload",
+      "proof": "unproven",
+      "recommend": "test"
+    }
+  ],
+  "baseline": {
+    "gate": "test",
+    "where": "php8.4",
+    "result": "narrowed",
+    "note": "--filter Upload"
+  },
+  "run": [
+    {
+      "where": "docker, the job's worktree mounted",
+      "command": "./vendor/bin/phpunit --filter 'Upload(Client|Retry)Test::.*'"
+    }
+  ],
+  "answers": [
+    {
+      "id": "C-1",
+      "answer": "applied"
+    },
+    {
+      "id": "C-2",
+      "answer": "cannot",
+      "reason": "the clock seam is out of this change"
+    }
+  ]
+}

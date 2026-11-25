@@ -1,0 +1,65 @@
+== trial-build-1: FAIL (repaired)
+PASS: trial-build-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: trial-build-1: no job.stalled
+PASS: trial-build-1: the pin matches the report, read-only
+PASS: trial-build-1: the working commit, with its Job trailer
+PASS: trial-build-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial-build-1: the agent got exactly the prepared prompt
+PASS: trial-build-1: no gh or glab call (stub calls: 0)
+FAIL: trial-build-1: the allowed gates reported run, not not_run: not run: lint, typecheck, test
+PASS: trial-build-1: audit: every job ended or submitted
+PASS: trial-build-1: audit: stalled only where the scenario expects it
+PASS: trial-build-1: audit: every pinned report matches its hash
+PASS: trial-build-1: audit: every working commit has its event
+PASS: trial-build-1: audit: every refusal followed by a submission or an end
+PASS: trial-build-1: audit: no job with more than two refusals
+== trial-review-1: FAIL (gave-up)
+FAIL: trial-review-1: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: trial-review-1: no job.stalled
+PASS: trial-review-1: the pin matches the report, read-only
+PASS: trial-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial-review-1: the agent got exactly the prepared prompt
+PASS: trial-review-1: no gh or glab call (stub calls: 0)
+PASS: trial-review-1: audit: every job ended or submitted
+PASS: trial-review-1: audit: stalled only where the scenario expects it
+PASS: trial-review-1: audit: every pinned report matches its hash
+PASS: trial-review-1: audit: every working commit has its event
+PASS: trial-review-1: audit: every refusal followed by a submission or an end
+PASS: trial-review-1: audit: no job with more than two refusals
+== trial2-build-1: FAIL (repaired)
+PASS: trial2-build-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: trial2-build-1: no job.stalled
+PASS: trial2-build-1: the pin matches the report, read-only
+PASS: trial2-build-1: the working commit, with its Job trailer
+PASS: trial2-build-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial2-build-1: the agent got exactly the prepared prompt
+PASS: trial2-build-1: no gh or glab call (stub calls: 0)
+FAIL: trial2-build-1: the allowed gates reported run, not not_run: not run: lint, typecheck, test
+PASS: trial2-build-1: audit: every job ended or submitted
+PASS: trial2-build-1: audit: stalled only where the scenario expects it
+PASS: trial2-build-1: audit: every pinned report matches its hash
+PASS: trial2-build-1: audit: every working commit has its event
+PASS: trial2-build-1: audit: every refusal followed by a submission or an end
+PASS: trial2-build-1: audit: no job with more than two refusals
+== trial2-review-1: FAIL (gave-up)
+FAIL: trial2-review-1: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: trial2-review-1: no job.stalled
+PASS: trial2-review-1: the pin matches the report, read-only
+PASS: trial2-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial2-review-1: the agent got exactly the prepared prompt
+PASS: trial2-review-1: no gh or glab call (stub calls: 0)
+PASS: trial2-review-1: audit: every job ended or submitted
+PASS: trial2-review-1: audit: stalled only where the scenario expects it
+PASS: trial2-review-1: audit: every pinned report matches its hash
+PASS: trial2-review-1: audit: every working commit has its event
+PASS: trial2-review-1: audit: every refusal followed by a submission or an end
+PASS: trial2-review-1: audit: no job with more than two refusals
+
+== table (cell, kind, result, outcome, models)
+trial-build-1	build	FAIL	repaired	claude-opus-5-5
+trial-review-1	review	FAIL	gave-up	claude-opus-5-5
+trial2-build-1	build	FAIL	repaired	claude-opus-5-5
+trial2-review-1	review	FAIL	gave-up	claude-opus-5-5
+
+48 checks PASS, 4 FAIL; 4 cells, 0 green, 4 red
+counts written to /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/stop-hook-real/counts.md

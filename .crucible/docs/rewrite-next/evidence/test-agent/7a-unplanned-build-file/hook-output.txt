@@ -1,0 +1,2 @@
+{"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test/73.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
+exit 0

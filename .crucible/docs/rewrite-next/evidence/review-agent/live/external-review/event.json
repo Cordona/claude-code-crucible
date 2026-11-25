@@ -1,0 +1,16 @@
+{
+  "type": "external-review.submitted",
+  "seq": 20,
+  "at": "2026-11-24T17:48:11Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+  "body": {
+    "job": 13,
+    "iteration": 1,
+    "agent": "ab377035eba4bc281",
+    "report": {
+      "path": "reports/external-review/13.json",
+      "sha256": "99b835ef4c29db3dfea5f8f74631b0397f372e05be3fbf652c02824e582696d3"
+    }
+  }
+}

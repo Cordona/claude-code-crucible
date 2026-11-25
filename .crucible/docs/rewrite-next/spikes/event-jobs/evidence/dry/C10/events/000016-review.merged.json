@@ -1,0 +1,28 @@
+{
+  "type": "review.merged",
+  "seq": 16,
+  "at": "2026-11-24T08:29:54Z",
+  "by": "merge.sh",
+  "claude_session_id": "dry-C10-3",
+  "body": {
+    "findings": [
+      {
+        "id": "SHELL-01",
+        "kind": "shell",
+        "file": "a.sh",
+        "severity": "high",
+        "realism": "realistic",
+        "status": "open"
+      }
+    ],
+    "verdict": "changes",
+    "targets": [
+      "SHELL-01"
+    ],
+    "gaps": [],
+    "root": 4,
+    "round": 6,
+    "job": null,
+    "agent": null
+  }
+}

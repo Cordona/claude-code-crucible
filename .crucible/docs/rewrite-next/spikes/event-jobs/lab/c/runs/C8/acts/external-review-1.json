@@ -1,0 +1,26 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "a.sh",
+    "severity": "medium",
+    "realism": "realistic",
+    "title": "unquoted variable",
+    "thread": "t1"
+   },
+   {
+    "kind": "shell",
+    "file": "a.sh",
+    "severity": "low",
+    "realism": "realistic",
+    "title": "usage line missing",
+    "thread": "t2"
+   }
+  ],
+  "threads": {
+   "t1": "valid",
+   "t2": "rejected"
+  }
+ }
+}

@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "realism": "realistic",
+      "at": [
+        "a.sh:3"
+      ],
+      "claim": "the path reaches eval unquoted",
+      "suggestion": "quote it and drop the eval"
+    }
+  ]
+}

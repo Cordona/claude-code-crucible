@@ -1,0 +1,13 @@
+{
+  "type": "gate.answered",
+  "seq": 23,
+  "at": "2026-11-24T09:06:21Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "record": "fix-choice",
+    "subject": "merge:22",
+    "question": "Review merged (22): verdict changes; 1 to fix.",
+    "answer": "fix nothing"
+  }
+}

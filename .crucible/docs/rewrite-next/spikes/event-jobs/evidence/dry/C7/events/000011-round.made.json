@@ -1,0 +1,30 @@
+{
+  "type": "round.made",
+  "seq": 11,
+  "at": "2026-11-24T08:01:17Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "kind": "challenge",
+    "targets": [
+      10
+    ],
+    "base": null,
+    "head": null,
+    "slots": [
+      {
+        "slot": 1,
+        "kind": "challenge",
+        "agent_type": "lab-challenger",
+        "cover": [
+          "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort/reports/b111c73c30662ea3.json"
+        ]
+      }
+    ],
+    "loop": null,
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

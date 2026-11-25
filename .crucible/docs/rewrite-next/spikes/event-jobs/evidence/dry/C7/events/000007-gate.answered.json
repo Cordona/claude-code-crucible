@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 7,
+  "at": "2026-11-24T08:01:15Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "record": "test-plan",
+    "subject": "test-plan:4",
+    "question": "A test plan for build 4: drafted, challenged once, reworked, then shown to you.",
+    "accept": "Plan the tests (Recommended)",
+    "answer": "Plan the tests (Recommended)",
+    "accepted": true
+  }
+}

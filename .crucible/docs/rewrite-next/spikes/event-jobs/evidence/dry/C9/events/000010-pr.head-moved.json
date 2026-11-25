@@ -1,0 +1,19 @@
+{
+  "type": "pr.head-moved",
+  "seq": 10,
+  "at": "2026-11-24T08:01:53Z",
+  "by": "remote.sh",
+  "claude_session_id": "dry-C9-1",
+  "body": {
+    "pr": "pr-9",
+    "old_head": "07c200a7949476b56efc8577d4b1572d5736e7d5",
+    "head": "dc1ca8cd08127d3587d72c55ad52eb405dc3b8a8",
+    "replies": {
+      "SHELL-01": "quoted it and dropped the eval"
+    },
+    "root": 1,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

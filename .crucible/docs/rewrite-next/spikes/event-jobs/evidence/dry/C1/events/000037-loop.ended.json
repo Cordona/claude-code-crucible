@@ -1,0 +1,14 @@
+{
+  "type": "loop.ended",
+  "seq": 37,
+  "at": "2026-11-24T07:59:16Z",
+  "by": "loop-end.sh",
+  "claude_session_id": "dry-C1-1",
+  "body": {
+    "reason": "clean",
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

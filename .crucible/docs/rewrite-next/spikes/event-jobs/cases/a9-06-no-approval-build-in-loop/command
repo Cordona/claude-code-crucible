@@ -1,0 +1,1 @@
+lab/job-dispatch.sh --effort "$EFFORT" --check --kind build --tree repo --delivery hot --hot-agent ab1

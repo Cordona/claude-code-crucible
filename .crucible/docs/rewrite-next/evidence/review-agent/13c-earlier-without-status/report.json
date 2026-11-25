@@ -1,0 +1,18 @@
+{
+  "fixes": [
+    {
+      "id": "SHELL-01",
+      "status": "fixed"
+    },
+    {
+      "id": "SHELL-02",
+      "status": "open",
+      "reason": "the tenant name is still passed unescaped at a.sh:12"
+    },
+    {
+      "id": "SHELL-03",
+      "status": "agree",
+      "reason": "b.sh's header documents word input; the decline holds"
+    }
+  ]
+}

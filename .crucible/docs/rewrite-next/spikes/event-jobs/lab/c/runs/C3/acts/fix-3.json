@@ -1,0 +1,11 @@
+{
+ "files": {
+  "b.sh": "#!/bin/sh\nfor f in \"$@\"; do echo \"$f\"; done\n"
+ },
+ "report": {
+  "answers": {
+   "SHELL-02": "done"
+  },
+  "declines": {}
+ }
+}

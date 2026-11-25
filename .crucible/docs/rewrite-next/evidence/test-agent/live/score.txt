@@ -1,0 +1,15 @@
+PASS: test: job.assigned written for the agent the Agent tool started
+PASS: test: first stop held with the mutation repair line
+PASS: test: one refusal counted
+PASS: test: second stop accepted, test.submitted by submission-event.sh for its agent
+PASS: test: report {path, sha256} at reports/test/<seq>.json matches the file
+PASS: test: the report lists the mutation gate now, and is read-only
+PASS: test: the commit, crucible(test), Effort, Job, Iteration, Language, Standards; no Framework
+PASS: the build's own fix: build-fix.submitted, fix round 1
+PASS: test-fix: job.assigned written for its own agent
+PASS: test-fix: accepted, test-fix.submitted, iteration 1, fix round 1, counted apart from the build-fix's
+PASS: test-fix: report {path, sha256} at reports/test-fix/<seq>.json matches the file
+PASS: test-fix: the report fixes TEST-01 and is read-only
+PASS: test-fix: the commit is the tree's HEAD, crucible(test-fix), with Fix-Round 1, the test file only
+PASS: no job.ended; the tree clean
+14 PASS, 0 FAIL

@@ -1,0 +1,10 @@
+Call 4 allowed; waiting for it to finish.
+
+Five of the six calls were refused by a hook. Only call 4 ran: it was allowed, and the builder finished and reported `DONE`. I didn't retry any refused call.
+
+1. **Agent "fg"** (foreground): refused. `PreToolUse:Agent hook error: a job agent runs in the background only`
+2. **Agent "bad"** (prompt not in `JOB:` form): refused. `PreToolUse:Agent hook error: a job agent's whole prompt is JOB: <path>`
+3. **Write** of `999999-fake.json`: refused. `PreToolUse:Write hook error: events are written only by the lab scripts`
+4. **Agent "ok"** (background, `JOB:` prompt): allowed ✅. It finished and reported `DONE`.
+5. **Agent "again"** (same job as call 4): refused. `PreToolUse:Agent hook error: job 2 is already assigned`
+6. **SendMessage** to the call 4 agent: refused. `every message to a job agent is one JOB: <path> line`

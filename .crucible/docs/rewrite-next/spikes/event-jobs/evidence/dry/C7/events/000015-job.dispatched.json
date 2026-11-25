@@ -1,0 +1,36 @@
+{
+  "type": "job.dispatched",
+  "seq": 15,
+  "at": "2026-11-24T08:01:19Z",
+  "by": "job-dispatch.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "kind": "test-plan",
+    "target": 11,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/repo",
+    "agent_type": "lab-tester",
+    "delivery": "hot",
+    "hot_agent": "ag021",
+    "slot": null,
+    "replaces": null,
+    "approval": 7,
+    "payload": {
+      "build": 4,
+      "challenges": [
+        "C-1"
+      ]
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort/reports/0629e0647649421b.json",
+    "act": {
+      "report": {
+        "answers": {
+          "C-1": "applied"
+        }
+      }
+    },
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

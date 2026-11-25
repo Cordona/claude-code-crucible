@@ -1,0 +1,14 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "clean-code",
+    "file": "b.sh",
+    "severity": "high",
+    "realism": "realistic",
+    "title": "loop over unquoted words"
+   }
+  ],
+  "answers": {}
+ }
+}

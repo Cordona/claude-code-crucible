@@ -1,0 +1,19 @@
+[
+  {
+    "type": "build.submitted",
+    "seq": 41,
+    "at": "2026-11-25T10:45:18Z",
+    "by": "recover-submission.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 38,
+      "iteration": 1,
+      "agent": "a7c9e40808",
+      "report": {
+        "path": "reports/build/38.json",
+        "sha256": "34e7dc4000ee9874156c65728fe54acb45d63020d3d9f935ef438cd4989092b3"
+      },
+      "commit": "c887c96c419d868128b142f0910e0d9f468ec4bd"
+    }
+  }
+]

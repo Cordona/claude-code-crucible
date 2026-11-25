@@ -1,0 +1,20 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 31,
+    "at": "2026-11-25T10:41:58Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 29,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "r6r6r6r6r6",
+      "try": 1,
+      "lines": [
+        "give SHELL-02 a status: fixed or open (the fixer said partly)",
+        "SHELL-03 was declined: give agree or disagree, with a reason"
+      ]
+    }
+  }
+]

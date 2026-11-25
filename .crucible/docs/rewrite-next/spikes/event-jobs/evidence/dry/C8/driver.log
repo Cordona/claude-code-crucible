@@ -1,0 +1,33 @@
+human (request) @0: a review came in on our pull request, please deal with it
+main: remote.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --fetch --pr pr-1
+stop fact: external review 1 has no judging round
+main: card review-external-review-1.md
+human (answer) @1: yes, judge it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --kind external --targets 1 --kinds shell
+main: Agent lab-reviewer -> ag011
+agent ag011: job 4 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --round 3
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --round 3
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --choice --subject merge:7 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort/cards/fix-choice-merge-7.md
+main: card fix-choice-merge-7.md
+human (answer) @7: fix the medium one, two rounds
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --merge 7 --severity medium --cap 2
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --merge 7 --side production
+hot check ag011: {"ok":false,"refusal":"type-misfit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --merge 7 --side production
+main: Agent lab-builder -> ag021
+agent ag021: job 10 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --kind code --targets 12
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --kind code --targets 12
+main: SendMessage -> ag011
+agent ag011: job 14 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --round 13
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/effort --round 13
+stop held: real/crucible-gate/scripts/main/show-card.sh --record end-card --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --accept 'Close the loop (Recommended)' --subject loop:9 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort/cards/end-card-loop-9.md
+main: card end-card-loop-9.md
+human (answer) @17: yes, close it
+main: loop-end.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --loop 9 --reason clean
+stop held: real/crucible-gate/scripts/main/show-card.sh --record replies --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --accept 'Post the replies (Recommended)' --subject review:1 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort/cards/replies-review-1.md
+main: card replies-review-1.md
+human (answer) @19: yes, post them
+main: remote.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.hTNLLi/effort --review 1

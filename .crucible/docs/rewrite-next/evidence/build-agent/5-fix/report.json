@@ -1,0 +1,26 @@
+{
+  "summary": "quote variables in a.sh and b.sh",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "SHELL-01",
+      "status": "done",
+      "note": "a.sh:3 now quotes $1"
+    },
+    {
+      "id": "SECURITY-01",
+      "status": "partly",
+      "reason": "quoted at a.sh:3; the eval at a.sh:9 is still there"
+    },
+    {
+      "id": "CLEAN-CODE-01",
+      "status": "declined",
+      "reason": "the word input is b.sh's documented contract; not this change"
+    }
+  ]
+}

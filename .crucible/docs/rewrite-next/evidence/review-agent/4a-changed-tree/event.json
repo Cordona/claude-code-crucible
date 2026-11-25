@@ -1,0 +1,18 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 21,
+    "at": "2026-11-25T10:41:53Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 19,
+      "iteration": 1,
+      "agent": "r4r4r4r4r4",
+      "try": 1,
+      "lines": [
+        "you changed files: undo your changes; a reviewer changes nothing"
+      ]
+    }
+  }
+]

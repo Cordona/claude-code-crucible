@@ -1,0 +1,46 @@
+{
+  "type": "job.dispatched",
+  "seq": 10,
+  "at": "2026-11-24T09:06:13Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "kind": "review",
+    "target": 9,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": 1,
+    "replaces": null,
+    "approval": 8,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "34c21ea4573738af655fd9e96916660d2571a89e..6a9f4a7f2e3e016822a4b4ecdd80caf926dc890e",
+      "skipped": [],
+      "earlier": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort/reports/d6cbf4108628e32b.json",
+    "act": {
+      "report": {
+        "findings": [
+          {
+            "kind": "shell",
+            "file": "a.sh",
+            "severity": "medium",
+            "realism": "realistic",
+            "title": "unquoted variable"
+          }
+        ],
+        "answers": {}
+      }
+    },
+    "root": 7,
+    "round": 9,
+    "job": null,
+    "agent": null
+  }
+}

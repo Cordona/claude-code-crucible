@@ -1,0 +1,9 @@
+{
+  "summary": "read the upload target from the first argument",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 36,
+    "at": "2026-11-25T10:45:14Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 34,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "f05b2c0606",
+      "try": 1,
+      "lines": [
+        "CLEAN-CODE-01 was sent back by the human: it can't be declined again; fix it, or add a cannot blocker"
+      ]
+    }
+  }
+]

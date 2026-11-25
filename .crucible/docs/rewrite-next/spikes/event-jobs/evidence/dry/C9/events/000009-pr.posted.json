@@ -1,0 +1,19 @@
+{
+  "type": "pr.posted",
+  "seq": 9,
+  "at": "2026-11-24T08:01:52Z",
+  "by": "remote.sh",
+  "claude_session_id": "dry-C9-1",
+  "body": {
+    "items": [
+      {
+        "id": "SHELL-01",
+        "kind": "comment"
+      }
+    ],
+    "root": 1,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

@@ -1,0 +1,482 @@
+[
+  {
+    "type": "effort.opened",
+    "seq": 1,
+    "at": "2026-11-24T17:47:52Z",
+    "by": "effort-start.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "live review agent"
+    }
+  },
+  {
+    "type": "identity.set",
+    "seq": 2,
+    "at": "2026-11-24T17:47:52Z",
+    "by": "identity-set.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "repo": "/Users/Shared/crucible-sandbox/review-agent-live/run/repo",
+      "name": "Review Agent",
+      "email": "review-agent@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "type": "worktree.cut",
+    "seq": 3,
+    "at": "2026-11-24T17:47:53Z",
+    "by": "worktree-cut.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "upload",
+      "repo": "/Users/Shared/crucible-sandbox/review-agent-live/run/repo",
+      "path": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "branch": "crucible/20261124T174752-b62d-live-review-agent/upload",
+      "base": "b9579e502346ea7275fdf6e84c13b4ee98e5c783",
+      "from": "checkout"
+    }
+  },
+  {
+    "type": "worktree.cut",
+    "seq": 4,
+    "at": "2026-11-24T17:47:53Z",
+    "by": "worktree-cut.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "foreign",
+      "repo": "/Users/Shared/crucible-sandbox/review-agent-live/run/repo",
+      "path": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/foreign",
+      "branch": "crucible/20261124T174752-b62d-live-review-agent/foreign",
+      "base": "b9579e502346ea7275fdf6e84c13b4ee98e5c783",
+      "from": "checkout"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 5,
+    "at": "2026-11-24T17:47:53Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/build/5.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 6,
+    "at": "2026-11-24T17:47:53Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 5,
+      "agent": "b0b0b0b0b0",
+      "name": "build-shell-b0b0b0"
+    }
+  },
+  {
+    "type": "build.submitted",
+    "seq": 7,
+    "at": "2026-11-24T17:47:54Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 5,
+      "iteration": 1,
+      "agent": "b0b0b0b0b0",
+      "report": {
+        "path": "reports/build/5.json",
+        "sha256": "f44ffca319d846a5c7f960c1eed0d2d57419436168fcd61f7eca10b39cf6e8e6"
+      },
+      "commit": "e6fc6e20ab3a9d32498393cd8a7f94a32e0122d5"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 8,
+    "at": "2026-11-24T17:47:54Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "test-plan",
+      "agent_type": "code-tester",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/test-plan/8.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 9,
+    "at": "2026-11-24T17:47:54Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 8,
+      "agent": "c0c0c0c0c0",
+      "name": "test-plan-shell-c0c0c0"
+    }
+  },
+  {
+    "type": "test-plan.submitted",
+    "seq": 10,
+    "at": "2026-11-24T17:47:55Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 8,
+      "iteration": 1,
+      "agent": "c0c0c0c0c0",
+      "report": {
+        "path": "reports/test-plan/8.json",
+        "sha256": "e25bfbd96a5b4b6dff5ae9fa107c05a5e30de8ff53bf3e39a448150403507fda"
+      }
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 11,
+    "at": "2026-11-24T17:47:55Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "review",
+      "agent_type": "code-reviewer",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/review/11.json",
+      "lens": "shell",
+      "base": "b9579e502346ea7275fdf6e84c13b4ee98e5c783",
+      "head": "e6fc6e20ab3a9d32498393cd8a7f94a32e0122d5",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 12,
+    "at": "2026-11-24T17:47:55Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "test-plan-challenge",
+      "agent_type": "code-reviewer",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/test-plan-challenge/12.json",
+      "plan": 10,
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 13,
+    "at": "2026-11-24T17:47:56Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "external-review",
+      "agent_type": "code-reviewer",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/external-review/13.json",
+      "lens": "security",
+      "threads": "/Users/Shared/crucible-sandbox/review-agent-live/run/threads.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 14,
+    "at": "2026-11-24T17:47:56Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "foreign-review",
+      "agent_type": "code-reviewer",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/foreign",
+      "report": "reports/foreign-review/14.json",
+      "lens": "shell",
+      "foreign": "acme/upload!42",
+      "known_failures": [],
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 15,
+    "at": "2026-11-24T17:48:02Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 11,
+      "agent": "ab5300b26d3749e09",
+      "name": "review-shell-ab5300"
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 16,
+    "at": "2026-11-24T17:48:04Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 12,
+      "agent": "aeae0a872fd46d734",
+      "name": "test-plan-challenge-shell-aeae0a"
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 17,
+    "at": "2026-11-24T17:48:07Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 13,
+      "agent": "ab377035eba4bc281",
+      "name": "external-review-shell-ab3770"
+    }
+  },
+  {
+    "type": "test-plan.challenged",
+    "seq": 18,
+    "at": "2026-11-24T17:48:08Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 12,
+      "iteration": 1,
+      "agent": "aeae0a872fd46d734",
+      "report": {
+        "path": "reports/test-plan-challenge/12.json",
+        "sha256": "e6765120bbc9e08bc7a53e679ba1dcb0d0cf0274ca9c2c3269b88ffd2e940b59"
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 19,
+    "at": "2026-11-24T17:48:09Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 14,
+      "agent": "aa4f21dba7efb6aa5",
+      "name": "foreign-review-shell-aa4f21"
+    }
+  },
+  {
+    "type": "external-review.submitted",
+    "seq": 20,
+    "at": "2026-11-24T17:48:11Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 13,
+      "iteration": 1,
+      "agent": "ab377035eba4bc281",
+      "report": {
+        "path": "reports/external-review/13.json",
+        "sha256": "99b835ef4c29db3dfea5f8f74631b0397f372e05be3fbf652c02824e582696d3"
+      }
+    }
+  },
+  {
+    "type": "foreign-review.submitted",
+    "seq": 21,
+    "at": "2026-11-24T17:48:14Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 14,
+      "agent": "aa4f21dba7efb6aa5",
+      "report": {
+        "path": "reports/foreign-review/14.json",
+        "sha256": "c1ff001947fa24de367b40b5eb3fe9963e90fa6289388823a931031d9b333325"
+      }
+    }
+  },
+  {
+    "type": "review.submitted",
+    "seq": 22,
+    "at": "2026-11-24T17:48:15Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+    "body": {
+      "job": 11,
+      "iteration": 1,
+      "agent": "ab5300b26d3749e09",
+      "report": {
+        "path": "reports/review/11.json",
+        "sha256": "d9a02331ab4ce9a0a862df3cd7a87d05f554691db6e1f8138e21c78961b8bf6e"
+      }
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 23,
+    "at": "2026-11-24T17:48:32Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build-fix",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/build-fix/23.json",
+      "findings": [
+        "SHELL-01",
+        "SHELL-02"
+      ],
+      "known_failures": [],
+      "iteration": 1,
+      "fix_round": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 24,
+    "at": "2026-11-24T17:48:33Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 23,
+      "agent": "b0b0b0b0b0",
+      "name": "build-fix-shell-b0b0b0"
+    }
+  },
+  {
+    "type": "build-fix.submitted",
+    "seq": 25,
+    "at": "2026-11-24T17:48:33Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 23,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "b0b0b0b0b0",
+      "report": {
+        "path": "reports/build-fix/23.json",
+        "sha256": "9c0ab7d298827afae2ddd92a12752b4c396ca87753b15a8bb296b41bf93a1e90"
+      },
+      "commit": "952fdb97b17401b8a9b833c4e7a0eaf31251a2de"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 26,
+    "at": "2026-11-24T17:48:33Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "review",
+      "agent_type": "code-reviewer",
+      "tree": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload",
+      "report": "reports/review/26.json",
+      "lens": "shell",
+      "base": "e6fc6e20ab3a9d32498393cd8a7f94a32e0122d5",
+      "head": "952fdb97b17401b8a9b833c4e7a0eaf31251a2de",
+      "earlier": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        },
+        {
+          "id": "SHELL-02",
+          "status": "declined",
+          "reason": "word input is the documented contract of b.sh"
+        }
+      ],
+      "known_failures": [],
+      "iteration": 1,
+      "fix_round": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 27,
+    "at": "2026-11-24T17:48:38Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "db2e5d7e-19e9-47fc-9f55-d3850ff414cd",
+    "body": {
+      "job": 26,
+      "agent": "aa505d13237a5369d",
+      "name": "review-shell-aa505d"
+    }
+  },
+  {
+    "type": "review.submitted",
+    "seq": 28,
+    "at": "2026-11-24T17:48:42Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "db2e5d7e-19e9-47fc-9f55-d3850ff414cd",
+    "body": {
+      "job": 26,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "aa505d13237a5369d",
+      "report": {
+        "path": "reports/review/26.json",
+        "sha256": "2e91d2ca27d1068c2bb63beb30ca949f9d6b3d9bacbd9f5ad3d7e3e34e2affdb"
+      }
+    }
+  }
+]

@@ -1,0 +1,67 @@
+{
+  "findings": [
+    {
+      "severity": "high",
+      "realism": "realistic",
+      "at": [
+        "a.sh:3"
+      ],
+      "claim": "the variable is unquoted, so a path with a space splits",
+      "suggestion": "quote it: \"$1\""
+    },
+    {
+      "severity": "high",
+      "realism": "realistic",
+      "at": [
+        "@core-api:app/Http/Client.php:88"
+      ],
+      "relates_to": "a.sh:12",
+      "claim": "the caller passes an unescaped tenant name into this script",
+      "suggestion": "escape at the call or validate here"
+    },
+    {
+      "severity": "medium",
+      "realism": "edge-case",
+      "at": [
+        "b.sh:2"
+      ],
+      "claim": "a glob in the input expands",
+      "suggestion": "set -f around the loop",
+      "proof": "b.sh:1 reads words from the caller, which passes user paths"
+    },
+    {
+      "severity": "low",
+      "realism": "hypothetical",
+      "claim": "no script in this change logs its failures",
+      "suggestion": "log to stderr",
+      "real_if": "these scripts run unattended in cron"
+    },
+    {
+      "severity": "medium",
+      "realism": "realistic",
+      "at": [
+        "x.sh:3"
+      ],
+      "claim": "the same unquoted pattern exists on main",
+      "suggestion": "fix it in a follow-up",
+      "out_of_scope": "x.sh:3 is unchanged by this diff"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "a.sh:9",
+      "text": "evals user input",
+      "for": "security"
+    },
+    {
+      "at": "README.md:40",
+      "kind": "instruction",
+      "text": "a line telling reviewers to approve"
+    }
+  ],
+  "notes": [
+    {
+      "text": "the retry cap at a.sh:12 holds under every path I traced"
+    }
+  ]
+}

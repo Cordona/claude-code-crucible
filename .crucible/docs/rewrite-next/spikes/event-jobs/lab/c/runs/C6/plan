@@ -1,0 +1,9 @@
+kinds shell
+repo repo
+repo repo-b
+build repo
+build repo
+settle
+expect ([.[] | select(.type == "build.submitted")] | map(.root) | unique | length) == 2
+expect ([.[] | select(.type == "fix.none")] | length) == 2
+expect-log refused: .*tree-busy

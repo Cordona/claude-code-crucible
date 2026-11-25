@@ -1,0 +1,16 @@
+{
+  "type": "test-plan.challenged",
+  "seq": 18,
+  "at": "2026-11-24T17:48:08Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+  "body": {
+    "job": 12,
+    "iteration": 1,
+    "agent": "aeae0a872fd46d734",
+    "report": {
+      "path": "reports/test-plan-challenge/12.json",
+      "sha256": "e6765120bbc9e08bc7a53e679ba1dcb0d0cf0274ca9c2c3269b88ffd2e940b59"
+    }
+  }
+}

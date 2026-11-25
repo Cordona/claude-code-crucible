@@ -1,0 +1,1 @@
+lab/job-dispatch.sh --effort "$EFFORT" --check --kind fix --merge 10 --side production --delivery hot --hot-agent ab1

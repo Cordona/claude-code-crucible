@@ -1,0 +1,17 @@
+{
+  "type": "pr.review-requested",
+  "seq": 1,
+  "at": "2026-11-24T08:01:47Z",
+  "by": "remote.sh",
+  "claude_session_id": "dry-C9-1",
+  "body": {
+    "pr": "pr-9",
+    "base": "aae040b4ab9e2dac59ca352a9bda167a5fcca771",
+    "head": "07c200a7949476b56efc8577d4b1572d5736e7d5",
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/foreign",
+    "root": "self",
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

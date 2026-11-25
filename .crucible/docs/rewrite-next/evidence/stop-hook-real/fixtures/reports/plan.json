@@ -1,0 +1,11 @@
+{"behaviours": [
+  {"id": "B-1", "text": "with --dry-run, each backup past KEEP is printed and nothing is deleted", "at": "bin/prune-backups.sh:47-51"},
+  {"id": "B-2", "text": "--pattern GLOB decides which files count as backups", "at": "bin/prune-backups.sh:44"},
+  {"id": "B-3", "text": "--pattern with no value prints the usage and exits 2", "at": "bin/prune-backups.sh:26"}],
+ "tests": [
+  {"id": "T-1", "action": "add", "file": "tests/test_prune.sh", "name": "dry run lists the extra backups and deletes none", "level": "e2e", "guards": ["B-1"], "breaks_on": "the delete runs under --dry-run"},
+  {"id": "T-2", "action": "add", "file": "tests/test_prune.sh", "name": "a pattern keeps the newest matching files and leaves the rest", "level": "e2e", "guards": ["B-2"], "breaks_on": "the pattern is ignored and the default glob is used"},
+  {"id": "T-3", "action": "add", "file": "tests/test_prune.sh", "name": "--pattern without a value is a usage error", "level": "e2e", "guards": ["B-3"], "breaks_on": "the value check before reading the pattern is dropped"}],
+ "untested": [{"id": "N-1", "case": "a pattern that also matches a folder", "reason": "the backup folder holds only files", "risk": "a matching folder is counted as a backup and rm -f skips it", "proof": "unproven", "recommend": "skip"}],
+ "baseline": {"gate": "test", "result": "pass"},
+ "run": [{"where": "the project root", "command": "sh tests/run.sh"}]}

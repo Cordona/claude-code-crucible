@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 54,
+    "at": "2026-11-25T10:45:21Z",
+    "by": "fault-ended.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 52,
+      "iteration": 1,
+      "agent": "fc00000001",
+      "reason": "fault",
+      "step": "check",
+      "fault": "the report check of job 52 (build-php-fc0000) can't run: report-validation.sh: code-standin/submissions/build.json names the facts script code-standin/scripts/internal/missing-facts.sh, which isn't installed"
+    }
+  }
+]

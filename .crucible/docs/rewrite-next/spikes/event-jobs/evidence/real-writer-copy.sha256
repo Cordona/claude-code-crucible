@@ -1,0 +1,10 @@
+cd2a6214fcc6b3ea71ee8b3221b010a2dc49df73d5bc595d6f000a99640dd6a6  ./hooks/matchers.json
+6a0f4279eded2f47e7f443b2c5b23cf910defb5a058f2c33c65e603dd3f7b543  ./hooks/pre-tool-use/deny-direct-event-write.sh
+b8f3f8d4392a9f8abbac3acef20ff6098ef78255b4f28470d07a2a67f61cbf5e  ./hooks/pre-tool-use/deny-internals-read.sh
+cee00cb105c13e4970e3bfc720ca584878e757727c47f03c710eba1a91b4f907  ./scripts/internal/event-write.sh
+07d93d7fc0e701729a940f03e09a79eda9cd61738bed45923cb54145026a6e25  ./scripts/internal/events-read.sh
+1953f1bb27a7388a8ef8872087e01d5d4e29ec592641e3b5bc2c88859bf49b53  ./scripts/lib/atomic-write.sh
+078778344448cd4e9ed33780d02f137826bda80df95774d285590f48d863f034  ./scripts/lib/beside.sh
+6b6d963c6b3b2e90a6b3323b394cfdbf72b1383913bf6d0c9433940b67259127  ./scripts/lib/listing.sh
+c7b28bdff81adb6f79e9c577acbb0a9f637bf51d3134dc2a2aef91a2a9a9e112  ./scripts/lib/lock.sh
+8691ba661bcc552c5a3d90fba878197c1ed2743222d584ea2ce5b0722d2551d7  ./scripts/lib/sha256.sh

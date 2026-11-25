@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 44,
+    "at": "2026-11-25T10:45:19Z",
+    "by": "fault-ended.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 42,
+      "iteration": 1,
+      "agent": "b0b5ce0909",
+      "reason": "fault",
+      "step": "check",
+      "fault": "code-sketcher has no submissions/build.json, so job 42 (build-php-b0b5ce) can't be handed in"
+    }
+  }
+]

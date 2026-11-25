@@ -1,0 +1,15 @@
+{
+  "type": "foreign-review.submitted",
+  "seq": 21,
+  "at": "2026-11-24T17:48:14Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "a12ea4bc-d64e-4d16-bf2f-884c277d501e",
+  "body": {
+    "job": 14,
+    "agent": "aa4f21dba7efb6aa5",
+    "report": {
+      "path": "reports/foreign-review/14.json",
+      "sha256": "c1ff001947fa24de367b40b5eb3fe9963e90fa6289388823a931031d9b333325"
+    }
+  }
+}

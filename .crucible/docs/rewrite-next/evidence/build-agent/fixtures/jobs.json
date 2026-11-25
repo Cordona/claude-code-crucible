@@ -1,0 +1,253 @@
+{
+  "build-1": {
+    "tree": "upload",
+    "agent": "af6bac0101",
+    "name": "build-php-af6bac",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security",
+          "observability",
+          "persistence"
+        ]
+      }
+    }
+  },
+  "build-2": {
+    "tree": "upload",
+    "agent": "b71e0c0202",
+    "name": "build-php-b71e0c",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 2,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security",
+          "observability",
+          "persistence"
+        ]
+      }
+    }
+  },
+  "build-known-failure": {
+    "tree": "upload",
+    "agent": "c4d2a90303",
+    "name": "build-php-c4d2a9",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [
+        "TranslationsImportServiceTest::testImport"
+      ],
+      "iteration": 3,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security",
+          "observability",
+          "persistence"
+        ]
+      }
+    }
+  },
+  "build-blocked": {
+    "tree": "upload",
+    "agent": "d93f170404",
+    "name": "build-php-d93f17",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 4,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security",
+          "observability",
+          "persistence"
+        ]
+      }
+    }
+  },
+  "build-gives-up": {
+    "tree": "retry",
+    "agent": "e1a8350505",
+    "name": "build-php-e1a835",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  "build-quote": {
+    "tree": "quote",
+    "agent": "f05b2c0606",
+    "name": "build-shell-f05b2c",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security",
+          "clean-code"
+        ],
+        "model": "opus"
+      }
+    }
+  },
+  "fix-1": {
+    "tree": "quote",
+    "agent": "f05b2c0606",
+    "name": "fix-shell-f05b2c",
+    "dispatched": {
+      "kind": "build-fix",
+      "agent_type": "code-builder",
+      "findings": [
+        "SHELL-01",
+        "SECURITY-01",
+        "CLEAN-CODE-01"
+      ],
+      "known_failures": [],
+      "iteration": 1,
+      "fix_round": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security",
+          "clean-code"
+        ],
+        "model": "opus"
+      }
+    }
+  },
+  "fix-sent-back": {
+    "tree": "quote",
+    "agent": "f05b2c0606",
+    "name": "fix-shell-f05b2c",
+    "dispatched": {
+      "kind": "build-fix",
+      "agent_type": "code-builder",
+      "findings": [
+        "CLEAN-CODE-01"
+      ],
+      "sent_back": [
+        "CLEAN-CODE-01"
+      ],
+      "known_failures": [],
+      "iteration": 1,
+      "fix_round": 1,
+      "setup": {
+        "language": "shell",
+        "standards": [
+          "security",
+          "clean-code"
+        ],
+        "model": "opus"
+      }
+    }
+  },
+  "build-recover": {
+    "tree": "recover",
+    "agent": "a7c9e40808",
+    "name": "build-php-a7c9e4",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "frameworks": [
+          "laravel"
+        ],
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  "build-sketch": {
+    "tree": "sketch",
+    "agent": "b0b5ce0909",
+    "name": "build-php-b0b5ce",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-sketcher",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  "build-sketch-2": {
+    "tree": "sketch",
+    "agent": "b0b5ce1010",
+    "name": "build-php-b0b5c1",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-sketcher",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  },
+  "build-sketch-3": {
+    "tree": "sketch",
+    "agent": "b0b5ce1111",
+    "name": "build-php-b0b5c2",
+    "dispatched": {
+      "kind": "build",
+      "agent_type": "code-sketcher",
+      "known_failures": [],
+      "iteration": 2,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "security"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 20,
+  "at": "2026-11-24T08:01:46Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C8-1",
+  "body": {
+    "record": "replies",
+    "subject": "review:1",
+    "question": "The external review 1 is dealt with; its threads get their replies.",
+    "accept": "Post the replies (Recommended)",
+    "answer": "Post the replies (Recommended)",
+    "accepted": true
+  }
+}

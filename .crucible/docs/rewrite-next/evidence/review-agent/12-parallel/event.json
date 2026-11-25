@@ -1,0 +1,34 @@
+[
+  {
+    "type": "review.submitted",
+    "seq": 59,
+    "at": "2026-11-25T10:42:10Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 55,
+      "iteration": 1,
+      "agent": "p1p1p1p1p1",
+      "report": {
+        "path": "reports/review/55.json",
+        "sha256": "04748474906c0d7b64760b92f21ed2f0fcf2272a700eef5d062d1dc7a7fbea7c"
+      }
+    }
+  },
+  {
+    "type": "review.submitted",
+    "seq": 60,
+    "at": "2026-11-25T10:42:11Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 57,
+      "iteration": 1,
+      "agent": "p2p2p2p2p2",
+      "report": {
+        "path": "reports/review/57.json",
+        "sha256": "6a4626deb335c9f9cba60e02fda959311a67546ee899ea815b15244cee36548a"
+      }
+    }
+  }
+]
