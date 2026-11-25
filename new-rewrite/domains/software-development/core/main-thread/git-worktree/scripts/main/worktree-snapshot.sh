@@ -10,21 +10,18 @@ usage() {
 	cat <<'USAGE'
 usage: sh worktree-snapshot.sh --repo DIR --effort FOLDER
 
-Makes one commit of the main checkout's uncommitted work (staged, unstaged
-and untracked; nothing ignored), parent HEAD, signed as the effort's
-identity. Use it to base work on the checkout as it is now.
+Makes one commit of the main checkout's uncommitted work (staged, unstaged,
+untracked; not ignored) on HEAD, as the effort's identity, to base work on
+the checkout as it is now.
 
 Options:
-  --repo DIR       a folder of the repository, absolute; uses its main checkout
+  --repo DIR       a folder of the repository, absolute
   --effort FOLDER  the effort's folder, absolute
-Requires:  the effort holds an identity for the repository (git-identity);
-           the main checkout has a HEAD commit, is not sparse, and has no
-           merge, rebase, cherry-pick or revert under way
+Requires:  the effort's identity for the repository; a HEAD commit; not
+           sparse; no merge, rebase, cherry-pick or revert under way
 Writes:    git objects only; no ref, index, file or event
-Stdout:    one JSON line {"commit": SHA, "new": BOOL, "signed": BOOL};
-           new false: nothing was uncommitted, commit is HEAD, signed says
-           whether HEAD is signed; new true with signed false: signing
-           failed, the commit is unsigned
+Stdout:    {"commit": SHA, "new": BOOL, "signed": BOOL}: new false, nothing
+           was uncommitted and commit is HEAD; signed false, unsigned
 Exit:
   0  printed
   2  refused, nothing changed; the reason is on stderr

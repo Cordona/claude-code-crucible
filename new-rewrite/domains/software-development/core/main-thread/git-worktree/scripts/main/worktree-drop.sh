@@ -11,20 +11,20 @@ usage() {
 	cat <<'USAGE'
 usage: sh worktree-drop.sh --effort FOLDER --name NAME
 
-Removes the effort's live tree NAME for good, in any effort state, closed
-included. Use it to clear a tree whose work is done or no longer wanted.
+Removes the effort's live tree NAME for good, in any effort state. Use it
+to clear a tree whose work is done or no longer wanted.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
-Requires:  no uncommitted changes (commit them, or keep them with
-           worktree-discard.sh) and nothing working in it;
-           the human's recorded yes, unused and given since the cut, when its
-           branch or kept refs hold commits the checkout and bases lack (today,
-           any it made) or its folder and branch are both gone: record
-           drop-worktree, subject "NAME:<full branch tip SHA>" or "NAME:none"
-Writes:    deletes the folder (untracked too; gone by hand is fine), the
-           registration, branch and kept refs; worktree.dropped {name, answer?}
+Requires:  no uncommitted changes (commit, or keep them with
+           worktree-discard.sh), nothing working in it; and when its branch
+           or kept refs hold commits the checkout and bases lack, or its
+           folder and branch are both gone, the human's recorded yes, unused
+           and given since the cut: record drop-worktree, subject
+           "NAME:<full branch tip SHA>" or "NAME:none"
+Writes:    deletes the folder, the registration, branch and kept refs;
+           worktree.dropped {name, answer?}
 Stdout:    one path, the event's
 Exit:
   0  dropped

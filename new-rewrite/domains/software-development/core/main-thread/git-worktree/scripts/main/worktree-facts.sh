@@ -13,19 +13,17 @@ Prints the facts to choose a tree's base from, before a cut, move or
 catch-up: the main checkout and, with --effort, the effort's live trees.
 
 Options:
-  --repo DIR       absolute; any folder of the main checkout or a worktree;
-                   all resolve to the main checkout
-  --effort FOLDER  absolute; an effort folder (holds events/); adds trees
-Requires:  installed, with core beside this skill
+  --repo DIR       any folder of the main checkout or a worktree, absolute
+  --effort FOLDER  an effort's folder, absolute; adds its trees
 Writes:    nothing
 Stdout:    one JSON object, about the main checkout:
   {repo, head: SHA|null, branch: refs/heads/NAME|null, uncommitted: N,
    trees: [{name, path, branch: NAME, tip: SHA|null, present: bool,
             uncommitted: N|null, in_checkout: bool, not_in: [NAME...]}]}
   head null: unborn; branch null: detached; uncommitted counts untracked.
-  trees: only this repository's, [] when none. tip null: branch gone;
-  present: folder exists, else uncommitted null; in_checkout: head holds
-  tip; not_in: other trees whose tip (or gone tip) doesn't hold it.
+  trees: this repository's only. tip null: branch gone; present false:
+  folder gone, uncommitted null; in_checkout: head holds tip; not_in: other
+  trees whose tip doesn't hold it.
 Exit:
   0  printed
   2  refused, nothing changed; the reason is on stderr

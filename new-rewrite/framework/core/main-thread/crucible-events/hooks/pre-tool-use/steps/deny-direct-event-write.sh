@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Claude Code PreToolUse hook for Bash: denies a command that runs the event
-# writer directly, by mistake. Events are written by their component's scripts.
+# A step of guard-framework.sh, for Bash: denies a command that runs the
+# event writer directly, by mistake. Events are written by their component's
+# scripts.
 set -eu
 # A hook fault allows the call: it sits on every Bash call, and a bug here
 # must never block the human.
@@ -10,7 +11,7 @@ usage() {
 	cat <<'EOF'
 usage: sh deny-direct-event-write.sh < HOOK_JSON
 
-Run by Claude Code as a PreToolUse hook on Bash; not for main to call.
+Run by guard-framework.sh for a Bash call; not for main to call.
 Denies a Bash command that runs event-write.sh directly, through a shell (or
 its -c string), or behind a wrapper such as env or sudo. A run with only
 --help or -h, and a command that only reads or names the file, are allowed.

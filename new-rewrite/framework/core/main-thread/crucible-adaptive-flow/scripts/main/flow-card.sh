@@ -7,17 +7,16 @@ usage() {
 	cat <<'USAGE'
 usage: sh flow-card.sh --file FLOW
 
-Prints the card for a proposed flow. Use it to ask at the flow-agree gate;
-the same FLOW then goes to flow-agree.sh --file.
+Prints the card for a proposed flow, to show at the flow-agree gate; the
+same FLOW then goes to flow-agree.sh --file.
 
 Options:
-  --file FLOW  a file holding {"goal": "<one line>",
-               "steps": [{"id": N, "step": "<component>/<name>"}, ...]};
-               ids unique whole numbers from 1; each step a key
-               flow-candidates.sh lists, repeatable under another id
+  --file FLOW  {"goal": "<one line>", "steps": [{"id": N, "step":
+               "<component>/<name>"}, ...]}: ids unique from 1, each step
+               a key flow-candidates.sh lists, repeatable under another id
 Writes:    nothing
-Stdout:    the card as plain text: the goal, then in file order what each
-           step does, its skills and the event that ends it
+Stdout:    the card, plain text: the goal, then each step's does, skills
+           and ending event, in file order
 Exit:
   0  printed
   2  refused, nothing changed; the reason is on stderr

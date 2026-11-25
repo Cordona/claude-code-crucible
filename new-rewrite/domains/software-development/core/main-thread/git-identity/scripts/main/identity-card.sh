@@ -8,26 +8,24 @@ usage() {
 	cat <<'USAGE'
 usage: sh identity-card.sh --list FILE --repo DIR [--question]
 
-Prints the card for picking which identity signs commits in a repository,
-or, with --question, the AskUserQuestion input for that pick. It names the
-repository by its main checkout's top folder (physical path), for any
-worktree or subfolder.
+Prints the card for picking the identity that signs commits in a repository
+(named by its main checkout's top folder, physical), or with --question the
+AskUserQuestion input for that pick.
 
 Options:
-  --list FILE   identity-list.sh's output saved to a file
+  --list FILE   identity-list.sh's saved output
   --repo DIR    a folder in a non-bare repository, absolute
   --question    print the question, not the card
 Writes:    nothing
-Stdout:    the card (usable identities numbered, with their key, then the
-           others with reasons), or one JSON question to ask as printed:
-           one option per usable identity, labelled as in FILE, plus
-           "None of these" (stop) when only one can sign
+Stdout:    the card: the identities that can sign numbered, with their key,
+           then the others with why; or one JSON question to ask as printed,
+           one option per such identity, labelled as in FILE, plus "None of
+           these" (stop) when only one can sign
 Exit:
   0  printed; 1 to 4 identities can sign
   2  refused, nothing changed; the reason is on stderr
-  3  none can sign: tell the human to set up a signing key, and stop;
-     or more than 4 can: show the card, do not ask the question, and
-     have the human answer with one of the card's labels
+  3  none can sign: tell the human to set up a signing key, and stop; or
+     more than 4: show the card, ask no question, the human answers a label
 USAGE
 }
 

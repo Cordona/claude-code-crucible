@@ -7,20 +7,25 @@ usage() {
 	cat <<'USAGE'
 usage: sh install-check.sh [--settings FILE]...
 
-Checks the framework is installed, against what install-entries.sh says an
-install needs; gaps are fixed from that script's output. Run it from the
-project folder, after installing.
+Run by the human, after installing, from the project folder; not for main
+to call. Checks the install against what install-entries.sh says it needs,
+and each component against the folder contract: SKILL.md or its agent
+definition <name>.md, flow-step.json, and only the folders references/,
+scripts/ (main/, internal/, lib/, and agent/ for scripts agents may run,
+which none has yet), hooks/ (matchers.json, env.json, one folder per event,
+steps/ beneath), events/ and submissions/.
 
 Options:
-  --settings FILE  a settings file to read; repeatable; replaces the defaults
+  --settings FILE  a settings file to read; repeatable; default
                    $CLAUDE_CONFIG_DIR/settings.json, ./.claude/settings*.json
 Reads:     CLAUDE_CONFIG_DIR (default ~/.claude), CRUCIBLE_HOME (~/.crucible)
 Writes:    nothing
-Stdout:    "installed", or one "missing: <what>" line per gap; a CLAUDE.md
-           that is the human's own file shows as missing, as expected
+Stdout:    "installed"; or one "missing: <what>" line per gap, and one
+           "extra: <what>" line per registered hook step and per folder
+           outside the contract; the human's own CLAUDE.md shows as missing
 Exit:
   0  everything in place
-  1  something missing
+  1  something missing or extra
   2  refused, nothing changed; the reason is on stderr
 USAGE
 }
@@ -78,6 +83,8 @@ jq -r --slurpfile s "${work}/settings.json" '$s[0] as $set
 		  then empty
 		  else "missing: \($h.event) hook \(if $h.matcher then "[\($h.matcher)] " else "" end)\($h.command_path)\(if $h.timeout then " with timeout \($h.timeout)" else "" end)" end),
 	(.env | to_entries[] as $v | if $set.env[$v.key] == $v.value then empty else "missing: env \($v.key)=\($v.value)" end),
+	($set.hooks | to_entries[] | .key as $event | .value[]?.hooks[]? | (.command // "") | select(test("/hooks/[a-z-]+/steps/"))
+		| "extra: \($event) hook step \(.) is registered; register only its wrapper"),
 	(.space as $space | if any($set.dirs[]; . == $space) then empty else "missing: additional directory \($space)" end),
 	(.deny[] as $rule | if any($set.deny[]; . == $rule) then empty else "missing: deny rule \($rule)" end)' \
 	"${work}/needs.json" >"${work}/missing"
@@ -95,6 +102,19 @@ done >>"${work}/missing"
 claude_md=$(jq -r '.claude_md' "${work}/needs.json")
 resolves_to "${config}/CLAUDE.md" "${claude_md}" || resolves_to ./CLAUDE.md "${claude_md}" \
 	|| printf 'missing: CLAUDE.md link -> %s\n' "${claude_md}" >>"${work}/missing"
+
+# The folder contract: what folders a component may hold.
+jq -r '.skills[].path' "${work}/needs.json" | while IFS= read -r component; do
+	for folder in "${component}"/*/ "${component}"/scripts/*/; do
+		[ -d "${folder}" ] || continue
+		folder=${folder%/}
+		case ${folder#"${component}"/} in
+			references | scripts | hooks | events | submissions) ;;
+			scripts/main | scripts/internal | scripts/lib | scripts/agent) ;;
+			*) printf 'extra: folder %s is outside the component contract\n' "${folder}" ;;
+		esac
+	done
+done >>"${work}/missing"
 
 if [ -s "${work}/missing" ]; then
 	cat "${work}/missing"

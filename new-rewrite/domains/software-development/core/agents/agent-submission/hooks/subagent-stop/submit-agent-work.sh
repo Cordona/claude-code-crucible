@@ -14,51 +14,25 @@ usage() {
 usage: sh submit-agent-work.sh < SUBAGENT_STOP_HOOK_JSON
 
 Run by Claude Code as the SubagentStop hook; not for main to call.
-For an agent working on a job (job.assigned, not finished), by what
-<agent_type>/submissions/<kind>.json says ({event, commit, rules, problems,
-facts?, stamps?}), in order: checks its report by those rules; then, under
-the stop hook's own lock for the effort, stamps it by the stamps rules when
-the file names them, pins it, commits the tree unsigned when it says
-commit, and writes the event it names.
+Hands in a job agent's work: checks its report by the rules its
+submissions/<kind>.json names, then, under the stop lock, stamps, pins,
+commits when the kind commits, and writes the submission event. Every
+outcome is an event:
+  - refused: job.refused, the stop held with the repair lines; the second
+    refusal ends the job (gave-up); one not recorded is held only once
+  - a fault before acceptance (an install fault, a check that can't run):
+    job.ended fault, step check; after it: job.stalled at the step; an
+    exit with no outcome: step hook, ended or stalled the same way
+  - no job: let through, but a job-taking type never assigned one, looked
+    for again for 5 s, is told to the human
+It reads in a report only: one JSON object; every at a well-formed location
+naming a real file and line; a summary, the commit's subject, when it commits.
 
-Every outcome is an event, or, when there is no job, a message:
-  - a refused report holds the stop with its repair lines: job.refused; the
-    second refusal ends the job (job.ended, gave-up) and lets the stop
-    through. A refusal that can't be recorded holds a first stop; a stop
-    that already follows a block (stop_hook_active) goes through, and the
-    job stays assigned for main's turn end;
-  - a fault before the report is accepted (a missing or wrong submission
-    file, rules module or facts script, a check that can't run) ends the
-    job: job.ended {fault, step check};
-  - a fault after it (the lock waited out, the stamp, pin, commit or event
-    failing) stalls the job, its report kept: job.stalled {step};
-  - an exit with no outcome reached is step hook, ending or stalling the
-    job the same way.
-Each fault, and a give-up, is told to the human. An agent with no job is
-let through; but one of a type with a submissions folder that was never
-assigned any job, looked for again for about 5 seconds, is told to the
-human too.
-
-What this plumbing reads in a report, and nothing more; every other rule
-about it is its agent's own:
-  - the report is one JSON object;
-  - any at in it is a location, or a list of them: path, path:N,
-    path:N-M, -path:N (read at the job's base) or @<where>:path..., checked
-    once, before the agent's rules: well formed, naming a file, the line
-    within it;
-  - a report whose job commits has a summary, the commit's subject.
-
-Reads:     stdin, the hook JSON: session_id, agent_id, agent_type,
-           stop_hook_active;
-           CRUCIBLE_HOME, default $HOME/.crucible, whose efforts are searched
-           for the job; CRUCIBLE_STOP_LOCK_SECONDS, a shorter wait for the
-           stop lock than its 120 seconds
-Writes:    the report (pruned, then read-only), the working commit, the
-           submission event; job.refused, job.ended or job.stalled
-Stdout:    nothing; or {"decision": "block", "reason": the repair lines,
-           "systemMessage"?} to hold the stop; or {"systemMessage"} telling
-           the human the job gave up, which step failed, or that a job
-           agent stopped with no job
+Reads:     stdin: session_id, agent_id, agent_type, stop_hook_active;
+           CRUCIBLE_STOP_LOCK_SECONDS, a stop-lock wait shorter than 120 s
+Writes:    the report (pruned, then read-only), the working commit, the events
+Stdout:    nothing; or {"decision": "block", "reason", "systemMessage"?},
+           holding the stop; or {"systemMessage"} for the human
 Exit:
   0  always; only a printed block holds the stop
 USAGE
@@ -70,7 +44,7 @@ command -v jq >/dev/null 2>&1 || { printf '%s: jq not found; the stop goes throu
 
 # A new agent's assignment can race its stop: a job-taking agent with no job
 # is looked for again, once a second, before the human is told.
-relook_tries=5
+relook_seconds=5
 
 here=$(dirname -- "$0")
 self=$0
@@ -102,7 +76,7 @@ record_fault() {
 		rf_then="its report is kept: sh ${skills}/agent-submission/scripts/main/recover-submission.sh --effort ${effort} --job $(jq -r '.job' "${job}") --finish hands it in, --give-up ends the job"
 	fi
 	outcome=fault
-	if ! sh "${here}/${rf_writer}" --effort "${effort}" --job "${job}" --step "$1" --fault "$2" 2>"${work}/fault-said"; then
+	if ! sh "${here}/steps/${rf_writer}" --effort "${effort}" --job "${job}" --step "$1" --fault "$2" 2>"${work}/fault-said"; then
 		rf_then="${rf_then}; ${rf_type} could not be written either: $(head -n 1 "${work}/fault-said")"
 	fi
 	printf '%s: %s; %s\n' "${prog}" "$2" "${rf_then}" >&2
@@ -136,11 +110,8 @@ trap 'exit 143' TERM
 trap 'exit 130' INT
 trap 'exit 129' HUP
 
-job_of="${skills}/agent-jobs/scripts/internal/job-of.sh"
-had_job="${skills}/agent-jobs/scripts/internal/agent-had-job.sh"
-for need in "${job_of}" "${had_job}"; do
-	[ -f "${need}" ] || say "agent-jobs isn't beside agent-submission (expected ${need}); no agent's work is handed in until it is installed"
-done
+agent_job="${skills}/agent-jobs/scripts/internal/agent-job.sh"
+[ -f "${agent_job}" ] || say "agent-jobs isn't beside agent-submission (expected ${agent_job}); no agent's work is handed in until it is installed"
 
 input=$(cat)
 agent=$(printf '%s' "${input}" | jq -r '.agent_id // empty' 2>/dev/null) || { outcome=passed; exit 0; }
@@ -152,44 +123,30 @@ case ${session} in '' | *[!A-Za-z0-9._-]*) ;; *) CLAUDE_CODE_SESSION_ID=${sessio
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/submit-agent-work.XXXXXX") || { outcome=passed; exit 0; }
 
-# The effort holding the agent's job: a cheap first pass on the bare id,
-# then job-of.sh. Sets effort when found; seen when the agent had a job
-# that is no longer open.
-seen=''
-find_job() {
-	for candidate in "${CRUCIBLE_HOME:-${HOME}/.crucible}"/efforts/*; do
-		[ -d "${candidate}/events" ] || continue
-		grep -rlqF -- "${agent}" "${candidate}/events" 2>/dev/null || continue
-		fj_rc=0
-		sh "${job_of}" --effort "${candidate}" --agent "${agent}" >"${work}/job.json" 2>"${work}/said" || fj_rc=$?
-		case ${fj_rc} in
-			0) effort=${candidate}; return 0 ;;
-			5) if sh "${had_job}" --effort "${candidate}" --agent "${agent}" 2>/dev/null; then seen=1; fi ;;
-			*) say "the job of agent ${agent} could not be read in ${candidate}: $(head -n 1 "${work}/said")" ;;
-		esac
-	done
-	return 1
-}
-
-# No job found: told to the human only for an agent of a job-taking type
-# (its component has a submissions folder) that was never assigned a job.
-# An empty type is Claude Code's own helper; an agent that had a job is
-# between jobs, answering main.
+# The agent's open job, through agent-jobs' agent-job.sh. None: told to
+# the human only for an agent of a job-taking type (its component has a
+# submissions folder) that was never assigned a job, looked for again first,
+# since its assignment can land just after it stops. An empty type is
+# Claude Code's own helper; an agent that had a job is between jobs,
+# answering main.
 job_taking() {
 	case ${agent_type} in '' | *[!a-z0-9-]*) return 1 ;; *) ;; esac
 	[ -d "${skills}/${agent_type}/submissions" ]
 }
-# shellcheck disable=SC2310 # find_job and job_taking are tests, called for their status
-if ! find_job; then
-	if [ -n "${seen}" ] || ! job_taking; then outcome=passed; exit 0; fi
-	tries=0
-	until [ "${tries}" -ge "${relook_tries}" ]; do
-		sleep 1
-		tries=$((tries + 1))
-		! find_job || break
-	done
-	[ -n "${effort}" ] || say "agent ${agent} (${agent_type}) stopped, and no effort has a job assigned to it; its report, if any, was not checked or handed in"
-fi
+wait=0
+# shellcheck disable=SC2310 # job_taking is a test, called for its status
+if job_taking; then wait=${relook_seconds}; fi
+rc=0
+sh "${agent_job}" --agent "${agent}" --wait "${wait}" >"${work}/found" 2>"${work}/said" || rc=$?
+case ${rc} in
+	0) ;;
+	4) [ "${wait}" -gt 0 ] || { outcome=passed; exit 0; }
+		say "agent ${agent} (${agent_type}) stopped, and no effort has a job assigned to it; its report, if any, was not checked or handed in" ;;
+	5) outcome=passed; exit 0 ;;
+	*) say "$(head -n 1 "${work}/said")" ;;
+esac
+effort=$(jq -r '.effort' "${work}/found")
+jq '.job' "${work}/found" >"${work}/job.json"
 job="${work}/job.json"
 seq=$(jq -r '.job' "${job}")
 kind=$(jq -r '.kind' "${job}")
@@ -210,7 +167,7 @@ jq -e '(.event | type) == "string" and (.commit | type) == "boolean" and (.rules
 # The check; its repair lines, or none. A check that can't run is an
 # install fault too.
 rc=0
-sh "${here}/report-validation.sh" --effort "${effort}" --job "${job}" >"${work}/lines" 2>"${work}/said" || rc=$?
+sh "${here}/steps/report-validation.sh" --effort "${effort}" --job "${job}" >"${work}/lines" 2>"${work}/said" || rc=$?
 case ${rc} in
 	0 | 1) ;;
 	*) fault check "the report check of ${named} can't run: $(head -n 1 "${work}/said")" ;;
@@ -219,7 +176,7 @@ esac
 if [ -s "${work}/lines" ]; then
 	step=refusal
 	rc=0
-	held=$(sh "${here}/held-stop.sh" --effort "${effort}" --job "${job}" --lines "${work}/lines" 2>"${work}/said") || rc=$?
+	held=$(sh "${here}/steps/held-stop.sh" --effort "${effort}" --job "${job}" --lines "${work}/lines" 2>"${work}/said") || rc=$?
 	unrecorded=''
 	if [ "${rc}" -ne 0 ]; then
 		unrecorded="the refusal of ${named} could not be recorded: $(head -n 1 "${work}/said")"
@@ -255,20 +212,20 @@ mkdir -p "${effort}/stops"
 sl_take "${effort}/stops/.lock" || fault lock "another agent's stop held ${named}'s effort too long"
 lock="${effort}/stops/.lock"
 step=stamp
-sh "${here}/report-stamp.sh" --effort "${effort}" --job "${job}" 2>"${work}/said" \
+sh "${here}/steps/report-stamp.sh" --effort "${effort}" --job "${job}" 2>"${work}/said" \
 	|| fault stamp "${named}'s report could not be stamped: $(head -n 1 "${work}/said")"
 step=pin
-sha256=$(sh "${here}/report-pin.sh" --report "${report}" 2>"${work}/said") \
+sha256=$(sh "${here}/steps/report-pin.sh" --report "${report}" 2>"${work}/said") \
 	|| fault pin "${named}'s report could not be pinned: $(head -n 1 "${work}/said")"
 commit=''
 if [ "$(jq -r '.commit' "${submission}")" = true ]; then
 	step=commit
-	commit=$(sh "${here}/working-commit.sh" --effort "${effort}" --job "${job}" 2>"${work}/said") \
+	commit=$(sh "${here}/steps/working-commit.sh" --effort "${effort}" --job "${job}" 2>"${work}/said") \
 		|| fault commit "${named}'s working commit failed: $(head -n 1 "${work}/said")"
 fi
 step=event
 event=$(jq -r '.event' "${submission}")
-sh "${here}/submission-event.sh" --effort "${effort}" --job "${job}" --type "${event}" --sha256 "${sha256}" \
+sh "${here}/steps/submission-event.sh" --effort "${effort}" --job "${job}" --type "${event}" --sha256 "${sha256}" \
 	${commit:+--commit "${commit}"} >/dev/null 2>"${work}/said" \
 	|| fault event "${named}'s ${event} was not written: $(head -n 1 "${work}/said")${commit:+; the working commit ${commit} carries its Job trailer}"
 outcome=submitted

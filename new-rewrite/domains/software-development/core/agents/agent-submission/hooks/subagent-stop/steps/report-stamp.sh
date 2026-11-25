@@ -8,15 +8,15 @@ usage() {
 	cat <<'USAGE'
 usage: sh report-stamp.sh --effort FOLDER --job FILE
 
-Run by submit-agent-work.sh, under the stop hook's lock; not for main to
-call. When the job's submissions/<kind>.json names stamps {rules, def,
-facts?}, runs that jq def on {report, job, facts} (facts from the stamps'
-own facts script, when it names one; {} otherwise) and writes what it
-prints back as the report. A def that stops with an error, rather than
-guess, is a fault for the human, its message passed on. A submissions file
-with no stamps leaves the report as it is. Stamp rules must leave a report
-they already stamped as it is: recover-submission.sh --finish stamps again
-a report that was stamped but not pinned.
+Run by submit-agent-work.sh and recover-submission.sh, under the stop
+hook's lock; not for main to call. When the job's submissions/<kind>.json
+names stamps {rules, def, facts?}, runs that jq def on {report, job, facts}
+(facts from the stamps' own facts script, when it names one; {} otherwise)
+and writes what it prints back as the report. A def that stops with an
+error, rather than guess, is a fault for the human, its message passed on.
+A submissions file with no stamps leaves the report as it is.
+Stamp rules must leave a report they already stamped as it is:
+recover-submission.sh --finish stamps again one stamped but not pinned.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
@@ -55,7 +55,7 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-skills=${self%/*/*/*/*}
+skills=${self%/*/*/*/*/*}
 agent_type=$(jq -r '.agent_type' "${job}")
 kind=$(jq -r '.kind' "${job}")
 report="${effort}/$(jq -r '.report' "${job}")"

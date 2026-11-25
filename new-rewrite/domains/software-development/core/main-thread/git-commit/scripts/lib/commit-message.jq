@@ -1,9 +1,11 @@
 # The Crucible commit message, a jq module: load it with jq -L <this folder>
 # and include "commit-message". commit_problems lists what is wrong with a
 # parsed input, empty when it fits; commit_message builds the message of an
-# input that fits; commit_is_snapshot tells a snapshot's subject.
+# input that fits; commit_is_snapshot tells a snapshot's subject. An input
+# gives text, a subject that must fit, or summary, any length, cut for the
+# subject and kept whole in the body; the trailers stay the last paragraph.
 
-def commit_fields: ["kind", "text", "trailers"];
+def commit_fields: ["kind", "text", "summary", "trailers"];
 # Characters (Unicode code points): 72 keeps the subject whole in git's one-line views.
 def commit_subject_max: 72;
 def commit_trailer_max: 200;
@@ -38,7 +40,9 @@ def commit_kind_problem:
 	end;
 
 def commit_text_problem:
-	if has("text") | not then "text is missing; expected the subject's text"
+	if has("text") and has("summary") then "text and summary are both given; expected one of them"
+	elif has("summary") then .summary | commit_line_problem(infinite) | "summary \(.)"
+	elif has("text") | not then "text is missing; expected the subject's text, or a summary"
 	else
 		((.text | commit_line_problem(commit_subject_max) | "text \(.)")
 		// (if (.kind | type) == "string" and ((commit_subject_prefix(.kind) + (.text | commit_trim)) | length) > commit_subject_max
@@ -56,9 +60,9 @@ def commit_trailer_problems:
 	end;
 
 def commit_problems:
-	if type != "object" then ["the input is a JSON \(type); expected an object of kind, text and trailers"]
+	if type != "object" then ["the input is a JSON \(type); expected an object of kind, text or summary, and trailers"]
 	else [
-		(keys_unsorted[] | select(IN(commit_fields[]) | not) | "\(tojson) is not a field; expected only kind, text and trailers"),
+		(keys_unsorted[] | select(IN(commit_fields[]) | not) | "\(tojson) is not a field; expected only kind, text or summary, and trailers"),
 		commit_kind_problem,
 		commit_text_problem,
 		commit_trailer_problems
@@ -70,8 +74,30 @@ def commit_trailer_key: split("-") | map((.[:1] | ascii_upcase) + .[1:]) | join(
 
 def commit_trailer_text: if type == "number" then tostring else commit_trim end;
 
+# A summary cut to fit the subject after $prefix: whole when it fits; else
+# its words up to the last that fits, then "…", counted in the 72. A first
+# word too long for the room is cut where the room ends.
+def commit_subject_cut($prefix):
+	commit_trim as $whole
+	| (commit_subject_max - ($prefix | length)) as $room
+	| if ($whole | length) <= $room then $whole
+	  else ($room - 1) as $fit
+		| (reduce ($whole | split(" ") | map(select(. != ""))[]) as $word ({text: "", full: false};
+			if .full then .
+			else (if .text == "" then $word else .text + " " + $word end) as $next
+				| if ($next | length) <= $fit then .text = $next else .full = true end
+			end) | .text) as $words
+		| (if $words == "" then $whole[:$fit] else $words end) + "…"
+	  end;
+
+# The subject and, for a summary, a blank line and the whole summary.
+def commit_head:
+	commit_subject_prefix(.kind) as $prefix
+	| if has("summary") then $prefix + (.summary | commit_subject_cut($prefix)) + "\n\n" + (.summary | commit_trim) + "\n"
+	  else $prefix + (.text | commit_trim) + "\n" end;
+
 def commit_message:
-	commit_subject_prefix(.kind) + (.text | commit_trim) + "\n"
+	commit_head
 	+ ((.trailers // {}) | to_entries
 		| if length == 0 then ""
 		else "\n" + (map("\(.key | commit_trailer_key): \(.value | commit_trailer_text)\n") | join(""))

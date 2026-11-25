@@ -5,14 +5,14 @@
 
 # Prints commit-message.sh's input for job file $1 (job-of.sh's output),
 # report file $2 and effort folder name $3: kind the job's kind, the report's
-# summary as text, and the trailers Effort, Job (seq, then name), Iteration,
+# summary as summary, and the trailers Effort, Job (seq, then name), Iteration,
 # Fix-Round (a fix only), then the dispatch's setup: Language, Framework
 # (only with frameworks, joined by commas), Standards (joined the same way)
 # and Model when the dispatch has one.
 tr_message_input() {
 	jq -n --slurpfile job "$1" --slurpfile report "$2" --arg effort "$3" '
 		$job[0] as $j
-		| {kind: $j.kind, text: $report[0].summary,
+		| {kind: $j.kind, summary: $report[0].summary,
 		   trailers: ({effort: $effort, job: "\($j.job) \($j.name)"}
 			+ (if $j | has("iteration") then {iteration: $j.iteration} else {} end)
 			+ (if $j | has("fix_round") then {"fix-round": $j.fix_round} else {} end)

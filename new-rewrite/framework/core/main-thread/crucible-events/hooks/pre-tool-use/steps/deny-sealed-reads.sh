@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
-# Claude Code PreToolUse hook for Read, Grep, Glob and Bash: denies main a
-# path into the framework's internals, by mistake, from another project.
+# A step of guard-framework.sh, for Read, Grep, Glob and Bash: denies main
+# and agents a path into a component's sealed folders, by mistake, from
+# another project.
 set -eu
 # A hook fault allows the call: it sits on every Read, Grep, Glob and Bash
 # call, and a bug here must never block the human.
@@ -8,31 +9,31 @@ trap 'exit 0' EXIT
 
 usage() {
 	cat <<'EOF'
-usage: sh deny-internals-read.sh < HOOK_JSON
+usage: sh deny-sealed-reads.sh < HOOK_JSON
 
-Run by Claude Code as a PreToolUse hook on Read, Grep, Glob and Bash; not for
-main to call. Denies a Read, Grep or Glob path, or a path written in a Bash
-command, whose real path is in the framework's scripts/internal/, scripts/lib/,
-hooks/ or events/ folders; scripts/main/ and SKILL.md stay readable. Stands
-aside for subagents' calls and when the session's folder is in the git
-repository that holds the framework.
+Run by guard-framework.sh for a Read, Grep, Glob or Bash call; not for main
+to call. Denies a path the call names whose real path is in a sealed
+folder: scripts/internal/, scripts/lib/, hooks/, events/, submissions/, and
+for an agent also scripts/main/. Everything else stays readable. Stands
+aside for a session in the framework's own repository. It stops a mistake,
+a model wandering into the internals; it is not a wall against a command
+built to get round it.
 
-Reads:   the hook JSON on stdin: tool_name, agent_id, cwd, tool_input.file_path,
-         tool_input.path, tool_input.pattern, tool_input.command
-Writes:  nothing
-Stdout:  nothing, or one JSON object {hookSpecificOutput: {hookEventName:
-         "PreToolUse", permissionDecision: "deny", permissionDecisionReason}}
+Reads:     stdin: tool_name, agent_id, cwd, tool_input.file_path, .path,
+           .pattern, .command
+Writes:    nothing
+Stdout:    nothing; or {hookSpecificOutput: {hookEventName: "PreToolUse",
+           permissionDecision: "deny", permissionDecisionReason}}
 Exit:
-  0  always; empty stdout lets the call run, the deny JSON blocks it. On a
-     fault (jq or realpath missing, input not JSON) the call runs, a note on
-     stderr.
+  0  always; on a fault (jq or realpath missing, input not JSON) no answer,
+     a note on stderr
 EOF
 }
 
 case ${1-} in -h | --help) usage; exit 0 ;; *) ;; esac
 
 allow_unchecked() {
-	printf 'deny-internals-read.sh: %s; the call is allowed unchecked\n' "$1" >&2
+	printf 'deny-sealed-reads.sh: %s; the call is allowed unchecked\n' "$1" >&2
 	exit 0
 }
 
@@ -50,7 +51,7 @@ fields=$(printf '%s' "${input}" | jq -r '(.tool_name // "") as $tool
 		elif $tool == "Glob" then (.path // empty), (.pattern // "" | select(startswith("/")))
 		elif $tool == "Bash" then .command // "" | splits("[\\s;&|()<>`]+")
 			| gsub("[\"'"'"'\\\\]"; "") | sub("^[^/]*="; "")
-			| select(test("scripts/internal|scripts/lib|hooks|events"))
+			| select(test("scripts/internal|scripts/lib|scripts/main|hooks|events|submissions"))
 		else empty end | strings)' 2>/dev/null) \
 	|| allow_unchecked 'the hook input is not JSON'
 
@@ -58,12 +59,11 @@ tool=$(printf '%s\n' "${fields}" | sed -n 1p)
 agent=$(printf '%s\n' "${fields}" | sed -n 2p)
 cwd=$(printf '%s\n' "${fields}" | sed -n 3p)
 case ${tool} in Read | Grep | Glob | Bash) ;; *) exit 0 ;; esac
-[ -z "${agent}" ] || exit 0
 targets=$(printf '%s\n' "${fields}" | sed 1,3d)
 
 # The framework root, from this hook's real place: the folder that holds
 # framework/. The installed skills link into it.
-root=$(cd -P -- "$(dirname -- "$0")/../../../../../.." && pwd -P)
+root=$(cd -P -- "$(dirname -- "$0")/../../../../../../.." && pwd -P)
 
 # The git repository that holds the framework, or the root itself outside one.
 repo=${root}
@@ -98,19 +98,32 @@ resolve() {
 	printf '%s%s\n' "${real%/}" "${rest}"
 }
 
-internal=''
+# Succeeds when real path $1 is in a folder sealed to main and agents, or,
+# for an agent's call, in scripts/main/ too.
+sealed() {
+	case $1/ in
+		"${root}"/*/scripts/internal/* | "${root}"/*/scripts/lib/* | "${root}"/*/hooks/* \
+			| "${root}"/*/events/* | "${root}"/*/submissions/*)
+			return 0 ;;
+		"${root}"/*/scripts/main/*) [ -n "${agent}" ] ;;
+		*) return 1 ;;
+	esac
+}
+
+hit=''
 while IFS= read -r target; do
 	[ -n "${target}" ] || continue
 	real=$(resolve "${target}")
-	case ${real}/ in
-		"${root}"/*/scripts/internal/* | "${root}"/*/scripts/lib/* | "${root}"/*/hooks/* | "${root}"/*/events/*)
-			internal=1; break ;;
-		*) ;;
-	esac
+	# shellcheck disable=SC2310 # sealed is a test, called for its status
+	if sealed "${real}"; then hit=1; break; fi
 done <<EOF
 ${targets}
 EOF
 
-[ -n "${internal}" ] || exit 0
-jq -n '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny",
-	permissionDecisionReason: "crucible: internal to the Crucible framework; use the skill'"'"'s scripts/main/ and each script'"'"'s --help. If a script misbehaves, tell the human its name and its message."}}'
+[ -n "${hit}" ] || exit 0
+if [ -n "${agent}" ]; then
+	reason="crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."
+else
+	reason="crucible: internal to the Crucible framework; use the skill's scripts/main/ and each script's --help. If a script misbehaves, tell the human its name and its message."
+fi
+jq -n --arg r "${reason}" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $r}}'

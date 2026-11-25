@@ -12,29 +12,26 @@ usage: sh commit-tree.sh --worktree DIR --message-file FILE --effort FOLDER
                         [--unsigned]
 
 Commits every change in an effort's worktree (untracked too, not ignored) on
-its branch as the effort's identity; signed, or unsigned if signing fails or
-takes over 10 s, or when --unsigned asks for it. Also finishes a resolved
-merge (worktree-catch-up.sh's "conflict"): parents HEAD and MERGE_HEAD, made
-even with no change.
+its branch as the effort's identity: signed, or unsigned when signing fails
+or takes over 10 s, or with --unsigned. Also finishes a resolved merge
+(worktree-catch-up.sh's "conflict"), even with no change.
 
 Options:
-  --worktree DIR       absolute; a linked worktree's top folder, HEAD on a
-                       branch under crucible/<effort folder name>/
-  --message-file FILE  absolute; the message byte for byte (commit-message.sh);
-                       adds "Effort: <effort folder name>" when it has no
-                       Effort trailer; one naming another effort is refused
-  --effort FOLDER      absolute; the effort's folder
-  --unsigned           make the commit unsigned, with no signing attempt: a
-                       working commit, which never lands
-Requires:  the effort's identity set (git-identity); no pick, revert or rebase
-           under way; no conflict markers left in a merge
-Writes:    stages all, commits on the tree's branch; never git config, no hooks
-Stdout:    {"commit": SHA, "signed": true|false}, one JSON line, on exit 0
+  --worktree DIR       a linked worktree's top folder, absolute, on a branch
+                       under crucible/<effort folder name>/
+  --message-file FILE  the message (commit-message.sh), absolute; an Effort
+                       trailer is added when missing, refused when another's
+  --effort FOLDER      the effort's folder, absolute
+  --unsigned           no signing attempt: a working commit, never landed
+Requires:  the effort's identity set; no pick, revert or rebase under way;
+           no conflict markers left in a merge
+Writes:    the commit on the tree's branch; never git config, no git hooks
+Stdout:    {"commit": SHA, "signed": true|false}, one JSON line
 Exit:
   0  committed
   2  refused, nothing changed; the reason is on stderr
   3  nothing to commit (never in a merge)
-  4  staging, the commit or its checks failed; a commit made stays on the branch
+  4  staging, the commit or its checks failed; a commit made stays
 USAGE
 }
 

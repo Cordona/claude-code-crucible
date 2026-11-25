@@ -13,8 +13,6 @@
 def rc_stamped: ["id", "kind", "lens", "source", "job", "agent", "iteration", "fix_round", "effort", "report", "sha256", "seq", "commit"];
 def rc_severities: ["critical", "high", "medium", "low"];
 def rc_realisms: ["realistic", "edge-case", "hypothetical"];
-def rc_text_max: 200;
-def rc_long_max: 1000;
 
 def rc_or($words): if ($words | length) < 2 then $words[0] else ($words[:-1] | join(", ")) + " or " + $words[-1] end;
 
@@ -23,14 +21,12 @@ def rc_text($where):
 	if type != "string" then "\($where) must be text"
 	elif test("^\\s*$") then "\($where) is blank; write it, or drop the entry"
 	elif test("[\\r\\n]") then "\($where) is more than one line; write it on one"
-	elif length > rc_text_max then "\($where) is \(length) characters; shorten it to \(rc_text_max)"
 	else empty end;
 
 # The problem of long text at $where: several lines allowed.
 def rc_long($where):
 	if type != "string" then "\($where) must be text"
 	elif test("^\\s*$") then "\($where) is blank; write it, or drop the entry"
-	elif length > rc_long_max then "\($where) is \(length) characters; shorten it to \(rc_long_max)"
 	else empty end;
 
 # The entries of the list at $path in the report, each {i, v, w}.
@@ -106,7 +102,7 @@ def rc_findings:
 	(. as $in | rc_entries("findings") | .w as $w | .v as $f | $in | rc_finding($w; $f));
 
 def rc_noticed:
-	rc_list("noticed"; ["at", "kind", "text", "for"]; ["at", "text"]; ["text"]; []),
+	rc_list("noticed"; ["at", "kind", "text", "for"]; ["text"]; ["text"]; []),
 	(rc_entries("noticed") | select((.v | type) == "object") | .w as $w | .v
 	 | (if has("kind") and (.kind | IN("secret", "instruction") | not) then "\($w).kind \(.kind | tojson) is not secret or instruction" else empty end),
 	   (if has("for") and ((.for | type) != "string" or (.for | test("^[a-z][a-z0-9]*(-[a-z0-9]+)*$") | not))

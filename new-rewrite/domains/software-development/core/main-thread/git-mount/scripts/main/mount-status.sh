@@ -15,17 +15,14 @@ Use it before offering a remount or an undo.
 
 Options:
   --repo DIR       any folder of the repository, absolute
-  --effort FOLDER  an effort folder, absolute; adds ours: whether this
-                   effort made the mount
+  --effort FOLDER  an effort's folder, absolute: adds ours, whether it made
+                   the mount
 Writes:    nothing
-Stdout:    one JSON line: {"mounted":false} when nothing is mounted, else
-           {mounted: true, effort, trees: [{name, tip, now, moved}], moved,
-           head_moved, finished, paths, edited, ours?}: effort is the folder
-           of the effort that made the mount; tip is the tree's commit as
-           mounted, now its branch tip, null once gone (then moved is false);
-           finished is HEAD moved and holding every mounted path (the human
-           committed the mount: an undo only forgets it); paths counts the
-           mounted paths; edited lists those changed or gone
+Stdout:    one JSON line, {"mounted":false}, or {mounted: true, effort,
+           trees: [{name, tip, now, moved}], moved, head_moved, finished,
+           paths, edited, ours?}: now is the tree's branch tip, null once
+           gone; finished, the human committed the mount, so an undo only
+           forgets it; paths a count; edited, the mounted paths changed since
 Exit:
   0  printed, mounted or not
   2  refused, nothing changed; the reason is on stderr

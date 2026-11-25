@@ -8,22 +8,19 @@ usage() {
 	cat <<'USAGE'
 usage: sh flow-change.sh --flow NAME --file FILE --reason TEXT
 
-Records one change to an agreed flow as a flow.changed event. Use it when the
-human changes the plan of a flow.
+Records one change the human made to an agreed flow's plan.
 
 Options:
-  --flow NAME     the flow's name, as flow-agree.sh printed it
-  --file FILE     a file holding one non-empty JSON array of ops, in order:
-    {"add": {"id": N, "step": "<component>/<name>"}, "before"?: ID}
-                                adds a declared step (flow-candidates.sh);
-                                N is an id this flow never used; last
-                                when there is no before
-    {"skip": ID}                skips an open step
-    {"move": ID, "before": ID}  moves a step in front of another
-    {"reopen": ID}              opens a done or skipped step again; only
-                                evidence newer than the reopen marks it done
-  --reason TEXT   why, one line
-Requires:  the effort is open and the flow has not ended
+  --flow NAME    the flow, as flow-agree.sh printed it
+  --file FILE    one non-empty JSON array of ops, applied in order:
+                   {"add": {"id": N, "step": KEY}, "before"?: ID}  a step
+                     flow-candidates.sh lists, N never used; last by default
+                   {"skip": ID}  an open step
+                   {"move": ID, "before": ID}
+                   {"reopen": ID}  a done or skipped step; only evidence
+                     newer than the reopen marks it done
+  --reason TEXT  why, one line
+Requires:  the effort open, the flow not ended
 Writes:    one flow.changed event {flow, reason, ops}
 Stdout:    the event's absolute path
 Exit:

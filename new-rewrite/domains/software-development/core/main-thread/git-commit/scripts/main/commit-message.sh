@@ -7,21 +7,23 @@ usage() {
 	cat <<'USAGE'
 usage: sh commit-message.sh --input FILE --out FILE
 
-Writes a Crucible commit message file, the --message-file for commit-tree.sh
-and for the other git-commit scripts that take one.
+Writes a Crucible commit message: the --message-file the git-commit scripts
+take.
 
 Options:
-  --input FILE  one JSON object {kind, text, trailers?}: kind is lowercase
-                words joined by dashes; text is one line, and the subject
-                "crucible(<kind>): <text>" is at most 72 characters (an
-                agent's working commit takes its job's kind); trailers maps
-                lowercase-dash keys to one-line strings or whole numbers.
-                An effort key must hold the folder name of the effort those
-                scripts get as --effort; left out, they add it last
-  --out FILE    the message file, absolute when it goes to --message-file;
-                its folder must exist; replaced if present
-Writes:    the --out file: the subject, then a blank line and one "Key: value"
-           line per trailer in input order (change-id becomes Change-Id)
+  --input FILE  {kind, text | summary, trailers?}: kind lowercase words
+                joined by dashes; text one line, the subject
+                "crucible(<kind>): <text>" at most 72 characters; or summary
+                one line of any length (an agent's working commit
+                takes its job's kind and its report's summary); trailers
+                maps lowercase-dash keys to one-line strings or whole
+                numbers; an effort key must be the --effort folder's name,
+                and is added last when left out
+  --out FILE    the message file, replaced if present; its folder must exist
+Writes:    --out: the subject; with summary, the subject holds it cut at its
+           last whole word to fit, ending "…", then a blank line and the
+           whole summary; then a blank line and one "Key: value" per trailer
+           in input order (change-id becomes Change-Id)
 Stdout:    nothing
 Exit:
   0  written

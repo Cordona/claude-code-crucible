@@ -13,7 +13,6 @@ def bc_keys: ["summary", "gates", "decisions", "impact", "noticed", "questions",
 def bc_stamped: ["id", "commit", "job", "kind", "agent", "iteration", "fix_round", "effort", "report", "sha256", "seq"];
 def bc_gates: ["format", "lint", "typecheck", "test", "build", "scan", "manual"];
 def bc_results: ["pass", "fail", "not_run", "narrowed"];
-def bc_text_max: 200;
 
 def bc_or($words): if ($words | length) < 2 then $words[0] else ($words[:-1] | join(", ")) + " or " + $words[-1] end;
 
@@ -22,7 +21,6 @@ def bc_text($where):
 	if type != "string" then "\($where) must be text"
 	elif test("^\\s*$") then "\($where) is blank; write it, or drop the entry"
 	elif test("[\\r\\n]") then "\($where) is more than one line; write it on one"
-	elif length > bc_text_max then "\($where) is \(length) characters; shorten it to \(bc_text_max)"
 	else empty end;
 
 # The entries of list $name, each {i, v, w}: its index, value and name.
@@ -51,16 +49,12 @@ def bc_top($keys):
 	  elif $keys | index([$k]) | not then "unknown key \"\($k)\"; the keys are \($keys | join(", "))"
 	  else empty end;
 
-# The summary becomes the commit's subject, "crucible(<kind>): <summary>",
-# of at most 72 characters: so it is at most 55, and less for a long kind.
-def bc_summary_max: [55, 72 - ("crucible(\(.job.kind // "build")): " | length)] | min;
-
+# The summary goes into the commit's subject after "crucible(<kind>): ",
+# so it carries no prefix of its own.
 def bc_summary:
-	bc_summary_max as $max
-	| .report | if has("summary") | not then "summary is missing: say in one line, of \($max) characters or fewer, what you did"
+	.report | if has("summary") | not then "summary is missing: say in one line what you did"
 	else .summary | (bc_text("summary")
-		// (if length > $max then "summary is \(length) characters; shorten it to \($max) or fewer"
-			elif test("^[a-z]+(\\([^)]*\\))?!?:") then "summary starts with \"\(capture("^(?<p>[^:]*:)").p)\": drop the prefix; the commit adds its own"
+		// (if test("^[a-z]+(\\([^)]*\\))?!?:") then "summary starts with \"\(capture("^(?<p>[^:]*:)").p)\": drop the prefix; the commit adds its own"
 			else empty end))
 	end;
 
@@ -111,7 +105,7 @@ def bc_blocker_rules:
 	   else empty end);
 
 def bc_notice_rules:
-	bc_list("noticed"; ["at", "kind", "text"]; ["at", "text"]; ["text"]),
+	bc_list("noticed"; ["at", "kind", "text"]; ["text"]; ["text"]),
 	(bc_entries("noticed") | select((.v | type) == "object" and (.v | has("kind"))) | .w as $w | .v.kind
 	 | if IN("secret", "instruction") then empty else "\($w).kind \(tojson) is not secret or instruction" end);
 

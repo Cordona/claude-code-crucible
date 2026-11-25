@@ -7,35 +7,28 @@ usage() {
 	cat <<'USAGE'
 usage: sh install-entries.sh [--json]
 
-Prints what an install of the framework it sits in needs, for the human to
-apply. Use it to install or to see what an install needs; install-check.sh,
-beside it, checks the result.
+Run by the human, to install; not for main to call. Prints what an install
+of the framework it sits in needs: each component (a folder in a
+main-thread/ or agents/ folder) linked by name into the skills folder, and
+the settings for each hook its hooks/matchers.json names and each env need
+its hooks/env.json holds. Hooks, their steps and scripts find neighbours
+through those links, so they run only installed.
 
 Options:
-  --json   print one JSON object instead: {hooks:[{event, matcher, timeout,
-           path, command_path}], skills:[{name, path}], claude_md, config,
-           space, deny, env}; install-check.sh reads it
-Finds:     components, the folders directly in a main-thread/ or an agents/
-           folder, each linked by its folder name; hooks, from each
-           component's hooks/matchers.json, whose keys start stop/,
-           subagent-stop/, pre-tool-use/ or post-tool-use/, each value a
-           matcher, null, or {matcher?, timeout?}, timeout in seconds; the
-           settings env, from each component's hooks/env.json, {NAME:
-           "value"}
+  --json   one JSON object instead: {hooks: [{event, matcher, timeout, path,
+           command_path}], skills: [{name, path}], claude_md, config, space,
+           deny, env}; install-check.sh reads it
 Reads:     CLAUDE_CONFIG_DIR (default ~/.claude), where links and hook
            commands point; CRUCIBLE_HOME (default ~/.crucible), the space
 Writes:    nothing
-Stdout:    three sections, separated by blank lines:
-           "# Settings entries: merge into your settings.json", then one
-           JSON object {env, hooks, permissions:{additionalDirectories,
-           deny}};
-           "# Links: run these", then shell-quoted mkdir -p and ln -s lines;
-           "# Needed on PATH: jq 1.6 or later"
+Stdout:    "# Settings entries: merge into your settings.json", one JSON
+           object {env, hooks, permissions}; a blank line; "# Links: run
+           these", mkdir -p and ln -s lines; a blank line; "# Needed on PATH:
+           jq 1.6 or later"
 Exit:
   0  printed
-  2  refused, nothing printed; the reason is on stderr (a bad
-     matchers.json or env.json, two components with one name, or two
-     env.json giving one name different values)
+  2  refused, nothing printed; the reason is on stderr: a bad matchers.json
+     or env.json, two components with one name, or two env values for one
 USAGE
 }
 
@@ -57,7 +50,7 @@ space=${CRUCIBLE_HOME:-${HOME}/.crucible}
 # Every hook: {event, matcher, path}, from each component's matchers.json,
 # each checked first, outside the pipe, so a bad one stops the script.
 for file in $(find "${root}" -path '*/hooks/matchers.json' -type f); do
-	jq -e 'type == "object" and all(to_entries[]; (.key | test("^(stop|subagent-stop|pre-tool-use|post-tool-use)/[^/]+\\.sh$"))
+	jq -e 'type == "object" and all(to_entries[]; (.key | test("^(stop|subagent-stop|pre-tool-use|post-tool-use|permission-request)/[^/]+\\.sh$"))
 		and (.value == null or (.value | type) == "string"
 			or ((.value | type) == "object" and ((.value | keys) - ["matcher", "timeout"]) == []
 				and (.value.matcher == null or (.value.matcher | type) == "string")
@@ -71,7 +64,7 @@ hooks=$(find "${root}" -path '*/hooks/matchers.json' -type f | LC_ALL=C sort | w
 	jq -c --arg dir "${file%/matchers.json}" --arg link "${config}/skills/${component##*/}/hooks" 'to_entries[]
 		| (if (.value | type) == "object" then .value else {matcher: .value} end) as $v | {
 		event: ({"stop": "Stop", "subagent-stop": "SubagentStop", "pre-tool-use": "PreToolUse",
-			"post-tool-use": "PostToolUse"}[.key | split("/")[0]]),
+			"post-tool-use": "PostToolUse", "permission-request": "PermissionRequest"}[.key | split("/")[0]]),
 		matcher: $v.matcher, timeout: $v.timeout, path: ($dir + "/" + .key), command_path: ($link + "/" + .key)}' "${file}"
 done | jq -s .)
 # Every component: {name, path}, each folder directly in a main-thread or an

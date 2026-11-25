@@ -9,21 +9,21 @@ usage() {
 usage: sh flow-end.sh --flow NAME --outcome done
        sh flow-end.sh --flow NAME --outcome dropped --words LINE
 
-Ends an open flow, the last call on it: done once every step is done or
-skipped, or dropped to abandon it with the human's words.
+Ends an open flow, its last call: done once every step is done or skipped,
+or dropped, to abandon it on the human's words.
 
 Options:
-  --flow NAME      the flow, as flow-agree.sh printed it
-  --outcome WHAT   done or dropped
-  --words LINE     the human's words, one line; dropped only
-Requires:  the effort is open and the flow not yet ended; for done, every
-           step marked (flow-step-done.sh) or skipped (flow-change.sh)
-Writes:    one flow.ended event in the effort's events/
-Stdout:    one path, absolute: the new event
+  --flow NAME     the flow, as flow-agree.sh printed it
+  --outcome WHAT  done or dropped
+  --words LINE    the human's words, one line; dropped only
+Requires:  the effort open, the flow not ended; for done, every step marked
+           (flow-step-done.sh) or skipped (flow-change.sh)
+Writes:    one flow.ended event
+Stdout:    the event's absolute path
 Exit:
   0  ended
   2  refused, nothing written; the reason is on stderr
-  6  the events lock stayed held, nothing written: rerun
+  6  the events lock stayed held: rerun
 USAGE
 }
 

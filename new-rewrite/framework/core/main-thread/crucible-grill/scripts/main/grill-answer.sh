@@ -9,22 +9,20 @@ usage() {
 usage: sh grill-answer.sh --grill FILE --id ID --text TEXT
          [--change-reason TEXT] [--id ID --text TEXT [--change-reason TEXT]]...
 
-Records the human's answers in an open grill, one per --id group, and marks
-each answered question settled. Use it after each grill round.
+Records the human's answers in an open grill, one per --id group, each
+question answered becoming settled. Use it after each round.
 
 Options:
-  --grill FILE           the open grill's draft, absolute, as grill-new.sh
-                         printed it
-  --id ID                starts a group: a question of this grill (q<N>),
-                         not dropped (grill-mark.sh --to open first)
-  --text TEXT            the answer, one line
-  --change-reason TEXT   why a settled answer changes, one line; required
-                         for a settled question, refused for any other
+  --grill FILE          the open grill's draft, as grill-new.sh printed it
+  --id ID               starts a group: a question (q<N>), not dropped
+                        (grill-mark.sh --to open first)
+  --text TEXT           the answer, one line
+  --change-reason TEXT  why a settled answer changes, one line; required for
+                        a settled question, refused for any other
 Requires:  the effort is open
-Writes:    the grill draft only. A changed answer keeps the earlier ones,
-           and sends its settled children not answered in this call to open
-Stdout:    "<id> settled" per answered question, then "<id> open" per open
-           child of a changed question
+Writes:    the grill draft; a changed answer keeps the earlier ones, and
+           reopens its settled children not answered in this call
+Stdout:    "<id> settled" per answer, then "<id> open" per reopened child
 Exit:
   0  recorded
   2  refused, nothing written; the reason is on stderr

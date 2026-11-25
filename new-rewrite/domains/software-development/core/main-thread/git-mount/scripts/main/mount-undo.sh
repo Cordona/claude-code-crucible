@@ -12,25 +12,22 @@ usage() {
 	cat <<'USAGE'
 usage: sh mount-undo.sh --repo DIR
 
-Takes the mount mount-apply.sh made out of the main checkout, putting back
-every byte it replaced; when the human committed it, only forgets it. Use it
-when the human wants the mount out; mount-status.sh says which it will do.
+Takes the mount out of the main checkout, putting back every byte it
+replaced; when the human committed it, only forgets it (mount-status.sh
+says which).
 
 Options:
   --repo DIR  any folder of the repository, absolute
-Requires:  a mount in place; if HEAD has not moved, every mounted path still
-           as mounted; if HEAD moved, every mounted path committed
-Writes:    the checkout's files (not when forgetting; never the index or
-           refs); removes the mount record; mount.undone {repo, forgotten}
-           to the effort that made the mount, none if that effort is gone
-Stdout:    on exit 0, one JSON line {event, forgotten, names, paths}: event
-           path or null, tree names, paths a count
+Requires:  a mount in place; HEAD unmoved and every mounted path as mounted,
+           or HEAD moved and every mounted path committed
+Writes:    the checkout's files, unless forgetting; mount.undone {repo,
+           forgotten} to the effort that made it, if it still exists
+Stdout:    {event, forgotten, names, paths}: event a path or null
 Exit:
   0  undone or forgotten
-  2  refused, nothing changed; the reason is on stderr (also when the event
-     is refused after the undo: the mount is already out)
-  4  git or jq failed, or the bytes did not verify; the record is kept, the
-     checkout may be partly reversed
+  2  refused, nothing changed, the reason on stderr; or the mount is out and
+     only its event was refused
+  4  git or jq failed, or the bytes did not verify; checkout maybe partial
   5  nothing is mounted
   6  the events lock stayed held; the mount is out, mount.undone unwritten
 USAGE

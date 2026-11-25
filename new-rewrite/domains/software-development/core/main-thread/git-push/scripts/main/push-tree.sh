@@ -11,20 +11,19 @@ usage() {
 usage: sh push-tree.sh --effort FOLDER --name NAME --remote REMOTE
                        [--timeout SECONDS]
 
-Pushes the exact tip of live tree NAME's crucible/ branch to REMOTE under the
-same name, in any effort state. Use when the human wants a tree's work there.
+Pushes the exact tip of live tree NAME's branch to REMOTE under the same
+name, in any effort state, when the human wants a tree's work there.
 
 Options:
   --effort FOLDER    the effort's folder, absolute
   --name NAME        a live tree of the effort
-  --remote REMOTE    a remote of the tree's repository; see push-remote.sh
+  --remote REMOTE    a remote of the tree's repository (push-remote.sh)
   --timeout SECONDS  limit on the whole push, 1 to 600; default 60
-Requires:  the human's yes at a yes gate, record push-tree, subject NAME:SHA,
-           SHA the branch's full tip now; one yes pushes once
+Requires:  the human's yes at a yes gate, record push-tree, subject
+           NAME:<full tip sha now>; one yes pushes once
 Reads:     GIT_SSH_COMMAND or core.sshCommand; ssh runs without prompts
-Writes:    REMOTE's branch: fast-forward, or by lease when the tree moved
-           since its last push there; push.made {name, remote, commit, answer}
-Stdout:    one JSON line {name, remote, branch, commit, lease|null, event}
+Writes:    REMOTE's branch, fast-forward or by lease; push.made
+Stdout:    {name, remote, branch, commit, lease|null, event}
 Exit:
   0  pushed and recorded
   2  refused, nothing changed; the reason is on stderr

@@ -7,21 +7,19 @@ usage() {
 	cat <<'USAGE'
 usage: sh grill-show.sh --grill PATH [--open]
 
-Prints one grill for main to read, open or ended. Use it before asking a
-round, or to pick a grill back up.
+Prints one grill, open or ended, for main to read before asking a round or
+to pick a grill back up.
 
 Options:
-  --grill PATH  an open grill's draft or an ended grill's grill.ended event;
-                grill-list.sh prints these
-  --open        print only the open questions; line 1 still counts all
+  --grill PATH  an open grill's draft or an ended grill's event, as
+                grill-list.sh prints them
+  --open        only the open questions; line 1 still counts all
 Writes:    nothing
 Stdout:    line 1: grill N · TOPIC · settled N · open N · deferred N ·
            dropped N; then per question:
-             ID [STATUS] (from PARENT) TEXT
+             ID [STATUS] (from PARENT) TEXT       (from PARENT): a follow-up
                 recommended: TEXT (REASON)
-                answer: TEXT       if settled, else last note: TEXT
-           "(from PARENT)" only on a follow-up; the answer or note line
-           only when the question has one.
+                answer: TEXT  if settled, else last note: TEXT, if any
 Exit:
   0  printed
   2  refused, nothing changed; the reason is on stderr

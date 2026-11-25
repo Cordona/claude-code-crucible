@@ -9,23 +9,20 @@ usage() {
 usage: sh held-stop.sh --effort FOLDER --job FILE --lines FILE
 
 Run by submit-agent-work.sh; not for main to call.
-Records one more refusal of the job's report: job.refused {job, iteration,
-fix_round?, agent, try, lines}, try one more than the job's refusals so far,
-from the job's refusals count. The first is held: the agent repairs its
-report. The second also ends the job: job.ended {job, iteration,
-fix_round?, agent, reason: gave-up}, and the tree is kept for the next job.
-A job refused twice whose end wasn't written is ended with no third refusal.
+Records a refusal of the job's report: job.refused, try the job's refusals
+plus one. The second also ends the job: job.ended gave-up, the tree kept. A
+job refused twice whose end wasn't written is ended with no third refusal.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it, assigned
+  --job FILE       the job, as job-of.sh prints it, assigned
   --lines FILE     the repair lines, one per line
-Writes:    job.refused, and on the second the job.ended event, through
-           crucible-events' event-write.sh
+Reads:     CLAUDE_CODE_SESSION_ID, stamped on the event; empty when alone
+Writes:    job.refused; on the second, job.ended
 Stdout:    one word: held, or ended
 Exit:
   0  recorded
-  2  refused, nothing written, or the refusal written and the end not; the
+  2  refused, nothing written, or the refusal written and not the end; the
      reason is on stderr
   6  the events lock stayed held: rerun
 USAGE
@@ -61,9 +58,9 @@ printf '%s\n' "${refusals}" | grep -Eqx '[0-9]+' || refuse 'the job has no refus
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-writer="${self%/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
+writer="${self%/*/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
 [ -f "${writer}" ] || refuse "crucible-events isn't beside this skill (expected ${writer}); install first"
-lib="$(dirname -- "$0")/../../scripts/lib"
+lib="$(dirname -- "$0")/../../../scripts/lib"
 
 body=$(mktemp "${TMPDIR:-/tmp}/held-stop.XXXXXX") || refuse 'mktemp could not make a temp file'
 trap 'rm -f -- "${body}"' EXIT

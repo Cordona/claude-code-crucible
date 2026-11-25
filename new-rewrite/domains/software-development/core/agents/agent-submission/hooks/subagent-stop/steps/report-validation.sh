@@ -9,23 +9,19 @@ usage() {
 usage: sh report-validation.sh --effort FOLDER --job FILE
 
 Run by submit-agent-work.sh; not for main to call.
-Checks the job's report through report-check.sh, by what the component
-named as the job's agent_type says in submissions/<kind>.json: rules, a jq
-module by its name in the skills folder; problems, its def; and facts, when
-present, a script by its path in the skills folder, run with --effort and
---job, whose JSON the rules get as facts.
+Checks the job's report by the rules, problems def and facts script that
+the agent's submissions/<kind>.json names.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it
-Writes:    what report-check.sh writes (the report, pruned)
+  --job FILE       the job, as job-of.sh prints it
+Writes:    on exit 0, the report, pruned
 Stdout:    on exit 1, one repair line per problem, for the agent
 Exit:
   0  accepted
   1  refused: the lines say what to repair
-  2  refused, nothing changed; the reason is on stderr. A missing or wrong
-     submission file, rules module or facts script is an install fault,
-     never the agent's to repair
+  2  refused, nothing changed; the reason is on stderr: a missing or wrong
+     submission file, rules module or facts script, an install fault
   4  the facts script or the check failed to run; the reason is on stderr
 USAGE
 }
@@ -53,7 +49,7 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-skills=${self%/*/*/*/*}
+skills=${self%/*/*/*/*/*}
 agent_type=$(jq -r '.agent_type' "${job}")
 kind=$(jq -r '.kind' "${job}")
 report=$(jq -r '.report' "${job}")

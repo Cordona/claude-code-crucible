@@ -10,18 +10,17 @@ usage: sh grill-add.sh --grill FILE
          (--question TEXT --recommendation TEXT --reason TEXT [--parent ID])...
 
 Adds open questions to a grill, each with its recommended answer and why.
-Use it while grilling, to record a round's questions before asking them.
+Use it to record a round's questions before asking them.
 
 Options:
   --grill FILE           the grill draft, as grill-new.sh printed it
-  --question TEXT        starts a group: one new question, one line; repeatable
-  --recommendation TEXT  the recommended answer, one line; required per group
-  --reason TEXT          why, one line; required per group
-  --parent ID            the earlier question this follows from (q<N>, in the
-                         grill or added earlier in this call)
-  Group options follow their --question, in any order.
+  --question TEXT        starts a group: one new question, one line
+  --recommendation TEXT  the recommended answer, one line; one per group
+  --reason TEXT          why, one line; one per group
+  --parent ID            the question this follows from: q<N>, in the grill
+                         or added earlier in this call
 Requires:  the effort is open and the grill has not ended
-Writes:    the grill draft; new questions get ids after the highest q<N>
+Writes:    the grill draft; new ids follow the highest q<N>
 Stdout:    the new ids, in order, comma-separated (q3,q4)
 Exit:
   0  added

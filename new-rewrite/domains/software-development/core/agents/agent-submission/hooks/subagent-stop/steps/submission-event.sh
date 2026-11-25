@@ -9,18 +9,18 @@ usage: sh submission-event.sh --effort FOLDER --job FILE --type TYPE
                               --sha256 SHA [--commit SHA]
 
 Run by submit-agent-work.sh; not for main to call.
-Writes the event the agent's submissions/<kind>.json names, with the body
-{job, iteration, fix_round?, agent, report: {path, sha256}, commit?}, its
-stamps copied from the job.
+Writes the job's submission event: {job, iteration, fix_round?, agent,
+report: {path, sha256}, commit?}, its stamps the job's.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it, assigned
+  --job FILE       the job, as job-of.sh prints it, assigned
   --type TYPE      the event's type, as build.submitted
   --sha256 SHA     the pinned report's sha256
   --commit SHA     the working commit; left out when the tree didn't change
-Writes:    one event, through crucible-events' event-write.sh
-Stdout:    one line, the event's absolute path
+Reads:     CLAUDE_CODE_SESSION_ID, stamped on the event; empty when alone
+Writes:    one event
+Stdout:    the event's absolute path
 Exit:
   0  written
   2  refused, nothing written; the reason is on stderr
@@ -55,11 +55,11 @@ command -v jq >/dev/null 2>&1 || refuse 'jq not found'
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-writer="${self%/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
+writer="${self%/*/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
 [ -f "${writer}" ] || refuse "crucible-events isn't beside this skill (expected ${writer}); install first"
 
 body=$(mktemp "${TMPDIR:-/tmp}/submission-body.XXXXXX") || refuse 'mktemp could not make a temp file'
 trap 'rm -f -- "${body}"' EXIT
-jq -L "$(dirname -- "$0")/../../scripts/lib" --arg sha256 "${sha256}" --arg commit "${commit}" \
+jq -L "$(dirname -- "$0")/../../../scripts/lib" --arg sha256 "${sha256}" --arg commit "${commit}" \
 	'include "stamps"; st_submission($sha256; $commit)' "${job}" >"${body}" || refuse 'the job could not be read'
 sh "${writer}" --effort "${effort}" --type "${type}" --by "${prog}" --body-file "${body}"

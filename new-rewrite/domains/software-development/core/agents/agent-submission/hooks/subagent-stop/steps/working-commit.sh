@@ -8,11 +8,12 @@ usage() {
 	cat <<'USAGE'
 usage: sh working-commit.sh --effort FOLDER --job FILE
 
-Run by submit-agent-work.sh; not for main to call.
+Run by submit-agent-work.sh and recover-submission.sh; not for main to call.
 Commits the job's tree, unsigned, through git-commit's commit-message.sh and
-commit-tree.sh: subject "crucible(<kind>): <the report's summary>", then the
-trailers Effort, Job (seq and name), Iteration, Fix-Round (a fix only) and
-the job's setup. Nothing is committed when the tree didn't change.
+commit-tree.sh: subject "crucible(<kind>): <the report's summary>", cut at
+a word to fit with "…"; the whole summary as the body; then the trailers
+Effort, Job (seq and name), Iteration, Fix-Round (a fix only) and the job's
+setup. Nothing is committed when the tree didn't change.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
@@ -54,9 +55,9 @@ name=$(jq -r '.name // empty' "${job}") || refuse 'the job could not be read'
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-git_commit="${self%/*/*/*/*}/git-commit/scripts/main"
+git_commit="${self%/*/*/*/*/*}/git-commit/scripts/main"
 [ -f "${git_commit}/commit-tree.sh" ] || refuse "git-commit isn't beside this skill (expected ${git_commit}); install first"
-. "$(dirname -- "$0")/../../scripts/lib/trailers.sh"
+. "$(dirname -- "$0")/../../../scripts/lib/trailers.sh"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/working-commit.XXXXXX") || refuse 'mktemp could not make a work folder'
 trap 'rm -rf -- "${work}"' EXIT

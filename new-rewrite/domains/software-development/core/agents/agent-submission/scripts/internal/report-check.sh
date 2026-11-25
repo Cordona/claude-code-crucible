@@ -11,29 +11,20 @@ usage: sh report-check.sh --effort FOLDER --report FILE --job FILE
                           --rules MODULE --problems DEF [--facts FILE]
 
 Run by the stop hook's report-validation.sh step; not for main to call.
-Checks a report, before it is pinned, by the rules of one jq module.
+Checks a report before its pin: first every at in it, at any depth (path,
+path:N, path:N-M at the tree; -path:N at the job's base; @<where>:path...
+not looked up), then the agent's rules.
 
 Options:
-  --effort FOLDER    the effort's folder, absolute
-  --report FILE      the report, absolute: <effort>/reports/<kind>/<job seq>.json
-  --job FILE         the job, as agent-jobs' job-of.sh prints it
-  --rules MODULE     the module, by its name in the skills folder:
-                     <component>/scripts/lib/<module>, the agent's own
-  --problems DEF     the module's def printing one repair line per problem,
-                     given {report, job, tree, facts}
-  --facts FILE       one JSON object the agent's facts script gathered, given to
-                     the rules as facts; {} when left out
-Reads:     the job's tree: whether it changed (git-worktree's
-           worktree-uncommitted.sh), and the files the report's at fields
-           name, at any depth, each at a location or a list of them:
-           path, path:N or path:N-M at the tree; -path:N at the job's base
-           commit; @<where>:path... another repo's, not looked up. Every at
-           is checked here, once, before the rules: well formed, naming a
-           file, the line within it; -path:N in a job with no base is
-           refused
+  --effort FOLDER  the effort's folder, absolute
+  --report FILE    the report, <effort>/reports/<kind>/<job seq>.json
+  --job FILE       the job, as job-of.sh prints it
+  --rules MODULE   the agent's rules: <component>/scripts/lib/<module>
+  --problems DEF   its def printing one repair line per problem, given
+                   {report, job, tree, facts}
+  --facts FILE     one JSON object given to the rules as facts; default {}
 Writes:    on exit 0, the report, its empty lists and objects removed
-Stdout:    nothing on exit 0; on exit 1, one repair line per problem, for the
-           agent: the locations' first, then the rules'
+Stdout:    on exit 1, one repair line per problem, the locations' first
 Exit:
   0  accepted
   1  refused: the lines say what to repair
@@ -49,20 +40,24 @@ refuse() {
 
 # Every at in the report, at any depth, a location or a list of them:
 # well formed, naming a file, the line within it. One repair line per
-# problem, named by where the at is, as findings[1].at. Input {report, lines,
-# base}: lines as below; base whether the job names one.
+# problem, named by where the at is, as findings[1].at, ending with what to
+# write; a noticed entry's at, the one an agent may leave out, also says so.
+# Input {report, lines, base}: lines as below; base whether the job names one.
 # shellcheck disable=SC2016 # jq's program, single-quoted on purpose
 locations_jq='def name: reduce .[] as $k (""; if ($k | type) == "number" then . + "[\($k)]" elif . == "" then $k else . + "." + $k end);
 	.lines as $lines | .base as $base
 	| .report | paths(type != "null") as $p | select($p[-1] == "at") | ($p | name) as $w
+	| ("; write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+		+ (if ($p | length) == 3 and $p[0] == "noticed" and ($p[1] | type) == "number"
+		   then ", or leave `at` out when it isn'"'"'t in a file" else "" end)) as $write
 	| getpath($p) | (if type == "array" then .[] else . end) as $at
 	| if ($at | type) == "string" and ($at | startswith("@")) and ($at | test("^@[^:\\s]+:[^:\\s]+")) then empty
 	  else (($at | strings | capture("^(?<neg>-?)(?<file>[^:@\\s-][^:]*)(:(?<a>[1-9][0-9]*)(-(?<b>[1-9][0-9]*))?)?$")) // null) as $l
-		| if $l == null then "\($w) \($at | tojson) is not a location: path, path:N, path:N-M, -path:N or @<where>:path:N"
-		  elif $l.neg == "-" and ($base | not) then "\($w) \($at): this job has no base to read a removed line at"
+		| if $l == null then "\($w) \($at | tojson) is not a location\($write)"
+		  elif $l.neg == "-" and ($base | not) then "\($w) \($at): this job has no base to read a removed line at\($write)"
 		  else ($lines[$l.neg + $l.file] // -1) as $count | (($l.b // $l.a // "0") | tonumber) as $line
-			| if $count < 0 then "\($w) \($at) names no file \(if $l.neg == "-" then "at the job'"'"'s base" else "in the tree" end)"
-			  elif $line > $count then "\($w) \($at) is past the end of the file (\($count) lines)"
+			| if $count < 0 then "\($w) \($at) names no file \(if $l.neg == "-" then "at the job'"'"'s base" else "in the tree" end)\($write)"
+			  elif $line > $count then "\($w) \($at) is past the end of the file (\($count) lines)\($write)"
 			  else empty end
 		  end
 	  end'

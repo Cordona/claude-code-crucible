@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Claude Code PreToolUse hook on Write and Edit: lets a job agent write
-# where its job may, and nowhere else.
+# A step of job-agent-tools.sh: lets a job agent write where its job may,
+# and nowhere else.
 # shellcheck disable=SC2312 # a read inside a message only shortens the message
 set -eu
 # A hook fault gives no decision: Claude Code's own permissions then apply,
@@ -9,36 +9,28 @@ trap 'exit 0' EXIT
 
 usage() {
 	cat <<'USAGE'
-usage: sh job-agent-writes.sh < PRE_TOOL_USE_HOOK_JSON
+usage: sh write-scope.sh < PRE_TOOL_USE_HOOK_JSON
 
-Run by Claude Code as a PreToolUse hook on Write and Edit; not for main to
-call.
-For a job agent (a sub-agent whose agent_type has a submissions folder)
-working on a job, by the writes word of its <agent_type>/submissions/<kind>.json:
-  - tree: it may write in the job's tree and to its report;
-  - report: it may write its report only.
-A Write or Edit inside that scope is allowed; one outside it is denied, the
-reason naming where to write. Paths are compared by their real paths, links
-and .. resolved. A missing or unknown writes word is an install fault told
-to the human, and the call gets no decision. Main, an agent of another
-type and an agent with no open job get no decision either: Claude Code's
-own permissions apply. Reads need no hook: the installer makes the space a
-working directory, so the Read an Edit needs first passes on its own.
+Run by job-agent-tools.sh for a Write or Edit; not for main to call.
+For a job agent with an open job, by the writes word of its
+submissions/<kind>.json: tree, its tree and its report; report, its report
+only. Inside: allowed; outside: denied, the reason naming where to write;
+real paths compared. A missing writes word is told to the human, with no
+decision; main, other types and an idle agent get no decision either.
+Reads need no hook: the installer makes the space a working directory.
 
-Reads:     the hook JSON on stdin: agent_id, agent_type, cwd, tool_name,
-           tool_input.file_path; CRUCIBLE_HOME, default
-           $HOME/.crucible, whose efforts are searched for the job
+Reads:     stdin: agent_id, agent_type, cwd, tool_name, tool_input.file_path
 Writes:    nothing
 Stdout:    nothing; or {hookSpecificOutput: {hookEventName: "PreToolUse",
            permissionDecision: "allow" or "deny", permissionDecisionReason}};
-           or {"systemMessage"} naming an install fault
+           or {"systemMessage"} naming the install fault
 Exit:
   0  always
 USAGE
 }
 
 case ${1-} in -h | --help) usage; exit 0 ;; *) ;; esac
-prog='job-agent-writes.sh'
+prog='write-scope.sh'
 command -v jq >/dev/null 2>&1 || { printf '%s: jq not found; no decision\n' "${prog}" >&2; exit 0; }
 
 input=$(cat)
@@ -55,24 +47,19 @@ case ${tool} in Write | Edit) ;; *) exit 0 ;; esac
 case ${agent_type} in '' | *[!a-z0-9-]*) exit 0 ;; *) ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-skills=${self%/*/*/*/*}
+skills=${self%/*/*/*/*/*}
 [ -d "${skills}/${agent_type}/submissions" ] || exit 0
 case ${agent} in '' | *[!A-Za-z0-9._-]*) exit 0 ;; *) ;; esac
 [ -n "${target}" ] || exit 0
 case ${target} in /*) ;; *) case ${cwd} in /*) target="${cwd}/${target}" ;; *) exit 0 ;; esac ;; esac
 
-# The agent's open job, as the stop hook finds it. None: an idle agent.
-job_of="${skills}/agent-jobs/scripts/internal/job-of.sh"
-[ -f "${job_of}" ] || exit 0
-job='' effort=''
-for candidate in "${CRUCIBLE_HOME:-${HOME}/.crucible}"/efforts/*; do
-	[ -d "${candidate}/events" ] || continue
-	grep -rlqF -- "${agent}" "${candidate}/events" 2>/dev/null || continue
-	job=$(sh "${job_of}" --effort "${candidate}" --agent "${agent}" 2>/dev/null) || { job=''; continue; }
-	effort=${candidate}
-	break
-done
-[ -n "${job}" ] || exit 0
+# The agent's open job, through agent-jobs' agent-job.sh. None: an idle
+# agent, given no decision.
+agent_job="${skills}/agent-jobs/scripts/internal/agent-job.sh"
+[ -f "${agent_job}" ] || exit 0
+found=$(sh "${agent_job}" --agent "${agent}" 2>/dev/null) || exit 0
+effort=$(printf '%s' "${found}" | jq -r '.effort')
+job=$(printf '%s' "${found}" | jq -c '.job')
 kind=$(printf '%s' "${job}" | jq -r '.kind')
 named="job $(printf '%s' "${job}" | jq -r '.job') ($(printf '%s' "${job}" | jq -r '.name'))"
 

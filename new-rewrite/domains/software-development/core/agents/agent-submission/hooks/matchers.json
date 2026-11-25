@@ -1,5 +1,5 @@
 {
   "subagent-stop/submit-agent-work.sh": {"matcher": null, "timeout": 300},
-  "pre-tool-use/job-agent-bash.sh": "Bash",
-  "pre-tool-use/job-agent-writes.sh": "Write|Edit"
+  "pre-tool-use/job-agent-tools.sh": "Bash|Write|Edit",
+  "permission-request/deny-compound-commands.sh": "Bash"
 }

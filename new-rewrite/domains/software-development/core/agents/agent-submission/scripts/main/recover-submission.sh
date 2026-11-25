@@ -8,37 +8,25 @@ usage() {
 	cat <<'USAGE'
 usage: sh recover-submission.sh --effort FOLDER --job SEQ (--finish | --give-up)
 
-For a stalled job (job.stalled: its report was accepted, and the stop
-hook's hand-in didn't finish), either:
-  --finish   runs the hand-in after the check again, under the stop hook's
-             lock, each step skipped when it is done already: the report is
-             stamped and pinned unless it is pinned already (a pinned report
-             was stamped before its pin; stamping again a report the stop
-             hook stamped but didn't pin changes nothing); the working
-             commit is made when the job commits and no commit in the
-             tree's history carries its Job trailer; then the submission
-             event the job agent's submissions/<kind>.json names is written,
-             the report pinned as it is now. The check isn't run again: it
-             passed before the job stalled, and a stamped report is no
-             longer one the agent wrote.
-  --give-up  ends the job: job.ended {reason: fault}, with the step and the
-             fault its job.stalled names.
+Settles a stalled job: its report was accepted, but the stop hook's hand-in
+didn't finish. Run it when the stop hook's message names this job.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
   --job SEQ        the stalled job's seq
+  --finish         hands it in: stamps and pins the report unless pinned,
+                   makes the working commit unless one carries the job's
+                   Job trailer, then writes the job's submission event
+  --give-up        ends the job: job.ended fault, at the stalled step
 Reads:     CRUCIBLE_STOP_LOCK_SECONDS, a shorter wait for the stop lock
-Writes:    with --finish, the report stamped and read-only, the working
-           commit, the submission event; with --give-up, job.ended; each
-           event through crucible-events' event-write.sh, by
-           recover-submission.sh
-Stdout:    one line, the event's absolute path
+Writes:    with --finish, the report, the commit and the submission event;
+           with --give-up, one job.ended event
+Stdout:    the event's absolute path
 Exit:
   0  written
   2  refused, nothing written; the reason is on stderr
   3  the job already has its submission: nothing to finish
-  4  a step of the hand-in failed; its reason is on stderr, and what it
-     did before stays done
+  4  a hand-in step failed, its reason on stderr; the steps before stay done
   6  a lock stayed held: rerun
 USAGE
 }
@@ -84,7 +72,7 @@ done
 lib="$(dirname -- "$0")/../lib"
 # The stop hook's steps, by a path with no .., since each finds its
 # neighbours from its own path.
-steps=$(cd -- "$(dirname -- "$0")/../../hooks/subagent-stop" && pwd) || refuse "the stop hook's steps are not beside this script"
+steps=$(cd -- "$(dirname -- "$0")/../../hooks/subagent-stop/steps" && pwd) || refuse "the stop hook's steps are not beside this script"
 . "$(dirname -- "$0")/../lib/stop-lock.sh"
 . "$(dirname -- "$0")/../lib/trailers.sh"
 

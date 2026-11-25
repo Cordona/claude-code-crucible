@@ -8,18 +8,17 @@ usage() {
 	cat <<'USAGE'
 usage: sh flow-step-done.sh --flow NAME --step ID [--event SEQ]
 
-Marks one open step of a flow done with the event its ends_with names. Use it
-when that event is there (flow-show.sh shows it waiting); any order.
+Marks one open step done with the event its ends_with names, once that
+event is there (flow-show.sh shows it waiting); steps in any order.
 
 Options:
   --flow NAME  the flow, as flow-agree.sh printed it
-  --step ID    the step's id in that flow
-  --event SEQ  the ending event's seq; default the one event waiting since
-               the step opened; needed when several wait or it predates the flow
-Requires:  the effort open, the flow not ended, the step open (flow-change.sh
-           reopens a done or skipped one)
+  --step ID    the step's id
+  --event SEQ  the ending event; default the one waiting since the step
+               opened, needed when several wait or it predates the flow
+Requires:  the effort open, the flow not ended, the step open
 Writes:    one flow.step.done event {flow, step, event}
-Stdout:    the new event's absolute path
+Stdout:    the event's absolute path
 Exit:
   0  marked
   2  refused, nothing changed; the reason is on stderr

@@ -8,28 +8,21 @@ usage() {
 	cat <<'USAGE'
 usage: sh end-job.sh --effort FOLDER --job SEQ --note TEXT [--other-session]
 
-Ends a job that will never be handed in: job.ended {job, iteration,
-fix_round?, agent?, reason: no-stop, note}. For a job only dispatched, whose
-agent never started: nothing else ever ends one. For a job assigned in
-another session, once the human says that session is dead: its agent may
-still run in another terminal, and no script can tell, so ending it is the
-human's call, never main's; main passes --other-session only on their word.
-A job whose report is already pinned is not thrown away: it is recorded
-stalled instead (job.stalled, step event), for its hand-in to be finished.
-
-Refused: a job this session assigned (main's turn end ends it once its
-agent is gone; main can't see which agents still run), a stalled job (its
-hand-in is finished or given up instead), and a job already finished.
+Ends a job that will never be handed in (job.ended no-stop): one only
+dispatched, whose agent never started; or, with --other-session, one another
+session assigned, once the human says that session is dead: its agent may
+still run elsewhere, so that is the human's call, never main's. Refuses this
+session's jobs (main's turn end ends them), stalled jobs and finished ones.
 
 Options:
-  --effort FOLDER    the effort's folder, absolute
-  --job SEQ          the job's seq
-  --note TEXT        one line: why it ends, for the human reading the log
-  --other-session    the human said to end a job another session assigned
-Reads:     CLAUDE_CODE_SESSION_ID, this session; the effort's events
-Writes:    one event, through crucible-events' event-write.sh, by end-job.sh
-Stdout:    one line, the event's absolute path
-Stderr:    one line when the job was recorded stalled instead of ended
+  --effort FOLDER  the effort's folder, absolute
+  --job SEQ        the job's seq
+  --note TEXT      why it ends, one line, for the human reading the log
+  --other-session  only on the human's word
+Reads:     CLAUDE_CODE_SESSION_ID, this session
+Writes:    one job.ended event; or job.stalled at step event when the report
+           is pinned, so the accepted work is kept, one line on stderr saying so
+Stdout:    the event's absolute path
 Exit:
   0  written
   2  refused, nothing written; the reason is on stderr

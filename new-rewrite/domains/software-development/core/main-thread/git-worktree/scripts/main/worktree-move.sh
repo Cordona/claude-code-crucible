@@ -10,21 +10,19 @@ usage() {
 	cat <<'USAGE'
 usage: sh worktree-move.sh --effort FOLDER --name NAME --to REF
 
-Points a live tree's branch and files at the commit REF names, so new work
-starts from there. To take REF into the tree's work instead, use
-worktree-catch-up.sh.
+Points a live tree's branch and files at REF, so new work starts there. To
+take REF into the tree's work instead, use worktree-catch-up.sh.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
-  --to REF         a commit name in the tree's repository: sha, branch, tag
-Requires:  the effort is open; the tree is on its branch, clean, with no
-           merge, pick, revert or rebase under way, and nothing working in it
-Writes:    the tree's branch and files; when the old tip holds commits REF
-           lacks, refs/crucible/moved/<effort folder>/NAME/<n> at the old
-           tip; the event worktree.moved {name, from, to, kept?}. Nothing
-           when the tree is already at REF.
-Stdout:    the event file's absolute path, or the line "in place <sha>"
+  --to REF         a commit of the tree's repository: sha, branch, tag
+Requires:  the effort open; the tree on its branch, clean, idle, with no
+           merge, pick, revert or rebase under way
+Writes:    the tree's branch and files; the old tip kept at
+           refs/crucible/moved/<effort folder>/NAME/<n> when REF lacks it;
+           worktree.moved {name, from, to, kept?}; nothing when at REF
+Stdout:    the event's absolute path, or "in place <sha>"
 Exit:
   0  moved, or already in place
   2  refused, nothing changed; the reason is on stderr

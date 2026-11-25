@@ -8,22 +8,21 @@ usage() {
 usage: sh flow-show.sh --flow NAME [--all]
        sh flow-show.sh --effort FOLDER [--all]
 
-Prints where flows stand, from the effort's events: one flow, even ended,
-or every flow of an effort that has not ended. Use it to see the next step,
-or whether a flow can end, before flow-step-done.sh or flow-end.sh.
+Prints where flows stand: one flow, even ended, or each open flow of an
+effort. Use it to find the next step, or whether a flow can end.
 
 Options:
   --flow NAME      the flow, as flow-agree.sh printed it; wins over --effort
-  --effort FOLDER  the effort folder, absolute
-  --all            adds `      event SEQ` under each done step: its event
+  --effort FOLDER  the effort's folder, absolute
+  --all            adds `      event SEQ` under each done step
 Writes:    nothing
-Stdout:    per flow, `flow FOLDER:SEQ · GOAL`, plus ` · ended OUTCOME` once
-           ended; then one line per step, `  [M] ID DOES`, M is x done,
-           - skipped, space open, ! open with evidence waiting (the line
-           ends `  (evidence waiting: event SEQ, ...)`); then, unless ended,
-           `  next: ID DOES` or `  every step is done or skipped: end the flow`
+Stdout:    per flow `flow FOLDER:SEQ · GOAL`[` · ended OUTCOME`]; then per
+           step `  [M] ID DOES`, M x done, - skipped, space open, ! open with
+           evidence waiting (`  (evidence waiting: event SEQ, ...)` ends it);
+           then, unless ended, `  next: ID DOES` or
+           `  every step is done or skipped: end the flow`
 Exit:
-  0  printed; nothing when no flow of the effort is open
+  0  printed; nothing when the effort has no open flow
   2  refused, nothing changed; the reason is on stderr
 USAGE
 }

@@ -1,4 +1,3 @@
 {
-  "pre-tool-use/deny-direct-event-write.sh": "Bash",
-  "pre-tool-use/deny-internals-read.sh": "Read|Grep|Glob|Bash"
+  "pre-tool-use/guard-framework.sh": "Read|Grep|Glob|Bash"
 }

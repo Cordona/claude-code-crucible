@@ -19,27 +19,22 @@ usage() {
 	cat <<'USAGE'
 usage: sh tracker-read.sh --url URL
 
-Prints one GitHub or GitLab issue as markdown. Use it when the human points
-at an issue link to read; to keep it in an effort's context, use
-context-add-issue.sh.
+Prints one GitHub or GitLab issue as markdown, when the human points at an
+issue to read; to keep it in an effort's context, use context-add-issue.sh.
 
 Options:
-  --url URL  the issue link: host github.com only, path /OWNER/REPO/issues/N;
-             or GitLab: any host without a port, path ending /-/issues/N
-Requires:  gh or glab logged in for the link's host, the issue visible to it
+  --url URL  github.com/OWNER/REPO/issues/N, or a GitLab .../-/issues/N on
+             any host without a port
+Requires:  gh or glab logged in for the host, the issue visible to it
 Writes:    nothing
-Stdout:    the issue: title, link, state, author, date, body, then comments
-           oldest first (GitLab: the first 100), at most 500 lines; the line
-           "## Comments not read (REASON)" replaces comments it can't read;
-           nothing on any other exit
+Stdout:    title, link, state, author, date, body, then comments oldest
+           first (GitLab: the first 100), at most 500 lines, a cut said on
+           stderr; "## Comments not read (REASON)" when they can't be read
 Exit:
-  0  read; when cut, stderr gets "tracker-read.sh: truncated: showing 500
-     of N lines"
-  1  the read failed or a tracker call timed out after 30 s; the reason is
-     on stderr
+  0  read
+  1  the read failed or timed out (30 s); the reason is on stderr
   2  refused, nothing changed; the reason is on stderr
-  3  not an issue link (pull or merge request, Jira, other): read it as any
-     other link
+  3  not an issue link (pull or merge request, Jira, other)
 USAGE
 }
 

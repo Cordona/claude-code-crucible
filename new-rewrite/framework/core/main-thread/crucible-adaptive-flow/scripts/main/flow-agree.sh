@@ -8,20 +8,20 @@ usage() {
 	cat <<'USAGE'
 usage: sh flow-agree.sh --effort FOLDER --file FLOW
 
-Records a flow accepted on flow-card.sh's card, before its steps start.
+Records a flow the human accepted on flow-card.sh's card, before its steps
+start.
 
 Options:
-  --effort FOLDER  the effort's folder, absolute; the effort must be open
-  --file FLOW      a file holding {"goal": "<one line>", "steps": [{"id": N,
-                   "step": "<component>/<name>"}, ...]}; ids unique whole
-                   numbers from 1; each step a key flow-candidates.sh lists
+  --effort FOLDER  the open effort's folder, absolute
+  --file FLOW      {"goal": "<one line>", "steps": [{"id": N, "step":
+                   "<component>/<name>"}, ...]}: ids unique from 1, each
+                   step a key flow-candidates.sh lists
 Requires:  the human's yes at a recorded yes gate, record flow-agree,
-           subject FLOW's sha256, FLOW unchanged since; one yes agrees one
-           flow
+           subject FLOW's sha256, FLOW unchanged since; one yes per flow
 Writes:    one flow.agreed event
-Stdout:    the flow's name <effort folder>:<seq>, the other scripts' --flow
+Stdout:    the flow's name, <effort folder>:<seq>: the others' --flow
 Exit:
-  0  agreed and written
+  0  agreed
   2  refused, nothing written; the reason is on stderr
   6  the events lock stayed held: rerun
 USAGE

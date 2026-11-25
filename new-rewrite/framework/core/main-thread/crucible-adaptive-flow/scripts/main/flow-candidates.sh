@@ -9,20 +9,18 @@ usage() {
 usage: sh flow-candidates.sh [--stage NAME]
        sh flow-candidates.sh --stages
 
-Lists the steps a flow may hold: those declared in the flow-step.json of the
-components beside this one (installed: the skills folder); a bad file or
-entry is left out, the reason on stderr. Run before an effort's work starts
-and to pick the next stage.
+Lists the steps a flow may hold, from the installed components'
+flow-step.json; a bad entry is left out, its reason on stderr. Run before
+an effort's work starts, and to pick the next stage.
 
 Options:
-  --stage NAME  only the steps whose stages hold NAME; default all steps
-  --stages      each stage name instead, with its number of steps
-Writes:   nothing
-Stdout:   one line per step, sorted by key <component>/<name> (how a flow
-          names it): <key> · <does> · ends with <event>[ matching <match as
-          JSON>] · stages: <names> · skills: <names> · propose when: <text>.
-          A stage is a filter, never an order.
-          --stages: one line <stage> <count> per stage, sorted by name
+  --stage NAME  only the steps of stage NAME; default all
+  --stages      each stage with its number of steps instead
+Writes:    nothing
+Stdout:    one line per step, sorted by its key <component>/<name>:
+           <key> · <does> · ends with <event>[ matching <JSON>] · stages:
+           <names> · skills: <names> · propose when: <text>; a stage is a
+           filter, never an order. --stages: <stage> <count> lines
 Exit:
   0  listed, an empty list included
   2  refused, nothing changed; the reason is on stderr

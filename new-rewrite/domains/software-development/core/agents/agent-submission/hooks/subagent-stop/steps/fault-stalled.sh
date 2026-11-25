@@ -9,17 +9,16 @@ usage() {
 usage: sh fault-stalled.sh --effort FOLDER --job FILE --step STEP --fault TEXT
 
 Run by submit-agent-work.sh; not for main to call.
-Records a fault after the report was accepted: job.stalled {job,
-iteration, fix_round?, agent, step, fault}. The report is kept; main
-finishes its hand-in, or gives it up, with scripts/main/recover-submission.sh.
-The fault is kept to one line of at most 300 characters.
+Records a fault after the report was accepted: job.stalled. The report
+is kept; main finishes or gives up the hand-in with recover-submission.sh.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it, assigned
+  --job FILE       the job, as job-of.sh prints it, assigned
   --step STEP      the step that failed: stamp, pin, commit, event, lock or hook
-  --fault TEXT     the line the human is told
-Writes:    one event, through crucible-events' event-write.sh
+  --fault TEXT     the line the human is told; kept to one line, 300 chars
+Reads:     CLAUDE_CODE_SESSION_ID, stamped on the event; empty when alone
+Writes:    one job.stalled event
 Stdout:    nothing
 Exit:
   0  written
@@ -52,12 +51,12 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-writer="${self%/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
+writer="${self%/*/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
 [ -f "${writer}" ] || refuse "crucible-events isn't beside this skill (expected ${writer}); install first"
 
 body=$(mktemp "${TMPDIR:-/tmp}/fault-stalled.XXXXXX") || refuse 'mktemp could not make a temp file'
 trap 'rm -f -- "${body}"' EXIT
-jq -L "$(dirname -- "$0")/../../scripts/lib" --arg step "${step}" --arg fault "${fault}" '
+jq -L "$(dirname -- "$0")/../../../scripts/lib" --arg step "${step}" --arg fault "${fault}" '
 	include "stamps"; st_stamps + {step: $step, fault: ($fault | gsub("[[:cntrl:]]+"; " ") | .[:300])}' \
 	"${job}" >"${body}" || refuse 'the job could not be read'
 sh "${writer}" --effort "${effort}" --type job.stalled --by "${prog}" --body-file "${body}" >/dev/null

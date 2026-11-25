@@ -10,26 +10,21 @@ usage() {
 usage: sh reviewer-facts.sh --effort FOLDER --job FILE
 
 Run by agent-submission's check step, as the reviewer's
-submissions/<kind>.json names it; not for main to call. The stamps' facts
-are reviewer-stamp-facts.sh's.
+submissions/<kind>.json names it; not for main to call.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it
-Reads:     the effort's events and pinned reports, through agent-jobs'
-           events-view.sh; the job's tree and its base..head, through git;
-           the job's threads file
+  --job FILE       the job, as job-of.sh prints it
 Writes:    nothing
 Stdout:    one JSON object {cover, added, removed, files, plan, threads}:
-             cover    the job's cover, or the files base..head changes;
-                      null with no base and head
-             added    {path: [line...]}, the lines base..head adds or
-                      changes at head; removed the same at base; null with
-                      no base and head
+             cover    the job's cover, or the files base..head changes
+             added    {path: [line...]} base..head adds or changes at head;
+                      removed, the same at base; both null with no base
              files    the tree's files, tracked and untracked, not ignored
-             plan     {ids, files} of the plan the job names: its B-, T- and
-                      N- IDs, and the files its tests and support name; null
+             plan     {ids, files} of the plan the job names: its B-, T-, N-
+                      IDs and the files its tests and support name; null
              threads  [{id, source}] from the job's threads file; []
+           cover null too with no base and head
 Exit:
   0  printed
   2  refused, nothing printed; the reason is on stderr: a job fault, as

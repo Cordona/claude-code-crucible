@@ -11,26 +11,23 @@ usage() {
 	cat <<'USAGE'
 usage: sh worktree-discard.sh --effort FOLDER --name NAME
 
-Clears a live tree's uncommitted changes (ignored files stay) after keeping
-them as one commit on HEAD under a new kept ref. Use it before
-worktree-drop.sh, which removes kept refs with the tree.
+Clears a live tree's uncommitted changes (ignored files stay), keeping them
+first as one commit under a new kept ref. Use it before worktree-drop.sh.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
   --name NAME      a live tree of the effort
-Requires:  the effort open, with an identity for the tree's repository
-           (git-identity); the tree has uncommitted changes, no merge,
-           cherry-pick, revert or rebase under way, and is not busy
-Writes:    a commit under refs/crucible/discarded/<effort folder name>/NAME/<n>;
-           the tree reset to HEAD, untracked files removed; one
-           worktree.discarded {name, kept, signed}: kept the ref, signed
-           false when the commit is unsigned (stderr says why). No hook runs.
-Stdout:    one path, the event's
+Requires:  the effort open, with an identity for the tree's repository; the
+           tree changed, idle, with no merge, pick, revert or rebase
+Writes:    refs/crucible/discarded/<effort folder name>/NAME/<n>; the tree
+           reset to HEAD, untracked files removed; worktree.discarded
+           {name, kept, signed}
+Stdout:    the event's path
 Exit:
   0  discarded
   2  refused, nothing changed; the reason is on stderr
-  4  git or a neighbour failed; if after the kept ref, stderr names it and
-     the tree may be partly cleared
+  4  git or a neighbour failed; after the kept ref, stderr names it and the
+     tree may be partly cleared
   6  the events lock stayed held, nothing changed: rerun
 USAGE
 }

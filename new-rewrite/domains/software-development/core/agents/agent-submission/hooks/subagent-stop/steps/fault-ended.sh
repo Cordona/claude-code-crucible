@@ -9,17 +9,16 @@ usage() {
 usage: sh fault-ended.sh --effort FOLDER --job FILE --step STEP --fault TEXT
 
 Run by submit-agent-work.sh; not for main to call.
-Records a fault before the report was accepted: job.ended {job,
-iteration, fix_round?, agent, reason: fault, step, fault}. The job ends;
-the next job starts again. The fault is kept to one line of at most 300
-characters.
+Records a fault before the report was accepted: job.ended fault. The
+job ends; the next job starts again.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it, assigned
+  --job FILE       the job, as job-of.sh prints it, assigned
   --step STEP      the step that failed: check or hook
-  --fault TEXT     the line the human is told
-Writes:    one event, through crucible-events' event-write.sh
+  --fault TEXT     the line the human is told; kept to one line, 300 chars
+Reads:     CLAUDE_CODE_SESSION_ID, stamped on the event; empty when alone
+Writes:    one job.ended event
 Stdout:    nothing
 Exit:
   0  written
@@ -52,12 +51,12 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-writer="${self%/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
+writer="${self%/*/*/*/*/*}/crucible-events/scripts/internal/event-write.sh"
 [ -f "${writer}" ] || refuse "crucible-events isn't beside this skill (expected ${writer}); install first"
 
 body=$(mktemp "${TMPDIR:-/tmp}/fault-ended.XXXXXX") || refuse 'mktemp could not make a temp file'
 trap 'rm -f -- "${body}"' EXIT
-jq -L "$(dirname -- "$0")/../../scripts/lib" --arg step "${step}" --arg fault "${fault}" '
+jq -L "$(dirname -- "$0")/../../../scripts/lib" --arg step "${step}" --arg fault "${fault}" '
 	include "stamps"; st_stamps + {reason: "fault", step: $step, fault: ($fault | gsub("[[:cntrl:]]+"; " ") | .[:300])}' \
 	"${job}" >"${body}" || refuse 'the job could not be read'
 sh "${writer}" --effort "${effort}" --type job.ended --by "${prog}" --body-file "${body}" >/dev/null

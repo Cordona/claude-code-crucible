@@ -14,20 +14,17 @@ right after the human's yes at the context-done gate.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-Requires:  the effort open; the human's newest answer is yes at a recorded
-           yes gate, record context-done, subject the FINGERPRINT
-           context-fingerprint.sh prints now; after any draft change, ask
-           again
-Writes:    on a cut: the draft's docs moved to <effort>/context/v<N>/, files
-           read-only; a context.cut event; the pending entries cleared. An
-           empty context cuts as a version with no paths. Nothing new since
-           the latest version: nothing
+Requires:  the effort open; the human's newest answer yes at a recorded yes
+           gate, record context-done, subject the FINGERPRINT
+           context-fingerprint.sh prints now; ask again after any change
+Writes:    the draft's docs as v<N>, read-only; a context.cut event; the
+           pending entries cleared; nothing when nothing is new
 Stdout:    CONTEXT_FILE: <the context.cut event, absolute; the latest one
            when nothing is new>, then CONTEXT_SHA256: <its sha256>
 Exit:
   0  cut, or nothing new
   1  NOT-CONFIRMED, nothing written: ask at a context-done gate
-  2  refused, nothing changed; the reason on stderr
+  2  refused, nothing changed; the reason is on stderr
   6  the events lock stayed held, nothing changed: rerun
 USAGE
 }

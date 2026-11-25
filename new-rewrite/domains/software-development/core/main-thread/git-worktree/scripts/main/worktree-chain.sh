@@ -11,23 +11,21 @@ usage() {
 usage: sh worktree-chain.sh --effort FOLDER --name NAME
 
 Lists every tree the effort's live tree NAME was cut from, at any level,
-nearest first, each once, with its tip now and whether NAME's branch holds
-it. Use it to see if NAME is behind its sources; worktree-chain-sync.sh
-takes the moved tips in. The effort may be open or closed.
+nearest first, and whether NAME holds each one's tip. Use it to see if NAME
+is behind its sources; worktree-chain-sync.sh takes their work in.
 
 Options:
-  --effort FOLDER  the effort's folder, absolute
+  --effort FOLDER  the effort's folder, absolute, open or closed
   --name NAME      a live tree of the effort whose branch still exists
 Writes:    nothing
-Stdout:    one JSON object {name, tip, ancestors: [{name, via, tip: SHA|null,
-           held: bool}...], moved: bool}; via: the direct source it was
-           reached through; tip null, held true: that tree was dropped or
-           cut again, or its branch is gone; moved: any ancestor not held;
-           ancestors [] when NAME was cut from no tree
+Stdout:    {name, tip, ancestors: [{name, via, tip: SHA|null, held}],
+           moved}: via, the direct source it was reached through; tip null
+           (held true) when that tree or its branch is gone; moved, any
+           ancestor not held
 Exit:
   0  printed
   2  refused, nothing changed; the reason is on stderr
-  4  git or jq not found, mktemp failed, or core's events reader failed
+  4  git or jq not found, or the events could not be read
 USAGE
 }
 
