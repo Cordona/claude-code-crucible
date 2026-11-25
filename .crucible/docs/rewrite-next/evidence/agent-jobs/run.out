@@ -55,7 +55,7 @@
   PASS: nothing else was written: those two, and the earlier job of agent a0000003, gone too
   PASS: the next turn end has nothing more to do but the running agent's, now gone
   PASS: a stalled job is left for main to finish
-    {"systemMessage":"crucible: end-gone-jobs.sh could not record a job whose agent is gone; it still shows as running: 20261125T104151-7e11-damaged-log: events-read.sh: <S>/space/efforts/20261125T104151-7e11-damaged-log/events/000001-effort.opened.json cannot be read"}
+    {"systemMessage":"crucible: end-gone-jobs.sh could not record a job whose agent is gone; it still shows as running: 20261125T161159-23d9-damaged-log: events-read.sh: <S>/space/efforts/20261125T161159-23d9-damaged-log/events/000001-effort.opened.json cannot be read"}
   PASS: a log it can't read is told to the human, and main goes on
 === main's end-job.sh
     end-job.sh: job 34 was assigned in this session; its agent may still run, and main's turn end ends it once the agent is gone
@@ -73,5 +73,13 @@
   PASS: end-job.sh and end-gone-jobs.sh share one pinned test, in the agent-jobs lib
   PASS: end-job.sh's help claims no record of the human's call
   PASS: a stalled job is refused: it is finished or given up instead
+=== agent-job.sh: one agent's open job, across the efforts
+  PASS: agent-job.sh --help
+  PASS: an open job is found: exit 0, its effort and job
+  PASS: a job in another effort is found there
+  PASS: an agent whose jobs are done: exit 5, between jobs
+  PASS: an agent never assigned: exit 4, after looking again for 2 seconds
+  PASS: a malformed id is refused: exit 2
+  PASS: the stop hook and the write scope both use it, and neither searches the efforts itself
 
-=== 62 PASS, 0 FAIL
+=== 69 PASS, 0 FAIL

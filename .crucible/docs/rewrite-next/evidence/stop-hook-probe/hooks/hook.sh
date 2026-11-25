@@ -69,6 +69,18 @@ if [ "$ev" = PreToolUse ] && [ -f "$S/policy/pretool-agent-cwd" ] &&
 		permissionDecision: "allow", updatedInput: (.tool_input + {cwd: $d})}}'
 	exit 0
 fi
+# PermissionRequest: with $S/policy/permreq-deny present (sets PR_MSG, and
+# PR_SKIP, an ERE on the command left unanswered), answer a sub-agent's ask
+# with deny and PR_MSG. Main's asks (no agent_id) get no answer.
+if [ "$ev" = PermissionRequest ] && [ -f "$S/policy/permreq-deny" ]; then
+	PR_MSG='' PR_SKIP='^$'
+	. "$S/policy/permreq-deny"
+	if ! printf '%s' "$in" | jq -e '.agent_id != null' >/dev/null; then note "permreq main: no answer"; exit 0; fi
+	if printf '%s' "$in" | jq -e --arg r "$PR_SKIP" '(.tool_input.command // "") | test($r)' >/dev/null; then note "permreq skip: no answer"; exit 0; fi
+	note "permreq deny"
+	jq -nc --arg m "$PR_MSG" '{hookSpecificOutput: {hookEventName: "PermissionRequest", decision: {behavior: "deny", message: $m}}}'
+	exit 0
+fi
 # Any event: $S/policy/out-<event> present is printed as the hook's output.
 if [ -f "$S/policy/out-$ev" ]; then note "printed out-$ev"; cat "$S/policy/out-$ev"; exit 0; fi
 # PostToolUse: $S/policy/post-<tool_name> may set POST_SLEEP seconds.

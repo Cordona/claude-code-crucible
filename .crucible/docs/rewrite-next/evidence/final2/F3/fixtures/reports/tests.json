@@ -1,0 +1,1 @@
+{"summary": "cover dry-run and --pattern end to end", "gates": [{"gate": "test", "result": "pass"}, {"gate": "lint", "result": "pass", "note": "shellcheck -x -o all on tests/: no new warning"}, {"gate": "mutation", "result": "pass", "note": "dropped the pattern check in a copy: the pattern test went red"}]}

@@ -2,7 +2,7 @@
   {
     "type": "job.stalled",
     "seq": 78,
-    "at": "2026-11-25T10:45:33Z",
+    "at": "2026-11-25T16:16:09Z",
     "by": "fault-stalled.sh",
     "claude_session_id": "sess-ba",
     "body": {
@@ -10,7 +10,7 @@
       "iteration": 1,
       "agent": "fe00000001",
       "step": "event",
-      "fault": "job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 37a66ef131fac0225fc65314630b94ffd725f772 carries its Job trailer"
+      "fault": "job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 9f25b8d822e11e520f117919ec9f90e9e453631b carries its Job trailer"
     }
   }
 ]

@@ -2,7 +2,7 @@
   {
     "type": "foreign-review.submitted",
     "seq": 51,
-    "at": "2026-11-25T10:42:07Z",
+    "at": "2026-11-25T16:19:26Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ra",
     "body": {

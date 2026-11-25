@@ -1,0 +1,1 @@
+{"summary": "add --dry-run and --pattern to prune-backups.sh", "gates": [{"gate": "lint", "result": "pass", "note": "shellcheck -x -o all: 1 info before, 1 after"}, {"gate": "typecheck", "result": "pass"}, {"gate": "test", "result": "pass"}]}

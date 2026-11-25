@@ -1,1557 +1,1570 @@
 [
- {
-  "rule": "every kind: the file is missing",
-  "kind": "review",
-  "expected": "write your report as one JSON object to <REPORT>",
-  "missing": true
- },
- {
-  "rule": "every kind: a key only a script fills in",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\"",
-     "id": "SHELL-01"
-    }
-   ]
+  {
+    "rule": "every kind: the file is missing",
+    "kind": "review",
+    "expected": "write your report as one JSON object to <REPORT>",
+    "missing": true
   },
-  "expected": "remove \"id\": this is filled in for you"
- },
- {
-  "rule": "every kind: a stamped key at the top",
-  "kind": "review",
-  "report": {
-   "lens": "shell"
-  },
-  "expected": "remove \"lens\": this is filled in for you"
- },
- {
-  "rule": "every kind: an unknown key",
-  "kind": "review",
-  "report": {
-   "verdict": "ok"
-  },
-  "expected": "unknown key \"verdict\"; the keys are findings, fixes, noticed, notes"
- },
- {
-  "rule": "every kind: text over 200 characters",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-     "suggestion": "quote it: \"$1\""
-    }
-   ]
-  },
-  "expected": "findings[0].claim is 240 characters; shorten it to 200"
- },
- {
-  "rule": "every kind: a suggestion may run long, over several lines",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it:\n\"$1\"\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-    }
-   ]
-  },
-  "expected": ""
- },
- {
-  "rule": "every kind: an at past the end of its file",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
+  {
+    "rule": "every kind: a key only a script fills in",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\"",
+          "id": "SHELL-01"
+        }
+      ]
     },
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "b.sh:90"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
-    }
-   ]
+    "expected": "remove \"id\": this is filled in for you"
   },
-  "expected": "findings[1].at b.sh:90 is past the end of the file (40 lines)"
- },
- {
-  "rule": "every kind: a removed line read at the base",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "-a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
-    }
-   ]
-  },
-  "expected": ""
- },
- {
-  "rule": "every kind: changes left in the tree",
-  "kind": "review",
-  "report": {},
-  "expected": "you changed files: undo your changes; a reviewer changes nothing",
-  "writes": [
-   "a.sh"
-  ]
- },
- {
-  "rule": "every kind: an ignored file doesn't count",
-  "kind": "review",
-  "report": {},
-  "expected": "",
-  "writes": [
-   "scratch.log"
-  ]
- },
- {
-  "rule": "review: a bad severity",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "major",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
-    }
-   ]
-  },
-  "expected": "findings[0].severity \"major\" is not critical, high, medium or low"
- },
- {
-  "rule": "review: an edge-case with no proof",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
+  {
+    "rule": "every kind: a stamped key at the top",
+    "kind": "review",
+    "report": {
+      "lens": "shell"
     },
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "@core-api:app/Http/Client.php:88"
-     ],
-     "relates_to": "a.sh:12",
-     "claim": "the caller passes an unescaped tenant name into this script",
-     "suggestion": "escape at the call or validate here"
+    "expected": "remove \"lens\": this is filled in for you"
+  },
+  {
+    "rule": "every kind: an unknown key",
+    "kind": "review",
+    "report": {
+      "verdict": "ok"
     },
-    {
-     "severity": "medium",
-     "realism": "edge-case",
-     "at": [
-      "b.sh:2"
-     ],
-     "claim": "a glob in the input expands",
-     "suggestion": "set -f around the loop"
-    }
-   ]
+    "expected": "unknown key \"verdict\"; the keys are findings, fixes, noticed, notes"
   },
-  "expected": "findings[2] is an edge-case: add proof, the line that makes it reachable"
- },
- {
-  "rule": "review: a hypothetical with no real_if",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "low",
-     "realism": "hypothetical",
-     "claim": "no script in this change logs its failures",
-     "suggestion": "log to stderr"
-    }
-   ]
-  },
-  "expected": "findings[0] is hypothetical: add real_if, what would make it real"
- },
- {
-  "rule": "review: an at outside the cover, with no relates_to or out_of_scope",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
+  {
+    "rule": "every kind: a long text is accepted, no length is checked",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "suggestion": "quote it: \"$1\""
+        }
+      ]
     },
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "x.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
-    }
-   ]
+    "expected": ""
   },
-  "expected": "findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
- },
- {
-  "rule": "review: relates_to that isn't a changed line",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
+  {
+    "rule": "every kind: a suggestion may run long, over several lines",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it:\n\"$1\"\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
     },
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "x.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\"",
-     "relates_to": "a.sh:2"
-    }
-   ]
+    "expected": ""
   },
-  "expected": "findings[1].relates_to a.sh:2 is not a line this change touches"
- },
- {
-  "rule": "review: relates_to a removed line",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "x.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\"",
-     "relates_to": "-a.sh:3"
-    }
-   ]
-  },
-  "expected": ""
- },
- {
-  "rule": "review: a bad noticed kind",
-  "kind": "review",
-  "report": {
-   "noticed": [
-    {
-     "at": "a.sh:9",
-     "text": "evals user input",
-     "for": "security"
+  {
+    "rule": "every kind: an at past the end of its file",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        },
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "b.sh:90"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        }
+      ]
     },
-    {
-     "at": "a.sh:1",
-     "kind": "leak",
-     "text": "a key in the clear"
-    }
-   ]
+    "expected": "findings[1].at b.sh:90 is past the end of the file (40 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
   },
-  "expected": "noticed[1].kind \"leak\" is not secret or instruction"
- },
- {
-  "rule": "review: reopens is free text",
-  "kind": "review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\"",
-     "reopens": "SHELL-07, fixed in the last round, is back"
-    }
-   ]
-  },
-  "expected": ""
- },
- {
-  "rule": "re-review: a fix with no status",
-  "kind": "review",
-  "report": {
-   "fixes": [
-    {
-     "id": "SHELL-03",
-     "status": "agree",
-     "reason": "the decline holds"
-    }
-   ]
-  },
-  "expected": "give SHELL-01 a status: fixed or open (the fixer said done)",
-  "earlier": [
-   {
-    "id": "SHELL-01",
-    "status": "done"
-   },
-   {
-    "id": "SHELL-03",
-    "status": "declined"
-   }
-  ]
- },
- {
-  "rule": "re-review: an ID that isn't in the job",
-  "kind": "review",
-  "report": {
-   "fixes": [
-    {
-     "id": "SHELL-01",
-     "status": "fixed"
+  {
+    "rule": "every kind: a removed line read at the base",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "-a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        }
+      ]
     },
-    {
-     "id": "SHELL-09",
-     "status": "fixed"
-    }
-   ]
+    "expected": ""
   },
-  "expected": "SHELL-09 is not one of this job's earlier findings",
-  "earlier": [
-   {
-    "id": "SHELL-01",
-    "status": "done"
-   }
-  ]
- },
- {
-  "rule": "re-review: the wrong status for the fixer's",
-  "kind": "review",
-  "report": {
-   "fixes": [
-    {
-     "id": "SECURITY-01",
-     "status": "fixed"
-    }
-   ]
+  {
+    "rule": "every kind: changes left in the tree",
+    "kind": "review",
+    "report": {},
+    "expected": "you changed files: undo your changes; a reviewer changes nothing",
+    "writes": [
+      "a.sh"
+    ]
   },
-  "expected": "SECURITY-01 was declined: give agree or disagree, with a reason",
-  "earlier": [
-   {
-    "id": "SECURITY-01",
-    "status": "declined"
-   }
-  ]
- },
- {
-  "rule": "re-review: a reason missing on open",
-  "kind": "review",
-  "report": {
-   "fixes": [
-    {
-     "id": "SHELL-01",
-     "status": "fixed"
-    },
-    {
-     "id": "SHELL-02",
-     "status": "open"
-    }
-   ]
+  {
+    "rule": "every kind: an ignored file doesn't count",
+    "kind": "review",
+    "report": {},
+    "expected": "",
+    "writes": [
+      "scratch.log"
+    ]
   },
-  "expected": "fixes[1] is open: add a reason",
-  "earlier": [
-   {
-    "id": "SHELL-01",
-    "status": "done"
-   },
-   {
-    "id": "SHELL-02",
-    "status": "partly"
-   }
-  ]
- },
- {
-  "rule": "foreign review: fixes are an unknown key",
-  "kind": "foreign-review",
-  "report": {
-   "findings": [
-    {
-     "severity": "high",
-     "realism": "realistic",
-     "at": [
-      "a.sh:3"
-     ],
-     "claim": "the variable is unquoted, so a path with a space splits",
-     "suggestion": "quote it: \"$1\""
-    }
-   ],
-   "fixes": [
-    {
-     "id": "SHELL-01",
-     "status": "fixed"
-    }
-   ]
+  {
+    "rule": "review: a bad severity",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "major",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        }
+      ]
+    },
+    "expected": "findings[0].severity \"major\" is not critical, high, medium or low"
   },
-  "expected": "unknown key \"fixes\"; the keys are findings, noticed, notes"
- },
- {
-  "rule": "challenge: a target that doesn't exist",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "B-9",
-     "ask": "add",
-     "title": "no test proves the limit",
-     "why": "the planned test passes with any limit"
-    }
-   ]
+  {
+    "rule": "review: an edge-case with no proof",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        },
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "@core-api:app/Http/Client.php:88"
+          ],
+          "relates_to": "a.sh:12",
+          "claim": "the caller passes an unescaped tenant name into this script",
+          "suggestion": "escape at the call or validate here"
+        },
+        {
+          "severity": "medium",
+          "realism": "edge-case",
+          "at": [
+            "b.sh:2"
+          ],
+          "claim": "a glob in the input expands",
+          "suggestion": "set -f around the loop"
+        }
+      ]
+    },
+    "expected": "findings[2] is an edge-case: add proof, the line that makes it reachable"
   },
-  "expected": "challenges[0].target B-9 is not an ID in the plan; name a plan ID, plan, a code location or a file the plan names"
- },
- {
-  "rule": "challenge: plan, a location and a named file are targets",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "plan",
-     "ask": "change",
-     "title": "the run misses the retry suite",
-     "why": "the filter names one class"
+  {
+    "rule": "review: a hypothetical with no real_if",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "low",
+          "realism": "hypothetical",
+          "claim": "no script in this change logs its failures",
+          "suggestion": "log to stderr"
+        }
+      ]
     },
-    {
-     "target": "a.sh:3",
-     "ask": "prove",
-     "title": "the quoting is untested",
-     "why": "no test passes a path with a space"
-    },
-    {
-     "target": "tests/fixtures/503.json",
-     "ask": "remove",
-     "title": "the golden only mirrors the code",
-     "why": "it was captured from this build"
-    }
-   ]
+    "expected": "findings[0] is hypothetical: add real_if, what would make it real"
   },
-  "expected": ""
- },
- {
-  "rule": "challenge: a bad ask",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "B-1",
-     "ask": "add",
-     "title": "no test proves the limit",
-     "why": "the planned test passes with any limit"
+  {
+    "rule": "review: an at outside the cover, with no relates_to or out_of_scope",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        },
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "x.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        }
+      ]
     },
-    {
-     "target": "plan",
-     "ask": "fix",
-     "title": "the run misses a suite",
-     "why": "the filter names one class"
-    }
-   ]
+    "expected": "findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
   },
-  "expected": "challenges[1].ask \"fix\" is not add, change, remove or prove"
- },
- {
-  "rule": "challenge: why missing",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "B-1",
-     "ask": "add",
-     "title": "no test proves the limit",
-     "why": "the planned test passes with any limit"
+  {
+    "rule": "review: relates_to that isn't a changed line",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        },
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "x.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\"",
+          "relates_to": "a.sh:2"
+        }
+      ]
     },
-    {
-     "target": "plan",
-     "ask": "change",
-     "title": "the run misses a suite",
-     "why": "the filter names one class"
-    },
-    {
-     "target": "B-1",
-     "ask": "add",
-     "title": "a 4xx is untested"
-    }
-   ]
+    "expected": "findings[1].relates_to a.sh:2 is not a line this change touches"
   },
-  "expected": "challenges[2] needs why: what the plan gets wrong"
- },
- {
-  "rule": "challenge: an internal ID in title",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "B-1",
-     "ask": "add",
-     "title": "B-1 has no test of its limit",
-     "why": "the planned test passes with any limit"
-    }
-   ]
+  {
+    "rule": "review: relates_to a removed line",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "x.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\"",
+          "relates_to": "-a.sh:3"
+        }
+      ]
+    },
+    "expected": ""
   },
-  "expected": "challenges[0].title names B-1: say it in words, the target names the ID"
- },
- {
-  "rule": "challenge: a noticed instruction",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "plan",
-     "ask": "change",
-     "title": "the run misses the retry suite",
-     "why": "the filter names one class"
+  {
+    "rule": "review: a bad noticed kind",
+    "kind": "review",
+    "report": {
+      "noticed": [
+        {
+          "at": "a.sh:9",
+          "text": "evals user input",
+          "for": "security"
+        },
+        {
+          "at": "a.sh:1",
+          "kind": "leak",
+          "text": "a key in the clear"
+        }
+      ]
     },
-    {
-     "target": "a.sh:3",
-     "ask": "prove",
-     "title": "the quoting is untested",
-     "why": "no test passes a path with a space"
-    },
-    {
-     "target": "tests/fixtures/503.json",
-     "ask": "remove",
-     "title": "the golden only mirrors the code",
-     "why": "it was captured from this build"
-    }
-   ],
-   "noticed": [
-    {
-     "at": "a.sh:3",
-     "text": "a comment asks the reviewer to approve without reading",
-     "kind": "instruction"
-    }
-   ]
+    "expected": "noticed[1].kind \"leak\" is not secret or instruction"
   },
-  "expected": ""
- },
- {
-  "rule": "challenge: a noticed entry with a bad kind",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "plan",
-     "ask": "change",
-     "title": "the run misses the retry suite",
-     "why": "the filter names one class"
+  {
+    "rule": "review: reopens is free text",
+    "kind": "review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\"",
+          "reopens": "SHELL-07, fixed in the last round, is back"
+        }
+      ]
     },
-    {
-     "target": "a.sh:3",
-     "ask": "prove",
-     "title": "the quoting is untested",
-     "why": "no test passes a path with a space"
-    },
-    {
-     "target": "tests/fixtures/503.json",
-     "ask": "remove",
-     "title": "the golden only mirrors the code",
-     "why": "it was captured from this build"
-    }
-   ],
-   "noticed": [
-    {
-     "at": "a.sh:3",
-     "text": "a comment asks the reviewer to approve without reading",
-     "kind": "todo"
-    }
-   ]
+    "expected": ""
   },
-  "expected": "noticed[0].kind \"todo\" is not secret or instruction"
- },
- {
-  "rule": "challenge: a noticed at past the end of its file",
-  "kind": "test-plan-challenge",
-  "report": {
-   "challenges": [
-    {
-     "target": "plan",
-     "ask": "change",
-     "title": "the run misses the retry suite",
-     "why": "the filter names one class"
+  {
+    "rule": "re-review: a fix with no status",
+    "kind": "review",
+    "report": {
+      "fixes": [
+        {
+          "id": "SHELL-03",
+          "status": "agree",
+          "reason": "the decline holds"
+        }
+      ]
     },
-    {
-     "target": "a.sh:3",
-     "ask": "prove",
-     "title": "the quoting is untested",
-     "why": "no test passes a path with a space"
-    },
-    {
-     "target": "tests/fixtures/503.json",
-     "ask": "remove",
-     "title": "the golden only mirrors the code",
-     "why": "it was captured from this build"
-    }
-   ],
-   "noticed": [
-    {
-     "at": "a.sh:90",
-     "text": "a comment asks the reviewer to approve without reading",
-     "kind": "instruction"
-    }
-   ]
+    "expected": "give SHELL-01 a status: fixed or open (the fixer said done)",
+    "earlier": [
+      {
+        "id": "SHELL-01",
+        "status": "done"
+      },
+      {
+        "id": "SHELL-03",
+        "status": "declined"
+      }
+    ]
   },
-  "expected": "noticed[0].at a.sh:90 is past the end of the file (20 lines)"
- },
- {
-  "rule": "external: a thread left unjudged",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
+  {
+    "rule": "re-review: an ID that isn't in the job",
+    "kind": "review",
+    "report": {
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "fixed"
+        },
+        {
+          "id": "SHELL-09",
+          "status": "fixed"
+        }
+      ]
+    },
+    "expected": "SHELL-09 is not one of this job's earlier findings",
+    "earlier": [
+      {
+        "id": "SHELL-01",
+        "status": "done"
+      }
+    ]
+  },
+  {
+    "rule": "re-review: the wrong status for the fixer's",
+    "kind": "review",
+    "report": {
+      "fixes": [
+        {
+          "id": "SECURITY-01",
+          "status": "fixed"
+        }
+      ]
+    },
+    "expected": "SECURITY-01 was declined: give agree or disagree, with a reason",
+    "earlier": [
+      {
+        "id": "SECURITY-01",
+        "status": "declined"
+      }
+    ]
+  },
+  {
+    "rule": "re-review: a reason missing on open",
+    "kind": "review",
+    "report": {
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "fixed"
+        },
+        {
+          "id": "SHELL-02",
+          "status": "open"
+        }
+      ]
+    },
+    "expected": "fixes[1] is open: add a reason",
+    "earlier": [
+      {
+        "id": "SHELL-01",
+        "status": "done"
+      },
+      {
+        "id": "SHELL-02",
+        "status": "partly"
+      }
+    ]
+  },
+  {
+    "rule": "foreign review: fixes are an unknown key",
+    "kind": "foreign-review",
+    "report": {
+      "findings": [
+        {
+          "severity": "high",
+          "realism": "realistic",
+          "at": [
+            "a.sh:3"
+          ],
+          "claim": "the variable is unquoted, so a path with a space splits",
+          "suggestion": "quote it: \"$1\""
+        }
       ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "fixed"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "unknown key \"fixes\"; the keys are findings, noticed, notes"
   },
-  "expected": "judge thread n11373: valid, rejected, already-fixed, deferred, answered or noted"
- },
- {
-  "rule": "external: a thread that isn't in the job",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "challenge: a target that doesn't exist",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "B-9",
+          "ask": "add",
+          "title": "no test proves the limit",
+          "why": "the planned test passes with any limit"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    },
-    {
-     "thread": "n99",
-     "verdict": "noted"
-    }
-   ]
+    "expected": "challenges[0].target B-9 is not an ID in the plan; name a plan ID, plan, a code location or a file the plan names"
   },
-  "expected": "thread n99 is not one of this job's threads"
- },
- {
-  "rule": "external: a bad verdict",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "challenge: plan, a location and a named file are targets",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "plan",
+          "ask": "change",
+          "title": "the run misses the retry suite",
+          "why": "the filter names one class"
+        },
+        {
+          "target": "a.sh:3",
+          "ask": "prove",
+          "title": "the quoting is untested",
+          "why": "no test passes a path with a space"
+        },
+        {
+          "target": "tests/fixtures/503.json",
+          "ask": "remove",
+          "title": "the golden only mirrors the code",
+          "why": "it was captured from this build"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "wontfix",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": ""
   },
-  "expected": "items[2].verdict \"wontfix\" is not valid, rejected, already-fixed, deferred, answered or noted"
- },
- {
-  "rule": "external: valid without a finding",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid"
+  {
+    "rule": "challenge: a bad ask",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "B-1",
+          "ask": "add",
+          "title": "no test proves the limit",
+          "why": "the planned test passes with any limit"
+        },
+        {
+          "target": "plan",
+          "ask": "fix",
+          "title": "the run misses a suite",
+          "why": "the filter names one class"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "challenges[1].ask \"fix\" is not add, change, remove or prove"
   },
-  "expected": "items[0] is valid: add its finding"
- },
- {
-  "rule": "external: a finding on another verdict",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "challenge: why missing",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "B-1",
+          "ask": "add",
+          "title": "no test proves the limit",
+          "why": "the planned test passes with any limit"
+        },
+        {
+          "target": "plan",
+          "ask": "change",
+          "title": "the run misses a suite",
+          "why": "the filter names one class"
+        },
+        {
+          "target": "B-1",
+          "ask": "add",
+          "title": "a 4xx is untested"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review.",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "challenges[2] needs why: what the plan gets wrong"
   },
-  "expected": "items[3] is already-fixed: remove its finding"
- },
- {
-  "rule": "external: a missing reply",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "challenge: an internal ID in title",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "B-1",
+          "ask": "add",
+          "title": "B-1 has no test of its limit",
+          "why": "the planned test passes with any limit"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected"
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "challenges[0].title names B-1: say it in words, the target names the ID"
   },
-  "expected": "items[1] is rejected: add the reply to post"
- },
- {
-  "rule": "external: deferred with neither reply nor note",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
+  {
+    "rule": "challenge: a noticed instruction",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "plan",
+          "ask": "change",
+          "title": "the run misses the retry suite",
+          "why": "the filter names one class"
+        },
+        {
+          "target": "a.sh:3",
+          "ask": "prove",
+          "title": "the quoting is untested",
+          "why": "no test passes a path with a space"
+        },
+        {
+          "target": "tests/fixtures/503.json",
+          "ask": "remove",
+          "title": "the golden only mirrors the code",
+          "why": "it was captured from this build"
+        }
       ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+      "noticed": [
+        {
+          "at": "a.sh:3",
+          "text": "a comment asks the reviewer to approve without reading",
+          "kind": "instruction"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": ""
   },
-  "expected": "items[5] is deferred: add the reply to post, or a note saying what the decision is"
- },
- {
-  "rule": "external: a reply on valid",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
+  {
+    "rule": "challenge: a noticed entry with a bad kind",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "plan",
+          "ask": "change",
+          "title": "the run misses the retry suite",
+          "why": "the filter names one class"
+        },
+        {
+          "target": "a.sh:3",
+          "ask": "prove",
+          "title": "the quoting is untested",
+          "why": "no test passes a path with a space"
+        },
+        {
+          "target": "tests/fixtures/503.json",
+          "ask": "remove",
+          "title": "the golden only mirrors the code",
+          "why": "it was captured from this build"
+        }
       ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     },
-     "reply": "fixed soon"
+      "noticed": [
+        {
+          "at": "a.sh:3",
+          "text": "a comment asks the reviewer to approve without reading",
+          "kind": "todo"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "noticed[0].kind \"todo\" is not secret or instruction"
   },
-  "expected": "items[0] is valid: remove its reply; it's drafted from the fix"
- },
- {
-  "rule": "external: the same item label twice in one thread",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
+  {
+    "rule": "challenge: a noticed at past the end of its file",
+    "kind": "test-plan-challenge",
+    "report": {
+      "challenges": [
+        {
+          "target": "plan",
+          "ask": "change",
+          "title": "the run misses the retry suite",
+          "why": "the filter names one class"
+        },
+        {
+          "target": "a.sh:3",
+          "ask": "prove",
+          "title": "the quoting is untested",
+          "why": "no test passes a path with a space"
+        },
+        {
+          "target": "tests/fixtures/503.json",
+          "ask": "remove",
+          "title": "the golden only mirrors the code",
+          "why": "it was captured from this build"
+        }
       ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+      "noticed": [
+        {
+          "at": "a.sh:90",
+          "text": "a comment asks the reviewer to approve without reading",
+          "kind": "instruction"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "noticed[0].at a.sh:90 is past the end of the file (20 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them, or leave `at` out when it isn't in a file"
   },
-  "expected": "thread n11370 has item F-03a twice: give each point its own label"
- },
- {
-  "rule": "external: a stamped source written by the agent",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "external: a thread left unjudged",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values.",
-     "source": "human"
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "judge thread n11373: valid, rejected, already-fixed, deferred, answered or noted"
   },
-  "expected": "remove \"source\": this is filled in for you"
- },
- {
-  "rule": "external: a valid finding's own text rules",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "major",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "external: a thread that isn't in the job",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        },
+        {
+          "thread": "n99",
+          "verdict": "noted"
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ]
+    "expected": "thread n99 is not one of this job's threads"
   },
-  "expected": "items[0].finding.severity \"major\" is not critical, high, medium or low"
- },
- {
-  "rule": "external: a noticed instruction",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "external: a bad verdict",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "wontfix",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ],
-   "noticed": [
-    {
-     "at": "a.sh:3",
-     "text": "a comment asks the reviewer to approve without reading",
-     "kind": "instruction"
-    }
-   ]
+    "expected": "items[2].verdict \"wontfix\" is not valid, rejected, already-fixed, deferred, answered or noted"
   },
-  "expected": ""
- },
- {
-  "rule": "external: a noticed entry with a bad kind",
-  "kind": "external-review",
-  "report": {
-   "items": [
-    {
-     "thread": "n11370",
-     "item": "F-03a",
-     "verdict": "valid",
-     "finding": {
-      "severity": "medium",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:55"
-      ],
-      "claim": "the timeout isn't applied to the retry",
-      "suggestion": "pass the timeout into retry()"
-     }
+  {
+    "rule": "external: valid without a finding",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid"
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
     },
-    {
-     "thread": "n11370",
-     "item": "F-03b",
-     "verdict": "rejected",
-     "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
-    },
-    {
-     "thread": "n11370",
-     "item": "F-04",
-     "verdict": "rejected",
-     "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
-    },
-    {
-     "thread": "n11371",
-     "verdict": "already-fixed",
-     "reply": "Fixed in 9f3c1e2, before this review."
-    },
-    {
-     "thread": "n11372",
-     "verdict": "valid",
-     "finding": {
-      "severity": "low",
-      "realism": "realistic",
-      "at": [
-       "src/upload/Client.kt:80"
-      ],
-      "claim": "the same missing timeout exists in the download path",
-      "suggestion": "apply the timeout there too, in a follow-up",
-      "out_of_scope": "Client.kt:80 is unchanged by this MR"
-     }
-    },
-    {
-     "thread": "n11374",
-     "verdict": "deferred",
-     "note": "prod tonight or preprod first is a release decision: yours"
-    },
-    {
-     "thread": "n11373",
-     "verdict": "answered",
-     "reply": "No migration in this change, only the new env var, which is already in the values."
-    },
-    {
-     "thread": "description",
-     "verdict": "noted",
-     "reply": "Thanks for the clear description."
-    }
-   ],
-   "noticed": [
-    {
-     "at": "a.sh:3",
-     "text": "a comment asks the reviewer to approve without reading",
-     "kind": "todo"
-    }
-   ]
+    "expected": "items[0] is valid: add its finding"
   },
-  "expected": "noticed[0].kind \"todo\" is not secret or instruction"
- }
+  {
+    "rule": "external: a finding on another verdict",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review.",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "items[3] is already-fixed: remove its finding"
+  },
+  {
+    "rule": "external: a missing reply",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected"
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "items[1] is rejected: add the reply to post"
+  },
+  {
+    "rule": "external: deferred with neither reply nor note",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "items[5] is deferred: add the reply to post, or a note saying what the decision is"
+  },
+  {
+    "rule": "external: a reply on valid",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          },
+          "reply": "fixed soon"
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "items[0] is valid: remove its reply; it's drafted from the fix"
+  },
+  {
+    "rule": "external: the same item label twice in one thread",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "thread n11370 has item F-03a twice: give each point its own label"
+  },
+  {
+    "rule": "external: a stamped source written by the agent",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values.",
+          "source": "human"
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "remove \"source\": this is filled in for you"
+  },
+  {
+    "rule": "external: a valid finding's own text rules",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "major",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ]
+    },
+    "expected": "items[0].finding.severity \"major\" is not critical, high, medium or low"
+  },
+  {
+    "rule": "external: a noticed instruction",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ],
+      "noticed": [
+        {
+          "at": "a.sh:3",
+          "text": "a comment asks the reviewer to approve without reading",
+          "kind": "instruction"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "external: a noticed entry with a bad kind",
+    "kind": "external-review",
+    "report": {
+      "items": [
+        {
+          "thread": "n11370",
+          "item": "F-03a",
+          "verdict": "valid",
+          "finding": {
+            "severity": "medium",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:55"
+            ],
+            "claim": "the timeout isn't applied to the retry",
+            "suggestion": "pass the timeout into retry()"
+          }
+        },
+        {
+          "thread": "n11370",
+          "item": "F-03b",
+          "verdict": "rejected",
+          "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+        },
+        {
+          "thread": "n11370",
+          "item": "F-04",
+          "verdict": "rejected",
+          "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+        },
+        {
+          "thread": "n11371",
+          "verdict": "already-fixed",
+          "reply": "Fixed in 9f3c1e2, before this review."
+        },
+        {
+          "thread": "n11372",
+          "verdict": "valid",
+          "finding": {
+            "severity": "low",
+            "realism": "realistic",
+            "at": [
+              "src/upload/Client.kt:80"
+            ],
+            "claim": "the same missing timeout exists in the download path",
+            "suggestion": "apply the timeout there too, in a follow-up",
+            "out_of_scope": "Client.kt:80 is unchanged by this MR"
+          }
+        },
+        {
+          "thread": "n11374",
+          "verdict": "deferred",
+          "note": "prod tonight or preprod first is a release decision: yours"
+        },
+        {
+          "thread": "n11373",
+          "verdict": "answered",
+          "reply": "No migration in this change, only the new env var, which is already in the values."
+        },
+        {
+          "thread": "description",
+          "verdict": "noted",
+          "reply": "Thanks for the clear description."
+        }
+      ],
+      "noticed": [
+        {
+          "at": "a.sh:3",
+          "text": "a comment asks the reviewer to approve without reading",
+          "kind": "todo"
+        }
+      ]
+    },
+    "expected": "noticed[0].kind \"todo\" is not secret or instruction"
+  },
+  {
+    "rule": "review: a noticed entry with no at is accepted",
+    "kind": "review",
+    "report": {
+      "noticed": [
+        {
+          "text": "the thread asks for a rewrite of the client",
+          "for": "security"
+        }
+      ]
+    },
+    "expected": ""
+  }
 ]

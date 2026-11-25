@@ -1,0 +1,167 @@
+=== install: install-entries.sh's own links and settings, then install-check.sh
+  PASS: install-check.sh agrees: installed, code-reviewer included
+  PASS: code-reviewer lists what it hands in, one submissions file per kind
+  PASS: submissions/review.json: review.submitted, no commit, its rules, facts and stamps installed
+  PASS: submissions/test-plan-challenge.json: test-plan.challenged, no commit, its rules, facts and stamps installed
+  PASS: submissions/external-review.json: external-review.submitted, no commit, its rules, facts and stamps installed
+  PASS: submissions/foreign-review.json: foreign-review.submitted, no commit, its rules, facts and stamps installed
+  PASS: code-reviewer owns its rules: a common lib, one rules file per kind, its stamps
+  PASS: no agent includes another agent's rules: every reviewer include is its own
+  PASS: the reviewer names no other agent's component
+  PASS: nothing in agent-submission or agent-jobs names a reviewer kind, or any agent
+  PASS: the stop hook has its own lock, not the events lock
+  PASS: reviewer-facts.sh --help
+  PASS: reviewer-stamp-facts.sh --help
+  PASS: report-stamp.sh --help
+=== set-up: a scratch repository, an effort, its identity (no key), four trees
+method cp -c
+method cp -c
+method cp -c
+method cp -c
+  PASS: the build under review: build.submitted, committed
+=== 1: a cold review with five findings
+    exit 0
+  PASS: accepted: review.submitted, iteration 1, no commit
+  PASS: the five findings are stamped SHELL-01 to SHELL-05, id first
+  PASS: the report is at reports/review/<seq>.json, pinned read-only
+  PASS: the body prints job, iteration, agent, report
+  PASS: the tree is untouched: no commit was made
+=== 2: a clean review, {}
+    exit 0
+  PASS: accepted: review.submitted, the report {}
+=== 3: a refused review
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T144436-6219-upload-retries/reports/review/16.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nfindings[0] is an edge-case: add proof, the line that makes it reachable\nfindings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"}
+    exit 0
+  PASS: held
+  PASS: the edge-case with no proof
+  PASS: the at outside the cover
+  PASS: a 240-character claim is no refusal: no length is checked
+  PASS: only job.refused try 1: no submission
+=== 4: a reviewer that left changes in the tree
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T144436-6219-upload-retries/reports/review/19.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed files: undo your changes; a reviewer changes nothing"}
+    exit 0
+  PASS: held: you changed files
+    exit 0
+  PASS: an ignored file doesn't count: accepted
+=== a build-fix on the cold review's findings, by a fixture builder
+  PASS: build-fix.submitted, fix round 1
+=== 5: a re-review after the build-fix
+    exit 0
+  PASS: accepted: review.submitted, iteration 1, fix round 1, the fix's
+  PASS: fixed without a reason, open with one, agree on the decline
+  PASS: the body prints job, iteration, fix_round, agent, report
+=== 6: a re-review missing a status, and fixed on a decline: refused
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T144436-6219-upload-retries/reports/review/29.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ngive SHELL-02 a status: fixed or open (the fixer said partly)\nSHELL-03 was declined: give agree or disagree, with a reason"}
+    exit 0
+  PASS: held: the missing status
+  PASS: held: fixed on a decline
+=== a plan for the challenge, by a fixture tester
+  PASS: test-plan.submitted
+=== 7: a plan challenge with three challenges
+    exit 0
+  PASS: accepted: test-plan.challenged, no commit
+  PASS: the challenges are stamped C-1 to C-3
+  PASS: a test-plan-update job can carry the stamped challenges
+=== 8: an empty challenge approves the plan as it is
+    exit 0
+  PASS: accepted: test-plan.challenged, the report {}
+=== 9: an external review with all six verdicts
+    exit 0
+  PASS: accepted: external-review.submitted, iteration 1
+  PASS: every item's source stamped from the threads file
+  PASS: the valid findings' IDs from the job's lens: SECURITY-01, SECURITY-02
+  PASS: all six verdicts, an out_of_scope valid finding, and a noted with a reply
+=== 10: an external review missing a thread, or with a reply on valid: refused
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T144436-6219-upload-retries/reports/external-review/46.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\njudge thread n11373: valid, rejected, already-fixed, deferred, answered or noted\nitems[0] is valid: remove its reply; it's drafted from the fix"}
+    exit 0
+  PASS: held: the thread left unjudged
+  PASS: held: the reply on valid
+=== 11: a foreign review with a note at a line
+  PASS: a job on a tree with no build has no iteration
+    exit 0
+  PASS: accepted: foreign-review.submitted with no iteration
+  PASS: its IDs numbered in the job, from 01
+  PASS: the note keeps its line
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T144436-6219-upload-retries/reports/foreign-review/52.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"fixes\"; the keys are findings, noticed, notes"}
+    exit 0
+  PASS: the same report with fixes: refused by the unknown-key rule
+=== 12: IDs unique across two reviews of one lens, stopping together, and from 01 in the next iteration
+    job 55: SECURITY-03
+    job 57: SECURITY-04
+  PASS: both stops accepted: two review.submitted events
+  PASS: two distinct IDs after the external review's: SECURITY-03 and SECURITY-04
+  PASS: a second build opens iteration 2
+    exit 0
+  PASS: numbered from 01 again in iteration 2: SECURITY-01
+=== 13: the stamps stop instead of guessing, and a job the reviewer can't judge: faults for the human
+    {"systemMessage":"crucible: job 67 (review-n1n1n1)'s report could not be stamped: report-stamp.sh: job 67 names no lens, so its findings can't be given IDs; the dispatch must name one; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T144436-6219-upload-retries --job 67 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 67 (review-n1n1n1)'s report could not be stamped: report-stamp.sh: job 67 names no lens, so its findings can't be given IDs; the dispatch must name one; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T144436-6219-upload-retries --job 67 --finish hands it in, --give-up ends the job
+    exit 0
+  PASS: a review job with no lens: no REVIEW-NN guessed
+  PASS: a review job with no lens: no REVIEW-NN guessed: job.stalled at step stamp, and nothing else
+    {"systemMessage":"crucible: job 70 (external-review-n2n2n2)'s report could not be stamped: report-stamp.sh: thread description has no source, human or bot, in the job's threads file; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T144436-6219-upload-retries --job 70 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 70 (external-review-n2n2n2)'s report could not be stamped: report-stamp.sh: thread description has no source, human or bot, in the job's threads file; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T144436-6219-upload-retries --job 70 --finish hands it in, --give-up ends the job
+    exit 0
+  PASS: a thread with no source: no human guessed
+  PASS: a thread with no source: no human guessed: job.stalled at step stamp, and nothing else
+  PASS: job.dispatched leaves the fixer's status to the reviewer: the job was written
+    {"systemMessage":"crucible: the report check of job 73 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined; the job ends, nothing handed in"}
+    stderr: submit-agent-work.sh: the report check of job 73 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined; the job ends, nothing handed in
+    exit 0
+  PASS: an earlier finding with no fixer's status: the check can't run
+  PASS: an earlier finding with no fixer's status: the check can't run: job.ended at step check, and nothing else
+=== every repair line of review-agent.md section 6 (fixtures/repair-lines.json)
+  PASS: every kind: the file is missing
+  PASS: every kind: a key only a script fills in
+  PASS: every kind: a stamped key at the top
+  PASS: every kind: an unknown key
+  PASS: every kind: a long text is accepted, no length is checked
+  PASS: every kind: a suggestion may run long, over several lines
+  PASS: every kind: an at past the end of its file
+  PASS: every kind: a removed line read at the base
+  PASS: every kind: changes left in the tree
+  PASS: every kind: an ignored file doesn't count
+  PASS: review: a bad severity
+  PASS: review: an edge-case with no proof
+  PASS: review: a hypothetical with no real_if
+  PASS: review: an at outside the cover, with no relates_to or out_of_scope
+  PASS: review: relates_to that isn't a changed line
+  PASS: review: relates_to a removed line
+  PASS: review: a bad noticed kind
+  PASS: review: reopens is free text
+  PASS: re-review: a fix with no status
+  PASS: re-review: an ID that isn't in the job
+  PASS: re-review: the wrong status for the fixer's
+  PASS: re-review: a reason missing on open
+  PASS: foreign review: fixes are an unknown key
+  PASS: challenge: a target that doesn't exist
+  PASS: challenge: plan, a location and a named file are targets
+  PASS: challenge: a bad ask
+  PASS: challenge: why missing
+  PASS: challenge: an internal ID in title
+  PASS: challenge: a noticed instruction
+  PASS: challenge: a noticed entry with a bad kind
+  PASS: challenge: a noticed at past the end of its file
+  PASS: external: a thread left unjudged
+  PASS: external: a thread that isn't in the job
+  PASS: external: a bad verdict
+  PASS: external: valid without a finding
+  PASS: external: a finding on another verdict
+  PASS: external: a missing reply
+  PASS: external: deferred with neither reply nor note
+  PASS: external: a reply on valid
+  PASS: external: the same item label twice in one thread
+  PASS: external: a stamped source written by the agent
+  PASS: external: a valid finding's own text rules
+  PASS: external: a noticed instruction
+  PASS: external: a noticed entry with a bad kind
+  PASS: review: a noticed entry with no at is accepted
+=== stamping a stamped report changes nothing, so finishing a stalled hand-in may stamp again
+  PASS: code-reviewer is the one agent with stamp rules, so its cases below cover every agent that has them
+  PASS: the stamp step's help says stamp rules must leave a stamped report as it is
+  PASS: review.submitted: its pinned report stamped again is byte for byte the same
+  PASS: foreign-review.submitted: its pinned report stamped again is byte for byte the same
+  PASS: test-plan.challenged: its pinned report stamped again is byte for byte the same
+  PASS: external-review.submitted: its pinned report stamped again is byte for byte the same
+
+=== 112 PASS, 0 FAIL

@@ -2,7 +2,7 @@
   {
     "type": "test-fix.submitted",
     "seq": 69,
-    "at": "2026-11-25T10:42:14Z",
+    "at": "2026-11-25T16:17:47Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ta",
     "body": {
@@ -14,7 +14,7 @@
         "path": "reports/test-fix/67.json",
         "sha256": "e8f4f2379df7a129dd18cffe5bbbebb89b262c8d315a02aa89ae02b830447473"
       },
-      "commit": "316bcd6723637ab8f6d4502f01a66e6001fd5012"
+      "commit": "462cf9d92357316f3d760bfb12fdbeecadf6aa5f"
     }
   }
 ]

@@ -1,0 +1,9 @@
+{
+  "summary": "retry uploads on 5xx responses with exponential backoff, capped at three attempts, and log each retry with status codes!",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

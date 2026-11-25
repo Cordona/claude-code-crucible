@@ -2,7 +2,7 @@
   {
     "type": "test.submitted",
     "seq": 76,
-    "at": "2026-11-25T10:42:22Z",
+    "at": "2026-11-25T16:17:53Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ta",
     "body": {
@@ -13,7 +13,7 @@
         "path": "reports/test/73.json",
         "sha256": "36853998739889ec2b80dd08fedca4c1d80342aa99bb5406c23c9b78a9d7e2ff"
       },
-      "commit": "d60e5b170547a5b3302cf49501f2e8df986535e3"
+      "commit": "d6438a740a5fa44739e411c43fe35e2a1307e6fb"
     }
   }
 ]

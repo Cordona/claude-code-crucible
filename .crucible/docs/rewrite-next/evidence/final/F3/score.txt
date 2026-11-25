@@ -1,0 +1,831 @@
+== build-1: PASS (repaired)
+PASS: build-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-1: no job.stalled
+PASS: build-1: the pin matches the report, read-only
+PASS: build-1: the working commit, with its Job trailer
+PASS: build-1: the job agent ran on Opus: claude-opus-5-5
+PASS: build-1: the agent got exactly the prepared prompt
+PASS: build-1: no gh or glab call by the agent (calls: 0)
+PASS: build-1: no refusal line mentions a length
+PASS: build-1: the allowed gates reported run, not not_run: all run
+PASS: build-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-1: audit: every job ended or submitted
+PASS: build-1: audit: stalled only where the scenario expects it
+PASS: build-1: audit: every pinned report matches its hash
+PASS: build-1: audit: every working commit has its event
+PASS: build-1: audit: every refusal followed by a submission or an end
+PASS: build-1: audit: no job with more than two refusals
+== build-2: PASS (repaired)
+PASS: build-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-2: no job.stalled
+PASS: build-2: the pin matches the report, read-only
+PASS: build-2: the working commit, with its Job trailer
+PASS: build-2: the job agent ran on Opus: claude-opus-5-5
+PASS: build-2: the agent got exactly the prepared prompt
+PASS: build-2: no gh or glab call by the agent (calls: 0)
+PASS: build-2: no refusal line mentions a length
+PASS: build-2: the allowed gates reported run, not not_run: all run
+PASS: build-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-2: audit: every job ended or submitted
+PASS: build-2: audit: stalled only where the scenario expects it
+PASS: build-2: audit: every pinned report matches its hash
+PASS: build-2: audit: every working commit has its event
+PASS: build-2: audit: every refusal followed by a submission or an end
+PASS: build-2: audit: no job with more than two refusals
+== build-3: PASS (repaired)
+PASS: build-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-3: no job.stalled
+PASS: build-3: the pin matches the report, read-only
+PASS: build-3: the working commit, with its Job trailer
+PASS: build-3: the job agent ran on Opus: claude-opus-5-5
+PASS: build-3: the agent got exactly the prepared prompt
+PASS: build-3: no gh or glab call by the agent (calls: 0)
+PASS: build-3: no refusal line mentions a length
+PASS: build-3: the allowed gates reported run, not not_run: all run
+PASS: build-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-3: audit: every job ended or submitted
+PASS: build-3: audit: stalled only where the scenario expects it
+PASS: build-3: audit: every pinned report matches its hash
+PASS: build-3: audit: every working commit has its event
+PASS: build-3: audit: every refusal followed by a submission or an end
+PASS: build-3: audit: no job with more than two refusals
+== build-fix-1: PASS (accepted)
+PASS: build-fix-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: build-fix-1: no job.stalled
+PASS: build-fix-1: the pin matches the report, read-only
+PASS: build-fix-1: the working commit, with its Job trailer
+PASS: build-fix-1: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-1: the agent got exactly the prepared prompt
+PASS: build-fix-1: no gh or glab call by the agent (calls: 0)
+PASS: build-fix-1: no refusal line mentions a length
+PASS: build-fix-1: the allowed gates reported run, not not_run: all run
+PASS: build-fix-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-fix-1: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-1: audit: every job ended or submitted
+PASS: build-fix-1: audit: stalled only where the scenario expects it
+PASS: build-fix-1: audit: every pinned report matches its hash
+PASS: build-fix-1: audit: every working commit has its event
+PASS: build-fix-1: audit: every refusal followed by a submission or an end
+PASS: build-fix-1: audit: no job with more than two refusals
+== build-fix-2: PASS (accepted)
+PASS: build-fix-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: build-fix-2: no job.stalled
+PASS: build-fix-2: the pin matches the report, read-only
+PASS: build-fix-2: the working commit, with its Job trailer
+PASS: build-fix-2: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-2: the agent got exactly the prepared prompt
+PASS: build-fix-2: no gh or glab call by the agent (calls: 0)
+PASS: build-fix-2: no refusal line mentions a length
+PASS: build-fix-2: the allowed gates reported run, not not_run: all run
+PASS: build-fix-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-fix-2: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-2: audit: every job ended or submitted
+PASS: build-fix-2: audit: stalled only where the scenario expects it
+PASS: build-fix-2: audit: every pinned report matches its hash
+PASS: build-fix-2: audit: every working commit has its event
+PASS: build-fix-2: audit: every refusal followed by a submission or an end
+PASS: build-fix-2: audit: no job with more than two refusals
+== build-fix-3: PASS (accepted)
+PASS: build-fix-3: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: build-fix-3: no job.stalled
+PASS: build-fix-3: the pin matches the report, read-only
+PASS: build-fix-3: the working commit, with its Job trailer
+PASS: build-fix-3: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-3: the agent got exactly the prepared prompt
+PASS: build-fix-3: no gh or glab call by the agent (calls: 0)
+PASS: build-fix-3: no refusal line mentions a length
+PASS: build-fix-3: the allowed gates reported run, not not_run: all run
+PASS: build-fix-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: build-fix-3: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-3: audit: every job ended or submitted
+PASS: build-fix-3: audit: stalled only where the scenario expects it
+PASS: build-fix-3: audit: every pinned report matches its hash
+PASS: build-fix-3: audit: every working commit has its event
+PASS: build-fix-3: audit: every refusal followed by a submission or an end
+PASS: build-fix-3: audit: no job with more than two refusals
+== external-review-1: PASS (repaired)
+PASS: external-review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-1: no job.stalled
+PASS: external-review-1: the pin matches the report, read-only
+PASS: external-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-1: the agent got exactly the prepared prompt
+PASS: external-review-1: no gh or glab call by the agent (calls: 0)
+PASS: external-review-1: no refusal line mentions a length
+PASS: external-review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: external-review-1: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-1: audit: every job ended or submitted
+PASS: external-review-1: audit: stalled only where the scenario expects it
+PASS: external-review-1: audit: every pinned report matches its hash
+PASS: external-review-1: audit: every working commit has its event
+PASS: external-review-1: audit: every refusal followed by a submission or an end
+PASS: external-review-1: audit: no job with more than two refusals
+== external-review-2: PASS (repaired)
+PASS: external-review-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-2: no job.stalled
+PASS: external-review-2: the pin matches the report, read-only
+PASS: external-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-2: the agent got exactly the prepared prompt
+PASS: external-review-2: no gh or glab call by the agent (calls: 0)
+PASS: external-review-2: no refusal line mentions a length
+PASS: external-review-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: external-review-2: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-2: audit: every job ended or submitted
+PASS: external-review-2: audit: stalled only where the scenario expects it
+PASS: external-review-2: audit: every pinned report matches its hash
+PASS: external-review-2: audit: every working commit has its event
+PASS: external-review-2: audit: every refusal followed by a submission or an end
+PASS: external-review-2: audit: no job with more than two refusals
+== external-review-3: PASS (repaired)
+PASS: external-review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-3: no job.stalled
+PASS: external-review-3: the pin matches the report, read-only
+PASS: external-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-3: the agent got exactly the prepared prompt
+PASS: external-review-3: no gh or glab call by the agent (calls: 0)
+PASS: external-review-3: no refusal line mentions a length
+PASS: external-review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: external-review-3: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-3: audit: every job ended or submitted
+PASS: external-review-3: audit: stalled only where the scenario expects it
+PASS: external-review-3: audit: every pinned report matches its hash
+PASS: external-review-3: audit: every working commit has its event
+PASS: external-review-3: audit: every refusal followed by a submission or an end
+PASS: external-review-3: audit: no job with more than two refusals
+== first-parked-build: FAIL (repaired)
+FAIL: first-parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: first-parked-build: no job.stalled
+PASS: first-parked-build: the pin matches the report, read-only
+PASS: first-parked-build: the working commit, with its Job trailer
+PASS: first-parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: first-parked-build: the agent got exactly the prepared prompt
+PASS: first-parked-build: no gh or glab call by the agent (calls: 0)
+PASS: first-parked-build: no refusal line mentions a length
+PASS: first-parked-build: the allowed gates reported run, not not_run: all run
+PASS: first-parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: first-parked-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: first-parked-build: audit: every job ended or submitted
+PASS: first-parked-build: audit: stalled only where the scenario expects it
+PASS: first-parked-build: audit: every pinned report matches its hash
+PASS: first-parked-build: audit: every working commit has its event
+PASS: first-parked-build: audit: every refusal followed by a submission or an end
+PASS: first-parked-build: audit: no job with more than two refusals
+== first-parked-test: FAIL (repaired)
+FAIL: first-parked-test: parked: one refusal, write your report, then the submission (got repaired)
+PASS: first-parked-test: no job.stalled
+PASS: first-parked-test: the pin matches the report, read-only
+PASS: first-parked-test: the working commit, with its Job trailer
+PASS: first-parked-test: the job agent ran on Opus: claude-opus-5-5
+PASS: first-parked-test: the agent got exactly the prepared prompt
+PASS: first-parked-test: no gh or glab call by the agent (calls: 0)
+PASS: first-parked-test: no refusal line mentions a length
+PASS: first-parked-test: the allowed gates reported run, not not_run: all run
+PASS: first-parked-test: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: first-parked-test: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: first-parked-test: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: first-parked-test: audit: every job ended or submitted
+PASS: first-parked-test: audit: stalled only where the scenario expects it
+PASS: first-parked-test: audit: every pinned report matches its hash
+PASS: first-parked-test: audit: every working commit has its event
+PASS: first-parked-test: audit: every refusal followed by a submission or an end
+PASS: first-parked-test: audit: no job with more than two refusals
+== foreign-review-1: PASS (accepted)
+PASS: foreign-review-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: foreign-review-1: no job.stalled
+PASS: foreign-review-1: the pin matches the report, read-only
+PASS: foreign-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-1: the agent got exactly the prepared prompt
+PASS: foreign-review-1: no gh or glab call by the agent (calls: 0)
+PASS: foreign-review-1: no refusal line mentions a length
+PASS: foreign-review-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: foreign-review-1: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-1: audit: every job ended or submitted
+PASS: foreign-review-1: audit: stalled only where the scenario expects it
+PASS: foreign-review-1: audit: every pinned report matches its hash
+PASS: foreign-review-1: audit: every working commit has its event
+PASS: foreign-review-1: audit: every refusal followed by a submission or an end
+PASS: foreign-review-1: audit: no job with more than two refusals
+== foreign-review-2: PASS (accepted)
+PASS: foreign-review-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: foreign-review-2: no job.stalled
+PASS: foreign-review-2: the pin matches the report, read-only
+PASS: foreign-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-2: the agent got exactly the prepared prompt
+PASS: foreign-review-2: no gh or glab call by the agent (calls: 0)
+PASS: foreign-review-2: no refusal line mentions a length
+PASS: foreign-review-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: foreign-review-2: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-2: audit: every job ended or submitted
+PASS: foreign-review-2: audit: stalled only where the scenario expects it
+PASS: foreign-review-2: audit: every pinned report matches its hash
+PASS: foreign-review-2: audit: every working commit has its event
+PASS: foreign-review-2: audit: every refusal followed by a submission or an end
+PASS: foreign-review-2: audit: no job with more than two refusals
+== foreign-review-3: PASS (repaired)
+PASS: foreign-review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: foreign-review-3: no job.stalled
+PASS: foreign-review-3: the pin matches the report, read-only
+PASS: foreign-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-3: the agent got exactly the prepared prompt
+PASS: foreign-review-3: no gh or glab call by the agent (calls: 0)
+PASS: foreign-review-3: no refusal line mentions a length
+PASS: foreign-review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: foreign-review-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: foreign-review-3: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-3: audit: every job ended or submitted
+PASS: foreign-review-3: audit: stalled only where the scenario expects it
+PASS: foreign-review-3: audit: every pinned report matches its hash
+PASS: foreign-review-3: audit: every working commit has its event
+PASS: foreign-review-3: audit: every refusal followed by a submission or an end
+PASS: foreign-review-3: audit: no job with more than two refusals
+== headless-i-build: PASS (repaired)
+PASS: headless-i-build: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: headless-i-build: no job.stalled
+PASS: headless-i-build: the pin matches the report, read-only
+PASS: headless-i-build: the working commit, with its Job trailer
+PASS: headless-i-build: the job agent ran on Opus: claude-opus-5-5
+PASS: headless-i-build: the agent got exactly the prepared prompt
+PASS: headless-i-build: no gh or glab call by the agent (calls: 0)
+PASS: headless-i-build: no refusal line mentions a length
+PASS: headless-i-build: the allowed gates reported run, not not_run: all run
+PASS: headless-i-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: headless-i-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: headless-i-build: audit: every job ended or submitted
+PASS: headless-i-build: audit: stalled only where the scenario expects it
+PASS: headless-i-build: audit: every pinned report matches its hash
+PASS: headless-i-build: audit: every working commit has its event
+PASS: headless-i-build: audit: every refusal followed by a submission or an end
+PASS: headless-i-build: audit: no job with more than two refusals
+== headless-i-parked-build: FAIL (repaired)
+FAIL: headless-i-parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: headless-i-parked-build: no job.stalled
+PASS: headless-i-parked-build: the pin matches the report, read-only
+PASS: headless-i-parked-build: the working commit, with its Job trailer
+PASS: headless-i-parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: headless-i-parked-build: the agent got exactly the prepared prompt
+PASS: headless-i-parked-build: no gh or glab call by the agent (calls: 0)
+PASS: headless-i-parked-build: no refusal line mentions a length
+PASS: headless-i-parked-build: the allowed gates reported run, not not_run: all run
+PASS: headless-i-parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: headless-i-parked-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: headless-i-parked-build: audit: every job ended or submitted
+PASS: headless-i-parked-build: audit: stalled only where the scenario expects it
+PASS: headless-i-parked-build: audit: every pinned report matches its hash
+PASS: headless-i-parked-build: audit: every working commit has its event
+PASS: headless-i-parked-build: audit: every refusal followed by a submission or an end
+PASS: headless-i-parked-build: audit: no job with more than two refusals
+== headless-i-review: PASS (accepted)
+PASS: headless-i-review: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: headless-i-review: no job.stalled
+PASS: headless-i-review: the pin matches the report, read-only
+PASS: headless-i-review: the job agent ran on Opus: claude-opus-5-5
+PASS: headless-i-review: the agent got exactly the prepared prompt
+PASS: headless-i-review: no gh or glab call by the agent (calls: 0)
+PASS: headless-i-review: no refusal line mentions a length
+PASS: headless-i-review: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: headless-i-review: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: headless-i-review: audit: every job ended or submitted
+PASS: headless-i-review: audit: stalled only where the scenario expects it
+PASS: headless-i-review: audit: every pinned report matches its hash
+PASS: headless-i-review: audit: every working commit has its event
+PASS: headless-i-review: audit: every refusal followed by a submission or an end
+PASS: headless-i-review: audit: no job with more than two refusals
+== i-build: PASS (repaired)
+PASS: i-build: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: i-build: no job.stalled
+PASS: i-build: the pin matches the report, read-only
+PASS: i-build: the working commit, with its Job trailer
+PASS: i-build: the job agent ran on Opus: claude-opus-5-5
+PASS: i-build: the agent got exactly the prepared prompt
+PASS: i-build: no gh or glab call by the agent (calls: 0)
+PASS: i-build: no refusal line mentions a length
+PASS: i-build: the allowed gates reported run, not not_run: all run
+PASS: i-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: i-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: i-build: audit: every job ended or submitted
+PASS: i-build: audit: stalled only where the scenario expects it
+PASS: i-build: audit: every pinned report matches its hash
+PASS: i-build: audit: every working commit has its event
+PASS: i-build: audit: every refusal followed by a submission or an end
+PASS: i-build: audit: no job with more than two refusals
+== i-parked-build: FAIL (repaired)
+FAIL: i-parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: i-parked-build: no job.stalled
+PASS: i-parked-build: the pin matches the report, read-only
+PASS: i-parked-build: the working commit, with its Job trailer
+PASS: i-parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: i-parked-build: the agent got exactly the prepared prompt
+PASS: i-parked-build: no gh or glab call by the agent (calls: 0)
+PASS: i-parked-build: no refusal line mentions a length
+PASS: i-parked-build: the allowed gates reported run, not not_run: all run
+PASS: i-parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: i-parked-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: i-parked-build: audit: every job ended or submitted
+PASS: i-parked-build: audit: stalled only where the scenario expects it
+PASS: i-parked-build: audit: every pinned report matches its hash
+PASS: i-parked-build: audit: every working commit has its event
+PASS: i-parked-build: audit: every refusal followed by a submission or an end
+PASS: i-parked-build: audit: no job with more than two refusals
+== i-review: PASS (accepted)
+PASS: i-review: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: i-review: no job.stalled
+PASS: i-review: the pin matches the report, read-only
+PASS: i-review: the job agent ran on Opus: claude-opus-5-5
+PASS: i-review: the agent got exactly the prepared prompt
+PASS: i-review: no gh or glab call by the agent (calls: 0)
+PASS: i-review: no refusal line mentions a length
+PASS: i-review: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: i-review: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: i-review: audit: every job ended or submitted
+PASS: i-review: audit: stalled only where the scenario expects it
+PASS: i-review: audit: every pinned report matches its hash
+PASS: i-review: audit: every working commit has its event
+PASS: i-review: audit: every refusal followed by a submission or an end
+PASS: i-review: audit: no job with more than two refusals
+== p30-parked-build: FAIL (repaired)
+FAIL: p30-parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: p30-parked-build: no job.stalled
+PASS: p30-parked-build: the pin matches the report, read-only
+PASS: p30-parked-build: the working commit, with its Job trailer
+PASS: p30-parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: p30-parked-build: the agent got exactly the prepared prompt
+PASS: p30-parked-build: no gh or glab call by the agent (calls: 0)
+PASS: p30-parked-build: no refusal line mentions a length
+PASS: p30-parked-build: the allowed gates reported run, not not_run: all run
+PASS: p30-parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: p30-parked-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: p30-parked-build: audit: every job ended or submitted
+PASS: p30-parked-build: audit: stalled only where the scenario expects it
+PASS: p30-parked-build: audit: every pinned report matches its hash
+PASS: p30-parked-build: audit: every working commit has its event
+PASS: p30-parked-build: audit: every refusal followed by a submission or an end
+PASS: p30-parked-build: audit: no job with more than two refusals
+== p30-parked-test: FAIL (accepted)
+FAIL: p30-parked-test: parked: one refusal, write your report, then the submission (got accepted)
+PASS: p30-parked-test: no job.stalled
+PASS: p30-parked-test: the pin matches the report, read-only
+PASS: p30-parked-test: the working commit, with its Job trailer
+PASS: p30-parked-test: the job agent ran on Opus: claude-opus-5-5
+PASS: p30-parked-test: the agent got exactly the prepared prompt
+PASS: p30-parked-test: no gh or glab call by the agent (calls: 0)
+PASS: p30-parked-test: no refusal line mentions a length
+PASS: p30-parked-test: the allowed gates reported run, not not_run: all run
+PASS: p30-parked-test: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: p30-parked-test: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: p30-parked-test: audit: every job ended or submitted
+PASS: p30-parked-test: audit: stalled only where the scenario expects it
+PASS: p30-parked-test: audit: every pinned report matches its hash
+PASS: p30-parked-test: audit: every working commit has its event
+PASS: p30-parked-test: audit: every refusal followed by a submission or an end
+PASS: p30-parked-test: audit: no job with more than two refusals
+== parked-build: FAIL (repaired)
+FAIL: parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: parked-build: no job.stalled
+PASS: parked-build: the pin matches the report, read-only
+PASS: parked-build: the working commit, with its Job trailer
+PASS: parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: parked-build: the agent got exactly the prepared prompt
+PASS: parked-build: no gh or glab call by the agent (calls: 0)
+PASS: parked-build: no refusal line mentions a length
+FAIL: parked-build: the allowed gates reported run, not not_run: not run: test
+PASS: parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: parked-build: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: parked-build: audit: every job ended or submitted
+PASS: parked-build: audit: stalled only where the scenario expects it
+PASS: parked-build: audit: every pinned report matches its hash
+PASS: parked-build: audit: every working commit has its event
+PASS: parked-build: audit: every refusal followed by a submission or an end
+PASS: parked-build: audit: no job with more than two refusals
+== parked-test: FAIL (repaired)
+FAIL: parked-test: parked: one refusal, write your report, then the submission (got repaired)
+PASS: parked-test: no job.stalled
+PASS: parked-test: the pin matches the report, read-only
+PASS: parked-test: the working commit, with its Job trailer
+PASS: parked-test: the job agent ran on Opus: claude-opus-5-5
+PASS: parked-test: the agent got exactly the prepared prompt
+PASS: parked-test: no gh or glab call by the agent (calls: 0)
+PASS: parked-test: no refusal line mentions a length
+FAIL: parked-test: the allowed gates reported run, not not_run: not run: test
+PASS: parked-test: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: parked-test: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: parked-test: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: parked-test: audit: every job ended or submitted
+PASS: parked-test: audit: stalled only where the scenario expects it
+PASS: parked-test: audit: every pinned report matches its hash
+PASS: parked-test: audit: every working commit has its event
+PASS: parked-test: audit: every refusal followed by a submission or an end
+PASS: parked-test: audit: no job with more than two refusals
+== re-review-1: PASS (accepted)
+PASS: re-review-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: re-review-1: no job.stalled
+PASS: re-review-1: the pin matches the report, read-only
+PASS: re-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-1: the agent got exactly the prepared prompt
+PASS: re-review-1: no gh or glab call by the agent (calls: 0)
+PASS: re-review-1: no refusal line mentions a length
+PASS: re-review-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: re-review-1: audit: every job ended or submitted
+PASS: re-review-1: audit: stalled only where the scenario expects it
+PASS: re-review-1: audit: every pinned report matches its hash
+PASS: re-review-1: audit: every working commit has its event
+PASS: re-review-1: audit: every refusal followed by a submission or an end
+PASS: re-review-1: audit: no job with more than two refusals
+== re-review-2: PASS (accepted)
+PASS: re-review-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: re-review-2: no job.stalled
+PASS: re-review-2: the pin matches the report, read-only
+PASS: re-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-2: the agent got exactly the prepared prompt
+PASS: re-review-2: no gh or glab call by the agent (calls: 0)
+PASS: re-review-2: no refusal line mentions a length
+PASS: re-review-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: re-review-2: audit: every job ended or submitted
+PASS: re-review-2: audit: stalled only where the scenario expects it
+PASS: re-review-2: audit: every pinned report matches its hash
+PASS: re-review-2: audit: every working commit has its event
+PASS: re-review-2: audit: every refusal followed by a submission or an end
+PASS: re-review-2: audit: no job with more than two refusals
+== re-review-3: PASS (accepted)
+PASS: re-review-3: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: re-review-3: no job.stalled
+PASS: re-review-3: the pin matches the report, read-only
+PASS: re-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-3: the agent got exactly the prepared prompt
+PASS: re-review-3: no gh or glab call by the agent (calls: 0)
+PASS: re-review-3: no refusal line mentions a length
+PASS: re-review-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: re-review-3: audit: every job ended or submitted
+PASS: re-review-3: audit: stalled only where the scenario expects it
+PASS: re-review-3: audit: every pinned report matches its hash
+PASS: re-review-3: audit: every working commit has its event
+PASS: re-review-3: audit: every refusal followed by a submission or an end
+PASS: re-review-3: audit: no job with more than two refusals
+== review-1: PASS (accepted)
+PASS: review-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: review-1: no job.stalled
+PASS: review-1: the pin matches the report, read-only
+PASS: review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: review-1: the agent got exactly the prepared prompt
+PASS: review-1: no gh or glab call by the agent (calls: 0)
+PASS: review-1: no refusal line mentions a length
+PASS: review-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: review-1: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-1: audit: every job ended or submitted
+PASS: review-1: audit: stalled only where the scenario expects it
+PASS: review-1: audit: every pinned report matches its hash
+PASS: review-1: audit: every working commit has its event
+PASS: review-1: audit: every refusal followed by a submission or an end
+PASS: review-1: audit: no job with more than two refusals
+== review-2: PASS (accepted)
+PASS: review-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: review-2: no job.stalled
+PASS: review-2: the pin matches the report, read-only
+PASS: review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: review-2: the agent got exactly the prepared prompt
+PASS: review-2: no gh or glab call by the agent (calls: 0)
+PASS: review-2: no refusal line mentions a length
+PASS: review-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: review-2: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-2: audit: every job ended or submitted
+PASS: review-2: audit: stalled only where the scenario expects it
+PASS: review-2: audit: every pinned report matches its hash
+PASS: review-2: audit: every working commit has its event
+PASS: review-2: audit: every refusal followed by a submission or an end
+PASS: review-2: audit: no job with more than two refusals
+== review-3: PASS (accepted)
+PASS: review-3: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: review-3: no job.stalled
+PASS: review-3: the pin matches the report, read-only
+PASS: review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: review-3: the agent got exactly the prepared prompt
+PASS: review-3: no gh or glab call by the agent (calls: 0)
+PASS: review-3: no refusal line mentions a length
+PASS: review-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: review-3: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-3: audit: every job ended or submitted
+PASS: review-3: audit: stalled only where the scenario expects it
+PASS: review-3: audit: every pinned report matches its hash
+PASS: review-3: audit: every working commit has its event
+PASS: review-3: audit: every refusal followed by a submission or an end
+PASS: review-3: audit: no job with more than two refusals
+== test-1: PASS (repaired)
+PASS: test-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-1: no job.stalled
+PASS: test-1: the pin matches the report, read-only
+PASS: test-1: the working commit, with its Job trailer
+PASS: test-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-1: the agent got exactly the prepared prompt
+PASS: test-1: no gh or glab call by the agent (calls: 0)
+PASS: test-1: no refusal line mentions a length
+PASS: test-1: the allowed gates reported run, not not_run: all run
+PASS: test-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-1: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-1: audit: every job ended or submitted
+PASS: test-1: audit: stalled only where the scenario expects it
+PASS: test-1: audit: every pinned report matches its hash
+PASS: test-1: audit: every working commit has its event
+PASS: test-1: audit: every refusal followed by a submission or an end
+PASS: test-1: audit: no job with more than two refusals
+== test-2: PASS (repaired)
+PASS: test-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-2: no job.stalled
+PASS: test-2: the pin matches the report, read-only
+PASS: test-2: the working commit, with its Job trailer
+PASS: test-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-2: the agent got exactly the prepared prompt
+PASS: test-2: no gh or glab call by the agent (calls: 0)
+PASS: test-2: no refusal line mentions a length
+PASS: test-2: the allowed gates reported run, not not_run: all run
+PASS: test-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-2: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-2: audit: every job ended or submitted
+PASS: test-2: audit: stalled only where the scenario expects it
+PASS: test-2: audit: every pinned report matches its hash
+PASS: test-2: audit: every working commit has its event
+PASS: test-2: audit: every refusal followed by a submission or an end
+PASS: test-2: audit: no job with more than two refusals
+== test-3: PASS (repaired)
+PASS: test-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-3: no job.stalled
+PASS: test-3: the pin matches the report, read-only
+PASS: test-3: the working commit, with its Job trailer
+PASS: test-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-3: the agent got exactly the prepared prompt
+PASS: test-3: no gh or glab call by the agent (calls: 0)
+PASS: test-3: no refusal line mentions a length
+PASS: test-3: the allowed gates reported run, not not_run: all run
+PASS: test-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-3: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-3: audit: every job ended or submitted
+PASS: test-3: audit: stalled only where the scenario expects it
+PASS: test-3: audit: every pinned report matches its hash
+PASS: test-3: audit: every working commit has its event
+PASS: test-3: audit: every refusal followed by a submission or an end
+PASS: test-3: audit: no job with more than two refusals
+== test-fix-1: PASS (accepted)
+PASS: test-fix-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-fix-1: no job.stalled
+PASS: test-fix-1: the pin matches the report, read-only
+PASS: test-fix-1: the working commit, with its Job trailer
+PASS: test-fix-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-1: the agent got exactly the prepared prompt
+PASS: test-fix-1: no gh or glab call by the agent (calls: 0)
+PASS: test-fix-1: no refusal line mentions a length
+PASS: test-fix-1: the allowed gates reported run, not not_run: all run
+PASS: test-fix-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-fix-1: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: test-fix-1: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-fix-1: audit: every job ended or submitted
+PASS: test-fix-1: audit: stalled only where the scenario expects it
+PASS: test-fix-1: audit: every pinned report matches its hash
+PASS: test-fix-1: audit: every working commit has its event
+PASS: test-fix-1: audit: every refusal followed by a submission or an end
+PASS: test-fix-1: audit: no job with more than two refusals
+== test-fix-2: PASS (repaired)
+PASS: test-fix-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-fix-2: no job.stalled
+PASS: test-fix-2: the pin matches the report, read-only
+PASS: test-fix-2: the working commit, with its Job trailer
+PASS: test-fix-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-2: the agent got exactly the prepared prompt
+PASS: test-fix-2: no gh or glab call by the agent (calls: 0)
+PASS: test-fix-2: no refusal line mentions a length
+PASS: test-fix-2: the allowed gates reported run, not not_run: all run
+PASS: test-fix-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-fix-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-fix-2: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: test-fix-2: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-fix-2: audit: every job ended or submitted
+PASS: test-fix-2: audit: stalled only where the scenario expects it
+PASS: test-fix-2: audit: every pinned report matches its hash
+PASS: test-fix-2: audit: every working commit has its event
+PASS: test-fix-2: audit: every refusal followed by a submission or an end
+PASS: test-fix-2: audit: no job with more than two refusals
+== test-fix-3: PASS (repaired)
+PASS: test-fix-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-fix-3: no job.stalled
+PASS: test-fix-3: the pin matches the report, read-only
+PASS: test-fix-3: the working commit, with its Job trailer
+PASS: test-fix-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-3: the agent got exactly the prepared prompt
+PASS: test-fix-3: no gh or glab call by the agent (calls: 0)
+PASS: test-fix-3: no refusal line mentions a length
+PASS: test-fix-3: the allowed gates reported run, not not_run: all run
+PASS: test-fix-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-fix-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-fix-3: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: test-fix-3: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit 0)
+PASS: test-fix-3: audit: every job ended or submitted
+PASS: test-fix-3: audit: stalled only where the scenario expects it
+PASS: test-fix-3: audit: every pinned report matches its hash
+PASS: test-fix-3: audit: every working commit has its event
+PASS: test-fix-3: audit: every refusal followed by a submission or an end
+PASS: test-fix-3: audit: no job with more than two refusals
+== test-plan-1: PASS (repaired)
+PASS: test-plan-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-1: no job.stalled
+PASS: test-plan-1: the pin matches the report, read-only
+PASS: test-plan-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-1: the agent got exactly the prepared prompt
+PASS: test-plan-1: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-1: no refusal line mentions a length
+PASS: test-plan-1: the allowed gates reported run, not not_run: all run
+PASS: test-plan-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-1: audit: every job ended or submitted
+PASS: test-plan-1: audit: stalled only where the scenario expects it
+PASS: test-plan-1: audit: every pinned report matches its hash
+PASS: test-plan-1: audit: every working commit has its event
+PASS: test-plan-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-1: audit: no job with more than two refusals
+== test-plan-2: PASS (repaired)
+PASS: test-plan-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-2: no job.stalled
+PASS: test-plan-2: the pin matches the report, read-only
+PASS: test-plan-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-2: the agent got exactly the prepared prompt
+PASS: test-plan-2: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-2: no refusal line mentions a length
+PASS: test-plan-2: the allowed gates reported run, not not_run: all run
+PASS: test-plan-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-2: audit: every job ended or submitted
+PASS: test-plan-2: audit: stalled only where the scenario expects it
+PASS: test-plan-2: audit: every pinned report matches its hash
+PASS: test-plan-2: audit: every working commit has its event
+PASS: test-plan-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-2: audit: no job with more than two refusals
+== test-plan-3: PASS (accepted)
+PASS: test-plan-3: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-plan-3: no job.stalled
+PASS: test-plan-3: the pin matches the report, read-only
+PASS: test-plan-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-3: the agent got exactly the prepared prompt
+PASS: test-plan-3: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-3: no refusal line mentions a length
+PASS: test-plan-3: the allowed gates reported run, not not_run: all run
+PASS: test-plan-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-3: audit: every job ended or submitted
+PASS: test-plan-3: audit: stalled only where the scenario expects it
+PASS: test-plan-3: audit: every pinned report matches its hash
+PASS: test-plan-3: audit: every working commit has its event
+PASS: test-plan-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-3: audit: no job with more than two refusals
+== test-plan-challenge-1: PASS (accepted)
+PASS: test-plan-challenge-1: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-plan-challenge-1: no job.stalled
+PASS: test-plan-challenge-1: the pin matches the report, read-only
+PASS: test-plan-challenge-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-1: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-1: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-challenge-1: no refusal line mentions a length
+PASS: test-plan-challenge-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-challenge-1: audit: every job ended or submitted
+PASS: test-plan-challenge-1: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-1: audit: every pinned report matches its hash
+PASS: test-plan-challenge-1: audit: every working commit has its event
+PASS: test-plan-challenge-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-1: audit: no job with more than two refusals
+== test-plan-challenge-2: PASS (accepted)
+PASS: test-plan-challenge-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-plan-challenge-2: no job.stalled
+PASS: test-plan-challenge-2: the pin matches the report, read-only
+PASS: test-plan-challenge-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-2: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-2: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-challenge-2: no refusal line mentions a length
+PASS: test-plan-challenge-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-challenge-2: audit: every job ended or submitted
+PASS: test-plan-challenge-2: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-2: audit: every pinned report matches its hash
+PASS: test-plan-challenge-2: audit: every working commit has its event
+PASS: test-plan-challenge-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-2: audit: no job with more than two refusals
+== test-plan-challenge-3: PASS (accepted)
+PASS: test-plan-challenge-3: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-plan-challenge-3: no job.stalled
+PASS: test-plan-challenge-3: the pin matches the report, read-only
+PASS: test-plan-challenge-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-3: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-3: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-challenge-3: no refusal line mentions a length
+PASS: test-plan-challenge-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-challenge-3: audit: every job ended or submitted
+PASS: test-plan-challenge-3: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-3: audit: every pinned report matches its hash
+PASS: test-plan-challenge-3: audit: every working commit has its event
+PASS: test-plan-challenge-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-3: audit: no job with more than two refusals
+== test-plan-update-1: PASS (repaired)
+PASS: test-plan-update-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-update-1: no job.stalled
+PASS: test-plan-update-1: the pin matches the report, read-only
+PASS: test-plan-update-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-1: the agent got exactly the prepared prompt
+PASS: test-plan-update-1: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-update-1: no refusal line mentions a length
+PASS: test-plan-update-1: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-update-1: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-update-1: audit: every job ended or submitted
+PASS: test-plan-update-1: audit: stalled only where the scenario expects it
+PASS: test-plan-update-1: audit: every pinned report matches its hash
+PASS: test-plan-update-1: audit: every working commit has its event
+PASS: test-plan-update-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-1: audit: no job with more than two refusals
+== test-plan-update-2: PASS (accepted)
+PASS: test-plan-update-2: outcome: accepted at the first stop or repaired after one refusal (got accepted)
+PASS: test-plan-update-2: no job.stalled
+PASS: test-plan-update-2: the pin matches the report, read-only
+PASS: test-plan-update-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-2: the agent got exactly the prepared prompt
+PASS: test-plan-update-2: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-update-2: no refusal line mentions a length
+PASS: test-plan-update-2: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-2: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-update-2: audit: every job ended or submitted
+PASS: test-plan-update-2: audit: stalled only where the scenario expects it
+PASS: test-plan-update-2: audit: every pinned report matches its hash
+PASS: test-plan-update-2: audit: every working commit has its event
+PASS: test-plan-update-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-2: audit: no job with more than two refusals
+== test-plan-update-3: PASS (repaired)
+PASS: test-plan-update-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-update-3: no job.stalled
+PASS: test-plan-update-3: the pin matches the report, read-only
+PASS: test-plan-update-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-3: the agent got exactly the prepared prompt
+PASS: test-plan-update-3: no gh or glab call by the agent (calls: 0)
+PASS: test-plan-update-3: no refusal line mentions a length
+PASS: test-plan-update-3: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-update-3: new-rewrite is the frozen hash at setup and at collect, and the install is its source
+PASS: test-plan-update-3: audit: every job ended or submitted
+PASS: test-plan-update-3: audit: stalled only where the scenario expects it
+PASS: test-plan-update-3: audit: every pinned report matches its hash
+PASS: test-plan-update-3: audit: every working commit has its event
+PASS: test-plan-update-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-3: audit: no job with more than two refusals
+
+== table (cell, kind, result, outcome, models)
+build-1	build	PASS	repaired	claude-opus-5-5
+build-2	build	PASS	repaired	claude-opus-5-5
+build-3	build	PASS	repaired	claude-opus-5-5
+build-fix-1	build-fix	PASS	accepted	claude-opus-5-5
+build-fix-2	build-fix	PASS	accepted	claude-opus-5-5
+build-fix-3	build-fix	PASS	accepted	claude-opus-5-5
+external-review-1	external-review	PASS	repaired	claude-opus-5-5
+external-review-2	external-review	PASS	repaired	claude-opus-5-5
+external-review-3	external-review	PASS	repaired	claude-opus-5-5
+first-parked-build	build	FAIL	repaired	claude-opus-5-5
+first-parked-test	test	FAIL	repaired	claude-opus-5-5
+foreign-review-1	foreign-review	PASS	accepted	claude-opus-5-5
+foreign-review-2	foreign-review	PASS	accepted	claude-opus-5-5
+foreign-review-3	foreign-review	PASS	repaired	claude-opus-5-5
+headless-i-build	build	PASS	repaired	claude-opus-5-5
+headless-i-parked-build	build	FAIL	repaired	claude-opus-5-5
+headless-i-review	review	PASS	accepted	claude-opus-5-5
+i-build	build	PASS	repaired	claude-opus-5-5
+i-parked-build	build	FAIL	repaired	claude-opus-5-5
+i-review	review	PASS	accepted	claude-opus-5-5
+p30-parked-build	build	FAIL	repaired	claude-opus-5-5
+p30-parked-test	test	FAIL	accepted	claude-opus-5-5
+parked-build	build	FAIL	repaired	claude-opus-5-5
+parked-test	test	FAIL	repaired	claude-opus-5-5
+re-review-1	re-review	PASS	accepted	claude-opus-5-5
+re-review-2	re-review	PASS	accepted	claude-opus-5-5
+re-review-3	re-review	PASS	accepted	claude-opus-5-5
+review-1	review	PASS	accepted	claude-opus-5-5
+review-2	review	PASS	accepted	claude-opus-5-5
+review-3	review	PASS	accepted	claude-opus-5-5
+test-1	test	PASS	repaired	claude-opus-5-5
+test-2	test	PASS	repaired	claude-opus-5-5
+test-3	test	PASS	repaired	claude-opus-5-5
+test-fix-1	test-fix	PASS	accepted	claude-opus-5-5
+test-fix-2	test-fix	PASS	repaired	claude-opus-5-5
+test-fix-3	test-fix	PASS	repaired	claude-opus-5-5
+test-plan-1	test-plan	PASS	repaired	claude-opus-5-5
+test-plan-2	test-plan	PASS	repaired	claude-opus-5-5
+test-plan-3	test-plan	PASS	accepted	claude-opus-5-5
+test-plan-challenge-1	test-plan-challenge	PASS	accepted	claude-opus-5-5
+test-plan-challenge-2	test-plan-challenge	PASS	accepted	claude-opus-5-5
+test-plan-challenge-3	test-plan-challenge	PASS	accepted	claude-opus-5-5
+test-plan-update-1	test-plan-update	PASS	repaired	claude-opus-5-5
+test-plan-update-2	test-plan-update	PASS	accepted	claude-opus-5-5
+test-plan-update-3	test-plan-update	PASS	repaired	claude-opus-5-5
+
+721 checks PASS, 10 FAIL; 45 cells, 37 green, 8 red
+
+== hook cost (ms in the hook per job-agent call: n, median, max)
+guard-framework Read: n 188, median 87, max 164
+job-agent-tools Bash: n 420, median 125, max 195
+job-agent-tools Write/Edit: n 206, median 274, max 823
+counts written to /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/final/F3/counts.md

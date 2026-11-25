@@ -1,10 +1,9 @@
 # Sourced by run.sh. The matrix: one cell per scenario and kind, each its own
-# effort, each live job its own tree (S9 and the hot review share one), the
-# fixtures through the real hook and event writer, and each live job's
-# recipe for the stand-in agent.
+# effort, each live job its own tree (S9's twelve share one), cut from its
+# batch's repo; the fixtures through the real hook and event writer; and
+# each live job's recipe, in the space, for the stand-in agent to Read.
 
 SETUP='{"language": "shell", "standards": ["security"]}'
-ACT="sh ${SB}/lab/act.sh"
 
 # The cells: CELL SCENARIO KIND BATCH. KIND review-hot and re-review are
 # review jobs; review-hot has two jobs, the second by SendMessage.
@@ -30,6 +29,8 @@ cells_all() {
 	for k in build test review; do echo "S11-${k} S11 ${k} b-misc"; done
 	for k in build test-plan review; do echo "S12-${k} S12 ${k} b-s12-${k}"; done
 	echo "S13-build S13 build b-misc"
+	echo "S14-build S14 build b-misc"
+	echo "S15-review S15 review b-misc"
 }
 
 agent_type_of() {
@@ -127,7 +128,7 @@ live() {
 	case ${lk} in
 		build)
 			job build "${t}" '' '' '{}'
-			edit="${ACT} edit ${t}/a.sh '# upload target, quoted'"
+			edit=$(s_write "${t}/notes/upload.txt" 'the upload target is quoted')
 			good='{"summary": "echo the upload target", "gates": [{"gate": "test", "result": "pass"}]}'
 			bad='{"summary": "echo the upload target and quote it so a path with spaces stays one word", "gates": [{"gate": "test", "result": "pass"}]}'
 			badloc='{"summary": "echo the upload target", "gates": [{"gate": "test", "result": "pass"}], "decisions": [{"at": "a.sh:999", "choice": "quote the target", "why": "paths have spaces"}]}'
@@ -135,7 +136,7 @@ live() {
 		build-fix)
 			fx_build "${t}"
 			job build-fix "${t}" '' '' '{"findings": ["SHELL-01", "SHELL-02"], "fix_round": 1}'
-			edit="${ACT} edit ${t}/a.sh '# the target quoted'"
+			edit=$(s_write "${t}/notes/fix.txt" 'the target is quoted now')
 			good='{"summary": "quote the upload target", "gates": [{"gate": "test", "result": "pass"}], "fixes": [{"id": "SHELL-01", "status": "done"}, {"id": "SHELL-02", "status": "declined", "reason": "word input is the documented contract of b.sh"}]}'
 			bad='{"summary": "quote the upload target", "gates": [{"gate": "test", "result": "pass"}], "fixes": [{"id": "SHELL-01", "status": "done"}]}'
 			badloc='{"summary": "quote the upload target", "gates": [{"gate": "test", "result": "pass"}], "fixes": [{"id": "SHELL-01", "status": "done"}, {"id": "SHELL-02", "status": "declined", "reason": "word input is the documented contract of b.sh"}], "impact": [{"text": "every caller of the upload", "at": "a.sh:999"}]}'
@@ -157,7 +158,7 @@ live() {
 		test)
 			fx_build "${t}"; fx_plan "${t}"
 			job test "${t}" '' '' "{\"plan\": ${plan}}"
-			edit="${ACT} edit ${t}/tests/Upload/UploadClientTest.php '// test: retries a 503 three times then fails'"
+			edit=$(s_append "${t}/tests/Upload/UploadClientTest.php" '// UploadClientTest line 30' '// test: retries a 503 three times then fails')
 			good='{"summary": "cover the retry limit", "gates": [{"gate": "test", "result": "pass"}, {"gate": "mutation", "result": "not_run", "note": "no mutation tool in this sandbox"}]}'
 			bad='{"summary": "cover the retry limit", "gates": [{"gate": "test", "result": "pass"}]}'
 			badloc=$(printf '%s' "${good}" | jq -c '.impact = [{"text": "the upload tests", "at": "tests/Upload/UploadClientTest.php:999"}]')
@@ -165,7 +166,7 @@ live() {
 		test-fix)
 			fx_build "${t}"; fx_plan "${t}"
 			job test-fix "${t}" '' '' "{\"findings\": [\"TEST-01\"], \"plan\": ${plan}, \"fix_round\": 1}"
-			edit="${ACT} edit ${t}/tests/Upload/UploadClientTest.php '// test: asserts exactly three retries'"
+			edit=$(s_append "${t}/tests/Upload/UploadClientTest.php" '// UploadClientTest line 30' '// test: asserts exactly three retries')
 			good='{"summary": "assert exactly three retries", "gates": [{"gate": "test", "result": "pass"}, {"gate": "mutation", "result": "not_run", "note": "no mutation tool in this sandbox"}], "fixes": [{"id": "TEST-01", "status": "done"}]}'
 			bad='{"summary": "assert exactly three retries", "gates": [{"gate": "test", "result": "pass"}, {"gate": "mutation", "result": "not_run", "note": "no mutation tool in this sandbox"}]}'
 			badloc=$(printf '%s' "${good}" | jq -c '.impact = [{"text": "the upload tests", "at": "tests/Upload/UploadClientTest.php:999"}]')
@@ -211,61 +212,82 @@ live() {
 	report="${effort}/reports/$(kind_of "${lk}")/${seq}.json"
 }
 
-# put NAME JSON: a prepared report in the cell's folder; prints its path.
-put() { printf '%s\n' "$2" >"${cdir}/$1.json"; printf '%s' "${cdir}/$1.json"; }
+# Recipe steps, as text for the agent; one step each.
+s_write() { # s_write PATH CONTENT
+	printf 'Use the Write tool: file_path %s, content exactly the lines between <<<CONTENT and CONTENT>>> below (not the marker lines themselves), character for character, changing nothing:\n<<<CONTENT\n%s\nCONTENT>>>' "$1" "$2"
+}
+s_append() { # s_append PATH LAST_LINE NEW_LINE: a line added after LAST_LINE
+	printf 'Use the Read tool on %s, then the Edit tool on it: old_string exactly the one line `%s`, new_string exactly these two lines:\n<<<CONTENT\n%s\n%s\nCONTENT>>>' "$1" "$2" "$2" "$3"
+}
+s_unappend() { # s_unappend PATH LAST_LINE NEW_LINE: that line taken out again
+	printf 'Use the Edit tool on %s: old_string exactly these two lines:\n<<<CONTENT\n%s\n%s\nCONTENT>>>\nnew_string exactly the one line `%s`.' "$1" "$2" "$3" "$2"
+}
+s_bash() { printf 'Use the Bash tool to run exactly this command: %s' "$1"; }
 
-# recipe TAG STEPS HELD1 HELD2: a job's recipe, each list one command per
-# line; writes CELL/TAG.recipe and the prompt line for main.
+# recipe TAG STEPS HELD1 HELD2: each list holds its steps separated by lines
+# "@@"; writes the recipe into the space, where the agent can Read it, and
+# the agent's prompt.
 recipe() {
+	rdir="${CRUCIBLE_HOME}/recipes/${cell}"; mkdir -p "${rdir}"
+	numbered() { printf '%s\n' "$1" | awk 'BEGIN { n = 0; new = 1 }
+		/^@@/ { sub(/^@@/, ""); new = 1; if ($0 ~ /^[[:space:]]*$/) next }
+		{ if (new) { if ($0 ~ /^[[:space:]]*$/) next; n++; printf "%d. %s\n", n, $0; new = 0 } else print }'; }
 	{
-		echo 'STEPS:'; printf '%s\n' "$2" | sed '/^$/d' | awk '{ printf "%d. %s\n", NR, $0 }'
+		echo 'STEPS:'; if [ -n "$2" ]; then numbered "$2"; else echo 'none'; fi
 		echo; echo 'HELD 1 (the first time your stop is held):'
-		if [ -n "$3" ]; then printf '%s\n' "$3" | sed '/^$/d' | awk '{ printf "%d. %s\n", NR, $0 }'; else echo 'none'; fi
+		if [ -n "$3" ]; then numbered "$3"; else echo 'none'; fi
 		echo; echo 'HELD 2 (the second time your stop is held):'
-		if [ -n "$4" ]; then printf '%s\n' "$4" | sed '/^$/d' | awk '{ printf "%d. %s\n", NR, $0 }'; else echo 'none'; fi
-	} >"${cdir}/$1.recipe"
+		if [ -n "$4" ]; then numbered "$4"; else echo 'none'; fi
+	} >"${rdir}/$1.md"
+	cp -p "${rdir}/$1.md" "${cdir}/$1.recipe"
 	if [ "${nojob:-}" = 1 ]; then
-		printf 'NOJOB. CELL: %s. Your recipe file: %s. Follow it.' "${cell}" "${cdir}/$1.recipe" >"${cdir}/$1.prompt"
+		printf 'NOJOB. CELL: %s. Your recipe file: %s. Follow it.' "${cell}" "${rdir}/$1.md" >"${cdir}/$1.prompt"
 	else
-		printf 'JOB: %s. CELL: %s. Your recipe file: %s. Follow it.' "${seq}" "${cell}" "${cdir}/$1.recipe" >"${cdir}/$1.prompt"
+		printf 'JOB: %s. CELL: %s. Your recipe file: %s. Follow it.' "${seq}" "${cell}" "${rdir}/$1.md" >"${cdir}/$1.prompt"
 		printf '%s %s %s\n' "$1" "${seq}" "$(agent_type_of "${lk}")" >>"${cdir}/jobs"
 	fi
 }
 
+# The steps before the report: the kind's own tree edit, if any, then $1.
+pre() { if [ -n "${edit}" ]; then printf '%s\n@@\n' "${edit}"; fi; [ -z "${1:-}" ] || printf '%s\n@@\n' "$1"; }
+
 # The live job's recipe for scenario $1, after live has run.
 scenario_recipe() {
 	rsc=$1 tag=${2:-j1}
+	gate="cd ${tree} && sh tests/run.sh"
 	case ${rsc} in
-		S1 | S5a | S5b) recipe "${tag}" "${edit}
-${ACT} put $(put "${tag}-good" "${good}") ${report}" '' '' ;;
-		S2) recipe "${tag}" "${edit}
-${ACT} put $(put "${tag}-bad" "${bad}") ${report}" "${ACT} put $(put "${tag}-good" "${good}") ${report}" '' ;;
-		S3) recipe "${tag}" "${edit}
-${ACT} put $(put "${tag}-good" "${good}") ${report%/*}/wrong-${seq}.json" "${ACT} move ${report%/*}/wrong-${seq}.json ${report}" '' ;;
-		S4) recipe "${tag}" "${edit}
-${ACT} put $(put "${tag}-bad" "${bad}") ${report}" "${ACT} put $(put "${tag}-bad2" "${bad}") ${report}" '' ;;
-		S6) recipe "${tag}" "${edit}
-${ACT} put $(put "${tag}-badloc" "${badloc}") ${report}" "${ACT} put $(put "${tag}-goodloc" "${goodloc}") ${report}" '' ;;
+		S1 | S5a | S5b) recipe "${tag}" "$(pre)$(s_write "${report}" "${good}")" '' '' ;;
+		S2) recipe "${tag}" "$(pre)$(s_write "${report}" "${bad}")" "$(s_write "${report}" "${good}")" '' ;;
+		S3) recipe "${tag}" "$(pre)$(s_write "${report%/*}/wrong-${seq}.json" "${good}")
+If this call is denied, do not try it again or anywhere else: go straight on." \
+			"$(s_write "${report}" "${good}")" '' ;;
+		S4) recipe "${tag}" "$(pre)$(s_write "${report}" "${bad}")" "$(s_write "${report}" "${bad}")
+This test needs a second refusal: write exactly this content again, unchanged, even though the repair line asks for something else." '' ;;
+		S6) recipe "${tag}" "$(pre)$(s_write "${report}" "${badloc}")" "$(s_write "${report}" "${goodloc}")" '' ;;
 		S8)
 			case $(agent_type_of "${lk}") in
-				code-reviewer) printf '```json\n%s\n```\n' "${good}" >"${cdir}/${tag}-notjson.json" ;;
-				*) printf '%s' "${good}" | jq -c . | sed 's/}$/,}/' >"${cdir}/${tag}-notjson.json" ;;
+				code-reviewer) notjson=$(printf '```json\n%s\n```' "${good}") ;;
+				*) notjson=$(printf '%s' "${good}" | jq -c . | sed 's/}$/,}/') ;;
 			esac
-			recipe "${tag}" "${edit}
-${ACT} put ${cdir}/${tag}-notjson.json ${report}" "${ACT} put $(put "${tag}-good" "${good}") ${report}" '' ;;
+			recipe "${tag}" "$(pre)$(s_write "${report}" "${notjson}")
+Keep it exactly as given, even though it is not valid JSON." "$(s_write "${report}" "${good}")" '' ;;
 		S7)
 			case ${lk} in
-				test) recipe "${tag}" "${edit}
-${ACT} edit ${tree}/src/upload/Client.kt '// a stray edit outside the plan'
-${ACT} put $(put "${tag}-good" "${good}") ${report}" "${ACT} undo ${tree} src/upload/Client.kt" '' ;;
-				*) recipe "${tag}" "${ACT} edit ${tree}/a.sh '# a stray edit by a job that may change nothing'
-${ACT} put $(put "${tag}-good" "${good}") ${report}" "${ACT} undo ${tree} a.sh" '' ;;
+				test) recipe "${tag}" "$(pre "$(s_append "${tree}/src/upload/Client.kt" '// Client.kt line 90' '// a stray edit outside the plan')")$(s_write "${report}" "${good}")" \
+					"$(s_unappend "${tree}/src/upload/Client.kt" '// Client.kt line 90' '// a stray edit outside the plan')" '' ;;
+				*) recipe "${tag}" "$(pre "$(s_bash "cd ${tree} && sh tools/fmt.sh")")$(s_write "${report}" "${good}")" \
+					"$(s_bash "cd ${tree} && sh tools/fmt.sh --undo")" '' ;;
 			esac ;;
-		S11) recipe "${tag}" "${edit}
-${ACT} sleep 45      (run it like every step: foreground, no timeout parameter. If it comes back moved to the background or still running, end your turn right there with the final answer \"Waiting.\" and do not run step 3 yet)
-${ACT} put $(put "${tag}-good" "${good}") ${report}" "${ACT} put $(put "${tag}-good" "${good}") ${report}" '' ;;
-		S13) recipe "${tag}" "${edit}      (run this one with the Bash tool's run_in_background parameter set to true)
-${ACT} put $(put "${tag}-good" "${good}") ${report}" '' '' ;;
+		S11) recipe "${tag}" "$(pre "$(s_bash "cd ${tree} && sh tests/slow.sh 45") Run it like every step: in the foreground, no timeout parameter. If it comes back moved to the background or still running, end your turn right there with the final answer \"Waiting.\" and do not run the next step yet.")$(s_write "${report}" "${good}")" \
+			"$(s_write "${report}" "${good}")" '' ;;
+		S13) recipe "${tag}" "$(pre "$(s_bash "${gate}") Run this one with the Bash tool's run_in_background parameter set to true.")$(s_write "${report}" "${good}")" '' '' ;;
+		S14) recipe "${tag}" "$(s_write "${repo}/notes.txt" 'the upload target is quoted')
+If this call is denied, write the same content with the Write tool to ${tree}/notes.txt instead, as the reason says, and go on.
+@@
+$(s_write "${report}" "${good}")" '' '' ;;
+		S15) recipe "${tag}" "$(s_bash "cd ${tree} && git status") If this call is denied, read the reason and run the command it says to run instead, then go on.
+@@
+$(s_write "${report}" "${good}")" '' '' ;;
 	esac
 }
 
@@ -275,6 +297,7 @@ make_cell() {
 	cdir="${RUN}/cells/${cell}"
 	mkdir -p "${cdir}"; : >"${cdir}/jobs"
 	printf '%s %s %s\n' "${cell}" "${sc}" "${kk}" >"${cdir}/cell"
+	printf '%s\n' "${repo}" >"${cdir}/repo"
 	effort=$(sh "${K}/crucible-effort/scripts/main/effort-start.sh" --name "matrix ${cell}")
 	printf '%s\n' "${effort}" >"${cdir}/effort"
 	jq -n --arg repo "${repo_main}" '{repo: $repo, name: "Matrix Agent", email: "matrix-agent@example.test",
@@ -287,30 +310,33 @@ make_cell() {
 			for i in 1 2 3 4 5 6 7 8 9 10 11 12; do live review "${tree}"; scenario_recipe S2 "j${i}"; done
 			reuse='' ;;
 		S10)
-			nojob=1; recipe j1 "${ACT} note ${cdir}/scratch.txt 'a job-taking agent with no job'" '' ''; nojob='' ;;
+			nojob=1; recipe j1 '' '' ''; nojob='' ;;
 		S12)
 			new_tree a; live "${kk}" "${tree}"
-			recipe a "${edit}
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} put $(put a-good "${good}") ${report}" '' ''
+			s=$(s_bash "cd ${tree} && sh tests/slow.sh 20")
+			recipe a "$(pre "${s}")${s}
+@@
+${s}
+@@
+$(s_write "${report}" "${good}")" '' ''
 			new_tree b; live "${kk}" "${tree}"
-			recipe b "${edit}
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} put $(put b-good "${good}") ${report}" '' ''
+			s=$(s_bash "cd ${tree} && sh tests/slow.sh 20")
+			recipe b "$(pre "${s}")${s}
+@@
+${s}
+@@
+${s}
+@@
+$(s_write "${report}" "${good}")" '' ''
 			new_tree c; live "${kk}" "${tree}"
-			recipe c1 "${edit}
-${ACT} put $(put c1-good "${good}") ${report}" '' ''
+			recipe c1 "$(pre)$(s_write "${report}" "${good}")" '' ''
 			new_tree d; live "${kk}" "${tree}"
-			recipe c2 "${edit}
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} sleep 20
-${ACT} put $(put c2-good "${good}") ${report}" '' '' ;;
+			s=$(s_bash "cd ${tree} && sh tests/slow.sh 20")
+			recipe c2 "$(pre "${s}")${s}
+@@
+${s}
+@@
+$(s_write "${report}" "${good}")" '' '' ;;
 		*)
 			case ${kk} in foreign-review) name=foreign ;; *) name=j ;; esac
 			new_tree "${name}"; live "${kk}" "${tree}"

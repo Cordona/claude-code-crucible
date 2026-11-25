@@ -2,7 +2,7 @@
   {
     "type": "job.refused",
     "seq": 24,
-    "at": "2026-11-25T10:45:10Z",
+    "at": "2026-11-25T16:15:49Z",
     "by": "held-stop.sh",
     "claude_session_id": "sess-ba",
     "body": {
@@ -12,7 +12,6 @@
       "try": 1,
       "lines": [
         "unknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers",
-        "summary is 60 characters; shorten it to 55 or fewer",
         "gates[0] is not_run: add a note saying why"
       ]
     }

@@ -2,7 +2,7 @@
   {
     "type": "job.ended",
     "seq": 75,
-    "at": "2026-11-25T10:42:20Z",
+    "at": "2026-11-25T16:19:38Z",
     "by": "fault-ended.sh",
     "claude_session_id": "sess-ra",
     "body": {

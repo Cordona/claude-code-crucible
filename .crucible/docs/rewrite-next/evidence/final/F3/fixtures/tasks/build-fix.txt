@@ -1,0 +1,3 @@
+Fix these findings from the review of the build in this tree, the change from @BASE@ to @HEAD@. The human chose all three:
+
+@FINDINGS@

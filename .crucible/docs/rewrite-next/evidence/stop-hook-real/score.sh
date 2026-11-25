@@ -63,8 +63,20 @@ facts_real() {
 	[ -n "${first}" ] && [ "${first}" = "$(cat "${d}/prompt.txt")" ] && prompt_ok=true
 	stub=0; [ ! -s "${logs}/_sessions/${b}/stub-calls.log" ] || stub=$(wc -l <"${logs}/_sessions/${b}/stub-calls.log" | tr -d ' ')
 	unc=0; [ ! -s "${d}/tree-uncommitted.diff" ] || unc=1
+	# R3: main's own SendMessage calls in the cell's session (one agent per
+	# session, so any of them would be to this agent).
+	sends=$(jq -s '[.[] | select(.type == "assistant" and .parent_tool_use_id == null) | .message.content[]? | select(.type == "tool_use" and .name == "SendMessage")] | length' "${logs}/_sessions/${b}/main.jsonl" 2>/dev/null) || sends=-1
+	fw=false; [ "$(sed -n 's/^at setup: *//p' "${logs}/framework-hash.txt" 2>/dev/null)" = "$(sed -n 's/^at collect: *//p' "${logs}/framework-hash.txt" 2>/dev/null)" ] && [ -s "${logs}/framework-hash.txt" ] && fw=true
+	# The submission commit's files, and the commit's tests run at collect.
+	awk -F'\t' 'NF == 3 { printf "{\"file\": \"%s\", \"added\": %s}\n", $3, ($1 == "-" ? 0 : $1) }' "${d}/commit-numstat.txt" 2>/dev/null | jq -s . >"${work}/numstat.json" || echo '[]' >"${work}/numstat.json"
+	[ -s "${work}/numstat.json" ] || echo '[]' >"${work}/numstat.json"
+	trun=null; [ ! -f "${d}/tests-run.txt" ] || trun=$(sed -n 's/^exit //p' "${d}/tests-run.txt" | tail -n 1)
+	[ -n "${trun}" ] || trun=null
+	if [ -f "${d}/chosen.json" ]; then cp "${d}/chosen.json" "${work}/chosen.json"; else echo '[]' >"${work}/chosen.json"; fi
 	jq --slurpfile m "${work}/models.json" --argjson p "${prompt_ok}" --argjson stub "${stub}" --argjson unc "${unc}" \
-		'. + {models: $m[0], prompt_ok: $p, stub_calls: $stub, uncommitted: ($unc == 1)}'
+		--argjson sends "${sends}" --argjson fw "${fw}" --slurpfile ns "${work}/numstat.json" --argjson trun "${trun}" --slurpfile chosen "${work}/chosen.json" \
+		'. + {models: $m[0], prompt_ok: $p, stub_calls: $stub, uncommitted: ($unc == 1), main_sends: $sends, framework_same: $fw,
+		      numstat: $ns[0], tests_run: $trun, chosen: $chosen[0]}'
 }
 
 # Step 4's checks, in jq: input the facts; output one {ok, what} per check,
@@ -91,7 +103,7 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
      elif ($r | length) == 2 and ($e | length) == 1 and $e[0].body.reason == "gave-up" then "gave-up"
      else "other: \($r | length) refused, \($s | length) submitted, \([$e[] | .body.reason] | join(",")) ended, \(stalled($j) | length) stalled" end) as $out
   | {outcome: $out},
-    (if ($f.cell | startswith("parked-")) then
+    (if ($f.cell | test("(^|-)parked-")) then
 	chk(($r | length) == 1 and any($r[0].body.lines[]; test("^write your report as one JSON object to ")) and $out == "repaired"; "parked: one refusal, write your report, then the submission (got \($out))")
      else chk($out == "accepted" or $out == "repaired"; "outcome: accepted at the first stop or repaired after one refusal (got \($out))") end),
     chk((stalled($j) | length) == 0; "no job.stalled"),
@@ -100,17 +112,43 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
     chk(($f.models | length) > 0 and all($f.models[]; test("^claude-opus")); "the job agent ran on Opus: \($f.models | join(", "))"),
     chk($f.prompt_ok; "the agent got exactly the prepared prompt"),
     chk($f.stub_calls == 0; "no gh or glab call (stub calls: \($f.stub_calls))"),
-    # The gates whose commands are on the allow-list (lint: shellcheck,
-    # typecheck: sh -n, test: sh tests/run.sh) must be reported run: pass,
-    # fail or narrowed. A plan reports only its test baseline.
+    # A gate whose command is on the allow-list (lint: shellcheck, typecheck:
+    # sh -n, test: sh tests/run.sh) that the report gives as not_run fails:
+    # it could have run. A plan reports only its test baseline.
     (if ($k | IN("build", "build-fix", "test", "test-fix", "test-plan", "test-plan-update")) then
 	([$ev[] | select(.type == "job.dispatched" and .seq == $j) | .body.report] | first) as $rp
 	| ([$f.reports[] | select(.path == $rp) | .json] | first) as $rep
 	| (if ($k | startswith("test-plan")) then ["test"] else ["lint", "typecheck", "test"] end) as $want
 	| (if ($k | startswith("test-plan")) then [$rep.baseline // empty] else ($rep.gates // []) end) as $gates
-	| [$want[] as $g | select(([$gates[] | objects | select(.gate == $g and (.result | IN("pass", "fail", "narrowed")))] | length) == 0) | $g] as $unrun
+	| [$gates[] | objects | select((.gate | IN($want[])) and .result == "not_run") | .gate] as $unrun
 	| chk($rep != null and ($unrun | length) == 0; "the allowed gates reported run, not not_run: \(if $rep == null then "no report" elif ($unrun | length) == 0 then "all run" else "not run: " + ($unrun | join(", ")) end)")
-     else empty end)
+     else empty end),
+    # R3: nothing from main to the agent between a refusal and the submission.
+    (if ($r | length) > 0 and ($s | length) == 1 then
+	chk($f.main_sends == 0; "no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: \($f.main_sends))")
+     else empty end),
+    chk($f.framework_same; "the framework hash is the same at setup and at collect"),
+    # R1, the planted facts.
+    ([$ev[] | select(.type == "job.dispatched" and .seq == $j) | .body.report] | first) as $rp2
+    | ([$f.reports[] | select(.path == $rp2) | .json] | first) as $rep2
+    | def files_of: (if type == "array" then .[] else . end) | strings | sub("^-"; "") | sub(":[0-9].*$"; "");
+      [$f.numstat[] | .file] as $touched
+    | (if $k == "review" then
+	chk(any(($rep2.findings // [])[]; .at | files_of | . == "bin/prune-backups.sh"); "planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug")
+       elif $k == "external-review" then
+	chk(any(($rep2.items // [])[]; .verdict == "valid" and (.finding.at | files_of | . == "bin/prune-backups.sh")); "planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh")
+       elif $k == "foreign-review" then
+	chk(any(($rep2.findings // [])[]; .at | files_of | . == "bin/restore-backup.sh"); "planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs")
+       else empty end),
+      (if $k == "build-fix" or $k == "test-fix" then
+	[($rep2.fixes // [])[] | select(.status == "done" or .status == "partly") | .id] as $did
+	| [$f.chosen[] | select(.id | IN($did[])) | {id, files: [(.at | files_of), (.relates_to // empty | files_of)] | unique}] as $want
+	| [$want[] | select(any(.files[]; IN($touched[])) | not) | .id] as $missed
+	| chk(($s | length) == 1 and ($want | length) > 0 and ($missed | length) == 0; "planted: the fix commit touches the code its done or partly findings point at (\(if ($missed | length) == 0 then "\($want | length) findings, all touched" else "not touched: " + ($missed | join(", ")) end))")
+       else empty end),
+      (if $k == "test" or $k == "test-fix" then
+	chk(($s | length) == 1 and any($f.numstat[]; (.file | test("^tests/test_[^/]*\\.sh$")) and .added > 0) and $f.tests_run == 0; "planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit \($f.tests_run))")
+       else empty end)
 '
 
 # The audit, over one cell's events, reports and git.
@@ -163,6 +201,14 @@ cat "${work}/table"
 echo
 echo "${pass} checks PASS, ${fail} FAIL; ${cells} cells, $((cells - red)) green, ${red} red"
 
+# The hook cost: time in the hook per job-agent call, from the saved calls'
+# start and end; one agent per session, so a single agent alone.
+find "${logs}/_sessions" -path "${logs}/_sessions/*/hooks/*" -name 'PreToolUse-job-agent-tools-*.json' -type f -exec jq -c 'select(.input.agent_id != null) | {k: ("job-agent-tools " + (if .input.tool_name == "Bash" then "Bash" else "Write/Edit" end)), ms: ((.t_end - .t_start) * 1000)}' {} + 2>/dev/null >"${work}/cost" || true
+find "${logs}/_sessions" -path "${logs}/_sessions/*/hooks/*" -name 'PreToolUse-guard-framework-*.json' -type f -exec jq -c 'select(.input.agent_id != null and .input.tool_name == "Read") | {k: "guard-framework Read", ms: ((.t_end - .t_start) * 1000)}' {} + 2>/dev/null >>"${work}/cost" || true
+echo
+echo "== hook cost (ms in the hook per job-agent call: n, median, max)"
+jq -rs 'group_by(.k)[] | (map(.ms) | sort) as $v | "\(.[0].k): n \($v | length), median \($v[(($v | length) / 2 | floor)] | round), max \($v[-1] | round)"' "${work}/cost"
+
 # counts.md: per kind, the three counts, every refusal line, and each line
 # (its numbers and paths made general) that refused that kind in two runs or
 # more.
@@ -173,14 +219,14 @@ echo "${pass} checks PASS, ${fail} FAIL; ${cells} cells, $((cells - red)) green,
 	echo
 	echo "| Kind | Runs | Accepted at the first stop | Repaired after one refusal | Gave up | Other |"
 	echo "|---|---|---|---|---|---|"
-	awk -F'\t' '$1 !~ /^parked-/ { k = $2; n[k]++; o = $4
+	awk -F'\t' '$1 !~ /parked-/ && $1 !~ /^(trial|i-)/ { k = $2; n[k]++; o = $4
 		if (o == "accepted") a[k]++; else if (o == "repaired") r[k]++; else if (o == "gave-up") g[k]++; else x[k]++
 		if (!(k in seen)) { seen[k] = 1; order[++m] = k } }
 		END { for (i = 1; i <= m; i++) { k = order[i]; printf "| %s | %d | %d | %d | %d | %d |\n", k, n[k], a[k] + 0, r[k] + 0, g[k] + 0, x[k] + 0 } }' "${work}/table"
 	echo
 	echo "## Flagged: a line that refused the same kind in 2 runs of 3 or more"
 	echo
-	sed -E 's#/Users/Shared/[^ ]*#<path>#g; s/[0-9]+/N/g' "${work}/refusals" | awk -F'\t' '{ print $1 "\t" $2 "\t" $4 }' | sort -u \
+	awk -F'\t' '$2 !~ /parked-/ && $2 !~ /^(trial|i-)/ { l = $4; gsub(/\/Users\/Shared\/[^ ]*/, "<path>", l); gsub(/[0-9]+/, "N", l); print $1 "\t" $2 "\t" l }' "${work}/refusals" | sort -u \
 		| awk -F'\t' '{ c[$1 "\t" $3]++ } END { for (k in c) if (c[k] >= 2) { split(k, p, "\t"); printf "- **%s** (%d runs): `%s`\n", p[1], c[k], p[2] } }' | sort >"${work}/flagged"
 	if [ -s "${work}/flagged" ]; then cat "${work}/flagged"; else echo "None."; fi
 	echo
@@ -189,8 +235,8 @@ echo "${pass} checks PASS, ${fail} FAIL; ${cells} cells, $((cells - red)) green,
 		echo
 		echo "### ${k}"
 		echo
-		if awk -F'\t' -v k="${k}" '$1 == k && $2 !~ /^parked-/' "${work}/refusals" | grep -q .; then
-			awk -F'\t' -v k="${k}" '$1 == k && $2 !~ /^parked-/ { gsub(/`/, "\x27", $4); printf "- %s, try %s: `%s`\n", $2, $3, $4 }' "${work}/refusals"
+		if awk -F'\t' -v k="${k}" '$1 == k && $2 !~ /parked-/ && $2 !~ /^(trial|i-)/' "${work}/refusals" | grep -q .; then
+			awk -F'\t' -v k="${k}" '$1 == k && $2 !~ /parked-/ && $2 !~ /^(trial|i-)/ { gsub(/`/, "\x27", $4); printf "- %s, try %s: `%s`\n", $2, $3, $4 }' "${work}/refusals"
 		else
 			echo "No refusal."
 		fi

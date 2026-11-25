@@ -1,6 +1,8 @@
 crucible(build-fix): quote variables in a.sh and b.sh
 
-Effort: 20261125T104459-fdf1-upload-retries
+quote variables in a.sh and b.sh
+
+Effort: 20261125T161540-1845-upload-retries
 Job: 31 fix-shell-f05b2c
 Iteration: 1
 Fix-Round: 1
@@ -8,7 +10,7 @@ Language: shell
 Standards: security, clean-code
 Model: opus
 
-commit 6b593633894158cad7106d5cb13a12bd4e39bbf5
+commit 57f9a6ccf29d2da1e9180a9bd052bf555239ce40
 Author: Build Agent <build-agent@example.test>
 Signed: N
 

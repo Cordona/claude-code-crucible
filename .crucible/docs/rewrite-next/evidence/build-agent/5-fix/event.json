@@ -2,7 +2,7 @@
   {
     "type": "build-fix.submitted",
     "seq": 33,
-    "at": "2026-11-25T10:45:14Z",
+    "at": "2026-11-25T16:15:52Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ba",
     "body": {
@@ -14,7 +14,7 @@
         "path": "reports/build-fix/31.json",
         "sha256": "18ff0666c0bd622bf75160e027a268cfd58913f90937996851613eb0349ab4cd"
       },
-      "commit": "6b593633894158cad7106d5cb13a12bd4e39bbf5"
+      "commit": "57f9a6ccf29d2da1e9180a9bd052bf555239ce40"
     }
   }
 ]

@@ -98,13 +98,14 @@ $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/
 $ sh install-check.sh --settings <S>/missing.json
     install-check.sh: --settings <S>/missing.json is not a readable file
     [exit 2]
-    empty settings: exit 1, 25 lines missing
+    empty settings: exit 1, 35 lines missing
 --- complete, from install-entries.sh's own output
 $ sh install-check.sh --settings <S>/settings.json
     installed
     [exit 0]
---- partial: two hooks taken out
+--- partial: the Stop hooks taken out
 $ sh install-check.sh --settings <S>/partial.json
+    missing: Stop hook <S>/cfg/skills/agent-jobs/hooks/stop/end-gone-jobs.sh
     missing: Stop hook <S>/cfg/skills/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh
     missing: Stop hook <S>/cfg/skills/crucible-gate/hooks/stop/require-card-shown.sh
     [exit 1]

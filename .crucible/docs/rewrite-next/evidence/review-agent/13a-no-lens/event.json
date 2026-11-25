@@ -2,7 +2,7 @@
   {
     "type": "job.stalled",
     "seq": 69,
-    "at": "2026-11-25T10:42:16Z",
+    "at": "2026-11-25T16:19:35Z",
     "by": "fault-stalled.sh",
     "claude_session_id": "sess-ra",
     "body": {

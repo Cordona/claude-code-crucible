@@ -1,0 +1,4 @@
+{"findings": [
+ {"severity": "high", "realism": "realistic", "at": "bin/prune-backups.sh:48", "claim": "--dry-run still deletes: the rm runs after the dry-run branch, not instead of it", "suggestion": "Move the rm into an else branch of the dry-run test, so a dry run only prints."},
+ {"severity": "medium", "realism": "realistic", "at": "bin/prune-backups.sh:25", "claim": "--pattern given last with no value stops on an unset $2 under set -u, with no usage text", "suggestion": "Check that a value follows --pattern before reading $2, and print the usage with exit 2 when it doesn't."},
+ {"severity": "medium", "realism": "realistic", "at": "lib/common.sh:3", "relates_to": "bin/prune-backups.sh:25", "claim": "die exits 1, so the new option's errors exit 1, though a usage error must exit 2", "suggestion": "Give lib/common.sh a usage-error helper that exits 2, and use it for the argument errors."}]}

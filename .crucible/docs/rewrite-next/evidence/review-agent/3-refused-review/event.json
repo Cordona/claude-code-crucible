@@ -2,7 +2,7 @@
   {
     "type": "job.refused",
     "seq": 18,
-    "at": "2026-11-25T10:41:52Z",
+    "at": "2026-11-25T16:19:12Z",
     "by": "held-stop.sh",
     "claude_session_id": "sess-ra",
     "body": {
@@ -12,8 +12,7 @@
       "try": 1,
       "lines": [
         "findings[0] is an edge-case: add proof, the line that makes it reachable",
-        "findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof",
-        "findings[2].claim is 240 characters; shorten it to 200"
+        "findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
       ]
     }
   }

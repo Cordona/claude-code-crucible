@@ -2,7 +2,7 @@
 # B2 effort-close and open work, C1 the event-writer guard, A2 the install.
 R=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite
 C=$R/framework/core/main-thread; E=$C/crucible-effort/scripts; FL=$C/crucible-adaptive-flow/scripts; G=$C/crucible-grill/scripts
-HOOK=$C/crucible-events/hooks/pre-tool-use/deny-direct-event-write.sh; I=$R/framework/core/install
+HOOK=$C/crucible-events/hooks/pre-tool-use/steps/deny-direct-event-write.sh; I=$R/framework/core/install
 . /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/lib-decide.sh
 S="/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/fixes test"; rm -rf "$S"; mkdir -p "$S/cfg" "$S/bin"
 export CRUCIBLE_HOME="$S/space" CLAUDE_CONFIG_DIR="$S/cfg" CLAUDE_CODE_SESSION_ID=sess-x
@@ -99,11 +99,11 @@ sh $I/install-entries.sh | sed -n '/^# Settings/,/^$/p' | sed '1d' >"$S/settings
 sh $I/install-entries.sh | sed -n '/^# Links/,/^$/p' | sed '1d' >"$S/links.sh"; sh "$S/links.sh"
 before=$(shasum -a 256 "$S/settings.json" | cut -d ' ' -f 1); links_before=$(ls -l "$S/cfg/skills" | wc -l)
 run sh $I/install-check.sh --settings "$S/settings.json"
-echo "--- partial: two hooks taken out"
+echo "--- partial: the Stop hooks taken out"
 jq 'del(.hooks.Stop)' "$S/settings.json" >"$S/partial.json"
 run sh $I/install-check.sh --settings "$S/partial.json"
 echo "--- split across two files, as Claude Code merges them"
-jq '{hooks}' "$S/settings.json" >"$S/a.json"; jq '{permissions}' "$S/settings.json" >"$S/b.json"
+jq '{env, hooks}' "$S/settings.json" >"$S/a.json"; jq '{permissions}' "$S/settings.json" >"$S/b.json"
 run sh $I/install-check.sh --settings "$S/a.json" --settings "$S/b.json"
 echo "--- everything but CLAUDE.md"
 mv "$S/cfg/CLAUDE.md" "$S/cfg/CLAUDE.md.off"

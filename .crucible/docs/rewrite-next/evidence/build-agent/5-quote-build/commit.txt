@@ -1,13 +1,15 @@
 crucible(build): read the upload target from the first argument
 
-Effort: 20261125T104459-fdf1-upload-retries
+read the upload target from the first argument
+
+Effort: 20261125T161540-1845-upload-retries
 Job: 28 build-shell-f05b2c
 Iteration: 1
 Language: shell
 Standards: security, clean-code
 Model: opus
 
-commit f59c8ff77ee8b38a383594412364a7f352163840
+commit 2a9e7ebd7c20adcb1c13696eb7c5398a12a35cf8
 Author: Build Agent <build-agent@example.test>
 Signed: N
 

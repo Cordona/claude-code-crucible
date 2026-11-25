@@ -1,5 +1,6 @@
 === help
   PASS: --help exits 0 and prints its usage
+  PASS: --help says it stops a mistake, not a command built to get round it
   PASS: -h exits 0 and prints its usage
 === each tool on an internal path, from a scratch project: denied
   $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-gate/scripts/internal/gate-answer.sh"}}
@@ -131,13 +132,63 @@
     out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: internal to the Crucible framework; use the skill's scripts/main/ and each script's --help. If a script misbehaves, tell the human its name and its message."}
     [exit 0]
   PASS: cwd in a scratch folder: denied
-=== subagents' calls and other tools pass
+=== the sealed folders: main and agents alike, and scripts/main/ for agents
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<skills>/code-builder/submissions/build.json"}}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: internal to the Crucible framework; use the skill's scripts/main/ and each script's --help. If a script misbehaves, tell the human its name and its message."}
+    [exit 0]
+  PASS: main: submissions/ denied
   $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-gate/scripts/internal/gate-answer.sh"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
     [exit 0]
-  PASS: a Read with agent_id allowed
+  PASS: an agent: framework/core/main-thread/crucible-gate/scripts/internal/gate-answer.sh denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-events/scripts/lib/lock.sh"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent: framework/core/main-thread/crucible-events/scripts/lib/lock.sh denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-gate/hooks/stop/require-card-shown.sh"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent: framework/core/main-thread/crucible-gate/hooks/stop/require-card-shown.sh denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-effort/events/effort.closed.jq"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent: framework/core/main-thread/crucible-effort/events/effort.closed.jq denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<skills>/code-builder/submissions/build.json"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent: /private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/internals-guard/cfg/skills/code-builder/submissions/build.json denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-effort/scripts/main/effort-close.sh"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent: framework/core/main-thread/crucible-effort/scripts/main/effort-close.sh denied
   $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"<S>/project","tool_input":{"command":"cat '<R>/framework/core/main-thread/crucible-events/scripts/lib/lock.sh'","description":"look"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
     [exit 0]
-  PASS: a Bash with agent_id allowed
+  PASS: an agent's Bash naming a lib denied
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Glob","cwd":"<S>/project","tool_input":{"pattern":"*.sh","path":"<R>/framework/core/main-thread/crucible-effort/scripts/main"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    out: {"permissionDecision":"deny","permissionDecisionReason":"crucible: sealed in the Crucible framework; an agent works in its tree and writes its report, and needs none of the framework's scripts."}
+    [exit 0]
+  PASS: an agent's Glob in scripts/main/ denied
+  PASS: an agent's deny says it needs no framework script
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/domains/software-development/plugins/tech/languages/shell/references/build.md"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    [exit 0]
+  PASS: an agent reads a plugin's references/
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<R>/domains/software-development/core/plugins/standards/security/SKILL.md"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    [exit 0]
+  PASS: an agent reads a plugin's SKILL.md
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<skills>/code-builder/code-builder.md"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    [exit 0]
+  PASS: an agent reads an agent definition
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<S>/project","tool_input":{"file_path":"<skills>/agent-conduct/SKILL.md"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    [exit 0]
+  PASS: an agent reads a component's SKILL.md
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Read","cwd":"<ROOT>","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-effort/scripts/main/effort-close.sh"},"agent_id":"a6f3079fde04546c5","agent_type":"general-purpose"}
+    [exit 0]
+  PASS: an agent of a session in the framework's repository: allowed
+  $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Glob","cwd":"<S>/project","tool_input":{"pattern":"*.sh","path":"<R>/framework/core/main-thread/crucible-effort/scripts/main"}}
+    [exit 0]
+  PASS: main still globs scripts/main/
+=== other tools pass
   $ {"session_id":"sess-ig","hook_event_name":"PreToolUse","tool_name":"Write","cwd":"<S>/project","tool_input":{"file_path":"<R>/framework/core/main-thread/crucible-gate/scripts/internal/gate-answer.sh","content":"x"}}
     [exit 0]
   PASS: another tool allowed
@@ -147,31 +198,30 @@
   PASS: no cwd: still denied
 === faults allow the call
   $ input: 'not json'
-    err: deny-internals-read.sh: the hook input is not JSON; the call is allowed unchecked
+    err: deny-sealed-reads.sh: the hook input is not JSON; the call is allowed unchecked
     [exit 0]
   PASS: malformed input 'not json' allowed
   $ input: '[1, 2]'
-    err: deny-internals-read.sh: the hook input is not JSON; the call is allowed unchecked
+    err: deny-sealed-reads.sh: the hook input is not JSON; the call is allowed unchecked
     [exit 0]
   PASS: malformed input '[1, 2]' allowed
   $ input: '"a string"'
-    err: deny-internals-read.sh: the hook input is not JSON; the call is allowed unchecked
+    err: deny-sealed-reads.sh: the hook input is not JSON; the call is allowed unchecked
     [exit 0]
   PASS: malformed input '"a string"' allowed
   $ input: ''
     [exit 0]
   PASS: malformed input '' allowed
   $ jq missing
-    err: deny-internals-read.sh: jq missing; the call is allowed unchecked
+    err: deny-sealed-reads.sh: jq missing; the call is allowed unchecked
     [exit 0]
   PASS: jq missing: allowed, a note on stderr
   $ realpath missing
-    err: deny-internals-read.sh: realpath missing; the call is allowed unchecked
+    err: deny-sealed-reads.sh: realpath missing; the call is allowed unchecked
     [exit 0]
   PASS: realpath missing: allowed, a note on stderr
 === the install expects it
-  PASS: install-entries lists it on Read|Grep|Glob|Bash
-    missing: PreToolUse hook [Read|Grep|Glob|Bash] <skills>/crucible-events/hooks/pre-tool-use/deny-internals-read.sh
+  PASS: install-entries lists its wrapper, guard-framework.sh, on Read|Grep|Glob|Bash
   PASS: install-check names it missing when its entry is left out
 
-=== 49 PASS, 0 FAIL
+=== 64 PASS, 0 FAIL

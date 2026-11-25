@@ -46,7 +46,7 @@ method cp -c
   PASS: the stop goes through with the fault told to the human
   PASS: a fault before acceptance: job.ended fault at step check, no refusal
 === 3: a refused plan, with its repair lines
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test-plan/51.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ntests[0].why names T-2: say it in words; the IDs are for scripts\ntests[0].guards names B-9, which isn't a behaviour in this plan\ntests[1] modifies a test: add keeps, what it must still assert"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test-plan/51.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ntests[0].why names T-2: say it in words; the IDs are for scripts\ntests[0].guards names B-9, which isn't a behaviour in this plan\ntests[1] modifies a test: add keeps, what it must still assert"}
     exit 0
   PASS: held
   PASS: the line for the missing keeps
@@ -54,7 +54,7 @@ method cp -c
   PASS: the line for the internal ID in human text
   PASS: only job.refused try 1: no submission
 === 4: a plan job that changed the tree: refused
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test-plan/54.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\na plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test-plan/54.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\na plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"}
     exit 0
   PASS: held, naming the file to undo
   PASS: only job.refused try 1, no commit
@@ -88,7 +88,7 @@ method cp -c
   PASS: the red test is committed
   PASS: the pinned report holds the production_bug
 === 7: the plan as scope
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test/73.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test/73.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
     exit 0
   PASS: held: an unplanned file the build changed
   PASS: the planned file the build also changed draws no line
@@ -96,7 +96,7 @@ method cp -c
   PASS: accepted: the planned file, and a file outside the plan explained in decisions
   PASS: test.submitted, committing both
 === 10: the mutation gate
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-4788-upload-retries/reports/test/77.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test/77.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
     exit 0
   PASS: held: the mutation gate missing
     exit 0
@@ -153,5 +153,6 @@ method cp -c
   PASS: test-fix: a tester's fix lists the mutation gate too
   PASS: test-fix: a tester's fix is the plan as scope too
   PASS: test-fix: a tester's fix with done and mutation, accepted
+  PASS: plan: a noticed entry with no at is accepted
 
-=== 109 PASS, 0 FAIL
+=== 110 PASS, 0 FAIL

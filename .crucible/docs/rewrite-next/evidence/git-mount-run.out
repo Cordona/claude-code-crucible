@@ -15,7 +15,7 @@
 
 === the reading scripts on a fresh mount
   $ sh internal/mount-record.sh --repo <S>/repo/dir
-    out: {"version":3,"effort":"<S>/space/efforts/<id>-mount-work","repo":"<S>/repo","trees":[{"name":"one","branch":"crucible/<id>-mount-work/one","tip":"<sha>"}],"start":"<sha>","start_is_snapshot":false,"target":"<sha>","head":"<sha>","branch":"main","mounted_at":"2026-11-23T12:00:37Z","paths":[{"path":"del.txt","before":"100644 <sha>","after":"absent","saved":true},{"path":"dir/sub/new.txt","before":"absent","after":"100644 <sha>"},{"path":"eol.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true},{"path":"f.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true}]}
+    out: {"version":3,"effort":"<S>/space/efforts/<id>-mount-work","repo":"<S>/repo","trees":[{"name":"one","branch":"crucible/<id>-mount-work/one","tip":"<sha>"}],"start":"<sha>","start_is_snapshot":false,"target":"<sha>","head":"<sha>","branch":"main","mounted_at":"2026-11-25T16:11:58Z","paths":[{"path":"del.txt","before":"100644 <sha>","after":"absent","saved":true},{"path":"dir/sub/new.txt","before":"absent","after":"100644 <sha>"},{"path":"eol.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true},{"path":"f.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true}]}
     [exit 0]
   PASS: mount-record.sh from a subfolder: the record, its trees and paths
   $ sh internal/mount-paths.sh --repo <S>/repo

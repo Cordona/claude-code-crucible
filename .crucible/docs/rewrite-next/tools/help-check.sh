@@ -12,7 +12,9 @@ the width, the length, that every option the script parses is in its help,
 and that a script's folder matches its help: under scripts/internal/ the
 help starts "Run by <caller>; not for main to call.", under scripts/main/
 it doesn't and names no script under any scripts/internal/ of its framework
-tree (the nearest folder above it holding framework/).
+tree (the nearest folder above it holding framework/). A file with no #!
+first line is a sourced library, with no command line and so no --help; it
+is skipped, and its header comment is its contract.
 
 Stdout:    one line per problem, "SCRIPT: problem"; nothing when all pass
 Exit:
@@ -44,6 +46,7 @@ internal_root='' internal=''
 
 for f in "$@"; do
 	name=${f##*/}
+	case $(head -c 2 "$f" 2>/dev/null) in '#!') ;; *) continue ;; esac
 	help=$(sh "$f" --help 2>/dev/null); rc=$?
 	[ "$rc" -eq 0 ] || { say "$f" "--help exits $rc"; continue; }
 	first=$(printf '%s\n' "$help" | sed -n 1p)

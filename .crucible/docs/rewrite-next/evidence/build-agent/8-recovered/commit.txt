@@ -1,13 +1,15 @@
 crucible(build): cap the upload retries at three
 
-Effort: 20261125T104459-fdf1-upload-retries
+cap the upload retries at three
+
+Effort: 20261125T161540-1845-upload-retries
 Job: 38 build-php-a7c9e4
 Iteration: 1
 Language: php
 Framework: laravel
 Standards: security
 
-commit c887c96c419d868128b142f0910e0d9f468ec4bd
+commit a2df36173386c0a483b4ce9360749ceaec5f58a9
 Author: Build Agent <build-agent@example.test>
 Signed: N
 

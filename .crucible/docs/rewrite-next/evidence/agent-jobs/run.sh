@@ -222,6 +222,24 @@ check 'end-job.sh'"'"'s help claims no record of the human'"'"'s call' sh -c '! 
 said=$(sh "${END_JOB}" --effort "${effort}" --job "${JOB}" --note 'again' --other-session 2>&1); rc=$?
 check 'a stalled job is refused: it is finished or given up instead' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "is stalled"' _ "${rc}" "${said}"
 
+echo "=== agent-job.sh: one agent's open job, across the efforts"
+AGENT_JOB="${K}/agent-jobs/scripts/internal/agent-job.sh"
+out=$(sh "${AGENT_JOB}" --help 2>&1); rc=$?
+check 'agent-job.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
+found=$(sh "${AGENT_JOB}" --agent e0000001); rc=$?
+check 'an open job is found: exit 0, its effort and job' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | jq -e --arg e "$3" ".effort == \$e and .job.agent == \"e0000001\" and .job.state == \"assigned\""' _ "${rc}" "${found}" "${effort}"
+job f0000001 sess-other "${other}" || exit 1
+check 'a job in another effort is found there' sh -c '[ "$(sh "$1" --agent f0000001 | jq -r .effort)" = "$2" ]' _ "${AGENT_JOB}" "${other}"
+sh "${AGENT_JOB}" --agent a0000001 >/dev/null 2>&1; rc=$?
+check 'an agent whose jobs are done: exit 5, between jobs' is "${rc}" 5
+started=$(date +%s)
+sh "${AGENT_JOB}" --agent never00001 --wait 2 >/dev/null 2>&1; rc=$?
+waited=$(($(date +%s) - started))
+check 'an agent never assigned: exit 4, after looking again for 2 seconds' sh -c '[ "$1" -eq 4 ] && [ "$2" -ge 2 ] && [ "$2" -lt 10 ]' _ "${rc}" "${waited}"
+sh "${AGENT_JOB}" --agent 'bad id' >/dev/null 2>&1; rc=$?
+check 'a malformed id is refused: exit 2' is "${rc}" 2
+check 'the stop hook and the write scope both use it, and neither searches the efforts itself' sh -c 'for f in "$1/agent-submission/hooks/subagent-stop/submit-agent-work.sh" "$1/agent-submission/hooks/pre-tool-use/steps/write-scope.sh"; do grep -q "agent-jobs/scripts/internal/agent-job.sh" "$f" && ! grep -q "efforts/\*" "$f" || exit 1; done' _ "${K}"
+
 echo
 echo "=== ${pass} PASS, ${fail} FAIL"
 [ "${fail}" -eq 0 ]

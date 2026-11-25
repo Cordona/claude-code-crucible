@@ -1,2 +1,2 @@
-<S>/space/efforts/20261125T104459-fdf1-upload-retries/events/000041-build.submitted.json
+<S>/space/efforts/20261125T161540-1845-upload-retries/events/000041-build.submitted.json
 exit 0

@@ -1,0 +1,16 @@
+[
+  {
+    "type": "job.stalled",
+    "seq": 101,
+    "at": "2026-11-25T16:16:27Z",
+    "by": "fault-stalled.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 99,
+      "iteration": 1,
+      "agent": "fh00000002",
+      "step": "commit",
+      "fault": "job 99 (build-php-fh0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-long-finish/index.lock': File exists."
+    }
+  }
+]

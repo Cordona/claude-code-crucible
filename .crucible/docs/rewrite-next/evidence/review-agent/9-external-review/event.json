@@ -2,7 +2,7 @@
   {
     "type": "external-review.submitted",
     "seq": 45,
-    "at": "2026-11-25T10:42:04Z",
+    "at": "2026-11-25T16:19:24Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ra",
     "body": {

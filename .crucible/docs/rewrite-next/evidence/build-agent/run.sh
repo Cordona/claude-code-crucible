@@ -39,7 +39,7 @@ ER="${K}/crucible-events/scripts/internal/events-read.sh"
 JOB_OF="${K}/agent-jobs/scripts/internal/job-of.sh"
 VIEW="${K}/agent-jobs/scripts/internal/events-view.sh"
 HOOK="${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
-STEPS="${K}/agent-submission/hooks/subagent-stop"
+STEPS="${K}/agent-submission/hooks/subagent-stop/steps"
 RECOVER="${K}/agent-submission/scripts/main/recover-submission.sh"
 
 echo "=== install: install-entries.sh's own links and settings, then install-check.sh"
@@ -64,14 +64,15 @@ twin=$(sh "${S}/twin-tree/framework/core/install/install-entries.sh" --json 2>&1
 echo "${twin}" | show | sed 's/^/    /'
 check 'two components with one name are refused, exit 2' is "${twin_rc}" 2
 check 'the refusal names both folders' has "${twin}" 'two components share a name'
-check 'core'"'"'s install-check.sh knows no agent convention' sh -c '! grep -qE "submission|report-validation|code-(builder|tester)" "$1"' _ "${R}/framework/core/install/install-check.sh"
-check 'nothing in core names an agent, its kinds or its files' sh -c '! grep -rqE "code-builder|code-tester|build-fix|test-fix|test-plan|submissions/" "$1/framework"' _ "${R}"
+check 'core'"'"'s install-check.sh knows no agent convention, only the folder contract'"'"'s names' sh -c '! grep -qE "submissions/<kind>|report-validation|code-(builder|tester)" "$1"' _ "${R}/framework/core/install/install-check.sh"
+check 'nothing in core names an agent, its kinds or a submissions file' sh -c '! grep -rqE "code-builder|code-tester|build-fix|test-fix|test-plan|submissions/[a-z]" "$1/framework"' _ "${R}"
 check 'nothing in agent-submission or agent-jobs names an agent or one of its kinds, but build' sh -c '! grep -rqE "code-builder|code-tester|build-fix|test-fix|test-plan|\"test\"|\"fix\"|crucible\((test|fix)\)" "$1/agents/agent-submission" "$1/main-thread/agent-jobs"' _ "${R}/domains/software-development/core"
 check 'no agent includes another agent'"'"'s rules, or shared rules' sh -c '! grep -rqE "include \"(code-tester|agent-submission)/" "$1/code-builder" && ! grep -rqE "include \"(code-builder|agent-submission)/" "$1/code-tester"' _ "${R}/domains/software-development/core/agents"
 check 'agent-jobs knows no agent and no approval' sh -c '! grep -rqE "code-builder|code-tester|test-plan|gate\.answered|approv" "$1"' _ "${R}/domains/software-development/core/main-thread/agent-jobs"
 
 echo "=== every new or changed script answers --help"
-for script in "${K}"/agent-jobs/scripts/internal/*.sh "${K}"/agent-submission/hooks/subagent-stop/*.sh "${K}"/agent-submission/hooks/pre-tool-use/*.sh \
+for script in "${K}"/agent-jobs/scripts/internal/*.sh "${K}"/agent-submission/hooks/subagent-stop/*.sh "${K}"/agent-submission/hooks/subagent-stop/steps/*.sh \
+	"${K}"/agent-submission/hooks/pre-tool-use/*.sh "${K}"/agent-submission/hooks/pre-tool-use/steps/*.sh \
 	"${K}"/agent-submission/scripts/internal/*.sh "${K}"/agent-submission/scripts/main/*.sh \
 	"${K}/git-commit/scripts/main/commit-tree.sh" "${R}/framework/core/install/install-entries.sh"; do
 	out=$(sh "${script}" --help 2>&1); rc=$?
@@ -196,7 +197,9 @@ check 'the report is pinned read-only' read_only "${REPORT}"
 check 'the empty impact list was pruned before the pin' jq -e 'has("impact") | not' "${REPORT}"
 check 'the commit is the tree'"'"'s new HEAD' is "$(git -C "${TREE}" rev-parse HEAD)" "${COMMIT_1A}"
 check 'the working commit is unsigned' is "$(git -C "${TREE}" log -1 --format=%G?)" N
-check 'the commit message: subject, then Effort, Job, Iteration and the setup, no body' is "$(message_of)" "crucible(build): add a retry limit to the upload client
+check 'the commit message: subject, the whole summary as the body, then Effort, Job, Iteration and the setup' is "$(message_of)" "crucible(build): add a retry limit to the upload client
+
+add a retry limit to the upload client
 
 Effort: ${effort_name}
 Job: ${JOB} build-php-af6bac
@@ -253,10 +256,10 @@ write_report 4a.json
 stop 4a-refused
 check 'the stop is held: decision block' is "$(printf '%s' "${HOOK_OUT}" | jq -r '.decision')" block
 reason=$(printf '%s' "${HOOK_OUT}" | jq -r '.reason')
-check 'the repair lines: the summary' has "${reason}" 'summary is 60 characters; shorten it to 55 or fewer'
+check 'a 60-character summary is no refusal: no length is checked' sh -c '! printf "%s" "$1" | grep -q "^summary"' _ "${reason}"
 check 'the repair lines: the note' has "${reason}" 'gates[0] is not_run: add a note saying why'
 check 'the repair lines: the unknown key' has "${reason}" 'unknown key "verification"; the keys are summary, gates, decisions, impact, noticed, questions, blockers'
-check 'job.refused try 1, by held-stop.sh, its lines the repair lines' is "$(ev '"\(.type) \(.by) \(.body.try) \(.body.lines | length)"')" 'job.refused held-stop.sh 1 3'
+check 'job.refused try 1, by held-stop.sh, its lines the repair lines' is "$(ev '"\(.type) \(.by) \(.body.try) \(.body.lines | length)"')" 'job.refused held-stop.sh 1 2'
 check 'its stamps are the job'"'"'s' is "$(ev '.body | "\(.job) \(.iteration) \(.agent)"')" "${JOB} 1 e1a8350505"
 check 'no submission, no commit, no .held file' sh -c '[ "$(jq "length" "$1")" -eq 1 ] && [ "$2" = none ] && [ ! -e "$3/stops/$4.held" ]' _ "${E}/4a-refused/event.json" "$(cat "${E}/4a-refused/commit.txt")" "${effort}" "${JOB}"
 check 'the refused report is not pinned' test -w "${REPORT}"
@@ -285,6 +288,8 @@ stop 5-quote-build
 check 'the build under the fix: build.submitted, iteration 1' is "$(ev '"\(.type) \(.body.iteration)"')" 'build.submitted 1'
 check 'a setup with no framework: no Framework trailer' is "$(message_of)" "crucible(build): read the upload target from the first argument
 
+read the upload target from the first argument
+
 Effort: ${effort_name}
 Job: ${JOB} build-shell-f05b2c
 Iteration: 1
@@ -301,6 +306,8 @@ check 'a build-fix report lives at reports/build-fix/<job seq>.json' is "$(ev '.
 check 'the body prints job, iteration, fix_round, agent, report, commit' is "$(ev '.body | keys_unsorted | join(",")')" 'job,iteration,fix_round,agent,report,commit'
 check 'the builder reused for the fix keeps its agent id' is "$(ev '.body.agent')" f05b2c0606
 check 'the trailers: Effort, Job, Iteration, Fix-Round, then the setup with Model' is "$(message_of)" "crucible(build-fix): quote variables in a.sh and b.sh
+
+quote variables in a.sh and b.sh
 
 Effort: ${effort_name}
 Job: ${JOB} fix-shell-f05b2c
@@ -585,12 +592,77 @@ submission
 finish "${JOB}"
 finished s-hook-after
 
+echo "--- the working commit's message: the summary cut for the subject, whole in the body"
+CM="${K}/git-commit/scripts/main/commit-message.sh"
+LONG='retry uploads on 5xx responses with exponential backoff, capped at three attempts, and log each retry with status codes!'
+check 'the long summary is 120 characters' is "$(printf '%s' "${LONG}" | jq -Rr 'length')" 120
+# message_from JSON: commit-message.sh's message for one input; MSG, MSG_RC.
+message_from() {
+	printf '%s\n' "$1" >"${S}/work/cm-in.json"
+	rm -f -- "${S}/work/cm-out"
+	MSG_SAID=$(sh "${CM}" --input "${S}/work/cm-in.json" --out "${S}/work/cm-out" 2>&1); MSG_RC=$?
+	MSG=$(cat "${S}/work/cm-out" 2>/dev/null)
+}
+message_from "$(jq -cn --arg s "${LONG}" '{kind: "build", summary: $s, trailers: {job: 4, iteration: 1}}')"
+subject=$(printf '%s\n' "${MSG}" | sed -n 1p)
+check 'a long summary: written' is "${MSG_RC}" 0
+check 'its subject is within 72 characters and ends with …' sh -c '[ "$(printf "%s" "$1" | jq -Rr length)" -le 72 ] && printf "%s" "$1" | jq -Re "endswith(\"…\")"' _ "${subject}"
+check 'cut at the last whole word: the subject'"'"'s text, then a space, starts the summary' sh -c 't=${1#"crucible(build): "}; t=${t%"…"}; case $2 in "$t "*) exit 0 ;; *) exit 1 ;; esac' _ "${subject}" "${LONG}"
+check 'then a blank line, the whole summary, a blank line, and the trailers last' is "$(printf '%s\n' "${MSG}" | sed -n '2,6p')" "
+${LONG}
+
+Job: 4
+Iteration: 1"
+message_from '{"kind": "build", "summary": "retry uploads on 5xx", "trailers": {"job": 4}}'
+check 'a summary that fits: the subject whole, no …, and still the body' is "${MSG}" 'crucible(build): retry uploads on 5xx
+
+retry uploads on 5xx
+
+Job: 4'
+message_from "$(jq -cn --arg s "$(printf 'a%.0s' $(seq 1 90))" '{kind: "build", summary: $s}')"
+check 'one word longer than the room is cut where the room ends, with …: 72 characters' is "$(printf '%s\n' "${MSG}" | sed -n 1p | jq -Rr length)" 72
+message_from '{"kind": "build", "text": "retry uploads on 5xx", "summary": "retry uploads on 5xx"}'
+check 'text and summary together are refused, exit 2' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "text and summary are both given"' _ "${MSG_RC}" "${MSG_SAID}"
+message_from '{"kind": "build", "summary": "two\nlines"}'
+check 'a summary still must be one line' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "summary holds a line break"' _ "${MSG_RC}" "${MSG_SAID}"
+message_from '{"kind": "build", "text": "retry uploads on 5xx", "trailers": {"job": 4}}'
+check 'main'"'"'s text path is unchanged: the subject, then the trailers, no body' is "${MSG}" 'crucible(build): retry uploads on 5xx
+
+Job: 4'
+message_from "$(jq -cn --arg s "${LONG}" '{kind: "build", text: $s}')"
+check 'and text stays strict: a subject over 72 is refused' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "expected at most 72"' _ "${MSG_RC}" "${MSG_SAID}"
+
+expected_subject=$(jq -nr --arg s "${LONG}" -L "${K}/git-commit/scripts/lib" 'include "commit-message"; "crucible(build): " + ($s | commit_subject_cut("crucible(build): "))')
+submission
+standin_job f-long fg00000001
+jq -n --arg s "${LONG}" '{summary: $s, gates: [{gate: "test", result: "pass"}]}' >"${REPORT}"; chmod 600 "${REPORT}"
+stop_as code-standin s-long-summary
+check 'a 120-character summary is accepted and handed in end to end' sh -c '[ -z "$1" ] && [ "$(sh "$2" --effort "$3" --job "$4" | jq -r .state)" = submitted ]' _ "${HOOK_OUT}" "${JOB_OF}" "${effort}" "${JOB}"
+LONG_COMMIT=$(git -C "${TREE}" rev-parse HEAD)
+check 'its commit'"'"'s subject is the cut one, within 72' sh -c '[ "$(git -C "$1" log -1 --format=%s)" = "$2" ] && [ "$(printf "%s" "$2" | jq -Rr length)" -le 72 ]' _ "${TREE}" "${expected_subject}"
+check 'its body holds the whole summary' is "$(git -C "${TREE}" log -1 --format=%B | sed -n 3p)" "${LONG}"
+check 'git still reads the trailers, last: Effort, Job, Iteration' is "$(git -C "${TREE}" log -1 --format=%B | git -C "${TREE}" interpret-trailers --parse | cut -d: -f1 | tr '\n' ' ')" 'Effort Job Iteration Language Standards '
+check 'the submission event names that commit' is "$(ev '.body.commit')" "${LONG_COMMIT}"
+check 'the kind and the job read back from the subject and trailers, as recovery reads them' sh -c '. "$1"; tr_read "$2" "$3" | jq -e --arg j "$4" ".kind == \"build\" and .job == (\$j | tonumber) and .iteration == 1"' _ "${K}/agent-submission/scripts/lib/trailers.sh" "${TREE}" "${LONG_COMMIT}" "${JOB}"
+
+standin_job f-long-finish fh00000002
+jq -n --arg s "${LONG}" '{summary: $s, gates: [{gate: "test", result: "pass"}]}' >"${REPORT}"; chmod 600 "${REPORT}"
+git_dir=$(git -C "${TREE}" rev-parse --absolute-git-dir)
+: >"${git_dir}/index.lock"
+stop_as code-standin s-long-summary-stalled
+stalled commit s-long-summary-stalled
+rm -f -- "${git_dir}/index.lock"
+finish "${JOB}"
+finished s-long-summary-finished
+check 'recover-submission.sh --finish commits it the same way: the cut subject, the whole body' sh -c '[ "$(git -C "$1" log -1 --format=%s)" = "$2" ] && [ "$(git -C "$1" log -1 --format=%B | sed -n 3p)" = "$3" ]' _ "${TREE}" "${expected_subject}" "${LONG}"
+
+
 echo "--- a refusal that can't be recorded still holds the stop"
 standin_job f-unrecorded fu00000001 && write_report 4a.json
 sleep 60 & holder=$!
 mkdir -p "${effort}/events/.lock" && printf '%s\n' "${holder}" >"${effort}/events/.lock/pid"
 stop_as code-standin s-refusal-unrecorded
-check 'a first stop is held: decision block with the repair lines' sh -c 'printf "%s" "$1" | jq -e ".decision == \"block\" and (.reason | contains(\"shorten it to 55\"))"' _ "${HOOK_OUT}"
+check 'a first stop is held: decision block with the repair lines' sh -c 'printf "%s" "$1" | jq -e ".decision == \"block\" and (.reason | contains(\"gates[0] is not_run\"))"' _ "${HOOK_OUT}"
 check 'and the human is told it could not be recorded' has "$(told)" 'could not be recorded'
 check 'no event was written' is "$(cat "${E}/s-refusal-unrecorded/event.json")" '"none"'
 STOP_ACTIVE=true
@@ -623,7 +695,7 @@ stop_as general-purpose s-a0-other-type
 check 'a type with no submissions folder passes silently' sh -c '[ -z "$1" ] && [ "$2" -eq 0 ]' _ "${HOOK_OUT}" "${HOOK_RC}"
 submission
 standin_job f-race fr00000001 only && write_report 8.json
-BEFORE=$(events_count)
+BEFORE=$(events_count) HEAD_BEFORE=$(git -C "${TREE}" rev-parse HEAD)
 jq -cn --arg agent "${AGENT}" '{session_id: "sess-ba", hook_event_name: "SubagentStop", stop_hook_active: false,
 	agent_id: $agent, agent_type: "code-standin", last_assistant_message: "Done."}' >"${S}/work/stop.json"
 sh "${HOOK}" <"${S}/work/stop.json" >"${S}/work/hook.out" 2>"${S}/work/hook.err" &
@@ -632,13 +704,15 @@ sleep 2
 assign
 wait "${hook_pid}"; HOOK_RC=$?
 HOOK_OUT=$(cat "${S}/work/hook.out")
+save s-a0-race
 check 'an assignment that lands while the hook looks again is found: the report handed in' sh -c '[ -z "$1" ] && [ "$(sh "$2" --effort "$3" --job "$4" | jq -r .state)" = submitted ]' _ "${HOOK_OUT}" "${JOB_OF}" "${effort}" "${JOB}"
 
 echo "=== the job agent's Bash hook: foreground only, and the time limit set"
-BASH_HOOK="${K}/agent-submission/hooks/pre-tool-use/job-agent-bash.sh"
-check 'install-entries.sh registers it on PreToolUse, matcher Bash' jq -e 'any(.hooks[]; .event == "PreToolUse" and .matcher == "Bash" and (.command_path | endswith("/agent-submission/hooks/pre-tool-use/job-agent-bash.sh")))' "${S}/entries.json"
+BASH_HOOK="${K}/agent-submission/hooks/pre-tool-use/job-agent-tools.sh"
+check 'install-entries.sh registers the wrapper job-agent-tools.sh on PreToolUse, matcher Bash|Write|Edit' jq -e 'any(.hooks[]; .event == "PreToolUse" and .matcher == "Bash|Write|Edit" and (.command_path | endswith("/agent-submission/hooks/pre-tool-use/job-agent-tools.sh")))' "${S}/entries.json"
+check 'and registers no step of any hook' jq -e 'all(.hooks[]; .path | contains("/steps/") | not)' "${S}/entries.json"
 out=$(sh "${BASH_HOOK}" --help 2>&1); rc=$?
-check 'job-agent-bash.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
+check 'job-agent-tools.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
 # bash_call JSON_FIELDS: a PreToolUse on Bash, the fields merged in.
 bash_call() {
 	jq -cn --argjson f "$1" '{session_id: "sess-ba", hook_event_name: "PreToolUse", tool_name: "Bash",
@@ -654,7 +728,9 @@ printf '%s\n' "${out}" >"${E}/bash-hook/no-timeout.json"
 check 'a call with no timeout is rewritten to the limit, the rest unchanged' is "$(printf '%s' "${out}" | jq -c '.hookSpecificOutput.updatedInput')" '{"command":"composer test","description":"run the tests","timeout":30000}'
 check 'the rewrite allows nothing: the call keeps its normal permission checks' sh -c 'printf "%s" "$1" | jq -e ".hookSpecificOutput | has(\"permissionDecision\") | not"' _ "${out}"
 check 'a tester'"'"'s call too' is "$(bash_call '{"agent_id": "t1", "agent_type": "code-tester"}' | jq -r '.hookSpecificOutput.updatedInput.timeout')" 30000
-check 'an explicit timeout passes unchanged' is "$(bash_call '{"agent_id": "b1", "agent_type": "code-builder", "tool_input": {"timeout": 600000}}')" ''
+check 'a timeout the agent gave, 120000, is rewritten to the limit' is "$(bash_call '{"agent_id": "b1", "agent_type": "code-builder", "tool_input": {"timeout": 120000}}' | jq -r '.hookSpecificOutput.updatedInput.timeout')" 30000
+check 'so is one above the limit, 600000' is "$(bash_call '{"agent_id": "b1", "agent_type": "code-builder", "tool_input": {"timeout": 600000}}' | jq -r '.hookSpecificOutput.updatedInput.timeout')" 30000
+check 'a call already at the limit passes unchanged' is "$(bash_call '{"agent_id": "b1", "agent_type": "code-builder", "tool_input": {"timeout": 30000}}')" ''
 check 'main'"'"'s own call passes, even in the background' is "$(bash_call '{"tool_input": {"run_in_background": true}}')" ''
 check 'a non-job agent'"'"'s call passes' is "$(bash_call '{"agent_id": "x1", "agent_type": "Explore", "tool_input": {"run_in_background": true}}')" ''
 out=$(jq -cn '{tool_name: "Bash", agent_id: "b1", agent_type: "code-builder", tool_input: {command: "ls"}}' | env -u BASH_MAX_TIMEOUT_MS sh "${BASH_HOOK}" 2>"${S}/work/bash.err"); rc=$?
@@ -662,10 +738,10 @@ check 'with BASH_MAX_TIMEOUT_MS unset the call passes unchanged, said on stderr'
 check 'input that is not JSON passes' sh -c '[ -z "$(printf "not json" | sh "$1" 2>/dev/null)" ]' _ "${BASH_HOOK}"
 
 echo "=== the job agent's write scope: the tree and the report, or the report only"
-WRITES_HOOK="${K}/agent-submission/hooks/pre-tool-use/job-agent-writes.sh"
-check 'install-entries.sh registers it on PreToolUse, matcher Write|Edit' jq -e 'any(.hooks[]; .event == "PreToolUse" and .matcher == "Write|Edit" and (.command_path | endswith("/agent-submission/hooks/pre-tool-use/job-agent-writes.sh")))' "${S}/entries.json"
-out=$(sh "${WRITES_HOOK}" --help 2>&1); rc=$?
-check 'job-agent-writes.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
+WRITES_HOOK="${K}/agent-submission/hooks/pre-tool-use/job-agent-tools.sh"
+WRITE_SCOPE="${K}/agent-submission/hooks/pre-tool-use/steps/write-scope.sh"
+out=$(sh "${WRITE_SCOPE}" --help 2>&1); rc=$?
+check 'write-scope.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
 check 'every submissions file of the three agents names its writes: tree for build, build-fix, test and test-fix, report for the rest' sh -c 'for f in "$1"/code-builder/submissions/*.json "$1"/code-tester/submissions/*.json "$1"/code-reviewer/submissions/*.json; do k=${f##*/}; k=${k%.json}; case $k in build | build-fix | test | test-fix) w=tree ;; *) w=report ;; esac; [ "$(jq -r .writes "$f")" = "$w" ] || exit 1; done' _ "${K}"
 # scope_job TYPE KIND TREE AGENT [EFFORT]: a job dispatched and assigned;
 # sets JOB and REPORT.
@@ -757,15 +833,224 @@ printf '%s\n' "${OUT}" | show >"${E}/write-scope/missing-writes.json"
 check 'a submissions file with no writes word: the human told of the install fault' has "$(printf '%s' "${OUT}" | jq -r '.systemMessage // ""')" "code-standin/submissions/build.json names no writes (tree or report)"
 check 'and no decision, so nothing is let through by default' sh -c 'printf "%s" "$1" | jq -e "has(\"hookSpecificOutput\") | not"' _ "${OUT}"
 call Read "${W_TREE}/app/Upload/Client.php" wb00000001 code-builder
-check 'a Read gets no decision: it isn'"'"'t matched, and the space is a working directory' sh -c '[ -z "$1" ] && jq -e "any(.hooks[]; .matcher == \"Write|Edit\" and (.command_path | endswith(\"/job-agent-writes.sh\")))" "$2"' _ "${OUT}" "${S}/entries.json"
-check 'its help says reads need no hook' has "$(sh "${WRITES_HOOK}" --help)" 'Reads need no hook: the installer makes the space a'
+check 'a Read gets no decision: it isn'"'"'t matched, and the space is a working directory' sh -c '[ -z "$1" ] && jq -e "any(.hooks[]; .matcher == \"Bash|Write|Edit\" and (.command_path | endswith(\"/job-agent-tools.sh\")))" "$2"' _ "${OUT}" "${S}/entries.json"
+check 'the write scope'"'"'s help says reads need no hook' has "$(sh "${WRITE_SCOPE}" --help)" 'Reads need no hook: the installer makes the space a'
 check 'input that is not JSON gets no decision' sh -c '[ -z "$(printf "not json" | sh "$1" 2>/dev/null)" ]' _ "${WRITES_HOOK}"
-jq '.hooks.PreToolUse |= map(select(.matcher != "Write|Edit"))' "${S}/settings.json" >"${S}/no-writes-hook.json"
+jq '.hooks.PreToolUse |= map(select(.matcher != "Bash|Write|Edit"))' "${S}/settings.json" >"${S}/no-writes-hook.json"
 out=$(sh "${R}/framework/core/install/install-check.sh" --settings "${S}/no-writes-hook.json" 2>&1); rc=$?
-check 'install-check.sh sees the hook: without it, it is missing' sh -c '[ "$1" -eq 1 ] && printf "%s" "$2" | grep -qF "missing: PreToolUse hook [Write|Edit]"' _ "${rc}" "${out}"
+check 'install-check.sh sees the hook: without it, it is missing' sh -c '[ "$1" -eq 1 ] && printf "%s" "$2" | grep -qF "missing: PreToolUse hook [Bash|Write|Edit]"' _ "${rc}" "${out}"
 check 'the reviewer has Write, not Edit' sh -c 'grep -qx "tools: Read, Grep, Glob, Write, Bash, WebFetch" "$1"' _ "${K}/code-reviewer/code-reviewer.md"
 check 'its line says it changes nothing but its report' grep -qF -- '- Change nothing but your report, and run no command that writes. A reviewer that edits the code is reviewing its own work.' "${K}/code-reviewer/code-reviewer.md"
 check 'agent-conduct holds no denied-command line' sh -c '! grep -qF "A denied command" "$1/agent-conduct/SKILL.md"' _ "${K}"
+
+echo "=== the permission hook: a job agent's ask on a compound command"
+PERM_HOOK="${K}/agent-submission/hooks/permission-request/deny-compound-commands.sh"
+check 'install-entries.sh registers it on PermissionRequest, matcher Bash' jq -e 'any(.hooks[]; .event == "PermissionRequest" and .matcher == "Bash" and (.command_path | endswith("/agent-submission/hooks/permission-request/deny-compound-commands.sh")))' "${S}/entries.json"
+check 'the settings hold it under PermissionRequest' jq -e '.hooks.PermissionRequest[0].matcher == "Bash"' "${S}/settings.json"
+out=$(sh "${PERM_HOOK}" --help 2>&1); rc=$?
+check 'deny-compound-commands.sh --help, saying what was probed' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:" && printf "%s" "$2" | grep -q "Probed only with main in default mode"' _ "${rc}" "${out}"
+# ask COMMAND [AGENT]: a PermissionRequest on Bash, as Claude Code sends it;
+# no AGENT for main's own ask. OUT holds the answer.
+ask() {
+	OUT=$(jq -cn --arg c "$1" --arg a "${2-}" '{session_id: "sess-ba", hook_event_name: "PermissionRequest", cwd: "/",
+		permission_mode: "default", tool_name: "Bash", tool_input: {command: $c, description: "run"}, permission_suggestions: []}
+		+ (if $a == "" then {} else {agent_id: $a, agent_type: "code-builder"} end)' | sh "${PERM_HOOK}" 2>/dev/null)
+}
+DENIED='{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Run it as plain single commands, one per call. Your other commands still run."}}}'
+mkdir -p "${E}/permission-hook"
+for compound in "cd ${W_TREE} && git status" "T=${W_TREE}; git -C \$T status" 'make || make clean' 'echo $(git rev-parse HEAD)' 'echo `date`' 'FOO=1 make test' 'make
+make install'; do
+	ask "${compound}" wb00000001
+	check "a compound command is denied, exactly as worded: $(printf '%s' "${compound}" | tr '\n' '/' | cut -c1-40)" is "${OUT}" "${DENIED}"
+done
+printf '%s\n' "${OUT}" >"${E}/permission-hook/compound.json"
+ask "git commit -m 'retry; then back off'" wb00000001
+check 'a quoted ; is a plain command: no answer' is "${OUT}" ''
+ask "sed -i 's|a|b|' app/Upload/Client.php" wb00000001
+check 'sed with a quoted | and ; is a plain command: no answer' is "${OUT}" ''
+ask 'echo "a && b"' wb00000001
+check 'a double-quoted && is a plain command: no answer' is "${OUT}" ''
+ask "git -C ${W_TREE} log | head -n 5" wb00000001
+check 'a pipe is not compound: no answer' is "${OUT}" ''
+ask "touch ${W_TREE}/x" wb00000001
+check 'a plain command gets no answer' is "${OUT}" ''
+ask "cd ${W_TREE} && git status" af6bac0101
+check 'an agent with no open job gets no answer' is "${OUT}" ''
+ask "cd ${W_TREE} && git status"
+check 'main'"'"'s own ask gets no answer' is "${OUT}" ''
+ask "cd ${W_TREE} && git status" helper00001
+check 'a helper agent, never assigned a job, gets no answer' is "${OUT}" ''
+
+echo "=== the PreToolUse wrapper: each step alone, the combine rule"
+TOOL_STEPS="${K}/agent-submission/hooks/pre-tool-use/steps"
+# tool_json TOOL INPUT_JSON [TYPE]: a PreToolUse input of a job agent (or
+# of TYPE; "" for main).
+tool_json() {
+	jq -cn --arg tool "$1" --argjson in "$2" --arg type "${3-code-builder}" '{session_id: "sess-ba", hook_event_name: "PreToolUse",
+		cwd: "/", tool_name: $tool, tool_input: $in} + (if $type == "" then {} else {agent_id: "b1", agent_type: $type} end)'
+}
+mkdir -p "${E}/hook-steps"
+out=$(tool_json Bash '{"command": "make test", "run_in_background": true}' | sh "${TOOL_STEPS}/deny-background-bash.sh")
+check 'deny-background-bash.sh alone: a background call is denied' is "$(printf '%s' "${out}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+check 'deny-background-bash.sh alone: a foreground call gets nothing' is "$(tool_json Bash '{"command": "make test"}' | sh "${TOOL_STEPS}/deny-background-bash.sh")" ''
+out=$(tool_json Bash '{"command": "make test"}' | BASH_MAX_TIMEOUT_MS=30000 sh "${TOOL_STEPS}/add-bash-timeout.sh")
+check 'add-bash-timeout.sh alone: the limit added, nothing allowed' is "$(printf '%s' "${out}" | jq -c '.hookSpecificOutput | [.updatedInput.timeout, has("permissionDecision")]')" '[30000,false]'
+check 'add-bash-timeout.sh alone: a shorter timeout is rewritten to the limit' is "$(tool_json Bash '{"command": "make test", "timeout": 5000}' | BASH_MAX_TIMEOUT_MS=30000 sh "${TOOL_STEPS}/add-bash-timeout.sh" | jq -r '.hookSpecificOutput.updatedInput.timeout')" 30000
+check 'write-scope.sh alone: a Write in the job'"'"'s tree is allowed' is "$(tool_json Write "{\"file_path\": \"${W_TREE}/a.php\", \"content\": \"x\"}" | jq -c '.agent_id = "wb00000001"' | sh "${WRITE_SCOPE}" | jq -r '.hookSpecificOutput.permissionDecision')" allow
+for step in deny-background-bash.sh add-bash-timeout.sh write-scope.sh; do
+	check "${step} alone: input that is not JSON gets nothing, exit 0" sh -c 'out=$(printf "not json" | sh "$1" 2>/dev/null); [ $? -eq 0 ] && [ -z "${out}" ]' _ "${TOOL_STEPS}/${step}"
+done
+
+# tool_call INPUT: the installed wrapper's answer; OUT.
+tool_call() { OUT=$(printf '%s' "$1" | BASH_MAX_TIMEOUT_MS=30000 sh "${BASH_HOOK}" 2>/dev/null); }
+# bash_in COMMAND [TYPE]: a job agent's Bash call already at the time
+# limit, so only a refusal can answer it.
+bash_in() { tool_json Bash "$(jq -cn --arg c "$1" '{command: $c, timeout: 30000}')" "${2-code-builder}"; }
+tool_call "$(bash_in "cd ${W_TREE} && git status")"
+check 'the tool wrapper leaves a compound command alone: the permission hook answers its ask' is "${OUT}" ''
+check 'no refuse-denied-forms.sh step is left' test ! -e "${TOOL_STEPS}/refuse-denied-forms.sh"
+tool_call "$(tool_json Bash '{"command": "make test", "run_in_background": true}' general-purpose)"
+check 'a non-job agent'"'"'s call passes untouched' is "${OUT}" ''
+
+echo "--- the combine rule, with stand-in steps under a copy of the wrapper"
+fake="${S}/fake-skills"
+mkdir -p "${fake}/agent-submission/hooks/pre-tool-use/steps" "${fake}/code-builder/submissions"
+cp "${R}/domains/software-development/core/agents/agent-submission/hooks/pre-tool-use/job-agent-tools.sh" "${fake}/agent-submission/hooks/pre-tool-use/"
+FAKE_HOOK="${fake}/agent-submission/hooks/pre-tool-use/job-agent-tools.sh"
+FAKE_STEPS="${fake}/agent-submission/hooks/pre-tool-use/steps"
+# stand_in STEP ANSWER: a stand-in step that saves its input to
+# <step>.in and prints ANSWER ("fail" exits 3, "junk" prints no JSON).
+stand_in() {
+	{
+		printf '#!/bin/sh\ncat >"%s/%s.in"\n' "${FAKE_STEPS}" "$1"
+		case $2 in
+			fail) printf 'exit 3\n' ;;
+			junk) printf 'echo not-json\n' ;;
+			'') ;;
+			*) printf "printf '%%s\\\\n' '%s'\n" "$2" ;;
+		esac
+	} >"${FAKE_STEPS}/$1"
+	rm -f -- "${FAKE_STEPS:?}/${1:?}.in"
+}
+ALLOW='{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow", "permissionDecisionReason": "fine"}}'
+DENY='{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "no"}}'
+REWRITE='{"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {"command": "make test", "timeout": 30000}}}'
+fake_call() { OUT=$(tool_json Bash '{"command": "make test"}' | sh "${FAKE_HOOK}"); }
+stand_in deny-background-bash.sh "${DENY}"; stand_in add-bash-timeout.sh "${ALLOW}"
+fake_call
+check 'a deny wins, and is the answer' is "$(printf '%s' "${OUT}" | jq -c '.hookSpecificOutput | [.permissionDecision, .permissionDecisionReason]')" '["deny","no"]'
+check 'and no step after the deny runs' test ! -e "${FAKE_STEPS}/add-bash-timeout.sh.in"
+stand_in deny-background-bash.sh "${ALLOW}"; stand_in add-bash-timeout.sh "${DENY}"
+fake_call
+check 'a deny wins over an allow before it' is "$(printf '%s' "${OUT}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+stand_in deny-background-bash.sh ''; stand_in add-bash-timeout.sh "${ALLOW}"
+fake_call
+check 'an allow with no deny is an allow' is "$(printf '%s' "${OUT}" | jq -r '.hookSpecificOutput.permissionDecision')" allow
+stand_in deny-background-bash.sh "${REWRITE}"; stand_in add-bash-timeout.sh ''
+stand_in write-scope.sh "${DENY}"
+fake_call
+check 'each step gets the input as the step before rewrote it' is "$(jq -c '.tool_input' "${FAKE_STEPS}/add-bash-timeout.sh.in")" '{"command":"make test","timeout":30000}'
+check 'a rewrite alone is given as updatedInput, with no decision' is "$(printf '%s' "${OUT}" | jq -c '.hookSpecificOutput | [has("permissionDecision"), .updatedInput.timeout]')" '[false,30000]'
+check 'a Bash call never runs write-scope.sh' test ! -e "${FAKE_STEPS}/write-scope.sh.in"
+stand_in deny-background-bash.sh junk; stand_in add-bash-timeout.sh "${REWRITE}"
+fake_call
+check 'a step printing no JSON gives no answer, and the rest still run' sh -c '[ -e "$1" ] && [ "$(printf "%s" "$2" | jq -r .hookSpecificOutput.updatedInput.timeout)" = 30000 ]' _ "${FAKE_STEPS}/add-bash-timeout.sh.in" "${OUT}"
+stand_in deny-background-bash.sh fail; stand_in add-bash-timeout.sh fail
+fake_call
+check 'every step failing: no answer, the wrapper decides nothing itself' is "${OUT}" ''
+stand_in write-scope.sh "${ALLOW}"; stand_in deny-background-bash.sh fail
+OUT=$(tool_json Write '{"file_path": "/x", "content": "y"}' | sh "${FAKE_HOOK}")
+check 'a Write runs write-scope.sh only' sh -c '[ -e "$1" ] && [ ! -e "$2" ] && [ "$(printf "%s" "$3" | jq -r .hookSpecificOutput.permissionDecision)" = allow ]' _ "${FAKE_STEPS}/write-scope.sh.in" "${FAKE_STEPS}/deny-background-bash.sh.in" "${OUT}"
+OUT=$(tool_json Write '{"file_path": "/x", "content": "y"}' code-other | sh "${FAKE_HOOK}")
+check 'the agent type is checked once, before any step: another type gets nothing' is "${OUT}" ''
+
+echo "--- crucible-events' wrapper: first deny wins, each step alone"
+GUARD="${K}/crucible-events/hooks/pre-tool-use/guard-framework.sh"
+check 'install-entries.sh registers guard-framework.sh on Read|Grep|Glob|Bash, and not its steps' jq -e '[.hooks[] | select(.path | contains("/crucible-events/"))] | length == 1 and .[0].matcher == "Read|Grep|Glob|Bash" and (.[0].path | endswith("/hooks/pre-tool-use/guard-framework.sh"))' "${S}/entries.json"
+out=$(sh "${GUARD}" --help 2>&1); rc=$?
+check 'guard-framework.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
+out=$(jq -cn --arg c "sh ${EW} --effort x" '{tool_name: "Bash", cwd: "/", tool_input: {command: $c}}' | sh "${GUARD}")
+check 'a direct event write is denied through the wrapper' is "$(printf '%s' "${out}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+out=$(jq -cn --arg p "${K}/crucible-events/scripts/internal/event-write.sh" '{tool_name: "Read", cwd: "/", tool_input: {file_path: $p}}' | sh "${GUARD}")
+check 'a Read of an internal script is denied through the wrapper' is "$(printf '%s' "${out}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+out=$(jq -cn --arg p "${K}/crucible-events/scripts/internal/event-write.sh" '{tool_name: "Read", cwd: "/", tool_input: {file_path: $p}}' | sh "${K}/crucible-events/hooks/pre-tool-use/steps/deny-sealed-reads.sh")
+check 'deny-sealed-reads.sh alone, from steps/, still finds the framework root' is "$(printf '%s' "${out}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+check 'an ordinary command gets nothing' is "$(jq -cn '{tool_name: "Bash", cwd: "/", tool_input: {command: "ls"}}' | sh "${GUARD}")" ''
+check 'another tool gets nothing' is "$(jq -cn '{tool_name: "Write", cwd: "/", tool_input: {file_path: "/x"}}' | sh "${GUARD}")" ''
+
+echo "--- a step is never registered"
+jq --arg step "${K}/agent-submission/hooks/pre-tool-use/steps/write-scope.sh" '.hooks.PreToolUse += [{matcher: "Write", hooks: [{type: "command", command: ("sh " + $step)}]}]' "${S}/settings.json" >"${S}/with-step.json"
+out=$(sh "${R}/framework/core/install/install-check.sh" --settings "${S}/with-step.json" 2>&1); rc=$?
+echo "${out}" | show | sed 's/^/    /'
+check 'install-check.sh refuses a registered step: exit 1, an extra: line naming it' sh -c '[ "$1" -eq 1 ] && printf "%s" "$2" | grep -qE "^extra: PreToolUse hook step .*/pre-tool-use/steps/write-scope.sh is registered; register only its wrapper$"' _ "${rc}" "${out}"
+twin_jobs="${S:?}/twin-tree/domains/software-development/core/main-thread/agent-jobs/hooks"
+rm -f -- "${twin_jobs:?}/env.json"
+printf '{"pre-tool-use/steps/write-scope.sh": "Write"}\n' >"${twin_jobs}/matchers.json"
+twin=$(sh "${S}/twin-tree/framework/core/install/install-entries.sh" --json 2>&1); twin_rc=$?
+check 'install-entries.sh refuses a matchers.json naming a step' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "is not a valid matchers.json"' _ "${twin_rc}" "${twin}"
+cp -- "${R}/domains/software-development/core/main-thread/agent-jobs/hooks/matchers.json" "${twin_jobs}/matchers.json"
+
+echo "--- the component folder contract"
+rm -rf -- "${S:?}/twin-tree/domains/software-development/core/agents/git-commit"
+twin_builder="${S:?}/twin-tree/domains/software-development/core/agents/code-builder"
+mkdir -p "${twin_builder}/notes" "${twin_builder}/scripts/tools"
+sh "${S}/twin-tree/framework/core/install/install-entries.sh" | sed -n '/^# Settings/,/^$/p' | sed '1d' >"${S}/twin-contract.json"
+out=$(sh "${S}/twin-tree/framework/core/install/install-check.sh" --settings "${S}/twin-contract.json" 2>&1); rc=$?
+printf '%s\n' "${out}" | grep '^extra: folder' | show | sed 's/^/    /'
+check 'install-check.sh refuses a stray folder in a component' sh -c '[ "$1" -eq 1 ] && printf "%s" "$2" | grep -qE "^extra: folder .*/agents/code-builder/notes is outside the component contract$"' _ "${rc}" "${out}"
+check 'and a stray folder in its scripts/' sh -c 'printf "%s" "$1" | grep -qE "^extra: folder .*/code-builder/scripts/tools is outside the component contract$"' _ "${out}"
+check 'every component in the tree keeps the contract: no extra: folder line installed' sh -c '! printf "%s" "$1" | grep -q "^extra: folder"' _ "$(sh "${R}/framework/core/install/install-check.sh" --settings "${S}/settings.json" 2>&1)"
+check 'the contract names scripts/agent/, and no component has one' sh -c 'sh "$1" --help | grep -q "agent/ for scripts agents may run" && [ -z "$(find "$2" -path "*/scripts/agent" -type d)" ]' _ "${R}/framework/core/install/install-check.sh" "${R}"
+rm -rf -- "${twin_builder:?}/notes" "${twin_builder:?}/scripts/tools"
+
+echo "=== every hook step called alone, through its installed link, not its wrapper"
+alone_ok=0
+READ_GUARD="${K}/crucible-events/hooks/pre-tool-use/steps/deny-sealed-reads.sh"
+# alone STEP WHAT COMMAND...: one check of a step called alone; counted.
+alone() {
+	alone_step=$1 alone_what=$2; shift 2
+	alone_before=${pass}
+	check "${alone_step} alone: ${alone_what}" "$@"
+	[ "${pass}" -eq "${alone_before}" ] || alone_ok=$((alone_ok + 1))
+}
+SUB_STEPS="${K}/agent-submission/hooks/subagent-stop/steps"
+sh "${K}/git-worktree/scripts/main/worktree-cut.sh" --effort "${effort}" --repo "${repo}" --name steps-alone --from checkout >/dev/null
+A_TREE=$(tree_of steps-alone)
+scope_job code-builder build "${A_TREE}" sa00000001
+A_REPORT=${REPORT}
+sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" >"${S}/work/alone-job.json"
+mkdir -p "${A_REPORT%/*}"
+cp -- "${F}/reports/8.json" "${A_REPORT}"; chmod 600 "${A_REPORT}"
+printf '// alone\n' >>"${A_TREE}/app/Upload/Client.php"
+alone report-validation.sh 'accepts the report' sh "${SUB_STEPS}/report-validation.sh" --effort "${effort}" --job "${S}/work/alone-job.json"
+alone report-stamp.sh 'a submission file with no stamps leaves the report as it is' sh "${SUB_STEPS}/report-stamp.sh" --effort "${effort}" --job "${S}/work/alone-job.json"
+a_sha=$(sh "${SUB_STEPS}/report-pin.sh" --report "${A_REPORT}")
+alone report-pin.sh 'pins the report and prints its sha256' sh -c '[ "$1" = "$(shasum -a 256 "$2" | cut -d " " -f 1)" ] && [ ! -w "$2" ]' _ "${a_sha}" "${A_REPORT}"
+a_commit=$(sh "${SUB_STEPS}/working-commit.sh" --effort "${effort}" --job "${S}/work/alone-job.json")
+alone working-commit.sh 'commits the tree, carrying the Job trailer' sh -c '[ "$1" = "$(git -C "$2" rev-parse HEAD)" ] && git -C "$2" log -1 --format=%B | grep -qx "Job: $3 job-sa00000001"' _ "${a_commit}" "${A_TREE}" "${JOB}"
+a_event=$(env -u CLAUDE_CODE_SESSION_ID sh "${SUB_STEPS}/submission-event.sh" --effort "${effort}" --job "${S}/work/alone-job.json" --type build.submitted --sha256 "${a_sha}" --commit "${a_commit}")
+alone submission-event.sh 'writes build.submitted, its session stamp empty with no CLAUDE_CODE_SESSION_ID' jq -e '.type == "build.submitted" and .claude_session_id == null' "${a_event}"
+sh "${K}/git-worktree/scripts/main/worktree-cut.sh" --effort "${effort}" --repo "${repo}" --name steps-alone-1 --from checkout >/dev/null
+scope_job code-builder build "$(tree_of steps-alone-1)" sb00000001
+sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" >"${S}/work/alone-job.json"
+printf 'shorten the summary\n' >"${S}/work/alone-lines"
+alone held-stop.sh 'records try 1 and holds' sh -c '[ "$(sh "$1" --effort "$2" --job "$3" --lines "$4")" = held ] && [ "$(sh "$5" --effort "$2" --type job.refused | jq -r "last | .body.try")" = 1 ]' _ "${SUB_STEPS}/held-stop.sh" "${effort}" "${S}/work/alone-job.json" "${S}/work/alone-lines" "${ER}"
+sh "${SUB_STEPS}/fault-ended.sh" --effort "${effort}" --job "${S}/work/alone-job.json" --step check --fault 'called alone'
+alone fault-ended.sh 'ends the job: fault at check' is "$(sh "${ER}" --effort "${effort}" | jq -r 'last | "\(.type) \(.body.reason) \(.body.step)"')" 'job.ended fault check'
+sh "${K}/git-worktree/scripts/main/worktree-cut.sh" --effort "${effort}" --repo "${repo}" --name steps-alone-2 --from checkout >/dev/null
+scope_job code-builder build "$(tree_of steps-alone-2)" sc00000001
+sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" >"${S}/work/alone-job.json"
+sh "${SUB_STEPS}/fault-stalled.sh" --effort "${effort}" --job "${S}/work/alone-job.json" --step commit --fault 'called alone'
+alone fault-stalled.sh 'stalls the job: at commit' is "$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" | jq -r '.state')" stalled
+alone deny-background-bash.sh 'denies a background call' is "$(tool_json Bash '{"command": "make", "run_in_background": true}' | sh "${TOOL_STEPS}/deny-background-bash.sh" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+alone add-bash-timeout.sh 'adds the limit' is "$(tool_json Bash '{"command": "make"}' | BASH_MAX_TIMEOUT_MS=30000 sh "${TOOL_STEPS}/add-bash-timeout.sh" | jq -r '.hookSpecificOutput.updatedInput.timeout')" 30000
+alone write-scope.sh 'denies a write in main'"'"'s repo for a job in a tree' is "$(tool_json Write "$(jq -cn --arg p "${repo}/x.php" '{file_path: $p, content: "x"}')" | jq -c '.agent_id = "wb00000001"' | sh "${TOOL_STEPS}/write-scope.sh" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+EV_STEPS="${K}/crucible-events/hooks/pre-tool-use/steps"
+alone deny-direct-event-write.sh 'denies running the event writer' is "$(jq -cn --arg c "sh ${EW} --effort x" '{tool_name: "Bash", cwd: "/", tool_input: {command: $c}}' | sh "${EV_STEPS}/deny-direct-event-write.sh" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+alone "${READ_GUARD##*/}" 'denies main a read of an internal script' is "$(jq -cn --arg p "${K}/crucible-events/scripts/internal/event-write.sh" '{tool_name: "Read", cwd: "/", tool_input: {file_path: $p}}' | sh "${READ_GUARD}" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+steps_installed=$(find "${R}" -path '*/hooks/*/steps/*.sh' -type f | wc -l | tr -d ' ')
+echo "=== ${alone_ok} of ${steps_installed} hook steps called alone"
+check 'every hook step in the tree was called alone' is "${alone_ok}" "${steps_installed}"
 
 echo "=== the installer: the time limit from agent-submission, the stop hook's timeout"
 check 'settings env.BASH_MAX_TIMEOUT_MS is "2700000"' jq -e '.env.BASH_MAX_TIMEOUT_MS == "2700000"' "${S}/settings.json"

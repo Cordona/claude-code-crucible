@@ -9,16 +9,18 @@
     install-entries.sh: two components share a name, so one link can't hold both: git-commit (<S>/twin-tree/domains/software-development/core/agents/git-commit, <S>/twin-tree/domains/software-development/core/main-thread/git-commit)
   PASS: two components with one name are refused, exit 2
   PASS: the refusal names both folders
-  PASS: core's install-check.sh knows no agent convention
-  PASS: nothing in core names an agent, its kinds or its files
+  PASS: core's install-check.sh knows no agent convention, only the folder contract's names
+  PASS: nothing in core names an agent, its kinds or a submissions file
   PASS: nothing in agent-submission or agent-jobs names an agent or one of its kinds, but build
   PASS: no agent includes another agent's rules, or shared rules
   PASS: agent-jobs knows no agent and no approval
 === every new or changed script answers --help
   PASS: agent-had-job.sh --help
+  PASS: agent-job.sh --help
   PASS: events-view.sh --help
   PASS: job-of.sh --help
   PASS: report-hash.sh --help
+  PASS: submit-agent-work.sh --help
   PASS: fault-ended.sh --help
   PASS: fault-stalled.sh --help
   PASS: held-stop.sh --help
@@ -26,10 +28,11 @@
   PASS: report-stamp.sh --help
   PASS: report-validation.sh --help
   PASS: submission-event.sh --help
-  PASS: submit-agent-work.sh --help
   PASS: working-commit.sh --help
-  PASS: job-agent-bash.sh --help
-  PASS: job-agent-writes.sh --help
+  PASS: job-agent-tools.sh --help
+  PASS: add-bash-timeout.sh --help
+  PASS: deny-background-bash.sh --help
+  PASS: write-scope.sh --help
   PASS: report-check.sh --help
   PASS: recover-submission.sh --help
   PASS: commit-tree.sh --help
@@ -58,7 +61,7 @@ method cp -c
 method cp -c
 method cp -c
 method cp -c
-    effort 20261125T104146-de91-upload-retries; trees: upload retry quote recover sketch lines-changed lines-clean
+    effort 20261125T161151-5f53-upload-retries; trees: upload retry quote recover sketch lines-changed lines-clean
 === 1a: a clean build, iteration 1
     exit 0
   PASS: the stop goes through: no output, exit 0
@@ -70,7 +73,7 @@ method cp -c
   PASS: the empty impact list was pruned before the pin
   PASS: the commit is the tree's new HEAD
   PASS: the working commit is unsigned
-  PASS: the commit message: subject, then Effort, Job, Iteration and the setup, no body
+  PASS: the commit message: subject, the whole summary as the body, then Effort, Job, Iteration and the setup
   PASS: the report is never committed
   PASS: the commit is on the effort's branch
 === 1b: a second build on the same tree, iteration 2
@@ -79,7 +82,7 @@ method cp -c
   PASS: Iteration: 2 in the commit
   PASS: its parent is the first build's commit
 === the iteration is counted once: a wrong stamp on a dispatch is refused
-    event-write.sh: job.dispatched refused: iteration must be 3, the next on <S>/space/efforts/20261125T104146-de91-upload-retries/worktrees/upload
+    event-write.sh: job.dispatched refused: iteration must be 3, the next on <S>/space/efforts/20261125T161151-5f53-upload-retries/worktrees/upload
   PASS: a build stamped iteration 2 when 3 is next is refused
     event-write.sh: job.dispatched refused: report must be reports/build/16.json, after the job's kind and seq
   PASS: a report path without its kind folder is refused
@@ -96,10 +99,10 @@ method cp -c
   PASS: no commit was made
   PASS: commit.txt says none
 === 4a: a refused report shows its repair lines
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build/22.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\nsummary is 60 characters; shorten it to 55 or fewer\ngates[0] is not_run: add a note saying why"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build/22.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\ngates[0] is not_run: add a note saying why"}
     exit 0
   PASS: the stop is held: decision block
-  PASS: the repair lines: the summary
+  PASS: a 60-character summary is no refusal: no length is checked
   PASS: the repair lines: the note
   PASS: the repair lines: the unknown key
   PASS: job.refused try 1, by held-stop.sh, its lines the repair lines
@@ -107,7 +110,7 @@ method cp -c
   PASS: no submission, no commit, no .held file
   PASS: the refused report is not pinned
 === 4b: the second refusal ends the job: job.ended (gave-up)
-    {"systemMessage":"crucible: job 22 (build-php-e1a835) gave up: its report was refused twice. Its tree <S>/space/efforts/20261125T104146-de91-upload-retries/worktrees/retry is kept for the next job."}
+    {"systemMessage":"crucible: job 22 (build-php-e1a835) gave up: its report was refused twice. Its tree <S>/space/efforts/20261125T161151-5f53-upload-retries/worktrees/retry is kept for the next job."}
     exit 0
   PASS: the stop goes through: no block
   PASS: the human is told it gave up
@@ -131,7 +134,7 @@ method cp -c
   PASS: the trailers: Effort, Job, Iteration, Fix-Round, then the setup with Model
   PASS: the pinned report holds the three fixes
 === 6a: a fix that declines a finding the human sent back is refused
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build-fix/34.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nCLEAN-CODE-01 was sent back by the human: it can't be declined again; fix it, or add a cannot blocker"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build-fix/34.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nCLEAN-CODE-01 was sent back by the human: it can't be declined again; fix it, or add a cannot blocker"}
     exit 0
   PASS: held, with the spec's line
   PASS: a refusal: job.refused try 1, no submission, no commit, no .held file
@@ -149,7 +152,7 @@ method cp -c
   PASS: restored byte for byte, the view reads again
 === 8: a stalled job whose working commit was made, its event not: --finish writes it with that commit
   PASS: the working commit was made, and the job is stalled
-    <S>/space/efforts/20261125T104146-de91-upload-retries/events/000041-build.submitted.json
+    <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000041-build.submitted.json
     exit 0
   PASS: finished: exit 0
   PASS: build.submitted, by recover-submission.sh
@@ -192,8 +195,8 @@ method cp -c
   PASS: the report is not pinned, nothing committed
 --- a fault after acceptance, at each step, then the hand-in finished
 method cp -c
-    {"systemMessage":"crucible: job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 56 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 56 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 56 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 56 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-stamp-a: the stop goes through, the human told the report is kept
   PASS: s-stamp-a: job.stalled at step stamp, by fault-stalled.sh, and only that
@@ -204,56 +207,56 @@ method cp -c
   PASS: the job is ended
   PASS: an ended job is not finished: refused
 method cp -c
-    {"systemMessage":"crucible: job 61 (build-php-fb0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 61 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: job 61 (build-php-fb0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 61 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: job 61 (build-php-fb0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 61 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 61 (build-php-fb0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 61 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-stamp-b: the stop goes through, the human told the report is kept
   PASS: s-stamp-b: job.stalled at step stamp, by fault-stalled.sh, and only that
   PASS: s-stamp-b: the job is stalled
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000064-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000064-standin.submitted.json
   PASS: s-stamp-b: --finish writes standin.submitted by recover-submission.sh
   PASS: s-stamp-b: the report is pinned, its sha256 the event's
   PASS: s-stamp-b: its commit is the tree's HEAD, carrying the Job trailer
 method cp -c
-    {"systemMessage":"crucible: job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build/66.json read-only; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 66 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build/66.json read-only; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 66 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build/66.json read-only; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 66 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build/66.json read-only; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 66 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-pin: the stop goes through, the human told the report is kept
   PASS: s-pin: job.stalled at step pin, by fault-stalled.sh, and only that
   PASS: s-pin: the job is stalled
   PASS: not pinned, nothing committed
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000069-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000069-standin.submitted.json
   PASS: s-pin: --finish writes standin.submitted by recover-submission.sh
   PASS: s-pin: the report is pinned, its sha256 the event's
   PASS: s-pin: its commit is the tree's HEAD, carrying the Job trailer
 method cp -c
-    {"systemMessage":"crucible: job 71 (build-php-fm0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-commit/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 71 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: job 71 (build-php-fm0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-commit/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 71 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: job 71 (build-php-fm0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-commit/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 71 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 71 (build-php-fm0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-commit/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 71 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-commit: the stop goes through, the human told the report is kept
   PASS: s-commit: job.stalled at step commit, by fault-stalled.sh, and only that
   PASS: s-commit: the job is stalled
   PASS: the report is pinned, nothing committed
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000074-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000074-standin.submitted.json
   PASS: s-commit: --finish writes standin.submitted by recover-submission.sh
   PASS: s-commit: the report is pinned, its sha256 the event's
   PASS: s-commit: its commit is the tree's HEAD, carrying the Job trailer
 method cp -c
-    {"systemMessage":"crucible: job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 616f1765e9258f583e194260453cd6594a16bb4b carries its Job trailer; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 76 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 616f1765e9258f583e194260453cd6594a16bb4b carries its Job trailer; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 76 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 27033d9277d98e7b0e3634fc5238dbd202ca05aa carries its Job trailer; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 76 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 76 (build-php-fe0000)'s standin.unknown was not written: event-write.sh: no rule for standin.unknown: expected one <component>/events/standin.unknown.jq beside crucible-events; the working commit 27033d9277d98e7b0e3634fc5238dbd202ca05aa carries its Job trailer; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 76 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-event: the stop goes through, the human told the report is kept
   PASS: s-event: job.stalled at step event, by fault-stalled.sh, and only that
   PASS: s-event: the job is stalled
   PASS: the commit was made, and the human is told it carries the Job trailer
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000079-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000079-standin.submitted.json
   PASS: s-event: --finish writes standin.submitted by recover-submission.sh
   PASS: s-event: the report is pinned, its sha256 the event's
   PASS: s-event: its commit is the tree's HEAD, carrying the Job trailer
   PASS: s-event: --finish found the commit by its trailer: no second commit
 method cp -c
-    {"systemMessage":"crucible: another agent's stop held job 81 (build-php-fl0000)'s effort too long; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 81 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: another agent's stop held job 81 (build-php-fl0000)'s effort too long; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 81 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: another agent's stop held job 81 (build-php-fl0000)'s effort too long; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 81 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: another agent's stop held job 81 (build-php-fl0000)'s effort too long; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 81 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-lock: the stop goes through, the human told the report is kept
   PASS: s-lock: job.stalled at step lock, by fault-stalled.sh, and only that
@@ -261,7 +264,7 @@ method cp -c
   PASS: the lock wait was the shortened one, not 120 s
   PASS: the stop lock waits at most 120 seconds, whatever it is told
   PASS: the report is neither stamped nor pinned
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000084-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000084-standin.submitted.json
   PASS: s-lock: --finish writes standin.submitted by recover-submission.sh
   PASS: s-lock: the report is pinned, its sha256 the event's
   PASS: s-lock: its commit is the tree's HEAD, carrying the Job trailer
@@ -274,34 +277,66 @@ method cp -c
   PASS: its fault names the step the hook was at
   PASS: the human is told, and the hook still exits 0
 method cp -c
-    {"systemMessage":"crucible: submit-agent-work.sh ended unexpectedly at its stamp step for job 90 (build-php-fi0000); its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 90 --finish hands it in, --give-up ends the job"}
-    stderr: submit-agent-work.sh: submit-agent-work.sh ended unexpectedly at its stamp step for job 90 (build-php-fi0000); its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T104146-de91-upload-retries --job 90 --finish hands it in, --give-up ends the job
+    {"systemMessage":"crucible: submit-agent-work.sh ended unexpectedly at its stamp step for job 90 (build-php-fi0000); its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 90 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: submit-agent-work.sh ended unexpectedly at its stamp step for job 90 (build-php-fi0000); its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 90 --finish hands it in, --give-up ends the job
     exit 0
   PASS: s-hook-after: the stop goes through, the human told the report is kept
   PASS: s-hook-after: job.stalled at step hook, by fault-stalled.sh, and only that
   PASS: s-hook-after: the job is stalled
   PASS: its fault names the stamp step
   PASS: the stop lock is released
-    finish: <S>/space/efforts/20261125T104146-de91-upload-retries/events/000093-standin.submitted.json
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000093-standin.submitted.json
   PASS: s-hook-after: --finish writes standin.submitted by recover-submission.sh
   PASS: s-hook-after: the report is pinned, its sha256 the event's
   PASS: s-hook-after: its commit is the tree's HEAD, carrying the Job trailer
+--- the working commit's message: the summary cut for the subject, whole in the body
+  PASS: the long summary is 120 characters
+  PASS: a long summary: written
+  PASS: its subject is within 72 characters and ends with …
+  PASS: cut at the last whole word: the subject's text, then a space, starts the summary
+  PASS: then a blank line, the whole summary, a blank line, and the trailers last
+  PASS: a summary that fits: the subject whole, no …, and still the body
+  PASS: one word longer than the room is cut where the room ends, with …: 72 characters
+  PASS: text and summary together are refused, exit 2
+  PASS: a summary still must be one line
+  PASS: main's text path is unchanged: the subject, then the trailers, no body
+  PASS: and text stays strict: a subject over 72 is refused
+method cp -c
+    exit 0
+  PASS: a 120-character summary is accepted and handed in end to end
+  PASS: its commit's subject is the cut one, within 72
+  PASS: its body holds the whole summary
+  PASS: git still reads the trailers, last: Effort, Job, Iteration
+  PASS: the submission event names that commit
+  PASS: the kind and the job read back from the subject and trailers, as recovery reads them
+method cp -c
+    {"systemMessage":"crucible: job 99 (build-php-fh0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-long-finish/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 99 --finish hands it in, --give-up ends the job"}
+    stderr: submit-agent-work.sh: job 99 (build-php-fh0000)'s working commit failed: working-commit.sh: fatal: Unable to create '<S>/repo/.git/worktrees/f-long-finish/index.lock': File exists.; its report is kept: sh <S>/cfg/skills/agent-submission/scripts/main/recover-submission.sh --effort <S>/space/efforts/20261125T161151-5f53-upload-retries --job 99 --finish hands it in, --give-up ends the job
+    exit 0
+  PASS: s-long-summary-stalled: the stop goes through, the human told the report is kept
+  PASS: s-long-summary-stalled: job.stalled at step commit, by fault-stalled.sh, and only that
+  PASS: s-long-summary-stalled: the job is stalled
+    finish: <S>/space/efforts/20261125T161151-5f53-upload-retries/events/000102-standin.submitted.json
+  PASS: s-long-summary-finished: --finish writes standin.submitted by recover-submission.sh
+  PASS: s-long-summary-finished: the report is pinned, its sha256 the event's
+  PASS: s-long-summary-finished: its commit is the tree's HEAD, carrying the Job trailer
+  PASS: recover-submission.sh --finish commits it the same way: the cut subject, the whole body
 --- a refusal that can't be recorded still holds the stop
 method cp -c
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build/95.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\nsummary is 60 characters; shorten it to 55 or fewer\ngates[0] is not_run: add a note saying why","systemMessage":"crucible: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop is held all the same"}
-    stderr: submit-agent-work.sh: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop is held all the same
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build/104.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\ngates[0] is not_run: add a note saying why","systemMessage":"crucible: the refusal of job 104 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop is held all the same"}
+    stderr: submit-agent-work.sh: the refusal of job 104 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop is held all the same
     exit 0
   PASS: a first stop is held: decision block with the repair lines
   PASS: and the human is told it could not be recorded
   PASS: no event was written
-    {"systemMessage":"crucible: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end"}
-    stderr: submit-agent-work.sh: the refusal of job 95 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end
+    {"systemMessage":"crucible: the refusal of job 104 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end"}
+    stderr: submit-agent-work.sh: the refusal of job 104 (build-php-fu0000) could not be recorded: event-write.sh: the events lock stayed held; its stop already followed a block, so it goes through, nothing handed in, and the job stays open for main's turn end
     exit 0
   PASS: the stop that follows that block goes through: no block
   PASS: the human is told it went through, the job left for main's turn end
   PASS: still no event, no .held file, no count: one extra hold, never a loop
   PASS: the job stays assigned
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T104146-de91-upload-retries/reports/build/95.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\nsummary is 60 characters; shorten it to 55 or fewer\ngates[0] is not_run: add a note saying why"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161151-5f53-upload-retries/reports/build/104.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\ngates[0] is not_run: add a note saying why"}
     exit 0
   PASS: with the log writable, a refusal after a block is recorded and held as usual
 --- A0: a job-taking agent with no job is told to the human, after a second look
@@ -316,23 +351,26 @@ method cp -c
     exit 0
   PASS: a type with no submissions folder passes silently
 method cp -c
+    exit 0
   PASS: an assignment that lands while the hook looks again is found: the report handed in
 === the job agent's Bash hook: foreground only, and the time limit set
-  PASS: install-entries.sh registers it on PreToolUse, matcher Bash
-  PASS: job-agent-bash.sh --help
+  PASS: install-entries.sh registers the wrapper job-agent-tools.sh on PreToolUse, matcher Bash|Write|Edit
+  PASS: and registers no step of any hook
+  PASS: job-agent-tools.sh --help
   PASS: a background call is denied
   PASS: its reason says to run it in the foreground
   PASS: a call with no timeout is rewritten to the limit, the rest unchanged
   PASS: the rewrite allows nothing: the call keeps its normal permission checks
   PASS: a tester's call too
-  PASS: an explicit timeout passes unchanged
+  PASS: a timeout the agent gave, 120000, is rewritten to the limit
+  PASS: so is one above the limit, 600000
+  PASS: a call already at the limit passes unchanged
   PASS: main's own call passes, even in the background
   PASS: a non-job agent's call passes
   PASS: with BASH_MAX_TIMEOUT_MS unset the call passes unchanged, said on stderr
   PASS: input that is not JSON passes
 === the job agent's write scope: the tree and the report, or the report only
-  PASS: install-entries.sh registers it on PreToolUse, matcher Write|Edit
-  PASS: job-agent-writes.sh --help
+  PASS: write-scope.sh --help
   PASS: every submissions file of the three agents names its writes: tree for build, build-fix, test and test-fix, report for the rest
 method cp -c
   PASS: scope tree: a Write in the tree is allowed
@@ -361,12 +399,99 @@ method cp -c
   PASS: a submissions file with no writes word: the human told of the install fault
   PASS: and no decision, so nothing is let through by default
   PASS: a Read gets no decision: it isn't matched, and the space is a working directory
-  PASS: its help says reads need no hook
+  PASS: the write scope's help says reads need no hook
   PASS: input that is not JSON gets no decision
   PASS: install-check.sh sees the hook: without it, it is missing
   PASS: the reviewer has Write, not Edit
   PASS: its line says it changes nothing but its report
-  PASS: agent-conduct says a denied command says nothing about the next
+  PASS: agent-conduct holds no denied-command line
+=== the permission hook: a job agent's ask on a compound command
+  PASS: install-entries.sh registers it on PermissionRequest, matcher Bash
+  PASS: the settings hold it under PermissionRequest
+  PASS: deny-compound-commands.sh --help, saying what was probed
+  PASS: a compound command is denied, exactly as worded: cd /private/var/folders/sd/nl3dc6ds1c91b
+  PASS: a compound command is denied, exactly as worded: T=/private/var/folders/sd/nl3dc6ds1c91bg
+  PASS: a compound command is denied, exactly as worded: make || make clean
+  PASS: a compound command is denied, exactly as worded: echo $(git rev-parse HEAD)
+  PASS: a compound command is denied, exactly as worded: echo `date`
+  PASS: a compound command is denied, exactly as worded: FOO=1 make test
+  PASS: a compound command is denied, exactly as worded: make/make install
+  PASS: a quoted ; is a plain command: no answer
+  PASS: sed with a quoted | and ; is a plain command: no answer
+  PASS: a double-quoted && is a plain command: no answer
+  PASS: a pipe is not compound: no answer
+  PASS: a plain command gets no answer
+  PASS: an agent with no open job gets no answer
+  PASS: main's own ask gets no answer
+  PASS: a helper agent, never assigned a job, gets no answer
+=== the PreToolUse wrapper: each step alone, the combine rule
+  PASS: deny-background-bash.sh alone: a background call is denied
+  PASS: deny-background-bash.sh alone: a foreground call gets nothing
+  PASS: add-bash-timeout.sh alone: the limit added, nothing allowed
+  PASS: add-bash-timeout.sh alone: a shorter timeout is rewritten to the limit
+jq: invalid JSON text passed to --argjson
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://jqlang.org
+jq: invalid JSON text passed to --argjson
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://jqlang.org
+  PASS: write-scope.sh alone: a Write in the job's tree is allowed
+  PASS: deny-background-bash.sh alone: input that is not JSON gets nothing, exit 0
+  PASS: add-bash-timeout.sh alone: input that is not JSON gets nothing, exit 0
+  PASS: write-scope.sh alone: input that is not JSON gets nothing, exit 0
+  PASS: the tool wrapper leaves a compound command alone: the permission hook answers its ask
+  PASS: no refuse-denied-forms.sh step is left
+  PASS: a non-job agent's call passes untouched
+--- the combine rule, with stand-in steps under a copy of the wrapper
+  PASS: a deny wins, and is the answer
+  PASS: and no step after the deny runs
+  PASS: a deny wins over an allow before it
+  PASS: an allow with no deny is an allow
+  PASS: each step gets the input as the step before rewrote it
+  PASS: a rewrite alone is given as updatedInput, with no decision
+  PASS: a Bash call never runs write-scope.sh
+  PASS: a step printing no JSON gives no answer, and the rest still run
+  PASS: every step failing: no answer, the wrapper decides nothing itself
+  PASS: a Write runs write-scope.sh only
+  PASS: the agent type is checked once, before any step: another type gets nothing
+--- crucible-events' wrapper: first deny wins, each step alone
+  PASS: install-entries.sh registers guard-framework.sh on Read|Grep|Glob|Bash, and not its steps
+  PASS: guard-framework.sh --help
+  PASS: a direct event write is denied through the wrapper
+  PASS: a Read of an internal script is denied through the wrapper
+  PASS: deny-sealed-reads.sh alone, from steps/, still finds the framework root
+  PASS: an ordinary command gets nothing
+  PASS: another tool gets nothing
+--- a step is never registered
+    extra: PreToolUse hook step sh <S>/cfg/skills/agent-submission/hooks/pre-tool-use/steps/write-scope.sh is registered; register only its wrapper
+  PASS: install-check.sh refuses a registered step: exit 1, an extra: line naming it
+  PASS: install-entries.sh refuses a matchers.json naming a step
+--- the component folder contract
+    extra: folder <S>/twin-tree/domains/software-development/core/agents/code-builder/notes is outside the component contract
+    extra: folder <S>/twin-tree/domains/software-development/core/agents/code-builder/scripts/tools is outside the component contract
+  PASS: install-check.sh refuses a stray folder in a component
+  PASS: and a stray folder in its scripts/
+  PASS: every component in the tree keeps the contract: no extra: folder line installed
+  PASS: the contract names scripts/agent/, and no component has one
+=== every hook step called alone, through its installed link, not its wrapper
+method cp -c
+  PASS: report-validation.sh alone: accepts the report
+  PASS: report-stamp.sh alone: a submission file with no stamps leaves the report as it is
+  PASS: report-pin.sh alone: pins the report and prints its sha256
+  PASS: working-commit.sh alone: commits the tree, carrying the Job trailer
+  PASS: submission-event.sh alone: writes build.submitted, its session stamp empty with no CLAUDE_CODE_SESSION_ID
+method cp -c
+  PASS: held-stop.sh alone: records try 1 and holds
+  PASS: fault-ended.sh alone: ends the job: fault at check
+method cp -c
+  PASS: fault-stalled.sh alone: stalls the job: at commit
+  PASS: deny-background-bash.sh alone: denies a background call
+  PASS: add-bash-timeout.sh alone: adds the limit
+  PASS: write-scope.sh alone: denies a write in main's repo for a job in a tree
+  PASS: deny-direct-event-write.sh alone: denies running the event writer
+  PASS: deny-sealed-reads.sh alone: denies main a read of an internal script
+=== 13 of 13 hook steps called alone
+  PASS: every hook step in the tree was called alone
 === the installer: the time limit from agent-submission, the stop hook's timeout
   PASS: settings env.BASH_MAX_TIMEOUT_MS is "2700000"
   PASS: the number has one home, agent-submission's hooks/env.json
@@ -388,7 +513,7 @@ method cp -c
   PASS: an unknown key
   PASS: an unknown key, on a fix
   PASS: summary missing
-  PASS: summary over 55 characters
+  PASS: a long summary is accepted: no length is checked
   PASS: summary with a type: prefix
   PASS: gates missing
   PASS: gates empty
@@ -400,12 +525,12 @@ method cp -c
   PASS: a fail that isn't known, with no gate_red blocker
   PASS: a gate_red blocker with no fail gate
   PASS: a bad blocker kind
-  PASS: a missing at
+  PASS: a noticed entry with no at is accepted
   PASS: an at past the end of its file
   PASS: an at naming no file
   PASS: an at outside the tree
   PASS: a bad notice kind
-  PASS: text over 200 characters
+  PASS: a long text is accepted: no length is checked
   PASS: text on more than one line
   PASS: blank text
   PASS: the tree unchanged, with no blocker
@@ -425,4 +550,4 @@ method cp -c
   PASS: plumbing at: a range past the end of its file
   PASS: plumbing at: a removed line in a job with no base
 
-=== 301 PASS, 0 FAIL
+=== 397 PASS, 0 FAIL

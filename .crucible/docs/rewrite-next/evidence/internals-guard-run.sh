@@ -1,7 +1,8 @@
-# Evidence run for deny-internals-read.sh, the PreToolUse hook that denies
-# main a path into the framework's internals from another project. The hook
-# runs through its installed link (a scratch skills folder), fed real hook
-# JSON for Read, Grep, Glob and Bash. Scratch HOME, XDG and git config only.
+# Evidence run for deny-sealed-reads.sh, the read guard's step that denies
+# main and agents a path into a component's sealed folders from another
+# project. The step runs through its installed link (a scratch skills
+# folder), fed real hook JSON for Read, Grep, Glob and Bash. Scratch HOME,
+# XDG and git config only.
 R=/Users/cordona/IdeaProjects/cordona/claude-code-crucible/new-rewrite
 ROOT=${R%/*}
 S=/private/tmp/claude-501/-Users-cordona-IdeaProjects-cordona-claude-code-crucible/480d0359-cf0d-4c14-a59e-2a72be5dba4f/scratchpad/internals-guard; rm -rf "$S"; mkdir -p "$S/home" "$S/xdg" "$S/cfg/skills" "$S/bin"
@@ -9,8 +10,8 @@ export HOME="$S/home" XDG_CONFIG_HOME="$S/xdg" GIT_CONFIG_GLOBAL="$S/home/.gitco
 export CRUCIBLE_HOME="$S/space" CLAUDE_CONFIG_DIR="$S/cfg" CLAUDE_CODE_SESSION_ID=sess-ig
 cd /
 K="$S/cfg/skills"
-for d in "$R"/framework/core/main-thread/*/ "$R"/domains/software-development/core/main-thread/*/; do d=${d%/}; ln -s "$d" "$K/${d##*/}"; done
-HOOK=$K/crucible-events/hooks/pre-tool-use/deny-internals-read.sh
+for d in "$R"/framework/core/main-thread/*/ "$R"/domains/software-development/core/main-thread/*/ "$R"/domains/software-development/core/agents/*/; do d=${d%/}; ln -s "$d" "$K/${d##*/}"; done
+HOOK=$K/crucible-events/hooks/pre-tool-use/steps/deny-sealed-reads.sh
 C=$R/framework/core/main-thread
 INTERNAL=$C/crucible-gate/scripts/internal/gate-answer.sh
 LIB=$C/crucible-events/scripts/lib/lock.sh
@@ -60,6 +61,7 @@ bash_cmd() { jq -cn --arg c "$1" '{command: $c, description: "look"}'; }
 echo "=== help"
 sh "$HOOK" --help >"$S/out"; rc=$?
 check "--help exits 0 and prints its usage" [ "$rc" = 0 -a -s "$S/out" ]
+check "--help says it stops a mistake, not a command built to get round it" grep -q "it is not a wall against a" "$S/out"
 sh "$HOOK" -h >"$S/out"; rc=$?
 check "-h exits 0 and prints its usage" [ "$rc" = 0 -a -s "$S/out" ]
 
@@ -147,11 +149,35 @@ check "cwd a link into the repository: allowed" allowed
 call Read "$S" "$(path file_path "$INTERNAL")"
 check "cwd in a scratch folder: denied" denied
 
-echo "=== subagents' calls and other tools pass"
-call Read "$P" "$(path file_path "$INTERNAL")" a6f3079fde04546c5
-check "a Read with agent_id allowed" allowed
-call Bash "$P" "$(bash_cmd "cat '$LIB'")" a6f3079fde04546c5
-check "a Bash with agent_id allowed" allowed
+echo "=== the sealed folders: main and agents alike, and scripts/main/ for agents"
+AG=a6f3079fde04546c5
+A=$R/domains/software-development/core/agents
+SUBMISSIONS=$K/code-builder/submissions/build.json
+call Read "$P" "$(path file_path "$SUBMISSIONS")"
+check "main: submissions/ denied" denied
+for sealed in "$INTERNAL" "$LIB" "$HOOKS" "$EVENTS" "$SUBMISSIONS" "$MAIN"; do
+	call Read "$P" "$(path file_path "$sealed")" "$AG"
+	check "an agent: ${sealed#"$R"/} denied" denied
+done
+call Bash "$P" "$(bash_cmd "cat '$LIB'")" "$AG"
+check "an agent's Bash naming a lib denied" denied
+call Glob "$P" "$(jq -cn --arg p "$C/crucible-effort/scripts/main" '{pattern: "*.sh", path: $p}')" "$AG"
+check "an agent's Glob in scripts/main/ denied" denied
+check "an agent's deny says it needs no framework script" sh -c 'echo "$1" | grep -q "an agent works in its tree and writes its report"' _ "$out"
+call Read "$P" "$(path file_path "$R/domains/software-development/plugins/tech/languages/shell/references/build.md")" "$AG"
+check "an agent reads a plugin's references/" allowed
+call Read "$P" "$(path file_path "$R/domains/software-development/core/plugins/standards/security/SKILL.md")" "$AG"
+check "an agent reads a plugin's SKILL.md" allowed
+call Read "$P" "$(path file_path "$K/code-builder/code-builder.md")" "$AG"
+check "an agent reads an agent definition" allowed
+call Read "$P" "$(path file_path "$K/agent-conduct/SKILL.md")" "$AG"
+check "an agent reads a component's SKILL.md" allowed
+call Read "$ROOT" "$(path file_path "$MAIN")" "$AG"
+check "an agent of a session in the framework's repository: allowed" allowed
+call Glob "$P" "$(jq -cn --arg p "$C/crucible-effort/scripts/main" '{pattern: "*.sh", path: $p}')"
+check "main still globs scripts/main/" allowed
+
+echo "=== other tools pass"
 call Write "$P" "$(jq -cn --arg p "$INTERNAL" '{file_path: $p, content: "x"}')"
 check "another tool allowed" allowed
 call Read "" "$(path file_path "$INTERNAL")"
@@ -172,13 +198,13 @@ check "realpath missing: allowed, a note on stderr" sh -c '[ "$1" = 0 ] && [ -z 
 
 echo "=== the install expects it"
 sh "$R/framework/core/install/install-entries.sh" --json >"$S/needs.json"
-check "install-entries lists it on Read|Grep|Glob|Bash" jq -e '.hooks | any(.event == "PreToolUse" and .matcher == "Read|Grep|Glob|Bash" and (.path | endswith("/deny-internals-read.sh")))' "$S/needs.json"
+check "install-entries lists its wrapper, guard-framework.sh, on Read|Grep|Glob|Bash" jq -e '.hooks | any(.event == "PreToolUse" and .matcher == "Read|Grep|Glob|Bash" and (.path | endswith("/guard-framework.sh")))' "$S/needs.json"
 sh "$R/framework/core/install/install-entries.sh" | sed -n '/^# Settings/,/^$/p' | sed '1d' >"$S/settings.json"
 jq '.hooks.PreToolUse |= map(select(.matcher != "Read|Grep|Glob|Bash"))' "$S/settings.json" >"$S/without.json"
 mkdir -p "$S/check" && cd "$S/check" || exit 1
 sh "$R/framework/core/install/install-check.sh" --settings "$S/without.json" >"$S/out"; rc=$?
 sed 's/^/    /' "$S/out" | show | grep internals
-check "install-check names it missing when its entry is left out" sh -c '[ "$1" = 1 ] && grep -q "missing: PreToolUse hook \[Read|Grep|Glob|Bash\] .*deny-internals-read.sh" "$2"' _ "$rc" "$S/out"
+check "install-check names it missing when its entry is left out" sh -c '[ "$1" = 1 ] && grep -q "missing: PreToolUse hook \[Read|Grep|Glob|Bash\] .*guard-framework.sh" "$2"' _ "$rc" "$S/out"
 cd /
 
 echo

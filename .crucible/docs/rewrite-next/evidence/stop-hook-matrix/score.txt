@@ -144,6 +144,7 @@ PASS: S10-test-plan: audit: every working commit has its event
 PASS: S10-test-plan: audit: every refusal followed by a submission or an end
 PASS: S10-test-plan: audit: no job with more than two refusals
 == S11-build: PASS
+PASS: S11-build: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S11-build: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S11-build: job: then the submission, no job.ended
 PASS: S11-build: job: the pin matches the report, read-only
@@ -156,6 +157,7 @@ PASS: S11-build: audit: every working commit has its event
 PASS: S11-build: audit: every refusal followed by a submission or an end
 PASS: S11-build: audit: no job with more than two refusals
 == S11-review: PASS
+PASS: S11-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S11-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S11-review: job: then the submission, no job.ended
 PASS: S11-review: job: the pin matches the report, read-only
@@ -167,6 +169,7 @@ PASS: S11-review: audit: every working commit has its event
 PASS: S11-review: audit: every refusal followed by a submission or an end
 PASS: S11-review: audit: no job with more than two refusals
 == S11-test: PASS
+PASS: S11-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S11-test: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S11-test: job: then the submission, no job.ended
 PASS: S11-test: job: the pin matches the report, read-only
@@ -229,7 +232,32 @@ PASS: S13-build: audit: every pinned report matches its hash
 PASS: S13-build: audit: every working commit has its event
 PASS: S13-build: audit: every refusal followed by a submission or an end
 PASS: S13-build: audit: no job with more than two refusals
+== S14-build: PASS
+PASS: S14-build: the Write into the repo refused by write-scope, the reason naming the tree
+PASS: S14-build: the file written in the tree instead, in the working commit
+PASS: S14-build: the repo stays clean
+PASS: S14-build: job: the submission, no refusal, no ending
+PASS: S14-build: job: the pin matches the report, read-only
+PASS: S14-build: job: the working commit, with its Job trailer
+PASS: S14-build: audit: every job ended or submitted
+PASS: S14-build: audit: stalled only where the scenario expects it
+PASS: S14-build: audit: every pinned report matches its hash
+PASS: S14-build: audit: every working commit has its event
+PASS: S14-build: audit: every refusal followed by a submission or an end
+PASS: S14-build: audit: no job with more than two refusals
+== S15-review: PASS
+PASS: S15-review: cd before git refused by refuse-cd-git, the reason naming git -C
+PASS: S15-review: rerun as git -C <tree> status, not refused
+PASS: S15-review: job: the submission, no refusal, no ending
+PASS: S15-review: job: the pin matches the report, read-only
+PASS: S15-review: audit: every job ended or submitted
+PASS: S15-review: audit: stalled only where the scenario expects it
+PASS: S15-review: audit: every pinned report matches its hash
+PASS: S15-review: audit: every working commit has its event
+PASS: S15-review: audit: every refusal followed by a submission or an end
+PASS: S15-review: audit: no job with more than two refusals
 == S2-build-fix: PASS
+PASS: S2-build-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-build-fix: job: job.refused try 1 with a line matching /list SHELL-02 in fixes/
 PASS: S2-build-fix: job: then the submission, no job.ended
 PASS: S2-build-fix: job: the pin matches the report, read-only
@@ -241,6 +269,7 @@ PASS: S2-build-fix: audit: every working commit has its event
 PASS: S2-build-fix: audit: every refusal followed by a submission or an end
 PASS: S2-build-fix: audit: no job with more than two refusals
 == S2-build: PASS
+PASS: S2-build: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-build: job: job.refused try 1 with a line matching /summary is [0-9]+ characters; shorten it to 55 or fewer/
 PASS: S2-build: job: then the submission, no job.ended
 PASS: S2-build: job: the pin matches the report, read-only
@@ -252,6 +281,7 @@ PASS: S2-build: audit: every working commit has its event
 PASS: S2-build: audit: every refusal followed by a submission or an end
 PASS: S2-build: audit: no job with more than two refusals
 == S2-external-review: PASS
+PASS: S2-external-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-external-review: job: job.refused try 1 with a line matching /judge thread description/
 PASS: S2-external-review: job: then the submission, no job.ended
 PASS: S2-external-review: job: the pin matches the report, read-only
@@ -262,6 +292,7 @@ PASS: S2-external-review: audit: every working commit has its event
 PASS: S2-external-review: audit: every refusal followed by a submission or an end
 PASS: S2-external-review: audit: no job with more than two refusals
 == S2-foreign-review: PASS
+PASS: S2-foreign-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-foreign-review: job: job.refused try 1 with a line matching /is an edge-case: add proof/
 PASS: S2-foreign-review: job: then the submission, no job.ended
 PASS: S2-foreign-review: job: the pin matches the report, read-only
@@ -272,6 +303,7 @@ PASS: S2-foreign-review: audit: every working commit has its event
 PASS: S2-foreign-review: audit: every refusal followed by a submission or an end
 PASS: S2-foreign-review: audit: no job with more than two refusals
 == S2-re-review: PASS
+PASS: S2-re-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-re-review: job: job.refused try 1 with a line matching /give SHELL-02 a status/
 PASS: S2-re-review: job: then the submission, no job.ended
 PASS: S2-re-review: job: the pin matches the report, read-only
@@ -282,6 +314,7 @@ PASS: S2-re-review: audit: every working commit has its event
 PASS: S2-re-review: audit: every refusal followed by a submission or an end
 PASS: S2-re-review: audit: no job with more than two refusals
 == S2-review: PASS
+PASS: S2-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-review: job: job.refused try 1 with a line matching /is an edge-case: add proof/
 PASS: S2-review: job: then the submission, no job.ended
 PASS: S2-review: job: the pin matches the report, read-only
@@ -292,6 +325,7 @@ PASS: S2-review: audit: every working commit has its event
 PASS: S2-review: audit: every refusal followed by a submission or an end
 PASS: S2-review: audit: no job with more than two refusals
 == S2-test-fix: PASS
+PASS: S2-test-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-test-fix: job: job.refused try 1 with a line matching /list TEST-01 in fixes/
 PASS: S2-test-fix: job: then the submission, no job.ended
 PASS: S2-test-fix: job: the pin matches the report, read-only
@@ -303,6 +337,7 @@ PASS: S2-test-fix: audit: every working commit has its event
 PASS: S2-test-fix: audit: every refusal followed by a submission or an end
 PASS: S2-test-fix: audit: no job with more than two refusals
 == S2-test-plan-challenge: PASS
+PASS: S2-test-plan-challenge: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-test-plan-challenge: job: job.refused try 1 with a line matching /target B-9 is not an ID in the plan/
 PASS: S2-test-plan-challenge: job: then the submission, no job.ended
 PASS: S2-test-plan-challenge: job: the pin matches the report, read-only
@@ -313,6 +348,7 @@ PASS: S2-test-plan-challenge: audit: every working commit has its event
 PASS: S2-test-plan-challenge: audit: every refusal followed by a submission or an end
 PASS: S2-test-plan-challenge: audit: no job with more than two refusals
 == S2-test-plan-update: PASS
+PASS: S2-test-plan-update: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-test-plan-update: job: job.refused try 1 with a line matching /answer C-1: applied or cannot/
 PASS: S2-test-plan-update: job: then the submission, no job.ended
 PASS: S2-test-plan-update: job: the pin matches the report, read-only
@@ -323,6 +359,7 @@ PASS: S2-test-plan-update: audit: every working commit has its event
 PASS: S2-test-plan-update: audit: every refusal followed by a submission or an end
 PASS: S2-test-plan-update: audit: no job with more than two refusals
 == S2-test-plan: PASS
+PASS: S2-test-plan: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-test-plan: job: job.refused try 1 with a line matching /names B-1: say it in words/
 PASS: S2-test-plan: job: then the submission, no job.ended
 PASS: S2-test-plan: job: the pin matches the report, read-only
@@ -333,6 +370,7 @@ PASS: S2-test-plan: audit: every working commit has its event
 PASS: S2-test-plan: audit: every refusal followed by a submission or an end
 PASS: S2-test-plan: audit: no job with more than two refusals
 == S2-test: PASS
+PASS: S2-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S2-test: job: job.refused try 1 with a line matching /list the mutation gate/
 PASS: S2-test: job: then the submission, no job.ended
 PASS: S2-test: job: the pin matches the report, read-only
@@ -344,6 +382,7 @@ PASS: S2-test: audit: every working commit has its event
 PASS: S2-test: audit: every refusal followed by a submission or an end
 PASS: S2-test: audit: no job with more than two refusals
 == S3-build-fix: PASS
+PASS: S3-build-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-build-fix: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/build-fix/7.json$/
 PASS: S3-build-fix: job: then the submission, no job.ended
 PASS: S3-build-fix: job: the pin matches the report, read-only
@@ -355,6 +394,7 @@ PASS: S3-build-fix: audit: every working commit has its event
 PASS: S3-build-fix: audit: every refusal followed by a submission or an end
 PASS: S3-build-fix: audit: no job with more than two refusals
 == S3-build: PASS
+PASS: S3-build: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-build: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/build/4.json$/
 PASS: S3-build: job: then the submission, no job.ended
 PASS: S3-build: job: the pin matches the report, read-only
@@ -366,6 +406,7 @@ PASS: S3-build: audit: every working commit has its event
 PASS: S3-build: audit: every refusal followed by a submission or an end
 PASS: S3-build: audit: no job with more than two refusals
 == S3-external-review: PASS
+PASS: S3-external-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-external-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/external-review/7.json$/
 PASS: S3-external-review: job: then the submission, no job.ended
 PASS: S3-external-review: job: the pin matches the report, read-only
@@ -376,6 +417,7 @@ PASS: S3-external-review: audit: every working commit has its event
 PASS: S3-external-review: audit: every refusal followed by a submission or an end
 PASS: S3-external-review: audit: no job with more than two refusals
 == S3-foreign-review: PASS
+PASS: S3-foreign-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-foreign-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/foreign-review/4.json$/
 PASS: S3-foreign-review: job: then the submission, no job.ended
 PASS: S3-foreign-review: job: the pin matches the report, read-only
@@ -386,6 +428,7 @@ PASS: S3-foreign-review: audit: every working commit has its event
 PASS: S3-foreign-review: audit: every refusal followed by a submission or an end
 PASS: S3-foreign-review: audit: no job with more than two refusals
 == S3-review: PASS
+PASS: S3-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/review/7.json$/
 PASS: S3-review: job: then the submission, no job.ended
 PASS: S3-review: job: the pin matches the report, read-only
@@ -396,6 +439,7 @@ PASS: S3-review: audit: every working commit has its event
 PASS: S3-review: audit: every refusal followed by a submission or an end
 PASS: S3-review: audit: no job with more than two refusals
 == S3-test-fix: PASS
+PASS: S3-test-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-test-fix: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/test-fix/11.json$/
 PASS: S3-test-fix: job: then the submission, no job.ended
 PASS: S3-test-fix: job: the pin matches the report, read-only
@@ -407,6 +451,7 @@ PASS: S3-test-fix: audit: every working commit has its event
 PASS: S3-test-fix: audit: every refusal followed by a submission or an end
 PASS: S3-test-fix: audit: no job with more than two refusals
 == S3-test-plan-challenge: PASS
+PASS: S3-test-plan-challenge: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-test-plan-challenge: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/test-plan-challenge/11.json$/
 PASS: S3-test-plan-challenge: job: then the submission, no job.ended
 PASS: S3-test-plan-challenge: job: the pin matches the report, read-only
@@ -417,6 +462,7 @@ PASS: S3-test-plan-challenge: audit: every working commit has its event
 PASS: S3-test-plan-challenge: audit: every refusal followed by a submission or an end
 PASS: S3-test-plan-challenge: audit: no job with more than two refusals
 == S3-test-plan-update: PASS
+PASS: S3-test-plan-update: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-test-plan-update: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/test-plan-update/14.json$/
 PASS: S3-test-plan-update: job: then the submission, no job.ended
 PASS: S3-test-plan-update: job: the pin matches the report, read-only
@@ -427,6 +473,7 @@ PASS: S3-test-plan-update: audit: every working commit has its event
 PASS: S3-test-plan-update: audit: every refusal followed by a submission or an end
 PASS: S3-test-plan-update: audit: no job with more than two refusals
 == S3-test-plan: PASS
+PASS: S3-test-plan: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-test-plan: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/test-plan/7.json$/
 PASS: S3-test-plan: job: then the submission, no job.ended
 PASS: S3-test-plan: job: the pin matches the report, read-only
@@ -437,6 +484,7 @@ PASS: S3-test-plan: audit: every working commit has its event
 PASS: S3-test-plan: audit: every refusal followed by a submission or an end
 PASS: S3-test-plan: audit: no job with more than two refusals
 == S3-test: PASS
+PASS: S3-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S3-test: job: job.refused try 1 with a line matching /^write your report as one JSON object to /.*/reports/test/11.json$/
 PASS: S3-test: job: then the submission, no job.ended
 PASS: S3-test: job: the pin matches the report, read-only
@@ -642,6 +690,7 @@ PASS: S5b-test: audit: every working commit has its event
 PASS: S5b-test: audit: every refusal followed by a submission or an end
 PASS: S5b-test: audit: no job with more than two refusals
 == S6-build-fix: PASS
+PASS: S6-build-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-build-fix: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-build-fix: job: then the submission, no job.ended
 PASS: S6-build-fix: job: the pin matches the report, read-only
@@ -653,6 +702,7 @@ PASS: S6-build-fix: audit: every working commit has its event
 PASS: S6-build-fix: audit: every refusal followed by a submission or an end
 PASS: S6-build-fix: audit: no job with more than two refusals
 == S6-build: PASS
+PASS: S6-build: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-build: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-build: job: then the submission, no job.ended
 PASS: S6-build: job: the pin matches the report, read-only
@@ -664,6 +714,7 @@ PASS: S6-build: audit: every working commit has its event
 PASS: S6-build: audit: every refusal followed by a submission or an end
 PASS: S6-build: audit: no job with more than two refusals
 == S6-external-review: PASS
+PASS: S6-external-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-external-review: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-external-review: job: then the submission, no job.ended
 PASS: S6-external-review: job: the pin matches the report, read-only
@@ -674,6 +725,7 @@ PASS: S6-external-review: audit: every working commit has its event
 PASS: S6-external-review: audit: every refusal followed by a submission or an end
 PASS: S6-external-review: audit: no job with more than two refusals
 == S6-foreign-review: PASS
+PASS: S6-foreign-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-foreign-review: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-foreign-review: job: then the submission, no job.ended
 PASS: S6-foreign-review: job: the pin matches the report, read-only
@@ -684,6 +736,7 @@ PASS: S6-foreign-review: audit: every working commit has its event
 PASS: S6-foreign-review: audit: every refusal followed by a submission or an end
 PASS: S6-foreign-review: audit: no job with more than two refusals
 == S6-review: PASS
+PASS: S6-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-review: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-review: job: then the submission, no job.ended
 PASS: S6-review: job: the pin matches the report, read-only
@@ -694,6 +747,7 @@ PASS: S6-review: audit: every working commit has its event
 PASS: S6-review: audit: every refusal followed by a submission or an end
 PASS: S6-review: audit: no job with more than two refusals
 == S6-test-fix: PASS
+PASS: S6-test-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-test-fix: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-test-fix: job: then the submission, no job.ended
 PASS: S6-test-fix: job: the pin matches the report, read-only
@@ -705,6 +759,7 @@ PASS: S6-test-fix: audit: every working commit has its event
 PASS: S6-test-fix: audit: every refusal followed by a submission or an end
 PASS: S6-test-fix: audit: no job with more than two refusals
 == S6-test-plan-challenge: PASS
+PASS: S6-test-plan-challenge: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-test-plan-challenge: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-test-plan-challenge: job: then the submission, no job.ended
 PASS: S6-test-plan-challenge: job: the pin matches the report, read-only
@@ -715,6 +770,7 @@ PASS: S6-test-plan-challenge: audit: every working commit has its event
 PASS: S6-test-plan-challenge: audit: every refusal followed by a submission or an end
 PASS: S6-test-plan-challenge: audit: no job with more than two refusals
 == S6-test-plan-update: PASS
+PASS: S6-test-plan-update: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-test-plan-update: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-test-plan-update: job: then the submission, no job.ended
 PASS: S6-test-plan-update: job: the pin matches the report, read-only
@@ -725,6 +781,7 @@ PASS: S6-test-plan-update: audit: every working commit has its event
 PASS: S6-test-plan-update: audit: every refusal followed by a submission or an end
 PASS: S6-test-plan-update: audit: no job with more than two refusals
 == S6-test-plan: PASS
+PASS: S6-test-plan: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-test-plan: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-test-plan: job: then the submission, no job.ended
 PASS: S6-test-plan: job: the pin matches the report, read-only
@@ -735,6 +792,7 @@ PASS: S6-test-plan: audit: every working commit has its event
 PASS: S6-test-plan: audit: every refusal followed by a submission or an end
 PASS: S6-test-plan: audit: no job with more than two refusals
 == S6-test: PASS
+PASS: S6-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S6-test: job: job.refused try 1 with a line matching /is past the end of the file/
 PASS: S6-test: job: then the submission, no job.ended
 PASS: S6-test: job: the pin matches the report, read-only
@@ -746,6 +804,7 @@ PASS: S6-test: audit: every working commit has its event
 PASS: S6-test: audit: every refusal followed by a submission or an end
 PASS: S6-test: audit: no job with more than two refusals
 == S7-review: PASS
+PASS: S7-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S7-review: job: job.refused try 1 with a line matching /you changed files: undo your changes/
 PASS: S7-review: job: then the submission, no job.ended
 PASS: S7-review: job: the pin matches the report, read-only
@@ -757,6 +816,7 @@ PASS: S7-review: audit: every working commit has its event
 PASS: S7-review: audit: every refusal followed by a submission or an end
 PASS: S7-review: audit: no job with more than two refusals
 == S7-test-plan: PASS
+PASS: S7-test-plan: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S7-test-plan: job: job.refused try 1 with a line matching /undo the change to a.sh/
 PASS: S7-test-plan: job: then the submission, no job.ended
 PASS: S7-test-plan: job: the pin matches the report, read-only
@@ -768,6 +828,7 @@ PASS: S7-test-plan: audit: every working commit has its event
 PASS: S7-test-plan: audit: every refusal followed by a submission or an end
 PASS: S7-test-plan: audit: no job with more than two refusals
 == S7-test: PASS
+PASS: S7-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S7-test: job: job.refused try 1 with a line matching /you changed src/upload/Client.kt, which isn.t in the approved plan: undo it/
 PASS: S7-test: job: then the submission, no job.ended
 PASS: S7-test: job: the pin matches the report, read-only
@@ -780,6 +841,7 @@ PASS: S7-test: audit: every working commit has its event
 PASS: S7-test: audit: every refusal followed by a submission or an end
 PASS: S7-test: audit: no job with more than two refusals
 == S8-build-fix: PASS
+PASS: S8-build-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-build-fix: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-build-fix: job: then the submission, no job.ended
 PASS: S8-build-fix: job: the pin matches the report, read-only
@@ -791,6 +853,7 @@ PASS: S8-build-fix: audit: every working commit has its event
 PASS: S8-build-fix: audit: every refusal followed by a submission or an end
 PASS: S8-build-fix: audit: no job with more than two refusals
 == S8-build: PASS
+PASS: S8-build: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-build: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-build: job: then the submission, no job.ended
 PASS: S8-build: job: the pin matches the report, read-only
@@ -802,6 +865,7 @@ PASS: S8-build: audit: every working commit has its event
 PASS: S8-build: audit: every refusal followed by a submission or an end
 PASS: S8-build: audit: no job with more than two refusals
 == S8-external-review: PASS
+PASS: S8-external-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-external-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-external-review: job: then the submission, no job.ended
 PASS: S8-external-review: job: the pin matches the report, read-only
@@ -812,6 +876,7 @@ PASS: S8-external-review: audit: every working commit has its event
 PASS: S8-external-review: audit: every refusal followed by a submission or an end
 PASS: S8-external-review: audit: no job with more than two refusals
 == S8-foreign-review: PASS
+PASS: S8-foreign-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-foreign-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-foreign-review: job: then the submission, no job.ended
 PASS: S8-foreign-review: job: the pin matches the report, read-only
@@ -822,6 +887,7 @@ PASS: S8-foreign-review: audit: every working commit has its event
 PASS: S8-foreign-review: audit: every refusal followed by a submission or an end
 PASS: S8-foreign-review: audit: no job with more than two refusals
 == S8-review: PASS
+PASS: S8-review: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-review: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-review: job: then the submission, no job.ended
 PASS: S8-review: job: the pin matches the report, read-only
@@ -832,6 +898,7 @@ PASS: S8-review: audit: every working commit has its event
 PASS: S8-review: audit: every refusal followed by a submission or an end
 PASS: S8-review: audit: no job with more than two refusals
 == S8-test-fix: PASS
+PASS: S8-test-fix: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-test-fix: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-test-fix: job: then the submission, no job.ended
 PASS: S8-test-fix: job: the pin matches the report, read-only
@@ -843,6 +910,7 @@ PASS: S8-test-fix: audit: every working commit has its event
 PASS: S8-test-fix: audit: every refusal followed by a submission or an end
 PASS: S8-test-fix: audit: no job with more than two refusals
 == S8-test-plan-challenge: PASS
+PASS: S8-test-plan-challenge: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-test-plan-challenge: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-test-plan-challenge: job: then the submission, no job.ended
 PASS: S8-test-plan-challenge: job: the pin matches the report, read-only
@@ -853,6 +921,7 @@ PASS: S8-test-plan-challenge: audit: every working commit has its event
 PASS: S8-test-plan-challenge: audit: every refusal followed by a submission or an end
 PASS: S8-test-plan-challenge: audit: no job with more than two refusals
 == S8-test-plan-update: PASS
+PASS: S8-test-plan-update: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-test-plan-update: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-test-plan-update: job: then the submission, no job.ended
 PASS: S8-test-plan-update: job: the pin matches the report, read-only
@@ -863,6 +932,7 @@ PASS: S8-test-plan-update: audit: every working commit has its event
 PASS: S8-test-plan-update: audit: every refusal followed by a submission or an end
 PASS: S8-test-plan-update: audit: no job with more than two refusals
 == S8-test-plan: PASS
+PASS: S8-test-plan: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-test-plan: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-test-plan: job: then the submission, no job.ended
 PASS: S8-test-plan: job: the pin matches the report, read-only
@@ -873,6 +943,7 @@ PASS: S8-test-plan: audit: every working commit has its event
 PASS: S8-test-plan: audit: every refusal followed by a submission or an end
 PASS: S8-test-plan: audit: no job with more than two refusals
 == S8-test: PASS
+PASS: S8-test: job: no message from main to the agent between the refusal and the submission (R3)
 PASS: S8-test: job: job.refused try 1 with a line matching /^write your report as one JSON object to /
 PASS: S8-test: job: then the submission, no job.ended
 PASS: S8-test: job: the pin matches the report, read-only
@@ -888,6 +959,7 @@ PASS: S9-review: twelve review jobs
 PASS: S9-review: each refused once, try 1, its own repair line
 PASS: S9-review: each block reached its own agent, naming its own report
 PASS: S9-review: twelve distinct agents
+PASS: S9-review: no message from main to any of them between its refusal and its submission (R3)
 PASS: S9-review: twelve submissions, each pinned
 PASS: S9-review: unique stamped IDs: 24 of 24 across the twelve reports
 PASS: S9-review: audit: every job ended or submitted
@@ -920,6 +992,8 @@ S12-build PASS 0
 S12-review PASS 0
 S12-test-plan PASS 0
 S13-build PASS 0
+S14-build PASS 0
+S15-review PASS 0
 S2-build-fix PASS 0
 S2-build PASS 0
 S2-external-review PASS 0
@@ -982,5 +1056,13 @@ S8-test-plan-update PASS 0
 S8-test-plan PASS 0
 S8-test PASS 0
 S9-review PASS 0
+PASS: the framework did not change during the run (400b15f1c3b71113ec2385aa94a22a56bff886e93cf163d0b64905989a7e6af0)
 
-814 checks PASS, 0 FAIL; 84 cells, 84 green, 0 red
+884 checks PASS, 0 FAIL; 86 cells, 86 green, 0 red
+
+== hook cost (ms in the hook, per job-agent call, from the saved calls)
+Bash: n=35 median=141 p90=422 max=460
+Edit: n=17 median=791 p90=1511 max=2141
+Write: n=192 median=692 p90=1460 max=2217
+guard Bash: n=35 median=102 p90=345 max=377
+guard Read: n=125 median=98 p90=268 max=383

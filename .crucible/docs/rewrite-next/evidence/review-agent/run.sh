@@ -38,7 +38,7 @@ EW="${K}/crucible-events/scripts/internal/event-write.sh"
 ER="${K}/crucible-events/scripts/internal/events-read.sh"
 JOB_OF="${K}/agent-jobs/scripts/internal/job-of.sh"
 HOOK="${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
-CHECK="${K}/agent-submission/hooks/subagent-stop/report-validation.sh"
+CHECK="${K}/agent-submission/hooks/subagent-stop/steps/report-validation.sh"
 CR="${R}/domains/software-development/core/agents/code-reviewer"
 
 echo "=== install: install-entries.sh's own links and settings, then install-check.sh"
@@ -57,7 +57,7 @@ check 'no agent includes another agent'"'"'s rules: every reviewer include is it
 check 'the reviewer names no other agent'"'"'s component' sh -c '! grep -rqE "code-(builder|tester)" "$1"' _ "${CR}"
 check 'nothing in agent-submission or agent-jobs names a reviewer kind, or any agent' sh -c '! grep -rqE "code-(builder|tester|reviewer)|foreign-review|external-review|test-plan-challenge|\"review\"" "$1/agents/agent-submission" "$1/main-thread/agent-jobs"' _ "${R}/domains/software-development/core"
 check 'the stop hook has its own lock, not the events lock' sh -c 'grep -q "stops/.lock" "$1" && ! grep -q "events/.lock" "$1"' _ "${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
-for script in "${K}"/code-reviewer/scripts/internal/*.sh "${K}"/agent-submission/hooks/subagent-stop/report-stamp.sh; do
+for script in "${K}"/code-reviewer/scripts/internal/*.sh "${K}"/agent-submission/hooks/subagent-stop/steps/report-stamp.sh; do
 	out=$(sh "${script}" --help 2>&1); rc=$?
 	check "${script##*/} --help" sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
 done
@@ -189,7 +189,7 @@ r=$(reason)
 check 'held' held
 check 'the edge-case with no proof' has "${r}" 'findings[0] is an edge-case: add proof, the line that makes it reachable'
 check 'the at outside the cover' has "${r}" 'findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof'
-check 'the 240-character claim' has "${r}" 'findings[2].claim is 240 characters; shorten it to 200'
+check 'a 240-character claim is no refusal: no length is checked' sh -c '! printf "%s" "$1" | grep -q "findings\[2\]"' _ "${r}"
 check 'only job.refused try 1: no submission' sh -c '[ "$(jq -r "[.[] | .type + \" \" + (.body.try | tostring)] | join(\",\")" "$1")" = "job.refused 1" ]' _ "${E}/3-refused-review/event.json"
 
 echo "=== 4: a reviewer that left changes in the tree"
@@ -366,7 +366,7 @@ done
 
 echo "=== stamping a stamped report changes nothing, so finishing a stalled hand-in may stamp again"
 check 'code-reviewer is the one agent with stamp rules, so its cases below cover every agent that has them' is "$(grep -l '"stamps"' "${K}"/*/submissions/*.json | sed 's|/submissions/.*||;s|.*/||' | sort -u | tr '\n' ' ')" 'code-reviewer '
-check 'the stamp step'"'"'s help says stamp rules must leave a stamped report as it is' has "$(sh "${K}/agent-submission/hooks/subagent-stop/report-stamp.sh" --help)" 'Stamp rules must leave a report'
+check 'the stamp step'"'"'s help says stamp rules must leave a stamped report as it is' has "$(sh "${K}/agent-submission/hooks/subagent-stop/steps/report-stamp.sh" --help)" 'Stamp rules must leave a report'
 for type in review.submitted foreign-review.submitted test-plan.challenged external-review.submitted; do
 	sub=$(sh "${ER}" --effort "${effort}" --type "${type}" | jq -c '[.[] | select(.by == "submission-event.sh")] | last')
 	seq=$(printf '%s' "${sub}" | jq -r '.body.job')
@@ -375,7 +375,7 @@ for type in review.submitted foreign-review.submitted test-plan.challenged exter
 	again="${effort}/reports/again/${seq}.json"
 	cp -- "${effort}/$(printf '%s' "${sub}" | jq -r '.body.report.path')" "${again}"
 	chmod 600 "${again}"
-	sh "${K}/agent-submission/hooks/subagent-stop/report-stamp.sh" --effort "${effort}" --job "${S}/work/again-job.json" 2>"${S}/work/again.err"; rc=$?
+	sh "${K}/agent-submission/hooks/subagent-stop/steps/report-stamp.sh" --effort "${effort}" --job "${S}/work/again-job.json" 2>"${S}/work/again.err"; rc=$?
 	check "${type}: its pinned report stamped again is byte for byte the same" sh -c '[ "$1" -eq 0 ] && cmp -s "$2" "$3"' _ "${rc}" "${again}" "${effort}/$(printf '%s' "${sub}" | jq -r '.body.report.path')"
 	rm -f -- "${again}"
 done

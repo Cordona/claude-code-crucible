@@ -78,6 +78,11 @@ By Dev Beta, for itself after a compaction. Everything is uncommitted. Never com
    - **What a review covers:** the job names it (base..head: one build or test commit for a hot review, a range of unreviewed commits for a cold one); wider only when the job says so. Uncommitted work (the hooks-dashboard repo: unreviewed commits, pushed and not, plus uncommitted changes) can't be reviewed by a treeless reviewer until main snapshots it into a commit.
    - **Refuse a new job on a tree that isn't clean** (needed twice now): a dead session's open job, and S11, where a parked agent wakes after acceptance and may edit the tree with no job (`stop-hook-step3-fable.md`).
    - **One job, one tree, one repo** (the owner, 2026-11-25): an effort spanning repos gets a tree per repo, cut by main, and jobs per tree; a job agent writes only in its tree and its report (the write-scope hook). **Reading other repos:** P16 showed even reads outside the working folders ask, so the dispatch adds the repos a job may read as that job's extra working folders.
+   - **From the final verification** (`evidence/final/RESULT.md`):
+     - **Compound commands:** they're mostly `cd <tree> && …`; starting agents in their tree would remove them.
+     - **The `manual` gate:** often `not_run`, where the agent may not run the changed script or make a temp folder. That's the allow-list's matter.
+     - **Print mode:** it cancels a background agent 10 min after main's last turn, so who ends a job nobody will finish (the dead-session case).
+     - **The write hook:** 280 ms in real runs, up to 920 ms in the matrix under load. Not a blocker.
    - **How the job reaches the agent:** in words ("fix these findings"), so the prose needs no kind names, or naming the kind once in the opening. Fable (prose-v3-fable.md): the prompt must state the task in the definition's own words (the tester picks its report's shape by it); keep one task sentence per kind in the agent's own folder and let the dispatch only place it, so the dispatch never holds an agent's vocabulary.
 
 ## Next step (only on the owner's go)

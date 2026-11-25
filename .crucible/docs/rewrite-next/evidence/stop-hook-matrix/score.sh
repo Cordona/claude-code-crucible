@@ -30,6 +30,8 @@ facts() {
 	awk '
 		/^== tree / { if (sha != "") flush(); tree = substr($0, 9); mode = "log"; next }
 		/^== status$/ { if (sha != "") flush(); mode = "status"; next }
+		/^== repo / { if (sha != "") flush(); mode = "repo"; next }
+		mode == "repo" && NF { printf "R\t-\t%s\n", $0; next }
 		mode == "log" && /^commit [0-9a-f]{40}$/ { if (sha != "") flush(); sha = $2; job = ""; files = ""; body = 1; next }
 		mode == "log" && body && /^Job: / { job = $2; next }
 		mode == "log" && body && /^\.$/ { body = 0; next }
@@ -39,7 +41,8 @@ facts() {
 		END { if (sha != "") flush() }' "${d}/git.txt" >"${work}/git"
 	jq -R -s 'split("\n") | map(select(length > 0) | split("\t"))
 		| {commits: [.[] | select(.[0] == "C") | {tree: .[1], sha: .[2], job: (.[3] | tonumber? // null), files: .[4:]}],
-		   status: [.[] | select(.[0] == "S") | {tree: .[1], line: .[2]}]}' "${work}/git" >"${work}/git.json"
+		   status: [.[] | select(.[0] == "S") | {tree: .[1], line: .[2]}],
+		   repo: [.[] | select(.[0] == "R") | .[2]]}' "${work}/git" >"${work}/git.json"
 	jq -R -s 'split("\n") | map(select(length > 0) | split(" ") | {tag: .[0], seq: (.[1] | tonumber), type: .[2]})' "${d}/jobs" >"${work}/jobs.json"
 	ls "${d}"/hooks/*.json >/dev/null 2>&1 && jq -s '.' "${d}"/hooks/*.json >"${work}/hooks.json" || echo '[]' >"${work}/hooks.json"
 	jq -n --arg cell "$1" --arg sc "$2" --arg kind "$3" --slurpfile events "${d}/events.json" \
@@ -84,9 +87,18 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
   def after($a; $b): $a.seq > $b.seq;
   # One submission after one refusal with lines matching $re; pinned, and
   # committed when the kind commits.
+  # R3: nothing from main to the agent (a SendMessage to it) between the
+  # first refusal of the job and its submission.
+  def main_silent($seq):
+	agent($seq) as $a | refused($seq) as $r | subs($seq) as $s
+	| ($r | length) > 0 and ($s | length) == 1
+	  and ([$f.hooks[] | select(.tag == "PreToolUse-assign-job" and .input.tool_name == "SendMessage"
+		and (.input.tool_input.to // .input.tool_input.recipient) == $a
+		and .t_start >= ($r[0].at | epoch) and .t_start <= (($s[0].at | epoch) + 1))] | length) == 0;
   def refused_once_then_sub($seq; $re; $k; $label):
 	refused($seq) as $r | subs($seq) as $s
-	| chk(($r | length) == 1 and $r[0].body.try == 1 and lines_have($r[0]; $re); "\($label): job.refused try 1 with a line matching /\($re)/"),
+	| chk(main_silent($seq); "\($label): no message from main to the agent between the refusal and the submission (R3)"),
+	  chk(($r | length) == 1 and $r[0].body.try == 1 and lines_have($r[0]; $re); "\($label): job.refused try 1 with a line matching /\($re)/"),
 	  chk(($s | length) == 1 and (ended($seq) | length) == 0 and ($r | length) == 1 and after($s[0]; $r[0]); "\($label): then the submission, no job.ended"),
 	  chk(($s | length) == 1 and pin_ok($s[0]); "\($label): the pin matches the report, read-only"),
 	  (if ($k | commits) then chk(($s | length) == 1 and commit_ok($s[0]; $seq); "\($label): the working commit, with its Job trailer") else empty end);
@@ -145,6 +157,7 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
 	  chk(all($all[]; . as $j | refused($j)[0].body.agent == agent($j)
 		and any(hooks_of(agent($j); "SubagentStop-submit-agent-work")[]; (.stdout | type) == "object" and .stdout.decision == "block" and (.stdout.reason | contains(report_file($j))))); "each block reached its own agent, naming its own report"),
 	  chk(([$all[] | agent(.)] | unique | length) == 12; "twelve distinct agents"),
+	  chk(all($all[]; main_silent(.)); "no message from main to any of them between its refusal and its submission (R3)"),
 	  chk(all($all[]; . as $j | (subs($j) | length) == 1 and after(subs($j)[0]; refused($j)[0]) and pin_ok(subs($j)[0])); "twelve submissions, each pinned"),
 	  ([$all[] | report_file(.) as $p | $f.reports[] | select(.path == $p) | .json.findings // [] | .[] | .id] ) as $ids
 	  | chk(($ids | length) == 24 and ($ids | unique | length) == 24; "unique stamped IDs: \($ids | unique | length) of \($ids | length) across the twelve reports")
@@ -155,7 +168,7 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
 	  chk(([$ev[] | select(.type | startswith("job."))] | length) == 0; "no job event")
   elif $sc == "S11" then
 	refused_once_then_sub($tags.j1; "^write your report as one JSON object to "; $k; "job"),
-	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-bash")[]; (.input.tool_input.command | test("act.sh sleep 45")) and .stdout.hookSpecificOutput.updatedInput.timeout == 30000); "the sleep got timeout 30000 from the Bash hook, so it outlived it")
+	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-tools")[]; ((.input.tool_input.command // "") | test("tests/slow.sh 45")) and .stdout.hookSpecificOutput.updatedInput.timeout == 30000); "the sleep got timeout 30000 from the Bash hook, so it outlived it")
   elif $sc == "S12" then
 	agent($tags.a) as $A | agent($tags.b) as $B | agent($tags.c1) as $C
 	| chk((ended($tags.a) | length) == 1 and ended($tags.a)[0].body.reason == "no-stop" and ended($tags.a)[0].by == "end-gone-jobs.sh" and (subs($tags.a) | length) == 0; "the killed agent: job.ended no-stop, by end-gone-jobs.sh"),
@@ -165,9 +178,22 @@ def chk($ok; $what): {ok: ($ok == true), what: $what};
 	  chk(assigned_at($tags.c2) != null and any($f.hooks[]; .tag == "Stop-end-gone-jobs" and ((.input.background_tasks // []) | any(.id == $C)) and (.t_start + 1) >= (assigned_at($tags.c2) | epoch)); "a turn end while the hot agent ran its second job"),
 	  chk((ended($tags.c2) | length) == 0 and (subs($tags.c2) | length) == 1; "the hot agent: untouched, then its submission")
   elif $sc == "S13" then
-	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-bash")[]; .input.tool_input.run_in_background == true and .stdout.hookSpecificOutput.permissionDecision == "deny"); "run_in_background denied by the Bash hook"),
-	chk(any($f.hooks[]; .tag == "PreToolUse-job-agent-bash" and .input.agent_id == agent($tags.j1) and (.input.tool_input.command | test("act.sh edit")) and (.input.tool_input.run_in_background != true)); "the command run again in the foreground"),
+	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-tools")[]; .input.tool_input.run_in_background == true and .stdout.hookSpecificOutput.permissionDecision == "deny"); "run_in_background denied by the Bash hook"),
+	chk(any($f.hooks[]; .tag == "PreToolUse-job-agent-tools" and .input.agent_id == agent($tags.j1) and ((.input.tool_input.command // "") | test("tests/run.sh")) and (.input.tool_input.run_in_background != true)); "the command run again in the foreground"),
 	accepted_first($tags.j1; $k; "job")
+  elif $sc == "S14" then
+	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-tools")[]; .input.tool_name == "Write" and (.input.tool_input.file_path | endswith("/notes.txt"))
+		and ((.input.tool_input.file_path | contains("/worktrees/")) | not) and .stdout.hookSpecificOutput.permissionDecision == "deny"
+		and (.stdout.hookSpecificOutput.permissionDecisionReason | test("^Write only in .*/worktrees/"))); "the Write into the repo refused by write-scope, the reason naming the tree"),
+	  chk(any($f.git.commits[]; .job == $tags.j1 and any(.files[]; . == "notes.txt")); "the file written in the tree instead, in the working commit"),
+	  chk(($f.git.repo | length) == 0; "the repo stays clean"),
+	  accepted_first($tags.j1; $k; "job")
+  elif $sc == "S15" then
+	chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-tools")[]; ((.input.tool_input.command // "") | test("^cd .* && git status$"))
+		and .stdout.hookSpecificOutput.permissionDecision == "deny" and (.stdout.hookSpecificOutput.permissionDecisionReason | test("git -C"))); "cd before git refused by refuse-cd-git, the reason naming git -C"),
+	  chk(any(hooks_of(agent($tags.j1); "PreToolUse-job-agent-tools")[]; ((.input.tool_input.command // "") | test("^git -C .*/worktrees/j status$"))
+		and ((.stdout | type) != "object" or .stdout.hookSpecificOutput.permissionDecision != "deny")); "rerun as git -C <tree> status, not refused"),
+	  accepted_first($tags.j1; $k; "job")
   else chk(false; "no expectation for \($sc)") end
 '
 
@@ -210,12 +236,28 @@ done
 echo
 echo "== table (cell, result, failed scenario checks)"
 cat "${work}/table"
+# The framework must be the same at the run's setup and at its collect.
+fw=ok
+if [ -f "${logs}/framework-hash.txt" ] && [ "$(awk '{ print $NF }' "${logs}/framework-hash.txt" | sort -u | wc -l | tr -d ' ')" -eq 1 ]; then
+	echo "PASS: the framework did not change during the run ($(awk 'NR == 1 { print $NF }' "${logs}/framework-hash.txt"))"
+else
+	fw=changed; fail=$((fail + 1)); echo "FAIL: the framework changed during the run, or its hash is missing: see ${logs}/framework-hash.txt"
+fi
 echo
 echo "${pass} checks PASS, ${fail} FAIL; ${cells} cells, $((cells - red)) green, ${red} red"
+# The hook cost: how long a job agent's Bash call spends in the PreToolUse
+# wrapper job-agent-tools.sh, from the saved calls' start and end times.
+# shellcheck disable=SC2016 # jq's program
+find "${logs}/_sessions" -name 'PreToolUse-job-agent-tools-*.json' -type f -exec jq -c 'select(.input.agent_id != null) | {tool: .input.tool_name, ms: ((.t_end - .t_start) * 1000)}' {} + 2>/dev/null >"${work}/cost" || true
+find "${logs}/_sessions" -name 'PreToolUse-guard-framework-*.json' -type f -exec jq -c 'select(.input.agent_id != null) | {tool: ("guard " + .input.tool_name), ms: ((.t_end - .t_start) * 1000)}' {} + 2>/dev/null >>"${work}/cost" || true
+echo
+echo "== hook cost (ms in the hook, per job-agent call, from the saved calls)"
+jq -s -r 'group_by(.tool)[] | (map(.ms) | sort) as $m | ($m | length) as $n
+	| "\(.[0].tool): n=\($n) median=\($m[($n / 2 | floor)] | round) p90=\($m[($n * 0.9 | floor)] | round) max=\($m[-1] | round)"' "${work}/cost"
 if [ "${mode}" = control ]; then
 	green=$(awk '$3 == 0' "${work}/table" | wc -l | tr -d ' ')
 	echo "control: cells whose own scenario checks all pass without the hooks: ${green} (must be 0)"
-	[ "${green}" -eq 0 ]
+	[ "${green}" -eq 0 ] && [ "${fw}" = ok ]
 else
-	[ "${fail}" -eq 0 ]
+	[ "${fail}" -eq 0 ] && [ "${fw}" = ok ]
 fi

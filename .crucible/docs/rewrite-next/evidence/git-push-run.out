@@ -239,7 +239,7 @@
     [exit 2]
   PASS: an option without its value: exit 2
   $ env TMPDIR=/nonexistent-gp sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
-    err: mktemp: mkdtemp failed on /nonexistent-gp/git-push.EdSjlC: No such file or directory
+    err: mktemp: mkdtemp failed on /nonexistent-gp/git-push.h7mGuf: No such file or directory
     err: push-tree.sh: mktemp could not make a work folder
     [exit 4]
   PASS: no work folder: exit 4

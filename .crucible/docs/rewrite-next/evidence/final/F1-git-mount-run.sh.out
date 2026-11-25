@@ -1,0 +1,669 @@
+=== set-up: scratch keys, a scratch repository, an effort with an identity
+  PASS: both efforts' identities are set through git-identity's real scripts
+  PASS: trees one and two are cut and committed through git-worktree and git-commit
+
+=== mount-apply.sh: one tree
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000006-mount.made.json","target":"<sha>","start":"<sha>","paths":4,"left_alone":1}
+    [exit 0]
+  PASS: exit 0: target one's tip, start HEAD, 4 paths, mine.txt left alone
+  PASS: mount.made read back: by mount-apply.sh, {repo, names, target, start, paths}, its path printed
+  PASS: the checkout holds one's work: changed, new (in new folders) and deleted files
+  PASS: the index and refs are untouched
+  PASS: the mounted paths show as uncommitted changes, mine.txt still there
+  PASS: the record, patch and copies are in the checkout's git folder; the record is version 3
+
+=== the reading scripts on a fresh mount
+  $ sh internal/mount-record.sh --repo <S>/repo/dir
+    out: {"version":3,"effort":"<S>/space/efforts/<id>-mount-work","repo":"<S>/repo","trees":[{"name":"one","branch":"crucible/<id>-mount-work/one","tip":"<sha>"}],"start":"<sha>","start_is_snapshot":false,"target":"<sha>","head":"<sha>","branch":"main","mounted_at":"2026-11-25T14:48:44Z","paths":[{"path":"del.txt","before":"100644 <sha>","after":"absent","saved":true},{"path":"dir/sub/new.txt","before":"absent","after":"100644 <sha>"},{"path":"eol.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true},{"path":"f.txt","before":"100644 <sha>","after":"100644 <sha>","saved":true}]}
+    [exit 0]
+  PASS: mount-record.sh from a subfolder: the record, its trees and paths
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    out: {"head":"<sha>","head_moved":false,"finished":false,"paths":[{"path":"del.txt","now":"mounted"},{"path":"dir/sub/new.txt","now":"mounted"},{"path":"eol.txt","now":"mounted"},{"path":"f.txt","now":"mounted"}]}
+    [exit 0]
+  PASS: mount-paths.sh: every path mounted, HEAD not moved, not finished
+  $ sh main/mount-status.sh --repo <S>/repo --effort <S>/space/efforts/<id>-mount-work
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":false}],"moved":false,"head_moved":false,"finished":false,"paths":4,"edited":[],"ours":true}
+    [exit 0]
+  PASS: mount-status.sh: mounted, nothing moved, no edits, ours
+  $ sh main/mount-status.sh --repo <S>/repo --effort <S>/space/efforts/<id>-other-work
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":false}],"moved":false,"head_moved":false,"finished":false,"paths":4,"edited":[],"ours":false}
+    [exit 0]
+  PASS: mount-status.sh --effort of another effort: ours false
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-mount-work
+    out: mount <S>/repo one
+    [exit 0]
+  PASS: open-work.sh: one line, mount <repo> <names>
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-other-work
+    [exit 0]
+  PASS: open-work.sh of an effort that mounted nothing: nothing
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    err: mount-restore.sh: del.txt does not hold its content from before the mount; nothing was touched
+    [exit 2]
+  PASS: mount-restore.sh while the mount's content is there: exit 2, nothing touched
+
+=== a second mount while one is in place
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    err: mount-apply.sh: a mount is in place in <S>/repo: one, target <sha>, made by <S>/space/efforts/<id>-mount-work; undo it first (mount-undo.sh)
+    [exit 2]
+  PASS: refused: exit 2, a mount is in place, undo it first, nothing changed
+
+=== mount-status.sh after the tree moved, the human edited a path, HEAD moved
+  $ sh main/mount-status.sh --repo <S>/repo
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":true}],"moved":true,"head_moved":false,"finished":false,"paths":4,"edited":[]}
+    [exit 0]
+  PASS: one moved on: moved true, now its new tip, no ours without --effort
+  $ sh main/mount-status.sh --repo <S>/repo
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":true}],"moved":true,"head_moved":false,"finished":false,"paths":4,"edited":["dir/sub/new.txt","f.txt"]}
+    [exit 0]
+  PASS: edited and deleted mounted paths are listed as edited
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    out: {"head":"<sha>","head_moved":false,"finished":false,"paths":[{"path":"del.txt","now":"mounted"},{"path":"dir/sub/new.txt","now":"gone"},{"path":"eol.txt","now":"mounted"},{"path":"f.txt","now":"edited"}]}
+    [exit 0]
+  PASS: mount-paths.sh: f.txt edited, new.txt gone
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: mount-undo.sh: changed since the mount: dir/sub/new.txt: gone
+    err: mount-undo.sh: changed since the mount: f.txt: edited
+    err: mount-undo.sh: nothing touched: put these paths back as mounted, or commit them, then undo again
+    [exit 2]
+  PASS: mount-undo.sh with edited paths: exit 2, each named, nothing touched
+  $ sh main/mount-status.sh --repo <S>/repo
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":true}],"moved":true,"head_moved":true,"finished":false,"paths":4,"edited":[]}
+    [exit 0]
+  PASS: HEAD moved without the mounted paths: head_moved true, finished false
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    out: {"head":"<sha>","head_moved":true,"finished":false,"paths":[{"path":"del.txt","now":"mounted"},{"path":"dir/sub/new.txt","now":"mounted"},{"path":"eol.txt","now":"mounted"},{"path":"f.txt","now":"mounted"}]}
+    [exit 0]
+  PASS: mount-paths.sh after HEAD moved: the paths are mounted, not committed
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: mount-undo.sh: not committed: del.txt: mounted
+    err: mount-undo.sh: not committed: dir/sub/new.txt: mounted
+    err: mount-undo.sh: not committed: eol.txt: mounted
+    err: mount-undo.sh: not committed: f.txt: mounted
+    err: mount-undo.sh: HEAD moved since the mount and these paths are not committed; commit them, or move HEAD back, then undo again
+    [exit 2]
+  PASS: mount-undo.sh after HEAD moved: exit 2, the uncommitted paths named, nothing touched
+
+=== mount-restore.sh: the saved bytes put back under a clean filter
+  PASS: with the patch taken out by hand, eol.txt holds LF bytes, not the human's CRLF
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    out: {"saved":3,"restored":1}
+    [exit 0]
+  PASS: exit 0: 3 saved, 1 restored, eol.txt holds the human's CRLF bytes again
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    out: {"saved":3,"restored":0}
+    [exit 0]
+  PASS: run again: nothing to restore
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    err: mount-restore.sh: the saved copy before/0 of del.txt is missing; nothing was touched
+    [exit 2]
+  PASS: a saved copy missing: exit 2
+
+=== mount-undo.sh: byte for byte
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000007-mount.undone.json","forgotten":false,"names":["one"],"paths":4}
+    [exit 0]
+  PASS: exit 0: forgotten false, names one, 4 paths
+  PASS: every file, byte and mode, and every folder is as before the mount (new.txt's folders gone, del.txt back, eol.txt CRLF)
+  PASS: the index and refs are untouched
+  PASS: the record is gone
+  PASS: mount.undone read back: by mount-undo.sh, {repo, forgotten: false}, its path printed
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: mount-record.sh: no mount is recorded in <S>/repo/.git/crucible
+    [exit 5]
+  PASS: nothing mounted: exit 5
+  $ sh main/mount-status.sh --repo <S>/repo
+    out: {"mounted":false}
+    [exit 0]
+  PASS: mount-status.sh with nothing mounted: {mounted: false}
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    err: mount-record.sh: no mount is recorded in <S>/repo/.git/crucible
+    [exit 5]
+  PASS: mount-paths.sh with nothing mounted: exit 5
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: no mount is recorded in <S>/repo/.git/crucible
+    [exit 5]
+  PASS: mount-record.sh with nothing mounted: exit 5
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    err: mount-record.sh: no mount is recorded in <S>/repo/.git/crucible
+    [exit 5]
+  PASS: mount-restore.sh with nothing mounted: exit 5
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-mount-work
+    [exit 0]
+  PASS: open-work.sh once undone: nothing
+
+=== mount-apply.sh: two trees joined
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name two
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000008-mount.made.json","target":"<sha>","start":"<sha>","paths":6,"left_alone":1}
+    [exit 0]
+  PASS: exit 0: the target is a new signed commit of one's and two's tips
+  PASS: the join names the trees and the effort; no ref points at it
+  PASS: the checkout holds both trees' work; index and refs untouched
+  PASS: mount.made read back names both trees
+  $ sh main/mount-status.sh --repo <S>/repo --effort <S>/space/efforts/<id>-mount-work
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"one","tip":"<sha>","now":"<sha>","moved":false},{"name":"two","tip":"<sha>","now":"<sha>","moved":false}],"moved":false,"head_moved":false,"finished":false,"paths":6,"edited":[],"ours":true}
+    [exit 0]
+  PASS: mount-status.sh: two trees, neither moved
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000009-mount.undone.json","forgotten":false,"names":["one","two"],"paths":6}
+    [exit 0]
+  PASS: undone byte for byte
+
+=== the human committed the mount
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000010-mount.made.json","target":"<sha>","start":"<sha>","paths":1,"left_alone":2}
+    [exit 0]
+  PASS: two mounted
+  $ sh main/mount-status.sh --repo <S>/repo
+    out: {"mounted":true,"effort":"<S>/space/efforts/<id>-mount-work","trees":[{"name":"two","tip":"<sha>","now":"<sha>","moved":false}],"moved":false,"head_moved":true,"finished":true,"paths":1,"edited":[]}
+    [exit 0]
+  PASS: mount-status.sh: head moved, finished
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    out: {"head":"<sha>","head_moved":true,"finished":true,"paths":[{"path":"t.txt","now":"committed"}]}
+    [exit 0]
+  PASS: mount-paths.sh: every path committed
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-mount-work
+    [exit 0]
+  PASS: open-work.sh: a committed mount is no open work
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000011-mount.undone.json","forgotten":true,"names":["two"],"paths":1}
+    [exit 0]
+  PASS: mount-undo.sh: exit 0, forgotten true, no file touched, the record gone
+  PASS: mount.undone read back: forgotten true
+--- a finished mount is forgotten by the next mount-apply.sh
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000012-mount.made.json","target":"<sha>","start":"<sha>","paths":1,"left_alone":1}
+    [exit 0]
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: forgot the finished mount of two: HEAD holds every mounted path
+    err: effort-commits.sh: <sha> is not an ancestor of <sha>; expected the effort's work built on it
+    [exit 2]
+  PASS: the finished mount is forgotten (stderr says so, mount.undone written), then the range is refused: not on HEAD
+
+=== a tree cut from a snapshot of the human's uncommitted work
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    out: {"ok":true,"from":"<sha>","start":"<sha>","commits":2}
+    [exit 0]
+  PASS: effort-commits.sh: ok, the start is the snapshot, 2 commits
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name snapped
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000015-mount.made.json","target":"<sha>","start":"<sha>","paths":1,"left_alone":2}
+    [exit 0]
+  PASS: mount-apply.sh: start the snapshot, only s.txt applied, the human's wip kept
+  PASS: the record says start_is_snapshot
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000016-mount.undone.json","forgotten":false,"names":["snapped"],"paths":1}
+    [exit 0]
+  PASS: undone, the human's wip still there
+
+=== effort-commits.sh refusals
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    out: {"ok":true,"from":"<sha>","start":"<sha>","commits":2}
+    [exit 0]
+  PASS: a range of this effort's commits: ok, start --from, 2 commits
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    out: {"ok":false,"reason":"foreign_commit","commit":"<sha>","subject":"no trailer"}
+    err: effort-commits.sh: commit <sha> (no trailer) carries no Effort: <id>-mount-work trailer; expected only this effort's work
+    [exit 5]
+  PASS: a commit with no Effort trailer: exit 5, foreign_commit, naming it
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-other-work
+    out: {"ok":false,"reason":"foreign_commit","commit":"<sha>","subject":"crucible(build): work in one"}
+    err: effort-commits.sh: commit <sha> (crucible(build): work in one) carries no Effort: <id>-other-work trailer; expected only this effort's work
+    [exit 5]
+  PASS: another effort's commits: exit 5, foreign_commit
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    out: {"ok":false,"reason":"not_ancestor","commit":null,"subject":null}
+    err: effort-commits.sh: <sha> is not an ancestor of <sha>; expected the effort's work built on it
+    [exit 5]
+  PASS: --from no ancestor of --to: exit 5, not_ancestor, commit null
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    out: {"ok":false,"reason":"snapshot_mismatch","commit":"<sha>","subject":"crucible(snapshot): uncommitted changes"}
+    err: effort-commits.sh: commit <sha> is a snapshot holding other changes than the first one found; expected every snapshot to hold one tree
+    [exit 5]
+  PASS: two snapshots with different trees: exit 5, snapshot_mismatch
+  $ sh internal/effort-commits.sh --repo <S>/repo --from -x --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --from -x starts with -; expected a commit
+    [exit 2]
+  PASS: --from starting with -: exit 2
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to nosuch --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --to nosuch is no commit of <S>/repo
+    [exit 2]
+  PASS: --to no commit: exit 2
+  $ sh internal/effort-commits.sh --repo <S>/repo --from  --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --from needs a commit
+    [exit 2]
+  PASS: --from empty: exit 2
+  $ sh internal/effort-commits.sh --repo <S>/repo --from a	b --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --from holds a control character; expected a commit
+    [exit 2]
+  PASS: --from with a control character: exit 2
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/repo
+    err: effort-commits.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: --effort no effort folder: exit 2
+  $ sh internal/effort-commits.sh --repo relative --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --repo must be an absolute folder
+    [exit 2]
+  PASS: --repo not absolute: exit 2
+  $ sh internal/effort-commits.sh --repo <S> --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: --repo <S> is not in a git repository
+    [exit 2]
+  PASS: --repo in no repository: exit 2
+  $ sh internal/effort-commits.sh --repo <S>/repo --from <sha> --to
+    err: effort-commits.sh: --to needs a value
+    [exit 2]
+  PASS: --to with no value: exit 2
+  $ sh <S>/k3/skills/git-mount/scripts/internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: a neighbour isn't beside this skill (expected <S>/k3/skills/git-commit/scripts/internal/commit-snapshots.sh); install first
+    [exit 2]
+  PASS: with git-commit not beside it: exit 2, install first
+  $ sh <S>/k3/skills/git-mount/scripts/internal/effort-commits.sh --repo <S>/repo --from <sha> --to <sha> --effort <S>/space/efforts/<id>-mount-work
+    err: effort-commits.sh: commit-snapshots.sh failed (exit 1)
+    [exit 4]
+  PASS: git-commit's answer failing: exit 4, nothing printed
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name foreign
+    err: effort-commits.sh: commit <sha> (no trailer) carries no Effort: <id>-mount-work trailer; expected only this effort's work
+    [exit 2]
+  PASS: mount-apply.sh of a tree holding a foreign commit: exit 2, effort-commits.sh's line, nothing written
+
+=== mount-apply.sh refusals of names and trees
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name nosuch
+    err: mount-apply.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: no live tree of that name: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name nosuch
+    err: mount-apply.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a second name that is no live tree: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name one
+    err: mount-apply.sh: --name one is given twice
+    [exit 2]
+  PASS: a name given twice: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name Bad_Name
+    err: mount-apply.sh: --name Bad_Name must be lowercase words joined by dashes
+    [exit 2]
+  PASS: a name that is not lowercase words: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work
+    err: mount-apply.sh: --name needs a value: a live tree of the effort
+    [exit 2]
+  PASS: no --name: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name
+    err: mount-apply.sh: --name needs a value
+    [exit 2]
+  PASS: --name with no value: exit 2
+  $ sh main/mount-apply.sh --effort <S>/repo --name one
+    err: mount-apply.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: --effort no effort folder: exit 2
+  $ sh main/mount-apply.sh --effort relative --name one
+    err: mount-apply.sh: --effort must be an absolute folder
+    [exit 2]
+  PASS: --effort not absolute: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    err: mount-apply.sh: tree two has 1 uncommitted changes, which a mount would leave out; commit or discard them first
+    [exit 2]
+  PASS: a tree with uncommitted changes: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name gone-branch
+    err: mount-apply.sh: tree gone-branch's branch is gone
+    [exit 2]
+  PASS: a tree whose branch is gone: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name gone-branch
+    err: mount-apply.sh: tree gone-branch's folder <S>/space/efforts/<id>-mount-work/worktrees/gone-branch is not there
+    [exit 2]
+  PASS: a first tree whose folder is not there: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name elsewhere
+    err: mount-apply.sh: tree elsewhere is of another repository than one's <S>/repo; expected trees of one repository
+    [exit 2]
+  PASS: trees of two repositories: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name two --name nosuch --name elsewhere
+    err: mount-apply.sh: the effort has no live tree named nosuch
+    err: mount-apply.sh: tree elsewhere is of another repository than one's <S>/repo; expected trees of one repository
+    [exit 2]
+  PASS: every problem found is listed
+
+=== mount-apply.sh refusals of the checkout and the work
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout <S>/repo has a merge under way; expected none
+    [exit 2]
+  PASS: a merge under way in the checkout: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout <S>/repo is sparse; expected a full checkout
+    [exit 2]
+  PASS: a sparse checkout: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout <S>/repo has no HEAD commit
+    [exit 2]
+  PASS: a checkout with no HEAD commit: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name clash
+    err: mount-apply.sh: the tips of one clash conflict in f.txt; nothing to mount
+    [exit 2]
+  PASS: tips that conflict: exit 2, naming the path, nothing written
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name empty
+    err: mount-apply.sh: the work of empty changes nothing since the start <sha>: nothing to mount
+    [exit 2]
+  PASS: a tree with no work: exit 2, nothing to mount
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout differs from the start at f.txt: it holds 100644 <sha>, the start 100644 <sha>
+    [exit 2]
+  PASS: a path the human changed: exit 2, naming it, the file untouched
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    err: mount-apply.sh: the checkout differs from the start at t.txt: it holds 100644 <sha>, the start absent
+    [exit 2]
+  PASS: an untracked file where the tree adds one: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout's f.txt is staged differently from both HEAD and the start; expected its staged entry to match one
+    [exit 2]
+  PASS: a mounted path staged differently from HEAD and the start: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the checkout differs from the start at dir/sub/new.txt: it holds beyond-file, the start absent
+    [exit 2]
+  PASS: a file where the patch needs a folder: exit 2, the path beyond a file
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name odd
+    err: mount-apply.sh: the diff of one odd has a path holding a newline; expected paths without one
+    [exit 2]
+  PASS: a path holding a newline: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name odd
+    err: mount-apply.sh: the diff of one odd has a path that is not valid UTF-8; expected paths the record can hold
+    [exit 2]
+  PASS: a path that is not UTF-8: exit 2
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one --name odd
+    err: mount-apply.sh: the diff of one odd changes the submodule sub; expected no submodule
+    [exit 2]
+  PASS: a submodule in the diff: exit 2
+  PASS: none of these refusals wrote a record or touched the checkout
+
+=== a busy tree, through git-worktree's worktree-busy.sh
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two --name one
+    err: mount-apply.sh: busy: busy-standin: one: busy standing in for one
+    [exit 2]
+  PASS: mount-apply.sh refuses a busy tree: exit 2, the neighbour's line named, nothing written
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    err: mount-apply.sh: busy: busy-standin: two: busy.sh failed
+    [exit 2]
+  PASS: a check that fails counts as busy: exit 2, nothing written
+
+=== mount-states.sh
+  $ sh internal/mount-states.sh --repo <S>/repo --paths <S>/paths
+    out: [
+    out:   {
+    out:     "path": "f.txt",
+    out:     "state": "100644 <sha>"
+    out:   },
+    out:   {
+    out:     "path": "run.sh",
+    out:     "state": "100755 <sha>"
+    out:   },
+    out:   {
+    out:     "path": "link",
+    out:     "state": "120000 <sha>"
+    [exit 0]
+  PASS: a file, an executable, a symlink, a folder, beyond a symlink, absent, other, beyond a file
+  PASS: the blobs are git's: f.txt's is HEAD's, the link's its target text
+  PASS: no object was written for the hashed files
+  $ sh internal/mount-states.sh --repo <S>/repo --paths <S>/paths-bad
+    err: mount-states.sh: --paths holds ../x; expected root-relative paths with no empty, ., .. or .git segment
+    [exit 2]
+  PASS: a path with a .. segment: exit 2
+  $ sh internal/mount-states.sh --repo <S>/repo --paths <S>/no-such-file
+    err: mount-states.sh: --paths must be a file of paths
+    [exit 2]
+  PASS: --paths no file: exit 2
+  $ sh internal/mount-states.sh --repo <S>/bare.git --paths <S>/paths
+    err: mount-states.sh: --repo <S>/bare.git is not in a git repository
+    [exit 2]
+  PASS: --repo in no repository: exit 2
+  $ sh internal/mount-states.sh --repo <S>/bare.git --paths <S>/paths
+    err: mount-states.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: --repo a bare repository: exit 2
+  $ sh internal/mount-states.sh --repo <S>/repo --paths <S>/paths-empty
+    out: []
+    [exit 0]
+  PASS: no paths: an empty array
+
+=== mount-record.sh: records it refuses, and the others reading them
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: a version 2 record: exit 2, refused, not read
+  $ sh main/mount-status.sh --repo <S>/repo
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: mount-status.sh refuses the version 2 record: exit 2, the record kept
+  $ sh internal/mount-paths.sh --repo <S>/repo
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: mount-paths.sh refuses the version 2 record: exit 2, the record kept
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: mount-undo.sh refuses the version 2 record: exit 2, the record kept
+  $ sh internal/mount-restore.sh --repo <S>/repo
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: mount-restore.sh refuses the version 2 record: exit 2, the record kept
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: mount-apply.sh refuses the version 2 record: exit 2, nothing applied
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: effort: "rel" is not allowed; expected an absolute folder
+    err: mount-record.sh: start: "1" is not allowed; expected a full sha
+    err: mount-record.sh: start_is_snapshot: "no" is not allowed; expected true or false
+    err: mount-record.sh: trees[0].name: "A" is not allowed; expected a tree name
+    err: mount-record.sh: trees[0].branch: "main" is not allowed; expected a crucible/ branch
+    err: mount-record.sh: trees[0].tip: "x" is not allowed; expected a full sha
+    err: mount-record.sh: paths[0].path: "../x" is not allowed; expected a root-relative path with no empty, ., .. or .git segment
+    err: mount-record.sh: paths[0].after: "nope" is not allowed; expected absent or <mode> <blob sha>
+    err: mount-record.sh: paths[0].saved: true is not allowed; expected true only when before is a regular file
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    [exit 2]
+  PASS: a version 3 record of the wrong shape: exit 2, one line per problem
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is unreadable or not JSON; remove it by hand
+    [exit 2]
+  PASS: a record that is not JSON: exit 2
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json has no mount.patch beside it; remove the record by hand
+    [exit 2]
+  PASS: a record with no patch beside it: exit 2
+  $ sh internal/mount-record.sh --repo <S>/repo
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is not a regular file; remove it by hand
+    [exit 2]
+  PASS: a record that is a folder: exit 2
+  $ sh internal/mount-record.sh --repo relative
+    err: mount-record.sh: --repo must be an absolute folder
+    [exit 2]
+  PASS: mount-record.sh --repo not absolute: exit 2
+  $ sh main/mount-status.sh --repo <S>/bare.git
+    err: mount-status.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: mount-status.sh --repo a bare repository: exit 2
+  $ sh internal/mount-paths.sh --repo <S>/bare.git
+    err: mount-paths.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: mount-paths.sh --repo a bare repository: exit 2
+  $ sh main/mount-undo.sh --repo <S>/bare.git
+    err: mount-undo.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: mount-undo.sh --repo a bare repository: exit 2
+  $ sh internal/mount-restore.sh --repo <S>/bare.git
+    err: mount-restore.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: mount-restore.sh --repo a bare repository: exit 2
+  $ sh main/mount-status.sh --repo <S>/repo --effort <S>/repo
+    err: mount-status.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: mount-status.sh --effort no effort folder: exit 2
+
+=== mount-apply.sh rolls back when mount.made can't be written
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: event-write.sh: the events lock stayed held
+    err: mount-apply.sh: mount.made was not written
+    err: mount-apply.sh: the patch was taken out again; nothing is mounted
+    [exit 6]
+  PASS: the events lock held: exit 6, no event, the patch taken out, the bytes put back, no record, index and refs untouched
+
+=== mount-undo.sh when mount.undone can't be written: the mount is out, no event
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000023-mount.made.json","target":"<sha>","start":"<sha>","paths":5,"left_alone":1}
+    [exit 0]
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: event-write.sh: the events lock stayed held
+    err: mount-undo.sh: the mount is undone; mount.undone was not written
+    [exit 6]
+  PASS: the events lock held: exit 6, no mount.undone, every file as before the mount, no record, index and refs untouched, no open mount
+
+=== a tree dropped while it is mounted: the patch taken out, no event
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name race   (git paused after: apply --binary --whitespace=nowarn)
+  $ sh git-worktree/scripts/main/worktree-drop.sh --effort <S>/space/efforts/<id>-mount-work --name race
+    out: <S>/space/efforts/<id>-mount-work/events/000026-worktree.dropped.json
+    [exit 0]
+    err: mount-apply.sh: tree race was dropped while mount-apply.sh ran; no mount.made was written
+    err: mount-apply.sh: the patch was taken out again; nothing is mounted
+    [exit 2]
+  PASS: mount-apply.sh, its tree dropped after the apply: exit 2, no mount.made, the checkout, index and other refs as before, no record
+
+=== an effort that is not open
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: the effort is paused; a mount is made only while it's open
+    [exit 2]
+  PASS: a paused effort: exit 2
+
+=== mount-undo.sh when the effort that made the mount is gone
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name two
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000029-mount.made.json","target":"<sha>","start":"<sha>","paths":1,"left_alone":1}
+    [exit 0]
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":null,"forgotten":false,"names":["two"],"paths":1}
+    err: mount-undo.sh: the effort <S>/space/efforts/<id>-mount-work that made the mount is gone; no mount.undone written
+    [exit 0]
+  PASS: exit 0, undone, event null, stderr says no mount.undone written
+
+=== open-work.sh and effort-close.sh
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-closing --name only
+    out: {"event":"<S>/space/efforts/<id>-closing/events/000005-mount.made.json","target":"<sha>","start":"<sha>","paths":1,"left_alone":1}
+    [exit 0]
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-closing
+    out: mount <S>/repo only
+    [exit 0]
+  PASS: open-work.sh names the mount in place
+  $ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-closing --outcome done --words finished
+    err: effort-close.sh: open work: mount <S>/repo only; worktree only <S>/space/efforts/<id>-closing/worktrees/only; end it first, or close with --leave-open on the human's word
+    [exit 2]
+  PASS: core's effort-close.sh refuses while the mount is in place, naming it
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-closing/events/000006-mount.undone.json","forgotten":false,"names":["only"],"paths":1}
+    [exit 0]
+  $ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-closing --outcome done --words finished
+    err: effort-close.sh: open work: worktree only <S>/space/efforts/<id>-closing/worktrees/only; end it first, or close with --leave-open on the human's word
+    [exit 2]
+  PASS: once undone, the mount is no longer named (the live tree still is)
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-closing
+    err: mount-record.sh: version: 2 is not this record version; expected 3, so the record was not read
+    err: mount-record.sh: <S>/repo/.git/crucible/mount.json is no version 3 mount record; remove it by hand, or with the tool that made it
+    err: open-work.sh: the mount record of <S>/repo could not be read
+    [exit 4]
+  PASS: open-work.sh on a record it can't read: exit 4, so a close is refused
+  $ sh internal/open-work.sh --effort <S>/repo
+    err: open-work.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: open-work.sh --effort no effort folder: exit 2
+  $ sh internal/open-work.sh --effort
+    err: open-work.sh: --effort needs a value
+    [exit 2]
+  PASS: open-work.sh --effort with no value: exit 2
+
+=== a saved patch that no longer reverses, and missing neighbours
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000030-mount.made.json","target":"<sha>","start":"<sha>","paths":5,"left_alone":1}
+    [exit 0]
+  $ sh main/mount-undo.sh --repo <S>/repo
+    err: mount-undo.sh: git apply -R --check refused the saved patch: error: t.txt: No such file or directory; nothing touched
+    [exit 2]
+  PASS: mount-undo.sh: git apply -R --check refuses the saved patch: exit 2, nothing touched
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000031-mount.undone.json","forgotten":false,"names":["one"],"paths":5}
+    [exit 0]
+  PASS: with the real patch back, undone
+  $ sh <S>/k2/skills/git-mount/scripts/main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    err: mount-apply.sh: a neighbour isn't beside this skill (expected <S>/k2/skills/git-worktree/scripts/internal/worktree-trees.sh); install first
+    [exit 2]
+  PASS: mount-apply.sh with git-worktree not beside it: exit 2, install first
+  $ sh <S>/k2/skills/git-mount/scripts/main/mount-undo.sh --repo <S>/repo
+    err: mount-undo.sh: core isn't beside this skill (expected <S>/k2/skills/crucible-events/scripts/internal/event-write.sh); install first
+    [exit 2]
+  PASS: mount-undo.sh with core not beside it: exit 2, install first
+
+=== the flow step
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage deliver
+    out: git-mount/mount · Puts one or more trees' committed work into the human's checkout as uncommitted changes, to try it there · ends with mount.made · stages: deliver · skills: git-mount · propose when: the human wants to try a tree's work in their own checkout
+    out: git-push/push-tree · Pushes one tree's branch to a remote under the same name, on the human's recorded yes · ends with push.made · stages: deliver · skills: git-push · propose when: the human wants a tree's work on a remote, to share it or open a pull request from it
+    [exit 0]
+  PASS: git-mount/mount is listed under deliver, ending with mount.made
+  $ sh main/mount-apply.sh --effort <S>/space/efforts/<id>-mount-work --name one
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000034-mount.made.json","target":"<sha>","start":"<sha>","paths":5,"left_alone":1}
+    [exit 0]
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-mount-work:33 --step 1
+    out: <S>/space/efforts/<id>-mount-work/events/000035-flow.step.done.json
+    [exit 0]
+  PASS: the step is ended by mount.made
+  $ sh main/mount-undo.sh --repo <S>/repo
+    out: {"event":"<S>/space/efforts/<id>-mount-work/events/000036-mount.undone.json","forgotten":false,"names":["one"],"paths":5}
+    [exit 0]
+
+=== the rules: writer and shape
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.made --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.made refused: mount.made is written only by mount-apply.sh
+    [exit 2]
+  PASS: mount.made by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.made --by mount-apply.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.made refused: extra is not a mount.made field; repo must be an absolute folder; names must be a non-empty array of tree names, each once; target and start must be full commit shas; paths must be a whole number from 1
+    [exit 2]
+  PASS: mount.made of the wrong shape: one reason per field, a name not a string
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.made --by mount-apply.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.made refused: names must be a non-empty array of tree names, each once; paths must be a whole number from 1
+    [exit 2]
+  PASS: mount.made with a name twice and paths not whole: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.undone --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.undone refused: mount.undone is written only by mount-undo.sh
+    [exit 2]
+  PASS: mount.undone by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.undone --by mount-undo.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.undone refused: x is not a mount.undone field; the effort made no mount in /never/mounted; forgotten must be a boolean
+    [exit 2]
+  PASS: mount.undone of the wrong shape: no mount there, forgotten not a boolean, an unknown field
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-mount-work --type mount.undone --by mount-undo.sh --body-file <S>/forged.json
+    err: event-write.sh: mount.undone refused: repo must be an absolute folder
+    [exit 2]
+  PASS: mount.undone with repo not absolute: refused
+
+=== the scripts' contracts
+  PASS: mount-apply.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-status.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-undo.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: effort-commits.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-paths.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-record.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-restore.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: mount-states.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: open-work.sh: --help exits 0 in at most 25 lines, an unknown option exits 2
+  PASS: shellcheck -x -o all is clean
+
+=== coverage: every script under scripts/ ran on a case
+  PASS: mount-apply.sh ran on a case (45 runs)
+  PASS: mount-status.sh ran on a case (11 runs)
+  PASS: mount-undo.sh ran on a case (16 runs)
+  PASS: effort-commits.sh ran on a case (14 runs)
+  PASS: mount-paths.sh ran on a case (7 runs)
+  PASS: mount-record.sh ran on a case (8 runs)
+  PASS: mount-restore.sh ran on a case (7 runs)
+  PASS: mount-states.sh ran on a case (6 runs)
+  PASS: open-work.sh ran on a case (8 runs)
+
+=== 165 PASS, 0 FAIL

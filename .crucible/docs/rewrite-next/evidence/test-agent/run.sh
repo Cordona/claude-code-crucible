@@ -267,6 +267,8 @@ check 'accepted: test.submitted, iteration 1, committed' sh -c '[ -z "$1" ] && p
 check 'the body prints job, iteration, agent, report, commit' is "$(ev '.body | keys_unsorted | join(",")')" 'job,iteration,agent,report,commit'
 check 'the commit: crucible(test), Effort, Job, Iteration and the setup' is "$(message_of)" "crucible(test): cover the retry limit and the 4xx case
 
+cover the retry limit and the 4xx case
+
 Effort: ${effort_name}
 Job: ${JOB} test-php-77de01
 Iteration: 1
@@ -293,7 +295,7 @@ work_on tests/Upload/UploadClientTest.php
 write_report fix-8
 stop 8-tester-fix
 check 'accepted: test-fix.submitted, iteration 1, fix round 1, committed' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"test-fix.submitted\" and .body.iteration == 1 and .body.fix_round == 1 and (.body.commit | type) == \"string\""' _ "${HOOK_OUT}" "${EVENT}"
-check 'the commit: crucible(test-fix) with Fix-Round' is "$(message_of | sed -n '1p;6p')" "crucible(test-fix): assert the 4xx rows by status, not by message
+check 'the commit: crucible(test-fix) with Fix-Round' is "$(message_of | sed -n '1p;8p')" "crucible(test-fix): assert the 4xx rows by status, not by message
 Fix-Round: 1"
 check 'its report is at reports/test-fix/<job seq>.json' is "$(ev '.body.report.path')" "reports/test-fix/${JOB}.json"
 sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" >"${S}/work/fix-job.json"
@@ -363,7 +365,7 @@ while [ "${i}" -lt "${rows}" ]; do
 		+ {known_failures: (.job.known_failures // []), iteration: 1}
 		+ (if .kind == "test-fix" then {fix_round: 1} else {} end)
 		+ {setup: {language: "php", standards: ["testing"]}}' "${S}/work/row.json" >"${S}/work/row-job.json"
-	got=$(sh "${K}/agent-submission/hooks/subagent-stop/report-validation.sh" --effort "${effort}" --job "${S}/work/row-job.json" 2>&1); rc=$?
+	got=$(sh "${K}/agent-submission/hooks/subagent-stop/steps/report-validation.sh" --effort "${effort}" --job "${S}/work/row-job.json" 2>&1); rc=$?
 	expected=$(jq -r '.expected' "${S}/work/row.json")
 	want_rc=1
 	[ -n "${expected}" ] || want_rc=0

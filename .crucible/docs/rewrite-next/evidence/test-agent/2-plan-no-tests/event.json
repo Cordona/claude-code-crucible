@@ -2,7 +2,7 @@
   {
     "type": "test-plan.submitted",
     "seq": 41,
-    "at": "2026-11-25T10:42:00Z",
+    "at": "2026-11-25T16:17:34Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ta",
     "body": {

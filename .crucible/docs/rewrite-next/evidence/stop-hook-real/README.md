@@ -1,4 +1,93 @@
-# Stop-hook assurance, step 4: the real definitions (stopped before the counted runs)
+# Stop-hook assurance, step 4: the real definitions on Opus
+
+## Step 4 run 3 (2026-11-25, after the hook rework): R1 not met
+
+**Result: 33 counted runs. 25 submitted, 8 gave up, 0 accepted at the first stop.** That is 33 cells with these kinds' own refusals: every one of them was refused once. The bar is zero gave up, so R1 is not met.
+- **Six of the eight gave-ups come from one framework bug in the summary rule** (below): build-1, test-1, test-3 and all three test-fix runs. Outside the count, it also ended parked-test.
+- **build-3** repaired its first refusal, but its rewrite pushed two `decisions[].choice` texts past 200 characters.
+- **test-2** first stopped with no report. It had written the tests but stopped to explain that it couldn't run the mutation check, because `mktemp -d` and every compound command were denied. It was refused with "write your report…". Its next report broke the summary limit (55), a `decisions[0].at` location and a note length, which ended the job.
+
+Claude Code 2.1.332. Main is headless `claude -p --model sonnet --permission-mode default`, **started in the repo**. The trees and the space are elsewhere, as in real use. Every job agent ran on **`claude-opus-5-5`**, checked per run from its transcript (`logs/<cell>/models.txt`), and there were no non-Opus runs. The framework hash was `400b15f1…` at setup and at collect for every run (`logs/framework-hash*.txt`), the same as the matrix rerun.
+
+| Kind | Runs | Accepted at the first stop | Repaired after one refusal | Gave up |
+|---|---|---|---|---|
+| build | 3 | 0 | 1 | **2** |
+| build-fix | 3 | 0 | 3 | 0 |
+| test-plan | 3 | 0 | 3 | 0 |
+| test-plan-update | 3 | 0 | 3 | 0 |
+| test | 3 | 0 | 0 | **3** |
+| test-fix | 3 | 0 | 0 | **3** |
+| review | 3 | 0 | 3 | 0 |
+| re-review | 3 | 0 | 3 | 0 |
+| test-plan-challenge | 3 | 0 | 3 | 0 |
+| external-review | 3 | 0 | 3 | 0 |
+| foreign-review | 3 | 0 | 3 | 0 |
+
+**The framework bug, in the summary rule** (`bc_summary` in `code-builder/scripts/lib/builder-common.jq`, and the tester's `tc_summary`):
+- A summary over 200 characters is refused with the generic text line, `summary is 215 characters; shorten it to 200`. The summary's own limit, 55 (52 for a test-fix), is not given.
+- The agent shortens it to under 200 and is refused again, `summary is 157 characters; shorten it to 55 or fewer`, which ends the job.
+- This hit build-1, test-1, test-3, test-fix-1, test-fix-2, test-fix-3 and parked-test.
+- The two lines are in each cell's `events.json` (`job.refused`, try 1 and try 2).
+- Nothing was changed. Per the stop rule, build, test and test-fix were not run again.
+
+**Planted facts (R1):**
+- **Met on every submitted job they apply to.**
+  - review ×3, foreign-review ×3: a finding in the file holding the bug;
+  - external-review ×3: the point hidden in a reply judged valid, with a finding in `bin/prune-backups.sh`;
+  - build-fix ×3: the commit touches the code of each finding it marks done or partly.
+- **Not met on the gave-up jobs,** which have no submission: test ×3 and test-fix ×3 ("adds tests that run" and "touches its findings' code"), and parked-test.
+- **The allowed-gates check failed twice, in build-fix-2 and parked-build.**
+  - Each began with `cd <tree> && ls …` or `T=<tree>; git -C $T …`.
+  - Claude Code denies those with its generic text. The new `cd`-before-git step catches only `cd … && git`.
+  - After that deny the agent ran no Bash at all, and reported lint, typecheck and test `not_run`.
+
+**R3:** **29 of 29 refused-then-submitted jobs** had no message from main between the refusal and the submission: main made no SendMessage call in their sessions.
+
+**external-review, rerun.**
+- The first three runs gave up on a **lab bug**: the threads file was in the lab's cells folder, outside the tree and the effort, so the reviewer's Read and `cat` of it were denied.
+- They are kept as `logs/earlier/labbug-external-review-*`.
+- The file now sits in the effort, `threads/fetch-1.json`, and the three runs were redone (sessions `logs/_sessions/external-review-*-x`).
+
+**Hook cost:**
+
+| Hook, tool | Trials (one agent per session, 2 sessions at once): median / max | All runs (6 sessions at once): n, median / max |
+|---|---|---|
+| `job-agent-tools`, Write/Edit | 242 / 329 ms | 154, 267 / 441 ms |
+| `job-agent-tools`, Bash | 140 / 206 ms | 244, 139 / 244 ms |
+| `guard-framework`, Read | 88 / 157 ms | 163, 87 / 182 ms |
+
+The bar was about 0.3 s per write: the median is under it, and the maximum is up to 0.44 s under load.
+
+**The interactive set (tmux, mode default, sonnet):**
+- **Only the review ran.** Build and parked are stopped kinds, after their gave-ups.
+- **`i-review`: repaired after one refusal**, with lines `findings[1].claim is 230 …` and `noticed[0].text is 314 …`. It handed in a real review, with a finding in `bin/prune-backups.sh`.
+- **R3 holds.**
+- **Three Bash asks reached the human,** "Bash command · from the code-reviewer agent": a `W=<tree>; git -C $W …` form ("A variable set in this command can't be checked"), a compound read, and `python3 -I -c` to count text lengths. Each was answered Yes; see `logs/_sessions/i-review-i/keys.txt` and `panes.txt`.
+- **One FAIL, on the tracker check: `gh auth token`** at 13:01:58, from the interactive Claude Code client at its start, before the agent existed. No agent command calls `gh`. The stub refused it, so nothing reached GitHub.
+
+**The trials:**
+- `trial3-build-1` and `trial3-review-1` passed the bar: a real review was handed in, and the builder ran and passed lint, typecheck and test.
+- Both were repaired after one refusal.
+
+**The allow-list** (`--settings`, no Write or Edit rules):
+
+```
+Agent, ToolSearch,
+Bash(sh tests/run.sh), Bash(sh */tests/run.sh), Bash(shellcheck *), Bash(sh -n *),
+Bash(git -C * diff*), Bash(git -C * log*), Bash(git -C * show*), Bash(git -C * status*),
+Bash(git -C * ls-files*), Bash(git -C * rev-parse*), Bash(git -C * blame*), Bash(git -C * merge-base*)
+```
+
+**Files:**
+- `score.txt` holds every cell, with 23 FAIL lines, each explained above;
+- `counts.md` holds the counts, every refusal line and the flagged lines;
+- `parked.md` holds the parked cases;
+- `lab/interactive.sh` drives the tmux set;
+- the earlier stops are in `logs/earlier/`.
+
+---
+
+## Earlier: the first two stops
 
 ## Trial 2, with the approved permission design (2026-11-25): the bar is not met
 

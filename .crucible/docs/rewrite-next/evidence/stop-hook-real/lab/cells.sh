@@ -16,6 +16,9 @@ cells_all() {
 	done
 	echo "parked-build build b-parked"
 	echo "parked-test test b-parked"
+	echo "i-build build b-i"
+	echo "i-review review b-i"
+	echo "i-parked-build build b-i"
 }
 
 agent_type_of() {
@@ -146,7 +149,7 @@ make_cell() {
 		signing: {format: "ssh", key: "/nonexistent/fixture-key.pub"}, fingerprint: "", answer: 1}' >"${cdir}/identity.json"
 	CLAUDE_CODE_SESSION_ID=sess-real-fixture sh "${EW}" --effort "${effort}" --type identity.set --by identity-set.sh --body-file "${cdir}/identity.json" >/dev/null
 	new_tree j; t=${tree}
-	case ${cell} in parked-*)
+	case ${cell} in *parked-*)
 		cp "${FX}/slow/tests/test_slow.sh" "${t}/tests/test_slow.sh"
 		fixture_commit "${t}" 'tests: add the nightly soak test' ;;
 	esac
@@ -198,9 +201,10 @@ make_cell() {
 			fill test-plan-challenge PLAN "$(pinned test-plan "${planjob}")" BASE "${base}" HEAD "${head}" >"${cdir}/task.txt"; pl=${test_lens} ;;
 		external-review)
 			fx_build "${t}" f-bug
-			cp "${FX}/threads.json" "${cdir}/threads.json"
-			job external-review "${t}" '' '' "{\"lens\": \"shell\", \"base\": \"${base}\", \"head\": \"${head}\", \"threads\": \"${cdir}/threads.json\"}"
-			fill external-review BASE "${base}" HEAD "${head}" THREADS "${cdir}/threads.json" >"${cdir}/task.txt"; pl=${shell_lens} ;;
+			# The fetched threads, in the effort, where the remote's fetch puts them.
+			mkdir -p "${effort}/threads"; cp "${FX}/threads.json" "${effort}/threads/fetch-1.json"; cp "${FX}/threads.json" "${cdir}/threads.json"
+			job external-review "${t}" '' '' "{\"lens\": \"shell\", \"base\": \"${base}\", \"head\": \"${head}\", \"threads\": \"${effort}/threads/fetch-1.json\"}"
+			fill external-review BASE "${base}" HEAD "${head}" THREADS "${effort}/threads/fetch-1.json" >"${cdir}/task.txt"; pl=${shell_lens} ;;
 		foreign-review)
 			base=$(git -C "${t}" rev-parse HEAD)
 			cp "${FX}/foreign/bin/restore-backup.sh" "${t}/bin/restore-backup.sh"

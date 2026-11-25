@@ -1,0 +1,310 @@
+=== set-up: the fakes, a scratch repository, a bare remote, an effort with a tree
+  PASS: tree one is cut through git-worktree and holds a commit
+
+=== push-remote.sh
+  $ sh main/push-remote.sh --repo <S>/repo --remote origin
+    out: {"remote":"origin","urls":["<S>/remote.git"]}
+    [exit 0]
+  PASS: origin: exit 0, {remote, urls}
+  $ sh main/push-remote.sh --repo <S>/space/efforts/<id>-push-work/worktrees/one --remote origin
+    out: {"remote":"origin","urls":["<S>/remote.git"]}
+    [exit 0]
+  PASS: from a tree of the repository: exit 0
+  $ sh main/push-remote.sh --repo <S>/repo --remote upstream
+    err: push-remote.sh: the repository has no remote upstream; add it first (git remote add)
+    [exit 2]
+  PASS: a remote not configured: exit 2, add it first
+  $ sh main/push-remote.sh --repo <S>/repo --remote self
+    err: push-remote.sh: remote self is the repository itself (<S>/repo); expected another repository
+    [exit 2]
+  PASS: remote self (the repository by path, file:// git folder, relative ., one of its worktrees): exit 2, is the repository itself
+  $ sh main/push-remote.sh --repo <S>/repo --remote selfgit
+    err: push-remote.sh: remote selfgit is the repository itself (file://<S>/repo/.git); expected another repository
+    [exit 2]
+  PASS: remote selfgit (the repository by path, file:// git folder, relative ., one of its worktrees): exit 2, is the repository itself
+  $ sh main/push-remote.sh --repo <S>/repo --remote dot
+    err: push-remote.sh: remote dot is the repository itself (.); expected another repository
+    [exit 2]
+  PASS: remote dot (the repository by path, file:// git folder, relative ., one of its worktrees): exit 2, is the repository itself
+  $ sh main/push-remote.sh --repo <S>/repo --remote tree
+    err: push-remote.sh: remote tree is the repository itself (<S>/space/efforts/<id>-push-work/worktrees/one); expected another repository
+    [exit 2]
+  PASS: remote tree (the repository by path, file:// git folder, relative ., one of its worktrees): exit 2, is the repository itself
+  $ sh main/push-remote.sh --repo <S>/repo --remote sneaky
+    err: push-remote.sh: remote sneaky is the repository itself (<S>/repo); expected another repository
+    [exit 2]
+  PASS: a remote whose push URL alone is the repository: exit 2
+  $ sh main/push-remote.sh --repo <S>/repo --remote twice
+    err: push-remote.sh: remote twice is the repository itself (<S>/repo/.git); expected another repository
+    [exit 2]
+  PASS: a remote with two push URLs, the second the repository's git folder: exit 2
+  $ sh main/push-remote.sh --repo <S>/repo --remote subdir
+    out: {"remote":"subdir","urls":["<S>/repo/sub"]}
+    [exit 0]
+  PASS: a folder inside the checkout that is no repository: not the repository itself, exit 0
+  $ sh main/push-remote.sh --repo <S>/repo --remote slow
+    out: {"remote":"slow","urls":["ssh://slow.example.test<S>/remote.git"]}
+    [exit 0]
+  PASS: an ssh URL: not checked as a folder, exit 0
+  $ sh main/push-remote.sh --repo <S>/repo --remote -x
+    err: push-remote.sh: --remote -x starts with -; expected a remote name
+    [exit 2]
+  PASS: a remote starting with -: exit 2
+  $ sh main/push-remote.sh --repo <S>/repo --remote a b
+    err: push-remote.sh: --remote holds a space or a control character; expected a remote name
+    [exit 2]
+  PASS: a remote with a space: exit 2
+  $ sh main/push-remote.sh --repo <S>/repo
+    err: push-remote.sh: --remote needs a name
+    [exit 2]
+  PASS: no --remote: exit 2
+  $ sh main/push-remote.sh --repo repo --remote origin
+    err: push-remote.sh: --repo must be an absolute folder
+    [exit 2]
+  PASS: a relative --repo: exit 2
+  $ sh main/push-remote.sh --repo <S>/home --remote origin
+    err: <S>/cfg/skills/git-push/scripts/main/push-remote.sh: line 51: cd: : No such file or directory
+    err: push-remote.sh: --repo <S>/home is not in a git repository
+    [exit 2]
+  PASS: a --repo in no repository: exit 2
+  $ sh main/push-remote.sh --repo
+    err: push-remote.sh: --repo needs a value
+    [exit 2]
+  PASS: an option without its value: exit 2
+
+=== push-tree.sh: the human's yes
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: pushing tree one needs the human's recorded yes (record push-tree, subject one:<sha>)
+    [exit 2]
+  PASS: no recorded yes: exit 2, naming record and subject, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: pushing tree one needs the human's recorded yes (record push-tree, subject one:<sha>)
+    [exit 2]
+  PASS: the human said no: exit 2, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: pushing tree one needs the human's recorded yes (record push-tree, subject one:<sha>)
+    [exit 2]
+  PASS: a yes under another record does not count: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    out: {"name":"one","remote":"origin","branch":"crucible/<id>-push-work/one","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-push-work/events/000006-push.made.json"}
+    [exit 0]
+  PASS: with the yes: exit 0, {name, remote, branch, commit, lease null, event}
+  PASS: the remote's branch of the same name is at the tip
+  PASS: push.made read back: by push-tree.sh, {name, remote, commit, answer}, its path printed
+  PASS: no askpass program was asked
+  PASS: the push set no upstream and wrote nothing to the repository's config
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: the human's yes 5 already pushed; ask again for one:<sha>
+    [exit 2]
+  PASS: the same yes again: exit 2, already pushed
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: pushing tree one needs the human's recorded yes (record push-tree, subject one:<sha>)
+    [exit 2]
+  PASS: a new tip needs a new yes: exit 2, the remote unchanged
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin --timeout 30
+    out: {"name":"one","remote":"origin","branch":"crucible/<id>-push-work/one","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-push-work/events/000008-push.made.json"}
+    [exit 0]
+  PASS: --timeout 30, a fast-forward: exit 0, no lease, the remote at the new tip
+
+=== push-tree.sh: after a move, by lease
+  PASS: tree one moved back to the base and made new work: its tip leaves the pushed one out
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    out: {"name":"one","remote":"origin","branch":"crucible/<id>-push-work/one","commit":"<sha>","lease":"<sha>","event":"<S>/space/efforts/<id>-push-work/events/000011-push.made.json"}
+    [exit 0]
+  PASS: exit 0, lease the last push's commit, the remote branch replaced
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    out: {"name":"one","remote":"origin","branch":"crucible/<id>-push-work/one","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-push-work/events/000013-push.made.json"}
+    [exit 0]
+  PASS: the next push after it: the move is older than the last push, no lease
+--- a lease that fails: someone else pushed after the tree moved
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote origin
+    err: push-tree.sh: the push of crucible/<id>-push-work/one to origin was rejected: the remote branch is no longer at <sha>, this tree's last push; nothing was forced
+    [exit 5]
+  PASS: exit 5: the remote branch is no longer at the last push; nothing forced, no push.made
+--- a tree that never moved, behind the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name three --remote origin
+    err: push-tree.sh: the push of crucible/<id>-push-work/three to origin was rejected: the remote branch holds commits this tree lacks; nothing was forced
+    [exit 5]
+  PASS: exit 5: rejected, the remote holds commits the tree lacks; nothing forced
+
+=== push-tree.sh: never waits, never asks
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote hang --timeout 2
+    err: push-tree.sh: the push of crucible/<id>-push-work/one to hang timed out after 2 s; it was stopped
+    [exit 5]
+  PASS: a remote that hangs: exit 5, timed out after 2 s, back within 10 s
+  PASS: the hanging transport was stopped by its PID
+  PASS: ssh was told never to ask: BatchMode=yes and a connect time limit
+  PASS: no push.made for the timed-out push
+  PASS: control: outside push-tree.sh, a credential request reaches the askpass program
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name one --remote fake
+    err: push-tree.sh: the push of crucible/<id>-push-work/one to fake failed (exit 128): fatal: remote helper 'fake' aborted session
+    [exit 5]
+  PASS: a remote asking for a credential: exit 5, the push failed
+  PASS: git refused to prompt (terminal prompts disabled), and no askpass program was asked
+
+=== push-tree.sh: the push lands but its event can't be written
+  (tree two dropped while its push ran through the slow fake ssh)
+    err: push-tree.sh: tree two is no longer live; push.made names a live tree only
+    err: push-tree.sh: crucible/<id>-push-work/two is pushed to slow at <sha>, but push.made was not written
+    [exit 4]
+  PASS: exit 4: pushed, but push.made was not written (the tree is no longer live)
+  PASS: no push.made names tree two
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name four --remote origin
+    err: event-write.sh: the events lock stayed held
+    err: push-tree.sh: crucible/<id>-push-work/four is pushed to origin at <sha>, but push.made was not written
+    [exit 6]
+  PASS: the events lock held: exit 6, pushed, no push.made
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name four --remote origin
+    out: {"name":"four","remote":"origin","branch":"crucible/<id>-push-work/four","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-push-work/events/000027-push.made.json"}
+    [exit 0]
+  PASS: run again: the unused yes still counts, the remote already holds it, push.made written
+
+=== push-tree.sh: after the effort ended
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-push-work --name four --remote origin
+    out: {"name":"four","remote":"origin","branch":"crucible/<id>-push-work/four","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-push-work/events/000030-push.made.json"}
+    [exit 0]
+  PASS: a closed effort's tree: exit 0, pushed, push.made written after effort.closed, the effort still closed
+
+=== push-tree.sh: a tree's branch it must never push (a log edited by hand)
+  PASS: the hand-written cuts read back as live trees
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name prot --remote origin
+    err: push-tree.sh: refusing to push the protected branch main
+    [exit 2]
+  PASS: tree prot: exit 2, the protected branch main, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name rel --remote origin
+    err: push-tree.sh: refusing to push the protected branch release/1.0
+    [exit 2]
+  PASS: tree rel: exit 2, the protected branch release/1.0, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name feat --remote origin
+    err: push-tree.sh: tree feat's branch feature/x is not a crucible/ branch
+    [exit 2]
+  PASS: tree feat: exit 2, feature/x is not a crucible/ branch, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name away --remote origin
+    err: push-tree.sh: tree away's repository /nonexistent-gp is not there
+    [exit 2]
+  PASS: tree away: exit 2, is not there, nothing on the remote
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name nobranch --remote origin
+    err: push-tree.sh: tree nobranch's branch crucible/<id>-hand-edited/nobranch is gone
+    [exit 2]
+  PASS: tree nobranch: exit 2, is gone, nothing on the remote
+  PASS: main and release/1.0 are not on the remote
+
+=== push-tree.sh: the other refusals
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote upstream
+    err: push-remote.sh: the repository has no remote upstream; add it first (git remote add)
+    [exit 2]
+  PASS: a remote not configured: exit 2, push-remote.sh's reason
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote self
+    err: push-remote.sh: remote self is the repository itself (<S>/repo); expected another repository
+    [exit 2]
+  PASS: the repository itself as the remote: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name nope --remote origin
+    err: push-tree.sh: the effort has no live tree named nope
+    [exit 2]
+  PASS: no live tree of that name: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name Bad_Name --remote origin
+    err: push-tree.sh: --name Bad_Name must be lowercase words joined by dashes
+    [exit 2]
+  PASS: a name that is not lowercase words: exit 2
+  $ sh main/push-tree.sh --effort relative --name real --remote origin
+    err: push-tree.sh: --effort must be an absolute folder
+    [exit 2]
+  PASS: a relative --effort: exit 2
+  $ sh main/push-tree.sh --effort <S>/home --name real --remote origin
+    err: push-tree.sh: <S>/home is not an effort folder
+    [exit 2]
+  PASS: a folder that is no effort: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin --timeout 0
+    err: push-tree.sh: --timeout 0 must be a whole number of seconds from 1 to 600
+    [exit 2]
+  PASS: --timeout 0: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin --timeout abc
+    err: push-tree.sh: --timeout abc must be a whole number of seconds from 1 to 600
+    [exit 2]
+  PASS: --timeout abc: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin --timeout 0010
+    err: push-tree.sh: --timeout 0010 must be a whole number of seconds from 1 to 600
+    [exit 2]
+  PASS: --timeout 0010: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin --timeout 601
+    err: push-tree.sh: --timeout 601 is over 600
+    [exit 2]
+  PASS: --timeout 601: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin --bogus x
+    err: push-tree.sh: unknown argument --bogus; try --help
+    [exit 2]
+  PASS: an unknown option: exit 2
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name
+    err: push-tree.sh: --name needs a value
+    [exit 2]
+  PASS: an option without its value: exit 2
+  $ env TMPDIR=/nonexistent-gp sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    err: mktemp: mkdtemp failed on /nonexistent-gp/git-push.ElXvfe: No such file or directory
+    err: push-tree.sh: mktemp could not make a work folder
+    [exit 4]
+  PASS: no work folder: exit 4
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    err: events-read.sh: <S>/space/efforts/<id>-hand-edited/events/000001-effort.opened.json is not valid JSON
+    err: push-tree.sh: events-read.sh failed reading the effort
+    [exit 4]
+  PASS: core's reader failing: exit 4, nothing pushed
+  $ env PATH=<S>/nogit /bin/sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    err: push-tree.sh: git not found
+    [exit 4]
+  PASS: push-tree.sh without git: exit 4
+  $ env PATH=<S>/nojq /bin/sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    err: push-tree.sh: jq not found
+    [exit 4]
+  PASS: push-tree.sh without jq: exit 4
+  $ env PATH=<S>/nogit /bin/sh main/push-remote.sh --repo <S>/repo --remote origin
+    err: push-remote.sh: git not found
+    [exit 4]
+  PASS: push-remote.sh without git: exit 4
+  $ env PATH=<S>/nojq /bin/sh main/push-remote.sh --repo <S>/repo --remote origin
+    err: push-remote.sh: jq not found
+    [exit 4]
+  PASS: push-remote.sh without jq: exit 4
+  $ sh <S>/k2/skills/git-push/scripts/main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    err: push-tree.sh: a neighbour isn't beside this skill (expected <S>/k2/skills/crucible-events/scripts/internal/event-write.sh); install first
+    [exit 2]
+  PASS: push-tree.sh with core and git-worktree not beside it: exit 2, install first
+  $ sh main/push-tree.sh --effort <S>/space/efforts/<id>-hand-edited --name real --remote origin
+    out: {"name":"real","remote":"origin","branch":"crucible/<id>-hand-edited/real","commit":"<sha>","lease":null,"event":"<S>/space/efforts/<id>-hand-edited/events/000009-push.made.json"}
+    [exit 0]
+  PASS: and once the human said yes, the hand-edited effort's crucible tree pushes: exit 0
+
+=== the push.made rule
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-push-work --type push.made --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: push.made refused: push.made is written only by push-tree.sh
+    [exit 2]
+  PASS: by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-push-work --type push.made --by push-tree.sh --body-file <S>/forged.json
+    err: event-write.sh: push.made refused: answer 5 already pushed
+    [exit 2]
+  PASS: reusing an answer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-push-work --type push.made --by push-tree.sh --body-file <S>/forged.json
+    err: event-write.sh: push.made refused: x is not a push.made field; name must be a tree's name; remote must be a remote's name; commit must be a full commit sha; answer must be the seq of the human's recorded yes
+    [exit 2]
+  PASS: the wrong shape: one reason per field, a name not a string included
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-push-work --type push.made --by push-tree.sh --body-file <S>/forged.json
+    out: <S>/space/efforts/<id>-push-work/events/000031-push.made.json
+    [exit 0]
+  PASS: a right one, in the closed effort: accepted
+
+=== the step and the scripts' contracts
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage deliver
+    out: git-mount/mount · Puts one or more trees' committed work into the human's checkout as uncommitted changes, to try it there · ends with mount.made · stages: deliver · skills: git-mount · propose when: the human wants to try a tree's work in their own checkout
+    out: git-push/push-tree · Pushes one tree's branch to a remote under the same name, on the human's recorded yes · ends with push.made · stages: deliver · skills: git-push · propose when: the human wants a tree's work on a remote, to share it or open a pull request from it
+    [exit 0]
+  PASS: flow-candidates.sh lists git-push/push-tree, ends with push.made, left nothing out
+  PASS: push-remote.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: push-tree.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: shellcheck -x -o all is clean
+
+=== coverage: every script under scripts/ ran on a case
+  PASS: push-remote.sh ran on a case (19 runs)
+  PASS: push-tree.sh ran on a case (41 runs)
+
+=== 85 PASS, 0 FAIL

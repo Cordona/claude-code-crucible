@@ -21,6 +21,11 @@ EW="${K}/crucible-events/scripts/internal/event-write.sh"
 ER="${K}/crucible-events/scripts/internal/events-read.sh"
 HOOK="${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
 RUN="${SB}/run${RUN_SUFFIX:-}"
+# No global or system git config, so nothing is signed with a real key.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# One hash of every framework file, to show the framework didn't change
+# between setup and collect.
+framework_hash() { find "${R}" -type f -not -path '*/.git/*' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d' ' -f1; }
 export CRUCIBLE_HOME="${RUN}/space"
 . "${EV}/lab/cells.sh"
 
@@ -66,7 +71,7 @@ ALLOW='["Agent", "ToolSearch",
 session() {
 	b=$1 sdir="${RUN}/sessions/$1"
 	mkdir -p "${sdir}/hooks"
-	limit=2700000; case ${b} in parked-*) limit=30000 ;; *) ;; esac
+	limit=2700000; case ${b} in *parked-*) limit=30000 ;; *) ;; esac
 	jq -n --argjson allow "${ALLOW}" --arg cap "${sdir}/hooks" --arg stub "${sdir}/stub-calls.log" --arg limit "${limit}" \
 		'{permissions: {allow: $allow}, env: {BASH_MAX_TIMEOUT_MS: $limit, MATRIX_CAPTURE: $cap, STUB_LOG: $stub}}' >"${sdir}/flag-settings.json"
 	main_prompt "$1" >"${sdir}/main-prompt.txt"
@@ -99,9 +104,11 @@ setup() {
 	sh "${R}/framework/core/install/install-entries.sh" | sed -n '/^# Links/,/^$/p' | sed '1d' | grep -v '/CLAUDE.md' >"${RUN}/links.sh"
 	[ -n "${RUN_SUFFIX:-}" ] || sh "${RUN}/links.sh"
 	sh "${R}/framework/core/install/install-entries.sh" | sed -n '/^# Settings/,/^$/p' | sed '1d' >"${RUN}/entries-settings.json"
+	framework_hash >"${RUN}/framework-at-setup.txt"
 	repo="${RUN}/repo"
 	cp -R "${EV}/fixtures/repo" "${repo}"
 	git init -q -b main "${repo}"
+	git -C "${repo}" config commit.gpgsign false
 	git -C "${repo}" add -A
 	printf '.claude/\n' >>"${repo}/.git/info/exclude"
 	git -C "${repo}" -c user.name=Fixture -c user.email=fixture@example.test -c commit.gpgsign=false commit -q -m 'the project'
@@ -175,6 +182,7 @@ collect() {
 		cp -Rp "${e}/reports" "${d}/reports" 2>/dev/null || mkdir -p "${d}/reports"
 		printf "%s step4 %s\n" "${cell}" "$(cut -d" " -f2 "${c}/cell")" >"${d}/cell"
 		cp -p "${c}/prompt.txt" "${c}/plugins.txt" "${c}/task.txt" "${c}/tree" "${c}/batch" "${c}/live-seq" "${d}/"
+		printf '%s\n' "${cell}${RUN_SUFFIX:-}" >"${d}/batch"
 		cp -p "${c}"/dispatched-*.json "${c}"/chosen.json "${c}"/challenges.json "${c}"/earlier.json "${c}"/fixes.json "${c}"/threads.json "${d}/" 2>/dev/null || true
 		cp -p "${c}/prompt.txt" "${EV}/prompts/${cell}.txt"
 		printf 'j1 %s %s\n' "$(cat "${c}/live-seq")" "$(agent_type_of "$(cut -d' ' -f2 "${c}/cell")")" >"${d}/jobs"
@@ -185,6 +193,20 @@ collect() {
 			{ printf '== tree %s\n' "${t}"; git -C "${t}" log --format='commit %H%n%B%n.' --name-only main..HEAD; printf '== status\n'; git -C "${t}" status --porcelain; } >>"${d}/git.txt" 2>&1
 			git -C "${t}" diff HEAD >"${d}/tree-uncommitted.diff" 2>&1 || true
 		done
+		# The live job's submission commit: what it changed; and, for a test
+		# or test-fix job, the commit's tests run now, in a copy (they must run).
+		sc=$(jq -r --argjson j "$(cat "${c}/live-seq")" '[.[] | select((.body.job // null) == $j and (.body.commit | type) == "string") | .body.commit] | last // empty' "${d}/events.json")
+		if [ -n "${sc}" ]; then
+			t=$(cat "${c}/tree")
+			git -C "${t}" diff --numstat "${sc}^" "${sc}" >"${d}/commit-numstat.txt" 2>&1 || true
+			case $(cut -d' ' -f2 "${c}/cell") in test | test-fix)
+				# A copy of the commit, so the tree is left as it is.
+				x=$(mktemp -d "${RUN}/testrun.XXXXXX")
+				git -C "${t}" archive "${sc}" | tar -x -C "${x}"
+				rc=0; (cd "${x}" && sh tests/run.sh) >"${d}/tests-run.txt" 2>&1 || rc=$?
+				echo "exit ${rc}" >>"${d}/tests-run.txt" ;;
+			esac
+		fi
 		b=$(cat "${c}/batch")
 		hk="${RUN}/sessions/${b}/hooks"
 		agent=$(jq -r '.[] | select(.type == "job.assigned" and .body.session != "sess-real-fixture") | .body.agent' "${d}/events.json" | tail -n 1)
@@ -207,6 +229,13 @@ collect() {
 		s=${s%/}; d="${out}/_sessions/${s##*/}${RUN_SUFFIX:-}"
 		rm -rf -- "${d:?}"; mkdir -p "${d}"
 		cp -p "${s}"/main.jsonl "${s}"/main.err "${s}"/main-prompt.txt "${s}"/flag-settings.json "${d}/" 2>/dev/null || true
+		# An interactive main has no stream file: its transcript, named in any
+		# hook call's input, stands in for it.
+		if [ ! -s "${d}/main.jsonl" ]; then
+			mt=$(find "${s}/hooks" -name '*.json' -type f -exec jq -r '.input.transcript_path // empty' {} + 2>/dev/null | sort -u | head -n 1)
+			[ -z "${mt}" ] || [ ! -f "${mt}" ] || cp -p "${mt}" "${d}/main.jsonl"
+			[ ! -f "${s}/panes.txt" ] || cp -p "${s}/panes.txt" "${s}/keys.txt" "${d}/" 2>/dev/null || true
+		fi
 		proj="${RUN}/repo"
 		cp -p "${proj}/.claude/settings.json" "${d}/settings.json"
 		: >"${d}/stub-calls.log"; [ ! -f "${s}/stub-calls.log" ] || cp -p "${s}/stub-calls.log" "${d}/stub-calls.log"
@@ -216,6 +245,7 @@ collect() {
 		for a in code-builder code-tester code-reviewer; do shasum -a 256 "${proj}/.claude/agents/${a}.md" "${AG}/${a}/${a}.md"; done >"${d}/agent-definitions.sha256"
 	done
 	cp -p "${RUN}/install-check.out" "${RUN}/claude-version.txt" "${RUN}/cells.txt" "${out}/" 2>/dev/null || true
+	{ printf 'at setup:   %s\n' "$(cat "${RUN}/framework-at-setup.txt" 2>/dev/null)"; printf 'at collect: %s\n' "$(framework_hash)"; } >"${out}/framework-hash.txt"
 	echo "collected into ${out}"
 }
 

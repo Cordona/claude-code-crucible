@@ -1,0 +1,34 @@
+hash-start f71a00541cb850727fa31b8c82f665aab5c3cdd458e45e9a832209427acf2222
+build-agent/run.sh: exit 0 | === 397 PASS, 0 FAIL
+test-agent/run.sh: exit 0 | === 110 PASS, 0 FAIL
+review-agent/run.sh: exit 0 | === 112 PASS, 0 FAIL
+agent-jobs/run.sh: exit 0 | === 69 PASS, 0 FAIL
+adaptive-flow-run.sh: exit 0 | 
+context-run.sh: exit 0 | 
+dev-base-run.sh: exit 0 | === 67 PASS, 0 FAIL
+effort-run.sh: exit 0 | 
+events-run.sh: exit 0 | 
+fixes-run.sh: exit 0 | 
+gate-answers-run.sh: exit 0 | 
+git-commit-run.sh: exit 0 | === 103 PASS, 0 FAIL
+git-identity-run.sh: exit 0 | 
+git-mount-run.sh: exit 0 | === 165 PASS, 0 FAIL
+git-push-run.sh: exit 0 | === 85 PASS, 0 FAIL
+git-worktree-run.sh: exit 0 | === 302 PASS, 0 FAIL
+grill-run.sh: exit 0 | 
+internals-guard-run.sh: exit 0 | === 64 PASS, 0 FAIL
+rollback-run.sh: exit 0 | === 22 PASS, 0 FAIL
+spec-run.sh: exit 0 | 
+installed-run-notracker: exit 0 | 1 installed-lines
+help-check: exit 0 lines        0
+hash-end f71a00541cb850727fa31b8c82f665aab5c3cdd458e45e9a832209427acf2222
+transcript adaptive-flow: 84 differing
+transcript context: 30 differing
+transcript effort: 0 differing
+transcript events: 2 differing
+transcript fixes: 2 differing
+transcript gate-answers: 0 differing
+transcript git-identity: 30 differing
+transcript grill: 0 differing
+transcript spec: 2 differing
+F1 round 2: all green on frozen f71a0054 (start = end); transcript differences identical in count to round 1 (volatile values; fixes 36 lines missing as expected); install-check 'installed'; trackers stubbed.

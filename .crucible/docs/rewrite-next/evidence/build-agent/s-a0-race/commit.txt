@@ -1,0 +1,16 @@
+crucible(build): cap the upload retries at three
+
+cap the upload retries at three
+
+Effort: 20261125T161540-1845-upload-retries
+Job: 108 build-php-fr0000
+Iteration: 1
+Language: php
+Standards: security
+
+commit e401cf1118839820c632cfedc9e2541f1a1cc2a7
+Author: Build Agent <build-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php | 1 +
+ 1 file changed, 1 insertion(+)

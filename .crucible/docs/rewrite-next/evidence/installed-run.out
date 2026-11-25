@@ -26,12 +26,11 @@ $ sh <R>/framework/core/install/install-check.sh --settings <S>/settings.json
     installed
     [exit 0]
 --- every hook runs through its component's link
+    sh '<skills>/agent-submission/hooks/permission-request/deny-compound-commands.sh'
     sh '<skills>/crucible-gate/hooks/post-tool-use/record-gate-answer.sh'
     sh '<skills>/crucible-gate/hooks/pre-tool-use/hold-question-until-card-shown.sh'
-    sh '<skills>/agent-submission/hooks/pre-tool-use/job-agent-bash.sh'
-    sh '<skills>/crucible-events/hooks/pre-tool-use/deny-direct-event-write.sh'
-    sh '<skills>/crucible-events/hooks/pre-tool-use/deny-internals-read.sh'
-    sh '<skills>/agent-submission/hooks/pre-tool-use/job-agent-writes.sh'
+    sh '<skills>/agent-submission/hooks/pre-tool-use/job-agent-tools.sh'
+    sh '<skills>/crucible-events/hooks/pre-tool-use/guard-framework.sh'
     sh '<skills>/agent-jobs/hooks/stop/end-gone-jobs.sh'
     sh '<skills>/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh'
     sh '<skills>/crucible-gate/hooks/stop/require-card-shown.sh'
@@ -97,7 +96,7 @@ $ sh <skills>/crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/s
     [exit 0]
 === code-context, in full
 $ sh <skills>/code-context/scripts/main/context-add-commit.sh --effort <S>/space/efforts/<id>-installed --repo <S>/repo --ref HEAD
-    <S>/space/efforts/<id>-installed/context/draft/docs/diff-18a2df7.patch
+    <S>/space/efforts/<id>-installed/context/draft/docs/diff-c9116ae.patch
     [exit 0]
 === trackers, in full (reads GitHub)
 $ sh <skills>/trackers/scripts/main/tracker-read.sh --url https://example.com/page
@@ -123,7 +122,7 @@ $ sh <skills>/crucible-context/scripts/main/context-cut.sh --effort <S>/space/ef
 $ sh <skills>/crucible-spec/scripts/main/spec-approve.sh --effort <S>/space/efforts/<id>-installed --draft <S>/space/efforts/<id>-installed/spec/1.md
     <S>/space/efforts/<id>-installed/events/000012-spec.approved.json
     [exit 0]
-    v1 holds: diff-18a2df7.patch
+    v1 holds: diff-c9116ae.patch
     v1 holds: issue-github.com-cli-cli-issues-1.md
 $ sh <skills>/crucible-context/scripts/main/context-verify.sh --effort <S>/space/efforts/<id>-installed --file <S>/space/efforts/<id>-installed/events/000010-context.cut.json
     CONTEXT_FILE: <S>/space/efforts/<id>-installed/events/000010-context.cut.json

@@ -574,6 +574,44 @@ $ON"
 	case $1 in *-bypass) PERM=bypassPermissions ;; esac
 	main "$prompt" 300
 	{ find "$R" "$T" -name 'p19-rel-*'; } >"$K/logs/$1/files-after.txt" 2>&1 ;;
+P20a | P20b)
+	# The P18 layout, main default, allow-list Bash(git -C * status*) and
+	# Bash(sh tests/run.sh). A PermissionRequest hook denies a sub-agent's
+	# ask with a message, except for a command starting with "touch " (left
+	# unanswered, P20d). The write gate allows Write in the tree and space so
+	# the agent can record what it got. After the agent, main runs an ask
+	# itself (P20c). P20a headless; P20b interactive (run.sh P20b, then
+	# PN=P20b run.sh P2c-key ..., P2c-end).
+	TOOLS='Agent|Write|Edit' setup "$1"
+	R="$S/repo" SP="$S/space"; T="$SP/efforts/e1/worktrees/t1"
+	fgit init -q -b main "$R"; mkdir -p "$R/tests" "$SP/efforts/e1/worktrees" "$SP/efforts/e1/reports"
+	printf '#!/bin/sh\necho tests ok\n' >"$R/tests/run.sh"; printf '#!/bin/sh\necho hi\n' >"$R/x.sh"
+	fgit -C "$R" add -A; fgit -C "$R" commit -q -m fixture
+	fgit -C "$R" worktree add -q "$T" -b t1
+	printf 'WG_TOOLS="Write|Edit"\nWG_ALLOW="%s/ %s/"\n' "$T" "$SP" >"$S/policy/write-gate"
+	printf '%s\n' "PR_MSG='Run it as plain single commands, one per call. Your other commands still run.'" "PR_SKIP='^touch '" >"$S/policy/permreq-deny"
+	jq -n --arg d "$SP" '{permissions: {additionalDirectories: [$d], allow: ["Bash(git -C * status*)", "Bash(sh tests/run.sh)"]}}' >"$S/logs/flag-settings.json"
+	GOT="$SP/p20-got.txt"
+	STEP1=pwd mkagent p20-ask '' "Run each as one Bash command, exactly as written:
+2. cd $T && ls
+3. T=$T; git -C \$T status
+4. ls $T | wc -l
+5. wc -l $T/x.sh
+6. cd $T && git status
+7. touch $T/p20d.txt
+Each time a command is refused, first use the Write tool to append (rewrite the whole file, keeping what is there; read it first with the Read tool if it exists) one line to $GOT: the step number, then the exact refusal text you received, word for word. Then, if the refusal tells you how to run it instead, do that before going on. In your final answer, list each step with its output or refusal and what you ran instead." haiku 'Bash, Read, Write'
+	mv "$S/.claude" "$R/.claude"; CLDIR="$R/.claude" MAIN_DIR="$R"
+	prompt="Start one agent with the Agent tool, in the background (run_in_background: true), subagent_type \"p20-ask\", prompt \"go\". Wait until it has finished; you will be notified. Then run this Bash command yourself: cd $T && git status . Then reply with one line: DONE, the agent's final answer, and what your own command returned."
+	if [ "$1" = P20b ]; then
+		printf '%s\n' "$prompt" >"$S/logs/main-prompt.txt"
+		printf 'mode=default interactive settings=%s dir=%s\n' "$S/logs/flag-settings.json" "$R" >"$S/logs/main-args.txt"
+		tmux new-session -d -s stop-hook-probe-p2c -x 200 -y 50 -c "$R" \
+			"env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR claude --permission-mode default --settings $S/logs/flag-settings.json --debug-file $S/logs/debug.txt \"\$(cat $S/logs/main-prompt.txt)\"; sleep 5"
+		echo started; exit 0
+	fi
+	FLAG_SETTINGS="$S/logs/flag-settings.json" PERM=default
+	main "$prompt" 300
+	cp "$GOT" "$K/logs/$1/p20-got.txt" 2>/dev/null || echo none >"$K/logs/$1/p20-got.txt" ;;
 P2c-key)
 	P=${PN:-P2c}; S="$SB/$P"; shift
 	printf '%s keys %s\n' "$(date +%s)" "$*" >>"$S/logs/keys.txt"
@@ -587,6 +625,6 @@ P2c-end)
 	tmux kill-session -t stop-hook-probe-p2c 2>/dev/null || true
 	collect ;;
 all)
-	for p in P1 P1c P2a P2b P2d P2k P2e P3 P4 P5 P6 P6t P6q P7 P8 P9 P10a P10b-turns P10b-err P12 P12s P13a P13a-proc P13a-ctl P13a-ctl700 P13b P13c P14 P14d P15n P15a P15c P16a P16a-dirs P16a-bypass P16c P16c-in P16d-set-default P16d-set-acceptEdits P16d-add-default P16d-add-acceptEdits P17a P17c-default P17c-acceptEdits P17c-bypassPermissions P17d-edit P17d-both P18 P19-schema P19a-front P19a-param P19a-hook P19a-enter P19a-main P19a-enter-allow P19a-main-allow P19a-enter-bypass P19a-main-bypass P19a-iso-bypass P19bc; do sh "$0" "$p"; done ;;
-*) echo 'usage: run.sh P1|P1c|P2a|P2b|P2d|P2k|P2e|P3|P4|P5|P6|P6t|P6q|P7|P8|P9|P10a|P10b-turns|P10b-err|P12|P12s|P13a|P13a-proc|P13a-ctl|P13a-ctl700|P13b|P13c|P14|P14d|P15n|P15a|P15c|P16a|P16a-dirs|P16a-bypass|P16c|P16c-in|P16d-set-default|P16d-set-acceptEdits|P16d-add-default|P16d-add-acceptEdits|P16b|P17a|P17b|P17c-default|P17c-acceptEdits|P17c-bypassPermissions|P17d-edit|P17d-both|P18|P19-schema|P19a-front|P19a-param|P19a-hook|P19a-enter|P19a-main|P19a-enter-allow|P19a-main-allow|P19a-enter-bypass|P19a-main-bypass|P19a-iso-bypass|P19bc|all' >&2; exit 2 ;;
+	for p in P1 P1c P2a P2b P2d P2k P2e P3 P4 P5 P6 P6t P6q P7 P8 P9 P10a P10b-turns P10b-err P12 P12s P13a P13a-proc P13a-ctl P13a-ctl700 P13b P13c P14 P14d P15n P15a P15c P16a P16a-dirs P16a-bypass P16c P16c-in P16d-set-default P16d-set-acceptEdits P16d-add-default P16d-add-acceptEdits P17a P17c-default P17c-acceptEdits P17c-bypassPermissions P17d-edit P17d-both P18 P19-schema P19a-front P19a-param P19a-hook P19a-enter P19a-main P19a-enter-allow P19a-main-allow P19a-enter-bypass P19a-main-bypass P19a-iso-bypass P19bc P20a; do sh "$0" "$p"; done ;;
+*) echo 'usage: run.sh P1|P1c|P2a|P2b|P2d|P2k|P2e|P3|P4|P5|P6|P6t|P6q|P7|P8|P9|P10a|P10b-turns|P10b-err|P12|P12s|P13a|P13a-proc|P13a-ctl|P13a-ctl700|P13b|P13c|P14|P14d|P15n|P15a|P15c|P16a|P16a-dirs|P16a-bypass|P16c|P16c-in|P16d-set-default|P16d-set-acceptEdits|P16d-add-default|P16d-add-acceptEdits|P16b|P17a|P17b|P17c-default|P17c-acceptEdits|P17c-bypassPermissions|P17d-edit|P17d-both|P18|P19-schema|P19a-front|P19a-param|P19a-hook|P19a-enter|P19a-main|P19a-enter-allow|P19a-main-allow|P19a-enter-bypass|P19a-main-bypass|P19a-iso-bypass|P19bc|P20a|P20b|all' >&2; exit 2 ;;
 esac
