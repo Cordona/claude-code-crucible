@@ -1,0 +1,13 @@
+{
+  "event": "external-review.submitted",
+  "commit": false,
+  "rules": "code-reviewer/scripts/lib/external-review-report",
+  "problems": "external_review_report_problems",
+  "facts": "code-reviewer/scripts/internal/reviewer-facts.sh",
+  "stamps": {
+    "rules": "code-reviewer/scripts/lib/reviewer-stamps",
+    "def": "stamp_external",
+    "facts": "code-reviewer/scripts/internal/reviewer-stamp-facts.sh"
+  },
+  "writes": "report"
+}

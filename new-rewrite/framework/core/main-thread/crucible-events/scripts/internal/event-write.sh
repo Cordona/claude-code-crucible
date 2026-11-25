@@ -24,7 +24,9 @@ Options:
   --iteration N     a whole number from 1; left out of the event when not given
 Requires:  exactly one rule <component>/events/TYPE.jq beside crucible-events:
            jq given {event, prior} (the new event; earlier events in seq
-           order), printing one reason per broken rule, nothing to accept
+           order), printing one reason per broken rule, nothing to accept;
+           its jq search path is the components folder, so a rule loads a
+           component's lib by name: include "<component>/scripts/lib/<module>"
 Reads:     CLAUDE_CODE_SESSION_ID, as claude_session_id (null when unset)
 Writes:    FOLDER/events/NNNNNN-TYPE.json, read-only, seq from 1, no gaps:
            {type, seq, at (ISO UTC), by, claude_session_id, iteration?, body}
@@ -106,7 +108,7 @@ prior=$(sh "$(dirname -- "$0")/events-read.sh" --effort "${effort}") \
 	|| refuse 'the earlier events could not be read whole; the log is damaged, a human must look'
 reasons=$(printf '%s\n' "${prior}" \
 	| jq --slurpfile event "${temp}" '{event: $event[0], prior: .}' \
-	| jq -r -f "${rule}") || refuse "the rule ${rule} failed to run"
+	| jq -r -L "${components}" -f "${rule}") || refuse "the rule ${rule} failed to run"
 [ -z "${reasons}" ] || refuse "${type} refused: $(printf '%s' "${reasons}" | paste -sd '|' - | sed 's/|/; /g')"
 
 target="${events}/$(printf '%06d' "${seq}")-${type}.json"

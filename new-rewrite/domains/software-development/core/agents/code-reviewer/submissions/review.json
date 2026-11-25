@@ -1,0 +1,13 @@
+{
+  "event": "review.submitted",
+  "commit": false,
+  "rules": "code-reviewer/scripts/lib/review-report",
+  "problems": "review_report_problems",
+  "facts": "code-reviewer/scripts/internal/reviewer-facts.sh",
+  "stamps": {
+    "rules": "code-reviewer/scripts/lib/reviewer-stamps",
+    "def": "stamp_review",
+    "facts": "code-reviewer/scripts/internal/reviewer-stamp-facts.sh"
+  },
+  "writes": "report"
+}

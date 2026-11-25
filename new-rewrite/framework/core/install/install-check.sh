@@ -59,22 +59,25 @@ fi
 while IFS= read -r file; do
 	jq -e 'type == "object"' "${file}" >/dev/null 2>&1 || refuse "${file} is not a JSON object"
 done <"${work}/files"
-# The settings merged: hooks per event concatenated, the permission lists joined.
+# The settings merged: hooks per event concatenated, the permission lists
+# joined, env the later file's value.
 while IFS= read -r file; do cat -- "${file}"; done <"${work}/files" | jq -s '{
+	env: (map(.env // {}) | add // {}),
 	hooks: (map(.hooks // {} | to_entries) | add // [] | group_by(.key) | map({key: .[0].key, value: (map(.value) | add)}) | from_entries),
 	dirs: (map(.permissions.additionalDirectories // []) | add // []),
 	deny: (map(.permissions.deny // []) | add // [])}' >"${work}/settings.json"
 
 sh "${here}/install-entries.sh" --json >"${work}/needs.json" || refuse 'install-entries.sh failed; run it alone to see why'
 
-# Settings: hooks, the space, the deny rules.
+# Settings: hooks, each with its timeout, the space, the deny rules, env.
 jq -r --slurpfile s "${work}/settings.json" '$s[0] as $set
 	| (.hooks[] as $h
 		| ($set.hooks[$h.event] // []) as $groups
 		| if any($groups[]; ((.matcher // null) as $m | $m == $h.matcher or ($h.matcher == null and $m == ""))
-			and any(.hooks[]?; (.command // "") | contains($h.command_path)))
+			and any(.hooks[]?; ((.command // "") | contains($h.command_path)) and ($h.timeout == null or .timeout == $h.timeout)))
 		  then empty
-		  else "missing: \($h.event) hook \(if $h.matcher then "[\($h.matcher)] " else "" end)\($h.command_path)" end),
+		  else "missing: \($h.event) hook \(if $h.matcher then "[\($h.matcher)] " else "" end)\($h.command_path)\(if $h.timeout then " with timeout \($h.timeout)" else "" end)" end),
+	(.env | to_entries[] as $v | if $set.env[$v.key] == $v.value then empty else "missing: env \($v.key)=\($v.value)" end),
 	(.space as $space | if any($set.dirs[]; . == $space) then empty else "missing: additional directory \($space)" end),
 	(.deny[] as $rule | if any($set.deny[]; . == $rule) then empty else "missing: deny rule \($rule)" end)' \
 	"${work}/needs.json" >"${work}/missing"

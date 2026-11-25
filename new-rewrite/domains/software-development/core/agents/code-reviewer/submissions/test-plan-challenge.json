@@ -1,0 +1,13 @@
+{
+  "event": "test-plan.challenged",
+  "commit": false,
+  "rules": "code-reviewer/scripts/lib/test-plan-challenge-report",
+  "problems": "challenge_report_problems",
+  "facts": "code-reviewer/scripts/internal/reviewer-facts.sh",
+  "stamps": {
+    "rules": "code-reviewer/scripts/lib/reviewer-stamps",
+    "def": "stamp_challenge",
+    "facts": "code-reviewer/scripts/internal/reviewer-stamp-facts.sh"
+  },
+  "writes": "report"
+}

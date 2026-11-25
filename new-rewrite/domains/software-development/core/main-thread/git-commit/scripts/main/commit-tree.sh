@@ -9,11 +9,13 @@ umask 077
 usage() {
 	cat <<'USAGE'
 usage: sh commit-tree.sh --worktree DIR --message-file FILE --effort FOLDER
+                        [--unsigned]
 
 Commits every change in an effort's worktree (untracked too, not ignored) on
 its branch as the effort's identity; signed, or unsigned if signing fails or
-takes over 10 s. Also finishes a resolved merge (worktree-catch-up.sh's
-"conflict"): parents HEAD and MERGE_HEAD, made even with no change.
+takes over 10 s, or when --unsigned asks for it. Also finishes a resolved
+merge (worktree-catch-up.sh's "conflict"): parents HEAD and MERGE_HEAD, made
+even with no change.
 
 Options:
   --worktree DIR       absolute; a linked worktree's top folder, HEAD on a
@@ -22,6 +24,8 @@ Options:
                        adds "Effort: <effort folder name>" when it has no
                        Effort trailer; one naming another effort is refused
   --effort FOLDER      absolute; the effort's folder
+  --unsigned           make the commit unsigned, with no signing attempt: a
+                       working commit, which never lands
 Requires:  the effort's identity set (git-identity); no pick, revert or rebase
            under way; no conflict markers left in a merge
 Writes:    stages all, commits on the tree's branch; never git config, no hooks
@@ -114,19 +118,30 @@ fail_restored() {
 }
 
 # Commits signed, as the identity, with no hook, the message verbatim; a
-# signed attempt that failed with HEAD unmoved is made again unsigned.
+# signed attempt that failed with HEAD unmoved is made again unsigned. With
+# --unsigned there is no signed attempt.
 commit_staged() {
+	if [ -n "${unsigned}" ]; then
+		signed=false
+		commit_unsigned
+		return 0
+	fi
 	gc_run_signed "${worktree}" -c core.hooksPath=/dev/null commit -S -q --no-verify --cleanup=verbatim -F "${gc_work}/message"
 	signed=true
 	[ "${gc_sign_rc}" -ne 0 ] || return 0
 	head_unmoved
 	signed=false
+	commit_unsigned
+	gc_say_unsigned
+}
+
+# Commits unsigned, as the identity, with no hook, the message verbatim.
+commit_unsigned() {
 	gc_identity_git "${worktree}" -c core.hooksPath=/dev/null commit --no-gpg-sign -q --no-verify --cleanup=verbatim \
 		-F "${gc_work}/message" </dev/null >&2 2>"${gc_work}/commit-stderr" || {
 		head_unmoved
 		fail_restored "git commit failed: $(head -n 1 "${gc_work}/commit-stderr")"
 	}
-	gc_say_unsigned
 }
 
 # A failed commit that still moved HEAD made something nobody asked for.
@@ -155,10 +170,11 @@ verify_commit() {
 		fail 'the tree still shows a change after the commit'
 }
 
-worktree='' message_file='' effort=''
+worktree='' message_file='' effort='' unsigned=''
 while [ $# -gt 0 ]; do
 	case $1 in
 		-h | --help) usage; exit 0 ;;
+		--unsigned) unsigned=1; shift ;;
 		--worktree | --message-file | --effort)
 			[ $# -ge 2 ] && [ -n "$2" ] || gc_refuse "$1 needs a value"
 			case $1 in --worktree) worktree=$2 ;; --message-file) message_file=$2 ;; --effort) effort=$2 ;; *) ;; esac
