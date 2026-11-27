@@ -1,0 +1,42 @@
+{
+  "id": 1006,
+  "node_id": "PRR_kwDOAAAAAAAAAAAA",
+  "user": {
+    "login": "example-user-1",
+    "id": 1007,
+    "node_id": "U_kwDOAAAAAAAAAAAA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-1",
+    "html_url": "https://github.com/example-user-1",
+    "followers_url": "https://api.github.com/users/example-user-1/followers",
+    "following_url": "https://api.github.com/users/example-user-1/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-1/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-1/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-1/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-1/orgs",
+    "repos_url": "https://api.github.com/users/example-user-1/repos",
+    "events_url": "https://api.github.com/users/example-user-1/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-1/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "",
+  "state": "COMMENTED",
+  "html_url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1006",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/8",
+  "author_association": "MEMBER",
+  "is_copilot_code_review": false,
+  "copilot_code_review_effort": null,
+  "_links": {
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1006"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/8"
+    }
+  },
+  "submitted_at": "2024-01-04T01:51:00Z",
+  "commit_id": "0000000000000000000000000000000000abc00e"
+}

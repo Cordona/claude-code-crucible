@@ -1,0 +1,72 @@
+{
+  "url": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1028",
+  "pull_request_review_id": 1029,
+  "id": 1028,
+  "node_id": "PRRC_kwDOAAAAAAAAAAAA",
+  "diff_hunk": "@@ -0,0 +1,3 @@\n+added line\n+added line\n+added line",
+  "path": "src/example/file10.ts",
+  "commit_id": "0000000000000000000000000000000000abc00a",
+  "original_commit_id": "0000000000000000000000000000000000abc00b",
+  "user": {
+    "login": "example-user-3",
+    "id": 1018,
+    "node_id": "U_kwDOAAAAAAAAAAAA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-3",
+    "html_url": "https://github.com/example-user-3",
+    "followers_url": "https://api.github.com/users/example-user-3/followers",
+    "following_url": "https://api.github.com/users/example-user-3/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-3/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-3/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-3/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-3/orgs",
+    "repos_url": "https://api.github.com/users/example-user-3/repos",
+    "events_url": "https://api.github.com/users/example-user-3/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-3/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n```suggestion\nsynthetic replacement line\n```",
+  "created_at": "2024-01-06T19:11:00Z",
+  "updated_at": "2024-01-06T19:11:00Z",
+  "html_url": "https://github.com/example-org/example-repo/pull/12#discussion_r1028",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/12",
+  "_links": {
+    "self": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1028"
+    },
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/12#discussion_r1028"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/12"
+    }
+  },
+  "reactions": {
+    "url": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1028/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "start_line": null,
+  "original_start_line": null,
+  "start_side": null,
+  "line": 3,
+  "original_line": 3,
+  "side": "RIGHT",
+  "author_association": "MEMBER",
+  "original_position": 3,
+  "position": 3,
+  "subject_type": "line",
+  "is_copilot_code_review": false,
+  "copilot_code_review_severity": null,
+  "copilot_code_review_sources": []
+}
