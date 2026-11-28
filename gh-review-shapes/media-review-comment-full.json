@@ -1,0 +1,74 @@
+{
+  "url": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1026",
+  "pull_request_review_id": 1027,
+  "id": 1026,
+  "node_id": "PRRC_kwDOAAAAAAAAAAAA",
+  "diff_hunk": "@@ -29,5 +24,6 @@\n context line\n+added line\n context line\n context line\n context line\n context line",
+  "path": "src/example/file9.ts",
+  "commit_id": "0000000000000000000000000000000000abc009",
+  "original_commit_id": "0000000000000000000000000000000000abc008",
+  "user": {
+    "login": "example-user-2",
+    "id": 1011,
+    "node_id": "U_kwDOAAAAAAAAAAAA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-2",
+    "html_url": "https://github.com/example-user-2",
+    "followers_url": "https://api.github.com/users/example-user-2/followers",
+    "following_url": "https://api.github.com/users/example-user-2/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-2/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-2/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-2/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-2/orgs",
+    "repos_url": "https://api.github.com/users/example-user-2/repos",
+    "events_url": "https://api.github.com/users/example-user-2/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-2/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\nSee https://example.com/x",
+  "created_at": "2024-01-07T05:06:00Z",
+  "updated_at": "2024-01-07T05:06:00Z",
+  "html_url": "https://github.com/example-org/example-repo/pull/11#discussion_r1026",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/11",
+  "_links": {
+    "self": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1026"
+    },
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/11#discussion_r1026"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/11"
+    }
+  },
+  "body_html": "<p dir=\"auto\">Example synthetic review text.</p>\n<p dir=\"auto\">See <a href=\"https://example.com/x\" rel=\"nofollow\">https://example.com/x</a></p>",
+  "body_text": "Example synthetic review text.\n\nSee https://example.com/x",
+  "reactions": {
+    "url": "https://api.github.com/repos/example-org/example-repo/pulls/comments/1026/reactions",
+    "total_count": 1,
+    "+1": 1,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "start_line": null,
+  "original_start_line": null,
+  "start_side": null,
+  "line": 28,
+  "original_line": 29,
+  "side": "RIGHT",
+  "author_association": "MEMBER",
+  "original_position": 6,
+  "position": 6,
+  "subject_type": "line",
+  "is_copilot_code_review": false,
+  "copilot_code_review_severity": null,
+  "copilot_code_review_sources": []
+}

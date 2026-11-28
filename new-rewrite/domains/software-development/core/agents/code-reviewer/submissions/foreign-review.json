@@ -1,0 +1,12 @@
+{
+  "event": "foreign-review.submitted",
+  "commit": false,
+  "rules": "code-reviewer/scripts/lib/foreign-review-report",
+  "problems": "foreign_review_report_problems",
+  "facts": "code-reviewer/scripts/internal/reviewer-facts.sh",
+  "stamps": {
+    "rules": "code-reviewer/scripts/lib/reviewer-stamps",
+    "def": "stamp_foreign",
+    "facts": "code-reviewer/scripts/internal/reviewer-stamp-facts.sh"
+  }
+}

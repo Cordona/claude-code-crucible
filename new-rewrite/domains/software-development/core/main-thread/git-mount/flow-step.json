@@ -1,0 +1,10 @@
+[
+  {
+    "name": "mount",
+    "stage": ["deliver"],
+    "does": "Puts one or more trees' committed work into the human's checkout as uncommitted changes, to try it there",
+    "propose_when": "the human wants to try a tree's work in their own checkout",
+    "ends_with": { "event": "mount.made" },
+    "skills": ["git-mount"]
+  }
+]

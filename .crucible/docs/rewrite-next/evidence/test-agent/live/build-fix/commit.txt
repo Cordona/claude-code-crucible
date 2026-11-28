@@ -1,0 +1,15 @@
+crucible(build-fix): never retry a 4xx
+
+Effort: 20261124T174705-3d6c-live-test-agent
+Job: 14 build-fix-php-b0b0b0
+Iteration: 1
+Fix-Round: 1
+Language: php
+Standards: testing, security
+
+commit ec8028780fbcee965cdc7367a9ad24dc0dd9c5d2
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php | 1 +
+ 1 file changed, 1 insertion(+)

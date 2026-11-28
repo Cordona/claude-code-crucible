@@ -1,0 +1,18 @@
+{
+  "challenges": [
+    {
+      "id": "C-10",
+      "target": "B-1",
+      "ask": "add",
+      "title": "the limit itself is never tested",
+      "why": "the plan names the limit, and no test hits it"
+    },
+    {
+      "id": "C-11",
+      "target": "N-1",
+      "ask": "prove",
+      "title": "the untested case is assumed safe",
+      "why": "the plan gives no proof for it"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 18,
+  "at": "2026-11-24T08:01:22Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "record": "plan-gate",
+    "subject": "plan:17",
+    "question": "The reworked test plan (17) answers every challenge.",
+    "accept": "Approve the plan (Recommended)",
+    "answer": "Approve the plan (Recommended)",
+    "accepted": true
+  }
+}

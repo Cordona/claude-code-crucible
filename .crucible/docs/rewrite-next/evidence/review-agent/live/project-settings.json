@@ -1,0 +1,90 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-gate/hooks/post-tool-use/record-gate-answer.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/review-agent-live/lab/assign-job.sh'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-gate/hooks/pre-tool-use/hold-question-until-card-shown.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-events/hooks/pre-tool-use/deny-direct-event-write.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-events/hooks/pre-tool-use/deny-internals-read.sh'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-adaptive-flow/hooks/stop/remind-flow-position.sh'"
+          },
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/crucible-gate/hooks/stop/require-card-shown.sh'"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh '/Users/Shared/crucible-sandbox/event-jobs/cfg/skills/agent-submission/hooks/subagent-stop/submit-agent-work.sh'"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "additionalDirectories": [
+      "/Users/Shared/crucible-sandbox/review-agent-live/run/space"
+    ],
+    "deny": [
+      "Edit(//Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/*/events/**)"
+    ]
+  },
+  "env": {
+    "LIVE": "/Users/Shared/crucible-sandbox/review-agent-live/run",
+    "LIVE_EFFORT": "/Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent",
+    "CRUCIBLE_HOME": "/Users/Shared/crucible-sandbox/review-agent-live/run/space"
+  }
+}

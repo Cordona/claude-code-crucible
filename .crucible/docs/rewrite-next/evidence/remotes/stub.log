@@ -1,0 +1,6 @@
+api --hostname gitlab.example.test projects/group%2Fsub%2Fapp/merge_requests/42
+api --hostname gitlab.example.test --paginate projects/group%2Fsub%2Fapp/merge_requests/42/discussions?per_page=100
+api --hostname gitlab.example.test --paginate projects/group%2Fsub%2Fapp/merge_requests/42/versions?per_page=100
+api --hostname gitlab.example.test projects/group%2Fsub%2Fapp/merge_requests/42
+api --hostname gitlab.example.test --paginate projects/group%2Fsub%2Fapp/merge_requests/42/discussions?per_page=100
+api --hostname gitlab.example.test --paginate projects/group%2Fsub%2Fapp/merge_requests/42/versions?per_page=100

@@ -1,0 +1,1 @@
+lab/job-dispatch.sh --effort "$EFFORT" --check --kind test-plan --target 10 --delivery hot --hot-agent at1

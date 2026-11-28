@@ -1,0 +1,12 @@
+[
+ {
+  "thread": "t1",
+  "file": "a.sh",
+  "text": "quote this variable"
+ },
+ {
+  "thread": "t2",
+  "file": null,
+  "text": "add a usage line"
+ }
+]

@@ -41,7 +41,7 @@ cmd_link_types() {
 }
 
 # validate_link_types_args() — `link-types`'s per-command argument validation, called by
-# jira.sh BEFORE any tool/site/credential check so a caller's own typo
+# jira.sh BEFORE any curl/site/credential check so a caller's own typo
 # surfaces as a usage error (exit 2) first.
 validate_link_types_args() {
 	# link-types takes no positional — same "fail loud on a stray

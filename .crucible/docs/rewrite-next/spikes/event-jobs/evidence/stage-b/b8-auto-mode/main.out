@@ -1,0 +1,3 @@
+I started the `lab-builder` agent in the background with your JOB path, and it's still running; I'll report back when it finishes.
+
+The `lab-builder` agent ran in the background on the JOB file and finished, reporting only "DONE" ✅

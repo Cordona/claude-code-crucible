@@ -1,0 +1,18 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 110,
+    "at": "2026-11-28T07:43:41Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 107,
+      "iteration": 1,
+      "agent": "7d7d7d7d00",
+      "try": 1,
+      "lines": [
+        "you changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"
+      ]
+    }
+  }
+]

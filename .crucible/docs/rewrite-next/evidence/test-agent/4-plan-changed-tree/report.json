@@ -1,0 +1,35 @@
+{
+  "behaviours": [
+    {
+      "id": "B-1",
+      "text": "a 5xx is retried up to the limit",
+      "at": "app/Upload/Client.php:42"
+    }
+  ],
+  "tests": [
+    {
+      "id": "T-1",
+      "action": "add",
+      "file": "tests/Upload/UploadClientTest.php",
+      "name": "retries a 503 three times then fails",
+      "level": "integration",
+      "why": "the retry loop needs the real HTTP stub",
+      "guards": [
+        "B-1"
+      ],
+      "breaks_on": "the limit is ignored"
+    }
+  ],
+  "baseline": {
+    "gate": "test",
+    "where": "php8.4",
+    "result": "narrowed",
+    "note": "--filter Upload"
+  },
+  "run": [
+    {
+      "where": "docker, the job's worktree mounted",
+      "command": "./vendor/bin/phpunit --filter 'Upload(Client|Retry)Test::.*'"
+    }
+  ]
+}

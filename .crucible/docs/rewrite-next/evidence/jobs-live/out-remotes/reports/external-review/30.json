@@ -1,0 +1,63 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1-flag-after-name",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "This is by design: the spec places --shout before the name (`greet.sh --shout ada`). `greet.sh ada --shout` ignores the trailing argument, the same way the script has always ignored extra arguments. Other flags and argument parsing were out of scope for this change."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2-echo-vs-printf",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "id": "CLEAN-CODE-01",
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 runs `echo \"${line}\"`. Under sh (dash, macOS /bin/sh), echo expands backslash escapes, so `sh bin/greet.sh 'a\\tb\\c'` prints a tab and drops the newline. The base commit printed `hello a\\tb\\c`.",
+        "claim": "Switching from printf to echo changes the output for names with backslashes even without --shout, which breaks the spec's 'without --shout nothing changes'.",
+        "suggestion": "Print the line with `printf '%s\\n' \"${line}\"` instead of `echo \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3-non-ascii-upper",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "id": "CLEAN-CODE-02",
+        "severity": "low",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:8 maps only a-z. Under a UTF-8 locale, `sh bin/greet.sh --shout 'josé'` prints `HELLO JOSé`. With the same input, `tr '[:lower:]' '[:upper:]'` gives `JOSÉ`.",
+        "claim": "`tr a-z A-Z` leaves non-ASCII lowercase letters unchanged, so a shouted name can come out partly lowercase; nothing in the spec limits names to ASCII.",
+        "suggestion": "Use the POSIX classes: `tr '[:lower:]' '[:upper:]'`. They follow the locale wherever tr supports it, and are no worse than a-z where it does not.",
+        "at": "bin/greet.sh:8"
+      }
+    },
+    {
+      "thread": "d-line",
+      "source": "human",
+      "verdict": "answered",
+      "reply": "Checked: `sh bin/greet.sh --shout` prints `HELLO WORLD`. After the shift, `${1:-world}` falls back to world (safe under set -u), and then the whole line is uppercased."
+    },
+    {
+      "thread": "d-done",
+      "source": "human",
+      "verdict": "noted",
+      "reply": "The commit message is `Add --shout` with no body, and I can't see a typo in it. If you meant something else, please point to it."
+    }
+  ],
+  "noticed": [
+    {
+      "text": "The thread d-reply is the author's own account (point 2 will be changed, points 1 and 3 are declined). It was read as context, not judged."
+    },
+    {
+      "at": "tests/greet_test.sh:3",
+      "text": "The only test covers the plain greeting. None covers --shout, --shout with no name, or a name with a backslash.",
+      "for": "tests"
+    }
+  ]
+}

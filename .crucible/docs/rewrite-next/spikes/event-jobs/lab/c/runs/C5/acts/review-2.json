@@ -1,0 +1,10 @@
+{
+ "report": {
+  "findings": [],
+  "answers": {
+   "SHELL-01": "fixed"
+  }
+ },
+ "stop_loop": true,
+ "wait": 90
+}

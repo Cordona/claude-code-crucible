@@ -1,0 +1,14 @@
+{
+  "type": "plan.approved",
+  "seq": 19,
+  "at": "2026-11-24T08:01:22Z",
+  "by": "choose.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "plan": 17,
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

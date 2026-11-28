@@ -1,0 +1,11 @@
+{
+  "challenges": [
+    {
+      "id": "C-1",
+      "target": "B-1",
+      "ask": "add",
+      "title": "no test proves the limit is three, not four",
+      "why": "the planned test passes with any limit above two"
+    }
+  ]
+}

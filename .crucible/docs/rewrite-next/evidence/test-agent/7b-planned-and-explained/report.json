@@ -1,0 +1,21 @@
+{
+  "summary": "cover the retry limit",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "pass",
+      "note": "12 breaks, all caught"
+    }
+  ],
+  "decisions": [
+    {
+      "at": "tests/Upload/HelperTest.php:1",
+      "choice": "added a 503 helper beside the tests",
+      "why": "the plan's support list missed it; the planned test needs it"
+    }
+  ]
+}

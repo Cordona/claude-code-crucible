@@ -1,0 +1,19 @@
+{
+  "summary": "add a retry limit to the upload client",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "fail",
+      "failing": [
+        "UploadClientTest::testRetriesA503"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "kind": "gate_red",
+      "at": "tests/Upload/UploadClientTest.php:88",
+      "detail": "the retry test fails on a 503 stub"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+TaskStop returned "Successfully stopped task … (Lab builder job)", and I got one notification for the agent: status `killed`, "Agent 'Lab builder job' was stopped by Claude".

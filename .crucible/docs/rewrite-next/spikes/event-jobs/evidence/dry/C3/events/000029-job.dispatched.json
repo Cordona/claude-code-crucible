@@ -1,0 +1,46 @@
+{
+  "type": "job.dispatched",
+  "seq": 29,
+  "at": "2026-11-24T08:00:03Z",
+  "by": "job-dispatch.sh",
+  "claude_session_id": "dry-C3-1",
+  "body": {
+    "kind": "fix",
+    "target": 28,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/repo",
+    "agent_type": "lab-builder",
+    "delivery": "hot",
+    "hot_agent": "ag011",
+    "slot": null,
+    "replaces": null,
+    "approval": 12,
+    "payload": {
+      "findings": [
+        {
+          "id": "SHELL-02",
+          "kind": "shell",
+          "file": "b.sh",
+          "severity": "medium",
+          "title": "loop over unquoted words"
+        }
+      ],
+      "side": "production"
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.15ShlU/effort/reports/2bac9a4179fe79e2.json",
+    "act": {
+      "files": {
+        "b.sh": "#!/bin/sh\nfor f in \"$@\"; do echo \"$f\"; done\n"
+      },
+      "report": {
+        "answers": {
+          "SHELL-02": "done"
+        },
+        "declines": {}
+      }
+    },
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

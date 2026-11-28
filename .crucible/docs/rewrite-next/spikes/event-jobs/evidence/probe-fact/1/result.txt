@@ -1,0 +1,10 @@
+stops run: 2
+fact given: 1
+assistant turns: 4
+fact in the reply: yes
+reply: Build 4 hasn't been reviewed yet. You can have it reviewed now or leave it unreviewed.
+
+- **Review it (Recommended):** one shell reviewer goes over the whole change.
+- **Leave it unreviewed:** you won't be asked about this build again.
+
+Which do you want?

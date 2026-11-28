@@ -1,0 +1,4 @@
+{"challenges": [
+ {"target": "B-2", "ask": "add", "title": "no test shows that a pattern still honours KEEP", "why": "the planned pattern test passes when every match but the newest is deleted, whatever KEEP says"},
+ {"target": "T-1", "ask": "change", "title": "check that the printed lines name the oldest backups", "why": "a dry run that prints the wrong files, and deletes none, passes as planned"},
+ {"target": "N-1", "ask": "prove", "title": "show that a matching folder can't occur", "why": "a pattern such as day-* also matches a folder named day-old next to the backups"}]}

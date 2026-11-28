@@ -1,0 +1,1 @@
+lab/choose.sh --effort "$EFFORT" --merge 10 --severity high,medium --minus SHELL-02 --plus SHELL-03 --cap 3 >/dev/null && lab/view.sh --effort "$EFFORT" | jq -c 'map(select(.type=="fix.chosen")) | last | .body'

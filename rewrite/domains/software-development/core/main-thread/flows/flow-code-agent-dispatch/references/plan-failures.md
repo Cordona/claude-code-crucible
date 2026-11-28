@@ -1,0 +1,22 @@
+# Plan failures
+
+Step 7's results other than the ones its sub-steps go on from. Step numbers are SKILL.md's.
+
+## 7.1 Write it
+
+Each result below ends the same way: show the human what it names and end the turn; at the human's next message, hand this part back as `stopped: plan not shown`, so the next gate opens then.
+
+- That `open-gate.sh` failure: its output and exit code.
+- Generator exit 0 without any of its three lines (`PLAN_FILE:`, `PLAN_SHA256:`, `PLAN_RECORD:`): as any other exit.
+- Generator exit 2 whose stderr names `CLAUDE_CODE_SESSION_ID`: the stderr; rerun nothing.
+- Any other generator exit 2 or 3: fix the options stderr names and run it again, at most twice as SKILL.md's Never sets (a problem naming `--fingerprint`: rerun with the fingerprint, as SKILL.md's step 3 takes it); then the stderr.
+- Any other generator exit: the stdout, stderr and exit code.
+
+## 7.2 Show it
+
+- A stderr line starting `render-dispatch-plan.sh: install:` is an install or host fault: show it to the human at once.
+- The plan not shown, for this or any reason the gate gives: hand this part back as `stopped: plan not shown`, unasked (SKILL.md's Never).
+
+## 7.3 Ask it
+
+- Exit 0 with no stdout, a non-zero exit, or other stdout that isn't one JSON object with its `header`, `question` and `options`: show the human the stdout, stderr and exit code, and, unasked (SKILL.md's Never), hand this part back as `stopped: question not rendered`.

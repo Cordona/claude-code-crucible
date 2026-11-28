@@ -1,0 +1,23 @@
+{
+  "agent": "code-reviewer",
+  "part": "review",
+  "input_refs": {
+    "context": {
+      "event": "context.cut",
+      "required": true
+    },
+    "spec": {
+      "event": "spec.approved"
+    },
+    "grills": {
+      "event": "grill.ended",
+      "list": true
+    }
+  },
+  "tree": [
+    "use"
+  ],
+  "range": "tree",
+  "write_scope": "report",
+  "one_standard": true
+}

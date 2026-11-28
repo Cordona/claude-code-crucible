@@ -1,0 +1,1 @@
+lab/merge.sh --effort "$EFFORT" --round 6; lab/owes.sh --effort "$EFFORT"

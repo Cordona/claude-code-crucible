@@ -1,0 +1,159 @@
+=== install: install-entries.sh's own links and settings
+  PASS: jobs/define installs as jobs-define, the build kind in its kinds folder
+  PASS: the install check names no extra folder for the new components
+  PASS: job-resolve.sh --help
+  PASS: job-card.sh --help
+  PASS: job-define.sh --help
+  PASS: the core is unchanged: no job word in framework/core
+  PASS: jobs/define names no kind but build, and that only in the iteration count
+=== an effort with a grill, a context cut, a spec and a tree
+context-add-commit.sh: HEAD changes no file the context may hold
+context-add.sh: --path /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/events/000002-grill.ended.json is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
+method cp -c
+  PASS: the effort holds a context cut, a spec, a grill and a tree
+=== 1. three builds resolve, show, are approved and defined
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 3 jobs resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: resolved: 3 jobs
+  PASS: the proposal is named by its sha256
+  PASS: each job takes the latest context, spec and grills
+  PASS: iterations: 1 on each cut tree, 2 on the used tree
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/3ab2e1a5120ac93e988a356dc10670aa72c976b0d6e286603328ef08e979f7fb.json
+    card: Jobs to approve (3)
+    card: 
+    card: 1. build · kotlin + spring · clean-code · tree cut in <S>/repo from ref:main · iteration 1 · context 4 · spec 6 · grills 2
+    card: 2. build · kotlin + spring · security · tree cut in <S>/repo from ref:main · iteration 1 · context 4 · spec 6 · grills 2
+    card: 3. build · kotlin + spring · clean-code · tree 7 · iteration 2 · context 4 · spec 6 · grills 2
+    card: 
+    card: Proposal: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json
+  PASS: the gate holds the jobs record and the proposal sha256
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: jobs 9, 10, 11 defined
+    out: job 9: its tree is still to be cut, in <S>/repo from ref:main
+    out: job 10: its tree is still to be cut, in <S>/repo from ref:main
+    [exit 0]
+  PASS: defined: 3 jobs, the two cut trees still to cut
+  PASS: the log has 3 job.defined, positions 1-3 of the gate
+  PASS: each job.defined is its proposal entry plus its approval_gate
+=== 2. one wrong job refuses the whole proposal
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 2: kind "reveiw" is not a kind; kinds: build, external-review, foreign-review, review, test, test-plan, test-plan-challenge, test-plan-update
+    err: job-resolve.sh: job 3: plugins.standards must be a list of one-line names, at least one
+    err: job-resolve.sh: job 3: work.tree.use must be the seq of a worktree.cut
+    err: job-resolve.sh: job 3: a build takes no lens ref; it takes context, grills, spec
+    [exit 2]
+  PASS: refused with exit 2
+  PASS: job 2: not a kind, the kinds named
+  PASS: job 3: every fault on its own line
+  PASS: nothing written
+=== 3. the proposal changed after its card: define refuses
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/4ce1795b9fd598f4a71392ce6110dbddc7f8681e20a2a432075923301720b8f4.json
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-define.sh: the card showed <sha>, the file is now <sha>: resolve again
+    [exit 2]
+  PASS: refused: the card showed one sha256, the file is now another
+  PASS: nothing defined
+=== 4. a gate's jobs defined twice: refused
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-define.sh: gate 8's jobs are already defined: 9, 10, 11
+    [exit 2]
+  PASS: refused: already defined, the seqs named
+=== 5. a rejected gate: define refuses, nothing written
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: the same jobs resolve to the same name, the changed file written again
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/4ce1795b9fd598f4a71392ce6110dbddc7f8681e20a2a432075923301720b8f4.json
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-define.sh: gate 13 was answered "Change it", not approved: nothing to define
+    [exit 2]
+  PASS: refused: not approved, nothing to define
+  PASS: nothing defined
+=== 6. the stale case: two proposals, each a build on the same tree
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: both resolved to iteration 3
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/48f20136bc467bdc9d685b639454cdfd52298918424f04a0c31b86996f3530ee.json
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/18de4d7adc41a09218aa8336e86c5bce1937b04b49e22fa1bb63c15aa5fbd975.json
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: job 16 defined
+    [exit 0]
+  PASS: the first is defined
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-define.sh: job 1 refused, nothing defined
+    err:   event-write.sh: job.defined refused: work.loop.iteration must be 4, the next build's on its tree: resolve again
+    [exit 2]
+  PASS: the second is refused at the write, with the iteration it should have
+=== 7. no spec and no grills resolves; no context is refused
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055929-bf1e-small-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055929-bf1e-small-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: resolved, with context only
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055930-613f-bare-one
+    err: job-resolve.sh: job 1: a build needs context: there is no context.cut yet
+    [exit 2]
+  PASS: refused: a build needs context, and the line says what is missing
+=== 8. two builds on one tree in one proposal: refused
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: jobs 1 and 2 write in tree 7: one writing job per tree
+    [exit 2]
+  PASS: refused: one writing job per tree
+=== 9. the rule alone: only job-define.sh writes job.defined
+  PASS: refused, naming the writer
+=== 10. the remote kinds: a foreign review gets its tree and range from its change; an external review names its review
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: a foreign review resolves: its tree cut from the change head in its repo, its range the change base..head
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/645077b6422e1542a93a3a75bf10b8c95cad7e4bb27260ba12bf6fd88b6391b9.json
+    $ job-define.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: job 20 defined
+    out: job 20: its tree is still to be cut, in <S>/repo from ref:63551fd763db46525b0e0673c974395923b1c100
+    [exit 0]
+  PASS: defined: job.defined takes a range on a tree it cuts
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 1: a foreign-review's tree is {cut}, not {use}
+    err: job-resolve.sh: job 1: a foreign-review takes no work: its tree and range come from its change
+    [exit 2]
+  PASS: refused: a foreign review takes no work from main
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 1: work.tree missing: a foreign-review's tree is {cut}
+    err: job-resolve.sh: job 1: a foreign-review needs change: name the seq of its remote-change.fetched
+    [exit 2]
+  PASS: refused: a foreign review must name its change
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: an external review resolves on the tree main names: the review named, the range its change's base..head
+  PASS: its change ref is filled from the review's own change, for the prompt to name its description
+  PASS: no earlier ref at the first judgement of the change
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 1: change comes from its review; give no change ref
+    [exit 2]
+  PASS: refused: main gives no change ref, it comes from the review
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 1: a external-review reads through one standard, its lens: give one, a job per lens
+    [exit 2]
+  PASS: refused: an external review reads through one standard
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/proposals/c9258208a481c92a6dedf45e3afa1c699fdb53c6207eb2db1a1e42bad7095eef.json
+event-write.sh: agent.initialized refused: plugins must be the skill names the agent loads, at least one
+mv: rename /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/reports/external-review/22.json to /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-1.RfGRFY/space/efforts/20261128T055921-a252-jobs-one/reports/external-review/22.json: No such file or directory
+event-write.sh: external-review.submitted refused: iteration must be job 22's, 3
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261128T055921-a252-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: the next judgement of the change gets the last one handed in as its earlier ref
+    $ job-resolve.sh --effort <S>/space/efforts/20261128T055921-a252-jobs-one
+    err: job-resolve.sh: job 1: earlier is the last one of the same change; give no earlier ref
+    [exit 2]
+  PASS: refused: main gives no earlier ref
+
+44 passed, 0 failed

@@ -1,0 +1,32 @@
+{
+  "type": "job.dispatched",
+  "seq": 5,
+  "at": "2026-11-24T09:06:10Z",
+  "by": "job-dispatch.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "kind": "build",
+    "target": null,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/repo-b",
+    "agent_type": "lab-builder",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": null,
+    "replaces": null,
+    "approval": 4,
+    "payload": {
+      "task": "also build the installer in the same tree"
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort/reports/90ac7aefac8904eb.json",
+    "act": {
+      "files": {
+        "install.sh": "#!/bin/sh\ncp a.sh /usr/local/bin\n"
+      },
+      "report": {}
+    },
+    "root": null,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

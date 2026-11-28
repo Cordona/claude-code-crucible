@@ -1,0 +1,25 @@
+{
+  "findings": [
+    {
+      "id": "SHELL-01",
+      "severity": "high",
+      "realism": "realistic",
+      "at": [
+        "a.sh:3"
+      ],
+      "claim": "the target is echoed unquoted, so a path with a space splits",
+      "suggestion": "quote the first argument"
+    },
+    {
+      "id": "SHELL-02",
+      "severity": "medium",
+      "realism": "edge-case",
+      "at": [
+        "b.sh:2"
+      ],
+      "claim": "a glob in the input expands",
+      "suggestion": "set -f around the loop",
+      "proof": "b.sh:2 expands the unquoted $input; no line in this tree sets input, so reachability depends on an external caller that supplies it, which this tree does not show"
+    }
+  ]
+}

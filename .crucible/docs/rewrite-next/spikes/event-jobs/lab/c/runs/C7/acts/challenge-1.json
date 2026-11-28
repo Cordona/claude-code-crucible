@@ -1,0 +1,10 @@
+{
+ "report": {
+  "challenges": [
+   {
+    "target": "B-1",
+    "title": "the empty-input case is not covered"
+   }
+  ]
+ }
+}

@@ -1,11 +1,11 @@
 ---
 name: procedure-git-ops
-description: The procedure the `git-operator` runs to execute git mechanics — preflight, branch, commit, push, and tag — via deterministic scripts, never hand-authored git commands. Requires the commit-plan/tag-consent gate (`standard-git-commit`/`standard-git-tag`) and the signing-identity gate (`procedure-git-identity`) cleared before commit or tag. Does NOT define commit/branch/tag conventions (those `standard-git-*` skills) or resolve signing identity — it only executes and verifies the git operation's result.
+description: The procedure the `git-operator` plans and the orchestrator executes for git mechanics — preflight, branch, commit, push, and tag — via deterministic scripts, never hand-authored git commands. The git-operator itself runs only the read-only `preflight.sh`. Requires the commit-plan/tag-consent gate (`standard-git-commit`/`standard-git-tag`) and the signing-identity gate (`procedure-git-identity`) cleared before commit or tag. Does NOT define commit/branch/tag conventions (those `standard-git-*` skills) or resolve signing identity — it only executes and verifies the git operation's result.
 ---
 
 # Procedure: Git Operations (`git` wrapper scripts)
 
-The **one** way the `git-operator` touches git history. This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `git commit`/`git push`/`git tag` invocation, and never build a commit or tag message in shell. These are the framework's **most dangerous scripts** — they mutate history and push it — so every one of them **fails closed**: on doubt, on an unverifiable signature, on a protected branch, on a would-be duplicate, the answer is refuse and report, never guess or retry unsafely.
+The **one** way the framework mutates `git` history — the `git-operator` plans and runs the read-only `preflight.sh`; the orchestrator invokes the mutating scripts (`create-branch.sh`/`commit.sh`/`push.sh`/`create-tag.sh`). This is a **procedure, not a rubric**: call the right script with the right flags; never hand-author a `git commit`/`git push`/`git tag` invocation, and never build a commit or tag message in shell. These are the framework's **most dangerous scripts** — they mutate history and push it — so every one of them **fails closed**: on doubt, on an unverifiable signature, on a protected branch, on a would-be duplicate, the answer is refuse and report, never guess or retry unsafely.
 
 ## Why these scripts exist (read this before calling anything)
 
@@ -15,7 +15,7 @@ The second load-bearing rule is **fail-closed on everything irreversible**: `com
 
 ## The five scripts (`$HOME/.claude/skills/procedure-git-ops/scripts/` — all portable & deterministic)
 
-**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-git-ops/scripts/<name>`.** Never a bare `scripts/<name>` (resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash (that placeholder only resolves inside a skill's own `SKILL.md` content, not the calling agent's shell). All five are POSIX `sh`, run on any machine (macOS BSD / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — small helpers are duplicated across scripts, not shared), and deterministic.
+**Invoke each by its deployed absolute path — `$HOME/.claude/skills/procedure-git-ops/scripts/<name>`.** Never a bare `scripts/<name>` (resolves against the repo cwd, where the script does not exist), and never `${CLAUDE_SKILL_DIR}/…` from an agent's Bash (that placeholder only resolves inside a skill's own `SKILL.md` content, not the calling agent's shell). All five are POSIX (Portable Operating System Interface) `sh`, run on any machine (macOS BSD — Berkeley Software Distribution — / Bash 3.2 + Linux), `shellcheck`-clean, self-contained (no external library sourcing — small helpers are duplicated across scripts, not shared), and deterministic.
 
 ### `preflight.sh` — READ-ONLY
 
@@ -36,11 +36,11 @@ $HOME/.claude/skills/procedure-git-ops/scripts/create-branch.sh --repo PATH \
   --type TYPE --ticket ID --desc SLUG --base BRANCH [-h|--help]
 ```
 
-- Builds `TYPE/TICKET-DESC` and validates it against `standard-git-branch`'s naming convention (lowercase, hyphen-separated, no `#`, no spaces) before touching git at all.
-- **Idempotent:** if the branch already exists, this is a no-op success — it does NOT re-create or error.
+- Builds `TYPE/TICKET-DESC` and checks its characters before touching git at all: lowercase letters, digits, `-` and `/` only — so no `#` and no spaces — except that the ticket may be an uppercase tracker key such as `PSWS-1313`, kept uppercase so Jira links the branch. That is a backstop, not the full `standard-git-branch` convention: it does not enforce the standard's type list — it accepts a wider one (also `test`, `build` and `ci`, which the standard folds into its main types), nor collapse or trim hyphens — build the name to the standard, not to what the script accepts.
+- **Idempotent:** if a branch with exactly that name already exists, this is a no-op success — it does NOT re-create or error, and it does NOT check `--base`: an existing branch is reported even if it was cut from a different base (or `--base` would not resolve). A branch whose name differs only in letter case is refused (exit `1`), never treated as the same branch. It renames nothing, and the framework has no rename or delete script: resolving the twin (renaming or deleting one of the two, outside the framework) is the calling agent's decision.
 - **Creates ONLY — never checks the branch out.** The caller's current branch/working tree is untouched; switching to the new branch (if wanted) is a separate, explicit step outside this script's scope.
-- Prints `GITOP_BRANCH=<name>`.
-- Exit `0` branch exists (created or already did) · `1` `--base` doesn't resolve / `git branch` itself failed · `2` usage error (including a name that fails the naming convention).
+- Prints `GITOP_BRANCH=<name>` and `GITOP_CREATED=true|false` (false only on the idempotent no-op — both are success).
+- Exit `0` branch exists (created or already did) · `1` git not installed / the `--repo` directory does not exist or is not accessible / not a git work tree / local branches can't be listed / a branch differing only in case exists / `--base` doesn't resolve / `git branch` itself failed · `2` usage error (including a name that fails the naming convention).
 
 ### `commit.sh` — OUTWARD, IRREVERSIBLE, fail-closed on signing
 
@@ -65,7 +65,7 @@ $HOME/.claude/skills/procedure-git-ops/scripts/push.sh --repo PATH \
   --remote NAME --branch NAME [--force-with-lease] [-h|--help]
 ```
 
-- **Protected-branch refusal is unconditional and checked FIRST, before touching git at all:** `main`, `master`, `develop`, and any `release/*` branch NEVER get a direct push from this script — force or not. Those branches move only via a reviewed PR merge (`standard-git-branch`); `--force-with-lease` never overrides this.
+- **Protected-branch refusal is unconditional and checked FIRST, before touching git at all:** `main`, `master`, `develop`, and any `release/*` branch NEVER get a direct push from this script — force or not. For `main`/`develop` this mirrors the platform-side ruleset `standard-git-branch` documents (a reviewed PR/MR — pull request / merge request — merge required, no direct push). For `release/*`, `standard-git-branch` is explicit that it is typically NOT platform-protected the same way — this refusal is this script's OWN client-side discipline, the only thing actually stopping a direct push to it. `--force-with-lease` never overrides either case.
 - **First push vs. subsequent:** adds `-u` automatically when the branch has no upstream yet; otherwise a plain push.
 - **Idempotent:** before pushing, compares the local branch's SHA against the remote's via `git ls-remote` — if they already match, this is a genuine no-op (the push is never even attempted) and still a success.
 - **Non-fast-forward: DETECTED, never auto-resolved.** On a rejected push, this script recognizes git's non-ff rejection text and reports "non-fast-forward — rebase onto base then retry" — it never rebases or force-pushes on the caller's behalf; that judgment belongs to the calling agent.
@@ -100,22 +100,19 @@ This skill only executes the git operation and verifies its result; it never dec
 ## Testing — two layers, proving different things
 
 - **`tests/run-tests.sh`** (stub-driven, `sh`/`dash`-clean, no real git) — exercises the deterministic BRANCHING logic exhaustively and fast: protected-branch refusal, non-fast-forward detection, re-tag refusal, fail-closed signing checks (every `%G?` code), nothing-staged failure, idempotency, argument validation, exit codes.
-- **`tests/smoke.sh`** (real `git` + a real, ephemeral, throwaway GPG key, generated fresh and deleted on exit — never the invoking user's real `~/.gnupg`, never a real repo, never the network) — proves the actual git/gpg CONTRACT the stub cannot: a real signed commit, a real push to a local bare remote, a real `--force-with-lease` against a rewritten local history, a real protected-branch refusal, a real non-fast-forward rejection, a real live-rebase op-in-progress block, a real re-tag refusal, a real signed tag + verify. If `gpg` is unavailable or ephemeral key generation fails, this script SKIPS the signing-dependent checks with a clear reason rather than failing the run — that is an environment constraint, not a defect.
+- **`tests/smoke.sh`** (real `git` + a real, ephemeral, throwaway GPG (GNU Privacy Guard) key, generated fresh and deleted on exit — never the invoking user's real `~/.gnupg`, never a real repo, never the network) — proves the actual git/gpg CONTRACT the stub cannot: a real signed commit, a real push to a local bare remote, a real `--force-with-lease` against a rewritten local history, a real protected-branch refusal, a real non-fast-forward rejection, a real live-rebase op-in-progress block, a real re-tag refusal, a real signed tag + verify. If `gpg` is unavailable or ephemeral key generation fails, this script SKIPS the signing-dependent checks with a clear reason rather than failing the run — that is an environment constraint, not a defect.
 
-**Run both before trusting a change to this skill.** The stub proves the logic; the smoke test proves the logic is checking the right thing in the first place — the class of gap that let the `close-issue --reason` enum bug ship once already.
+**Run both before trusting a change to this skill.** The stub proves the logic; the smoke test proves the logic is checking the right thing in the first place — a stub-only pass can be green while checking against the wrong contract entirely.
 
-**CI must gate on the signing-dependent checks actually having run, not merely on exit 0** — `tests/smoke.sh` prints a machine-readable `SMOKE_SIGNING=exercised` (gpg worked, the full signed-commit/signed-tag contract was proven) or `SMOKE_SIGNING=skipped` (no usable gpg in this environment) on stdout, in addition to its own `exit 0`/`exit 1`. An `exit 0` with `SMOKE_SIGNING=skipped` means the run is GREEN but PROVED NOTHING about signing — CI should assert `SMOKE_SIGNING=exercised`, not just a zero exit code, or a gpg-less runner could silently stop catching signing regressions.
+**CI (Continuous Integration) must gate on the signing-dependent checks actually having run, not merely on exit 0** — `tests/smoke.sh` prints a machine-readable `SMOKE_SIGNING=exercised` (gpg worked, the full signed-commit/signed-tag contract was proven) or `SMOKE_SIGNING=skipped` (no usable gpg in this environment) on stdout, in addition to its own `exit 0`/`exit 1`. An `exit 0` with `SMOKE_SIGNING=skipped` means the run is GREEN but PROVED NOTHING about signing — CI should assert `SMOKE_SIGNING=exercised`, not just a zero exit code, or a gpg-less runner could silently stop catching signing regressions.
 
 ## Constraints (NEVER violate)
 
 - Never pass a commit or tag message as `-m`/a heredoc/a `$(...)` — it is ALWAYS a file via `-F`, full stop.
-- Never retry a failed commit with `--no-gpg-sign`, and never bypass a failing hook with `--no-verify`.
+- Never retry a failed commit with `--no-gpg-sign`, and never bypass a failing hook with `--no-verify` — per `standard-git-commit`'s own Constraint.
 - Never push directly to `main`/`master`/`develop`/`release/*` — force or not.
 - Never auto-rebase or auto-force-push to resolve a non-fast-forward — detect and report only; the calling agent decides.
-- Never re-tag, move, or re-sign an already-published version tag.
+- Never re-tag, move, or re-sign an already-published version tag — per `standard-git-tag`'s own Constraint.
 - Never resolve or confirm signing identity here — that is `procedure-git-identity`'s job, run by the caller first.
-- Never commit into a detached HEAD or an in-progress rebase/merge/cherry-pick.
+- Never commit into a detached HEAD or an in-progress rebase/merge/cherry-pick — per `standard-git-commit`'s own Constraint.
 - Never run `tests/smoke.sh` against a real repository or without the isolated `GNUPGHOME` it sets up itself — it must always generate and use its own ephemeral key.
-
----
-*Procedure Version: 1.0 — the git preflight/branch/commit/push/tag wrapper. Bound by the git-operator. Commit/branch/PR/tag CONVENTIONS live in standard-git-commit/branch/pr/tag; signing identity in procedure-git-identity — this skill only executes and verifies. Wraps `$HOME/.claude/skills/procedure-git-ops/scripts/`preflight.sh, create-branch.sh, commit.sh, push.sh, create-tag.sh — all portable POSIX, shellcheck-clean, self-contained.*

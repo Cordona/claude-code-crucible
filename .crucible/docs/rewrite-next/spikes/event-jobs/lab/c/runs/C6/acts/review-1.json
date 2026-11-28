@@ -1,0 +1,14 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "a.sh",
+    "severity": "medium",
+    "realism": "realistic",
+    "title": "unquoted variable"
+   }
+  ],
+  "answers": {}
+ }
+}

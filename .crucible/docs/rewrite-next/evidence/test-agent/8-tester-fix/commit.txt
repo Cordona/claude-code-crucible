@@ -1,0 +1,18 @@
+crucible(test-fix): assert the 4xx rows by status, not by message
+
+assert the 4xx rows by status, not by message
+
+Effort: 20261128T074304-4337-upload-retries
+Job: 98 test-fix-php-77de01
+Iteration: 1
+Fix-Round: 1
+Language: php
+Framework: laravel
+Standards: testing, security
+
+commit 8b6d0cb278b96b35b26821d249176e4ca767ce61
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ tests/Upload/UploadClientTest.php | 1 +
+ 1 file changed, 1 insertion(+)

@@ -1,0 +1,42 @@
+{
+  "id": 1034,
+  "node_id": "PRR_kwDOAAAAAAAAAAAA",
+  "user": {
+    "login": "github-actions[bot]",
+    "id": 1035,
+    "node_id": "MDQ6RXhhbXBsZTE=",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-15",
+    "html_url": "https://github.com/apps/example-app",
+    "followers_url": "https://api.github.com/users/example-user-15/followers",
+    "following_url": "https://api.github.com/users/example-user-15/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-15/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-15/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-15/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-15/orgs",
+    "repos_url": "https://api.github.com/users/example-user-15/repos",
+    "events_url": "https://api.github.com/users/example-user-15/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-15/received_events",
+    "type": "Bot",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "",
+  "state": "DISMISSED",
+  "html_url": "https://github.com/example-org/example-repo/pull/14#pullrequestreview-1034",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/14",
+  "author_association": "NONE",
+  "is_copilot_code_review": false,
+  "copilot_code_review_effort": null,
+  "_links": {
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/14#pullrequestreview-1034"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/14"
+    }
+  },
+  "submitted_at": "2024-01-08T20:46:00Z",
+  "commit_id": "0000000000000000000000000000000000abc00f"
+}

@@ -1,0 +1,1411 @@
+=== set-up: scratch keys, a scratch repository with dependency folders and secrets, two efforts (one with no identity)
+  PASS: the effort's identity is set through git-identity's real scripts
+
+=== worktree-facts.sh
+  $ sh main/worktree-facts.sh --repo <S>/repo
+    out: {
+    out:   "repo": "<S>/repo",
+    out:   "head": "<sha>",
+    out:   "branch": "refs/heads/main",
+    out:   "uncommitted": 0
+    out: }
+    [exit 0]
+  PASS: a clean checkout: repo, head, branch, uncommitted 0, no trees key
+  $ sh main/worktree-facts.sh --repo <S>/repo --effort <S>/space/efforts/<id>-tree-work
+    out: {
+    out:   "repo": "<S>/repo",
+    out:   "head": "<sha>",
+    out:   "branch": "refs/heads/main",
+    out:   "uncommitted": 2,
+    out:   "trees": []
+    out: }
+    [exit 0]
+  PASS: a checkout with uncommitted changes: 2 paths, and no live trees yet
+
+=== worktree-snapshot.sh
+  $ sh main/worktree-snapshot.sh --repo <S>/repo --effort <S>/space/efforts/<id>-tree-work
+    out: {"commit":"<sha>","new":true,"signed":true}
+    [exit 0]
+  PASS: a snapshot: exit 0, new: true, signed: true
+  PASS: git verify-commit accepts it
+  PASS: its parent is HEAD, its tree holds the change and the untracked file
+  PASS: ignored files are not in it
+  PASS: the human's HEAD, refs, index, status, stashes and config are untouched
+  PASS: no ref at all was written
+  $ sh main/worktree-snapshot.sh --repo <S>/repo --effort <S>/space/efforts/<id>-no-identity
+    err: worktree-snapshot.sh: the effort has no identity for <S>/repo; set the identity first (git-identity)
+    [exit 2]
+  PASS: no identity for the repository: exit 2, set the identity first
+  $ sh main/worktree-snapshot.sh --repo <S>/repo --effort <S>/space/efforts/<id>-tree-work
+    out: {"commit":"<sha>","new":false,"signed":false}
+    [exit 0]
+  PASS: a clean checkout: new: false, the commit is HEAD, nothing written
+
+=== worktree-setup.sh on its own
+  $ sh internal/worktree-setup.sh --from <S>/repo --to <S>/plain
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: copied .venv
+    out: repointed 1 .venv
+    [exit 0]
+  PASS: exit 0: node and python detected, node_modules and the virtual env copied
+  PASS: the venv's launcher is repointed at the copy
+  PASS: .env and .npmrc are not copied without .worktreeinclude
+  $ sh internal/worktree-setup.sh --from <S>/repo --to <S>/repo
+    err: worktree-setup.sh: --to <S>/repo is the same folder as --from; expected the worktree
+    [exit 2]
+  PASS: --to the same as --from: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/plain --to <S>/repo
+    err: worktree-setup.sh: --from <S>/plain is a linked worktree; expected the main checkout
+    [exit 2]
+  PASS: --from a linked worktree: exit 2
+  $ sh internal/worktree-setup.sh --from relative --to <S>/plain
+    err: worktree-setup.sh: --from relative is not absolute; expected an absolute path
+    [exit 2]
+  PASS: --from not absolute: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/repo
+    err: worktree-setup.sh: --to missing; expected --to DIR
+    err: Try 'sh worktree-setup.sh --help'.
+    [exit 2]
+  PASS: --to missing: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/repo --to <S>/plain
+    err: worktree-setup.sh: .worktreeinclude line 1 "!.env" is a negation; expected only paths to copy
+    [exit 2]
+  PASS: a .worktreeinclude negation line: exit 2, nothing copied
+
+=== worktree-setup.sh on a checkout of its own: the plan, then the copy and the repoint
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: exit 0: node and python detected
+  PASS:   ... node_modules for node and .venv for python copied, .venv repointed, the tracked lib/node_modules left
+  PASS:   ... a copy method: cp -c, reflink or plain
+  PASS:   ... the absolute link into the checkout flagged with its target
+  PASS:   ... the copies are there, the launcher names the tree, the binary left alone
+  PASS:   ... the checkout's own launcher unchanged
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: a second run overwrites nothing: exists for both, nothing repointed
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: find could not read 1 places under --from; folders inside them were not searched
+    [exit 0]
+  PASS: a folder find can't read: exit 0, said on stderr
+  $ sh internal/worktree-setup.sh --from <S>/sr-link/ --to <S>/sw-given
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 2 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: --from through a link with a trailing /: a launcher naming the given path repointed too
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-secrets
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied .env
+    out: unignored auth.json
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: a .worktreeinclude listing .env and auth.json: both reach the copy
+  PASS:   ... the .env git ignores in the tree copied, the auth.json it doesn't left out
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-bad
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
+    err: worktree-setup.sh: odd?env/pyvenv.cfg was not copied: its name holds a control character; expected printable names
+    [exit 4]
+  PASS: names holding a control character, from a glob and from the search: exit 4, one line each
+  PASS:   ... the rest copied and repointed
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sr/inner
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: exists node_modules
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    [exit 0]
+  PASS: a --to inside --from is never searched
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied fine.txt
+    out: exists node_modules
+    out: exists .venv
+    out: tracked lib/node_modules
+    err: mkdir: <S>/sw/ro/a: Permission denied
+    err: cp: <S>/sr/unreadable: Permission denied
+    err: worktree-setup.sh: out/x was not copied: its folder in --to is not a folder inside --to; expected one
+    err: worktree-setup.sh: ro/a/b was not copied: mkdir could not create its folder in --to; expected a writable --to
+    err: worktree-setup.sh: unreadable was not copied: cp (cp -c) failed; expected a readable source and free space
+    [exit 4]
+  PASS: exit 4, the rest copied, one line per problem: a folder leading outside, a failed mkdir, a failed cp
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw-refused
+    err: worktree-setup.sh: .worktreeinclude line 1 "!x" is a negation; expected only paths to copy
+    err: worktree-setup.sh: .worktreeinclude line 2 "node_modules/**" holds **; expected * within one segment
+    [exit 2]
+  PASS: a negation and a ** line: exit 2, one line each
+  PASS:   ... the plan refuses before any copy: no line on stdout, nothing in the tree
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: --from/.worktreeinclude is not a readable file; expected a file of paths
+    [exit 2]
+  PASS: .worktreeinclude not a readable file: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr --to
+    err: worktree-setup.sh: --to needs a value; expected --to VALUE
+    err: Try 'sh worktree-setup.sh --help'.
+    [exit 2]
+  PASS: --to with no value: exit 2
+  $ sh internal/worktree-setup.sh --from /tmp/a	b --to <S>/sw
+    err: worktree-setup.sh: --from /tmp/a?b holds a control character; expected a plain path
+    [exit 2]
+  PASS: --from holding a control character: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/nothing --to <S>/sw
+    err: worktree-setup.sh: --from <S>/nothing is not a folder; expected an existing folder
+    [exit 2]
+  PASS: --from not a folder: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr/lib --to <S>/sw
+    err: worktree-setup.sh: --from <S>/sr/lib is not the top folder of a git work tree; expected one
+    [exit 2]
+  PASS: --from not a work tree's top folder: exit 2
+  $ sh internal/worktree-setup.sh --from <S>/sr --to relative
+    err: worktree-setup.sh: --to relative is not absolute; expected an absolute path
+    [exit 2]
+  PASS: --to not absolute, every problem listed: exit 2
+  $ env PATH=<S>/setup-nogit /bin/sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: git not found; expected git 2.31+ on PATH
+    [exit 4]
+  PASS: without git: exit 4, git 2.31+ asked for
+  $ env PATH=<S>/setup-nojq /bin/sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: jq not found; expected jq 1.6+ on PATH
+    [exit 4]
+  PASS: without jq: exit 4
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file <S>/alt/scripts/internal/../lib/worktree-setup.json is not a readable file; expected the scripts' lib/worktree-setup.json
+    [exit 2]
+  PASS: the data file missing: exit 2
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file is not valid JSON; expected one JSON object
+    [exit 2]
+  PASS: the data file not JSON: exit 2
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw
+    err: worktree-setup.sh: the data file field "x" is not known; expected only always, technologies
+    err: worktree-setup.sh: technologies is a JSON number; expected an array of objects
+    [exit 2]
+  PASS: the data file of the wrong shape: exit 2, one line per problem
+  $ sh <S>/alt/scripts/internal/worktree-setup.sh --from <S>/sr --to <S>/sw-links
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: .venv/lnk/bin was not repointed: it leads outside the copy; expected a folder inside it
+    [exit 4]
+  PASS: launcher subfolders bin, Scripts and lnk/bin: bin repointed, the missing Scripts skipped
+  PASS:   ... lnk/bin, a link leading outside the copy: one line, nothing written there
+--- worktree-setup.sh: the lines in order, and its own refusals
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw2
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 0 .venv
+    out: tracked lib/node_modules
+    err: <S>/cfg/skills/git-worktree/scripts/internal/worktree-setup.sh: line 574: <S>/sw2/.venv/bin/activate: Permission denied
+    err: worktree-setup.sh: .venv/bin/activate was not repointed: it could not be written; expected a writable copy
+    [exit 4]
+  PASS: a launcher copied read-only: copied, repointed 0, exit 4 with the problem after the lines
+  PASS:   ... the lines in order: detected, method, then each thing done, the flag after its copy
+  $ sh internal/worktree-setup.sh --from <S>/sr --to <S>/sw3
+    out: detected node
+    out: detected python
+    out: method cp -c
+    out: copied node_modules
+    out: flag symlink node_modules/.bin/left-pad -> <S>/sr/node_modules/left-pad/index.js
+    out: copied .venv
+    out: repointed 1 .venv
+    out: tracked lib/node_modules
+    err: worktree-setup.sh: cfg/a?b was not copied: its name holds a control character; expected printable names
+    [exit 4]
+  PASS: a bad name: the rest copied and repointed, exit 4
+  $ sh internal/worktree-setup.sh --from <S>/sr --from <S>/sr --to <S>/sw3
+    err: worktree-setup.sh: --from given twice; expected one
+    err: Try 'sh worktree-setup.sh --help'.
+    [exit 2]
+  PASS: --from given twice: exit 2
+  $ sh internal/worktree-setup.sh --to <S>/sw3
+    err: worktree-setup.sh: --from missing; expected --from DIR
+    err: Try 'sh worktree-setup.sh --help'.
+    [exit 2]
+  PASS: --from missing: exit 2
+  $ sh internal/worktree-setup.sh --from
+    err: worktree-setup.sh: --from needs a value; expected --from VALUE
+    err: Try 'sh worktree-setup.sh --help'.
+    [exit 2]
+  PASS: --from with no value: exit 2
+
+=== worktree-uncommitted.sh and worktree-changes.sh
+  $ sh internal/worktree-uncommitted.sh --dir <S>/u
+    out: {"uncommitted":0}
+    [exit 0]
+  PASS: a clean folder: 0
+  $ sh internal/worktree-changes.sh --dir <S>/u --head <sha>
+    out: {"tree":"<sha>","head_tree":"<sha>"}
+    [exit 0]
+  PASS: a clean folder: tree and head_tree the same
+  $ sh internal/worktree-uncommitted.sh --dir <S>/u
+    out: {"uncommitted":3}
+    [exit 0]
+  PASS: a change, a rename counted once by its new path, an untracked file, no ignored one: 3
+  $ sh internal/worktree-changes.sh --dir <S>/u --head <sha>
+    out: {"tree":"<sha>","head_tree":"<sha>"}
+    [exit 0]
+  PASS: every change in the tree object, nothing ignored
+  PASS:   ... the folder's index and status untouched
+  $ sh internal/worktree-changes.sh --dir <S>/u --head HEAD
+    out: {"tree":"<sha>","head_tree":"<sha>"}
+    [exit 0]
+  PASS: --head a name resolves to its commit
+  $ sh internal/worktree-uncommitted.sh --dir <S>/plain-dir
+    err: fatal: not a git repository (or any of the parent directories): .git
+    err: worktree-uncommitted.sh: git status failed in <S>/plain-dir
+    [exit 4]
+  PASS: worktree-uncommitted.sh in no git work tree: exit 4
+  $ sh internal/worktree-uncommitted.sh --dir relative
+    err: worktree-uncommitted.sh: --dir must be an absolute folder
+    [exit 2]
+  PASS: worktree-uncommitted.sh --dir not absolute: exit 2
+  $ sh internal/worktree-uncommitted.sh --dir
+    err: worktree-uncommitted.sh: --dir needs a value
+    [exit 2]
+  PASS: worktree-uncommitted.sh --dir with no value: exit 2
+  $ sh internal/worktree-uncommitted.sh
+    err: worktree-uncommitted.sh: --dir needs a value
+    [exit 2]
+  PASS: worktree-uncommitted.sh with no --dir: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/plain-dir --head <sha>
+    err: worktree-changes.sh: --dir <S>/plain-dir is not in a git work tree
+    [exit 2]
+  PASS: worktree-changes.sh in no git work tree: exit 2
+  $ sh internal/worktree-changes.sh --dir relative --head <sha>
+    err: worktree-changes.sh: --dir must be an absolute folder
+    [exit 2]
+  PASS: worktree-changes.sh --dir not absolute: exit 2
+  $ sh internal/worktree-changes.sh --head <sha>
+    err: worktree-changes.sh: --dir needs a value
+    [exit 2]
+  PASS: worktree-changes.sh with no --dir: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/u
+    err: worktree-changes.sh: --head needs a commit
+    [exit 2]
+  PASS: worktree-changes.sh with no --head: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/u --head -x
+    err: worktree-changes.sh: --head -x starts with -; expected a commit name
+    [exit 2]
+  PASS: --head starting with -: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/u --head a	b
+    err: worktree-changes.sh: --head holds a control character; expected a commit name
+    [exit 2]
+  PASS: --head holding a control character: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/u --head nosuch
+    err: worktree-changes.sh: --head nosuch is no commit of <S>/u
+    [exit 2]
+  PASS: --head no commit: exit 2
+  $ sh internal/worktree-changes.sh --dir <S>/u --head
+    err: worktree-changes.sh: --head needs a value
+    [exit 2]
+  PASS: --head with no value: exit 2
+
+=== worktree-cut.sh: from checkout, snapshot, ref, and a tree
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name one --from checkout
+    out: <S>/space/efforts/<id>-tree-work/events/000004-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: from checkout: exit 0, stdout the event's path
+  PASS: worktree.cut read back: by worktree-cut.sh, {name, repo, path, branch, base, from}
+  PASS: the tree is on its branch at the base, clean
+  PASS: set up: node_modules and the venv copied, .env and .npmrc not
+  PASS: the setup's lines went to stderr
+  PASS: the human's HEAD, refs, index, status, stashes and config are untouched by the cut
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name snap --from snapshot
+    out: <S>/space/efforts/<id>-tree-work/events/000005-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: from snapshot: exit 0, from snapshot, base a new commit on HEAD holding the changes
+  PASS:   ... signed, and the human's checkout untouched
+  PASS:   ... worktree.cut read back carries signed: true
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name byref --from ref:v1
+    out: <S>/space/efforts/<id>-tree-work/events/000006-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: from ref:v1: exit 0, from ref:v1, base the tag's commit, no signed (the cut made no base)
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/f-other-folder-ok --name nope --from checkout
+    err: worktree-cut.sh: --repo <S>/f-other-folder-ok is not in a git repository
+    [exit 2]
+  PASS: a --repo in no repository: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name child --from worktree:one
+    out: <S>/space/efforts/<id>-tree-work/events/000007-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: from worktree:one: exit 0, base one's tip
+
+=== worktree-cut.sh: joined from two trees, and the refusals
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name joined --from worktree:one --from worktree:snap
+    out: <S>/space/efforts/<id>-tree-work/events/000008-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: two trees: exit 0, from "worktree:one worktree:snap", base a merge of both tips
+  PASS:   ... worktree.cut read back carries signed: true
+  PASS:   ... signed through commits-merge.sh, both changes in the tree
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name one --from checkout
+    err: worktree-cut.sh: the effort already has a live tree named one; choose another name
+    [exit 2]
+  PASS: a name in use: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name Bad_Name --from checkout
+    err: worktree-cut.sh: --name Bad_Name must be lowercase words joined by dashes
+    [exit 2]
+  PASS: a name that is not lowercase words with dashes: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from elsewhere
+    err: worktree-cut.sh: --from elsewhere is none of checkout, snapshot, worktree:NAME, ref:REF; only worktree:NAME repeats
+    [exit 2]
+  PASS: an unknown --from: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from checkout --from worktree:one
+    err: worktree-cut.sh: --from checkout is repeated with others; only worktree:NAME repeats
+    [exit 2]
+  PASS: checkout repeated with a tree: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from worktree:nosuch
+    err: worktree-cut.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a tree that is not live: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from ref:no-such-ref
+    err: worktree-cut.sh: --from ref: no-such-ref is no commit of <S>/repo
+    [exit 2]
+  PASS: a ref that is no commit: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from ref:-x
+    err: worktree-cut.sh: --from ref: -x starts with -; expected a commit name
+    [exit 2]
+  PASS: a ref starting with -: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-no-identity --repo <S>/repo --name x --from snapshot
+    err: worktree-snapshot.sh: the effort has no identity for <S>/repo; set the identity first (git-identity)
+    [exit 2]
+  PASS: a snapshot with no identity: exit 2, set the identity first, no tree
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name x --from worktree:one --from worktree:byref
+    err: worktree-cut.sh: the tips of one byref conflict in o.txt; nothing was cut
+    [exit 2]
+  PASS: joined tips that conflict: exit 2, naming the path, no tree, no branch
+
+=== worktree-cut.sh: a failing setup leaves no tree and no event
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name failing --from checkout
+    err: worktree-setup.sh: .worktreeinclude line 1 "!bad" is a negation; expected only paths to copy
+    err: worktree-cut.sh: worktree-setup.sh failed (exit 2)
+    err: worktree-cut.sh: removed the tree failing, its registration and its branch again
+    [exit 4]
+  PASS: exit 4, the setup's reason and the rollback on stderr
+  PASS: no folder, no registration, no branch, no event
+
+=== worktree-cut.sh: secrets copied when .worktreeinclude lists them
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name secrets --from checkout
+    out: <S>/space/efforts/<id>-tree-work/events/000009-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied .env
+    err: copied .npmrc
+    err: unignored auth.json
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  PASS: exit 0: the listed .env and .npmrc copied (git ignores both)
+  PASS:   ... the listed auth.json git doesn't ignore is left out as unignored
+
+=== worktree-facts.sh with live trees
+  $ sh main/worktree-facts.sh --repo <S>/space/efforts/<id>-tree-work/worktrees/one --effort <S>/space/efforts/<id>-tree-work
+    out: {
+    out:   "repo": "<S>/repo",
+    out:   "head": "<sha>",
+    out:   "branch": "refs/heads/main",
+    out:   "uncommitted": 2,
+    out:   "trees": [
+    out:     {
+    out:       "name": "one",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/one",
+    out:       "branch": "crucible/<id>-tree-work/one",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": false,
+    out:       "not_in": [
+    out:         "snap",
+    out:         "byref",
+    out:         "secrets"
+    out:       ]
+    out:     },
+    out:     {
+    out:       "name": "snap",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/snap",
+    out:       "branch": "crucible/<id>-tree-work/snap",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": false,
+    out:       "not_in": [
+    out:         "one",
+    out:         "byref",
+    out:         "child",
+    out:         "secrets"
+    out:       ]
+    out:     },
+    out:     {
+    out:       "name": "byref",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/byref",
+    out:       "branch": "crucible/<id>-tree-work/byref",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": false,
+    out:       "not_in": [
+    out:         "one",
+    out:         "snap",
+    out:         "child",
+    out:         "joined",
+    out:         "secrets"
+    out:       ]
+    out:     },
+    out:     {
+    out:       "name": "child",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/child",
+    out:       "branch": "crucible/<id>-tree-work/child",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": false,
+    out:       "not_in": [
+    out:         "snap",
+    out:         "byref",
+    out:         "secrets"
+    out:       ]
+    out:     },
+    out:     {
+    out:       "name": "joined",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/joined",
+    out:       "branch": "crucible/<id>-tree-work/joined",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": false,
+    out:       "not_in": [
+    out:         "one",
+    out:         "snap",
+    out:         "byref",
+    out:         "child",
+    out:         "secrets"
+    out:       ]
+    out:     },
+    out:     {
+    out:       "name": "secrets",
+    out:       "path": "<S>/space/efforts/<id>-tree-work/worktrees/secrets",
+    out:       "branch": "crucible/<id>-tree-work/secrets",
+    out:       "tip": "<sha>",
+    out:       "present": true,
+    out:       "uncommitted": 0,
+    out:       "in_checkout": true,
+    out:       "not_in": []
+    out:     }
+    out:   ]
+    out: }
+    [exit 0]
+  PASS: from a tree's folder: the same repository, every live tree listed
+  PASS: one's tip is not in the checkout, and child and joined hold it
+  PASS: secrets, with no commits of its own, is held by the checkout
+
+=== worktree-trees.sh
+  $ sh internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work
+    out: [{"name":"one","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/one","branch":"crucible/<id>-tree-work/one","from":"checkout","cut_base":"<sha>","base":"<sha>","seq":4},{"name":"snap","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/snap","branch":"crucible/<id>-tree-work/snap","from":"snapshot","cut_base":"<sha>","base":"<sha>","seq":5},{"name":"byref","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/byref","branch":"crucible/<id>-tree-work/byref","from":"ref:v1","cut_base":"<sha>","base":"<sha>","seq":6},{"name":"child","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/child","branch":"crucible/<id>-tree-work/child","from":"worktree:one","cut_base":"<sha>","base":"<sha>","seq":7},{"name":"joined","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/joined","branch":"crucible/<id>-tree-work/joined","from":"worktree:one worktree:snap","cut_base":"<sha>","base":"<sha>","seq":8},{"name":"secrets","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/secrets","branch":"crucible/<id>-tree-work/secrets","from":"checkout","cut_base":"<sha>","base":"<sha>","seq":9}]
+    [exit 0]
+  PASS: every live tree, oldest cut first, on one line
+  PASS:   ... each with name, repo, path, branch, from, cut_base, base and seq
+  $ sh internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    out: [{"name":"joined","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/joined","branch":"crucible/<id>-tree-work/joined","from":"worktree:one worktree:snap","cut_base":"<sha>","base":"<sha>","seq":8}]
+    [exit 0]
+  PASS: --name joined: that tree only, from both trees
+  $ sh internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch
+    out: []
+    [exit 0]
+  PASS: --name of no live tree: an empty list
+  $ sh internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work --name Bad_Name
+    err: worktree-trees.sh: --name Bad_Name must be lowercase words joined by dashes
+    [exit 2]
+  PASS: --name not lowercase words: exit 2
+  $ sh internal/worktree-trees.sh --effort <S>/repo
+    err: worktree-trees.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: --effort no effort folder: exit 2
+  $ sh internal/worktree-trees.sh --effort relative
+    err: worktree-trees.sh: --effort must be an absolute folder
+    [exit 2]
+  PASS: --effort not absolute: exit 2
+  $ sh internal/worktree-trees.sh --effort
+    err: worktree-trees.sh: --effort needs a value
+    [exit 2]
+  PASS: --effort with no value: exit 2
+
+=== a chain of three trees, and chain-sync
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name mid --from worktree:child
+    out: <S>/space/efforts/<id>-tree-work/events/000010-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name leaf --from worktree:mid
+    out: <S>/space/efforts/<id>-tree-work/events/000011-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-chain.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {
+    out:   "name": "leaf",
+    out:   "tip": "<sha>",
+    out:   "ancestors": [
+    out:     {
+    out:       "name": "mid",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": true
+    out:     },
+    out:     {
+    out:       "name": "child",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": true
+    out:     },
+    out:     {
+    out:       "name": "one",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": true
+    out:     }
+    out:   ],
+    out:   "moved": false
+    out: }
+    [exit 0]
+  PASS: chain of leaf: mid (direct), child and one (via mid), all held
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {"result":"in_sync"}
+    [exit 0]
+  PASS: chain-sync with nothing moved: in_sync, nothing written
+  $ sh main/worktree-chain.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {
+    out:   "name": "leaf",
+    out:   "tip": "<sha>",
+    out:   "ancestors": [
+    out:     {
+    out:       "name": "mid",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": true
+    out:     },
+    out:     {
+    out:       "name": "child",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": true
+    out:     },
+    out:     {
+    out:       "name": "one",
+    out:       "via": "mid",
+    out:       "tip": "<sha>",
+    out:       "held": false
+    out:     }
+    out:   ],
+    out:   "moved": true
+    out: }
+    [exit 0]
+  PASS: one moved: two levels up, one is not held, moved true
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000012-worktree.synced.json","result":"merged","commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: chain-sync takes one's tip in: merged, signed, leaf now holds it
+  PASS: worktree.synced read back: by worktree-catch-up.sh, with one's tip, merged
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000013-worktree.synced.json","result":"merged","commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: two moved at two levels: joined first, then merged in; leaf holds both tips
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-tree-work --name leaf
+    out: {"conflicts":["clash.txt"]}
+    err: commits-merge.sh: the commits conflict in: clash.txt
+    err: worktree-chain-sync.sh: the moved trees mid one conflict in clash.txt; nothing changed
+    [exit 3]
+  PASS: moved trees whose tips conflict: exit 3, the paths on stdout, leaf unchanged
+
+=== worktree-catch-up.sh
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name joined --with main
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000014-worktree.synced.json","result":"merged","commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: a clean catch-up of main: merged, signed, verify-commit, two parents
+  PASS:   ... the sync commit names the tree and the effort
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name joined --with v1
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000015-worktree.synced.json","result":"in_sync"}
+    [exit 0]
+  PASS: already in sync: in_sync, no commit
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch --with main
+    err: worktree-catch-up.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a name that is no live tree: exit 2, no event
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --with main
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000016-worktree.synced.json","result":"conflict","conflicts":["f.txt"]}
+    [exit 0]
+  PASS: a conflict: result conflict, f.txt named, the merge left under way
+  PASS: worktree.synced conflict read back, no commit
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --with main
+    err: worktree-catch-up.sh: tree secrets has MERGE_HEAD under way; finish it, or abort a merge with --abort
+    [exit 2]
+  PASS: a second catch-up during the merge: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --abort
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000017-worktree.synced.json","result":"aborted"}
+    [exit 0]
+  PASS: --abort: aborted, back at the tip, clean
+  PASS: worktree.synced aborted read back, with the merge's commit
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --abort
+    err: worktree-catch-up.sh: tree secrets has no merge under way
+    [exit 2]
+  PASS: --abort with no merge under way: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --with main --abort
+    err: worktree-catch-up.sh: --abort and --with exclude each other
+    [exit 2]
+  PASS: --with and --abort together: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets
+    err: worktree-catch-up.sh: --with REF or --abort is needed
+    [exit 2]
+  PASS: neither --with nor --abort: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --with main
+    err: worktree-catch-up.sh: tree secrets has 1 uncommitted changes; expected a clean tree
+    [exit 2]
+  PASS: a tree with uncommitted changes: exit 2
+
+=== worktree-move.sh
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name byref --to main
+    out: <S>/space/efforts/<id>-tree-work/events/000018-worktree.moved.json
+    [exit 0]
+  PASS: a move that leaves commits out: exit 0, the old tip kept under refs/crucible/moved/<effort>/byref/1
+  PASS: worktree.moved read back: by worktree-move.sh, from the old tip, to main
+  PASS: the tree is at main, clean
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name byref --to main
+    out: in place <sha>
+    [exit 0]
+  PASS: already there: in place, no event
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name byref --to <sha>
+    out: <S>/space/efforts/<id>-tree-work/events/000019-worktree.moved.json
+    [exit 0]
+  PASS: a move to another line of work keeps the old tip as /2
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name child --to <sha>
+    out: <S>/space/efforts/<id>-tree-work/events/000020-worktree.moved.json
+    [exit 0]
+  PASS: a fast-forward move keeps nothing
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name byref --to main
+    err: worktree-move.sh: tree byref has 1 uncommitted changes; expected a clean tree
+    [exit 2]
+  PASS: a tree with uncommitted changes: exit 2, nothing moved
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name byref --to nosuch
+    err: worktree-move.sh: --to nosuch is no commit of <S>/space/efforts/<id>-tree-work/worktrees/byref
+    [exit 2]
+  PASS: --to no commit: exit 2
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch --to main
+    err: worktree-move.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a name that is no live tree: exit 2, no event
+
+=== worktree-kept.sh
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name byref
+    out: {"kept":["refs/crucible/moved/<id>-tree-work/byref/1","refs/crucible/moved/<id>-tree-work/byref/2"]}
+    [exit 0]
+  PASS: byref's kept refs, both moves
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name byref --next moved
+    out: {"kept":["refs/crucible/moved/<id>-tree-work/byref/1","refs/crucible/moved/<id>-tree-work/byref/2"],"next":"refs/crucible/moved/<id>-tree-work/byref/3"}
+    [exit 0]
+  PASS: --next moved: the next free one, /3
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name byref --next discarded
+    out: {"kept":["refs/crucible/moved/<id>-tree-work/byref/1","refs/crucible/moved/<id>-tree-work/byref/2"],"next":"refs/crucible/discarded/<id>-tree-work/byref/1"}
+    [exit 0]
+  PASS: --next discarded: /1 of its own kind
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    out: {"kept":[]}
+    [exit 0]
+  PASS: a tree with none: an empty list, no next
+  $ sh internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work --name child
+    out: [{"name":"child","repo":"<S>/repo","path":"<S>/space/efforts/<id>-tree-work/worktrees/child","branch":"crucible/<id>-tree-work/child","from":"worktree:one","cut_base":"<sha>","base":"<sha>","seq":7}]
+    [exit 0]
+  PASS: worktree-trees.sh after a move: base the move's to, cut_base the cut's
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name byref --next stashed
+    err: worktree-kept.sh: --next stashed is neither moved nor discarded
+    [exit 2]
+  PASS: --next neither moved nor discarded: exit 2
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch
+    err: worktree-kept.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a name of no live tree: exit 2
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name Bad_Name
+    err: worktree-kept.sh: --name Bad_Name must be lowercase words joined by dashes
+    [exit 2]
+  PASS: a name not lowercase words: exit 2
+  $ sh internal/worktree-kept.sh --effort <S>/repo --name byref
+    err: worktree-kept.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: --effort no effort folder: exit 2
+  $ sh internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name
+    err: worktree-kept.sh: --name needs a value
+    [exit 2]
+  PASS: --name with no value: exit 2
+
+=== worktree-diff.sh
+  $ sh main/worktree-diff.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    out: <S>/space/efforts/<id>-tree-work/diffs/one-<short>-<short>.patch
+    [exit 0]
+  PASS: the diff file: <effort>/diffs/one-<base>-<tip>.patch
+  PASS: it holds one's four commits from the cut's base, the changed files and the diff
+  PASS: the human's checkout untouched by the diff
+  $ sh main/worktree-diff.sh --effort <S>/space/efforts/<id>-tree-work --name child
+    out: <S>/space/efforts/<id>-tree-work/diffs/child-<short>-<short>.patch
+    [exit 0]
+  PASS: after a move, the base is the move's to
+  $ sh main/worktree-diff.sh --effort <S>/space/efforts/<id>-tree-work --name one --base <sha>
+    out: <S>/space/efforts/<id>-tree-work/diffs/one-<short>-<short>.patch
+    [exit 0]
+  PASS: --base names another base: only the three later commits
+  $ sh main/worktree-diff.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch
+    err: worktree-diff.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a tree that is not live: exit 2
+
+=== worktree-discard.sh
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    out: <S>/space/efforts/<id>-tree-work/events/000021-worktree.discarded.json
+    [exit 0]
+  PASS: exit 0: worktree.discarded by worktree-discard.sh, kept refs/crucible/discarded/<effort>/joined/1
+  PASS: worktree.discarded read back carries signed: true
+  PASS: the kept commit holds both changes, parent the tip, signed
+  PASS: the tree is back at its tip, clean, its ignored dependency folder kept
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    err: worktree-discard.sh: tree joined has nothing uncommitted to discard
+    [exit 2]
+  PASS: nothing uncommitted: exit 2
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name nosuch
+    err: worktree-discard.sh: the effort has no live tree named nosuch
+    [exit 2]
+  PASS: a name that is no live tree: exit 2, no event
+
+=== the refusals of a tree's state, a repository's and an identity's
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --with main
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000022-worktree.synced.json","result":"conflict","conflicts":["f.txt"]}
+    [exit 0]
+  PASS: a conflict left in secrets again
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --to main
+    err: worktree-move.sh: tree secrets has MERGE_HEAD under way; finish or abort it first
+    [exit 2]
+  PASS: worktree-move.sh: a merge under way: exit 2
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name secrets
+    err: worktree-discard.sh: tree secrets has MERGE_HEAD under way; finish or abort it first
+    [exit 2]
+  PASS: worktree-discard.sh: a merge under way: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name secrets --abort
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000023-worktree.synced.json","result":"aborted"}
+    [exit 0]
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name one --to main
+    err: worktree-move.sh: tree one's HEAD is not on its branch crucible/<id>-tree-work/one
+    [exit 2]
+  PASS: worktree-move.sh: a tree not on its branch: exit 2
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    err: worktree-discard.sh: tree one's HEAD is not on its branch crucible/<id>-tree-work/one
+    [exit 2]
+  PASS: worktree-discard.sh: a tree not on its branch: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name one --with main
+    err: worktree-catch-up.sh: tree one's HEAD is not on its branch crucible/<id>-tree-work/one
+    [exit 2]
+  PASS: worktree-catch-up.sh: a tree not on its branch: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name gone --from checkout
+    out: <S>/space/efforts/<id>-tree-work/events/000024-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name gone --to main
+    err: worktree-move.sh: tree gone's folder <S>/space/efforts/<id>-tree-work/worktrees/gone is not there
+    [exit 2]
+  PASS: worktree-move.sh: a tree whose folder is gone: exit 2
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name gone
+    err: worktree-discard.sh: tree gone's folder <S>/space/efforts/<id>-tree-work/worktrees/gone is not there
+    [exit 2]
+  PASS: worktree-discard.sh: a tree whose folder is gone: exit 2
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name gone --with main
+    err: worktree-catch-up.sh: tree gone's folder <S>/space/efforts/<id>-tree-work/worktrees/gone is not there
+    [exit 2]
+  PASS: worktree-catch-up.sh: a tree whose folder is gone: exit 2
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name gone
+    out: <S>/space/efforts/<id>-tree-work/events/000025-worktree.dropped.json
+    [exit 0]
+  PASS: a tree with nothing of its own and its folder gone drops with no gate
+  $ sh main/worktree-chain.sh --effort <S>/space/efforts/<id>-tree-work --name gone
+    err: worktree-chain.sh: the effort has no live tree named gone
+    [exit 2]
+  PASS: worktree-chain.sh: a tree that is not live: exit 2
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-tree-work --name gone
+    err: worktree-chain.sh: the effort has no live tree named gone
+    [exit 2]
+  PASS: worktree-chain-sync.sh: a tree that is not live: exit 2
+  $ sh internal/open-work.sh --effort <S>/repo
+    err: open-work.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: open-work.sh: a folder that is no effort: exit 2
+  $ sh main/worktree-facts.sh --repo <S>/bare.git
+    err: worktree-facts.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: worktree-facts.sh: a bare repository: exit 2
+  $ sh main/worktree-snapshot.sh --repo <S>/empty --effort <S>/space/efforts/<id>-tree-work
+    err: worktree-snapshot.sh: the checkout <S>/empty has no HEAD commit
+    [exit 2]
+  PASS: worktree-snapshot.sh: a checkout with no HEAD commit: exit 2
+  $ sh main/worktree-snapshot.sh --repo <S>/odd --effort <S>/space/efforts/<id>-tree-work
+    err: worktree-snapshot.sh: the checkout <S>/odd is sparse; files outside it would read as deleted
+    [exit 2]
+  PASS: worktree-snapshot.sh: a sparse checkout: exit 2
+  $ sh main/worktree-snapshot.sh --repo <S>/odd --effort <S>/space/efforts/<id>-tree-work
+    err: worktree-snapshot.sh: the checkout <S>/odd has MERGE_HEAD under way; expected none
+    [exit 2]
+  PASS: worktree-snapshot.sh: a merge under way in the checkout: exit 2
+--- an effort with no identity: catch-up and discard refuse
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-no-identity --repo <S>/repo --name bare-tree --from ref:v1
+    out: <S>/space/efforts/<id>-no-identity/events/000002-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-no-identity --name bare-tree --with main
+    err: commits-merge.sh: the effort has no identity for the repository of <S>/space/efforts/<id>-no-identity/worktrees/bare-tree; set the identity first (git-identity)
+    [exit 2]
+  PASS: worktree-catch-up.sh: no identity: exit 2, set the identity first, the tree unchanged
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-no-identity --name bare-tree
+    err: commit-object.sh: the effort has no identity for the repository of <S>/space/efforts/<id>-no-identity/worktrees/bare-tree; set the identity first (git-identity)
+    [exit 2]
+  PASS: worktree-discard.sh: no identity: exit 2, the change still there, no kept ref
+
+=== a signer that hangs or fails: the cut and the discard say signed: false
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.ssh.program GIT_CONFIG_VALUE_0=<S>/hang-ssh sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name unsigned --from snapshot
+    out: <S>/space/efforts/<id>-tree-work/events/000026-worktree.cut.json
+    err: commit-object.sh: unsigned: signing timed out after 10 s
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+    took 12 s
+  PASS: a hanging signer: the cut from snapshot is made, stderr says signing timed out after 10 s
+  PASS:   ... worktree.cut read back carries signed: false, and its base carries no signature
+  $ env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.ssh.program GIT_CONFIG_VALUE_0=/usr/bin/false sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name unsigned
+    out: <S>/space/efforts/<id>-tree-work/events/000027-worktree.discarded.json
+    err: commit-object.sh: unsigned: error: 
+    [exit 0]
+  PASS: a failing signer: the discard keeps the changes, stderr says unsigned
+  PASS:   ... worktree.discarded read back carries signed: false
+
+=== the busy scan: a stand-in neighbour's busy.sh
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    err: worktree-drop.sh: tree joined is busy: busy-standin: joined: busy standing in for joined
+    [exit 2]
+  PASS: worktree-drop.sh refuses a busy tree: exit 2, naming the neighbour's line
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    err: worktree-discard.sh: tree joined is busy: busy-standin: joined: busy standing in for joined
+    [exit 2]
+  PASS: worktree-discard.sh refuses a busy tree: exit 2, naming the neighbour's line
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name joined --to main
+    err: worktree-move.sh: tree joined is busy: busy-standin: joined: busy standing in for joined
+    [exit 2]
+  PASS: worktree-move.sh refuses a busy tree: exit 2, naming the neighbour's line
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name joined --with main
+    err: worktree-catch-up.sh: tree joined is busy: busy-standin: joined: busy standing in for joined
+    [exit 2]
+  PASS: worktree-catch-up.sh refuses a busy tree: exit 2
+--- worktree-busy.sh
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name joined --name one
+    out: {"busy":["busy-standin: joined: busy standing in for joined"]}
+    [exit 5]
+  PASS: exit 5, the busy tree's line named with its component and tree
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name broken-check
+    out: {"busy":["busy-standin: broken-check: busy.sh failed"]}
+    [exit 5]
+  PASS: a check that fails counts as busy
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    out: {"busy":[]}
+    [exit 0]
+  PASS: nothing busy: exit 0, an empty list
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work
+    err: worktree-busy.sh: --name needs a value
+    [exit 2]
+  PASS: no --name: exit 2
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name Bad
+    err: worktree-busy.sh: --name Bad must be lowercase words joined by dashes
+    [exit 2]
+  PASS: a bad name: exit 2
+  $ sh internal/worktree-busy.sh --effort <S>/repo --name joined
+    err: worktree-busy.sh: <S>/repo is not an effort folder
+    [exit 2]
+  PASS: no effort folder: exit 2
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name
+    err: worktree-busy.sh: --name needs a value
+    [exit 2]
+  PASS: --name with no value: exit 2
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name broken-check --from checkout
+    out: <S>/space/efforts/<id>-tree-work/events/000028-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name broken-check
+    err: worktree-drop.sh: tree broken-check is busy: busy-standin: broken-check: busy.sh failed
+    [exit 2]
+  PASS: a busy.sh that fails counts as busy: exit 2
+  $ sh internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name broken-check
+    out: {"busy":[]}
+    [exit 0]
+  PASS: worktree-busy.sh with no neighbour answering: nothing busy
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name broken-check
+    out: <S>/space/efforts/<id>-tree-work/events/000029-worktree.dropped.json
+    [exit 0]
+  PASS: with no neighbour answering, a clean tree with nothing unlanded drops with no gate
+
+=== worktree-drop.sh
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name mid
+    err: worktree-drop.sh: tree mid holds 2 unlanded commits; it needs the human's recorded yes (record drop-worktree, subject mid:<sha>)
+    [exit 2]
+  PASS: unlanded commits, no recorded yes: exit 2, naming record and subject
+  PASS:   ... and nothing removed
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name mid
+    err: worktree-drop.sh: tree mid holds 2 unlanded commits; it needs the human's recorded yes (record drop-worktree, subject mid:<sha>)
+    [exit 2]
+  PASS: the human said no: exit 2
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name mid
+    out: <S>/space/efforts/<id>-tree-work/events/000032-worktree.dropped.json
+    [exit 0]
+  PASS: with the recorded yes: exit 0, worktree.dropped by worktree-drop.sh carries answer
+  PASS:   ... the folder, registration and branch are gone
+--- the same yes, on a tree with the same name and tip: refused
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name mid --from ref:<sha>
+    out: <S>/space/efforts/<id>-tree-work/events/000033-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name mid --with <sha>
+    out: {"event":"<S>/space/efforts/<id>-tree-work/events/000034-worktree.synced.json","result":"merged","commit":"<sha>","signed":true}
+    [exit 0]
+  PASS: the new mid takes the old tip in
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name mid
+    err: worktree-drop.sh: the human's yes 31 already dropped a tree; ask again for mid:<sha>
+    [exit 2]
+  PASS: the yes already used: exit 2, nothing removed
+--- kept refs go with the tree, under the yes
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name byref
+    err: worktree-drop.sh: tree byref holds 1 unlanded commits; it needs the human's recorded yes (record drop-worktree, subject byref:<sha>)
+    [exit 2]
+  PASS: byref holds kept refs with unlanded commits: exit 2 without a yes
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name byref
+    out: <S>/space/efforts/<id>-tree-work/events/000036-worktree.dropped.json
+    [exit 0]
+  PASS: with the yes: exit 0, its kept refs under refs/crucible/moved/ are gone
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    err: worktree-drop.sh: tree joined has 1 uncommitted changes; discard them first (worktree-discard.sh keeps them) or commit them
+    [exit 2]
+  PASS: a tree with uncommitted changes: exit 2, discard or commit first
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name joined
+    out: <S>/space/efforts/<id>-tree-work/events/000038-worktree.dropped.json
+    [exit 0]
+  PASS: joined drops with its yes, and its discarded kept ref is gone
+--- a folder deleted by hand
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name snap
+    out: <S>/space/efforts/<id>-tree-work/events/000040-worktree.dropped.json
+    [exit 0]
+  PASS: exit 0: the registration and the branch removed too
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name snap
+    err: worktree-drop.sh: the effort has no live tree named snap
+    [exit 2]
+  PASS: a tree no longer live: exit 2
+
+=== a tree dropped while a move, a catch-up or a discard runs: no event
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name race-move --to main   (git paused after: reset --quiet --keep)
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name race-move
+    out: <S>/space/efforts/<id>-tree-work/events/000047-worktree.dropped.json
+    [exit 0]
+    err: worktree-move.sh: tree race-move was dropped while worktree-move.sh ran; no worktree.moved was written
+    err: worktree-move.sh: nothing put back: tree race-move was dropped, its folder and branch with it
+    [exit 2]
+  PASS: worktree-move.sh, its tree dropped after the move: exit 2, no worktree.moved
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-tree-work --name race-sync --with v1   (git paused after: merge-base --is-ancestor)
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name race-sync
+    out: <S>/space/efforts/<id>-tree-work/events/000048-worktree.dropped.json
+    [exit 0]
+    err: worktree-catch-up.sh: tree race-sync was dropped while worktree-catch-up.sh ran; no worktree.synced was written
+    [exit 2]
+  PASS: worktree-catch-up.sh, its tree dropped before the record: exit 2, no worktree.synced
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-tree-work --name race-discard   (git paused after: status --porcelain=v1)
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name race-discard
+    out: <S>/space/efforts/<id>-tree-work/events/000049-worktree.dropped.json
+    [exit 0]
+    err: worktree-discard.sh: tree race-discard was dropped while worktree-discard.sh ran; no worktree.discarded was written
+    err: worktree-discard.sh: nothing put back: tree race-discard was dropped, its folder and branch with it
+    [exit 2]
+  PASS: worktree-discard.sh, its tree dropped after the clear: exit 2, no worktree.discarded
+
+=== the events lock held: a cut, a move and a drop refused with exit 6, no event
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-tree-work --repo <S>/repo --name locked --from checkout
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    err: event-write.sh: the events lock stayed held
+    err: worktree-cut.sh: worktree.cut was not written
+    err: worktree-cut.sh: removed the tree locked, its registration and its branch again
+    [exit 6]
+  PASS: worktree-cut.sh: exit 6, no worktree.cut, no folder, no registration, the refs as before
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-tree-work --name lock-move --to main
+    err: event-write.sh: the events lock stayed held
+    err: worktree-move.sh: worktree.moved was not written; tree lock-move is back at <sha>
+    [exit 6]
+  PASS: worktree-move.sh: exit 6, the branch back at its old tip, no worktree.moved, no kept ref or other ref changed
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    err: event-write.sh: the events lock stayed held
+    [exit 6]
+  PASS: worktree-drop.sh with its yes: exit 6, no worktree.dropped, the folder, registration and branch already gone
+  PASS:   ... worktree-trees.sh still lists it
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    out: <S>/space/efforts/<id>-tree-work/events/000054-worktree.dropped.json
+    [exit 0]
+  PASS: the rerun, the lock free: exit 0, exactly one worktree.dropped for lock-drop, carrying the yes the first attempt read
+  PASS:   ... worktree-trees.sh no longer lists it
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    err: worktree-drop.sh: the effort has no live tree named lock-drop
+    [exit 2]
+  PASS: a second rerun: exit 2, the tree is no longer live, nothing written
+--- lock-drop cut again with nothing of its own, its drop under the held lock: the used yes does not carry the rerun
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    err: event-write.sh: the events lock stayed held
+    [exit 6]
+  PASS: nothing unlanded, so no yes asked: exit 6, the folder and branch gone, no worktree.dropped
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    err: worktree-drop.sh: tree lock-drop's folder and branch are gone and no unused recorded yes since its cut names it; record drop-worktree, subject lock-drop:none
+    [exit 2]
+  PASS: the rerun: exit 2, no unused yes given since this cut, nothing written
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-tree-work --name lock-drop
+    out: <S>/space/efforts/<id>-tree-work/events/000057-worktree.dropped.json
+    [exit 0]
+  PASS: with a yes for lock-drop:none: exit 0, worktree.dropped carries it
+
+=== open-work.sh and effort-close.sh
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-tree-work
+    out: worktree one <S>/space/efforts/<id>-tree-work/worktrees/one
+    out: worktree child <S>/space/efforts/<id>-tree-work/worktrees/child
+    out: worktree secrets <S>/space/efforts/<id>-tree-work/worktrees/secrets
+    out: worktree leaf <S>/space/efforts/<id>-tree-work/worktrees/leaf
+    out: worktree unsigned <S>/space/efforts/<id>-tree-work/worktrees/unsigned
+    out: worktree mid <S>/space/efforts/<id>-tree-work/worktrees/mid
+    [exit 0]
+  PASS: one line per live tree: worktree <name> <path>
+  $ sh internal/open-work.sh --effort <S>/space/efforts/<id>-closing
+    [exit 0]
+  PASS: an effort with no trees: nothing
+  $ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-closing --outcome done --words finished
+    err: effort-close.sh: open work: worktree only <S>/space/efforts/<id>-closing/worktrees/only; end it first, or close with --leave-open on the human's word
+    [exit 2]
+  PASS: effort-close.sh refused while a tree is live, naming it
+  $ sh main/worktree-drop.sh --effort <S>/space/efforts/<id>-closing --name only
+    out: <S>/space/efforts/<id>-closing/events/000003-worktree.dropped.json
+    [exit 0]
+  $ sh crucible-effort/scripts/main/effort-close.sh --effort <S>/space/efforts/<id>-closing --outcome done --words finished
+    out: <S>/space/efforts/<id>-closing/events/000004-effort.closed.json
+    [exit 0]
+  PASS: allowed once the tree is dropped
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-closing --repo <S>/repo --name late --from checkout
+    err: worktree-cut.sh: the effort is closed; trees change only while it's open
+    [exit 2]
+  PASS: a closed effort: a cut is refused
+  $ sh main/worktree-move.sh --effort <S>/space/efforts/<id>-closing --name only --to main
+    err: worktree-move.sh: the effort is closed; trees change only while it's open
+    [exit 2]
+  PASS: a closed effort: worktree-move.sh is refused
+  $ sh main/worktree-catch-up.sh --effort <S>/space/efforts/<id>-closing --name only --with main
+    err: worktree-catch-up.sh: the effort is closed; trees change only while it's open
+    [exit 2]
+  PASS: a closed effort: worktree-catch-up.sh is refused
+  $ sh main/worktree-discard.sh --effort <S>/space/efforts/<id>-closing --name only
+    err: worktree-discard.sh: the effort is closed; trees change only while it's open
+    [exit 2]
+  PASS: a closed effort: worktree-discard.sh is refused
+  $ sh main/worktree-chain-sync.sh --effort <S>/space/efforts/<id>-closing --name only
+    err: worktree-chain-sync.sh: the effort is closed; trees change only while it's open
+    [exit 2]
+  PASS: a closed effort: worktree-chain-sync.sh is refused
+
+=== the flow step
+  $ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
+    out: git-identity/set-identity · The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as · ends with identity.set · stages: setup · skills: git-identity · propose when: before the first commit an agent makes in a repository that has no identity in this effort yet
+    out: git-worktree/cut-worktree · Cuts one tree for the coming work, from the base the human agreed, and sets it up · ends with worktree.cut · stages: setup · skills: git-worktree · propose when: whenever the coming work writes code
+    [exit 0]
+  PASS: git-worktree/cut-worktree is listed under setup, ending with worktree.cut
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-flowed --repo <S>/repo --name builder --from checkout
+    out: <S>/space/efforts/<id>-flowed/events/000004-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
+    out: <S>/space/efforts/<id>-flowed/events/000005-flow.step.done.json
+    [exit 0]
+  PASS: a step of two cut-worktree lines is ended by the first worktree.cut
+  $ sh main/worktree-cut.sh --effort <S>/space/efforts/<id>-flowed --repo <S>/repo --name other --from checkout
+    out: <S>/space/efforts/<id>-flowed/events/000006-worktree.cut.json
+    err: detected node
+    err: detected python
+    err: method cp -c
+    err: copied node_modules
+    err: copied .venv
+    err: repointed 1 .venv
+    [exit 0]
+  $ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 2
+    out: <S>/space/efforts/<id>-flowed/events/000007-flow.step.done.json
+    [exit 0]
+  PASS: the second line by the second tree's worktree.cut
+  $ sh crucible-adaptive-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
+    out: flow <S>/space/efforts/<id>-flowed:3 · Two trees for the work
+    out:   [x] 1 Cuts one tree for the coming work, from the base the human agreed, and sets it up
+    out:       event 4
+    out:   [x] 2 Cuts one tree for the coming work, from the base the human agreed, and sets it up
+    out:       event 6
+    out:   every step is done or skipped: end the flow
+    [exit 0]
+
+=== the rules: writer, shape and used-once answer
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.cut --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.cut refused: worktree.cut is written only by worktree-cut.sh
+    [exit 2]
+  PASS: worktree.cut by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.cut --by worktree-cut.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.cut refused: extra is not a worktree.cut field; name must be lowercase words joined by dashes; repo must be an absolute folder; path must be <effort>/worktrees/<name>, absolute; branch must be crucible/<effort folder name>/<name>; base must be a full commit sha; from must be checkout, snapshot, ref:<ref> or worktree:<name>, the last repeated with one space
+    [exit 2]
+  PASS: worktree.cut of the wrong shape: one reason per field, the name's included
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.cut --by worktree-cut.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.cut refused: signed belongs only to a cut that made its base (from snapshot or several trees)
+    [exit 2]
+  PASS: worktree.cut with signed when the cut made no base: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.cut --by worktree-cut.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.cut refused: signed must be a boolean when the cut made its base (from snapshot or several trees)
+    [exit 2]
+  PASS: worktree.cut from snapshot without signed: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.cut --by worktree-cut.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.cut refused: signed must be a boolean when the cut made its base (from snapshot or several trees)
+    [exit 2]
+  PASS: worktree.cut from several trees with signed not a boolean: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.dropped --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.dropped refused: worktree.dropped is written only by worktree-drop.sh
+    [exit 2]
+  PASS: worktree.dropped by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.dropped --by worktree-drop.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.dropped refused: answer 31 already dropped a tree
+    [exit 2]
+  PASS: worktree.dropped reusing an answer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.dropped --by worktree-drop.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.dropped refused: answer 53 already dropped a tree
+    [exit 2]
+  PASS: worktree.dropped reusing the answer a rerun carried: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.dropped --by worktree-drop.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.dropped refused: x is not a worktree.dropped field; name must be a tree's name; answer must be the seq of the human's recorded yes
+    [exit 2]
+  PASS: worktree.dropped of the wrong shape: name not a string, answer not a seq, an unknown field
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.moved --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.moved refused: worktree.moved is written only by worktree-move.sh
+    [exit 2]
+  PASS: worktree.moved by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.moved --by worktree-move.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.moved refused: from and to must be two different full commit shas; kept must be refs/crucible/moved/<effort folder name>/<name>/<n>
+    [exit 2]
+  PASS: worktree.moved of the wrong shape: from equal to, kept for another tree
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.synced --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.synced refused: worktree.synced is written only by worktree-catch-up.sh
+    [exit 2]
+  PASS: worktree.synced by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.synced --by worktree-catch-up.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.synced refused: with must be a full commit sha; a merged sync carries commit, a full sha, and signed, a boolean
+    [exit 2]
+  PASS: worktree.synced of the wrong shape: with not a sha, merged without commit and signed
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.synced --by worktree-catch-up.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.synced refused: only a merged sync carries commit and signed
+    [exit 2]
+  PASS: worktree.synced: only a merged sync carries a commit
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.discarded --by main.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.discarded refused: worktree.discarded is written only by worktree-discard.sh
+    [exit 2]
+  PASS: worktree.discarded by another writer: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.discarded --by worktree-discard.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.discarded refused: kept must be refs/crucible/discarded/<effort folder name>/<name>/<n>
+    [exit 2]
+  PASS: worktree.discarded of the wrong shape: kept not under refs/crucible/discarded/
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.discarded --by worktree-discard.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.discarded refused: signed must be a boolean
+    [exit 2]
+  PASS: worktree.discarded without signed: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.discarded --by worktree-discard.sh --body-file <S>/forged.json
+    err: event-write.sh: worktree.discarded refused: signed must be a boolean
+    [exit 2]
+  PASS: worktree.discarded with signed not a boolean: refused
+  $ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-tree-work --type worktree.moved --by worktree-move.sh --body-file <S>/forged.json
+    out: <S>/space/efforts/<id>-tree-work/events/000058-worktree.moved.json
+    [exit 0]
+  PASS: a well-formed worktree.moved by worktree-move.sh for a name never cut: accepted, the known limit
+  PASS:   ... and worktree-trees.sh still lists no tree of that name
+
+=== the scripts' contracts
+  PASS: worktree-catch-up.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-chain-sync.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-chain.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-cut.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-diff.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-discard.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-drop.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-facts.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-move.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-snapshot.sh: --help exits 0, an unknown option exits 2
+  PASS: open-work.sh: --help exits 0, an unknown option exits 2
+  PASS: worktree-busy.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: worktree-changes.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: worktree-kept.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: worktree-setup.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: worktree-trees.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+  PASS: worktree-uncommitted.sh: --help exits 0, an unknown option exits 2
+  PASS:   ... and its --help is short: at most 25 lines of at most 80 characters
+--- the scripts that read the events, with core not beside them
+  $ sh <S>/k2/skills/git-worktree/scripts/internal/worktree-trees.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    err: worktree-trees.sh: core isn't beside this skill (expected <S>/k2/skills/crucible-events/scripts/internal/event-write.sh); install first
+    [exit 2]
+  PASS: worktree-trees.sh with core not beside it: exit 2, install first
+  $ sh <S>/k2/skills/git-worktree/scripts/internal/worktree-busy.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    err: worktree-busy.sh: core isn't beside this skill (expected <S>/k2/skills/crucible-events/scripts/internal/event-write.sh); install first
+    [exit 2]
+  PASS: worktree-busy.sh with core not beside it: exit 2, install first
+  $ sh <S>/k2/skills/git-worktree/scripts/internal/worktree-kept.sh --effort <S>/space/efforts/<id>-tree-work --name one
+    err: worktree-kept.sh: core isn't beside this skill (expected <S>/k2/skills/crucible-events/scripts/internal/event-write.sh); install first
+    [exit 2]
+  PASS: worktree-kept.sh with core not beside it: exit 2, install first
+  PASS: shellcheck -x -o all is clean
+
+=== coverage: every script under scripts/ ran on a case
+  PASS: worktree-catch-up.sh ran on a case (19 runs)
+  PASS: worktree-chain-sync.sh ran on a case (6 runs)
+  PASS: worktree-chain.sh ran on a case (3 runs)
+  PASS: worktree-cut.sh ran on a case (29 runs)
+  PASS: worktree-diff.sh ran on a case (4 runs)
+  PASS: worktree-discard.sh ran on a case (11 runs)
+  PASS: worktree-drop.sh ran on a case (24 runs)
+  PASS: worktree-facts.sh ran on a case (4 runs)
+  PASS: worktree-move.sh ran on a case (14 runs)
+  PASS: worktree-snapshot.sh ran on a case (6 runs)
+  PASS: open-work.sh ran on a case (3 runs)
+  PASS: worktree-busy.sh ran on a case (9 runs)
+  PASS: worktree-changes.sh ran on a case (11 runs)
+  PASS: worktree-kept.sh ran on a case (10 runs)
+  PASS: worktree-setup.sh ran on a case (32 runs)
+  PASS: worktree-trees.sh ran on a case (9 runs)
+  PASS: worktree-uncommitted.sh ran on a case (6 runs)
+
+=== 302 PASS, 0 FAIL

@@ -1,0 +1,14 @@
+{
+  "type": "loop.stopped",
+  "seq": 19,
+  "at": "2026-11-24T08:29:39Z",
+  "by": "choose.sh",
+  "claude_session_id": "dry-C5-1",
+  "body": {
+    "reason": "stop the loop",
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

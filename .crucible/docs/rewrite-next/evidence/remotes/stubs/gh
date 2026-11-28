@@ -1,0 +1,23 @@
+#!/bin/sh
+# A stand-in for gh: answers the calls remotes makes from STUB_REPLIES, and
+# logs each call's arguments to STUB_LOG. STUB_THREADS names the threads
+# reply (threads.json by default); STUB_FAIL makes the call whose step it
+# names (pull, graphql, comments) fail as gh does.
+set -eu
+printf '%s\n' "$*" >>"${STUB_LOG:-/dev/null}"
+case " $* " in
+	*" graphql "*)
+		[ "${STUB_FAIL:-}" != graphql ] || { echo 'gh: Could not resolve to a Repository' >&2; exit 1; }
+		case "$*" in
+			*reviewThreads*) cat "${STUB_REPLIES}/${STUB_THREADS:-threads.json}" ;;
+			*reviews*) cat "${STUB_REPLIES}/${STUB_REVIEWS:-reviews.json}" ;;
+			*) echo "gh stub: unknown query" >&2; exit 9 ;;
+		esac ;;
+	*"/issues/"*"/comments"*)
+		[ "${STUB_FAIL:-}" != comments ] || { echo 'gh: HTTP 403' >&2; exit 1; }
+		cat "${STUB_REPLIES}/comments.json" ;;
+	*" repos/"*"/pulls/"*)
+		[ "${STUB_FAIL:-}" != pull ] || { cat "${STUB_REPLIES}/../fixtures/github/error-404-pull-not-found.json"; echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+		cat "${STUB_REPLIES}/${STUB_PULL:-pull.json}" ;;
+	*) echo "gh stub: unexpected call: $*" >&2; exit 9 ;;
+esac

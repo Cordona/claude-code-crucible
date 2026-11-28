@@ -1,0 +1,16 @@
+{
+  "summary": "cover the retry limit",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "fail",
+      "failing": [
+        "Client.php:42 < became <=, not caught"
+      ]
+    }
+  ]
+}

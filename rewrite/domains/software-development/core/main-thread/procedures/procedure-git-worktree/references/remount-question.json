@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "header": "Remount",
+      "question": "Remount it with its synced work?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Remount (Recommended)",
+          "description": "Your checkout shows the latest work: the mount is undone, then made again with the same seats."
+        },
+        {
+          "label": "Leave it",
+          "description": "The mount stays as it is, without the synced work."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "holds": 7,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"loop.ended\" and .body.reason == \"clean\")",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"job.dispatched\" and .body.kind == \"fix\" and .body.delivery == \"hot\")",
+      "ok": true
+    },
+    {
+      "check": ". as $e | [.[] | select(.type == \"job.ended\" and (.body.reason | IN(\"gave-up\", \"died\"))) | .job as $j | $e[] | select(.type == \"job.assigned\" and .job == $j) | .agent] as $bad | all(.[] | select(.type == \"job.dispatched\" and .body.delivery == \"hot\"); .body.hot_agent | IN($bad[]) | not)",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"job.ended\" and .body.reason == \"gave-up\")",
+      "ok": true
+    }
+  ]
+}

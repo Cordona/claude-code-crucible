@@ -1,0 +1,293 @@
+=== set-up: a checkout with a linked worktree, a bare repository and its worktree, a plain folder
+
+=== repo-of.sh: the repository and its main checkout
+  $ sh repo-of.sh --dir <S>/repo
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/repo: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/repo/sub/deep
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/repo/sub/deep: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/wt
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/wt: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/wt/inner
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/wt/inner: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/repo/.git
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/repo/.git: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/link-to-sub
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: <S>/link-to-sub: the checkout and its .git folder, physical
+  $ sh repo-of.sh --dir <S>/with space/x
+    out: {"repo":"<S>/with space/x","git_dir":"<S>/with space/x/.git"}
+    [exit 0]
+  PASS: a folder with a space: named whole
+  $ env GIT_DIR=<S>/with space/x/.git GIT_WORK_TREE=<S>/with space/x sh repo-of.sh --dir <S>/repo/sub
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: an inherited GIT_DIR and GIT_WORK_TREE are ignored: the folder's own repository
+  $ env CDPATH=<S>/repo:<S> sh repo-of.sh --dir <S>/wt
+    out: {"repo":"<S>/repo","git_dir":"<S>/repo/.git"}
+    [exit 0]
+  PASS: CDPATH set: stdout is still the one JSON line
+
+=== repo-of.sh: no repository, a bare one
+  $ sh repo-of.sh --dir <S>/plain
+    err: repo-of.sh: <S>/plain is not in a git repository
+    [exit 3]
+  PASS: a folder in no git repository: exit 3, nothing on stdout
+  $ sh repo-of.sh --dir <S>/nowhere
+    err: repo-of.sh: <S>/nowhere is not in a git repository
+    [exit 3]
+  PASS: a folder that isn't there: exit 3
+  $ sh repo-of.sh --dir <S>/odd?name
+    err: repo-of.sh: <S>/odd?name is not in a git repository
+    [exit 3]
+  PASS: a control character in the folder is shown as ?
+  $ sh repo-of.sh --dir <S>/locked/repo
+    err: repo-of.sh: <S>/locked/repo is not in a git repository
+    [exit 3]
+  PASS: a git folder that can't be read: exit 3, nothing on stdout
+  $ sh repo-of.sh --dir <S>/bare.git
+    err: repo-of.sh: <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 5]
+  PASS: a bare repository: exit 5, no checkout
+  $ sh repo-of.sh --dir <S>/bare-wt
+    err: repo-of.sh: <S>/bare-wt belongs to no checkout (a bare repository)
+    [exit 5]
+  PASS: a worktree of a bare repository: exit 5
+
+=== repo-of.sh: the refusals and missing tools
+  $ sh repo-of.sh
+    err: repo-of.sh: --dir missing
+    [exit 2]
+  PASS: no --dir: exit 2
+  $ sh repo-of.sh --dir
+    err: repo-of.sh: --dir needs a value
+    [exit 2]
+  PASS: --dir with no value: exit 2
+  $ sh repo-of.sh --dir <S>/repo --dir <S>/wt
+    err: repo-of.sh: --dir given twice
+    [exit 2]
+  PASS: --dir twice: exit 2
+  $ sh repo-of.sh --dir repo
+    err: repo-of.sh: --dir must be an absolute folder
+    [exit 2]
+  PASS: a relative folder: exit 2
+  $ sh repo-of.sh --dir <S>/repo --bogus
+    err: repo-of.sh: unknown argument --bogus; try --help
+    [exit 2]
+  PASS: an unknown argument: exit 2
+  $ sh repo-of.sh --help
+    out: usage: sh repo-of.sh --dir FOLDER
+    out: 
+    out: Run by the domain's scripts; not for main to call.
+    out: Names the repository FOLDER belongs to: the top folder of git's common
+    out: directory, physical, which is its main checkout. A checkout and each of its
+    out: worktrees name the same repository.
+    out: 
+    out: Options:
+    out:   --dir FOLDER  a folder in a checkout or one of its worktrees, absolute
+    out: Writes:    nothing
+    out: Stdout:    one JSON line {repo, git_dir}: the main checkout's top folder and
+    out:            its .git folder
+    out: Exit:
+    out:   0  named
+    out:   2  refused, nothing changed; the reason is on stderr
+    out:   3  FOLDER is in no git repository
+    out:   4  git or jq not found
+    out:   5  FOLDER's repository is bare: it has no checkout
+    [exit 0]
+  PASS: --help: exit 0, the usage first
+  $ env PATH=<S>/nogit /bin/sh repo-of.sh --dir <S>/repo
+    err: repo-of.sh: git not found
+    [exit 4]
+  PASS: git not found: exit 4
+  $ env PATH=<S>/nojq /bin/sh repo-of.sh --dir <S>/repo
+    err: repo-of.sh: jq not found
+    [exit 4]
+  PASS: jq not found: exit 4
+
+=== run-timed.sh: a command that ends within the limit
+  $ sh run-timed.sh --seconds 5 -- sh -c echo to-stdout; echo to-stderr >&2; exit 7
+    out: to-stdout
+    err: to-stderr
+    [exit 7]
+  PASS: its stdout, its stderr and its own exit 7 pass through
+  $ sh run-timed.sh --seconds 30 -- true
+    [exit 0]
+  PASS: a fast command returns at once with exit 0, not after the limit
+  $ sh run-timed.sh --seconds 5 -- sh -c cat; echo read-to-end
+    out: read-to-end
+    [exit 0]
+  PASS: stdin is closed: the command reads nothing
+  $ sh run-timed.sh --seconds 1 -- sh -c exit 0
+    [exit 0]
+  PASS: --seconds 1, the least: accepted
+  $ sh run-timed.sh --seconds 3600 -- sh -c exit 0
+    [exit 0]
+  PASS: --seconds 3600, the most: accepted
+  $ sh run-timed.sh --seconds 5 -- <S>/no-such-command
+    err: <S>/cfg/skills/dev-base/scripts/internal/run-timed.sh: line 131: <S>/no-such-command: No such file or directory
+    [exit 1]
+  PASS: a command that can't be run: the shell's own failure and reason, no time-out
+  $ sh run-timed.sh --seconds 5 -- sh -c exit 2
+    [exit 2]
+  PASS: a command's own exit 2 passes through
+
+=== run-timed.sh: at the limit, the command and every process beneath it are stopped
+  $ sh run-timed.sh --seconds 2 -- sh <S>/tree.sh
+    [exit 124]
+    took 2 s
+  PASS: exit 124 after about 2 s, nothing printed of its own
+  PASS: the tree wrote four PIDs
+  PASS:   ... and none of the four is running: the child and the grandchild were stopped too
+  $ sh run-timed.sh --seconds 1 -- sh <S>/stubborn.sh
+    [exit 124]
+    took 3 s
+  PASS: a tree that ignores TERM: exit 124, KILL about 2 s after the limit
+  PASS:   ... and none of it is running
+
+=== run-timed.sh: told to stop before the limit
+  $ kill -TERM <the runner's PID>: [exit 143]
+  PASS: TERM to the runner: exit 143, and none of the command's tree is running
+  $ kill -INT <the runner's PID>: [exit 130]
+  PASS: INT to the runner: exit 130, and none of the command's tree is running
+  $ kill -HUP <the runner's PID>: [exit 129]
+  PASS: HUP to the runner: exit 129, and none of the command's tree is running
+
+=== run-timed.sh: without pgrep only the command itself is found
+  $ env PATH=<S>/nopgrep /bin/sh run-timed.sh --seconds 1 -- /bin/sh <S>/two.sh
+    [exit 124]
+  PASS: exit 124; the command stopped, its child left running (the known limit)
+
+=== run-timed.sh: the refusals; nothing runs
+  $ sh run-timed.sh
+    err: run-timed.sh: --seconds missing
+    [exit 2]
+  PASS: run-timed.sh (no arguments): exit 2, nothing ran
+  $ sh run-timed.sh --seconds
+    err: run-timed.sh: --seconds needs a value
+    [exit 2]
+  PASS: run-timed.sh --seconds: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 5
+    err: run-timed.sh: no COMMAND after --
+    [exit 2]
+  PASS: run-timed.sh --seconds 5: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 5 --
+    err: run-timed.sh: no COMMAND after --
+    [exit 2]
+  PASS: run-timed.sh --seconds 5 --: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 5 touch <S>/touched
+    err: run-timed.sh: unknown argument touch; try --help
+    [exit 2]
+  PASS: run-timed.sh --seconds 5 CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 0 -- touch <S>/touched
+    err: run-timed.sh: --seconds 0 must be a whole number from 1 to 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds 0 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 07 -- touch <S>/touched
+    err: run-timed.sh: --seconds 07 must be a whole number from 1 to 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds 07 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 1.5 -- touch <S>/touched
+    err: run-timed.sh: --seconds 1.5 must be a whole number from 1 to 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds 1.5 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds abc -- touch <S>/touched
+    err: run-timed.sh: --seconds abc must be a whole number from 1 to 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds abc -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 3601 -- touch <S>/touched
+    err: run-timed.sh: --seconds 3601 is over 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds 3601 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --seconds 99999 -- touch <S>/touched
+    err: run-timed.sh: --seconds 99999 must be a whole number from 1 to 3600
+    [exit 2]
+  PASS: run-timed.sh --seconds 99999 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --bogus 5 -- touch <S>/touched
+    err: run-timed.sh: unknown argument --bogus; try --help
+    [exit 2]
+  PASS: run-timed.sh --bogus 5 -- CMD: exit 2, nothing ran
+  $ sh run-timed.sh --help
+    out: usage: sh run-timed.sh --seconds N -- COMMAND [ARG]...
+    out: 
+    out: Run by the domain's scripts; not for main to call.
+    out: Runs COMMAND with stdin closed. At the limit, COMMAND and every process
+    out: beneath it get TERM, then KILL 2 s later if still running.
+    out: 
+    out: Options:
+    out:   --seconds N  the limit, whole seconds, 1 to 3600
+    out: Stdout:    COMMAND's own; the runner adds nothing but a refusal's reason
+    out: Exit:
+    out:   2    refused, nothing ran; the reason is on stderr
+    out:   124  timed out: COMMAND and every process beneath it were stopped
+    out:   any other: COMMAND's own exit, COMMAND having ended within the limit
+    [exit 0]
+  PASS: --help: exit 0, the usage first
+
+=== the callers, with dev-base not beside them: each refuses, install first
+  $ sh <S>/k3/skills/git-worktree/scripts/main/worktree-facts.sh --repo <S>/repo
+    err: worktree-facts.sh: dev-base isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/repo-of.sh); install first
+    [exit 2]
+  PASS: git-worktree (worktree-facts.sh): exit 2
+  $ sh <S>/k3/skills/git-mount/scripts/main/mount-status.sh --repo <S>/repo
+    err: mount-status.sh: a neighbour isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/repo-of.sh); install first
+    [exit 2]
+  PASS: git-mount (mount-status.sh): exit 2
+  $ sh <S>/k3/skills/git-identity/scripts/main/identity-card.sh --list <S>/empty-list.json --repo <S>/repo
+    err: identity-card.sh: dev-base isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/repo-of.sh); install first
+    [exit 2]
+  PASS: git-identity (identity-card.sh): exit 2
+  $ sh <S>/k3/skills/git-commit/scripts/main/commit-tree.sh --worktree <S>/wt --message-file <S>/stdin --effort <S>/plain
+    err: commit-tree.sh: dev-base isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/repo-of.sh); install first
+    [exit 2]
+  PASS: git-commit (commit-tree.sh): exit 2
+  $ sh <S>/k3/skills/git-push/scripts/main/push-tree.sh --effort <S>/plain --name one --remote origin
+    err: push-tree.sh: a neighbour isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/run-timed.sh); install first
+    [exit 2]
+  PASS: git-push (push-tree.sh): exit 2
+  $ sh <S>/k3/skills/trackers/scripts/main/tracker-read.sh --url https://github.com/cli/cli/issues/1
+    err: tracker-read.sh: dev-base isn't beside this skill (expected <S>/k3/skills/dev-base/scripts/internal/run-timed.sh); install first
+    [exit 2]
+  PASS: trackers (tracker-read.sh): exit 2, before any tracker call
+
+=== the callers' repository refusals come from repo-of.sh
+  $ sh git-worktree/scripts/main/worktree-facts.sh --repo <S>/bare.git
+    err: worktree-facts.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: worktree-facts.sh on a bare repository: exit 2, --repo and repo-of.sh's reason
+  $ sh git-mount/scripts/main/mount-status.sh --repo <S>/plain
+    err: mount-status.sh: --repo <S>/plain is not in a git repository
+    [exit 2]
+  PASS: mount-status.sh on a plain folder: exit 2
+  $ sh git-identity/scripts/main/identity-card.sh --list <S>/empty-list.json --repo <S>/bare-wt
+    err: identity-card.sh: --repo <S>/bare-wt belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: identity-card.sh on a bare repository's worktree: exit 2
+  $ sh git-commit/scripts/internal/commit-object.sh --repo <S>/bare.git --tree x --parent y --message-file <S>/msg --effort <S>/space/efforts/20261123T114233-935c-dev-base
+    err: commit-object.sh: --repo <S>/bare.git belongs to no checkout (a bare repository)
+    [exit 2]
+  PASS: commit-object.sh on a bare repository: exit 2
+  $ sh git-commit/scripts/internal/commits-merge.sh --repo <S>/plain --commit x y --message-file <S>/msg --effort <S>/space/efforts/20261123T114233-935c-dev-base
+    err: commits-merge.sh: --repo <S>/plain is not in a git repository
+    [exit 2]
+  PASS: commits-merge.sh on a plain folder: exit 2
+
+=== the scripts' contracts
+  PASS: shellcheck -x -o all is clean
+  PASS: dev-base has no SKILL.md, as core's crucible-events
+
+=== coverage: every script under scripts/ ran on a case
+  PASS: repo-of.sh ran on a case (23 runs)
+  PASS: run-timed.sh ran on a case (26 runs)
+
+=== 67 PASS, 0 FAIL

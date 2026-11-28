@@ -1,0 +1,16 @@
+[
+  {
+    "name": "grill",
+    "stage": [
+      "prepare"
+    ],
+    "does": "Interview the human, a few questions at a time, until the open goal becomes recorded decisions",
+    "propose_when": "when the goal is still open, or the human asks to be grilled",
+    "ends_with": {
+      "event": "grill.ended"
+    },
+    "skills": [
+      "crucible-grill"
+    ]
+  }
+]

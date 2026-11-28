@@ -1,0 +1,53 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "This is by design: the spec puts --shout before the name, and other argument orders are out of scope. `greet.sh ada --shout` prints `hello ada`, the same as before the change."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "id": "CLEAN-CODE-03",
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 runs `echo \"${line}\"`, and the name comes from argv. Under macOS /bin/sh, `sh bin/greet.sh 'a\\tb'` prints a real tab where the old printf printed a backslash and a t.",
+        "claim": "`echo` turns backslash sequences in the name into control characters on some POSIX sh builds, so names with a backslash print differently from before the change.",
+        "suggestion": "Replace `echo \"${line}\"` with `printf '%s\\n' \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "source": "bot",
+      "verdict": "deferred",
+      "note": "This is true: `tr a-z A-Z` only uppercases ASCII, and in non-C locales its ranges are unspecified. The author has limited names to ASCII, and the spec doesn't ask for more. `tr '[:lower:]' '[:upper:]'` would be the portable form if that ever changes."
+    },
+    {
+      "thread": "d-line",
+      "source": "human",
+      "verdict": "answered",
+      "reply": "Confirmed: `sh bin/greet.sh --shout` with no name prints `HELLO WORLD`. Line 5 shifts the flag off, and `${1:-world}` then falls back safely under `set -u`."
+    },
+    {
+      "thread": "d-done",
+      "source": "human",
+      "verdict": "noted"
+    }
+  ],
+  "noticed": [
+    {
+      "text": "The MR's only commit message is `Add --shout` and has no typo. The resolved thread about a typo matches nothing in the commit as it is now."
+    },
+    {
+      "at": "tests/greet_test.sh:3",
+      "text": "The tests only cover the plain greeting. Nothing checks --shout, even though the spec's done-when asks for `--shout ada` to print HELLO ADA."
+    }
+  ]
+}

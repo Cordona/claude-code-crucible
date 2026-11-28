@@ -1,0 +1,176 @@
+=== install: install-entries.sh's own links and settings, then install-check.sh
+  PASS: install-entries.sh lists code-tester
+  PASS: install-check.sh agrees: installed
+  PASS: code-tester lists what it hands in, one submissions file per kind
+  PASS: code-tester's submissions/test-plan.json names test-plan.submitted, its rules, def and facts, all installed
+  PASS: code-tester's submissions/test-plan-update.json names test-plan.updated, its rules, def and facts, all installed
+  PASS: code-tester's submissions/test.json names test.submitted, its rules, def and facts, all installed
+  PASS: code-tester's submissions/test-fix.json names test-fix.submitted, its rules, def and facts, all installed
+  PASS: a plan job does not commit; a test job and a test-fix do
+  PASS: code-tester owns its rules: a common lib and one rules file per kind
+  PASS: code-tester holds no per-kind scripts: its kinds are data
+  PASS: the kind and its event are paired only in the submission file
+  PASS: neither agent names the other component; the tester names only the builder's kinds
+  PASS: no agent includes another agent's rules: every tester include is its own
+  PASS: nothing in agent-submission or jobs-track names an agent or one of its kinds, but build
+=== every tester script answers --help
+  PASS: tester-facts.sh --help
+=== set-up: a scratch repository, an effort, its identity (no key), five trees, each with a real build
+method cp -c
+method cp -c
+method cp -c
+method cp -c
+method cp -c
+    plans approved: scope 15, bug 24, mutation 33, rows 42
+    exit 0
+  PASS: the build under test: build.submitted, iteration 1, committed
+=== 2: a plan with no_tests
+    exit 0
+  PASS: accepted: test-plan.submitted, iteration 1
+  PASS: its report is at reports/test-plan/<job seq>.json
+  PASS: a plan job makes no commit
+=== 1: a plan with tests, then its rework answering two challenges
+    exit 0
+  PASS: accepted: test-plan.submitted, no commit
+  PASS: the body prints job, iteration, agent, report
+  PASS: the pin matches the report
+    exit 0
+  PASS: accepted: test-plan.updated, no commit
+  PASS: its answers: C-1 applied, C-2 cannot
+  PASS: its report is at reports/test-plan-update/<job seq>.json
+=== a rework whose challenge asks nothing a rework can apply: a job fault for the human
+    {"systemMessage":"crucible: the report check of job 71 (test-plan-update-71) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in"}
+    stderr: submit-agent-work.sh: the report check of job 71 (test-plan-update-71) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in
+    exit 0
+  PASS: the job is written with the challenge as a ref; the ask is the tester's facts' to judge
+  PASS: the stop goes through with the fault told to the human
+  PASS: a fault before acceptance: job.ended fault at step check, no refusal
+=== 3: a refused plan, with its repair lines
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test-plan/76.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ntests[0].why names T-2: say it in words; the IDs are for scripts\ntests[0].guards names B-9, which isn't a behaviour in this plan\ntests[1] modifies a test: add keeps, what it must still assert"}
+    exit 0
+  PASS: held
+  PASS: the line for the missing keeps
+  PASS: the line for the unknown guard
+  PASS: the line for the internal ID in human text
+  PASS: only job.refused try 1: no submission
+=== 4: a plan job that changed the tree: refused
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test-plan/81.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\na plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"}
+    exit 0
+  PASS: held, naming the file to undo
+  PASS: only job.refused try 1, no commit
+=== 9: a rework from the human's words at the gate
+    exit 0
+  PASS: accepted: test-plan.updated
+  PASS: no challenge answers
+=== the plan, approved at the gate (the dispatch, not the event rule, will hold a job for it)
+=== 5: the tests written: test.submitted and its commit
+  PASS: the approved newest plan starts the test job
+    exit 0
+  PASS: accepted: test.submitted, iteration 1, committed
+  PASS: the body prints job, iteration, agent, report, commit
+  PASS: the commit: crucible(test), Effort, Job, Iteration and the setup
+  PASS: the planned file the build also changed was accepted, and committed
+  PASS: the report is pinned read-only
+=== a build-fix on the build under test, by the builder: its own loop
+    exit 0
+  PASS: build-fix.submitted, fix round 1
+=== 8: a tester's fix: test-fix.submitted with its fix round, counted apart from the build's
+  PASS: a test-fix counting on from the build-fix's round is refused: its round is 1
+    exit 0
+  PASS: accepted: test-fix.submitted, iteration 1, fix round 1, committed
+  PASS: the commit: crucible(test-fix) with Fix-Round
+  PASS: its report is at reports/test-fix/<job seq>.json
+  PASS: the build under test is the build and build-fix commits: the builder's files, not the tester's
+=== 6: a test that finds a production bug: blocked, the tests still committed
+    exit 0
+  PASS: accepted with the production_bug blocker covering the red test
+  PASS: test.submitted with a commit
+  PASS: the red test is committed
+  PASS: the pinned report holds the production_bug
+=== 7: the plan as scope
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test/107.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
+    exit 0
+  PASS: held: an unplanned file the build changed
+  PASS: the planned file the build also changed draws no line
+    exit 0
+  PASS: accepted: the planned file, and a file outside the plan explained in decisions
+  PASS: test.submitted, committing both
+=== 10: the mutation gate
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test/113.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
+    exit 0
+  PASS: held: the mutation gate missing
+    exit 0
+  PASS: accepted: a failed mutation gate needs no blocker
+  PASS: test.submitted, committed
+=== the view joins every tester submission to its pinned report
+  PASS: events-view.sh reads the effort whole, each submission with its report
+=== every repair line of test-agent.md section 5 (fixtures/repair-lines.json)
+  PASS: plan: a bad or duplicate id
+  PASS: plan: a bad action
+  PASS: plan: a field its action requires is missing
+  PASS: plan: why is required on a unit or integration add
+  PASS: plan: guards naming an unknown behaviour
+  PASS: plan: a bad level
+  PASS: plan: no tests and no no_tests
+  PASS: plan: no_tests together with tests
+  PASS: plan: behaviours missing
+  PASS: plan: a baseline that breaks the gate rules
+  PASS: plan: a known baseline failure needs nothing
+  PASS: plan: a baseline failure a modify repairs
+  PASS: plan: an untested entry with a bad proof
+  PASS: plan: an untested entry with a bad recommend
+  PASS: plan: an untested entry missing a field
+  PASS: plan: human-read text naming an internal id
+  PASS: plan: a missing at
+  PASS: plan: an at past the end of its file
+  PASS: plan: run missing
+  PASS: plan: a blank command
+  PASS: plan: the tree changed in a plan job
+  PASS: plan: remove covered by nothing, a support folder
+  PASS: plan: a modify with no guards (a pure repair)
+  PASS: rework: a challenge with no answer
+  PASS: rework: cannot without a reason
+  PASS: rework: an applied add challenge with no new test
+  PASS: rework: an applied add challenge with a new test
+  PASS: rework: from the human's words, no answers
+  PASS: plan: a noticed instruction
+  PASS: plan: a noticed entry with a bad kind
+  PASS: plan: a noticed text naming an ID
+  PASS: plan: a noticed at past the end of its file
+  PASS: rework: a noticed instruction
+  PASS: rework: a noticed entry with a bad kind
+  PASS: test: a file not in the plan that the build changed
+  PASS: test: a file neither in the plan nor in decisions
+  PASS: test: a file outside the plan, explained in decisions
+  PASS: test: a planned file the build also changed, and a support folder
+  PASS: test: a planned test not touched
+  PASS: test: a production_bug at one of the plan's files
+  PASS: test: a production_bug anywhere else, another repo included
+  PASS: test: a bad blocker kind
+  PASS: test: the mutation gate missing
+  PASS: test: a failed mutation gate needs no blocker
+  PASS: test: an unknown key lists the seven keys
+  PASS: test-fix: a tester's fix lists the mutation gate too
+  PASS: test-fix: a tester's fix is the plan as scope too
+  PASS: test-fix: a tester's fix with done and mutation, accepted
+  PASS: plan: a noticed entry with no at is accepted
+=== the new chain: a test defined on the approved plan, assigned to an agent started from its agent file, handed in unchanged
+  PASS: job-of.sh shows it as the agent side reads a test: base, its plan, its tree
+    exit 0
+  PASS: accepted: test.submitted for the defined job, committed
+  PASS: its commit names the job by its readable name
+=== the new chain: the test-plan trio, plan, challenge and rework, each defined and handed in unchanged
+    exit 0
+  PASS: the plan: test-plan.submitted for the defined job
+  PASS: the challenge job shows its plan ref
+    exit 0
+  PASS: the challenge: test-plan.challenged for the defined job, its two challenges stamped
+  PASS: the rework's view: its refs by name, the plan and the challenge, nothing read for it
+  PASS: the tester's facts read the challenges from the challenge's pinned report
+    exit 0
+  PASS: the rework: test-plan.updated for the defined job
+  PASS: a rework from the human's words: its words ref is the gate whose answer they are
+    exit 0
+  PASS: accepted: test-plan.updated
+
+=== 121 PASS, 0 FAIL

@@ -1,0 +1,13 @@
+{
+ "files": {},
+ "report": {
+  "answers": {
+   "SHELL-01": "declined",
+   "SHELL-02": "declined"
+  },
+  "declines": {
+   "SHELL-01": "the variable never holds spaces",
+   "SHELL-02": "the loop words are fixed names"
+  }
+ }
+}

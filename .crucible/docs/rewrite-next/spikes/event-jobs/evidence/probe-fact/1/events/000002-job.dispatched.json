@@ -1,0 +1,27 @@
+{
+  "type": "job.dispatched",
+  "seq": 2,
+  "at": "2026-11-23T20:00:59Z",
+  "by": "ev.sh",
+  "claude_session_id": "probe",
+  "body": {
+    "kind": "build",
+    "target": null,
+    "tree": "/Users/Shared/crucible-sandbox/event-jobs/probe-fact-1/repo",
+    "report": "/Users/Shared/crucible-sandbox/event-jobs/probe-fact-1/effort/reports/b.json",
+    "agent_type": "lab-builder",
+    "delivery": "cold",
+    "hot_agent": null,
+    "slot": null,
+    "replaces": null,
+    "approval": 1,
+    "payload": {
+      "task": "write a.txt"
+    },
+    "act": {},
+    "root": null,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

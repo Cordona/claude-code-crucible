@@ -1,0 +1,15 @@
+{
+  "type": "gate.approved",
+  "seq": 1,
+  "at": "2026-11-23T20:00:59Z",
+  "by": "ev.sh",
+  "claude_session_id": "probe",
+  "body": {
+    "step": "build",
+    "answer": "yes, build it",
+    "root": null,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

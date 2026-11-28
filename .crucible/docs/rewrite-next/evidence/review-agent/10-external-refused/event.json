@@ -1,0 +1,19 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 67,
+    "at": "2026-11-28T07:45:45Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 64,
+      "iteration": 1,
+      "agent": "x0x0x0x0x0",
+      "try": 1,
+      "lines": [
+        "judge thread n11373: valid, rejected, already-fixed, deferred, answered or noted",
+        "items[0] is valid: remove its reply; it's drafted from the fix"
+      ]
+    }
+  }
+]

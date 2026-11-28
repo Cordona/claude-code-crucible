@@ -1,0 +1,32 @@
+[
+  {
+    "type": "job.assigned",
+    "seq": 109,
+    "at": "2026-11-28T07:42:12Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 108,
+      "agent": "fr00000001",
+      "name": "build-php-fr0000",
+      "session": "sess-ba"
+    }
+  },
+  {
+    "type": "standin.submitted",
+    "seq": 110,
+    "at": "2026-11-28T07:42:13Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 108,
+      "iteration": 1,
+      "agent": "fr00000001",
+      "report": {
+        "path": "reports/build/108.json",
+        "sha256": "34e7dc4000ee9874156c65728fe54acb45d63020d3d9f935ef438cd4989092b3"
+      },
+      "commit": "c10fbf5e8584ff03c62efbeeaba410fe85d26841"
+    }
+  }
+]

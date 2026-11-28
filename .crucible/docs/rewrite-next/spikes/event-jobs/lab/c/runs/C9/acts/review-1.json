@@ -1,0 +1,14 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "x.sh",
+    "severity": "high",
+    "realism": "realistic",
+    "title": "eval of user input"
+   }
+  ],
+  "answers": {}
+ }
+}

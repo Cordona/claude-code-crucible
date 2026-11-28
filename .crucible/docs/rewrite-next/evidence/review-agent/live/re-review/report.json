@@ -1,0 +1,13 @@
+{
+  "fixes": [
+    {
+      "id": "SHELL-01",
+      "status": "fixed"
+    },
+    {
+      "id": "SHELL-02",
+      "status": "agree",
+      "reason": "b.sh documents word input in its header; the decline holds"
+    }
+  ]
+}

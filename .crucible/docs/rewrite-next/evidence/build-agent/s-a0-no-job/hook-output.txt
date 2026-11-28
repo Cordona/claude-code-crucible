@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: agent a0a0a0a0a0 (code-builder) stopped, and no effort has a job assigned to it; its report, if any, was not checked or handed in"}
+stderr: submit-agent-work.sh: agent a0a0a0a0a0 (code-builder) stopped, and no effort has a job assigned to it; its report, if any, was not checked or handed in
+exit 0

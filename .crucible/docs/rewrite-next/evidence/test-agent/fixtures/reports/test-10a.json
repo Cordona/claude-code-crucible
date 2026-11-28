@@ -1,0 +1,9 @@
+{
+  "summary": "cover the retry limit",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

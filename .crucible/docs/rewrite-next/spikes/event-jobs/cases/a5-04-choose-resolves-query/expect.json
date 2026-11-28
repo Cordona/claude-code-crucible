@@ -1,0 +1,1 @@
+{"merge":10,"query":{"severities":["high","medium"],"minus":["SHELL-02"],"plus":["SHELL-03"]},"ids":["SHELL-01","SHELL-03"],"cap":3}

@@ -1,0 +1,27 @@
+# agent-01 · Need and role (AROLE)
+
+Purpose: the agent should exist, does one job that every caller actually asks of it, and opens by telling itself what that job is and is not.
+
+**Applies when:** every agent file. AROLE-05 only when the agent has an operational invariant.
+**MUST lint:** none.
+**Terms.** See `README.md` (dispatch-only, selected, routed and orchestrator-only agent; the agent's text; dispatching flow).
+
+**Levels.** Each item takes the level of the heading above it.
+
+## MUST
+
+- **AROLE-03** · Does every dispatching flow ask for a job the body describes, in a stance the body allows? · Check: grep every flow and agent that names this agent; compare each brief's task with the body's job and stance. An "understand, don't judge" analyst used as a judge, a finder used as its own refuter, or a reviewer asked about a concern its scope never mentions FAILs. · Fix: add the job to the body as a named mode with its own steps; write a separate agent only when the job needs a different stance or tool set (AROLE-02).
+
+## SHOULD
+
+- **AROLE-01** · Is a subagent the right form for this work? It fits when the same worker is spawned repeatedly with the same instructions, the work is self-contained and returns a summary, the output is verbose, or a tool restriction must hold. It does not fit frequent back-and-forth, phases that share a lot of context, or a reusable prompt for the main session (that is a skill). · Check: grep the agent's name across skills and agents to find its dispatching flows; read the briefs they send. · Fix: fold the work into the flow; make it a skill only when the main session reuses the prompt.
+- **AROLE-02** · Does the agent have one job with one output shape? · Check: read the body; two unrelated roles with different outputs in one file (an analysis returning an object beside benchmark notes returning a list) FAIL. Named modes of one job pass. · Fix: split it into one agent per job.
+- **AROLE-04** · Is no other agent a near-copy of this one? Bodies that match except for `effort` or the description, or share most of their text, drift apart on the next edit. · Check: diff the body against agents with a similar name or role. · Fix: move the shared text into a preloaded skill; merge the agents and pass the difference as an input only when the bodies differ in nothing but that input.
+- **AROLE-05** · When the agent has an operational invariant (a fact about its environment that, if ignored, makes it work on the wrong thing: the working directory, absolute paths, "you have no shell"), does the body open with it, together with the failure it prevents? · Check: read the first lines of the body. · Fix: put the invariant and its reason first ("Use absolute paths: the working directory may be the run directory, and a relative path would map the wrong tree").
+- **AROLE-06** · Does one sentence state the job, saying what the agent does and what it is not ("a cartographer, not a bug hunter")? · Check: read the opening paragraph; a persona built only from praise words ("elite", "expert", "20 years") with no job FAILs. · Fix: write one job sentence with its "not".
+- **AROLE-07** · Is the body written to the agent in the second person ("You read…"), the voice of the canonical blocks it must carry verbatim (agent-07)? · Check: read; first-person or third-person instructions FAIL. · Fix: rewrite those lines as "You …".
+- **AROLE-08** · Is the stance explicit: does the agent understand, judge, or apply? · Check: read the role and the process. · Fix: add one stance sentence ("Your job is understanding, not judgment", "apply the playbook; don't invent an approach").
+- **AROLE-09** · Is the scope bounded by what counts and by what does not count (a "not your job" or "avoid" list)? · Check: read; a scope that lists only what to look at FAILs. · Fix: add the exclusions, one example each ("a removed API nobody calls is not a delta").
+- **AROLE-10** · Does the body speak only to the agent? No text aimed at the main session or the user ("Respond by saying you'll…", "Would you like me to…"), no trigger scenarios the router never reads, no leftover chat, no unmatched code fences. · Check: read; count the fence lines. · Fix: move trigger text to the description (ADISP-08); delete the rest.
+- **AROLE-11** · Does the body hold only conventions true in every repo it is dispatched on, taking project specifics (file paths, helper names, logging calls, error-ID files) from the brief or a cited standard? · Check: grep the body for repository paths and function names. · Fix: move them into the brief or the standard.
+- **AROLE-12** · Is the agent's text free of rules that contradict each other ("never create or modify files" beside a step that copies files to a temp folder)? · Check: read every "never" and "always" against the steps. · Fix: remove one rule, or state the exception in the rule.

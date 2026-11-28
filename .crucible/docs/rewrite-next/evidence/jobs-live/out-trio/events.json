@@ -1,0 +1,457 @@
+[
+  {
+    "seq": 1,
+    "type": "effort.opened",
+    "by": "effort-start.sh",
+    "body": {
+      "name": "greet shout"
+    }
+  },
+  {
+    "seq": 2,
+    "type": "identity.set",
+    "by": "identity-set.sh",
+    "body": {
+      "repo": "<L>/run/repo",
+      "name": "Jobs Live",
+      "email": "jobs-live@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "seq": 3,
+    "type": "grill.ended",
+    "by": "grill-end.sh",
+    "body": {
+      "number": 1,
+      "topic": "the shout flag",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Flag name?",
+          "recommendation": {
+            "text": "--shout",
+            "reason": "Plain and clear"
+          },
+          "status": "settled",
+          "answers": [
+            {
+              "text": "Yes, --shout, before the name"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "context-done",
+      "subject": "6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 5,
+    "type": "context.cut",
+    "by": "context-cut.sh",
+    "body": {
+      "version": 1,
+      "paths": []
+    }
+  },
+  {
+    "seq": 6,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "spec-approval",
+      "subject": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 7,
+    "type": "spec.approved",
+    "by": "spec-approve.sh",
+    "body": {
+      "sha256": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "answer": 6,
+      "path": "<L>/run/space/efforts/20261127T105151-7df5-greet-shout/spec/1.md"
+    }
+  },
+  {
+    "seq": 8,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "9471bc98c4a4008c01608148bce48bd4bafe563c90ff3d1989a07e557c3e853f",
+      "question": "One build job is proposed: shell with the clean-code standard, working in a tree cut from ref:main in the repo. It uses context 5, spec 7 and grills 3. Approve it so it's defined and ready to assign?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 9,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "build",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ]
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:main"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "known_failures": []
+      },
+      "approval_gate": {
+        "ref": 8,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "build",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261127T105151-7df5-greet-shout/worktrees/build",
+      "branch": "crucible/20261127T105151-7df5-greet-shout/build",
+      "base": "0c6c01cc6f4396b8db83177427258dfd40c780d8",
+      "from": "ref:main"
+    }
+  },
+  {
+    "seq": 11,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a3426a5c1c22d5cf2",
+      "base": "code-builder",
+      "type": "code-builder-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-build",
+        "standard-clean-code",
+        "standard-clean-code-build"
+      ]
+    }
+  },
+  {
+    "seq": 12,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 9,
+      "agent": "a3426a5c1c22d5cf2",
+      "tree": 10
+    }
+  },
+  {
+    "seq": 13,
+    "type": "build.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 9,
+      "iteration": 1,
+      "agent": "a3426a5c1c22d5cf2",
+      "report": {
+        "path": "reports/build/9.json",
+        "sha256": "cbbf9ce9b328e26dacb97e6e941833018566c7e97425ef7201710d800224d3d5"
+      },
+      "commit": "f31547e8ce405ee0a890b983212228c405f17f13"
+    }
+  },
+  {
+    "seq": 14,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "d3f2d648f49694650b10fc3d18f23be1090b7ae42ad4bc34660f8448b11d9d1f",
+      "question": "One test-plan job is proposed: shell with the testing standard, reading the build's tree 10, where --shout is committed with no tests for it yet. It uses context 5, spec 7 and grills 3. Approve it so it's defined and ready to assign?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 15,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "test-plan",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "testing"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ]
+      },
+      "work": {
+        "tree": {
+          "use": 10
+        },
+        "loop": {
+          "iteration": 1
+        }
+      },
+      "approval_gate": {
+        "ref": 14,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "acdcec74bc1024050",
+      "base": "code-tester",
+      "type": "code-tester-shell-testing",
+      "plugins": [
+        "language-shell",
+        "standard-testing"
+      ]
+    }
+  },
+  {
+    "seq": 17,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 15,
+      "agent": "acdcec74bc1024050",
+      "tree": 10
+    }
+  },
+  {
+    "seq": 18,
+    "type": "test-plan.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 15,
+      "iteration": 1,
+      "agent": "acdcec74bc1024050",
+      "report": {
+        "path": "reports/test-plan/15.json",
+        "sha256": "49eb247ff680a703425a81b39ce8fcc5d9dad282af7cf7c1159af25aaac4a90b"
+      }
+    }
+  },
+  {
+    "seq": 19,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "5c75214090b644ecc3e5b6ba3ec89347524a61df7b3a168ee2fd250d538ee752",
+      "question": "One test-plan-challenge job is proposed: shell with the testing standard, a reviewer reading tree 10 that challenges plan 18 (two --shout tests, two cases recommended to skip). It uses context 5, spec 7 and grills 3. Approve it so it's defined and ready to assign?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 20,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "test-plan-challenge",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "testing"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "plan": 18
+      },
+      "work": {
+        "tree": {
+          "use": 10
+        },
+        "loop": {
+          "iteration": 1
+        }
+      },
+      "approval_gate": {
+        "ref": 19,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 21,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "ae7871869341d35a1",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-testing",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-testing",
+        "standard-testing-review"
+      ]
+    }
+  },
+  {
+    "seq": 22,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 20,
+      "agent": "ae7871869341d35a1",
+      "tree": 10
+    }
+  },
+  {
+    "seq": 23,
+    "type": "test-plan.challenged",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 20,
+      "iteration": 1,
+      "agent": "ae7871869341d35a1",
+      "report": {
+        "path": "reports/test-plan-challenge/20.json",
+        "sha256": "52199550cb2260fe5c15b60d211815eb1c09759b3e5c66ae7d95741f915de71d"
+      }
+    }
+  },
+  {
+    "seq": 24,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "ff0e2428c2de2c65a86015f7e657b71f30a03c8c5733d7c8e68a25b687ac3612",
+      "question": "One test-plan-update job is proposed: shell with the testing standard, on tree 10. It reworks plan 18 to take in challenge 23, which adds a no-arguments test and fixes one test's \"breaks on\" note. It uses context 5, spec 7 and grills 3. Approve it so it's defined and ready to assign?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 25,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "test-plan-update",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "testing"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "plan": 18,
+        "challenge": 23
+      },
+      "work": {
+        "tree": {
+          "use": 10
+        },
+        "loop": {
+          "iteration": 1
+        }
+      },
+      "approval_gate": {
+        "ref": 24,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 26,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a3e437d76ef1fa75f",
+      "base": "code-tester",
+      "type": "code-tester-shell-testing",
+      "plugins": [
+        "language-shell",
+        "standard-testing"
+      ]
+    }
+  },
+  {
+    "seq": 27,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 25,
+      "agent": "a3e437d76ef1fa75f",
+      "tree": 10
+    }
+  },
+  {
+    "seq": 28,
+    "type": "test-plan.updated",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 25,
+      "iteration": 1,
+      "agent": "a3e437d76ef1fa75f",
+      "report": {
+        "path": "reports/test-plan-update/25.json",
+        "sha256": "d8e520c47333042d4d0ff030a50cb3f0cf326f446a653ef3bee6fd390fa4ca49"
+      }
+    }
+  }
+]

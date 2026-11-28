@@ -1,0 +1,6 @@
+{
+ "files": {
+  "install.sh": "#!/bin/sh\ncp a.sh /usr/local/bin\n"
+ },
+ "report": {}
+}

@@ -1,0 +1,62 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "This is as specified: the spec and the settled grill answer put --shout before the name, and other flag positions are out of scope. Extra arguments after the name were ignored before this change too, so `greet.sh ada --shout` printing `hello ada` is unchanged behaviour."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "id": "CLEAN-CODE-02",
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 `echo \"${line}\"`: POSIX leaves echo's backslash handling implementation-defined; on macOS /bin/sh, `sh bin/greet.sh 'a\\tb'` now prints a real tab, where the old printf '%s\\n' printed `a\\tb`.",
+        "claim": "echo interprets backslash escapes in the name, so output changes even without --shout, breaking the spec's 'without --shout nothing changes'.",
+        "suggestion": "Print the line with `printf '%s\\n' \"${line}\"` instead of `echo \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "source": "bot",
+      "verdict": "deferred",
+      "reply": "Fair point, but the spec only asks for capitals and names no non-ASCII case, and POSIX sh has no portable multibyte upcase: GNU tr works byte by byte even with [:lower:]/[:upper:]. We'll leave it for its own change if non-ASCII names come up."
+    },
+    {
+      "thread": "d-bot",
+      "item": "4",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "POSIX sh has no boolean type, so a variable holding a value is the usual way to keep a flag. The argument is shifted away on line 5 so the name can be read as $1, which means a later `if` on the argument isn't possible without re-testing it before the shift. Keeping `shout` lets the parse and the upcase stay separate."
+    },
+    {
+      "thread": "d-line",
+      "item": "question",
+      "source": "human",
+      "verdict": "answered",
+      "reply": "Confirmed: with only --shout, the shift leaves $1 unset, name falls back to world, and `sh bin/greet.sh --shout` prints `HELLO WORLD`."
+    },
+    {
+      "thread": "d-line",
+      "item": "test",
+      "source": "human",
+      "verdict": "valid",
+      "finding": {
+        "id": "CLEAN-CODE-03",
+        "severity": "medium",
+        "realism": "realistic",
+        "claim": "No test covers --shout at all: tests/greet_test.sh only checks `greet.sh ada`, so the bare `--shout` fallback to HELLO WORLD can regress unnoticed.",
+        "suggestion": "Add to tests/greet_test.sh: `[ \"$(sh \"$(dirname \"$0\")/../bin/greet.sh\" --shout)\" = \"HELLO WORLD\" ]`, and one for `--shout ada` giving `HELLO ADA`.",
+        "at": "tests/greet_test.sh:3",
+        "relates_to": "bin/greet.sh:5"
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+=== install: install-entries.sh's own links and settings
+  PASS: main's Stop hook end-gone-jobs.sh is registered
+  PASS: job-of.sh --help
+  PASS: agent-had-job.sh --help
+  PASS: end-gone-jobs.sh --help
+  PASS: end-job.sh --help
+  PASS: end-job.sh's help leaves another session's job to the human
+  PASS: agent-jobs knows no agent kind
+=== job.assigned carries the assigning session
+    event-write.sh: job.assigned refused: session must be the assigning session's id: letters, digits, ., _ or -
+  PASS: an assignment with no session is refused
+  PASS: with its session it is accepted
+  PASS: job-of.sh prints the session and a refusals count of 0
+=== job.refused: tries counted from the log
+  PASS: only held-stop.sh writes it
+  PASS: a first refusal must be try 1
+  PASS: a refusal with no repair lines is refused
+  PASS: try 1 is accepted
+  PASS: gave-up after one refusal is refused
+  PASS: try 1 again is refused: try must be 2
+  PASS: try 2 is accepted
+  PASS: job-of.sh counts 2 refusals
+  PASS: then gave-up is accepted
+  PASS: an ended job is refused no more
+=== job.ended: each reason has its writers and its fields
+  PASS: before acceptance a fault is at check or hook: stamp is refused
+  PASS: a fault without its line is refused
+  PASS: recover-submission.sh gives up only a stalled job
+  PASS: a note belongs to end-job.sh only
+  PASS: an assigned job's end names its agent
+  PASS: held-stop.sh writes no fault
+  PASS: fault at check, by fault-ended.sh, is accepted
+  PASS: the job is ended
+=== job.stalled: accepted, waiting for its hand-in
+  PASS: the no-stop writers stall a job only at step event
+  PASS: job.stalled at commit, by fault-stalled.sh
+  PASS: job-of.sh: stalled, not assigned
+  PASS: a job stalls once
+  PASS: a stalled job is not ended as a fault before acceptance
+  PASS: its agent is free for its next job: an assignment is accepted
+  PASS: a stalled job can still be submitted
+  PASS: then it is submitted
+  PASS: a stalled job can be given up: job.ended fault by recover-submission.sh
+=== an ended build that was never accepted is replaced under its own number
+  PASS: the build ended at its check keeps iteration 1 for its replacement
+  PASS: a build given up after it stalled keeps its number: the next is 2
+=== main's Stop hook: this session's jobs whose agent is gone
+  PASS: it prints nothing: main is never blocked
+  PASS: agent gone, report not pinned: job.ended no-stop, by end-gone-jobs.sh
+  PASS: agent gone, report pinned: job.stalled at step event, the report kept
+  PASS: another session's job is untouched
+  PASS: a running agent's job is untouched
+  PASS: a job only dispatched is untouched
+  PASS: this session's job in another effort is ended too
+  PASS: nothing else was written: those two, and the earlier job of agent a0000003, gone too
+  PASS: the next turn end has nothing more to do but the running agent's, now gone
+  PASS: a stalled job is left for main to finish
+    {"systemMessage":"crucible: end-gone-jobs.sh could not record a job whose agent is gone; it still shows as running: 20261125T162021-8ada-damaged-log: events-read.sh: <S>/space/efforts/20261125T162021-8ada-damaged-log/events/000001-effort.opened.json cannot be read"}
+  PASS: a log it can't read is told to the human, and main goes on
+=== main's end-job.sh
+    end-job.sh: job 34 was assigned in this session; its agent may still run, and main's turn end ends it once the agent is gone
+  PASS: a job this session assigned is refused: the Stop hook ends it
+  PASS: a note is required
+  PASS: a job only dispatched is ended
+  PASS: job.ended no-stop by end-job.sh, with the note and no agent
+    end-job.sh: job 38 was assigned by session sess-dead, whose agent may still run; ending it is the human's call: rerun with --other-session on their word
+  PASS: another session's job is refused without --other-session
+  PASS: with --other-session it is ended
+  PASS: job.ended no-stop, the agent named
+    end-job.sh: job 41's report is pinned, so it is recorded stalled, not ended: finish or give up its hand-in with agent-submission's scripts/main/recover-submission.sh
+  PASS: another session's job with its report pinned is recorded stalled, not ended
+  PASS: main is told so in one line, naming where to finish it
+  PASS: end-job.sh and end-gone-jobs.sh share one pinned test, in the agent-jobs lib
+  PASS: end-job.sh's help claims no record of the human's call
+  PASS: a stalled job is refused: it is finished or given up instead
+=== agent-job.sh: one agent's open job, across the efforts
+  PASS: agent-job.sh --help
+  PASS: an open job is found: exit 0, its effort and job
+  PASS: a job in another effort is found there
+  PASS: an agent whose jobs are done: exit 5, between jobs
+  PASS: an agent never assigned: exit 4, after looking again for 2 seconds
+  PASS: a malformed id is refused: exit 2
+  PASS: the stop hook and the write scope both use it, and neither searches the efforts itself
+
+=== 69 PASS, 0 FAIL

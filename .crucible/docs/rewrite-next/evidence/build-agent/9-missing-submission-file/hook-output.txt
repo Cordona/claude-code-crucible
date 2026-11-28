@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: code-sketcher has no submissions/build.json, so job 42 (build-php-b0b5ce) can't be handed in; the job ends, nothing handed in"}
+stderr: submit-agent-work.sh: code-sketcher has no submissions/build.json, so job 42 (build-php-b0b5ce) can't be handed in; the job ends, nothing handed in
+exit 0

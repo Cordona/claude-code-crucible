@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: the report check of job 102 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined; the job ends, nothing handed in"}
+stderr: submit-agent-work.sh: the report check of job 102 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined; the job ends, nothing handed in
+exit 0

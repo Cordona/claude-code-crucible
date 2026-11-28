@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "holds": 7,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"loop.ended\" and .body.reason == \"clean\")",
+      "ok": true
+    },
+    {
+      "check": "any(.[]; .type == \"pr.posted\" and all(.body.items[]; .kind == \"reply\"))",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.root != null) | .root] | unique | length) == 1",
+      "ok": true
+    }
+  ]
+}

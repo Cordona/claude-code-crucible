@@ -1,0 +1,20 @@
+{
+  "behaviours": [
+    {
+      "id": "B-1",
+      "text": "the log line's wording changed",
+      "at": "app/Upload/Client.php:42"
+    }
+  ],
+  "no_tests": "a wording change in a log line: no behaviour to guard",
+  "baseline": {
+    "gate": "test",
+    "result": "pass"
+  },
+  "run": [
+    {
+      "where": "repo root",
+      "command": "./vendor/bin/phpunit --filter UploadClientLogTest"
+    }
+  ]
+}

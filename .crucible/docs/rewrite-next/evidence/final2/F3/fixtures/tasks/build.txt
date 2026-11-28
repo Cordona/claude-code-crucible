@@ -1,0 +1,1 @@
+Add a --verbose flag to bin/prune-backups.sh. With it, the script prints the name of each file it deletes to stderr, and at the end one line to stderr: "pruned N of M backups in DIR", where M is the number of backups it found and N the number it deleted. Without the flag, the script's output doesn't change.

@@ -1,0 +1,40 @@
+{
+  "findings": [
+    {
+      "id": "TESTING-01",
+      "severity": "medium",
+      "realism": "realistic",
+      "claim": "The new --shout flag has no test: nothing checks that `greet.sh --shout ada` prints `HELLO ADA`, or that the default path still prints `hello ada` after the rewrite.",
+      "suggestion": "In tests/greet_test.sh, run the script as a CLI and compare its exact output, e.g.\n  [ \"$(sh \"$(dirname \"$0\")/../bin/greet.sh\" --shout ada)\" = 'HELLO ADA' ]\n  [ \"$(sh \"$(dirname \"$0\")/../bin/greet.sh\" ada)\" = 'hello ada' ]\nand also `--shout` with no name (expect `HELLO WORLD`).",
+      "at": "bin/greet.sh:5-9"
+    },
+    {
+      "id": "TESTING-02",
+      "severity": "medium",
+      "realism": "realistic",
+      "claim": "The only test can't fail: `|| :` swallows the script's failure and `[ -n x ] || [ -z x ]` is always true, so `sh tests/run.sh` passes whatever greet.sh does, this change included.",
+      "suggestion": "Drop the `|| :` and assert the exact output: `out=$(sh \"$(dirname \"$0\")/../bin/greet.sh\" ada)` then `[ \"${out}\" = 'hello ada' ]`.",
+      "at": "tests/greet_test.sh:3-4",
+      "relates_to": "bin/greet.sh:7-9",
+      "out_of_scope": "The test came from the earlier commit 087a01f, not this MR; it matters here because it is the only check of the rewritten output path."
+    }
+  ],
+  "noticed": [
+    {
+      "at": "bin/greet.sh:9",
+      "text": "Switching from printf to `echo \"${line}\"` makes sh interpret backslashes in the name: `greet.sh 'a\\tb'` now prints a real tab (checked on macOS /bin/sh). That is a regression on the default path; `printf '%s\\n' \"${line}\"` keeps the old behaviour.",
+      "for": "correctness"
+    },
+    {
+      "at": "bin/greet.sh:8",
+      "text": "`tr a-z A-Z` uppercases ASCII only, so names with accents stay lower case (shellcheck SC2018/SC2019); `tr '[:lower:]' '[:upper:]'` handles them.",
+      "for": "correctness"
+    }
+  ],
+  "notes": [
+    {
+      "text": "`[ \"${1-}\" = --shout ] && { ...; }` is safe under `set -eu`: the false test on the left of `&&` doesn't trip `set -e`, and `${1-}` avoids the unset error when there are no arguments.",
+      "at": "bin/greet.sh:5"
+    }
+  ]
+}

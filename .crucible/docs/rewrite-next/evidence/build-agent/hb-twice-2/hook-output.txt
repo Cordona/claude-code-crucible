@@ -1,0 +1,2 @@
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Your report was refused twice, so this job has ended with nothing handed in. Hand back only that: one line, no findings."},"systemMessage":"crucible: job 148 (build-148) gave up: its report was refused twice. Its tree <S>/space/efforts/20261128T074056-af5d-upload-retries/worktrees/sketch is kept for the next job."}
+exit 0

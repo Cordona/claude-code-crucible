@@ -1,0 +1,56 @@
+=== change-read.sh: the PR object
+ok    reads: exit 0
+ok    the change's fields from repos/O/R/pulls/N
+ok    head is the PR's head sha
+ok    title and description are the PR's own
+ok    the call asked for the PR
+ok    a closed, unmerged PR: state closed
+ok    a merged PR (state closed, merged true): state merged
+ok    a 404: exit 1, gh's error on stderr
+ok    an issue link: exit 3
+ok    an unsafe link: exit 2
+=== review-read.sh: the whole review of one PR
+ok    reads: exit 0
+ok    line threads, then reviews with a body, then conversation comments
+ok    empty-body reviews (implicit, approvals) left out: 8 of them
+ok    a line thread: new_line is originalLine on the RIGHT side, path kept
+ok    a line thread's resolved is isResolved
+ok    a line thread's commit is its review's commit.oid
+ok    a review's commit is its own commit.oid; resolved false
+ok    a conversation comment has no commit
+ok    bots by the host: GraphQL __typename and REST type Bot
+ok    role author: comments by the PR's author
+ok    replies stay in their thread, oldest first, with id and updated
+ok    the calls: threads, reviews (GraphQL, all pages) and the comments (REST, all pages)
+=== review-read.sh: the single-thread samples
+ok    outdated: new_line is originalLine 8, resolved false
+ok    multiline-range: new_line is originalLine 4, resolved true
+ok    resolved: new_line is originalLine 5, resolved true
+ok    unresolved: new_line is originalLine 3, resolved false
+ok    a thread opened by the Copilot reviewer (GraphQL login, no [bot]): source bot
+ok    the LEFT side gives old_line, not new_line
+ok    a file comment: path, no line
+=== review-read.sh: paging, incomplete, errors, bots named
+ok    threads over two pages read as one
+ok    a thread with more than 100 comments: exit 1, nothing printed
+ok    GraphQL NOT_FOUND (HTTP 200): exit 1, its message on stderr
+ok    a failed comments call: exit 1, nothing printed
+ok    --bot names a human account as AI
+ok    --bot with a non-name: exit 2
+=== GitLab, on hand-written fixtures in the shape the live reads showed
+ok    an MR: project path with subgroups, state opened is open, base_sha from diff_refs
+ok    the call names the host and the project as one segment
+ok    a failed MR call: exit 1, glab's error on stderr
+ok    a GitLab host with a port: exit 3
+ok    system notes and empty bodies left out; every other discussion kept, in order
+ok    --bot names the AI reviewer; everyone else human
+ok    role author for the MR's author (the fixer), in a thread and on its own
+ok    a note with no position: the head of the latest version before it
+ok    a line comment: its position's head_sha, path and new_line
+ok    a comment on a removed line: old_line, no new_line
+ok    resolved threads kept and flagged; plain notes not resolvable, false
+ok    each comment: its note id and updated_at (moved on resolve)
+ok    the calls: the MR, its discussions and versions, all pages
+ok    no --bot: every GitLab author is human
+
+passed 49, failed 0

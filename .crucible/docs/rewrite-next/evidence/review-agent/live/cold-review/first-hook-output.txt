@@ -1,0 +1,2 @@
+Your report /Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/reports/review/11.json was not accepted. Repair each line, then stop again; a second refusal ends this job.
+findings[1] is an edge-case: add proof, the line that makes it reachable

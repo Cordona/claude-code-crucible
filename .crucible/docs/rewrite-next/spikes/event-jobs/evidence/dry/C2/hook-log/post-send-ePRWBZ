@@ -1,0 +1,1 @@
+{"session_id":"dry-C2-1","tool_name":"SendMessage","tool_use_id":"tu-11","tool_input":{"to":"ag031","message":"JOB: /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.pRqbmW/effort/events/000027-job.dispatched.json"},"tool_response":{"success":true}}

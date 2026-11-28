@@ -1,0 +1,75 @@
+--- no context at all, and no answer yet: refused for the answer only
+$ sh crucible-events/scripts/internal/events-read.sh --effort <F> --type context.cut --paths
+    
+    [exit 0]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    gate-answer.sh: no answer for spec-approval on 884fd29f2c8da6b120492b30689b6b14b6d865e380515c88e0d940a410074597
+    [exit 1]
+--- yes, then no: refused
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    gate-answer.sh: the newest answer (event 3) did not accept: Change it
+    [exit 1]
+--- approved through the gate (the draft is the card), with no context
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    <F>/events/000005-spec.approved.json
+    [exit 0]
+    body: {"sha256":"884fd29f2c8da6b120492b30689b6b14b6d865e380515c88e0d940a410074597","answer":4,"path":"<F>/spec/1.md"}
+    the approved draft: -r--r--r--
+    nothing written into the context
+--- the same yes again: refused
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/1.md
+    spec-approve.sh: the human's yes (event 4) already approved this draft; ask again to approve it again
+    [exit 2]
+--- an approved spec can't be edited in place
+    the approved spec is not writable
+--- a revision is a new file, approved again; the newest spec.approved is the spec
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/2.md
+    gate-answer.sh: no answer for spec-approval on 3a811fe108cd248134fbfb4027b68004059fe5dd4004b46a3f5bfb890a32b3dd
+    [exit 1]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/2.md
+    <F>/events/000007-spec.approved.json
+    [exit 0]
+    newest spec: <F>/spec/2.md
+--- where the draft may be
+$ sh spec-approve.sh --effort <F> --draft <S>/loose.md
+    spec-approve.sh: --draft <S>/loose.md is not in this effort's spec/ folder (<F>/spec/)
+    [exit 2]
+$ sh spec-approve.sh --effort <F> --draft <G>/spec/x.md
+    spec-approve.sh: --draft <G>/spec/x.md is not in this effort's spec/ folder (<F>/spec/)
+    [exit 2]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/sub/y.md
+    spec-approve.sh: --draft <F>/spec/sub/y.md is not in this effort's spec/ folder (<F>/spec/)
+    [exit 2]
+--- bad drafts
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/bin
+    spec-approve.sh: --draft <F>/spec/bin is empty or not text
+    [exit 2]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/missing.md
+    spec-approve.sh: --draft <F>/spec/missing.md is not a regular file
+    [exit 2]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/big.md
+    spec-approve.sh: --draft <F>/spec/big.md is over 1048576 bytes
+    [exit 2]
+--- the context is independent: it cuts with no spec, and refuses a stray spec.md
+$ sh main/context-cut.sh --effort <F>
+    CONTEXT_FILE: <F>/events/000011-context.cut.json
+    CONTEXT_SHA256: b443300d26da764732e035b8c5e5afc5b380c7308db5bc24c3248ce212da2232
+    [exit 0]
+$ sh main/context-fingerprint.sh --effort <F>
+    context-fingerprint.sh: DOCS-NAME: spec.md may not be in a docs folder; the spec lives in the effort's spec/ folder
+    [exit 2]
+--- a paused effort: refused
+$ sh crucible-effort/scripts/main/effort-pause.sh --effort <F> --words later
+    <F>/events/000013-effort.paused.json
+    [exit 0]
+$ sh spec-approve.sh --effort <F> --draft <F>/spec/3.md
+    spec-approve.sh: the effort is paused; a spec is approved only while it's open
+    [exit 2]
+--- the events lock held: refused with exit 6, the draft already read-only, no spec.approved; the rerun approves
+$ sh spec-approve.sh --effort <H> --draft <H>/spec/1.md
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    spec.approved events: 0; the draft: -r--r--r--
+$ sh spec-approve.sh --effort <H> --draft <H>/spec/1.md
+    <H>/events/000003-spec.approved.json
+    [exit 0]

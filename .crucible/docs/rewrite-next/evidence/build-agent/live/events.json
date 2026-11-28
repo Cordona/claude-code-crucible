@@ -1,0 +1,152 @@
+[
+  {
+    "type": "effort.opened",
+    "seq": 1,
+    "at": "2026-11-24T17:46:19Z",
+    "by": "effort-start.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "live build agent"
+    }
+  },
+  {
+    "type": "identity.set",
+    "seq": 2,
+    "at": "2026-11-24T17:46:19Z",
+    "by": "identity-set.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "repo": "/Users/Shared/crucible-sandbox/build-agent-live/run/repo",
+      "name": "Build Agent",
+      "email": "build-agent@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "type": "worktree.cut",
+    "seq": 3,
+    "at": "2026-11-24T17:46:19Z",
+    "by": "worktree-cut.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "upload",
+      "repo": "/Users/Shared/crucible-sandbox/build-agent-live/run/repo",
+      "path": "/Users/Shared/crucible-sandbox/build-agent-live/run/space/efforts/20261124T174618-d135-live-build-agent/worktrees/upload",
+      "branch": "crucible/20261124T174618-d135-live-build-agent/upload",
+      "base": "f499691fd058d5a34860d79c7cc49ff8f9f42a60",
+      "from": "checkout"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 4,
+    "at": "2026-11-24T17:46:19Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/build-agent-live/run/space/efforts/20261124T174618-d135-live-build-agent/worktrees/upload",
+      "report": "reports/build/4.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "security",
+          "observability"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 5,
+    "at": "2026-11-24T17:46:24Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "924c13ca-5578-4b3a-85e1-4e27a2b9db91",
+    "body": {
+      "job": 4,
+      "agent": "ad288b59c8e44aef8",
+      "name": "build-php-ad288b"
+    }
+  },
+  {
+    "type": "build.submitted",
+    "seq": 6,
+    "at": "2026-11-24T17:46:33Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "924c13ca-5578-4b3a-85e1-4e27a2b9db91",
+    "body": {
+      "job": 4,
+      "iteration": 1,
+      "agent": "ad288b59c8e44aef8",
+      "report": {
+        "path": "reports/build/4.json",
+        "sha256": "89a91881a61b609ddd6b5729f8d0245abd2ec88b4ff1c8b25c2f83c23618ad6d"
+      },
+      "commit": "e584b6f2a610068b4e3a85b41082843adad23b2e"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 7,
+    "at": "2026-11-24T17:46:36Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build-fix",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/build-agent-live/run/space/efforts/20261124T174618-d135-live-build-agent/worktrees/upload",
+      "report": "reports/build-fix/7.json",
+      "findings": [
+        "REVIEW-01"
+      ],
+      "known_failures": [],
+      "iteration": 1,
+      "fix_round": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "security",
+          "observability"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 8,
+    "at": "2026-11-24T17:46:41Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "24218bed-dd97-472e-ba57-5b86eeb1db6b",
+    "body": {
+      "job": 7,
+      "agent": "ae265cc05a08d6f99",
+      "name": "build-fix-php-ae265c"
+    }
+  },
+  {
+    "type": "build-fix.submitted",
+    "seq": 9,
+    "at": "2026-11-24T17:46:46Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "24218bed-dd97-472e-ba57-5b86eeb1db6b",
+    "body": {
+      "job": 7,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "ae265cc05a08d6f99",
+      "report": {
+        "path": "reports/build-fix/7.json",
+        "sha256": "a8a06f707aa08365eda4261b0bcbbd7dbd469f66ef72e5dbb980eb02454519f0"
+      },
+      "commit": "bdb255db5fb8eaf97950e51907134576f591e365"
+    }
+  }
+]

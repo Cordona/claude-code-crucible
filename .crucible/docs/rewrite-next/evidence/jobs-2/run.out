@@ -1,0 +1,173 @@
+=== install: install-entries.sh's own links and settings
+  PASS: jobs/define installs as jobs-define, the build kind in its kinds folder
+  PASS: the install check names no extra folder for the new components
+  PASS: job-resolve.sh --help
+  PASS: job-card.sh --help
+  PASS: job-define.sh --help
+  PASS: the core is unchanged: no job word in framework/core
+  PASS: jobs/define names no kind but build, and that only in the iteration count
+=== an effort with a grill, a context cut, a spec and a tree
+context-add-commit.sh: HEAD changes no file the context may hold
+context-add.sh: --path /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-2.uTz9p7/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json is inside the effort's own folder: its facts reach the agents through the sender, never as a reference
+method cp -c
+  PASS: the effort holds a context cut, a spec, a grill and a tree
+=== install: the new pieces and their hooks
+  PASS: jobs-assign and agent-init are installed
+  PASS: the start and tree hooks are registered as SubagentStart and WorktreeCreate
+  PASS: job-assign.sh --help
+  PASS: agent-files.sh --help
+  PASS: job-sent.sh --help
+  PASS: start-from-door.sh --help
+  PASS: job-assigned.sh --help
+  PASS: job-tree.sh --help
+  PASS: each kind states its write scope once: none left in the three kinds' submissions files
+=== 1. the test and review kinds resolve
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: a test needs plan: name the seq of its test-plan.submitted or test-plan.updated
+    [exit 2]
+  PASS: a test with no plan is refused: main names it
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: plan must be the seq of a test-plan.submitted or test-plan.updated
+    [exit 2]
+  PASS: a plan that is no plan is refused, naming both types
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: a test's tree is {use}, not {cut}
+    err: job-resolve.sh: job 1: a test needs plan: name the seq of its test-plan.submitted or test-plan.updated
+    [exit 2]
+  PASS: a test that cuts a tree is refused: a test uses one
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: 2 jobs resolved: <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+  PASS: the review's range is its tree's base to its head now
+  PASS: the build keeps its known failures; the review has none to keep
+  PASS: the review takes its tree's current iteration, 1
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: work.known_failures is not main's to give for a review; resolve fills the rest
+    [exit 2]
+  PASS: known failures on a review are refused
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: a review reads through one standard, its lens: give one, a job per lens
+    [exit 2]
+  PASS: a review through two standards is refused: one lens per review
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-resolve.sh: job 1: a test-plan-update needs plan: name the seq of its test-plan.submitted or test-plan.updated
+    err: job-resolve.sh: job 1: a test-plan-update needs challenge or words: name one
+    [exit 2]
+  PASS: a plan rework with no plan, and neither a challenge nor words: refused, both said
+=== 2. the card names the agent files; the jobs are defined
+  PASS: the card's run names agent-files.sh and the proposal
+    $ job-define.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: jobs 9, 10 defined
+    out: job 9: its tree is still to be cut, in <S>/repo from checkout
+    [exit 0]
+  PASS: both defined
+=== 3. the agent files, from the real plugins installed as skills
+  PASS: every plugin is linked as its own skills, none hidden from the model
+    $ agent-files.sh --proposal <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json
+    err: agent-files.sh: no skill language-kotlin (expected <S>/cfg/skills/language-kotlin/SKILL.md): install its plugin
+    [exit 2]
+  PASS: refused while a plugin isn't installed as a skill, naming it
+    $ agent-files.sh --proposal <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json
+    err: agent-files.sh: skill standard-security is hidden from the model (disable-model-invocation), so an agent can't preload it
+    [exit 2]
+  PASS: refused for a skill hidden from the model, nothing written
+  PASS: the real plugin files are untouched
+    $ agent-files.sh --proposal <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json
+    out: code-builder-kotlin-spring-clean-code written
+    out: code-reviewer-kotlin-spring-security written
+    [exit 0]
+  PASS: two files written, each named for its base and plugin set
+  PASS: the reviewer's file: its name, the base's skills then the plugins, the base's body
+    $ agent-files.sh --proposal <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json
+    out: code-builder-kotlin-spring-clean-code already there
+    out: code-reviewer-kotlin-spring-security already there
+    [exit 0]
+  PASS: run again: both already there, none rewritten
+=== 4. the door
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: job 9 cuts its tree: cut it with git-worktree's worktree-cut.sh (repo <S>/repo, from checkout), then run this again with --tree, its worktree.cut seq
+    [exit 2]
+  PASS: a build that cuts its tree: refused until the tree is cut, the line says how
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: worktree.cut 7 is already another job's tree; job 9 cuts a fresh one
+    [exit 2]
+  PASS: a tree another job already uses is refused as a fresh cut
+method cp -c
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: Send one per message; send the next as soon as this one returns, in the same turn.
+    out: {"tool":"Agent","subagent_type":"code-builder-kotlin-spring-clean-code","description":"job-9","prompt":"Job 9, a build.\nTree: <S>/space/efforts/20261127T105306-2675-jobs-one/worktrees/tree-b\nReport: <S>/space/efforts/20261127T105306-2675-jobs-one/reports/build/9.json\nSpec: <S>/space/efforts/20261127T105306-2675-jobs-one/spec/1.md\nGrills: <S>/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json\nKnown failures: lint","isolation":"worktree"}
+    [exit 0]
+  PASS: the build's call: an Agent call on its agent file, in a worktree
+  PASS: its prompt: the job, its tree, its report, what to read (no context folder for an empty cut), its known failures
+  PASS: the first line says one per message
+  PASS: a note for this session, not an event
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: Send one per message; send the next as soon as this one returns, in the same turn.
+    out: {"tool":"Agent","subagent_type":"code-reviewer-kotlin-spring-security","description":"job-10","prompt":"Job 10, a review.\nTree: <S>/space/efforts/20261127T105306-2675-jobs-one/worktrees/tree-a\nReport: <S>/space/efforts/20261127T105306-2675-jobs-one/reports/review/10.json\nSpec: <S>/space/efforts/20261127T105306-2675-jobs-one/spec/1.md\nGrills: <S>/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json\nRange: 35fa78842cd80ca203a6e6dfd742190dac99e55a..35fa78842cd80ca203a6e6dfd742190dac99e55a","isolation":"worktree"}
+    [exit 0]
+  PASS: the review's call, with its range
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: no agent file code-reviewer-kotlin-spring-security (expected <S>/cfg/agents/code-reviewer-kotlin-spring-security.md): run agent-init's agent-files.sh on the proposal, then start it from the next turn
+    [exit 2]
+  PASS: no agent file: refused, naming agent-files.sh
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: Send one per message; send the next as soon as this one returns, in the same turn.
+    out: {"tool":"Agent","subagent_type":"code-reviewer-kotlin-spring-security","description":"job-10","prompt":"Job 10, a review.\nTree: <S>/space/efforts/20261127T105306-2675-jobs-one/worktrees/tree-a\nReport: <S>/space/efforts/20261127T105306-2675-jobs-one/reports/review/10.json\nSpec: <S>/space/efforts/20261127T105306-2675-jobs-one/spec/1.md\nGrills: <S>/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json\nRange: 35fa78842cd80ca203a6e6dfd742190dac99e55a..35fa78842cd80ca203a6e6dfd742190dac99e55a","isolation":"worktree"}
+    [exit 0]
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: agent a0000001 never started a job: start a fresh agent
+    [exit 2]
+  PASS: hot to an agent that never started: refused
+=== 5. the hooks
+  PASS: another agent's Agent call: no decision
+  PASS: a job agent with a prompt not the door's: denied
+  PASS: a job agent with no door call: denied
+  PASS: the door's call: allowed, its note claimed
+  PASS: a second start in the same message: denied, one per message
+  PASS: the tree hook answers the claimed job's tree
+  PASS: the start writes agent.initialized: its base, type and plugins
+  PASS: and job.assigned: the job, the agent, the tree
+  PASS: the claim is cleared
+  PASS: a tree start no job claimed: steps aside, a plain worktree as Claude Code makes one
+  PASS: outside a repository: refused, saying so
+  PASS: the agent resumed: no second agent.initialized
+  PASS: another agent's start: nothing written
+  PASS: a message the door didn't print: nothing
+  PASS: only job-assigned.sh writes agent.initialized
+=== 6. hot: a second review sent to the reviewer that ran the first
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: Send one per message; send the next as soon as this one returns, in the same turn.
+    out: {"tool":"Agent","subagent_type":"code-reviewer-kotlin-spring-security","description":"job-10","prompt":"Job 10, a review.\nTree: <S>/space/efforts/20261127T105306-2675-jobs-one/worktrees/tree-a\nReport: <S>/space/efforts/20261127T105306-2675-jobs-one/reports/review/10.json\nSpec: <S>/space/efforts/20261127T105306-2675-jobs-one/spec/1.md\nGrills: <S>/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json\nRange: 35fa78842cd80ca203a6e6dfd742190dac99e55a..35fa78842cd80ca203a6e6dfd742190dac99e55a","isolation":"worktree"}
+    [exit 0]
+  PASS: the reviewer started cold: assigned to the review's tree
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-2.uTz9p7/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-2.uTz9p7/space/efforts/20261127T105306-2675-jobs-one/proposals/9c1bdea8b6d4a1e293613c1daafd3aaf0f0b793b1052574577fe780e50ad25ba.json
+    $ job-define.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: job 18 defined
+    [exit 0]
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: agent ab00000001 is a code-builder; job 18 needs a code-reviewer
+    [exit 2]
+  PASS: hot to the builder: refused, wrong base
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: Send it as printed.
+    out: {"tool":"SendMessage","to":"ar00000001","message":"Job 18, a review.\nTree: <S>/space/efforts/20261127T105306-2675-jobs-one/worktrees/tree-a\nReport: <S>/space/efforts/20261127T105306-2675-jobs-one/reports/review/18.json\nSpec: <S>/space/efforts/20261127T105306-2675-jobs-one/spec/1.md\nGrills: <S>/space/efforts/20261127T105306-2675-jobs-one/events/000002-grill.ended.json\nRange: 35fa78842cd80ca203a6e6dfd742190dac99e55a..35fa78842cd80ca203a6e6dfd742190dac99e55a"}
+    [exit 0]
+  PASS: hot to the reviewer: a SendMessage to it, the job as its message
+  PASS: the send writes job.assigned: the job, the agent, the same tree
+  PASS: no second agent.initialized for the hot agent
+    $ job-resolve.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: 1 job resolved: <S>/space/efforts/20261127T105306-2675-jobs-one/proposals/<sha>.json, sha256 <sha>
+    [exit 0]
+job-card.sh: while the human reads the card, write the jobs' agent files: sh /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-2.uTz9p7/cfg/skills/agent-init/scripts/main/agent-files.sh --proposal /private/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/jobs-2.uTz9p7/space/efforts/20261127T105306-2675-jobs-one/proposals/7ce99481cce7f1ac0e3276f66601907e860ff60e61d67f095ad1116327bcf04f.json
+    $ job-define.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    out: job 21 defined
+    [exit 0]
+    $ job-assign.sh --effort <S>/space/efforts/20261127T105306-2675-jobs-one
+    err: job-assign.sh: agent ar00000001 still works on job 18: one open job per agent
+    [exit 2]
+  PASS: hot while it still works on job R2: refused, one open job per agent
+
+65 passed, 0 failed

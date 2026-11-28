@@ -1,0 +1,28 @@
+{
+  "type": "external-review.received",
+  "seq": 1,
+  "at": "2026-11-24T08:01:33Z",
+  "by": "remote.sh",
+  "claude_session_id": "dry-C8-1",
+  "body": {
+    "pr": "pr-1",
+    "head": "d6a6a1dff401bdf09394809ae0993c9d4299b88b",
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.hTNLLi/repo",
+    "threads": [
+      {
+        "thread": "t1",
+        "file": "a.sh",
+        "text": "quote this variable"
+      },
+      {
+        "thread": "t2",
+        "file": null,
+        "text": "add a usage line"
+      }
+    ],
+    "root": "self",
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

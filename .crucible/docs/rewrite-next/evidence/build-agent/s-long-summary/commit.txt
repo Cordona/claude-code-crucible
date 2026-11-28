@@ -1,0 +1,16 @@
+crucible(build): retry uploads on 5xx responses with exponential…
+
+retry uploads on 5xx responses with exponential backoff, capped at three attempts, and log each retry with status codes!
+
+Effort: 20261128T074056-af5d-upload-retries
+Job: 95 build-php-fg0000
+Iteration: 1
+Language: php
+Standards: security
+
+commit 348eb99ade9d5536889876d9b6556a4791ae4b01
+Author: Build Agent <build-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php | 1 +
+ 1 file changed, 1 insertion(+)

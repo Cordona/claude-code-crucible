@@ -1,0 +1,42 @@
+{
+  "id": 1030,
+  "node_id": "PRR_kwDOAAAAAAAAAAAA",
+  "user": {
+    "login": "example-user-2",
+    "id": 1011,
+    "node_id": "U_kwDOAAAAAAAAAAAA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-2",
+    "html_url": "https://github.com/example-user-2",
+    "followers_url": "https://api.github.com/users/example-user-2/followers",
+    "following_url": "https://api.github.com/users/example-user-2/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-2/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-2/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-2/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-2/orgs",
+    "repos_url": "https://api.github.com/users/example-user-2/repos",
+    "events_url": "https://api.github.com/users/example-user-2/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-2/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "Example synthetic review text.\n\nSecond synthetic paragraph.",
+  "state": "APPROVED",
+  "html_url": "https://github.com/example-org/example-repo/pull/9#pullrequestreview-1030",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/9",
+  "author_association": "MEMBER",
+  "is_copilot_code_review": false,
+  "copilot_code_review_effort": null,
+  "_links": {
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/9#pullrequestreview-1030"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/9"
+    }
+  },
+  "submitted_at": "2024-01-03T10:27:00Z",
+  "commit_id": "0000000000000000000000000000000000abc004"
+}

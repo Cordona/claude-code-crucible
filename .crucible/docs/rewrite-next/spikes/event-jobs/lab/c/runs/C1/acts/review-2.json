@@ -1,0 +1,13 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "security",
+    "file": "a.sh",
+    "severity": "medium",
+    "realism": "realistic",
+    "title": "echo of raw input"
+   }
+  ]
+ }
+}

@@ -1,0 +1,121 @@
+{
+  "data": {
+    "node": {
+      "__typename": "PullRequestReviewThread",
+      "id": "PRRT_kwDOAAAAAAAAAAAA",
+      "isResolved": false,
+      "isOutdated": true,
+      "isCollapsed": false,
+      "resolvedBy": null,
+      "viewerCanResolve": true,
+      "path": "src/example/file13.md",
+      "line": null,
+      "startLine": null,
+      "originalLine": 26,
+      "originalStartLine": null,
+      "diffSide": "RIGHT",
+      "startDiffSide": null,
+      "subjectType": "LINE",
+      "pullRequest": {
+        "number": 19
+      },
+      "comments": {
+        "totalCount": 1,
+        "pageInfo": {
+          "hasNextPage": false,
+          "hasPreviousPage": false,
+          "startCursor": "Y3Vyc29yOnYyOpEB",
+          "endCursor": "Y3Vyc29yOnYyOpEB"
+        },
+        "nodes": [
+          {
+            "id": "PRRC_kwDOAAAAAAAAAAAA",
+            "databaseId": 1055,
+            "author": {
+              "__typename": "Bot",
+              "login": "copilot-pull-request-reviewer"
+            },
+            "authorAssociation": "NONE",
+            "body": "Example synthetic review text.",
+            "bodyText": "Example synthetic review text.",
+            "createdAt": "2024-01-04T10:08:00Z",
+            "updatedAt": "2024-01-04T10:08:00Z",
+            "lastEditedAt": null,
+            "publishedAt": "2024-01-04T10:08:00Z",
+            "replyTo": null,
+            "pullRequestReview": {
+              "id": "PRR_kwDOAAAAAAAAAAAA",
+              "state": "COMMENTED"
+            },
+            "isMinimized": false,
+            "minimizedReason": null,
+            "outdated": true,
+            "path": "src/example/file13.md",
+            "line": null,
+            "startLine": null,
+            "originalLine": 26,
+            "originalStartLine": null,
+            "diffHunk": "@@ -8,7 +21,6 @@\n-removed line\n-removed line\n context line\n+added line\n context line\n context line\n context line\n context line",
+            "url": "https://github.com/example-org/example-repo/pull/19#discussion_r1055",
+            "commit": {
+              "oid": "0000000000000000000000000000000000abc015"
+            },
+            "originalCommit": {
+              "oid": "0000000000000000000000000000000000abc016"
+            },
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "THUMBS_DOWN",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "LAUGH",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HOORAY",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "CONFUSED",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HEART",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "ROCKET",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "EYES",
+                "reactors": {
+                  "totalCount": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

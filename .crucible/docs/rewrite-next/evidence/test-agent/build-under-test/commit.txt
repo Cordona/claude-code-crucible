@@ -1,0 +1,18 @@
+crucible(build): add a retry limit to the upload client
+
+add a retry limit to the upload client
+
+Effort: 20261128T074304-4337-upload-retries
+Job: 44 build-php-a0b1c2
+Iteration: 1
+Language: php
+Framework: laravel
+Standards: testing, security
+
+commit 17241e31c822981036c16417661ac2eb2d661fab
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php             | 1 +
+ tests/Upload/UploadClientTest.php | 1 +
+ 2 files changed, 2 insertions(+)

@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 74,
+    "at": "2026-11-28T07:43:25Z",
+    "by": "fault-ended.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 71,
+      "iteration": 1,
+      "agent": "fa17fa17fa",
+      "reason": "fault",
+      "step": "check",
+      "fault": "the report check of job 71 (test-plan-update-71) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove"
+    }
+  }
+]

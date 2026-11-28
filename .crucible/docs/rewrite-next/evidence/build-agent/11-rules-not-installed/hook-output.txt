@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: the report check of job 48 (build-php-b0b5c2) can't run: report-validation.sh: code-sketcher/submissions/build.json names the rules code-sketcher/scripts/lib/sketch-report, which aren't installed; the job ends, nothing handed in"}
+stderr: submit-agent-work.sh: the report check of job 48 (build-php-b0b5c2) can't run: report-validation.sh: code-sketcher/submissions/build.json names the rules code-sketcher/scripts/lib/sketch-report, which aren't installed; the job ends, nothing handed in
+exit 0

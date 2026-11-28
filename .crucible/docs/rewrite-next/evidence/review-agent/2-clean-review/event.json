@@ -1,0 +1,18 @@
+[
+  {
+    "type": "review.submitted",
+    "seq": 15,
+    "at": "2026-11-28T07:45:29Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 13,
+      "iteration": 1,
+      "agent": "r2r2r2r2r2",
+      "report": {
+        "path": "reports/review/13.json",
+        "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+      }
+    }
+  }
+]

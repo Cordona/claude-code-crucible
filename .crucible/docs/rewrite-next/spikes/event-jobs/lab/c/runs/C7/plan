@@ -1,0 +1,14 @@
+kinds shell
+repo repo
+build repo
+settle
+plan repo
+settle
+test repo
+settle
+expect any(.[]; .type == "fact.answered")
+expect ([.[] | select(.type == "plan.submitted")] | length) == 2
+expect any(.[]; .type == "plan.approved")
+expect ([.[] | select(.type == "job.dispatched" and .body.kind == "test-plan")] | .[1].body.approval) == ([.[] | select(.type == "job.dispatched" and .body.kind == "test-plan")] | .[0].body.approval)
+expect any(.[]; .type == "test.submitted")
+expect any(.[]; .type == "fix.none")

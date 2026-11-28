@@ -1,0 +1,32 @@
+{
+  "summary": "cover the retry limit and the 4xx case",
+  "gates": [
+    {
+      "gate": "test",
+      "where": "php8.4",
+      "result": "narrowed",
+      "note": "--filter Upload"
+    },
+    {
+      "gate": "format",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "pass",
+      "note": "34 breaks of Client.php's retry loop, all caught"
+    }
+  ],
+  "decisions": [
+    {
+      "at": "tests/Upload/UploadClientTest.php:2",
+      "choice": "stub the clock with a fixed instant",
+      "why": "the planned retry test needs a deterministic delay"
+    }
+  ],
+  "questions": [
+    {
+      "text": "should a 429 count against the retry limit?"
+    }
+  ]
+}

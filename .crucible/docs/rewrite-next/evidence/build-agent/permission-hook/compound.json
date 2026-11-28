@@ -1,0 +1,1 @@
+{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Run it as plain single commands, one per call. Your other commands still run."}}}

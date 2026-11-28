@@ -1,0 +1,854 @@
+[
+  {
+    "rule": "the file is missing",
+    "kind": "build",
+    "tree": "changed",
+    "missing": true,
+    "expected": "write your report as one JSON object to <REPORT>"
+  },
+  {
+    "rule": "the file isn't one JSON object",
+    "kind": "build",
+    "tree": "changed",
+    "raw": "[1, 2]",
+    "expected": "write your report as one JSON object to <REPORT>"
+  },
+  {
+    "rule": "a key only a script fills in",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "commit": "9f3c1e2"
+    },
+    "expected": "remove \"commit\": this is filled in for you"
+  },
+  {
+    "rule": "an unknown key",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "verification": "by hand"
+    },
+    "expected": "unknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers"
+  },
+  {
+    "rule": "an unknown key, on a fix",
+    "kind": "build-fix",
+    "tree": "changed",
+    "findings": [
+      "SHELL-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "verification": "by hand",
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        }
+      ]
+    },
+    "expected": "unknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers, fixes"
+  },
+  {
+    "rule": "summary missing",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": "summary is missing: say in one line what you did"
+  },
+  {
+    "rule": "a long summary is accepted: no length is checked",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client and back off on 5xx!!!",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "summary with a type: prefix",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "feat: add a retry limit",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": "summary starts with \"feat:\": drop the prefix; the commit adds its own"
+  },
+  {
+    "rule": "gates missing",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client"
+    },
+    "expected": "list at least one gate you ran or couldn't run"
+  },
+  {
+    "rule": "gates empty",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": []
+    },
+    "expected": "list at least one gate you ran or couldn't run"
+  },
+  {
+    "rule": "a bad result value",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        },
+        {
+          "gate": "lint",
+          "result": "pass"
+        },
+        {
+          "gate": "build",
+          "result": "skipped"
+        }
+      ]
+    },
+    "expected": "gates[2].result \"skipped\" is not one of pass, fail, not_run, narrowed"
+  },
+  {
+    "rule": "a bad gate value",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "unit",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": "gates[0].gate \"unit\" is not one of format, lint, typecheck, test, build, scan, manual"
+  },
+  {
+    "rule": "note missing on a result that isn't pass",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        },
+        {
+          "gate": "lint",
+          "result": "pass"
+        },
+        {
+          "gate": "build",
+          "result": "not_run"
+        }
+      ]
+    },
+    "expected": "gates[2] is not_run: add a note saying why"
+  },
+  {
+    "rule": "the same gate twice, with no where",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        },
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": "gates[0] and gates[1] are both \"test\": add where to each"
+  },
+  {
+    "rule": "a fail with no failing list, for any gate kind",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "lint",
+          "result": "fail",
+          "note": "three rules fail"
+        }
+      ]
+    },
+    "expected": "gates[0] fails: list what fails in failing"
+  },
+  {
+    "rule": "a fail that isn't known, with no gate_red blocker",
+    "kind": "build",
+    "tree": "changed",
+    "known_failures": [
+      "TranslationsImportServiceTest::testImport"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "where": "php8.4",
+          "result": "pass"
+        },
+        {
+          "gate": "test",
+          "where": "php8.1",
+          "result": "fail",
+          "failing": [
+            "UploadClientTest::testRetriesA503"
+          ]
+        }
+      ]
+    },
+    "expected": "gates[1] fails on UploadClientTest::testRetriesA503, which isn't a known failure: fix it, or add a gate_red blocker"
+  },
+  {
+    "rule": "a gate_red blocker with no fail gate",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "blockers": [
+        {
+          "kind": "gate_red",
+          "detail": "the retry test fails on a 503 stub"
+        }
+      ]
+    },
+    "expected": "blockers[0] is gate_red but no gate failed"
+  },
+  {
+    "rule": "a bad blocker kind",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "blockers": [
+        {
+          "kind": "stuck",
+          "detail": "the retry test fails on a 503 stub"
+        }
+      ]
+    },
+    "expected": "blockers[0].kind \"stuck\" is not gate_red or cannot"
+  },
+  {
+    "rule": "a noticed entry with no at is accepted",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "noticed": [
+        {
+          "text": "the token is refreshed on every call"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "an at past the end of its file",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "app/Upload/Client.php:420",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": "decisions[0].at app/Upload/Client.php:420 is past the end of the file (88 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+  },
+  {
+    "rule": "an at naming no file",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "app/Upload/Gone.php:4",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": "decisions[0].at app/Upload/Gone.php:4 names no file in the tree; write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+  },
+  {
+    "rule": "an at outside the tree",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "noticed": [
+        {
+          "at": "../../outside.txt:1",
+          "text": "a file outside the tree"
+        }
+      ]
+    },
+    "expected": "noticed[0].at ../../outside.txt:1 names no file in the tree; write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them, or leave `at` out when it isn't in a file"
+  },
+  {
+    "rule": "a bad notice kind",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "noticed": [
+        {
+          "at": "app/Upload/Auth.php:17",
+          "text": "the token is refreshed on every call"
+        },
+        {
+          "at": "config/dev.env:3",
+          "kind": "leak",
+          "text": "a hard-coded key"
+        }
+      ]
+    },
+    "expected": "noticed[1].kind \"leak\" is not secret or instruction"
+  },
+  {
+    "rule": "a long text is accepted: no length is checked",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "impact": [
+        {
+          "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "text on more than one line",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "questions": [
+        {
+          "text": "should the limit\nbe per tenant?"
+        }
+      ]
+    },
+    "expected": "questions[0].text is more than one line; write it on one"
+  },
+  {
+    "rule": "blank text",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "impact": [
+        {
+          "text": "   "
+        }
+      ]
+    },
+    "expected": "impact[0].text is blank; write it, or drop the entry"
+  },
+  {
+    "rule": "the tree unchanged, with no blocker",
+    "kind": "build",
+    "tree": "clean",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": "nothing changed in the tree: make the change, or add a blocker saying why"
+  },
+  {
+    "rule": "fix: a chosen finding with no fix",
+    "kind": "build-fix",
+    "tree": "changed",
+    "findings": [
+      "SHELL-01",
+      "SECURITY-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        }
+      ]
+    },
+    "expected": "list SECURITY-01 in fixes: done, partly or declined"
+  },
+  {
+    "rule": "fix: an id that isn't in the job",
+    "kind": "build-fix",
+    "tree": "changed",
+    "findings": [
+      "SHELL-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        },
+        {
+          "id": "SHELL-09",
+          "status": "done"
+        }
+      ]
+    },
+    "expected": "SHELL-09 is not one of this job's findings"
+  },
+  {
+    "rule": "fix: a reason missing on declined",
+    "kind": "build-fix",
+    "tree": "changed",
+    "findings": [
+      "SHELL-01",
+      "SECURITY-01",
+      "CLEAN-CODE-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        },
+        {
+          "id": "SECURITY-01",
+          "status": "partly",
+          "reason": "the eval is still there"
+        },
+        {
+          "id": "CLEAN-CODE-01",
+          "status": "declined"
+        }
+      ]
+    },
+    "expected": "fixes[2] is declined: add a reason"
+  },
+  {
+    "rule": "fix: a decline of a finding the human sent back",
+    "kind": "build-fix",
+    "tree": "changed",
+    "findings": [
+      "CLEAN-CODE-01"
+    ],
+    "sent_back": [
+      "CLEAN-CODE-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "CLEAN-CODE-01",
+          "status": "declined",
+          "reason": "the documented contract"
+        }
+      ]
+    },
+    "expected": "CLEAN-CODE-01 was sent back by the human: it can't be declined again; fix it, or add a cannot blocker"
+  },
+  {
+    "rule": "fix: the tree unchanged, but not every fix declined",
+    "kind": "build-fix",
+    "tree": "clean",
+    "findings": [
+      "SHELL-01",
+      "CLEAN-CODE-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "SHELL-01",
+          "status": "done"
+        },
+        {
+          "id": "CLEAN-CODE-01",
+          "status": "declined",
+          "reason": "the documented contract"
+        }
+      ]
+    },
+    "expected": "nothing changed, but SHELL-01 is done: commit the fix"
+  },
+  {
+    "rule": "accepted: a known failure needs no blocker",
+    "kind": "build",
+    "tree": "changed",
+    "known_failures": [
+      "TranslationsImportServiceTest::testImport"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "fail",
+          "failing": [
+            "TranslationsImportServiceTest::testImport"
+          ]
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "accepted: a fix that declines every finding leaves the tree unchanged",
+    "kind": "build-fix",
+    "tree": "clean",
+    "findings": [
+      "CLEAN-CODE-01"
+    ],
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "fixes": [
+        {
+          "id": "CLEAN-CODE-01",
+          "status": "declined",
+          "reason": "the documented contract"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "mutation: not one of the builder's gates",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        },
+        {
+          "gate": "mutation",
+          "result": "not_run",
+          "note": "no mutation tool in this image"
+        }
+      ]
+    },
+    "expected": "gates[1].gate \"mutation\" is not one of format, lint, typecheck, test, build, scan, manual"
+  },
+  {
+    "rule": "mutation: a builder's report without it is accepted",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "plumbing at: a range, accepted for a builder",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "app/Upload/Client.php:40-42",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "plumbing at: a bare path and a list, accepted",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "impact": [
+        {
+          "text": "a new env var",
+          "at": "config/dev.env"
+        }
+      ],
+      "noticed": [
+        {
+          "at": [
+            "app/Upload/Auth.php:17",
+            "config/dev.env:3"
+          ],
+          "text": "the token is refreshed on every call"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "plumbing at: another repo's, not looked up",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "@core-api:app/Http/Client.php:88",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": ""
+  },
+  {
+    "rule": "plumbing at: not a location",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "Client.php:x",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": "decisions[0].at \"Client.php:x\" is not a location; write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+  },
+  {
+    "rule": "plumbing at: a range past the end of its file",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "app/Upload/Client.php:80-120",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": "decisions[0].at app/Upload/Client.php:80-120 is past the end of the file (88 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+  },
+  {
+    "rule": "plumbing at: a removed line in a job with no base",
+    "kind": "build",
+    "tree": "changed",
+    "report": {
+      "summary": "add a retry limit to the upload client",
+      "gates": [
+        {
+          "gate": "test",
+          "result": "pass"
+        }
+      ],
+      "decisions": [
+        {
+          "at": "-app/Upload/Client.php:3",
+          "choice": "retry only on 5xx",
+          "why": "a 4xx will not change on retry"
+        }
+      ]
+    },
+    "expected": "decisions[0].at -app/Upload/Client.php:3: this job has no base to read a removed line at; write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them"
+  }
+]

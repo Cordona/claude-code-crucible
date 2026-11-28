@@ -1,0 +1,16 @@
+{
+  "summary": "stop retrying a 429",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "REVIEW-01",
+      "status": "done",
+      "note": "a 429 is no longer retried"
+    }
+  ]
+}

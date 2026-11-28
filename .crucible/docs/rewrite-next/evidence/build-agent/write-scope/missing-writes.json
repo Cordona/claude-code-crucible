@@ -1,0 +1,1 @@
+{"systemMessage":"crucible: kind build names no write scope (tree or report) in jobs-define/kinds/build.json or code-standin/submissions/build.json, so job 121 (build-php-ws0000)'s writes aren't scoped; Claude Code asks instead"}

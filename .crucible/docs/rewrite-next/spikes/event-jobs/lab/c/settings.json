@@ -1,0 +1,28 @@
+{
+  "env": {
+    "EFFORT": "__EFFORT__",
+    "SCOPE_GRANT": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Agent|Task", "hooks": [{"type": "command", "command": "sh __LAB__/pre-agent.sh"}]},
+      {"matcher": "SendMessage", "hooks": [{"type": "command", "command": "sh __LAB__/pre-send.sh"}]},
+      {"matcher": "*", "hooks": [{"type": "command", "command": "sh __LAB__/scope.sh"}]},
+      {"matcher": "Read|Grep|Glob|Bash", "hooks": [{"type": "command", "command": "sh __LAB__/deny-internals.sh"}]},
+      {"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "sh __LAB__/real/crucible-gate/hooks/pre-tool-use/hold-question-until-card-shown.sh"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Agent|Task", "hooks": [{"type": "command", "command": "sh __LAB__/post-agent.sh"}]},
+      {"matcher": "SendMessage", "hooks": [{"type": "command", "command": "sh __LAB__/post-send.sh"}]},
+      {"matcher": "TaskStop", "hooks": [{"type": "command", "command": "sh __LAB__/post-taskstop.sh"}]},
+      {"matcher": "AskUserQuestion", "hooks": [{"type": "command", "command": "sh __LAB__/real/crucible-gate/hooks/post-tool-use/record-gate-answer.sh"}]}
+    ],
+    "SubagentStop": [
+      {"hooks": [{"type": "command", "command": "sh __LAB__/agent-stop.sh"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "sh __LAB__/main-stop.sh"}]},
+      {"hooks": [{"type": "command", "command": "sh __LAB__/real/crucible-gate/hooks/stop/require-card-shown.sh"}]}
+    ]
+  }
+}

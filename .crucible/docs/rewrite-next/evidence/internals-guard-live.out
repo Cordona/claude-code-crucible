@@ -1,0 +1,18 @@
+# Live run of deny-internals-read.sh, 2026-11-23: headless sessions in the c4-nr sandbox
+# (logged-in config, own HOME), installed from a fresh copy of new-rewrite. <S> = the sandbox folder.
+
+== cwd: a scratch project; read an internal script, then a main/ one
+  call:   Read <S>/cfg/skills/git-worktree/scripts/internal/worktree-trees.sh
+  result: DENIED: PreToolUse:Read hook error: crucible: internal to the Crucible framework; use the skill's scripts/main/ and each script's --help. If a script misbehav
+
+== cwd: inside the framework copy; the same two reads
+  call:   Read <S>/cfg/skills/git-worktree/scripts/internal/worktree-trees.sh
+  call:   Read <S>/cfg/skills/git-worktree/scripts/main/worktree-cut.sh
+  result: read: 1	#!/usr/bin/env sh
+  result: read: 1	#!/usr/bin/env sh
+
+== cwd: the scratch project; read a main/ script and a SKILL.md
+  call:   Read <S>/cfg/skills/git-worktree/scripts/main/worktree-cut.sh
+  call:   Read <S>/cfg/skills/git-worktree/SKILL.md
+  result: read: 1	#!/usr/bin/env sh
+  result: read: 1	---

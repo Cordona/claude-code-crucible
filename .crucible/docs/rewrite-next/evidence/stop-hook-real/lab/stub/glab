@@ -1,0 +1,5 @@
+#!/bin/sh
+# Sandbox stub: no tracker calls in this lab. Logs the call and fails loudly.
+printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ) glab" "$*" >>"${STUB_LOG:-/Users/Shared/crucible-sandbox/stop-hook-real/stub-calls.log}"
+echo "glab: blocked in the step-4 sandbox: no tracker calls" >&2
+exit 97

@@ -1,0 +1,21 @@
+{
+  "summary": "assert exactly three retries",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "not_run",
+      "note": "no mutation tool in this sandbox"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "TEST-01",
+      "status": "done",
+      "note": "the test asserts the count, not only a failure"
+    }
+  ]
+}

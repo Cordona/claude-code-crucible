@@ -1,0 +1,191 @@
+=== scratch keys: one GPG key, two SSH keys (one in the agent, one only as .pub)
+gpg: checking the trustdb
+gpg: marginals needed: 3  completes needed: 1  trust model: pgp
+gpg: depth: 0  valid:   1  signed:   0  trust: 0-, 0q, 0n, 0m, 0f, 1u
+=== the list: the GPG id and the agent's SSH key; the .pub with no private key is left out
+$ sh main/identity-list.sh
+    [
+      {
+        "label": "Gpg Tester <gpg@example.test> · openpgp 23D1099D",
+        "name": "Gpg Tester",
+        "email": "gpg@example.test",
+        "signing": {
+          "format": "openpgp",
+          "key": "<KEYID>"
+        },
+        "fingerprint": "<FPR>"
+      },
+      {
+        "label": "Ssh Tester <ssh@example.test> · ssh JTk/RG6U",
+        "name": "Ssh Tester",
+        "email": "ssh@example.test",
+        "signing": {
+          "format": "ssh",
+          "key": "key::ssh-ed25519 <b64>"
+        },
+        "fingerprint": "SHA256:<fp>"
+      }
+    ]
+    [exit 0]
+--- the same from any folder (global git config only)
+    same list
+=== the repository: a checkout and a worktree are one repository
+=== the card: only identities that can sign here are offered; the rest named with why
+$ sh main/identity-card.sh --list <S>/list.json --repo <S>/repo
+    Git identity for <S>/repo
+    Pick the identity this effort's commits in <S>/repo are signed as.
+      1. Gpg Tester <gpg@example.test> · openpgp 23D1099D
+         key <FPR>
+      2. Ssh Tester <ssh@example.test> · ssh JTk/RG6U
+         key SHA256:<fp>
+    [exit 0]
+--- the card from the worktree names the checkout's repository
+$ sh main/identity-card.sh --list <S>/list.json --repo <S>/wt
+    Git identity for <S>/repo
+    Pick the identity this effort's commits in <S>/repo are signed as.
+      1. Gpg Tester <gpg@example.test> · openpgp 23D1099D
+         key <FPR>
+      2. Ssh Tester <ssh@example.test> · ssh JTk/RG6U
+         key SHA256:<fp>
+    [exit 0]
+$ sh main/identity-card.sh --list <S>/list.json --repo <S>/repo --question
+    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp 23D1099D","description":"openpgp key <FPR>"},{"label":"Ssh Tester <ssh@example.test> · ssh JTk/RG6U","description":"ssh key SHA256:<fp>"}]}]}
+    [exit 0]
+=== the gate's recorded choice
+--- show-card refuses --accept with --choice
+$ sh crucible-gate/scripts/main/show-card.sh --record set-identity --effort <S>/space/efforts/<id>-identity --subject x --choice --accept y <S>/card.md
+    show-card.sh: --accept and --choice go alone: a gate has a yes option or is a choice
+    [exit 2]
+--- two questions are refused; each pick below goes out with no recommended option (no hook line means allowed)
+    A recorded gate asks exactly one question.
+--- with no answer yet: identity-set refuses
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    gate-answer.sh: no answer for set-identity on <S>/repo:b0f7b7dbc66ace98f107e96746059e0ef5f6e626f8e64f8679ae81d9ca6ce411
+    identity-set.sh: the human has not picked an identity from this list for <S>/repo; ask at the recorded choice gate first
+    [exit 2]
+--- a typed answer is recorded, and refused by identity-set
+$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:b0f7b7dbc66ace98f107e96746059e0ef5f6e626f8e64f8679ae81d9ca6ce411 --choice
+    ANSWER_SEQ: 2
+    ANSWER: Me, with my laptop key
+    [exit 0]
+$ sh crucible-gate/scripts/internal/gate-answer.sh --effort <S>/space/efforts/<id>-identity --record set-identity --subject <S>/repo:b0f7b7dbc66ace98f107e96746059e0ef5f6e626f8e64f8679ae81d9ca6ce411
+    gate-answer.sh: the answer for set-identity is a choice; read it with --choice
+    [exit 2]
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    identity-set.sh: the human's answer "Me, with my laptop key" is none of the listed identities; nothing is set
+    [exit 2]
+--- a pick of the SSH identity sets it
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    <S>/space/efforts/<id>-identity/events/000004-identity.set.json
+    [exit 0]
+    body: {"repo":"<S>/repo","name":"Ssh Tester","email":"ssh@example.test","signing":{"format":"ssh","key":"key::ssh-ed25519 <b64>"},"fingerprint":"SHA256:<fp>","answer":3}
+--- the same pick can't set twice
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    event-write.sh: identity.set refused: answer 3 already set an identity
+    [exit 2]
+--- identity-get from the checkout and from the worktree
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo
+    {"repo":"<S>/repo","name":"Ssh Tester","email":"ssh@example.test","signing":{"format":"ssh","key":"key::ssh-ed25519 <b64>"},"fingerprint":"SHA256:<fp>"}
+    [exit 0]
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/wt
+    {"repo":"<S>/repo","name":"Ssh Tester","email":"ssh@example.test","signing":{"format":"ssh","key":"key::ssh-ed25519 <b64>"},"fingerprint":"SHA256:<fp>"}
+    [exit 0]
+--- a second pick, the GPG identity, replaces the first
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/wt --list <S>/list.json
+    <S>/space/efforts/<id>-identity/events/000006-identity.set.json
+    [exit 0]
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo
+    {"repo":"<S>/repo","name":"Gpg Tester","email":"gpg@example.test","signing":{"format":"openpgp","key":"<KEYID>"},"fingerprint":"<FPR>"}
+    [exit 0]
+--- an unknown repository: exit 5
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/other
+    identity-get.sh: the effort has no identity for <S>/other
+    [exit 5]
+=== the list changed since the card: refused
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    identity-set.sh: this machine's identities changed since the card was made from <S>/list.json; make the list and show the card again
+    [exit 2]
+=== a key that can't sign here is no option, and identity-check says why
+$ sh internal/identity-check.sh --repo <S>/repo --name Ssh Tester --email ssh@example.test --format ssh --key <S>/home/.ssh/lonely_key.pub
+    SIGNS: no: this machine can't sign with key <S>/home/.ssh/lonely_key.pub: the agent doesn't hold it and its private key isn't there
+    [exit 1]
+$ sh internal/identity-check.sh --repo <S>/repo --name Gpg Tester --email nobody@example.test --format openpgp --key <KEYID>
+    SIGNS: no: key <KEYID> carries no usable user id with nobody@example.test
+    [exit 1]
+$ sh main/identity-card.sh --list <S>/list.json --repo <S>/other
+    Git identity for <S>/other
+    Pick the identity this effort's commits in <S>/other are signed as.
+      1. Gpg Tester <gpg@example.test> · openpgp 23D1099D
+         key <FPR>
+    Not usable here:
+      - Ssh Tester <ssh@example.test> · ssh JTk/RG6U: the allowed-signers file <S>/missing is not there
+    [exit 0]
+=== one usable identity: the question adds None of these
+$ sh main/identity-card.sh --list <S>/one.json --repo <S>/repo --question
+    {"questions":[{"header":"Identity","multiSelect":false,"question":"Which identity signs this effort's commits in <S>/repo?","options":[{"label":"Gpg Tester <gpg@example.test> · openpgp 23D1099D","description":"openpgp key <FPR>"},{"label":"None of these","description":"Stop: set up another signing key first"}]}]}
+    [exit 0]
+=== no usable identity: exit 3
+$ sh main/identity-card.sh --list <S>/none.json --repo <S>/repo
+    Git identity for <S>/repo
+    Pick the identity this effort's commits in <S>/repo are signed as.
+      No identity on this machine can sign here.
+    identity-card.sh: no identity on this machine can sign in <S>/repo; set up a signing key first
+    [exit 3]
+=== the rule checks the writer and the shape; that the answer is a recorded pick is identity-set.sh's check (a direct writer call is what core's Bash guard blocks)
+$ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-identity --type identity.set --by main.sh --body-file <S>/forged.json
+    event-write.sh: identity.set refused: identity.set is written only by identity-set.sh
+    [exit 2]
+$ sh crucible-events/scripts/internal/event-write.sh --effort <S>/space/efforts/<id>-identity --type identity.set --by identity-set.sh --body-file <S>/forged.json
+    <S>/space/efforts/<id>-identity/events/000007-identity.set.json
+    [exit 0]
+=== the step catalogue lists the domain's step
+$ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stages
+    deliver 2
+    prepare 3
+    setup 2
+    [exit 0]
+$ sh crucible-adaptive-flow/scripts/main/flow-candidates.sh --stage setup
+    git-identity/set-identity · The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as · ends with identity.set · stages: setup · skills: git-identity · propose when: before the first commit an agent makes in a repository that has no identity in this effort yet
+    git-worktree/cut-worktree · Cuts one tree for the coming work, from the base the human agreed, and sets it up · ends with worktree.cut · stages: setup · skills: git-worktree · propose when: whenever the coming work writes code
+    [exit 0]
+=== a flow holding the identity step, ended by identity.set
+$ sh crucible-adaptive-flow/scripts/main/flow-step-done.sh --flow <S>/space/efforts/<id>-flowed:3 --step 1
+    <S>/space/efforts/<id>-flowed/events/000006-flow.step.done.json
+    [exit 0]
+$ sh crucible-adaptive-flow/scripts/main/flow-show.sh --flow <S>/space/efforts/<id>-flowed:3 --all
+    flow <S>/space/efforts/<id>-flowed:3 · Sign the commits of this effort
+      [x] 1 The human picks, from this machine's signing identities, the one this effort's commits in a repository are signed as
+          event 5
+      every step is done or skipped: end the flow
+    [exit 0]
+=== the event log
+    1 effort.opened by effort-start.sh
+    2 gate.answered by record-gate-answer.sh: Me, with my laptop key
+    3 gate.answered by record-gate-answer.sh: Ssh Tester <ssh@example.test> · ssh JTk/RG6U
+    4 identity.set by identity-set.sh
+    5 gate.answered by record-gate-answer.sh: Gpg Tester <gpg@example.test> · openpgp 23D1099D
+    6 identity.set by identity-set.sh
+    7 identity.set by identity-set.sh
+=== a damaged log: identity-get and identity-set refuse, never "no identity" or "not picked"
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo
+    events-read.sh: <S>/space/efforts/<id>-identity/events/000007-identity.set.json cannot be read
+    [exit 2]
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo --list <S>/list.json
+    events-read.sh: <S>/space/efforts/<id>-identity/events/000005-gate.answered.json cannot be read
+    [exit 2]
+    no event written
+--- repaired
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-identity --repo <S>/repo
+    {"repo":"<S>/repo","name":"Gpg Tester","email":"gpg@example.test","signing":{"format":"openpgp","key":"<KEYID>"},"fingerprint":"<FPR>"}
+    [exit 0]
+=== the events lock held: identity-set refuses with exit 6, nothing written; the rerun sets
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-locked --repo <S>/repo --list <S>/list.json
+    event-write.sh: the events lock stayed held
+    [exit 6]
+    events before 2, after 2
+$ sh main/identity-get.sh --effort <S>/space/efforts/<id>-locked --repo <S>/repo
+    identity-get.sh: the effort has no identity for <S>/repo
+    [exit 5]
+$ sh main/identity-set.sh --effort <S>/space/efforts/<id>-locked --repo <S>/repo --list <S>/list.json
+    <S>/space/efforts/<id>-locked/events/000003-identity.set.json
+    [exit 0]

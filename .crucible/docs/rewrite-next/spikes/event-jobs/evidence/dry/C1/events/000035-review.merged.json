@@ -1,0 +1,42 @@
+{
+  "type": "review.merged",
+  "seq": 35,
+  "at": "2026-11-24T07:59:15Z",
+  "by": "merge.sh",
+  "claude_session_id": "dry-C1-1",
+  "body": {
+    "findings": [
+      {
+        "id": "SHELL-01",
+        "kind": "shell",
+        "file": "a.sh",
+        "severity": "high",
+        "realism": "realistic",
+        "status": "fixed"
+      },
+      {
+        "id": "SECURITY-01",
+        "kind": "security",
+        "file": "a.sh",
+        "severity": "medium",
+        "realism": "realistic",
+        "status": "fixed"
+      },
+      {
+        "id": "CLEAN-CODE-01",
+        "kind": "clean-code",
+        "file": "b.sh",
+        "severity": "medium",
+        "realism": "realistic",
+        "status": "fixed"
+      }
+    ],
+    "verdict": "pass",
+    "targets": [],
+    "gaps": [],
+    "root": 4,
+    "round": 25,
+    "job": null,
+    "agent": null
+  }
+}

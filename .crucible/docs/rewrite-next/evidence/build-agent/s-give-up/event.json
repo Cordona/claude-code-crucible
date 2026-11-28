@@ -1,0 +1,15 @@
+{
+  "type": "job.ended",
+  "seq": 59,
+  "at": "2026-11-28T07:41:18Z",
+  "by": "recover-submission.sh",
+  "claude_session_id": "sess-ba",
+  "body": {
+    "job": 56,
+    "iteration": 1,
+    "agent": "fa00000001",
+    "reason": "fault",
+    "step": "stamp",
+    "fault": "job 56 (build-php-fa0000)'s report could not be stamped: report-stamp.sh: the stand-in's stamp rules stop"
+  }
+}

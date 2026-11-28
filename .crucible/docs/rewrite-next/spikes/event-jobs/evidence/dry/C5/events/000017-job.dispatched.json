@@ -1,0 +1,50 @@
+{
+  "type": "job.dispatched",
+  "seq": 17,
+  "at": "2026-11-24T08:29:38Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C5-1",
+  "body": {
+    "kind": "review",
+    "target": 16,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "hot",
+    "hot_agent": "ag021",
+    "slot": 1,
+    "replaces": null,
+    "approval": 12,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "107c6d77b9899a329a0f704ad5a4ccfb7e26b0ff..6d6ec9807450144298c9ab8dc2b86c7f4357b385",
+      "earlier": [
+        {
+          "id": "SHELL-01",
+          "status": "open",
+          "title": "unquoted variable",
+          "answer": "done",
+          "decline": null
+        }
+      ],
+      "skipped": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.VJYCVW/effort/reports/83048445c7498c43.json",
+    "act": {
+      "report": {
+        "findings": [],
+        "answers": {
+          "SHELL-01": "fixed"
+        }
+      },
+      "stop_loop": true,
+      "wait": 90
+    },
+    "root": 4,
+    "round": 16,
+    "job": null,
+    "agent": null
+  }
+}

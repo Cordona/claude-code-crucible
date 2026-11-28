@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "thread": "n1",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "id": "SECURITY-01",
+        "severity": "medium",
+        "realism": "realistic",
+        "at": [
+          "src/upload/Client.kt:55"
+        ],
+        "claim": "the timeout is not applied to the retry",
+        "suggestion": "pass the timeout into retry()"
+      }
+    },
+    {
+      "thread": "n2",
+      "source": "human",
+      "verdict": "rejected",
+      "reply": "The retry is capped at src/upload/Client.kt:42, so the loop ends after three tries."
+    },
+    {
+      "thread": "description",
+      "source": "human",
+      "verdict": "noted"
+    }
+  ]
+}

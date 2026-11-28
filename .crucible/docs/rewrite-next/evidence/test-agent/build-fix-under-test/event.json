@@ -1,0 +1,20 @@
+[
+  {
+    "type": "build-fix.submitted",
+    "seq": 97,
+    "at": "2026-11-28T07:43:34Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ta",
+    "body": {
+      "job": 95,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "a0b1c2d300",
+      "report": {
+        "path": "reports/build-fix/95.json",
+        "sha256": "ecdfff56e2f9f7951e672438e40cfc4e6ca9609e7396b8e03be905c662cb6fd1"
+      },
+      "commit": "b1f05267634d6a594e398f911120ee9d779a4461"
+    }
+  }
+]

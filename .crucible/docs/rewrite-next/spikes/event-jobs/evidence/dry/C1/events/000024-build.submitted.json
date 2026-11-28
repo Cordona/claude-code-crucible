@@ -1,0 +1,25 @@
+{
+  "type": "build.submitted",
+  "seq": 24,
+  "at": "2026-11-24T07:59:09Z",
+  "by": "agent-stop.sh",
+  "claude_session_id": "dry-C1-1",
+  "body": {
+    "commit": "9f960a5fc0f3a06425dc746697ef2da08b0321fc",
+    "files": [
+      "a.sh",
+      "b.sh"
+    ],
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.M154NC/effort/reports/522392cb864137ae.json",
+    "answers": {
+      "SHELL-01": "done",
+      "SECURITY-01": "done",
+      "CLEAN-CODE-01": "done"
+    },
+    "declines": {},
+    "root": 4,
+    "round": null,
+    "job": 22,
+    "agent": "ag011"
+  }
+}

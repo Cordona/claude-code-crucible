@@ -1,0 +1,273 @@
+Rework the test plan at /Users/Shared/crucible-sandbox/final2/real/run/space/efforts/20261125T163628-e1f8-real-test-plan-update-2/reports/test-plan/7.json, for the build in this tree (the change from e00b5d7fcac41d8b0314712239f187aadfac2bfc to 9a7914fe546c6c2b436c13fdc783f3f873be0486). Its review challenged it:
+
+[
+  {
+    "id": "C-1",
+    "target": "B-2",
+    "ask": "add",
+    "title": "no test shows that a pattern still honours KEEP",
+    "why": "the planned pattern test passes when every match but the newest is deleted, whatever KEEP says"
+  },
+  {
+    "id": "C-2",
+    "target": "T-1",
+    "ask": "change",
+    "title": "check that the printed lines name the oldest backups",
+    "why": "a dry run that prints the wrong files, and deletes none, passes as planned"
+  },
+  {
+    "id": "C-3",
+    "target": "N-1",
+    "ask": "prove",
+    "title": "show that a matching folder can't occur",
+    "why": "a pattern such as day-* also matches a folder named day-old next to the backups"
+  }
+]
+
+Tree: /Users/Shared/crucible-sandbox/final2/real/run/space/efforts/20261125T163628-e1f8-real-test-plan-update-2/worktrees/j
+Report: /Users/Shared/crucible-sandbox/final2/real/run/space/efforts/20261125T163628-e1f8-real-test-plan-update-2/reports/test-plan-update/14.json
+
+## Plugins for this job
+
+
+# Language: Shell script
+
+## Scope
+
+- **In:** standalone scripts and sourced libraries run by `bash` or `sh`. Each runs on Linux, macOS, and Windows under Git Bash and WSL, unless the task names fewer platforms.
+- **Out:** shell embedded in another file, such as a Dockerfile `RUN` line or a CI step, and native Windows `cmd` and PowerShell.
+
+## Toolchain
+
+Settle it before writing a line. Take each fact from the first source below that sets it:
+
+1. The file's own shebang.
+2. For a new file, the shebang of its sibling scripts. Siblings on `#!/usr/bin/env sh` mean POSIX `sh`.
+3. What the project's own docs on its shell code say, where your prompt names them.
+4. Otherwise Bash, with `#!/usr/bin/env bash` (see Version ledger). Whichever shell wins, the script runs on every platform Scope names.
+
+## Injection
+
+- **`eval`, `bash -c "$x"` and `sh -c "$x"` run whatever `$x` holds:** never hand them untrusted input.
+- **Arithmetic runs commands hidden in its operand:** `(( ))`, `[[ $a -eq $b ]]`, an array subscript and `declare -i` all do. With `n='x[0$(id)]'`, `(( n ))` runs `id`.
+- **Validate untrusted input as a strict integer** before any arithmetic sees it: `[[ $n =~ ^[0-9]+$ ]]` in Bash, `case $n in ''|*[!0-9]*) die …;; esac` in `sh`.
+
+## Quoting, expansion and comparisons
+
+- **Quote every expansion:** `"$var"`, `"${arr[@]}"`, `"$(cmd)"`. Unquoted, the value is split on `IFS` and globbed (SC2086, SC2046, SC2068).
+- **Splitting doesn't happen** on an assignment's right side, inside `[[ ]]`, in a `case` word or in `(( ))`. A missing quote there is no defect.
+- **Build a command as an array,** `cmd=(prog --flag "$v")` then `"${cmd[@]}"`, never as a string: a string re-splits.
+- **Pass arguments on with `"$@"`.** A bare `$*` re-splits and globs; use `"$*"` only to join into one word on purpose.
+- **In Bash, test with `[[ ]]`, not `[ ]`:** nothing splits inside it, and `=~`, `&&` and `||` work.
+- **Compare numbers with `(( ))`.** `[ ]` mixes string and number tests, and `-eq` on a non-number errors.
+
+## Strict mode and errors
+
+- **Bash scripts start with `set -euo pipefail`.** POSIX `sh` scripts use `set -eu`, adding `set -o pipefail` only where the target `sh` supports it.
+- **A sourced library has no shebang and sets nothing:** it inherits the caller's `set` state, and checks its own critical commands.
+- **`set -e` stays silent** in an `if` or `while` condition, on the left of `&&` or `||`, in a command substitution (`shopt -s inherit_errexit` changes that only from Bash 4.4), and in a pipeline before its last command (unless `pipefail`). Check a critical command there yourself: `cmd || die "…"`.
+- **`cd "$dir" || exit`** (SC2164): after a failed `cd`, the rest runs in the wrong directory.
+- **Clean up in a `trap` on `EXIT`:** it runs on every way out, a failure included.
+- **Trap `INT` and `TERM` as well,** for a graceful stop.
+- **Errors and diagnostics go to stderr, never stdout:** a caller capturing stdout parses them as data.
+- **Exit 0 on success and 2 on a usage error:** a caller branches on the code, not the text.
+
+## The silent traps
+
+- **`local x=$(cmd)` hides `cmd`'s failure,** even under `set -e` (SC2155); so does `readonly`. Declare, then assign: `local x; x=$(cmd)`.
+- **`cmd | while read …` runs the loop in a subshell,** so variables set in it are lost after it. Use `done < <(cmd)`; `shopt -s lastpipe` needs Bash 4.2, past the 3.2 limit.
+- **Read lines with `IFS= read -r`** (SC2162): a bare `read` eats backslashes and edge whitespace.
+- **Filenames can hold newlines:** iterate them null-delimited, `find … -print0` with `read -r -d ''`.
+- **`(( expr ))` that comes to 0 returns status 1** and trips `set -e`. Write `(( x++ )) || true` where the value can be 0.
+- **Forking a process per input line is slow:** a `while read` loop that calls `sed`, `grep` or `awk` on each line starts one process per line. Use one `awk`, `sed` or `grep` over the whole input.
+- **Under `set -u`,** take a required value with `${var:?message}` and an optional one with `${var:-default}`.
+
+## Temp files and leak surfaces
+
+- **Create temp files with `mktemp`** and remove them in the `EXIT` trap. A fixed or guessable name invites symlink and race attacks.
+- **Act on the file directly** (create it, open it) instead of checking first and acting after: the gap between the two is a TOCTOU race.
+- **Hand a fetched secret to one child as `VAR="$secret" cmd`,** not on its argv, which `ps` shows, and not `export`ed, which every later child inherits.
+- **`set -x` prints each command with its values expanded,** secrets included: keep tracing off around them.
+- **Write a secret file under `umask 077`,** set in a subshell so the mask goes no further, never `chmod 600` after the write: the file is readable in between.
+
+## Portability
+
+- **The shebang matches the features used:** under `sh`, no arrays, `[[ ]]`, `local`, `${v,,}` or process substitution.
+- **macOS `/bin/bash` is 3.2** (see Version ledger), so Bash scripts use Bash 3.2 features only: no associative arrays, `mapfile` or `readarray`, `${v,,}` or `${v^^}`, `globstar` or `declare -n`.
+- **An empty `"${arr[@]}"` aborts under `set -u` before Bash 4.4,** 3.2 included. Guard it with `${arr[@]+"${arr[@]}"}`; test `${#arr[@]}` first only when the empty case needs its own branch.
+- **The task names fewer platforms:** only the limits of the platforms it names apply; the Bash 3.2 limit stays while macOS's `/bin/bash` is one of them.
+- **GNU and BSD tools differ** on `sed -i`, `date`, `stat`, `readlink`, `getopt` and `mktemp`; Git Bash and the default WSL distro carry the GNU forms (an Alpine WSL distro has BusyBox). Use a form every platform accepts; branch on `uname -s` (`Linux`, `Darwin`, or `MINGW*` and `MSYS*` under Git Bash) only where no such form exists.
+
+## Windows: Git Bash and WSL
+
+- **Keep LF line endings:** a CRLF script fails with `$'\r': command not found`, or a shebang naming `bash\r`. `*.sh text eol=lf` in `.gitattributes` stops Git converting them.
+- **Paths take two forms:** `C:\Users` is `/c/Users` in Git Bash and `/mnt/c/Users` in WSL; a native Windows program wants `C:\Users`. Convert with `cygpath -w` (Git Bash) or `wslpath -w` (WSL).
+- **Quote every path:** Windows paths often hold spaces.
+- **Git Bash rewrites an argument that looks like a POSIX path** passed to a native Windows program; set `MSYS_NO_PATHCONV=1` on a call that must keep it as written.
+- **Don't rely on `chmod` or `ln -s`:** under Git Bash, `chmod +x` often does nothing and `ln -s` may copy the file. Where the mode can't be trusted, run the script as `bash <file>`.
+- **Never ship two file names that differ only in case:** Windows, and macOS by default, are case-insensitive.
+- **Write each path in its exact case:** the wrong case works on Windows and macOS and breaks on Linux.
+- **A tool can be missing or differ under Git Bash** (no `rsync`; `ping` is Windows' own, counting with `-n`): check it with `command -v` and stop with a message naming it; branch on `uname -s` only where a Git Bash stand-in exists.
+
+## Lints
+
+- **Shellcheck (`-o all`) with no new warning:** each warning the change adds is a gate failure.
+- **Every `# shellcheck disable=SCnnnn` carries its written reason:** a reasoned one on a line complies, an unexplained one is a defect, and a rule turned off or down in the project's lint config is a defect too.
+
+## Version ledger
+
+| Fact | Value |
+|---|---|
+| macOS `/bin/bash` | 3.2.57 |
+
+
+# Standard: Testing
+
+What a good test suite holds, in any language. A test that can't fail is worse than no test: a suite that passes whether or not the behaviour works earns trust it hasn't got. Volume is a cost: every test is code to read, run and maintain, so a suite larger than the behaviours it guards slows every change. Tests are executable documentation: a reader learns from them what the system does.
+
+## Scope
+
+- **In:** the tests written or changed, test data and fixtures included.
+- **Project conventions:** follow the project's test conventions: its framework, assertion style, test location and naming, base classes and helpers, fixture layout, and how it handles external dependencies. A deliberate, consistent convention is the local norm. A convention never excuses a wrong test: a test that can't fail is a defect even where the project's other tests do the same.
+
+## Any framework
+
+Read every rule below through this section. Each framework or library named here is an example only: map each concept to the project's own test framework, since the concept exists in every ecosystem.
+
+| Concept | Examples |
+|---|---|
+| Parameterised or data-driven test | JUnit `@ParameterizedTest`, pytest `parametrize`, Go table-driven tests, RSpec shared examples |
+| Fake or controlled time | `Clock` or `InstantSource`, Python `freezegun`, JS fake timers, a Go injected clock |
+| HTTP boundary stub | WireMock, MSW, `responses` or `respx`, `httptest` |
+| Golden, snapshot or approval | JSONAssert, Jest snapshots, `pytest-snapshot`, Rust `insta`, ApprovalTests |
+| Real infrastructure for tests | Testcontainers, ephemeral local servers |
+| Assertion messages | AssertJ `.as("…")`, pytest assert messages, testify messages |
+
+## 1. Tests that can fail
+
+- **Every test can fail when its behaviour breaks:** ask "would this test fail if the behaviour it claims to verify were broken?"; if not, it is false confidence.
+- **No tautological assertion:** `assertTrue(true)`, asserting a constant, or re-asserting a literal just set.
+- **Never assert a mock's own configured return:** it is circular and proves nothing.
+- **Every assertion constrains behaviour:** only `assertNotNull` on a rich result constrains nothing.
+- **No coverage theatre:** code exercised with nothing meaningful verified.
+- **No catch-and-ignore:** a `try`/`catch` that swallows the failure passes whatever happens.
+- **A bug fix's key test fails on the pre-fix code:** if reverting the fix leaves it green, it doesn't guard the bug.
+- **To check a test can fail, break the behaviour it guards,** never an implementation detail: a test that only catches a renamed private method guards nothing the user sees.
+- **Where the project has its own mutation tool, run that** rather than breaking code by hand.
+
+## 2. Required tests and proven gaps
+
+- **Code that guards security, persisted data, concurrency (races, retries, compare-and-set, idempotency) or authentication always gets a test that fails when the guard breaks, unless the human waives it:** smallness never removes one.
+- **Leave a behaviour untested only with proof:** name the case, the reason and the risk accepted, plus proof the risk is covered or absent (a test, a `path:line`, a pointer to another repo), or mark it unproven. A required-category behaviour left untested is waived only by the human approving the plan.
+- **"Not testable at level X" names the level where it can be tested.**
+- **An accepted risk with a user-visible effect is behaviour:** test it, or the human waives it explicitly.
+
+## 3. The smallest sufficient set
+
+- **Start from the behaviours the change adds or alters** (new behaviour, and behaviour that could break), never from the code's line or branch list; each test guards named behaviours.
+- **Every test guards a behaviour no other test at its level guards:** two tests that fail on exactly the same breakage are one too many, so merge them into a parameterised test or delete one.
+- **One test per branch or equivalence class:** a further example on a branch already pinned adds no protection.
+- **A behaviour an existing test already guards needs no new test.**
+- **Repair a test the change breaks, and name the repair.**
+- **Delete a test the change makes obsolete.**
+- **Prefer the existing test file and the project's test base** (base classes; request, assertion and fixture helpers).
+- **Add a new test file, harness or live-server fixture only with a stated reason:** each is a cost every run pays, often a new build target in a compiled stack.
+
+## 4. Behaviour through the public contract
+
+- **Assert observable outcomes through the code's real public contract, never private state or call sequences.** The contract follows the code's shape:
+  - A service or app: end-to-end flows through HTTP, the database, queues and events.
+  - A library: its public API.
+  - A CLI: its commands, exit codes and output.
+  - Pure logic: inputs to outputs at the public function.
+- **A test coupled to implementation detail is a defect:** one that would break on a behaviour-preserving refactor.
+
+## 5. Levels: end-to-end first
+
+- **Build the suite level by level:** end-to-end first, then integration, then unit.
+
+### End-to-end
+
+- **At least one end-to-end test wherever the feature has an entry point to drive (an endpoint, a command, a consumer, a hook):** it enters there, runs the project's own code for real, and asserts every observable outcome of the flow (the response or output, the persisted entity, the emitted message). One such test proves what a pile of unit tests would.
+- **Error paths are end-to-end too:** a bad input in, the expected error body out.
+- **Replace only external systems (Mocks and boundaries), systems the project doesn't control (a third-party HTTP API, a service it doesn't own, time and date, the file system where it can't be avoided):** infrastructure the project owns runs for real, in containers where possible.
+- **The same flow asserted on distinct observable channels (response, persistence, message) is not duplication:** each verifies a distinct outcome.
+- **A feature with no entry point to drive gets no end-to-end test,** such as a pure library function nothing calls yet: say why, and name the level that does test it.
+- **A live harness (a local or containerised server standing in for an external one, a spawned client) is the costliest end-to-end test:** use one only when a stub of the external system can't observe the behaviour.
+
+### Integration
+
+- **Write an integration test when the behaviour crosses a real boundary the project owns and no end-to-end test can observe it:** a repository's query against the real store, a retry or compare-and-set under real concurrency, a consumer handling a real message, a feature with no entry point yet.
+- **An integration test states why no end-to-end test observes the behaviour.**
+
+### Unit
+
+- **Write a unit test only when no end-to-end or integration test can observe the behaviour, and state why;** or when the human explicitly opts in to an offered one. The reasons: unreachable in test time, too many cases to drive through the flow, or pure logic with no boundary.
+- **A unit test verifies behaviour or business logic,** never wiring, call sequences or a mocked imitation of a flow.
+- **Put several inputs on one branch in one parameterised or table-driven test,** not a micro-test per input.
+- **For invariant-shaped pure logic (parsers, encoders, math), a property-based test is the stronger form** (QuickCheck, Hypothesis, proptest, jqwik).
+
+## 6. Mocks and boundaries
+
+- **Never mock an internal collaborator, or swap a real domain collaborator for an ad-hoc stub or fake:** it couples the test to implementation and defeats behaviour testing.
+- **The one exception: the real collaborator can't be exercised in a test** (non-deterministic hardware, a dependency not yet built, a destructive irreversible side effect); document why at the mock. "Easier" or "faster" is never that reason.
+- **A framework-layer boundary swap through test config is acceptable** (replacing an auth filter chain, minting real tokens): it swaps a boundary, not a domain collaborator.
+- **At an external boundary, prefer in order: containers, then a test-config swap, then an HTTP stub server;** mock only what can't be containerised or run.
+- **Never run a test against a real external system:** a test run against a live system acts on it.
+- **Prefer a fake over an interaction mock where it gives a truer test.**
+- **A test that mocks the thing it verifies verifies nothing.**
+- **Dead test scaffolding is a defect** (a stub server with no stubs, a mocking library nothing uses): it misleads readers about the boundary strategy.
+
+## 7. Failure paths and coverage
+
+- **Test failure behaviour:** invalid input, error responses and exception paths, not only happy paths.
+- **Assert an error's shape or body** (its type, message contract and fields), never only a status code or that some error occurred.
+- **Cover the boundary and equivalence classes that apply to the changed behaviour:** empty or null, zero, one, max or limit, off-by-one, negative and invalid type are candidates, not a checklist for every function.
+- **Test the project's own logic, not the framework's:** never re-verify framework or library behaviour.
+- **Coverage means behaviour coverage, not line coverage:** never chase a percentage. Untested behaviour is a liability; a test that can't fail is worse.
+
+## 8. Golden fixtures
+
+- **End-to-end tests compare against golden fixtures** (realistic request payloads in; expected responses, persisted entities and emitted messages out), not hand-built field-by-field assertions; so does any test whose result has a shape worth comparing whole.
+- **Realistic means captured:** prefer a fixture captured from a real run, copied from a real schema or recorded from a real exchange to a hand-written one; a hand-written golden states why nothing could be captured.
+- **Capture a golden only from a local or containerised run,** never from a live environment.
+- **Before saving a captured fixture, strip or replace every credential, auth header, token, cookie and piece of personal data with a placeholder:** a fixture never holds a real secret.
+- **Hand-written assertions are for what a fixture can't capture:** a single scalar or boolean, a short literal string, a property, an error's type.
+- **A golden fixture is an assertion technique, not a test level.**
+- **Mask or normalise non-deterministic fields (ids, timestamps, versions) before comparing,** so the test fails only on a real change.
+- **Regenerate goldens deliberately and review the diff;** never blind-accept.
+
+## 9. Deterministic and isolated
+
+- **Each test sets up and tears down its own state:** no test depends on another running first, and no shared mutable state leaks between tests.
+- **No flaky test:** an intermittently failing test destroys trust; fix it or delete it.
+- **No fixed `sleep()` to await async work or to prove a negative:** prefer an early-returning bounded poll, a real signal (a blocking consume, a latch) or a library such as Awaitility. A bounded poll that returns early on success is fine.
+- **No wall-clock coupling:** inject a clock (`Clock`, `InstantSource`); never assert against `now()` with a tolerance window.
+- **With reused containers or resources, reset data per test and isolate per test** (unique consumer groups, earliest offset); never assume a pristine broker or database.
+
+## 10. Structure and naming
+
+- **Arrange, act, assert** in every test, in that order.
+- **One clear behaviour per test:** a test guarding two leaves a red run that doesn't say which one broke.
+- **Name the scenario, not the mechanics:** the name describes the case without reading the body.
+  - Good: `should_reject_order_when_inventory_insufficient`, `returns_empty_list_when_no_matching_users`, `throws_validation_error_for_negative_quantity`.
+  - Bad: `test1`, `testOrder`, `itWorks`.
+- **Prefer the project's established naming style,** such as `should <behaviour> when <condition>`.
+
+## 11. Test-code tie-breakers
+
+These settle where a test pulls against the general code-structure rules.
+
+- **Extract the mechanics into test helpers** (shared setup, fixtures, loaders, seeders, clients, base classes, data builders), never copy-pasted infrastructure.
+- **Keep each test's intent local and readable,** never hidden behind indirection.
+- **Data-driven parameterisation is the tool for repeated scenarios,** not a duplication defect.
+- **An end-to-end test asserting several outcomes of one flow is one behaviour;** a god-test asserting unrelated things is not.
+- **No conditional logic in a test body:** an `if`, `for`, `while` or `try`/`catch` that decides which assertions run hides what was verified. A uniform `forEach { assert … }` over a collection is fine.
+- **A red test names what broke,** not just "expected true": for homogeneous or stacked assertions, use descriptive messages (`.as("…")`), or replace a long run of bare assertions with one strict golden compare.
+- **The naming rule in Structure and naming covers only test identifiers and scenario names.**
+
+## 12. Speed
+
+- **Keep unit tests well under about 100 ms,** so people actually run them.
+- **A warranted unit test stays framework-free:** never boot a full context (`@SpringBootTest`-style) to exercise a pure function.
+- **Ration context reboots:** per-test context-dirtying is a big speed tax, so default to the cheapest lifecycle that stays correct, unless stateful components genuinely leak between tests.

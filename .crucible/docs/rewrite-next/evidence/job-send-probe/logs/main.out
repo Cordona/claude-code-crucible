@@ -1,0 +1,8 @@
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+Step 3 sent; the agent is resuming. Waiting for its completion notification (no polling).
+
+All three steps ran. Results, verbatim:
+
+1. **Agent spawn:** the agent replied `FIRST`. Its agentId is `a9028354cad5348e2`.
+2. **Sending 'DENYME please':** the send failed with the error `probe: no JOB line`. That error looks like it came from a hook or wrapper, not from SendMessage itself.
+3. **Sending 'hello again':** the send returned `{"success":true,"message":"Resuming agent a902835","resumedAgentId":"a9028354cad5348e2","pin":{"id":"a9028354cad5348e2","name":"a9028354cad5348e2","ref":"44b4e4"}}`. The agent then replied `SECOND`. I learned of the reply from an automatic task-completion notification for the same task-id, without polling.

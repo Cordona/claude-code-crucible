@@ -1,0 +1,126 @@
+--- show-card refusals for a recorded gate
+    show-card.sh: a recorded gate needs --effort, an absolute folder
+    show-card.sh: --record must be lowercase words joined by dashes
+    show-card.sh: a recorded gate needs --accept, the option that means yes, or --choice
+--- a recorded gate: the question must be one, single-select, offering the yes option
+    A recorded gate asks exactly one question.
+    A recorded gate asks a single-select question.
+    The question must offer the yes option the card named: Approve the spec (Recommended)
+  the good question: allowed, a hand-off left
+    [no output = allowed]
+    t1.json
+--- the human picks the yes option: accepted true
+    000001-effort.opened.json
+    000002-gate.answered.json
+    {"by":"record-gate-answer.sh","body":{"record":"spec-approval","subject":"9f2c","question":"Approve this spec?","accept":"Approve the spec (Recommended)","answer":"Approve the spec (Recommended)","accepted":true}}
+           0
+--- the human types their own answer: accepted false
+    {"answer":"Approve, but fix section 2 first","accepted":false}
+--- an ordinary gate (no --record): no event
+    events before        3, after        3
+--- a subagent's answer: no event
+    [no output]
+--- only the hook may write gate.answered
+    event-write.sh: gate.answered refused: gate.answered is written only by record-gate-answer.sh
+    event-write.sh: gate.answered refused: accepted must say whether the answer is the accept option
+--- junk input: exit 0
+    [exit 0]
+--- the shared reader: the newest answer counts
+  spec-approval on 9f2c: the newest is the typed answer (no)
+    gate-answer.sh: the newest answer (event 3) did not accept: Approve, but fix section 2 first
+    [exit 1]
+  then a yes: accepted
+    ACCEPTED: 4
+    [exit 0]
+  then a no: the earlier yes no longer counts
+    gate-answer.sh: the newest answer (event 5) did not accept: Change it
+    [exit 1]
+  another subject, and no answer at all
+    gate-answer.sh: no answer for spec-approval on other
+    [exit 1]
+    gate-answer.sh: no answer for effort-start on 9f2c
+    [exit 1]
+--- the shape check runs inside the hold hook: a refusal keeps the card
+  an ordinary gate: a question with no recommendation is refused for its shape
+    Fix the question, then ask again: Tools: the first option must be the recommended one, its label ending with (Recommended). If there are no real options to recommend, take this question out of the dialog and ask it in a plain sentence
+    card records left: 1
+  the fixed question goes out with no new card
+    [no output = allowed]; card records left: 0
+  a question with no card is still refused
+    Every question needs a card. Write one, run show-card.sh, end your turn with the card, then ask.
+  a recorded gate: a badly shaped question is refused, the card stays
+    Fix the question, then ask again: Spec: option "Change it" needs a description saying why
+    card records left: 1; hand-offs: 0
+  the fixed question goes out with no new card, and its answer is recorded
+    {"record":"spec-approval","subject":"9f2c","answer":"Approve the spec (Recommended)","accepted":true}
+  with the shape script gone, the step is skipped: even a badly shaped question goes out
+    [no output = allowed]; card records left: 0
+--- the events lock held: the hook exits 0, the answer unrecorded, the hand-off kept; delivered again, it is recorded
+    event-write.sh: the events lock stayed held
+    record-gate-answer.sh: the answer to spec-approval was not recorded; ask again
+    [exit 0]
+    events before 6, after 6; hand-off t10 kept: yes
+    {"record":"spec-approval","subject":"9f2c","answer":"Approve the spec (Recommended)","accepted":true}
+    hand-off t10 kept: no
+--- the shared reader by the start of a subject: each subject's newest answer, when it accepted
+    {"seq":2,"subject":"abc:1","record":"drop-thing","accepted":true}
+    {"seq":3,"subject":"ab:1","record":"drop-thing","accepted":true}
+    {"seq":4,"subject":"abc:2","record":"drop-thing","accepted":true}
+    {"seq":5,"subject":"abc:2","record":"drop-thing","accepted":false}
+    {"seq":6,"subject":"abc:3","record":"drop-thing","accepted":false}
+    {"seq":7,"subject":"abc:4","record":"other-thing","accepted":true}
+  prefix abc: : abc:1 only; abc:2's newest is a no, abc:3 never accepted, abc:4 is another record
+    {"answers":[{"seq":2,"subject":"abc:1"}]}
+    [exit 0]
+  prefix ab: : ab:1 only, never abc:
+    {"answers":[{"seq":3,"subject":"ab:1"}]}
+    [exit 0]
+  prefix ab, no colon: the text as written, so abc: subjects match too
+    {"answers":[{"seq":2,"subject":"abc:1"},{"seq":3,"subject":"ab:1"}]}
+    [exit 0]
+  a prefix that is text, not a pattern: a.c: matches nothing
+    {"answers":[]}
+    [exit 0]
+  no subject starts so: an empty list
+    {"answers":[]}
+    [exit 0]
+  --after the event of abc:1's yes: it is left out
+    {"answers":[]}
+    [exit 0]
+  a later yes for abc:3 now counts, after the same event
+    {"answers":[{"seq":8,"subject":"abc:3"}]}
+    [exit 0]
+  --after 0 is the default
+    {"answers":[{"seq":2,"subject":"abc:1"},{"seq":8,"subject":"abc:3"}]}
+    [exit 0]
+--- refusals of the prefix form, nothing read
+    gate-answer.sh: --subject-prefix is empty
+    [exit 2]
+    gate-answer.sh: --subject and --subject-prefix go apart
+    [exit 2]
+    gate-answer.sh: --choice and --subject-prefix go apart
+    [exit 2]
+    gate-answer.sh: --after goes with --subject-prefix
+    [exit 2]
+    gate-answer.sh: --after goes with --subject-prefix
+    [exit 2]
+    gate-answer.sh: --after must be an event seq, a whole number; got 3x
+    [exit 2]
+    gate-answer.sh: --after must be an event seq, a whole number; got -1
+    [exit 2]
+    gate-answer.sh: --subject-prefix needs a value
+    [exit 2]
+    gate-answer.sh: --after needs a value
+    [exit 2]
+  a choice gate's answer among the subjects: refused, read it with --choice
+    gate-answer.sh: an answer for drop-thing is a choice; read it with --choice
+    [exit 2]
+    ANSWER_SEQ: 9
+    ANSWER: Change it
+    [exit 0]
+--- a damaged log: the prefix form refuses, exit 2
+    events-read.sh: <P>/events/000002-gate.answered.json cannot be read
+    [exit 2]
+  repaired: listed again
+    {"answers":[{"seq":2,"subject":"abc:1"},{"seq":8,"subject":"abc:3"}]}
+    [exit 0]

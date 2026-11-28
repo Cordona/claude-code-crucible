@@ -1,0 +1,669 @@
+== build-1: FAIL (gave-up)
+FAIL: build-1: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: build-1: no job.stalled
+PASS: build-1: the pin matches the report, read-only
+PASS: build-1: the working commit, with its Job trailer
+PASS: build-1: the job agent ran on Opus: claude-opus-5-5
+PASS: build-1: the agent got exactly the prepared prompt
+PASS: build-1: no gh or glab call (stub calls: 0)
+PASS: build-1: the allowed gates reported run, not not_run: all run
+PASS: build-1: the framework hash is the same at setup and at collect
+PASS: build-1: audit: every job ended or submitted
+PASS: build-1: audit: stalled only where the scenario expects it
+PASS: build-1: audit: every pinned report matches its hash
+PASS: build-1: audit: every working commit has its event
+PASS: build-1: audit: every refusal followed by a submission or an end
+PASS: build-1: audit: no job with more than two refusals
+== build-2: PASS (repaired)
+PASS: build-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-2: no job.stalled
+PASS: build-2: the pin matches the report, read-only
+PASS: build-2: the working commit, with its Job trailer
+PASS: build-2: the job agent ran on Opus: claude-opus-5-5
+PASS: build-2: the agent got exactly the prepared prompt
+PASS: build-2: no gh or glab call (stub calls: 0)
+PASS: build-2: the allowed gates reported run, not not_run: all run
+PASS: build-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-2: the framework hash is the same at setup and at collect
+PASS: build-2: audit: every job ended or submitted
+PASS: build-2: audit: stalled only where the scenario expects it
+PASS: build-2: audit: every pinned report matches its hash
+PASS: build-2: audit: every working commit has its event
+PASS: build-2: audit: every refusal followed by a submission or an end
+PASS: build-2: audit: no job with more than two refusals
+== build-3: FAIL (gave-up)
+FAIL: build-3: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: build-3: no job.stalled
+PASS: build-3: the pin matches the report, read-only
+PASS: build-3: the working commit, with its Job trailer
+PASS: build-3: the job agent ran on Opus: claude-opus-5-5
+PASS: build-3: the agent got exactly the prepared prompt
+PASS: build-3: no gh or glab call (stub calls: 0)
+PASS: build-3: the allowed gates reported run, not not_run: all run
+PASS: build-3: the framework hash is the same at setup and at collect
+PASS: build-3: audit: every job ended or submitted
+PASS: build-3: audit: stalled only where the scenario expects it
+PASS: build-3: audit: every pinned report matches its hash
+PASS: build-3: audit: every working commit has its event
+PASS: build-3: audit: every refusal followed by a submission or an end
+PASS: build-3: audit: no job with more than two refusals
+== build-fix-1: PASS (repaired)
+PASS: build-fix-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-fix-1: no job.stalled
+PASS: build-fix-1: the pin matches the report, read-only
+PASS: build-fix-1: the working commit, with its Job trailer
+PASS: build-fix-1: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-1: the agent got exactly the prepared prompt
+PASS: build-fix-1: no gh or glab call (stub calls: 0)
+PASS: build-fix-1: the allowed gates reported run, not not_run: all run
+PASS: build-fix-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-fix-1: the framework hash is the same at setup and at collect
+PASS: build-fix-1: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-1: audit: every job ended or submitted
+PASS: build-fix-1: audit: stalled only where the scenario expects it
+PASS: build-fix-1: audit: every pinned report matches its hash
+PASS: build-fix-1: audit: every working commit has its event
+PASS: build-fix-1: audit: every refusal followed by a submission or an end
+PASS: build-fix-1: audit: no job with more than two refusals
+== build-fix-2: FAIL (repaired)
+PASS: build-fix-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-fix-2: no job.stalled
+PASS: build-fix-2: the pin matches the report, read-only
+PASS: build-fix-2: the working commit, with its Job trailer
+PASS: build-fix-2: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-2: the agent got exactly the prepared prompt
+PASS: build-fix-2: no gh or glab call (stub calls: 0)
+FAIL: build-fix-2: the allowed gates reported run, not not_run: not run: lint, typecheck, test
+PASS: build-fix-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-fix-2: the framework hash is the same at setup and at collect
+PASS: build-fix-2: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-2: audit: every job ended or submitted
+PASS: build-fix-2: audit: stalled only where the scenario expects it
+PASS: build-fix-2: audit: every pinned report matches its hash
+PASS: build-fix-2: audit: every working commit has its event
+PASS: build-fix-2: audit: every refusal followed by a submission or an end
+PASS: build-fix-2: audit: no job with more than two refusals
+== build-fix-3: PASS (repaired)
+PASS: build-fix-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: build-fix-3: no job.stalled
+PASS: build-fix-3: the pin matches the report, read-only
+PASS: build-fix-3: the working commit, with its Job trailer
+PASS: build-fix-3: the job agent ran on Opus: claude-opus-5-5
+PASS: build-fix-3: the agent got exactly the prepared prompt
+PASS: build-fix-3: no gh or glab call (stub calls: 0)
+PASS: build-fix-3: the allowed gates reported run, not not_run: all run
+PASS: build-fix-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: build-fix-3: the framework hash is the same at setup and at collect
+PASS: build-fix-3: planted: the fix commit touches the code its done or partly findings point at (3 findings, all touched)
+PASS: build-fix-3: audit: every job ended or submitted
+PASS: build-fix-3: audit: stalled only where the scenario expects it
+PASS: build-fix-3: audit: every pinned report matches its hash
+PASS: build-fix-3: audit: every working commit has its event
+PASS: build-fix-3: audit: every refusal followed by a submission or an end
+PASS: build-fix-3: audit: no job with more than two refusals
+== external-review-1: PASS (repaired)
+PASS: external-review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-1: no job.stalled
+PASS: external-review-1: the pin matches the report, read-only
+PASS: external-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-1: the agent got exactly the prepared prompt
+PASS: external-review-1: no gh or glab call (stub calls: 0)
+PASS: external-review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-1: the framework hash is the same at setup and at collect
+PASS: external-review-1: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-1: audit: every job ended or submitted
+PASS: external-review-1: audit: stalled only where the scenario expects it
+PASS: external-review-1: audit: every pinned report matches its hash
+PASS: external-review-1: audit: every working commit has its event
+PASS: external-review-1: audit: every refusal followed by a submission or an end
+PASS: external-review-1: audit: no job with more than two refusals
+== external-review-2: PASS (repaired)
+PASS: external-review-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-2: no job.stalled
+PASS: external-review-2: the pin matches the report, read-only
+PASS: external-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-2: the agent got exactly the prepared prompt
+PASS: external-review-2: no gh or glab call (stub calls: 0)
+PASS: external-review-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-2: the framework hash is the same at setup and at collect
+PASS: external-review-2: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-2: audit: every job ended or submitted
+PASS: external-review-2: audit: stalled only where the scenario expects it
+PASS: external-review-2: audit: every pinned report matches its hash
+PASS: external-review-2: audit: every working commit has its event
+PASS: external-review-2: audit: every refusal followed by a submission or an end
+PASS: external-review-2: audit: no job with more than two refusals
+== external-review-3: PASS (repaired)
+PASS: external-review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: external-review-3: no job.stalled
+PASS: external-review-3: the pin matches the report, read-only
+PASS: external-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: external-review-3: the agent got exactly the prepared prompt
+PASS: external-review-3: no gh or glab call (stub calls: 0)
+PASS: external-review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: external-review-3: the framework hash is the same at setup and at collect
+PASS: external-review-3: planted: the real point of the outside review (dry-run deletes, in a reply) is a valid item with a finding in bin/prune-backups.sh
+PASS: external-review-3: audit: every job ended or submitted
+PASS: external-review-3: audit: stalled only where the scenario expects it
+PASS: external-review-3: audit: every pinned report matches its hash
+PASS: external-review-3: audit: every working commit has its event
+PASS: external-review-3: audit: every refusal followed by a submission or an end
+PASS: external-review-3: audit: no job with more than two refusals
+== foreign-review-1: PASS (repaired)
+PASS: foreign-review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: foreign-review-1: no job.stalled
+PASS: foreign-review-1: the pin matches the report, read-only
+PASS: foreign-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-1: the agent got exactly the prepared prompt
+PASS: foreign-review-1: no gh or glab call (stub calls: 0)
+PASS: foreign-review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: foreign-review-1: the framework hash is the same at setup and at collect
+PASS: foreign-review-1: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-1: audit: every job ended or submitted
+PASS: foreign-review-1: audit: stalled only where the scenario expects it
+PASS: foreign-review-1: audit: every pinned report matches its hash
+PASS: foreign-review-1: audit: every working commit has its event
+PASS: foreign-review-1: audit: every refusal followed by a submission or an end
+PASS: foreign-review-1: audit: no job with more than two refusals
+== foreign-review-2: PASS (repaired)
+PASS: foreign-review-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: foreign-review-2: no job.stalled
+PASS: foreign-review-2: the pin matches the report, read-only
+PASS: foreign-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-2: the agent got exactly the prepared prompt
+PASS: foreign-review-2: no gh or glab call (stub calls: 0)
+PASS: foreign-review-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: foreign-review-2: the framework hash is the same at setup and at collect
+PASS: foreign-review-2: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-2: audit: every job ended or submitted
+PASS: foreign-review-2: audit: stalled only where the scenario expects it
+PASS: foreign-review-2: audit: every pinned report matches its hash
+PASS: foreign-review-2: audit: every working commit has its event
+PASS: foreign-review-2: audit: every refusal followed by a submission or an end
+PASS: foreign-review-2: audit: no job with more than two refusals
+== foreign-review-3: PASS (repaired)
+PASS: foreign-review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: foreign-review-3: no job.stalled
+PASS: foreign-review-3: the pin matches the report, read-only
+PASS: foreign-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: foreign-review-3: the agent got exactly the prepared prompt
+PASS: foreign-review-3: no gh or glab call (stub calls: 0)
+PASS: foreign-review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: foreign-review-3: the framework hash is the same at setup and at collect
+PASS: foreign-review-3: planted: the foreign review has a finding in bin/restore-backup.sh, the file holding the bugs
+PASS: foreign-review-3: audit: every job ended or submitted
+PASS: foreign-review-3: audit: stalled only where the scenario expects it
+PASS: foreign-review-3: audit: every pinned report matches its hash
+PASS: foreign-review-3: audit: every working commit has its event
+PASS: foreign-review-3: audit: every refusal followed by a submission or an end
+PASS: foreign-review-3: audit: no job with more than two refusals
+== i-review: FAIL (repaired)
+PASS: i-review: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: i-review: no job.stalled
+PASS: i-review: the pin matches the report, read-only
+PASS: i-review: the job agent ran on Opus: claude-opus-5-5
+PASS: i-review: the agent got exactly the prepared prompt
+FAIL: i-review: no gh or glab call (stub calls: 1)
+PASS: i-review: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: i-review: the framework hash is the same at setup and at collect
+PASS: i-review: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: i-review: audit: every job ended or submitted
+PASS: i-review: audit: stalled only where the scenario expects it
+PASS: i-review: audit: every pinned report matches its hash
+PASS: i-review: audit: every working commit has its event
+PASS: i-review: audit: every refusal followed by a submission or an end
+PASS: i-review: audit: no job with more than two refusals
+== parked-build: FAIL (repaired)
+FAIL: parked-build: parked: one refusal, write your report, then the submission (got repaired)
+PASS: parked-build: no job.stalled
+PASS: parked-build: the pin matches the report, read-only
+PASS: parked-build: the working commit, with its Job trailer
+PASS: parked-build: the job agent ran on Opus: claude-opus-5-5
+PASS: parked-build: the agent got exactly the prepared prompt
+PASS: parked-build: no gh or glab call (stub calls: 0)
+FAIL: parked-build: the allowed gates reported run, not not_run: not run: lint, typecheck, test
+PASS: parked-build: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: parked-build: the framework hash is the same at setup and at collect
+PASS: parked-build: audit: every job ended or submitted
+PASS: parked-build: audit: stalled only where the scenario expects it
+PASS: parked-build: audit: every pinned report matches its hash
+PASS: parked-build: audit: every working commit has its event
+PASS: parked-build: audit: every refusal followed by a submission or an end
+PASS: parked-build: audit: no job with more than two refusals
+== parked-test: FAIL (gave-up)
+FAIL: parked-test: parked: one refusal, write your report, then the submission (got gave-up)
+PASS: parked-test: no job.stalled
+PASS: parked-test: the pin matches the report, read-only
+PASS: parked-test: the working commit, with its Job trailer
+PASS: parked-test: the job agent ran on Opus: claude-opus-5-5
+PASS: parked-test: the agent got exactly the prepared prompt
+PASS: parked-test: no gh or glab call (stub calls: 0)
+PASS: parked-test: the allowed gates reported run, not not_run: all run
+PASS: parked-test: the framework hash is the same at setup and at collect
+FAIL: parked-test: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: parked-test: audit: every job ended or submitted
+PASS: parked-test: audit: stalled only where the scenario expects it
+PASS: parked-test: audit: every pinned report matches its hash
+PASS: parked-test: audit: every working commit has its event
+PASS: parked-test: audit: every refusal followed by a submission or an end
+PASS: parked-test: audit: no job with more than two refusals
+== re-review-1: PASS (repaired)
+PASS: re-review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: re-review-1: no job.stalled
+PASS: re-review-1: the pin matches the report, read-only
+PASS: re-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-1: the agent got exactly the prepared prompt
+PASS: re-review-1: no gh or glab call (stub calls: 0)
+PASS: re-review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: re-review-1: the framework hash is the same at setup and at collect
+PASS: re-review-1: audit: every job ended or submitted
+PASS: re-review-1: audit: stalled only where the scenario expects it
+PASS: re-review-1: audit: every pinned report matches its hash
+PASS: re-review-1: audit: every working commit has its event
+PASS: re-review-1: audit: every refusal followed by a submission or an end
+PASS: re-review-1: audit: no job with more than two refusals
+== re-review-2: PASS (repaired)
+PASS: re-review-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: re-review-2: no job.stalled
+PASS: re-review-2: the pin matches the report, read-only
+PASS: re-review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-2: the agent got exactly the prepared prompt
+PASS: re-review-2: no gh or glab call (stub calls: 0)
+PASS: re-review-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: re-review-2: the framework hash is the same at setup and at collect
+PASS: re-review-2: audit: every job ended or submitted
+PASS: re-review-2: audit: stalled only where the scenario expects it
+PASS: re-review-2: audit: every pinned report matches its hash
+PASS: re-review-2: audit: every working commit has its event
+PASS: re-review-2: audit: every refusal followed by a submission or an end
+PASS: re-review-2: audit: no job with more than two refusals
+== re-review-3: PASS (repaired)
+PASS: re-review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: re-review-3: no job.stalled
+PASS: re-review-3: the pin matches the report, read-only
+PASS: re-review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: re-review-3: the agent got exactly the prepared prompt
+PASS: re-review-3: no gh or glab call (stub calls: 0)
+PASS: re-review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: re-review-3: the framework hash is the same at setup and at collect
+PASS: re-review-3: audit: every job ended or submitted
+PASS: re-review-3: audit: stalled only where the scenario expects it
+PASS: re-review-3: audit: every pinned report matches its hash
+PASS: re-review-3: audit: every working commit has its event
+PASS: re-review-3: audit: every refusal followed by a submission or an end
+PASS: re-review-3: audit: no job with more than two refusals
+== review-1: PASS (repaired)
+PASS: review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: review-1: no job.stalled
+PASS: review-1: the pin matches the report, read-only
+PASS: review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: review-1: the agent got exactly the prepared prompt
+PASS: review-1: no gh or glab call (stub calls: 0)
+PASS: review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: review-1: the framework hash is the same at setup and at collect
+PASS: review-1: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-1: audit: every job ended or submitted
+PASS: review-1: audit: stalled only where the scenario expects it
+PASS: review-1: audit: every pinned report matches its hash
+PASS: review-1: audit: every working commit has its event
+PASS: review-1: audit: every refusal followed by a submission or an end
+PASS: review-1: audit: no job with more than two refusals
+== review-2: PASS (repaired)
+PASS: review-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: review-2: no job.stalled
+PASS: review-2: the pin matches the report, read-only
+PASS: review-2: the job agent ran on Opus: claude-opus-5-5
+PASS: review-2: the agent got exactly the prepared prompt
+PASS: review-2: no gh or glab call (stub calls: 0)
+PASS: review-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: review-2: the framework hash is the same at setup and at collect
+PASS: review-2: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-2: audit: every job ended or submitted
+PASS: review-2: audit: stalled only where the scenario expects it
+PASS: review-2: audit: every pinned report matches its hash
+PASS: review-2: audit: every working commit has its event
+PASS: review-2: audit: every refusal followed by a submission or an end
+PASS: review-2: audit: no job with more than two refusals
+== review-3: PASS (repaired)
+PASS: review-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: review-3: no job.stalled
+PASS: review-3: the pin matches the report, read-only
+PASS: review-3: the job agent ran on Opus: claude-opus-5-5
+PASS: review-3: the agent got exactly the prepared prompt
+PASS: review-3: no gh or glab call (stub calls: 0)
+PASS: review-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: review-3: the framework hash is the same at setup and at collect
+PASS: review-3: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: review-3: audit: every job ended or submitted
+PASS: review-3: audit: stalled only where the scenario expects it
+PASS: review-3: audit: every pinned report matches its hash
+PASS: review-3: audit: every working commit has its event
+PASS: review-3: audit: every refusal followed by a submission or an end
+PASS: review-3: audit: no job with more than two refusals
+== test-1: FAIL (gave-up)
+FAIL: test-1: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-1: no job.stalled
+PASS: test-1: the pin matches the report, read-only
+PASS: test-1: the working commit, with its Job trailer
+PASS: test-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-1: the agent got exactly the prepared prompt
+PASS: test-1: no gh or glab call (stub calls: 0)
+PASS: test-1: the allowed gates reported run, not not_run: all run
+PASS: test-1: the framework hash is the same at setup and at collect
+FAIL: test-1: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-1: audit: every job ended or submitted
+PASS: test-1: audit: stalled only where the scenario expects it
+PASS: test-1: audit: every pinned report matches its hash
+PASS: test-1: audit: every working commit has its event
+PASS: test-1: audit: every refusal followed by a submission or an end
+PASS: test-1: audit: no job with more than two refusals
+== test-2: FAIL (gave-up)
+FAIL: test-2: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-2: no job.stalled
+PASS: test-2: the pin matches the report, read-only
+PASS: test-2: the working commit, with its Job trailer
+PASS: test-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-2: the agent got exactly the prepared prompt
+PASS: test-2: no gh or glab call (stub calls: 0)
+PASS: test-2: the allowed gates reported run, not not_run: all run
+PASS: test-2: the framework hash is the same at setup and at collect
+FAIL: test-2: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-2: audit: every job ended or submitted
+PASS: test-2: audit: stalled only where the scenario expects it
+PASS: test-2: audit: every pinned report matches its hash
+PASS: test-2: audit: every working commit has its event
+PASS: test-2: audit: every refusal followed by a submission or an end
+PASS: test-2: audit: no job with more than two refusals
+== test-3: FAIL (gave-up)
+FAIL: test-3: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-3: no job.stalled
+PASS: test-3: the pin matches the report, read-only
+PASS: test-3: the working commit, with its Job trailer
+PASS: test-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-3: the agent got exactly the prepared prompt
+PASS: test-3: no gh or glab call (stub calls: 0)
+PASS: test-3: the allowed gates reported run, not not_run: all run
+PASS: test-3: the framework hash is the same at setup and at collect
+FAIL: test-3: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-3: audit: every job ended or submitted
+PASS: test-3: audit: stalled only where the scenario expects it
+PASS: test-3: audit: every pinned report matches its hash
+PASS: test-3: audit: every working commit has its event
+PASS: test-3: audit: every refusal followed by a submission or an end
+PASS: test-3: audit: no job with more than two refusals
+== test-fix-1: FAIL (gave-up)
+FAIL: test-fix-1: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-fix-1: no job.stalled
+PASS: test-fix-1: the pin matches the report, read-only
+PASS: test-fix-1: the working commit, with its Job trailer
+PASS: test-fix-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-1: the agent got exactly the prepared prompt
+PASS: test-fix-1: no gh or glab call (stub calls: 0)
+PASS: test-fix-1: the allowed gates reported run, not not_run: all run
+PASS: test-fix-1: the framework hash is the same at setup and at collect
+FAIL: test-fix-1: planted: the fix commit touches the code its done or partly findings point at (not touched: TESTING-01, TESTING-02, TESTING-03)
+FAIL: test-fix-1: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-fix-1: audit: every job ended or submitted
+PASS: test-fix-1: audit: stalled only where the scenario expects it
+PASS: test-fix-1: audit: every pinned report matches its hash
+PASS: test-fix-1: audit: every working commit has its event
+PASS: test-fix-1: audit: every refusal followed by a submission or an end
+PASS: test-fix-1: audit: no job with more than two refusals
+== test-fix-2: FAIL (gave-up)
+FAIL: test-fix-2: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-fix-2: no job.stalled
+PASS: test-fix-2: the pin matches the report, read-only
+PASS: test-fix-2: the working commit, with its Job trailer
+PASS: test-fix-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-2: the agent got exactly the prepared prompt
+PASS: test-fix-2: no gh or glab call (stub calls: 0)
+PASS: test-fix-2: the allowed gates reported run, not not_run: all run
+PASS: test-fix-2: the framework hash is the same at setup and at collect
+FAIL: test-fix-2: planted: the fix commit touches the code its done or partly findings point at (not touched: TESTING-01, TESTING-02, TESTING-03)
+FAIL: test-fix-2: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-fix-2: audit: every job ended or submitted
+PASS: test-fix-2: audit: stalled only where the scenario expects it
+PASS: test-fix-2: audit: every pinned report matches its hash
+PASS: test-fix-2: audit: every working commit has its event
+PASS: test-fix-2: audit: every refusal followed by a submission or an end
+PASS: test-fix-2: audit: no job with more than two refusals
+== test-fix-3: FAIL (gave-up)
+FAIL: test-fix-3: outcome: accepted at the first stop or repaired after one refusal (got gave-up)
+PASS: test-fix-3: no job.stalled
+PASS: test-fix-3: the pin matches the report, read-only
+PASS: test-fix-3: the working commit, with its Job trailer
+PASS: test-fix-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-fix-3: the agent got exactly the prepared prompt
+PASS: test-fix-3: no gh or glab call (stub calls: 0)
+PASS: test-fix-3: the allowed gates reported run, not not_run: all run
+PASS: test-fix-3: the framework hash is the same at setup and at collect
+FAIL: test-fix-3: planted: the fix commit touches the code its done or partly findings point at (not touched: TESTING-01, TESTING-02, TESTING-03)
+FAIL: test-fix-3: planted: the test commit adds tests to tests/test_*.sh, and they run and pass (tests/run.sh exit null)
+PASS: test-fix-3: audit: every job ended or submitted
+PASS: test-fix-3: audit: stalled only where the scenario expects it
+PASS: test-fix-3: audit: every pinned report matches its hash
+PASS: test-fix-3: audit: every working commit has its event
+PASS: test-fix-3: audit: every refusal followed by a submission or an end
+PASS: test-fix-3: audit: no job with more than two refusals
+== test-plan-1: PASS (repaired)
+PASS: test-plan-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-1: no job.stalled
+PASS: test-plan-1: the pin matches the report, read-only
+PASS: test-plan-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-1: the agent got exactly the prepared prompt
+PASS: test-plan-1: no gh or glab call (stub calls: 0)
+PASS: test-plan-1: the allowed gates reported run, not not_run: all run
+PASS: test-plan-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-1: the framework hash is the same at setup and at collect
+PASS: test-plan-1: audit: every job ended or submitted
+PASS: test-plan-1: audit: stalled only where the scenario expects it
+PASS: test-plan-1: audit: every pinned report matches its hash
+PASS: test-plan-1: audit: every working commit has its event
+PASS: test-plan-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-1: audit: no job with more than two refusals
+== test-plan-2: PASS (repaired)
+PASS: test-plan-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-2: no job.stalled
+PASS: test-plan-2: the pin matches the report, read-only
+PASS: test-plan-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-2: the agent got exactly the prepared prompt
+PASS: test-plan-2: no gh or glab call (stub calls: 0)
+PASS: test-plan-2: the allowed gates reported run, not not_run: all run
+PASS: test-plan-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-2: the framework hash is the same at setup and at collect
+PASS: test-plan-2: audit: every job ended or submitted
+PASS: test-plan-2: audit: stalled only where the scenario expects it
+PASS: test-plan-2: audit: every pinned report matches its hash
+PASS: test-plan-2: audit: every working commit has its event
+PASS: test-plan-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-2: audit: no job with more than two refusals
+== test-plan-3: PASS (repaired)
+PASS: test-plan-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-3: no job.stalled
+PASS: test-plan-3: the pin matches the report, read-only
+PASS: test-plan-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-3: the agent got exactly the prepared prompt
+PASS: test-plan-3: no gh or glab call (stub calls: 0)
+PASS: test-plan-3: the allowed gates reported run, not not_run: all run
+PASS: test-plan-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-3: the framework hash is the same at setup and at collect
+PASS: test-plan-3: audit: every job ended or submitted
+PASS: test-plan-3: audit: stalled only where the scenario expects it
+PASS: test-plan-3: audit: every pinned report matches its hash
+PASS: test-plan-3: audit: every working commit has its event
+PASS: test-plan-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-3: audit: no job with more than two refusals
+== test-plan-challenge-1: PASS (repaired)
+PASS: test-plan-challenge-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-challenge-1: no job.stalled
+PASS: test-plan-challenge-1: the pin matches the report, read-only
+PASS: test-plan-challenge-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-1: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-1: no gh or glab call (stub calls: 0)
+PASS: test-plan-challenge-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-challenge-1: the framework hash is the same at setup and at collect
+PASS: test-plan-challenge-1: audit: every job ended or submitted
+PASS: test-plan-challenge-1: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-1: audit: every pinned report matches its hash
+PASS: test-plan-challenge-1: audit: every working commit has its event
+PASS: test-plan-challenge-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-1: audit: no job with more than two refusals
+== test-plan-challenge-2: PASS (repaired)
+PASS: test-plan-challenge-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-challenge-2: no job.stalled
+PASS: test-plan-challenge-2: the pin matches the report, read-only
+PASS: test-plan-challenge-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-2: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-2: no gh or glab call (stub calls: 0)
+PASS: test-plan-challenge-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-challenge-2: the framework hash is the same at setup and at collect
+PASS: test-plan-challenge-2: audit: every job ended or submitted
+PASS: test-plan-challenge-2: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-2: audit: every pinned report matches its hash
+PASS: test-plan-challenge-2: audit: every working commit has its event
+PASS: test-plan-challenge-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-2: audit: no job with more than two refusals
+== test-plan-challenge-3: PASS (repaired)
+PASS: test-plan-challenge-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-challenge-3: no job.stalled
+PASS: test-plan-challenge-3: the pin matches the report, read-only
+PASS: test-plan-challenge-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-challenge-3: the agent got exactly the prepared prompt
+PASS: test-plan-challenge-3: no gh or glab call (stub calls: 0)
+PASS: test-plan-challenge-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-challenge-3: the framework hash is the same at setup and at collect
+PASS: test-plan-challenge-3: audit: every job ended or submitted
+PASS: test-plan-challenge-3: audit: stalled only where the scenario expects it
+PASS: test-plan-challenge-3: audit: every pinned report matches its hash
+PASS: test-plan-challenge-3: audit: every working commit has its event
+PASS: test-plan-challenge-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-challenge-3: audit: no job with more than two refusals
+== test-plan-update-1: PASS (repaired)
+PASS: test-plan-update-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-update-1: no job.stalled
+PASS: test-plan-update-1: the pin matches the report, read-only
+PASS: test-plan-update-1: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-1: the agent got exactly the prepared prompt
+PASS: test-plan-update-1: no gh or glab call (stub calls: 0)
+PASS: test-plan-update-1: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-update-1: the framework hash is the same at setup and at collect
+PASS: test-plan-update-1: audit: every job ended or submitted
+PASS: test-plan-update-1: audit: stalled only where the scenario expects it
+PASS: test-plan-update-1: audit: every pinned report matches its hash
+PASS: test-plan-update-1: audit: every working commit has its event
+PASS: test-plan-update-1: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-1: audit: no job with more than two refusals
+== test-plan-update-2: PASS (repaired)
+PASS: test-plan-update-2: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-update-2: no job.stalled
+PASS: test-plan-update-2: the pin matches the report, read-only
+PASS: test-plan-update-2: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-2: the agent got exactly the prepared prompt
+PASS: test-plan-update-2: no gh or glab call (stub calls: 0)
+PASS: test-plan-update-2: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-2: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-update-2: the framework hash is the same at setup and at collect
+PASS: test-plan-update-2: audit: every job ended or submitted
+PASS: test-plan-update-2: audit: stalled only where the scenario expects it
+PASS: test-plan-update-2: audit: every pinned report matches its hash
+PASS: test-plan-update-2: audit: every working commit has its event
+PASS: test-plan-update-2: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-2: audit: no job with more than two refusals
+== test-plan-update-3: PASS (repaired)
+PASS: test-plan-update-3: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: test-plan-update-3: no job.stalled
+PASS: test-plan-update-3: the pin matches the report, read-only
+PASS: test-plan-update-3: the job agent ran on Opus: claude-opus-5-5
+PASS: test-plan-update-3: the agent got exactly the prepared prompt
+PASS: test-plan-update-3: no gh or glab call (stub calls: 0)
+PASS: test-plan-update-3: the allowed gates reported run, not not_run: all run
+PASS: test-plan-update-3: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: test-plan-update-3: the framework hash is the same at setup and at collect
+PASS: test-plan-update-3: audit: every job ended or submitted
+PASS: test-plan-update-3: audit: stalled only where the scenario expects it
+PASS: test-plan-update-3: audit: every pinned report matches its hash
+PASS: test-plan-update-3: audit: every working commit has its event
+PASS: test-plan-update-3: audit: every refusal followed by a submission or an end
+PASS: test-plan-update-3: audit: no job with more than two refusals
+== trial3-build-1: PASS (repaired)
+PASS: trial3-build-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: trial3-build-1: no job.stalled
+PASS: trial3-build-1: the pin matches the report, read-only
+PASS: trial3-build-1: the working commit, with its Job trailer
+PASS: trial3-build-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial3-build-1: the agent got exactly the prepared prompt
+PASS: trial3-build-1: no gh or glab call (stub calls: 0)
+PASS: trial3-build-1: the allowed gates reported run, not not_run: all run
+PASS: trial3-build-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: trial3-build-1: the framework hash is the same at setup and at collect
+PASS: trial3-build-1: audit: every job ended or submitted
+PASS: trial3-build-1: audit: stalled only where the scenario expects it
+PASS: trial3-build-1: audit: every pinned report matches its hash
+PASS: trial3-build-1: audit: every working commit has its event
+PASS: trial3-build-1: audit: every refusal followed by a submission or an end
+PASS: trial3-build-1: audit: no job with more than two refusals
+== trial3-review-1: PASS (repaired)
+PASS: trial3-review-1: outcome: accepted at the first stop or repaired after one refusal (got repaired)
+PASS: trial3-review-1: no job.stalled
+PASS: trial3-review-1: the pin matches the report, read-only
+PASS: trial3-review-1: the job agent ran on Opus: claude-opus-5-5
+PASS: trial3-review-1: the agent got exactly the prepared prompt
+PASS: trial3-review-1: no gh or glab call (stub calls: 0)
+PASS: trial3-review-1: no message from main to the agent between the refusal and the submission (R3; main SendMessage calls: 0)
+PASS: trial3-review-1: the framework hash is the same at setup and at collect
+PASS: trial3-review-1: planted: the review of the bugged build has a finding in bin/prune-backups.sh, the file holding the bug
+PASS: trial3-review-1: audit: every job ended or submitted
+PASS: trial3-review-1: audit: stalled only where the scenario expects it
+PASS: trial3-review-1: audit: every pinned report matches its hash
+PASS: trial3-review-1: audit: every working commit has its event
+PASS: trial3-review-1: audit: every refusal followed by a submission or an end
+PASS: trial3-review-1: audit: no job with more than two refusals
+
+== table (cell, kind, result, outcome, models)
+build-1	build	FAIL	gave-up	claude-opus-5-5
+build-2	build	PASS	repaired	claude-opus-5-5
+build-3	build	FAIL	gave-up	claude-opus-5-5
+build-fix-1	build-fix	PASS	repaired	claude-opus-5-5
+build-fix-2	build-fix	FAIL	repaired	claude-opus-5-5
+build-fix-3	build-fix	PASS	repaired	claude-opus-5-5
+external-review-1	external-review	PASS	repaired	claude-opus-5-5
+external-review-2	external-review	PASS	repaired	claude-opus-5-5
+external-review-3	external-review	PASS	repaired	claude-opus-5-5
+foreign-review-1	foreign-review	PASS	repaired	claude-opus-5-5
+foreign-review-2	foreign-review	PASS	repaired	claude-opus-5-5
+foreign-review-3	foreign-review	PASS	repaired	claude-opus-5-5
+i-review	review	FAIL	repaired	claude-opus-5-5
+parked-build	build	FAIL	repaired	claude-opus-5-5
+parked-test	test	FAIL	gave-up	claude-opus-5-5
+re-review-1	re-review	PASS	repaired	claude-opus-5-5
+re-review-2	re-review	PASS	repaired	claude-opus-5-5
+re-review-3	re-review	PASS	repaired	claude-opus-5-5
+review-1	review	PASS	repaired	claude-opus-5-5
+review-2	review	PASS	repaired	claude-opus-5-5
+review-3	review	PASS	repaired	claude-opus-5-5
+test-1	test	FAIL	gave-up	claude-opus-5-5
+test-2	test	FAIL	gave-up	claude-opus-5-5
+test-3	test	FAIL	gave-up	claude-opus-5-5
+test-fix-1	test-fix	FAIL	gave-up	claude-opus-5-5
+test-fix-2	test-fix	FAIL	gave-up	claude-opus-5-5
+test-fix-3	test-fix	FAIL	gave-up	claude-opus-5-5
+test-plan-1	test-plan	PASS	repaired	claude-opus-5-5
+test-plan-2	test-plan	PASS	repaired	claude-opus-5-5
+test-plan-3	test-plan	PASS	repaired	claude-opus-5-5
+test-plan-challenge-1	test-plan-challenge	PASS	repaired	claude-opus-5-5
+test-plan-challenge-2	test-plan-challenge	PASS	repaired	claude-opus-5-5
+test-plan-challenge-3	test-plan-challenge	PASS	repaired	claude-opus-5-5
+test-plan-update-1	test-plan-update	PASS	repaired	claude-opus-5-5
+test-plan-update-2	test-plan-update	PASS	repaired	claude-opus-5-5
+test-plan-update-3	test-plan-update	PASS	repaired	claude-opus-5-5
+trial3-build-1	build	PASS	repaired	claude-opus-5-5
+trial3-review-1	review	PASS	repaired	claude-opus-5-5
+
+560 checks PASS, 23 FAIL; 38 cells, 26 green, 12 red
+
+== hook cost (ms in the hook per job-agent call: n, median, max)
+guard-framework Read: n 163, median 87, max 182
+job-agent-tools Bash: n 244, median 139, max 244
+job-agent-tools Write/Edit: n 154, median 267, max 441
+counts written to /Users/cordona/IdeaProjects/cordona/claude-code-crucible/.crucible/docs/rewrite-next/evidence/stop-hook-real/counts.md

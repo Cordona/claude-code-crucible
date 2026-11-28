@@ -1,0 +1,19 @@
+[
+  {
+    "type": "build.submitted",
+    "seq": 140,
+    "at": "2026-11-28T07:42:55Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 137,
+      "iteration": 2,
+      "agent": "an00000001",
+      "report": {
+        "path": "reports/build/137.json",
+        "sha256": "7e043df96927d0407e3d6cf9ad5456cc9c54b032292b260547043f51cdc604a3"
+      },
+      "commit": "96d1077baa6ddb060d9a5c4b134dcec7ebeac1e8"
+    }
+  }
+]

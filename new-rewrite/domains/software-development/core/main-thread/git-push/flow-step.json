@@ -1,0 +1,10 @@
+[
+  {
+    "name": "push-tree",
+    "stage": ["deliver"],
+    "does": "Pushes one tree's branch to a remote under the same name, on the human's recorded yes",
+    "propose_when": "the human wants a tree's work on a remote, to share it or open a pull request from it",
+    "ends_with": { "event": "push.made" },
+    "skills": ["git-push"]
+  }
+]

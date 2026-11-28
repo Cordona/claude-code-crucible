@@ -1,0 +1,19 @@
+PASS: cold review: job.assigned for the agent the Agent tool started
+PASS: cold review: first stop held, the edge-case with no proof
+PASS: cold review: review.submitted, iteration 1
+PASS: cold review: the pin matches, no commit
+PASS: cold review: the IDs stamped SHELL-01 and SHELL-02, the repaired proof kept
+PASS: plan challenge: test-plan.challenged, pinned, C-1 stamped
+PASS: plan challenge: the pin matches
+PASS: external review: external-review.submitted, iteration 1
+PASS: external review: the pin matches
+PASS: external review: sources stamped from the threads file, the valid finding SECURITY-01
+PASS: foreign review: foreign-review.submitted with no iteration
+PASS: foreign review: the pin matches; SHELL-01 numbered in the job; the note at its line
+PASS: foreign review: the pin
+PASS: re-review: review.submitted, iteration 1, fix round 1
+PASS: re-review: the pin matches
+PASS: re-review: fixed on the done, agree with a reason on the decline
+PASS: the reviewers changed nothing: the tree clean, its HEAD the build-fix
+PASS: no job.ended
+18 PASS, 0 FAIL

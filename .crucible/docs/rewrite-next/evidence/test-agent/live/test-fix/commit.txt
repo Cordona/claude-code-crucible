@@ -1,0 +1,15 @@
+crucible(test-fix): assert exactly three retries
+
+Effort: 20261124T174705-3d6c-live-test-agent
+Job: 17 test-fix-php-a19b0d
+Iteration: 1
+Fix-Round: 1
+Language: php
+Standards: testing, security
+
+commit 4fe85ca3459b50667e3e7b1bba996871cd25eaf3
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ tests/Upload/UploadClientTest.php | 1 +
+ 1 file changed, 1 insertion(+)

@@ -1,0 +1,12 @@
+{
+  "subagent-stop/submit-agent-work.sh": {
+    "matcher": null,
+    "timeout": 300
+  },
+  "pre-tool-use/job-agent-tools.sh": "Bash|Write|Edit",
+  "permission-request/deny-compound-commands.sh": "Bash",
+  "pre-tool-use/hand-in-at-handback.sh": {
+    "matcher": "SubagentHandback",
+    "timeout": 300
+  }
+}

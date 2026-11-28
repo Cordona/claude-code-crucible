@@ -1,0 +1,38 @@
+{
+  "behaviours": [
+    {
+      "id": "B-1",
+      "text": "a 5xx is retried up to the limit",
+      "at": "src/upload/Client.kt:42"
+    }
+  ],
+  "tests": [
+    {
+      "id": "T-1",
+      "action": "add",
+      "file": "tests/Upload/UploadClientTest.php",
+      "name": "retries a 503 three times then fails",
+      "level": "e2e",
+      "guards": [
+        "B-1"
+      ],
+      "breaks_on": "the limit is ignored"
+    }
+  ],
+  "support": [
+    {
+      "file": "tests/fixtures/503.json",
+      "what": "a captured 503 body; holds no real token"
+    }
+  ],
+  "baseline": {
+    "gate": "test",
+    "result": "pass"
+  },
+  "run": [
+    {
+      "where": "repo root",
+      "command": "./vendor/bin/phpunit --filter UploadClientTest"
+    }
+  ]
+}

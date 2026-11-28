@@ -1,0 +1,7 @@
+Waiting for the builder to finish.
+
+Message delivered; waiting for the builder to finish.
+
+1. The builder agent finished and returned `DONE`.
+2. `b3-mid.sh` printed a SendMessage call to that same builder agent with the message `JOB: …/effort/events/000012-job.dispatched.json`.
+3. I sent that message as printed, the builder resumed, and it finished again with `DONE`.

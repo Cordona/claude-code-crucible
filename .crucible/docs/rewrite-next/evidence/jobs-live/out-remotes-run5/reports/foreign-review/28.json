@@ -1,0 +1,48 @@
+{
+  "findings": [
+    {
+      "id": "TESTING-01",
+      "severity": "medium",
+      "realism": "realistic",
+      "claim": "The new --shout flag has no test: tests/greet_test.sh still checks only the plain greeting, so breaking the uppercasing or the flag parsing would leave the suite green.",
+      "suggestion": "Add an end-to-end check through the command, next to the existing one in tests/greet_test.sh, e.g. [ \"$(sh \"$(dirname \"$0\")/../bin/greet.sh\" --shout ada)\" = \"HELLO ADA\" ]. Consider also --shout with no name (expect HELLO WORLD), which covers the shift leaving no argument.",
+      "at": "tests/greet_test.sh:3",
+      "relates_to": "bin/greet.sh:5-8"
+    },
+    {
+      "id": "TESTING-02",
+      "severity": "medium",
+      "realism": "realistic",
+      "claim": "Switching the output from printf to echo changed behaviour for names with backslashes ('a\\tb' now prints a real tab under /bin/sh), and no test pins the literal output, so this went unnoticed.",
+      "suggestion": "Keep printf '%s\\n' \"${line}\" for the output, and add a test that a name holding a backslash is printed as written.",
+      "at": "bin/greet.sh:9"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "bin/greet.sh:8",
+      "text": "tr a-z A-Z only uppercases ASCII letters (shellcheck SC2018/SC2019, info); a name like 'élan' stays partly lowercase. [:lower:] [:upper:] would follow the locale.",
+      "for": "correctness"
+    },
+    {
+      "at": "bin/greet.sh:2",
+      "text": "The comment says --shout 'first prints it in capitals', which reads as if it prints twice; it prints the greeting once, in capitals.",
+      "for": "docs"
+    },
+    {
+      "at": "README.md:3",
+      "text": "The README doesn't mention the new --shout flag.",
+      "for": "docs"
+    }
+  ],
+  "notes": [
+    {
+      "text": "The existing test still passes with the change (sh tests/run.sh: all passed), and the default greeting is unchanged.",
+      "at": "tests/greet_test.sh:3"
+    },
+    {
+      "text": "The flag check sits on the left of &&, so set -e doesn't abort when the flag is absent, and ${1-} keeps set -u safe with no arguments.",
+      "at": "bin/greet.sh:5"
+    }
+  ]
+}

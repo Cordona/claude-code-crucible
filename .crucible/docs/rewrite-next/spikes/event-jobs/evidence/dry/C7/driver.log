@@ -1,0 +1,50 @@
+human (request) @0: please write the two lab scripts
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/repo --task 'please write the two lab scripts'
+main: Agent lab-builder -> ag011
+agent ag011: job 2 ends idle
+stop fact: build 4 has no review
+main: card review-no-review-4.md
+human (answer) @4: no, plan the tests first
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --fact no-review:4
+human (request) @6: plan the tests for it
+main: card test-plan-test-plan-4.md
+human (answer) @6: yes, plan them
+hot check ag011: {"ok":false,"refusal":"type-misfit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --kind test-plan --target 4
+main: Agent lab-tester -> ag021
+agent ag021: job 8 ends idle
+stop held: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --kind challenge --targets 10
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --kind challenge --targets 10
+main: Agent lab-challenger -> ag031
+agent ag031: job 12 ends idle
+stop held: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --round 11
+hot check ag011: {"ok":false,"refusal":"type-misfit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --round 11 --delivery hot --hot-agent ag021
+main: SendMessage -> ag021
+agent ag021: job 15 ends idle
+stop held: real/crucible-gate/scripts/main/show-card.sh --record plan-gate --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --accept 'Approve the plan (Recommended)' --subject plan:17 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort/cards/plan-gate-plan-17.md
+main: card plan-gate-plan-17.md
+human (answer) @17: yes, approve it
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --plan 17
+human (request) @19: now write the tests
+main: card test-test-4.md
+human (answer) @19: yes, write them
+hot check ag011: {"ok":false,"refusal":"type-misfit"}
+hot check ag031: {"ok":false,"refusal":"type-misfit"}
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --kind test --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/repo --delivery hot --hot-agent ag021
+main: SendMessage -> ag021
+agent ag021: job 21 ends idle
+stop fact: test 23 has no review
+main: card review-no-review-23.md
+human (answer) @23: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --kind code --targets 23 --kinds shell
+main: Agent lab-reviewer -> ag041
+agent ag041: job 26 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --round 25
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/effort --round 25
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --choice --subject merge:29 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort/cards/fix-choice-merge-29.md
+main: card fix-choice-merge-29.md
+human (answer) @29: fix nothing
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.Zb1WxG/effort --merge 29 --none

@@ -1,0 +1,37 @@
+{
+  "groups": [
+    {
+      "name": "TOML",
+      "inspections": [
+        {
+          "shortName": "TomlUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.toml.lang",
+          "pluginVersion": "262.8665.337",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports unresolved references in TOML files.</body></html>"
+        }
+      ]
+    },
+    {
+      "name": "JSON and JSON5",
+      "inspections": [
+        {
+          "shortName": "JsonStandardCompliance",
+          "displayName": "Compliance with JSON standard",
+          "defaultSeverity": "WARNING",
+          "pluginId": "com.intellij.modules.json",
+          "pluginVersion": "262.8665.337",
+          "language": "JSON",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports deviations from the JSON standard.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Project Default"
+}

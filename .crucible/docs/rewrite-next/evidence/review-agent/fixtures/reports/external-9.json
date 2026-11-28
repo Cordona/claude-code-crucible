@@ -1,0 +1,64 @@
+{
+  "items": [
+    {
+      "thread": "n11370",
+      "item": "F-03a",
+      "verdict": "valid",
+      "finding": {
+        "severity": "medium",
+        "realism": "realistic",
+        "at": [
+          "src/upload/Client.kt:55"
+        ],
+        "claim": "the timeout isn't applied to the retry",
+        "suggestion": "pass the timeout into retry()"
+      }
+    },
+    {
+      "thread": "n11370",
+      "item": "F-03b",
+      "verdict": "rejected",
+      "reply": "PHP 8.4 is already the floor in composer.json:12, so the compatibility point doesn't apply."
+    },
+    {
+      "thread": "n11370",
+      "item": "F-04",
+      "verdict": "rejected",
+      "reply": "The retry is capped at src/upload/Client.kt:42, so this loop ends after three tries.\nThe test T-1 covers the cap."
+    },
+    {
+      "thread": "n11371",
+      "verdict": "already-fixed",
+      "reply": "Fixed in 9f3c1e2, before this review."
+    },
+    {
+      "thread": "n11372",
+      "verdict": "valid",
+      "finding": {
+        "severity": "low",
+        "realism": "realistic",
+        "at": [
+          "src/upload/Client.kt:80"
+        ],
+        "claim": "the same missing timeout exists in the download path",
+        "suggestion": "apply the timeout there too, in a follow-up",
+        "out_of_scope": "Client.kt:80 is unchanged by this MR"
+      }
+    },
+    {
+      "thread": "n11374",
+      "verdict": "deferred",
+      "note": "prod tonight or preprod first is a release decision: yours"
+    },
+    {
+      "thread": "n11373",
+      "verdict": "answered",
+      "reply": "No migration in this change, only the new env var, which is already in the values."
+    },
+    {
+      "thread": "description",
+      "verdict": "noted",
+      "reply": "Thanks for the clear description."
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "agent": "code-tester",
+  "part": "test",
+  "input_refs": {
+    "context": {
+      "event": "context.cut",
+      "required": true
+    },
+    "spec": {
+      "event": "spec.approved"
+    },
+    "grills": {
+      "event": "grill.ended",
+      "list": true
+    },
+    "plan": {
+      "event": ["test-plan.submitted", "test-plan.updated"],
+      "required": true,
+      "named": true
+    }
+  },
+  "tree": ["use"],
+  "known_failures": true,
+  "write_scope": "tree"
+}

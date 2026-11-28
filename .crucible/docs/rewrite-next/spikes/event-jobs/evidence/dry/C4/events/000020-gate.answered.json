@@ -1,0 +1,13 @@
+{
+  "type": "gate.answered",
+  "seq": 20,
+  "at": "2026-11-24T08:29:17Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C4-1",
+  "body": {
+    "record": "fix-choice",
+    "subject": "merge:19",
+    "question": "Review merged (19): verdict changes; 2 to fix.",
+    "answer": "fix high, two rounds"
+  }
+}

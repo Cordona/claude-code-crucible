@@ -1,0 +1,15 @@
+{
+  "type": "job.assigned",
+  "seq": 27,
+  "at": "2026-11-24T08:01:28Z",
+  "by": "post-agent.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "name": "review-reviewer-ag041",
+    "tool_use_id": "tu-12",
+    "root": 4,
+    "round": 25,
+    "job": 26,
+    "agent": "ag041"
+  }
+}

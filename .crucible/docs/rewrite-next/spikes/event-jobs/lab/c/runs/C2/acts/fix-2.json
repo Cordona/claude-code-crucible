@@ -1,0 +1,11 @@
+{
+ "files": {
+  "a.sh": "#!/bin/sh\nprintf '%s\\n' \"${1:?}\"\n"
+ },
+ "report": {
+  "answers": {
+   "SHELL-02": "done"
+  },
+  "declines": {}
+ }
+}

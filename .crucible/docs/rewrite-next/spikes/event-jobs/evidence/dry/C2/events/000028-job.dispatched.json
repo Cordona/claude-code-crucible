@@ -1,0 +1,56 @@
+{
+  "type": "job.dispatched",
+  "seq": 28,
+  "at": "2026-11-24T07:59:32Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C2-1",
+  "body": {
+    "kind": "review",
+    "target": 25,
+    "tree": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.pRqbmW/repo",
+    "agent_type": "lab-reviewer",
+    "delivery": "hot",
+    "hot_agent": "ag021",
+    "slot": 3,
+    "replaces": null,
+    "approval": 21,
+    "payload": {
+      "cover": [
+        "a.sh",
+        "b.sh"
+      ],
+      "diff": "89eb1cb42bdc03cebce7b4aa1b058aca3ce42c41..4f48e16a67d1814abe485ca6fcb83fd68b36f6b3",
+      "earlier": [
+        {
+          "id": "SHELL-01",
+          "status": "open",
+          "title": "unquoted variable",
+          "answer": "done",
+          "decline": null
+        }
+      ],
+      "skipped": []
+    },
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.pRqbmW/effort/reports/0f179bf0adb1fd55.json",
+    "act": {
+      "report": {
+        "findings": [
+          {
+            "kind": "shell",
+            "file": "a.sh",
+            "severity": "high",
+            "realism": "realistic",
+            "title": "word splitting in printf"
+          }
+        ],
+        "answers": {
+          "SHELL-01": "fixed"
+        }
+      }
+    },
+    "root": 4,
+    "round": 25,
+    "job": null,
+    "agent": null
+  }
+}

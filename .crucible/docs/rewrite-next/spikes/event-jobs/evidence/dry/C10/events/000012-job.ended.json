@@ -1,0 +1,14 @@
+{
+  "type": "job.ended",
+  "seq": 12,
+  "at": "2026-11-24T08:29:51Z",
+  "by": "job-end.sh",
+  "claude_session_id": "dry-C10-2",
+  "body": {
+    "reason": "died",
+    "root": 4,
+    "round": 6,
+    "job": 8,
+    "agent": null
+  }
+}

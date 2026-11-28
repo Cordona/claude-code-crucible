@@ -1,0 +1,19 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 18,
+    "at": "2026-11-28T07:45:30Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 16,
+      "iteration": 1,
+      "agent": "r3r3r3r3r3",
+      "try": 1,
+      "lines": [
+        "findings[0] is an edge-case: add proof, the line that makes it reachable",
+        "findings[1].at x.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
+      ]
+    }
+  }
+]

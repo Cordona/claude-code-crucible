@@ -1,0 +1,42 @@
+{
+  "id": 1012,
+  "node_id": "PRR_kwDOAAAAAAAAAAAA",
+  "user": {
+    "login": "copilot-pull-request-reviewer[bot]",
+    "id": 1013,
+    "node_id": "BOT_kwDOAAAAAAAAAAAA",
+    "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/example-user-14",
+    "html_url": "https://github.com/apps/example-app",
+    "followers_url": "https://api.github.com/users/example-user-14/followers",
+    "following_url": "https://api.github.com/users/example-user-14/following{/other_user}",
+    "gists_url": "https://api.github.com/users/example-user-14/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/example-user-14/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/example-user-14/subscriptions",
+    "organizations_url": "https://api.github.com/users/example-user-14/orgs",
+    "repos_url": "https://api.github.com/users/example-user-14/repos",
+    "events_url": "https://api.github.com/users/example-user-14/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/example-user-14/received_events",
+    "type": "Bot",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "body": "Example synthetic review text.\r\n\r\nSecond synthetic paragraph.\r\n\r\n## Example heading\r\n\r\n- first example item\n- second example item\r\n\r\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\r\n\r\n| col a | col b |\n|---|---|\n| one | two |\r\n\r\n![example image](https://example.com/x.png)\r\n\r\nSee https://example.com/x\r\n\r\n<!-- example hidden marker -->",
+  "state": "COMMENTED",
+  "html_url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1012",
+  "pull_request_url": "https://api.github.com/repos/example-org/example-repo/pulls/8",
+  "author_association": "NONE",
+  "is_copilot_code_review": true,
+  "copilot_code_review_effort": "balanced",
+  "_links": {
+    "html": {
+      "href": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1012"
+    },
+    "pull_request": {
+      "href": "https://api.github.com/repos/example-org/example-repo/pulls/8"
+    }
+  },
+  "submitted_at": "2024-01-04T01:44:00Z",
+  "commit_id": "0000000000000000000000000000000000abc003"
+}

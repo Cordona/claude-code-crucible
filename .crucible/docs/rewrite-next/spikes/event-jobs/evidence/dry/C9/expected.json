@@ -1,0 +1,113 @@
+{
+  "run": "C9",
+  "compare": "per root, in order; the events of one round may interleave; \"any\" matches anything",
+  "roots": [
+    {
+      "root": "pr.review-requested",
+      "events": [
+        {
+          "type": "pr.review-requested"
+        },
+        {
+          "type": "gate.answered",
+          "step": "review",
+          "accepted": true
+        },
+        {
+          "type": "round.made",
+          "kind": "code",
+          "slots": [
+            "shell"
+          ],
+          "loop": false
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": false,
+          "round": 1
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "review.submitted",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 1
+        },
+        {
+          "type": "review.merged",
+          "round": 1,
+          "verdict": "changes",
+          "targets": 1,
+          "gaps": 0
+        },
+        {
+          "type": "gate.answered",
+          "step": "comments",
+          "accepted": true
+        },
+        {
+          "type": "pr.posted"
+        },
+        {
+          "type": "pr.head-moved"
+        },
+        {
+          "type": "gate.answered",
+          "step": "review",
+          "accepted": true
+        },
+        {
+          "type": "round.made",
+          "kind": "code",
+          "slots": [
+            "shell"
+          ],
+          "loop": false
+        },
+        {
+          "type": "job.dispatched",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "delivery": "any",
+          "replaces": false,
+          "round": 2
+        },
+        {
+          "type": "job.assigned",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 2
+        },
+        {
+          "type": "review.submitted",
+          "kind": "review",
+          "role": "lab-reviewer",
+          "round": 2
+        },
+        {
+          "type": "review.merged",
+          "round": 2,
+          "verdict": "pass",
+          "targets": 0,
+          "gaps": 0
+        },
+        {
+          "type": "gate.answered",
+          "step": "comments",
+          "accepted": true
+        },
+        {
+          "type": "pr.posted"
+        }
+      ]
+    }
+  ]
+}

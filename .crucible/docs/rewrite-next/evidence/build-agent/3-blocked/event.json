@@ -1,0 +1,18 @@
+[
+  {
+    "type": "build.submitted",
+    "seq": 21,
+    "at": "2026-11-28T07:41:04Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 19,
+      "iteration": 4,
+      "agent": "d93f170404",
+      "report": {
+        "path": "reports/build/19.json",
+        "sha256": "c1f3f638125b66cb5240bb0282fd2f40c29610feacd348474007a3da6ba8f995"
+      }
+    }
+  }
+]

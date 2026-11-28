@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "verdict": "rejected",
+      "reply": "This is by design: the spec puts --shout before the name, and other argument orders are out of scope. `greet.sh ada --shout` prints `hello ada`, the same as before the change."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "verdict": "valid",
+      "finding": {
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 runs `echo \"${line}\"` on a name taken from argv; under dash or macOS /bin/sh, `sh bin/greet.sh 'a\\tb'` prints a real tab where the old printf printed a backslash and a t.",
+        "claim": "`echo` expands backslash sequences in the name on some POSIX sh builds, so names holding a backslash print differently from before the change.",
+        "suggestion": "Replace `echo \"${line}\"` with `printf '%s\\n' \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "verdict": "deferred",
+      "note": "True: `tr a-z A-Z` uppercases ASCII only, and its ranges are unspecified outside the C locale. The author limits names to ASCII and the spec asks for no more; `tr '[:lower:]' '[:upper:]'` is the portable form if that changes."
+    },
+    {
+      "thread": "d-bot",
+      "item": "4",
+      "verdict": "rejected",
+      "reply": "The flag has to be kept in a variable: line 5 shifts `--shout` off so that `${1:-world}` reads the name, so by line 8 the argument is gone and a plain `if` on it can't work. `shout=yes|no` is the usual POSIX sh form, since sh has no booleans."
+    },
+    {
+      "thread": "d-line",
+      "item": "1",
+      "verdict": "noted"
+    },
+    {
+      "thread": "d-line",
+      "item": "2",
+      "verdict": "valid",
+      "finding": {
+        "severity": "medium",
+        "realism": "realistic",
+        "claim": "The tests cover only the plain greeting; nothing checks --shout, alone or with a name, though the spec's done-when asks for `--shout ada` to print HELLO ADA.",
+        "suggestion": "Add to tests/greet_test.sh: `[ \"$(sh .../bin/greet.sh --shout)\" = \"HELLO WORLD\" ]` and `[ \"$(sh .../bin/greet.sh --shout ada)\" = \"HELLO ADA\" ]`, using the same dirname path as line 3.",
+        "at": "tests/greet_test.sh:3"
+      }
+    },
+    {
+      "thread": "d-done",
+      "verdict": "noted"
+    }
+  ],
+  "noticed": [
+    {
+      "text": "The MR's only commit message is `Add --shout`, with no typo; the resolved typo thread matches nothing in the commit as it is now."
+    },
+    {
+      "at": "bin/greet.sh:9",
+      "text": "The bot's item 2 cites line 8 for the `echo`; in the reviewed commit it is line 9 (line 8 is the `tr`)."
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+PASS: build: job.assigned written for the agent the Agent tool started
+PASS: build: first stop held with the summary repair line
+PASS: build: one refusal counted
+PASS: build: second stop accepted, build.submitted by submission-event.sh for its agent
+PASS: build: report {path, sha256} at reports/build/<seq>.json matches the file
+PASS: build: the report is read-only and its summary fits
+PASS: build: the commit, crucible(build), Effort, Job, Iteration, Language, Standards
+PASS: build-fix: job.assigned written for its own agent
+PASS: build-fix: accepted, build-fix.submitted with iteration 1 and fix round 1
+PASS: build-fix: report {path, sha256} at reports/build-fix/<seq>.json matches the file
+PASS: build-fix: the report fixes REVIEW-01 and is read-only
+PASS: build-fix: the commit is the tree's HEAD, crucible(build-fix), with Fix-Round 1
+PASS: no job.ended; the tree clean
+13 PASS, 0 FAIL

@@ -1,0 +1,9 @@
+please write the cli
+yes, build it
+also build the installer in the same tree
+yes, build it
+then put it in repo-b
+yes, review it
+yes, review it
+fix nothing
+fix nothing

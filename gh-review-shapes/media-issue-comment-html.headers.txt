@@ -1,0 +1,12 @@
+HTTP/2.0 200 OK
+cache-control: private, max-age=60, s-maxage=60
+content-type: application/json; charset=utf-8
+etag: W/"0123456789abcdef"
+vary: Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+x-github-api-version-selected: 2022-11-28
+x-github-media-type: github.v3; param=html; format=json
+x-ratelimit-limit: 5000
+x-ratelimit-remaining: 4999
+x-ratelimit-reset: 1704067200
+x-ratelimit-resource: core
+x-ratelimit-used: 1

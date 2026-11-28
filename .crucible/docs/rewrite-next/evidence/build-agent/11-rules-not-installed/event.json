@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 50,
+    "at": "2026-11-28T07:41:15Z",
+    "by": "fault-ended.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 48,
+      "iteration": 2,
+      "agent": "b0b5ce1111",
+      "reason": "fault",
+      "step": "check",
+      "fault": "the report check of job 48 (build-php-b0b5c2) can't run: report-validation.sh: code-sketcher/submissions/build.json names the rules code-sketcher/scripts/lib/sketch-report, which aren't installed"
+    }
+  }
+]

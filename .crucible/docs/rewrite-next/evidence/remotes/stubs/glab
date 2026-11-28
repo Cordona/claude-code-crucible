@@ -1,0 +1,14 @@
+#!/bin/sh
+# A stand-in for glab: answers the calls remotes makes from the hand-written
+# GitLab fixtures (STUB_GITLAB), and logs each call to STUB_LOG. STUB_FAIL=mr
+# makes the merge request call fail as glab does.
+set -eu
+printf '%s\n' "$*" >>"${STUB_LOG:-/dev/null}"
+case "$*" in
+	*"/discussions"*) cat "${STUB_GITLAB}/discussions.json" ;;
+	*"/versions"*) cat "${STUB_GITLAB}/versions.json" ;;
+	*"/merge_requests/"*)
+		[ "${STUB_FAIL:-}" != mr ] || { echo 'glab: 404 Not Found' >&2; exit 1; }
+		cat "${STUB_GITLAB}/mr.json" ;;
+	*) echo "glab stub: unexpected call: $*" >&2; exit 9 ;;
+esac

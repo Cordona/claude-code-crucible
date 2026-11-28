@@ -1,0 +1,11 @@
+{
+ "files": {},
+ "report": {
+  "answers": {
+   "SHELL-02": "declined"
+  },
+  "declines": {
+   "SHELL-02": "the loop words are fixed names"
+  }
+ }
+}

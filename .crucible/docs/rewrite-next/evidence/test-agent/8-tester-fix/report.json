@@ -1,0 +1,21 @@
+{
+  "summary": "assert the 4xx rows by status, not by message",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    },
+    {
+      "gate": "mutation",
+      "result": "pass",
+      "note": "8 breaks, all caught"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "TEST-01",
+      "status": "done",
+      "note": "the rows assert the status code"
+    }
+  ]
+}

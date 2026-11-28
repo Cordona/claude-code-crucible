@@ -1,0 +1,15 @@
+{
+  "type": "fact.answered",
+  "seq": 6,
+  "at": "2026-11-24T08:01:13Z",
+  "by": "choose.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "fact": "no-review:4",
+    "answer": "no",
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

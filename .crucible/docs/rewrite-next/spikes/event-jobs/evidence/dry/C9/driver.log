@@ -1,0 +1,27 @@
+human (request) @0: please review pull request pr-9
+main: remote.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/effort --request --pr pr-9
+stop fact: review request 1 has no review
+main: card review-review-requested-1.md
+human (answer) @1: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --kind code --targets 1 --kinds shell
+main: Agent lab-reviewer -> ag011
+agent ag011: job 4 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/effort --round 3
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/effort --round 3
+stop held: real/crucible-gate/scripts/main/show-card.sh --record comments --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --accept 'Post the comments (Recommended)' --subject merge:7 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort/cards/comments-merge-7.md
+main: card comments-merge-7.md
+human (answer) @7: yes, post them
+main: remote.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --merge 7
+remote @9: the author pushes to pr-9
+stop fact: head move 10 has no re-review
+main: card review-head-moved-10.md
+human (answer) @10: yes, look at their push
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --kind code --targets 10 --kinds shell
+main: Agent lab-reviewer -> ag021
+agent ag021: job 13 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/effort --round 12
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.vFC7pH/effort --round 12
+stop held: real/crucible-gate/scripts/main/show-card.sh --record comments --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --accept 'Post the comments (Recommended)' --subject merge:16 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort/cards/comments-merge-16.md
+main: card comments-merge-16.md
+human (answer) @16: yes, post them
+main: remote.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.vFC7pH/effort --merge 16

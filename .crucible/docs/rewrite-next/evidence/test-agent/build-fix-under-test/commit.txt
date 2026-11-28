@@ -1,0 +1,18 @@
+crucible(build-fix): stop retrying a 429
+
+stop retrying a 429
+
+Effort: 20261128T074304-4337-upload-retries
+Job: 95 build-fix-php-a0b1c2
+Iteration: 1
+Fix-Round: 1
+Language: php
+Framework: laravel
+Standards: testing, security
+
+commit b1f05267634d6a594e398f911120ee9d779a4461
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ app/Upload/Client.php | 1 +
+ 1 file changed, 1 insertion(+)

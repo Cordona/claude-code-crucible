@@ -1,0 +1,6 @@
+Start 1 agents with the Agent tool, each in the background (run_in_background: true), each with subagent_type "code-reviewer" and description "review job", one for each prompt below, with exactly that prompt (the line after "- prompt ...:"):
+
+- prompt review:
+JOB: 26. KIND: review. TREE: /Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/worktrees/upload. REPORT: /Users/Shared/crucible-sandbox/review-agent-live/run/space/efforts/20261124T174752-b62d-live-review-agent/reports/review/26.json. REPORT_JSON: {"fixes": [{"id": "SHELL-01", "status": "fixed"}, {"id": "SHELL-02", "status": "agree", "reason": "b.sh documents word input in its header; the decline holds"}]}
+
+Then wait until every one of them has finished; you will be notified. Do nothing else: do not read, write or run anything yourself. When all have finished, reply with one line: DONE.

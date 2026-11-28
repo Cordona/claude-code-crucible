@@ -1,0 +1,3 @@
+Rework the test plan at @PLAN@, for the build in this tree (the change from @BASE@ to @HEAD@). Its review challenged it:
+
+@CHALLENGES@

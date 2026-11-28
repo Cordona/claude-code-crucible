@@ -1,0 +1,16 @@
+{
+  "summary": "answer the finding sent back on b.sh",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "CLEAN-CODE-01",
+      "status": "declined",
+      "reason": "the word input is b.sh's documented contract"
+    }
+  ]
+}

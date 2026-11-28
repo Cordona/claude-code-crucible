@@ -1,0 +1,8 @@
+kinds shell
+repo repo
+pr-open pr-1 repo threads.json
+fetch pr-1
+settle
+expect any(.[]; .type == "loop.ended" and .body.reason == "clean")
+expect any(.[]; .type == "pr.posted" and all(.body.items[]; .kind == "reply"))
+expect ([.[] | select(.root != null) | .root] | unique | length) == 1

@@ -9,7 +9,10 @@
     "additionalProperties": false,
     "required": ["type", "detail"],
     "properties": {
-      "type": { "enum": ["FIX", "TRACK_FOLLOWUP"] },
+      "type": {
+        "$comment": "Documented 2-value SUBSET of external-review-ledger.schema.json's disposition enum — the compounding-eligibility rule (which dispositions may take a secondary action) is owned by the review-arbiter agent + flow-external-review. $ref is not used here precisely because the secondary-action domain is narrower than the full disposition set.",
+        "enum": ["FIX", "TRACK_FOLLOWUP"]
+      },
       "detail": { "type": "string", "minLength": 1 }
     }
   }

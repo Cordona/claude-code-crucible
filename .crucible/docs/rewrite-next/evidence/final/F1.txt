@@ -1,0 +1,32 @@
+hash-start e9e6a1d2184b0ae65eacad698aba1bc635cdbb2568ff144423c96f04fe5ddd81
+build-agent/run.sh: exit 0 | === 395 PASS, 0 FAIL
+test-agent/run.sh: exit 0 | === 110 PASS, 0 FAIL
+review-agent/run.sh: exit 0 | === 112 PASS, 0 FAIL
+agent-jobs/run.sh: exit 0 | === 69 PASS, 0 FAIL
+adaptive-flow-run.sh: exit 0 | 
+context-run.sh: exit 0 | 
+dev-base-run.sh: exit 0 | === 67 PASS, 0 FAIL
+effort-run.sh: exit 0 | 
+events-run.sh: exit 0 | 
+fixes-run.sh: exit 0 | 
+gate-answers-run.sh: exit 0 | 
+git-commit-run.sh: exit 0 | === 103 PASS, 0 FAIL
+git-identity-run.sh: exit 0 | 
+git-mount-run.sh: exit 0 | === 165 PASS, 0 FAIL
+git-push-run.sh: exit 0 | === 85 PASS, 0 FAIL
+git-worktree-run.sh: exit 0 | === 302 PASS, 0 FAIL
+grill-run.sh: exit 0 | 
+internals-guard-run.sh: exit 0 | === 64 PASS, 0 FAIL
+rollback-run.sh: exit 0 | === 22 PASS, 0 FAIL
+spec-run.sh: exit 0 | 
+installed-run-notracker: exit 0 | 0 installed-lines
+help-check: exit 0 lines        0
+hash-end e9e6a1d2184b0ae65eacad698aba1bc635cdbb2568ff144423c96f04fe5ddd81
+
+Transcript runners (no PASS line) compared with their saved transcripts:
+- effort, gate-answers, grill: identical.
+- events, spec, context, adaptive-flow, git-identity: only volatile values differ (dates, effort IDs, content hashes, generated test-key IDs).
+- fixes: "empty settings: 35 → 36 lines missing", because install now requires one more entry (the PermissionRequest hook). Expected.
+- installed (tracker lines removed): install-check reports "installed"; the differences are the removed live GitHub reads.
+Tracker stubs (gh, glab) were first on PATH; no tracker was called.
+F1 result: all green on frozen hash e9e6a1d2… (start = end).

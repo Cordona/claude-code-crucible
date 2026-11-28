@@ -1,0 +1,9 @@
+{
+  "summary": "cap the upload retries at three",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "summary": "add a retry limit and a backoff to the upload client for 5xx",
+  "gates": [ { "gate": "lint", "result": "not_run" } ],
+  "verification": "ran it by hand"
+}

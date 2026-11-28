@@ -1,0 +1,1 @@
+lab/merge.sh --effort "$EFFORT" --round 6 >/dev/null && lab/view.sh --effort "$EFFORT" | jq -c 'map(select(.type=="review.merged")) | last | {gaps: .body.gaps, verdict: .body.verdict}'

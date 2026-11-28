@@ -1,0 +1,9 @@
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42
+api --hostname gitlab.example.test --paginate projects/acme%2Fgreet/merge_requests/42/discussions?per_page=100
+api --hostname gitlab.example.test --paginate projects/acme%2Fgreet/merge_requests/42/versions?per_page=100
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42
+api --hostname gitlab.example.test --paginate projects/acme%2Fgreet/merge_requests/42/discussions?per_page=100
+api --hostname gitlab.example.test --paginate projects/acme%2Fgreet/merge_requests/42/versions?per_page=100

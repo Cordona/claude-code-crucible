@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "name": "TOML",
+      "inspections": [
+        {
+          "shortName": "TomlUnresolvedReference",
+          "displayName": "Unresolved reference",
+          "defaultSeverity": "ERROR",
+          "pluginId": "org.toml.lang",
+          "pluginVersion": "262.8665.337",
+          "language": "TOML",
+          "isGlobalTool": false,
+          "enabled": true,
+          "description": "<html><body>Reports unresolved references in TOML files.</body></html>"
+        }
+      ]
+    }
+  ],
+  "profile": "Nothing Fired"
+}

@@ -1,0 +1,39 @@
+human (request) @0: please write the cli
+main: card build-build.md
+human (answer) @0: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/repo --task 'please write the cli'
+main: Agent lab-builder -> ag011
+human (request) @3: also build the installer in the same tree
+main: card build-build.md
+human (answer) @3: yes, build it
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/repo --task 'also build the installer in the same tree'
+refused: {"ok":false,"refusal":"tree-busy"}
+human (request) @4: then put it in repo-b
+main: job-dispatch.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --kind build --tree /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/repo-b --task 'also build the installer in the same tree'
+main: Agent lab-builder -> ag021
+agent ag011: job 2 ends idle
+stop fact: build 7 has no review
+main: card review-no-review-7.md
+human (answer) @7: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --kind code --targets 7 --kinds shell
+main: Agent lab-reviewer -> ag031
+agent ag021: job 5 ends idle
+stop fact: build 12 has no review
+main: card review-no-review-12.md
+human (answer) @12: yes, review it
+main: round.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --kind code --targets 12 --kinds shell
+main: Agent lab-reviewer -> ag041
+agent ag031: job 10 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/effort --round 9
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/effort --round 9
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --choice --subject merge:18 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort/cards/fix-choice-merge-18.md
+main: card fix-choice-merge-18.md
+human (answer) @18: fix nothing
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --merge 18 --none
+agent ag041: job 15 ends idle
+stop held: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/effort --round 14
+main: merge.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.cvFr0n/effort --round 14
+stop held: real/crucible-gate/scripts/main/show-card.sh --record fix-choice --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --choice --subject merge:22 /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort/cards/fix-choice-merge-22.md
+main: card fix-choice-merge-22.md
+human (answer) @22: fix nothing
+main: choose.sh --effort /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort --merge 22 --none

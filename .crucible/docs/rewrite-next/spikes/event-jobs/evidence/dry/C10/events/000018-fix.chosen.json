@@ -1,0 +1,23 @@
+{
+  "type": "fix.chosen",
+  "seq": 18,
+  "at": "2026-11-24T08:29:55Z",
+  "by": "choose.sh",
+  "claude_session_id": "dry-C10-3",
+  "body": {
+    "merge": 16,
+    "ids": [
+      "SHELL-01"
+    ],
+    "cap": 1,
+    "query": {
+      "severities": [
+        "high"
+      ]
+    },
+    "root": 4,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

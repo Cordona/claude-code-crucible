@@ -1,0 +1,18 @@
+[
+  {
+    "type": "foreign-review.submitted",
+    "seq": 74,
+    "at": "2026-11-28T07:45:48Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-ra",
+    "body": {
+      "job": 71,
+      "iteration": 1,
+      "agent": "f1f1f1f1f1",
+      "report": {
+        "path": "reports/foreign-review/71.json",
+        "sha256": "8f7391a556470081dbf60c40f7ef951c4edfbcfcb1baca6bad8e6f0249777f99"
+      }
+    }
+  }
+]

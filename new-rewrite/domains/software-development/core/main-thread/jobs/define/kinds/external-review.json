@@ -1,0 +1,36 @@
+{
+  "agent": "code-reviewer",
+  "part": "review",
+  "input_refs": {
+    "context": {
+      "event": "context.cut",
+      "required": true
+    },
+    "spec": {
+      "event": "spec.approved"
+    },
+    "grills": {
+      "event": "grill.ended",
+      "list": true
+    },
+    "review": {
+      "event": "remote-review.fetched",
+      "required": true,
+      "named": true
+    },
+    "change": {
+      "event": "remote-change.fetched",
+      "via": "review"
+    },
+    "earlier": {
+      "event": "external-review.submitted",
+      "same": "change"
+    }
+  },
+  "tree": [
+    "use"
+  ],
+  "range": "change",
+  "write_scope": "report",
+  "one_standard": true
+}

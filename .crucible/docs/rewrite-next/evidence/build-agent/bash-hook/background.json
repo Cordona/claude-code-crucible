@@ -1,0 +1,1 @@
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Run this command in the foreground, without run_in_background: an agent working on a job waits for each command it starts."}}

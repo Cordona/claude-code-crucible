@@ -1,0 +1,15 @@
+{
+  "summary": "never retry a 4xx",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "REVIEW-01",
+      "status": "done"
+    }
+  ]
+}

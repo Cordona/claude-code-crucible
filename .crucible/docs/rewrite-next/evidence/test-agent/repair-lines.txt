@@ -1,0 +1,98 @@
+plan: a bad or duplicate id
+  exit 1: tests[1].id "T1" must be T- and a number, unique in the plan
+plan: a bad action
+  exit 1: tests[0].action "extend" is not add, modify or remove
+plan: a field its action requires is missing
+  exit 1: tests[1] modifies a test: add keeps, what it must still assert
+plan: why is required on a unit or integration add
+  exit 1: tests[0] adds a test: add why, why it isn't end to end
+plan: guards naming an unknown behaviour
+  exit 1: tests[0].guards names B-9, which isn't a behaviour in this plan
+plan: a bad level
+  exit 1: tests[0].level "component" is not e2e, integration or unit
+plan: no tests and no no_tests
+  exit 1: the plan has no tests: add tests, or no_tests saying why
+plan: no_tests together with tests
+  exit 1: the plan has both tests and no_tests: keep one
+plan: behaviours missing
+  exit 1: list the behaviours the change has, even with no_tests
+plan: a baseline that breaks the gate rules
+  exit 1: baseline fails on UploadClientTest::testA, which isn't a known failure: add a gate_red blocker, or a modify that repairs it
+plan: a known baseline failure needs nothing
+  exit 0: (accepted)
+plan: a baseline failure a modify repairs
+  exit 0: (accepted)
+plan: an untested entry with a bad proof
+  exit 1: untested[0].proof must be a test, a path:line, or unproven
+plan: an untested entry with a bad recommend
+  exit 1: untested[0].recommend "later" is not test or skip
+plan: an untested entry missing a field
+  exit 1: untested[0] needs risk
+plan: human-read text naming an internal id
+  exit 1: tests[0].why names T-2: say it in words; the IDs are for scripts
+plan: a missing at
+  exit 1: behaviours[0] needs at: the file and line
+plan: an at past the end of its file
+  exit 1: behaviours[0].at app/Upload/Auth.php:300 is past the end of the file (30 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them
+plan: run missing
+  exit 1: add run: where and how to run these tests
+plan: a blank command
+  exit 1: add run: where and how to run these tests
+plan: the tree changed in a plan job
+  exit 1: a plan job changes nothing in the tree: undo the change to tests/Upload/X.php
+plan: remove covered by nothing, a support folder
+  exit 0: (accepted)
+plan: a modify with no guards (a pure repair)
+  exit 0: (accepted)
+rework: a challenge with no answer
+  exit 1: answer C-2: applied or cannot
+rework: cannot without a reason
+  exit 1: answers[1] is cannot: add a reason
+rework: an applied add challenge with no new test
+  exit 1: C-1 asked to add a test and is applied, but no new T- test was added
+rework: an applied add challenge with a new test
+  exit 0: (accepted)
+rework: from the human's words, no answers
+  exit 0: (accepted)
+plan: a noticed instruction
+  exit 0: (accepted)
+plan: a noticed entry with a bad kind
+  exit 1: noticed[0].kind "todo" is not secret or instruction
+plan: a noticed text naming an ID
+  exit 1: noticed[0].text names T-1: say it in words; the IDs are for scripts
+plan: a noticed at past the end of its file
+  exit 1: noticed[0].at app/Upload/Auth.php:300 is past the end of the file (30 lines); write it as a file and line, such as `bin/x.sh:42`, or a JSON array of them, or leave `at` out when it isn't in a file
+rework: a noticed instruction
+  exit 0: (accepted)
+rework: a noticed entry with a bad kind
+  exit 1: noticed[0].kind "todo" is not secret or instruction
+test: a file not in the plan that the build changed
+  exit 1: you changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker
+test: a file neither in the plan nor in decisions
+  exit 1: you changed tests/Upload/OtherTest.php, which isn't in the approved plan: undo it, or add a decisions entry at it saying why
+test: a file outside the plan, explained in decisions
+  exit 0: (accepted)
+test: a planned file the build also changed, and a support folder
+  exit 0: (accepted)
+test: a planned test not touched
+  exit 1: the approved plan adds a test in tests/Upload/UploadClientTest.php, which didn't change: write it, or add a cannot blocker
+test: a production_bug at one of the plan's files
+  exit 1: blockers[0] is production_bug: at must be the production line that is wrong, not a test or support file
+test: a production_bug anywhere else, another repo included
+  exit 0: (accepted)
+test: a bad blocker kind
+  exit 1: blockers[0].kind "flaky" is not gate_red, cannot or production_bug
+test: the mutation gate missing
+  exit 1: list the mutation gate: pass with a note, fail with what survived, or not_run with why
+test: a failed mutation gate needs no blocker
+  exit 0: (accepted)
+test: an unknown key lists the seven keys
+  exit 1: unknown key "plan"; the keys are summary, gates, decisions, impact, noticed, questions, blockers
+test-fix: a tester's fix lists the mutation gate too
+  exit 1: list the mutation gate: pass with a note, fail with what survived, or not_run with why
+test-fix: a tester's fix is the plan as scope too
+  exit 1: you changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker
+test-fix: a tester's fix with done and mutation, accepted
+  exit 0: (accepted)
+plan: a noticed entry with no at is accepted
+  exit 0: (accepted)

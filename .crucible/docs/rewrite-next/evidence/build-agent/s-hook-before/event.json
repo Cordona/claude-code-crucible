@@ -1,0 +1,17 @@
+[
+  {
+    "type": "job.ended",
+    "seq": 88,
+    "at": "2026-11-28T07:41:37Z",
+    "by": "fault-ended.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 86,
+      "iteration": 1,
+      "agent": "fh00000001",
+      "reason": "fault",
+      "step": "hook",
+      "fault": "submit-agent-work.sh ended unexpectedly at its check step for job 86 (build-php-fh0000)"
+    }
+  }
+]

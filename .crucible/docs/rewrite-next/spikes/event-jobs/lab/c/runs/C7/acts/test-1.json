@@ -1,0 +1,6 @@
+{
+ "files": {
+  "t/a.bats": "@test 'a echoes' { run sh a.sh x; [ \"$output\" = x ]; }\n"
+ },
+ "report": {}
+}

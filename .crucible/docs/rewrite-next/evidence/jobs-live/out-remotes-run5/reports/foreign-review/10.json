@@ -1,0 +1,42 @@
+{
+  "findings": [
+    {
+      "id": "CLEAN-CODE-01",
+      "severity": "high",
+      "realism": "edge-case",
+      "proof": "bin/greet.sh:9 passes the user's name to echo; under dash (/bin/sh on Debian/Ubuntu) `greet.sh 'a\\tb'` now prints a real tab, and `greet.sh 'x\\c'` prints `hello x` with no newline. Before this change printf printed both literally.",
+      "claim": "Swapping printf for echo makes /bin/sh read backslash escapes in the name, so names with a backslash print wrong even without --shout.",
+      "suggestion": "Print with printf and skip the captured variable. This also keeps trailing newlines that $(...) would strip:\nif [ \"${shout}\" = yes ]; then\n  printf 'hello %s\\n' \"${name}\" | tr '[:lower:]' '[:upper:]'\nelse\n  printf 'hello %s\\n' \"${name}\"\nfi",
+      "at": "bin/greet.sh:9"
+    },
+    {
+      "id": "CLEAN-CODE-02",
+      "severity": "low",
+      "realism": "realistic",
+      "claim": "`tr a-z A-Z` only uppercases ASCII, so `--shout é` prints `HELLO é` (shellcheck SC2018/SC2019).",
+      "suggestion": "Use `tr '[:lower:]' '[:upper:]'`.",
+      "at": "bin/greet.sh:8"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "bin/greet.sh:2",
+      "text": "The comment's \"--shout first prints it in capitals\" reads as if it prints twice. Something like \"with --shout as the first argument, prints it in capitals\" is clearer."
+    },
+    {
+      "at": "tests/greet_test.sh:3",
+      "text": "There is no test for --shout. The only test checks the plain greeting.",
+      "for": "tests"
+    }
+  ],
+  "notes": [
+    {
+      "text": "Under set -eu, the --shout check on the left of && does not abort the script when it is false, and ${1-} means it is safe with no arguments.",
+      "at": "bin/greet.sh:5"
+    },
+    {
+      "text": "The script uses only POSIX sh features, which fits its #!/bin/sh shebang.",
+      "at": "bin/greet.sh:1"
+    }
+  ]
+}

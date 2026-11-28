@@ -1,0 +1,2 @@
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Your report <S>/space/efforts/20261128T074056-af5d-upload-retries/reports/build/148.json was not accepted. Repair each line, then hand back again; a second refusal ends this job.\nunknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers\ngates[0] is not_run: add a note saying why"}}
+exit 0

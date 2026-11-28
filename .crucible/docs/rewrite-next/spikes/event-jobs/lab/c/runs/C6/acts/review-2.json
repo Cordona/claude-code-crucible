@@ -1,0 +1,14 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "install.sh",
+    "severity": "medium",
+    "realism": "realistic",
+    "title": "unquoted target"
+   }
+  ],
+  "answers": {}
+ }
+}

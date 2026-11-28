@@ -1,0 +1,15 @@
+{
+  "type": "gate.answered",
+  "seq": 20,
+  "at": "2026-11-24T08:01:23Z",
+  "by": "record-gate-answer.sh",
+  "claude_session_id": "dry-C7-1",
+  "body": {
+    "record": "test",
+    "subject": "test:4",
+    "question": "Tests for build 4 in /var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T//dry.Zb1WxG/repo.",
+    "accept": "Write the tests (Recommended)",
+    "answer": "Write the tests (Recommended)",
+    "accepted": true
+  }
+}

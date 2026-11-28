@@ -1,0 +1,28 @@
+{
+  "type": "round.made",
+  "seq": 12,
+  "at": "2026-11-24T08:01:54Z",
+  "by": "round.sh",
+  "claude_session_id": "dry-C9-1",
+  "body": {
+    "kind": "code",
+    "targets": [
+      10
+    ],
+    "base": "07c200a7949476b56efc8577d4b1572d5736e7d5",
+    "head": "dc1ca8cd08127d3587d72c55ad52eb405dc3b8a8",
+    "slots": [
+      {
+        "slot": 1,
+        "kind": "shell",
+        "agent_type": "lab-reviewer",
+        "cover": []
+      }
+    ],
+    "loop": null,
+    "root": 1,
+    "round": null,
+    "job": null,
+    "agent": null
+  }
+}

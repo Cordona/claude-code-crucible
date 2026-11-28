@@ -1,0 +1,234 @@
+#!/usr/bin/env sh
+# Opens one chosen builder seat: a worktree of the main checkout on its own
+# branch at the seat's base, at the path its seat.chosen event records, the checkout's
+# dependency folders copied into it, and the seat's status set to open. It
+# only runs seats.sh, worktree-create.sh and worktree-setup.sh in order; a
+# failure after the worktree exists removes it and its branch again and
+# leaves the seat chosen, so a rerun starts clean.
+set -eu
+# worktree-create.sh checks the worktree out under the caller's umask.
+caller_umask=$(umask)
+umask 077
+
+readonly PROG='seat-open.sh'
+# Every worker branch is crucible/<effort folder name>/<worktree letter>.
+readonly BRANCH_PREFIX='crucible'
+# The C locale keeps the shell byte-wise.
+LC_ALL=C
+export LC_ALL
+GIT_TERMINAL_PROMPT=0
+export GIT_TERMINAL_PROMPT
+
+usage() {
+	cat <<EOF
+usage: sh ${PROG} --effort DIR --seat S
+       sh ${PROG} --help | -h
+
+Opens a chosen builder seat: its worktree, cut from the seat's base at
+the path its seat.chosen event records, on the new branch
+${BRANCH_PREFIX}/<effort folder name>/<worktree folder name>, holds copies of
+the checkout's dependency folders, and the seat is open (seat.opened). A
+failure after the worktree exists removes it and its branch, so the seat
+stays chosen and a rerun starts clean, unless removing fails too (stderr
+names what to remove). The main checkout's working tree and other branches
+are never touched. Nothing else is left behind (a SIGKILL aside).
+
+--effort DIR  absolute path of the effort folder
+--seat S      a seat seats.sh choose recorded, status chosen
+
+stdout: the seat's JSON line, as seats.sh get prints it, for the flow
+stderr on a failed step: its own lines, then one line naming it
+
+exit codes:
+  0  the seat is open; read stdout
+  2  wrong command line; fix what stderr names
+  3  refused input; show the human stderr, and stop
+  4  a dependency or a step failed; show the human stderr, and stop
+  5  refused by state, nothing changed; show the human stderr, and stop
+
+needs: POSIX sh, git 2.26+, jq 1.6+; ../worktree/worktree-create.sh and
+../worktree/worktree-setup.sh from this script's folder; procedure-seat-run's
+seats/seats.sh beside procedure-git-worktree
+EOF
+}
+
+warn() {
+	printf '%s: %s\n' "${PROG}" "$1" >&2
+}
+
+die() {
+	warn "$2"
+	exit "$1"
+}
+
+usage_error() {
+	warn "$1"
+	printf "Try 'sh %s --help'.\n" "${PROG}" >&2
+	exit 2
+}
+
+# Prints $1 with each control character as "?", so a value can't split a stderr line.
+printable() {
+	printf '%s' "$1" | tr '[:cntrl:]' '?'
+}
+
+# Sets $option_value from "$1 $2", refusing a repeat or a missing value.
+take_value() {
+	[ -n "$3" ] || usage_error "$1 needs a value; expected $1 $4"
+	[ -z "$2" ] || usage_error "$1 given twice; expected one"
+	option_value=$3
+}
+
+parse_args() {
+	effort='' seat=''
+	while [ "$#" -gt 0 ]; do
+		case $1 in
+			-h | --help)
+				usage
+				exit 0
+				;;
+			--effort)
+				take_value "$1" "${effort}" "${2-}" DIR
+				effort=${option_value}
+				;;
+			--seat)
+				take_value "$1" "${seat}" "${2-}" S
+				seat=${option_value}
+				;;
+			*)
+				shown_option=$(printable "$1")
+				usage_error "unknown option: ${shown_option}; expected --effort, --seat or --help"
+				;;
+		esac
+		shift 2
+	done
+	[ -n "${effort}" ] || usage_error '--effort missing; expected --effort DIR'
+	[ -n "${seat}" ] || usage_error '--seat missing; expected --seat S'
+}
+
+script_dir() {
+	case $0 in
+		*/*) printf '%s' "${0%/*}" ;;
+		*) printf '.' ;;
+	esac
+}
+
+load_dependencies() {
+	command -v git >/dev/null 2>&1 || die 4 'git not found; expected git 2.26+ on PATH'
+	command -v jq >/dev/null 2>&1 || die 4 'jq not found; expected jq 1.6+ on PATH'
+	own_path=$(script_dir)
+	own_dir=$(cd -P -- "${own_path}" && pwd -P) || die 4 "this script's folder could not be entered"
+	for step in ../worktree/worktree-create.sh ../worktree/worktree-setup.sh ../../../procedure-seat-run/scripts/seats/seats.sh; do
+		[ -f "${own_dir}/${step}" ] || {
+			shown_step=$(printable "${own_dir}/${step}")
+			whole="the procedure's scripts folders whole"
+			case ${step} in ../../../procedure-seat-run/*) whole='procedure-seat-run installed beside procedure-git-worktree' ;; *) ;; esac
+			die 4 "${shown_step} not found; expected ${whole}"
+		}
+	done
+}
+
+# Sets effort_dir (the physical effort folder, whose name the branch takes)
+# and effort without trailing slashes, as seats.sh takes it.
+check_inputs() {
+	shown_effort=$(printable "${effort}")
+	case ${effort} in
+		/*) ;;
+		*) die 3 "--effort ${shown_effort} is not absolute; expected an absolute path" ;;
+	esac
+	effort_dir=$(cd -P -- "${effort}" 2>/dev/null && pwd -P) ||
+		die 3 "--effort ${shown_effort} is not a folder; expected the effort folder"
+	while [ "${effort}" != "${effort%/}" ]; do effort=${effort%/}; done
+}
+
+# Sets repo, base and worktree from the chosen seat, before anything is
+# created; seats.sh's own lines say why it refused.
+read_chosen_seat() {
+	step_rc=0
+	seat_json=$(sh "${own_dir}/../../../procedure-seat-run/scripts/seats/seats.sh" get --effort "${effort}" --seat "${seat}") || step_rc=$?
+	shown_seat=$(printable "${seat}")
+	case ${step_rc} in
+		0) ;;
+		6) die 3 "seat ${shown_seat} is not in ${shown_effort}; expected a seat seats.sh choose recorded" ;;
+		2 | 3) die 3 "seats.sh get refused seat ${shown_seat} (exit ${step_rc}); expected a seat in ${shown_effort}" ;;
+		*) die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above); expected the seat's JSON line; fix what it names and rerun" ;;
+	esac
+	fields=$(printf '%s\n' "${seat_json}" | jq -r '.status // "", .repo // "", .base // "", .worktree // ""') ||
+		die 4 "jq could not read the seat seats.sh get printed; expected one JSON line; try sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+	status='' repo='' base='' worktree=''
+	{
+		IFS= read -r status || :
+		IFS= read -r repo || :
+		IFS= read -r base || :
+		IFS= read -r worktree || :
+	} <<EOF
+${fields}
+EOF
+	[ "${status}" = chosen ] || die 5 "seat ${shown_seat} is ${status}; expected a chosen seat: only a chosen seat has no worktree yet"
+}
+
+# Runs step $1, a path from this script's folder, with the rest as
+# arguments; its stdout in step_out, its exit code in step_rc; its stderr
+# passes through.
+run_step() {
+	step_rc=0
+	step_script=$1
+	shift
+	step_out=$(sh "${own_dir}/${step_script}" "$@") || step_rc=$?
+}
+
+# Exits naming failed step $1: 3 when it refused its input, else 4.
+step_failed() {
+	case ${step_rc} in
+		3) step_exit=3 ;;
+		*) step_exit=4 ;;
+	esac
+	remove_worktree
+	die "${step_exit}" "$1 failed (exit ${step_rc}; its stderr is above)${removal_note}; fix what it names and rerun"
+}
+
+# Removes the worktree and the branch this run created, if any, and sets
+# removal_note.
+remove_worktree() {
+	removal_note=''
+	[ "${created}" = yes ] || return 0
+	shown_worktree=$(printable "${worktree}")
+	if git -C "${repo}" worktree remove --force "${worktree}" >/dev/null 2>&1 &&
+		git -C "${repo}" -c core.hooksPath=/dev/null update-ref -d "refs/heads/${branch}" >/dev/null 2>&1; then
+		removal_note="; removed the worktree ${shown_worktree} and its branch ${branch} so a rerun starts clean; the seat is still chosen"
+	else
+		removal_note="; could not remove the worktree ${shown_worktree} and its branch ${branch}: remove them with git worktree remove --force and git branch -D; the seat is still chosen"
+	fi
+	created=no
+}
+
+# Sets branch from the effort folder's name and the worktree folder's name.
+name_branch() {
+	worktree_letter=${worktree##*/}
+	branch="${BRANCH_PREFIX}/${effort_dir##*/}/${worktree_letter}"
+}
+
+create_worktree() {
+	mkdir -p -- "${worktree%/*}" || die 4 "could not create the worktrees folder in ${shown_effort}"
+	name_branch
+	umask "${caller_umask}"
+	run_step ../worktree/worktree-create.sh --repo "${repo}" --base "${base}" --path "${worktree}" --branch "${branch}"
+	umask 077
+	[ "${step_rc}" -eq 0 ] || step_failed 'worktree-create.sh'
+	created=yes
+}
+
+parse_args "$@"
+load_dependencies
+created=no
+check_inputs
+read_chosen_seat
+create_worktree
+run_step ../worktree/worktree-setup.sh --from "${repo}" --to "${worktree}"
+[ "${step_rc}" -eq 0 ] || step_failed 'worktree-setup.sh'
+run_step ../../../procedure-seat-run/scripts/seats/seats.sh opened --effort "${effort}" --seat "${seat}"
+[ "${step_rc}" -eq 0 ] || step_failed 'seats.sh opened'
+run_step ../../../procedure-seat-run/scripts/seats/seats.sh get --effort "${effort}" --seat "${seat}"
+[ "${step_rc}" -eq 0 ] ||
+	die 4 "seats.sh get failed (exit ${step_rc}; its stderr is above) after the seat was opened: the seat is open; expected its JSON line; run sh procedure-seat-run's scripts/seats/seats.sh get --effort ${shown_effort} --seat ${shown_seat}"
+printf '%s\n' "${step_out}"

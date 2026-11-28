@@ -1,0 +1,1 @@
+lab/round.sh --effort "$EFFORT" --kind code --targets 14 >/dev/null && lab/view.sh --effort "$EFFORT" | jq -c 'map(select(.type=="round.made")) | last | [.body.slots[] | {kind, cover}]'

@@ -1,0 +1,21 @@
+{
+  "type": "build.submitted",
+  "seq": 7,
+  "at": "2026-11-24T09:06:12Z",
+  "by": "agent-stop.sh",
+  "claude_session_id": "dry-C6-1",
+  "body": {
+    "commit": "6a9f4a7f2e3e016822a4b4ecdd80caf926dc890e",
+    "files": [
+      "a.sh",
+      "b.sh"
+    ],
+    "report": "/var/folders/sd/nl3dc6ds1c91bg_yvq821c0m0000gn/T/dry.cvFr0n/effort/reports/d2ef026f558bd053.json",
+    "answers": {},
+    "declines": {},
+    "root": "self",
+    "round": null,
+    "job": 2,
+    "agent": "ag011"
+  }
+}

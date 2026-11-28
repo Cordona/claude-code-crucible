@@ -1,0 +1,9 @@
+{
+  "summary": "add a retry limit to the upload client",
+  "gates": [ { "gate": "test", "result": "pass" }, { "gate": "lint", "result": "pass" } ],
+  "decisions": [
+    { "at": "app/Upload/Client.php:42", "choice": "retry only on 5xx, never on 4xx", "why": "a 4xx will not change on retry" }
+  ],
+  "impact": [],
+  "questions": [ { "text": "should the limit be configurable per tenant?" } ]
+}

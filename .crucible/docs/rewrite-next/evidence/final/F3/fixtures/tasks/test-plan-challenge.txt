@@ -1,0 +1,1 @@
+Challenge the test plan at @PLAN@ before the human sees it. It plans the tests for the build in this tree: the change from @BASE@ to @HEAD@.

@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "holds": 4,
+  "checks": [
+    {
+      "check": "every job ended once",
+      "ok": true
+    },
+    {
+      "check": "nothing owed or waiting at the end",
+      "ok": true
+    },
+    {
+      "check": "a job's events keep its root",
+      "ok": true
+    },
+    {
+      "check": "every job had its act",
+      "ok": true
+    },
+    {
+      "check": "the driver met no failure",
+      "ok": true
+    },
+    {
+      "check": "log: refused: .*tree-busy",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"build.submitted\")] | map(.root) | unique | length) == 2",
+      "ok": true
+    },
+    {
+      "check": "([.[] | select(.type == \"fix.none\")] | length) == 2",
+      "ok": true
+    }
+  ]
+}

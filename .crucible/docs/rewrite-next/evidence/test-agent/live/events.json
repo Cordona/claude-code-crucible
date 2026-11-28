@@ -1,0 +1,326 @@
+[
+  {
+    "type": "effort.opened",
+    "seq": 1,
+    "at": "2026-11-24T17:47:05Z",
+    "by": "effort-start.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "live test agent"
+    }
+  },
+  {
+    "type": "identity.set",
+    "seq": 2,
+    "at": "2026-11-24T17:47:05Z",
+    "by": "identity-set.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "repo": "/Users/Shared/crucible-sandbox/test-agent-live/run/repo",
+      "name": "Test Agent",
+      "email": "test-agent@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "type": "worktree.cut",
+    "seq": 3,
+    "at": "2026-11-24T17:47:05Z",
+    "by": "worktree-cut.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "name": "upload",
+      "repo": "/Users/Shared/crucible-sandbox/test-agent-live/run/repo",
+      "path": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "branch": "crucible/20261124T174705-3d6c-live-test-agent/upload",
+      "base": "3917a2343b8c423ea49bda5ed8b0f2fc13e9f1c2",
+      "from": "checkout"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 4,
+    "at": "2026-11-24T17:47:05Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "report": "reports/build/4.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "testing",
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 5,
+    "at": "2026-11-24T17:47:05Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 4,
+      "agent": "b0b0b0b0b0",
+      "name": "build-php-b0b0b0"
+    }
+  },
+  {
+    "type": "build.submitted",
+    "seq": 6,
+    "at": "2026-11-24T17:47:06Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 4,
+      "iteration": 1,
+      "agent": "b0b0b0b0b0",
+      "report": {
+        "path": "reports/build/4.json",
+        "sha256": "9a5b47367701ca103b63e5d5859a95a9288bd18dee0e49b313182db09776a97a"
+      },
+      "commit": "a24ae5efc22649ad142eb4c7d49003fb062a8dec"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 7,
+    "at": "2026-11-24T17:47:06Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "test-plan",
+      "agent_type": "code-tester",
+      "tree": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "report": "reports/test-plan/7.json",
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "testing",
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 8,
+    "at": "2026-11-24T17:47:06Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 7,
+      "agent": "c0c0c0c0c0",
+      "name": "test-plan-php-c0c0c0"
+    }
+  },
+  {
+    "type": "test-plan.submitted",
+    "seq": 9,
+    "at": "2026-11-24T17:47:07Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 7,
+      "iteration": 1,
+      "agent": "c0c0c0c0c0",
+      "report": {
+        "path": "reports/test-plan/7.json",
+        "sha256": "aac7d2fe3dec40430b39434003a2070466fb6748963a4bf7a8bfa15ef4e85a52"
+      }
+    }
+  },
+  {
+    "type": "gate.answered",
+    "seq": 10,
+    "at": "2026-11-24T17:47:07Z",
+    "by": "record-gate-answer.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "record": "test-plan",
+      "subject": "9",
+      "question": "Approve the test plan?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 11,
+    "at": "2026-11-24T17:47:07Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "test",
+      "agent_type": "code-tester",
+      "tree": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "report": "reports/test/11.json",
+      "plan": 9,
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "testing",
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 12,
+    "at": "2026-11-24T17:47:13Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "bdb81d82-8356-4ddb-ad59-d368ef786654",
+    "body": {
+      "job": 11,
+      "agent": "aa47910e2b8de8f11",
+      "name": "test-php-aa4791"
+    }
+  },
+  {
+    "type": "test.submitted",
+    "seq": 13,
+    "at": "2026-11-24T17:47:22Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "bdb81d82-8356-4ddb-ad59-d368ef786654",
+    "body": {
+      "job": 11,
+      "iteration": 1,
+      "agent": "aa47910e2b8de8f11",
+      "report": {
+        "path": "reports/test/11.json",
+        "sha256": "2bd3d2c59044013f82d0411d971e36cc7be54dda2963cea2936dd857b77845c7"
+      },
+      "commit": "5cd9eeb49086d00c8f2d06052b52f69af464cd95"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 14,
+    "at": "2026-11-24T17:47:24Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "build-fix",
+      "agent_type": "code-builder",
+      "tree": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "report": "reports/build-fix/14.json",
+      "findings": [
+        "REVIEW-01"
+      ],
+      "fix_round": 1,
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "testing",
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 15,
+    "at": "2026-11-24T17:47:24Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "job": 14,
+      "agent": "b0b0b0b0b0",
+      "name": "build-fix-php-b0b0b0"
+    }
+  },
+  {
+    "type": "build-fix.submitted",
+    "seq": 16,
+    "at": "2026-11-24T17:47:25Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "sess-live-fixture",
+    "body": {
+      "job": 14,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "b0b0b0b0b0",
+      "report": {
+        "path": "reports/build-fix/14.json",
+        "sha256": "7262ee80e78afd67f55f4adbdab66f4379059d0d2653ed5f961bc0455de9528a"
+      },
+      "commit": "ec8028780fbcee965cdc7367a9ad24dc0dd9c5d2"
+    }
+  },
+  {
+    "type": "job.dispatched",
+    "seq": 17,
+    "at": "2026-11-24T17:47:25Z",
+    "by": "job-dispatch.sh",
+    "claude_session_id": "480d0359-cf0d-4c14-a59e-2a72be5dba4f",
+    "body": {
+      "kind": "test-fix",
+      "agent_type": "code-tester",
+      "tree": "/Users/Shared/crucible-sandbox/test-agent-live/run/space/efforts/20261124T174705-3d6c-live-test-agent/worktrees/upload",
+      "report": "reports/test-fix/17.json",
+      "findings": [
+        "TEST-01"
+      ],
+      "plan": 9,
+      "fix_round": 1,
+      "known_failures": [],
+      "iteration": 1,
+      "setup": {
+        "language": "php",
+        "standards": [
+          "testing",
+          "security"
+        ]
+      }
+    }
+  },
+  {
+    "type": "job.assigned",
+    "seq": 18,
+    "at": "2026-11-24T17:47:30Z",
+    "by": "assign-job.sh",
+    "claude_session_id": "f3d53b4e-a739-44d9-b32a-eb0b447eec01",
+    "body": {
+      "job": 17,
+      "agent": "a19b0dd1541970ae9",
+      "name": "test-fix-php-a19b0d"
+    }
+  },
+  {
+    "type": "test-fix.submitted",
+    "seq": 19,
+    "at": "2026-11-24T17:47:36Z",
+    "by": "submission-event.sh",
+    "claude_session_id": "f3d53b4e-a739-44d9-b32a-eb0b447eec01",
+    "body": {
+      "job": 17,
+      "iteration": 1,
+      "fix_round": 1,
+      "agent": "a19b0dd1541970ae9",
+      "report": {
+        "path": "reports/test-fix/17.json",
+        "sha256": "e9a19566b03f71eb782efd9c2038934dc4c6e79d7a3d0dbeb845b27ca5d339a1"
+      },
+      "commit": "4fe85ca3459b50667e3e7b1bba996871cd25eaf3"
+    }
+  }
+]

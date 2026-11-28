@@ -1,0 +1,1 @@
+lab/job-dispatch.sh --effort "$EFFORT" --kind fix --merge 10 --side production --delivery hot --hot-agent ab1 >/dev/null && lab/view.sh --effort "$EFFORT" | jq -c 'map(select(.type=="job.dispatched")) | last | .body.payload'

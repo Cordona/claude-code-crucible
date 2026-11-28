@@ -1,0 +1,14 @@
+{
+ "report": {
+  "findings": [
+   {
+    "kind": "shell",
+    "file": "t/a.bats",
+    "severity": "low",
+    "realism": "realistic",
+    "title": "test name is vague"
+   }
+  ],
+  "answers": {}
+ }
+}

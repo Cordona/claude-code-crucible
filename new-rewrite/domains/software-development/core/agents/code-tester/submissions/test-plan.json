@@ -1,0 +1,7 @@
+{
+  "event": "test-plan.submitted",
+  "commit": false,
+  "rules": "code-tester/scripts/lib/test-plan-report",
+  "problems": "test_plan_problems",
+  "facts": "code-tester/scripts/internal/tester-facts.sh"
+}

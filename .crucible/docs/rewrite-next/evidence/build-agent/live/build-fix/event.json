@@ -1,0 +1,18 @@
+{
+  "type": "build-fix.submitted",
+  "seq": 9,
+  "at": "2026-11-24T17:46:46Z",
+  "by": "submission-event.sh",
+  "claude_session_id": "24218bed-dd97-472e-ba57-5b86eeb1db6b",
+  "body": {
+    "job": 7,
+    "iteration": 1,
+    "fix_round": 1,
+    "agent": "ae265cc05a08d6f99",
+    "report": {
+      "path": "reports/build-fix/7.json",
+      "sha256": "a8a06f707aa08365eda4261b0bcbbd7dbd469f66ef72e5dbb980eb02454519f0"
+    },
+    "commit": "bdb255db5fb8eaf97950e51907134576f591e365"
+  }
+}

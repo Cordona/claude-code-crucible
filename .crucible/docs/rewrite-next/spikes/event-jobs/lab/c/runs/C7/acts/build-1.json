@@ -1,0 +1,7 @@
+{
+ "files": {
+  "a.sh": "#!/bin/sh\necho \"$1\"\n",
+  "b.sh": "#!/bin/sh\nfor f in $*; do echo $f; done\n"
+ },
+ "report": {}
+}

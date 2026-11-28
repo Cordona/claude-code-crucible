@@ -1,0 +1,25 @@
+{
+  "challenges": [
+    {
+      "id": "C-1",
+      "target": "B-1",
+      "ask": "add",
+      "title": "no test proves the limit is three, not four",
+      "why": "the planned test passes with any limit above two"
+    },
+    {
+      "id": "C-2",
+      "target": "src/upload/Client.kt:60",
+      "ask": "add",
+      "title": "a behaviour the plan misses: the upload isn't idempotent",
+      "why": "a retry after a timeout sends the file twice"
+    },
+    {
+      "id": "C-3",
+      "target": "tests/fixtures/503.json",
+      "ask": "change",
+      "title": "the captured body hides the retry header",
+      "why": "a test reading it can't see the server's back-off"
+    }
+  ]
+}

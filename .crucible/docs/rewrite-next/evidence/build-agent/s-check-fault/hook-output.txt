@@ -1,0 +1,3 @@
+{"systemMessage":"crucible: the report check of job 52 (build-php-fc0000) can't run: report-validation.sh: code-standin/submissions/build.json names the facts script code-standin/scripts/internal/missing-facts.sh, which isn't installed; the job ends, nothing handed in"}
+stderr: submit-agent-work.sh: the report check of job 52 (build-php-fc0000) can't run: report-validation.sh: code-standin/submissions/build.json names the facts script code-standin/scripts/internal/missing-facts.sh, which isn't installed; the job ends, nothing handed in
+exit 0

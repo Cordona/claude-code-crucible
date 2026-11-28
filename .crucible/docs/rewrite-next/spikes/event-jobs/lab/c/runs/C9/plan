@@ -1,0 +1,12 @@
+kinds shell
+repo foreign
+commit foreign x.sh
+pr-open pr-9 foreign
+request pr-9
+settle
+push pr-9 foreign x.sh replies.json
+settle
+expect ([.[] | select(.type == "pr.posted")] | length) == 2
+expect any(.[]; .type == "round.made" and any(.body.targets[]; . as $t | true) and .body.base != null)
+expect . as $e | any(.[]; .type == "pr.head-moved" and (.seq as $h | any($e[]; .type == "round.made" and any(.body.targets[]; . == $h))))
+expect all(.[]; .type != "fix.chosen")

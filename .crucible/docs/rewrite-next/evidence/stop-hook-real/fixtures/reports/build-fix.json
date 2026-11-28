@@ -1,0 +1,2 @@
+{"summary": "fix dry-run deleting; check the --pattern value", "gates": [{"gate": "lint", "result": "pass", "note": "shellcheck -x -o all: 1 info before, 1 after"}, {"gate": "typecheck", "result": "pass"}, {"gate": "test", "result": "pass"}],
+ "fixes": [{"id": "SHELL-01", "status": "done"}, {"id": "SHELL-02", "status": "partly", "reason": "the value is checked now, but the error goes through die and exits 1"}, {"id": "SHELL-03", "status": "declined", "reason": "exit 1 from die is the contract every script in bin/ shares; a second helper is wider than this change"}]}

@@ -1,0 +1,2 @@
+<S>/space/efforts/20261128T074056-af5d-upload-retries/events/000041-build.submitted.json
+exit 0

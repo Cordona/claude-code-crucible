@@ -1,0 +1,23 @@
+{
+  "summary": "answer the finding sent back on b.sh",
+  "gates": [
+    {
+      "gate": "test",
+      "result": "pass"
+    }
+  ],
+  "blockers": [
+    {
+      "kind": "cannot",
+      "at": "b.sh:2",
+      "detail": "renaming the word input breaks the callers of b.sh, outside this tree"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "CLEAN-CODE-01",
+      "status": "declined",
+      "reason": "the word input is b.sh's documented contract"
+    }
+  ]
+}

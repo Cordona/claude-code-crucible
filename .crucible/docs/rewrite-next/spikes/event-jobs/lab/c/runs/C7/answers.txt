@@ -1,0 +1,10 @@
+please write the two lab scripts
+yes, build it
+no, plan the tests first
+plan the tests for it
+yes, plan them
+yes, approve it
+now write the tests
+yes, write them
+yes, review it
+fix nothing
