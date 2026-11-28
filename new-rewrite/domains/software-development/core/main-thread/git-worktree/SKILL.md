@@ -7,7 +7,7 @@ description: Prepares and tends the git worktrees an effort's code-writing work 
 
 Work that writes code gets a tree of its own; a reader or a reviewer needs none.
 
-**Cutting is always a step; no tree is cut quietly.** Propose `git-worktree/cut-worktree` in the flow, one step line per tree. Show one card of your own for every tree the work needs: each one's name, repository and base, with the facts, your reasoning and your recommendation. The human decides for all of them at one plain gate.
+Cut a tree only once the human has approved its repository and base at a gate; a gate that already showed them is enough. Otherwise show one card of your own for every tree the work needs: each one's name, repository and base, with the facts, your reasoning and your recommendation. The human decides for all of them at one plain gate.
 
 Whether and when a tree takes in another's work is yours and the human's to decide.
 

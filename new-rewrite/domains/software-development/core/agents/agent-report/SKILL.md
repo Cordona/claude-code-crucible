@@ -1,7 +1,6 @@
 ---
 name: agent-report
 description: What every report an agent writes has in common - one JSON object, and the forms a location takes. Loaded by agents through their frontmatter; never used directly.
-disable-model-invocation: true
 user-invocable: false
 ---
 

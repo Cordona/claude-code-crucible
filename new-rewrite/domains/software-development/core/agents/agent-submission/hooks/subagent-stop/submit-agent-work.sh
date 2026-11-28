@@ -11,15 +11,20 @@ umask 077
 
 usage() {
 	cat <<'USAGE'
-usage: sh submit-agent-work.sh < SUBAGENT_STOP_HOOK_JSON
+usage: sh submit-agent-work.sh < HOOK_JSON
 
-Run by Claude Code as the SubagentStop hook; not for main to call.
+Run by Claude Code as the SubagentStop hook, and as the PreToolUse hook on
+SubagentHandback (through hand-in-at-handback.sh), the door an agent in auto
+mode leaves by; not for main to call. One check at both doors: a job
+already handed in at its handback passes at its stop.
 Hands in a job agent's work: checks its report by the rules its
 submissions/<kind>.json names, then, under the stop lock, stamps, pins,
 commits when the kind commits, and writes the submission event. Every
 outcome is an event:
-  - refused: job.refused, the stop held with the repair lines; the second
-    refusal ends the job (gave-up); one not recorded is held only once
+  - refused: job.refused, the stop held (the handback denied) with the
+    repair lines; the second refusal ends the job (gave-up), and a handback
+    is then denied once more, to hand back only that the job ended; one not
+    recorded is held only once
   - a fault before acceptance (an install fault, a check that can't run):
     job.ended fault, step check; after it: job.stalled at the step; an
     exit with no outcome: step hook, ended or stalled the same way
@@ -28,11 +33,14 @@ outcome is an event:
 It reads in a report only: one JSON object; every at a well-formed location
 naming a real file and line; a summary, the commit's subject, when it commits.
 
-Reads:     stdin: session_id, agent_id, agent_type, stop_hook_active;
+Reads:     stdin: hook_event_name, session_id, agent_id, agent_type,
+           stop_hook_active;
            CRUCIBLE_STOP_LOCK_SECONDS, a stop-lock wait shorter than 120 s
 Writes:    the report (pruned, then read-only), the working commit, the events
 Stdout:    nothing; or {"decision": "block", "reason", "systemMessage"?},
-           holding the stop; or {"systemMessage"} for the human
+           holding the stop, at a handback {"hookSpecificOutput":
+           {"permissionDecision": "deny", ...}} with the same reason; or
+           {"systemMessage"} for the human
 Exit:
   0  always; only a printed block holds the stop
 USAGE
@@ -50,6 +58,7 @@ here=$(dirname -- "$0")
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*}
+. "${skills}/jobs-agent-init/scripts/lib/agent-type.sh"
 . "${here}/../../scripts/lib/stop-lock.sh"
 
 work='' lock='' effort='' job='' named='' accepted='' outcome='' step=check
@@ -110,28 +119,42 @@ trap 'exit 143' TERM
 trap 'exit 130' INT
 trap 'exit 129' HUP
 
-agent_job="${skills}/agent-jobs/scripts/internal/agent-job.sh"
-[ -f "${agent_job}" ] || say "agent-jobs isn't beside agent-submission (expected ${agent_job}); no agent's work is handed in until it is installed"
+agent_job="${skills}/jobs-track/scripts/internal/agent-job.sh"
+[ -f "${agent_job}" ] || say "jobs-track isn't beside agent-submission (expected ${agent_job}); no agent's work is handed in until it is installed"
 
 input=$(cat)
 agent=$(printf '%s' "${input}" | jq -r '.agent_id // empty' 2>/dev/null) || { outcome=passed; exit 0; }
 case ${agent} in '' | *[!A-Za-z0-9._-]*) outcome=passed; exit 0 ;; *) ;; esac
 agent_type=$(printf '%s' "${input}" | jq -r '.agent_type // empty' 2>/dev/null) || agent_type=''
 after_block=$(printf '%s' "${input}" | jq -r '.stop_hook_active == true' 2>/dev/null) || after_block=false
+door=$(printf '%s' "${input}" | jq -r 'if .hook_event_name == "PreToolUse" then "handback" else "stop" end' 2>/dev/null) || door=stop
+
+# Holds the agent with reason $1 (and the human told $2, if any): its stop
+# blocked, or its handback denied, by the door it came to.
+hold() {
+	if [ "${door}" = handback ]; then
+		jq -cn --arg r "$1" --arg told "${2-}" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $r}}
+			+ (if $told == "" then {} else {systemMessage: ("crucible: " + $told)} end)'
+	else
+		jq -cn --arg r "$1" --arg told "${2-}" '{decision: "block", reason: $r}
+			+ (if $told == "" then {} else {systemMessage: ("crucible: " + $told)} end)'
+	fi
+}
 session=$(printf '%s' "${input}" | jq -r '.session_id // empty' 2>/dev/null) || session=''
 case ${session} in '' | *[!A-Za-z0-9._-]*) ;; *) CLAUDE_CODE_SESSION_ID=${session}; export CLAUDE_CODE_SESSION_ID ;; esac
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/submit-agent-work.XXXXXX") || { outcome=passed; exit 0; }
 
-# The agent's open job, through agent-jobs' agent-job.sh. None: told to
-# the human only for an agent of a job-taking type (its component has a
-# submissions folder) that was never assigned a job, looked for again first,
+# The agent's open job, through jobs-track's agent-job.sh. None: told to
+# the human only for an agent of a job-taking type (a base with a
+# submissions folder, or an agent file named for one) that was never
+# assigned a job, looked for again first,
 # since its assignment can land just after it stops. An empty type is
 # Claude Code's own helper; an agent that had a job is between jobs,
 # answering main.
 job_taking() {
 	case ${agent_type} in '' | *[!a-z0-9-]*) return 1 ;; *) ;; esac
-	[ -d "${skills}/${agent_type}/submissions" ]
+	at_base "${agent_type}" "${skills}" >/dev/null
 }
 wait=0
 # shellcheck disable=SC2310 # job_taking is a test, called for its status
@@ -193,12 +216,18 @@ if [ -s "${work}/lines" ]; then
 		printf '%s: %s\n' "${prog}" "${unrecorded}" >&2
 	elif [ "${held}" = ended ]; then
 		outcome=gave-up
-		tell "${named} gave up: its report was refused twice. Its tree ${tree} is kept for the next job."
+		if [ "${door}" = handback ]; then
+			# The refused report must not reach main as a result.
+			hold "Your report was refused twice, so this job has ended with nothing handed in. Hand back only that: one line, no findings." \
+				"${named} gave up: its report was refused twice. Its tree ${tree} is kept for the next job."
+		else
+			tell "${named} gave up: its report was refused twice. Its tree ${tree} is kept for the next job."
+		fi
 		exit 0
 	fi
-	jq -Rsc --arg report "${report}" --arg told "${unrecorded}" '{decision: "block",
-		reason: ("Your report \($report) was not accepted. Repair each line, then stop again; a second refusal ends this job.\n" + rtrimstr("\n"))}
-		+ (if $told == "" then {} else {systemMessage: ("crucible: " + $told)} end)' "${work}/lines"
+	again='stop again'
+	[ "${door}" = stop ] || again='hand back again'
+	hold "$(jq -Rsr --arg report "${report}" --arg again "${again}" '"Your report \($report) was not accepted. Repair each line, then \($again); a second refusal ends this job.\n" + rtrimstr("\n")' "${work}/lines")" "${unrecorded}"
 	outcome=held
 	exit 0
 fi

@@ -62,10 +62,10 @@ printf '%s\n' "${seq}" | grep -Eqx '[1-9][0-9]*' || refuse '--job must be a whol
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*}
-job_of="${skills}/agent-jobs/scripts/internal/job-of.sh"
+job_of="${skills}/jobs-track/scripts/internal/job-of.sh"
 reader="${skills}/crucible-events/scripts/internal/events-read.sh"
 writer="${skills}/crucible-events/scripts/internal/event-write.sh"
-report_hash="${skills}/agent-jobs/scripts/internal/report-hash.sh"
+report_hash="${skills}/jobs-track/scripts/internal/report-hash.sh"
 for need in "${job_of}" "${reader}" "${writer}" "${report_hash}"; do
 	[ -f "${need}" ] || refuse "a neighbour isn't beside this skill (expected ${need}); install first"
 done

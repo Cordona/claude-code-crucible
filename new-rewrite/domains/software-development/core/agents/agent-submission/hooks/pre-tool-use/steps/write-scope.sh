@@ -12,11 +12,11 @@ usage() {
 usage: sh write-scope.sh < PRE_TOOL_USE_HOOK_JSON
 
 Run by job-agent-tools.sh for a Write or Edit; not for main to call.
-For a job agent with an open job, by the writes word of its
-submissions/<kind>.json: tree, its tree and its report; report, its report
-only. Inside: allowed; outside: denied, the reason naming where to write;
-real paths compared. A missing writes word is told to the human, with no
-decision; main, other types and an idle agent get no decision either.
+For a job agent with an open job, by its job's write scope, as jobs-track
+finds it: tree, its tree and its report; report, its report only. Inside:
+allowed; outside: denied, the reason naming where to write; real paths
+compared. A missing scope is told to the human, with no decision; main,
+other types and an idle agent get no decision either.
 Reads need no hook: the installer makes the space a working directory.
 
 Reads:     stdin: agent_id, agent_type, cwd, tool_name, tool_input.file_path
@@ -48,14 +48,16 @@ case ${agent_type} in '' | *[!a-z0-9-]*) exit 0 ;; *) ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*/*}
-[ -d "${skills}/${agent_type}/submissions" ] || exit 0
+. "${skills}/jobs-agent-init/scripts/lib/agent-type.sh"
+# shellcheck disable=SC2310 # at_base is a test, called for its status
+at_base "${agent_type}" "${skills}" >/dev/null || exit 0
 case ${agent} in '' | *[!A-Za-z0-9._-]*) exit 0 ;; *) ;; esac
 [ -n "${target}" ] || exit 0
 case ${target} in /*) ;; *) case ${cwd} in /*) target="${cwd}/${target}" ;; *) exit 0 ;; esac ;; esac
 
-# The agent's open job, through agent-jobs' agent-job.sh. None: an idle
+# The agent's open job, through jobs-track's agent-job.sh. None: an idle
 # agent, given no decision.
-agent_job="${skills}/agent-jobs/scripts/internal/agent-job.sh"
+agent_job="${skills}/jobs-track/scripts/internal/agent-job.sh"
 [ -f "${agent_job}" ] || exit 0
 found=$(sh "${agent_job}" --agent "${agent}" 2>/dev/null) || exit 0
 effort=$(printf '%s' "${found}" | jq -r '.effort')
@@ -63,14 +65,13 @@ job=$(printf '%s' "${found}" | jq -c '.job')
 kind=$(printf '%s' "${job}" | jq -r '.kind')
 named="job $(printf '%s' "${job}" | jq -r '.job') ($(printf '%s' "${job}" | jq -r '.name'))"
 
-submission="${skills}/${agent_type}/submissions/${kind}.json"
-writes=$(jq -r '.writes // empty' "${submission}" 2>/dev/null) || writes=''
+writes=$(printf '%s' "${found}" | jq -r '.write_scope // empty')
 case ${writes} in
 	tree | report) ;;
 	*)
-		printf '%s: %s/submissions/%s.json names no writes, tree or report; %s'"'"'s %s gets no decision\n' \
-			"${prog}" "${agent_type}" "${kind}" "${named}" "${tool}" >&2
-		jq -cn --arg m "crucible: ${agent_type}/submissions/${kind}.json names no writes (tree or report), so ${named}'s writes aren't scoped; Claude Code asks instead" \
+		printf '%s: kind %s names no write scope, tree or report; %s'"'"'s %s gets no decision\n' \
+			"${prog}" "${kind}" "${named}" "${tool}" >&2
+		jq -cn --arg m "crucible: kind ${kind} names no write scope (tree or report) in jobs-define/kinds/${kind}.json or ${agent_type}/submissions/${kind}.json, so ${named}'s writes aren't scoped; Claude Code asks instead" \
 			'{systemMessage: $m}'
 		exit 0 ;;
 esac

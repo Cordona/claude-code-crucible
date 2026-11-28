@@ -40,7 +40,7 @@ def stamp_challenge:
 	| .report
 	| if (.challenges | type) == "array" then .challenges |= [to_entries[] | {id: "C-\($top + .key + 1)"} + .value] else . end;
 
-# Each item's source from the fetched threads; each valid finding's ID, from
+# Each item's source from the fetched threads, over any the agent wrote; each valid finding's ID, from
 # the job's lens and the iteration's IDs so far.
 def stamp_external:
 	(.facts.threads // []) as $threads
@@ -54,7 +54,7 @@ def stamp_external:
 			| ([$threads[] | select(.id == $t) | .source] | first) as $source
 			| if $source == "human" or $source == "bot" then .
 			  else error("thread \($t) has no source, human or bot, in the job's threads file") end
-			| ($e.value | to_entries | map(if .key == "verdict" then [{key: "source", value: $source}, .] else [.] end) | add | from_entries) as $item
+			| ($e.value | del(.source) | to_entries | map(if .key == "verdict" then [{key: "source", value: $source}, .] else [.] end) | add | from_entries) as $item
 			| if $item.verdict == "valid" and ($item.finding | type) == "object"
 			  then .n as $n | .items += [$item | .finding = ({id: $ids[$n]} + .finding)] | .n += 1
 			  else .items += [$item] end) | .items)

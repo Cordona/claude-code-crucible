@@ -1,1 +1,1 @@
-{"event": "build.submitted", "commit": true, "rules": "code-builder/scripts/lib/build-report", "problems": "build_report_problems", "writes": "tree"}
+{"event": "build.submitted", "commit": true, "rules": "code-builder/scripts/lib/build-report", "problems": "build_report_problems"}

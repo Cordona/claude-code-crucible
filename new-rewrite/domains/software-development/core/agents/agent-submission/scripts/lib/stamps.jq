@@ -1,6 +1,6 @@
 # The stamps an event of a job carries, copied from the job, a jq module:
 # load it with jq -L <this folder> and include "stamps". Input: the job, as
-# agent-jobs' job-of.sh prints it. Keys come in the order they are printed:
+# jobs-track's job-of.sh prints it. Keys come in the order they are printed:
 # job, iteration (none for a job on a tree with no build), fix_round (when
 # the job has one), agent, then the event's own.
 

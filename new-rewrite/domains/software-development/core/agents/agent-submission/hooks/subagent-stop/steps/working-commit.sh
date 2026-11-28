@@ -17,7 +17,7 @@ setup. Nothing is committed when the tree didn't change.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it, assigned
+  --job FILE       the job, as jobs-track's job-of.sh prints it, assigned
 Requires:  the report pinned; the effort's identity for the tree's
            repository (git-identity), whose name and email the commit carries
 Writes:    the commit, on the tree's branch

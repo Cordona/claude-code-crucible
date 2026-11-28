@@ -1,1 +1,7 @@
-{"event": "test-plan.updated", "commit": false, "rules": "code-tester/scripts/lib/test-plan-update-report", "problems": "test_plan_update_problems", "facts": "code-tester/scripts/internal/tester-facts.sh", "writes": "report"}
+{
+  "event": "test-plan.updated",
+  "commit": false,
+  "rules": "code-tester/scripts/lib/test-plan-update-report",
+  "problems": "test_plan_update_problems",
+  "facts": "code-tester/scripts/internal/tester-facts.sh"
+}

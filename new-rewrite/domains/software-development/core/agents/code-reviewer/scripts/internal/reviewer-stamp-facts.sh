@@ -15,17 +15,17 @@ main to call.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it
-Reads:     the effort's events and pinned reports, through agent-jobs'
-           events-view.sh, each submission's job through job-of.sh; the
-           job's threads file
+  --job FILE       the job, as jobs-track's job-of.sh prints it
+Reads:     the effort's events and pinned reports, through jobs-track's
+           events-view.sh, each submission's job through job-of.sh
 Writes:    nothing
 Stdout:    one JSON object {ids, keys, threads}:
              ids      the finding IDs taken in the job's iteration on its
                       tree, by the reviewer's review and external-review
                       jobs; [] for a job with no iteration
              keys     the challenge IDs taken in the effort
-             threads  [{id, source}] from the job's threads file; []
+             threads  [{id, source, role}] of the fetch the job's review
+                      ref names, of the comment that opened each; []
 Exit:
   0  printed
   2  refused, nothing printed; the reason is on stderr
@@ -57,10 +57,10 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*}
-view="${skills}/agent-jobs/scripts/internal/events-view.sh"
-job_of="${skills}/agent-jobs/scripts/internal/job-of.sh"
+view="${skills}/jobs-track/scripts/internal/events-view.sh"
+job_of="${skills}/jobs-track/scripts/internal/job-of.sh"
 for need in "${view}" "${job_of}"; do
-	[ -f "${need}" ] || refuse "agent-jobs isn't beside this skill (expected ${need}); install first"
+	[ -f "${need}" ] || refuse "jobs-track isn't beside this skill (expected ${need}); install first"
 done
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/reviewer-stamp-facts.XXXXXX") || refuse 'mktemp could not make a work folder'
@@ -82,11 +82,9 @@ if jq -e 'has("iteration")' "${job}" >/dev/null; then
 	done <"${work}/taken"
 fi
 
-printf '[]\n' >"${work}/threads"
-threads=$(jq -r '.threads // empty' "${job}")
-if [ -n "${threads}" ]; then
-	jq '[.threads[] | {id, source}]' "${threads}" >"${work}/threads" 2>/dev/null || refuse "the threads file ${threads} is not {threads: [{id, source, ...}]}"
-fi
+jq -L "${skills}" --slurpfile job "${job}" 'include "code-reviewer/scripts/lib/review-threads";
+	rt_threads($job[0]).threads // []' "${work}/events" >"${work}/threads" \
+	|| refuse "the job's review ref names no fetched threads"
 
 jq -n --rawfile ids "${work}/ids.txt" --slurpfile events "${work}/events" --slurpfile threads "${work}/threads" '
 	{ids: ($ids | split("\n") | map(select(length > 0)) | unique),

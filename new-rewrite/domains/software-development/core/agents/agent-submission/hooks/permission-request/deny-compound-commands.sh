@@ -18,7 +18,7 @@ other ask, main's, a helper agent's, an idle agent's or a plain command's,
 gets no answer and goes on as usual. Probed only with main in default mode.
 
 Reads:     stdin: tool_name, agent_id, tool_input.command; the agent's open
-           job, through agent-jobs' agent-job.sh
+           job, through jobs-track's agent-job.sh
 Writes:    nothing
 Stdout:    nothing; or {"hookSpecificOutput": {"hookEventName":
            "PermissionRequest", "decision": {"behavior": "deny", "message"}}}
@@ -49,7 +49,7 @@ compound=$(printf '%s' "${command}" | jq -Rs 'test("&&|\\|\\||;|\\n|\\$\\(|`")
 
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-agent_job="${self%/*/*/*/*}/agent-jobs/scripts/internal/agent-job.sh"
+agent_job="${self%/*/*/*/*}/jobs-track/scripts/internal/agent-job.sh"
 [ -f "${agent_job}" ] || exit 0
 sh "${agent_job}" --agent "${agent}" >/dev/null 2>&1 || exit 0
 

@@ -16,14 +16,17 @@ Options:
   --effort FOLDER  the effort's folder, absolute
   --job FILE       the job, as job-of.sh prints it
 Writes:    nothing
-Stdout:    one JSON object {cover, added, removed, files, plan, threads}:
+Stdout:    one JSON object {cover, added, removed, files, plan, threads, judge}:
              cover    the job's cover, or the files base..head changes
              added    {path: [line...]} base..head adds or changes at head;
                       removed, the same at base; both null with no base
              files    the tree's files, tracked and untracked, not ignored
              plan     {ids, files} of the plan the job names: its B-, T-, N-
                       IDs and the files its tests and support name; null
-             threads  [{id, source}] from the job's threads file; []
+             threads  [{id, source, role}] of the fetch the job's review
+                      ref names, of the comment that opened each; []
+             judge    the ids of those a reviewer opened, new or changed
+                      since the last external review of the change; []
            cover null too with no base and head
 Exit:
   0  printed
@@ -58,8 +61,8 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*}
-view="${skills}/agent-jobs/scripts/internal/events-view.sh"
-[ -f "${view}" ] || refuse "agent-jobs isn't beside this skill (expected ${view}); install first"
+view="${skills}/jobs-track/scripts/internal/events-view.sh"
+[ -f "${view}" ] || refuse "jobs-track isn't beside this skill (expected ${view}); install first"
 tree=$(jq -r '.tree // empty' "${job}")
 case ${tree} in /*) ;; *) refuse '--job names no absolute tree' ;; esac
 [ -d "${tree}" ] || refuse "the job's tree ${tree} is not a folder"
@@ -95,20 +98,18 @@ fi
 git -C "${tree}" ls-files -co --exclude-standard </dev/null >"${work}/files" || refuse "git could not list the tree ${tree}"
 
 # The plan the job names, from its pinned report.
-jq --slurpfile job "${job}" '$job[0].plan as $p | if $p == null then null
+jq --slurpfile job "${job}" '$job[0].refs.plan as $p | if $p == null then null
 	else [.[] | select(.seq == $p) | .report] | first
 		| if . == null then null
 		  else {ids: [(.behaviours, .tests, .untested) | arrays[] | .id? | strings],
 			files: [(.tests, .support) | arrays[] | .file? | strings] | unique} end end' "${work}/events" >"${work}/plan" \
 	|| refuse 'jq could not read the plan'
 
-# The job's threads, fetched by the remote's script; their text is untrusted
-# and never read here.
-printf '[]\n' >"${work}/threads"
-threads=$(jq -r '.threads // empty' "${job}")
-if [ -n "${threads}" ]; then
-	jq '[.threads[] | {id, source}]' "${threads}" >"${work}/threads" 2>/dev/null || refuse "the threads file ${threads} is not {threads: [{id, source, ...}]}"
-fi
+# The threads of the review the job names, from its pinned fetch; their text
+# is untrusted and never read here.
+jq -L "${skills}" --slurpfile job "${job}" 'include "code-reviewer/scripts/lib/review-threads";
+	rt_threads($job[0]) // {threads: [], judge: []}' "${work}/events" >"${work}/threads" \
+	|| refuse "the job's review ref names no fetched threads"
 
 jq -n --slurpfile cover "${work}/cover" \
 	--rawfile lines "${work}/lines" --rawfile files "${work}/files" --slurpfile plan "${work}/plan" --slurpfile threads "${work}/threads" '
@@ -119,4 +120,4 @@ jq -n --slurpfile cover "${work}/cover" \
 	 removed: (if $cover[0] == null then null else changed("-") end),
 	 files: ($files | split("\n") | map(select(length > 0))),
 	 plan: $plan[0],
-	 threads: $threads[0]}'
+	 threads: $threads[0].threads, judge: $threads[0].judge}'

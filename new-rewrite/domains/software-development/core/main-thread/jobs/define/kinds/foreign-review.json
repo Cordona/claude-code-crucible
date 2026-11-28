@@ -1,0 +1,20 @@
+{
+  "agent": "code-reviewer",
+  "part": "review",
+  "input_refs": {
+    "context": {
+      "event": "context.cut"
+    },
+    "change": {
+      "event": "remote-change.fetched",
+      "required": true,
+      "named": true
+    }
+  },
+  "tree": [
+    "cut"
+  ],
+  "range": "change",
+  "write_scope": "report",
+  "one_standard": true
+}

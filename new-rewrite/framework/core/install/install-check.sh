@@ -13,7 +13,7 @@ and each component against the folder contract: SKILL.md or its agent
 definition <name>.md, flow-step.json, and only the folders references/,
 scripts/ (main/, internal/, lib/, and agent/ for scripts agents may run,
 which none has yet), hooks/ (matchers.json, env.json, one folder per event,
-steps/ beneath), events/ and submissions/.
+steps/ beneath), events/, submissions/ and kinds/.
 
 Options:
   --settings FILE  a settings file to read; repeatable; default
@@ -104,12 +104,12 @@ resolves_to "${config}/CLAUDE.md" "${claude_md}" || resolves_to ./CLAUDE.md "${c
 	|| printf 'missing: CLAUDE.md link -> %s\n' "${claude_md}" >>"${work}/missing"
 
 # The folder contract: what folders a component may hold.
-jq -r '.skills[].path' "${work}/needs.json" | while IFS= read -r component; do
+jq -r '.skills[] | select(.plugin | not) | .path' "${work}/needs.json" | while IFS= read -r component; do
 	for folder in "${component}"/*/ "${component}"/scripts/*/; do
 		[ -d "${folder}" ] || continue
 		folder=${folder%/}
 		case ${folder#"${component}"/} in
-			references | scripts | hooks | events | submissions) ;;
+			references | scripts | hooks | events | submissions | kinds) ;;
 			scripts/main | scripts/internal | scripts/lib | scripts/agent) ;;
 			*) printf 'extra: folder %s is outside the component contract\n' "${folder}" ;;
 		esac

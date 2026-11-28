@@ -8,8 +8,9 @@ usage() {
 usage: sh install-entries.sh [--json]
 
 Run by the human, to install; not for main to call. Prints what an install
-of the framework it sits in needs: each component (a folder in a
-main-thread/ or agents/ folder) linked by name into the skills folder, and
+of the framework it sits in needs: each component (a folder in main-thread/
+or agents/, or GROUP-NAME in a group there) and plugin skill (a SKILL.md
+under plugins/, by its name) linked into the skills folder, and
 the settings for each hook its hooks/matchers.json names and each env need
 its hooks/env.json holds. Hooks, their steps and scripts find neighbours
 through those links, so they run only installed.
@@ -44,13 +45,35 @@ done
 command -v jq >/dev/null 2>&1 || refuse 'jq missing; expected jq 1.6 or later on PATH'
 
 root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
+
+# A group: a folder in a main-thread or an agents folder holding only
+# component folders, none of a component's own files or folders.
+is_group() {
+	ig_found=''
+	for ig_entry in "$1"/* "$1"/.[!.]*; do
+		[ -e "${ig_entry}" ] || continue
+		[ -d "${ig_entry}" ] || return 1
+		case ${ig_entry##*/} in references | scripts | hooks | events | submissions | kinds) return 1 ;; *) ;; esac
+		ig_found=1
+	done
+	[ -n "${ig_found}" ]
+}
+# The installed name of component folder $1: its own name, or GROUP-NAME
+# when it sits in a group.
+name_of() {
+	no_parent=${1%/*}
+	case ${no_parent%/*} in
+		*/main-thread | */agents) printf '%s-%s\n' "${no_parent##*/}" "${1##*/}" ;;
+		*) printf '%s\n' "${1##*/}" ;;
+	esac
+}
 config=${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
 space=${CRUCIBLE_HOME:-${HOME}/.crucible}
 
 # Every hook: {event, matcher, path}, from each component's matchers.json,
 # each checked first, outside the pipe, so a bad one stops the script.
 for file in $(find "${root}" -path '*/hooks/matchers.json' -type f); do
-	jq -e 'type == "object" and all(to_entries[]; (.key | test("^(stop|subagent-stop|pre-tool-use|post-tool-use|permission-request)/[^/]+\\.sh$"))
+	jq -e 'type == "object" and all(to_entries[]; (.key | test("^(stop|subagent-start|subagent-stop|pre-tool-use|post-tool-use|permission-request|worktree-create)/[^/]+\\.sh$"))
 		and (.value == null or (.value | type) == "string"
 			or ((.value | type) == "object" and ((.value | keys) - ["matcher", "timeout"]) == []
 				and (.value.matcher == null or (.value.matcher | type) == "string")
@@ -61,22 +84,41 @@ done
 # component's skill link, which the settings entry runs.
 hooks=$(find "${root}" -path '*/hooks/matchers.json' -type f | LC_ALL=C sort | while IFS= read -r file; do
 	component=${file%/hooks/matchers.json}
-	jq -c --arg dir "${file%/matchers.json}" --arg link "${config}/skills/${component##*/}/hooks" 'to_entries[]
+	jq -c --arg dir "${file%/matchers.json}" --arg link "${config}/skills/$(name_of "${component}")/hooks" 'to_entries[]
 		| (if (.value | type) == "object" then .value else {matcher: .value} end) as $v | {
-		event: ({"stop": "Stop", "subagent-stop": "SubagentStop", "pre-tool-use": "PreToolUse",
-			"post-tool-use": "PostToolUse", "permission-request": "PermissionRequest"}[.key | split("/")[0]]),
+		event: ({"stop": "Stop", "subagent-start": "SubagentStart", "subagent-stop": "SubagentStop", "pre-tool-use": "PreToolUse",
+			"post-tool-use": "PostToolUse", "permission-request": "PermissionRequest", "worktree-create": "WorktreeCreate"}[.key | split("/")[0]]),
 		matcher: $v.matcher, timeout: $v.timeout, path: ($dir + "/" + .key), command_path: ($link + "/" + .key)}' "${file}"
 done | jq -s .)
 # Every component: {name, path}, each folder directly in a main-thread or an
-# agents folder; nothing inside a component is looked at.
+# agents folder, or in a group there; nothing inside a component is looked at.
+# A plugins folder is no component and no group: its plugin skills are
+# linked one by one, below.
 skills=$(find "${root}" \( -path '*/main-thread/*' -o -path '*/agents/*' \) -prune \
 	-o -type d \( -name main-thread -o -name agents \) -print | LC_ALL=C sort | while IFS= read -r parent; do
 	for dir in "${parent}"/*/; do
 		[ -d "${dir}" ] || continue
 		dir=${dir%/}
-		jq -cn --arg name "${dir##*/}" --arg path "${dir}" '{name: $name, path: $path}'
+		[ "${dir##*/}" != plugins ] || continue
+		# shellcheck disable=SC2310 # is_group is a test, called for its status
+		if is_group "${dir}"; then
+			for member in "${dir}"/*/; do
+				member=${member%/}
+				jq -cn --arg name "$(name_of "${member}")" --arg path "${member}" '{name: $name, path: $path}'
+			done
+		else
+			jq -cn --arg name "${dir##*/}" --arg path "${dir}" '{name: $name, path: $path}'
+		fi
 	done
 done | jq -s 'sort_by(.name)')
+# Every plugin skill: {name, path, plugin: true}, each SKILL.md under a
+# plugins folder, linked by its own name: a job agent's file preloads it.
+plugins=$(find "${root}" -path '*/plugins/*' -name SKILL.md -type f | LC_ALL=C sort | while IFS= read -r file; do
+	name=$(awk 'NR == 1 && /^---$/ {fm = 1; next} fm && /^---$/ {exit} fm && /^name:/ {sub(/^name: */, ""); print; exit}' "${file}")
+	[ -n "${name}" ] || continue
+	jq -cn --arg name "${name}" --arg path "${file%/SKILL.md}" '{name: $name, path: $path, plugin: true}'
+done | jq -s '.')
+skills=$(jq -n --argjson c "${skills}" --argjson p "${plugins}" '$c + $p | sort_by(.name)')
 # One installed name is one link, so two components with one name are refused.
 twins=$(printf '%s\n' "${skills}" | jq -r 'group_by(.name) | map(select(length > 1))
 	| map("\(.[0].name) (\(map(.path) | join(", ")))") | join("; ")')

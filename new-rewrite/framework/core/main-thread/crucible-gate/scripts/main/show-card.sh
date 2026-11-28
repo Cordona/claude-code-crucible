@@ -15,7 +15,8 @@ usage: sh show-card.sh CARD_FILE
 
 Prints CARD_FILE as this session's owed card. Run it before every gate
 question; end your turn with the card as printed; ask when told. --record logs
-the answer for a script to act on; that script's --help names the values.
+the answer for a script to act on; that script's --help names the values. The
+same card shown again without --record keeps the gate it was recorded as.
 
 Options:
   CARD_FILE        a non-empty text file: the card
@@ -77,6 +78,17 @@ session=${CLAUDE_CODE_SESSION_ID-}
 og_safe_id "${session}" || refuse 'CLAUDE_CODE_SESSION_ID is not a safe id; the card was printed, not recorded'
 og_set_dir "${session}"
 mkdir -p -- "${og_dir}"
+# The same card shown again with no --record keeps the gate it was recorded
+# as: showing it twice never drops the answer's record.
+if [ -z "${record}" ]; then
+	for old in "${og_dir}"/*.json; do
+		[ -f "${old}" ] || continue
+		if jq -e --rawfile text "${card}" '.record != null and .text == $text' "${old}" >/dev/null 2>&1; then
+			jq '.status = "owed" | .tries = 0' "${old}" | aw_write "${old}"
+			exit 0
+		fi
+	done
+fi
 for old in "${og_dir}"/*.json; do [ ! -f "${old}" ] || rm -f -- "${old}"; done
 id="$(date +%s)-$$"
 jq -n --rawfile text "${card}" --arg id "${id}" --arg record "${record}" --arg effort "${effort}" \

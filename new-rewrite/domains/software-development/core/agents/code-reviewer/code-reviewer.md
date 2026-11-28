@@ -73,7 +73,7 @@ Used when you review a change, for a valid point of an outside review, and when 
 
 ### When you judge an outside review of our MR/PR
 
-- `items`: one per point. Judge every thread at least once. Split a thread with several points into items. Their line numbers are from the commit they reviewed: find each line as it is now. Each:
+- `items`: one per point. Judge every thread a reviewer opened. A thread the change's author opened is their account of the work: read it as context. When you're given your earlier judgement of this review, a thread judged there needs judging again only when it changed. Split a thread with several points into items. Their line numbers are from the commit they reviewed: find each line as it is now. Each:
   - `thread`: the thread it comes from;
   - `item`: its own label, when a thread is split;
   - `verdict`, and what goes with it:

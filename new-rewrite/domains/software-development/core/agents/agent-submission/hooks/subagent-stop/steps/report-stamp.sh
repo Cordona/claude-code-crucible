@@ -20,7 +20,7 @@ recover-submission.sh --finish stamps again one stamped but not pinned.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it
+  --job FILE       the job, as jobs-track's job-of.sh prints it
 Writes:    the report, stamped
 Stdout:    nothing
 Exit:

@@ -7,7 +7,7 @@ usage() {
 usage: sh report-pin.sh --report FILE
 
 Run by submit-agent-work.sh and recover-submission.sh; not for main to call.
-Makes an accepted report read-only and prints its sha256, from agent-jobs'
+Makes an accepted report read-only and prints its sha256, from jobs-track's
 report-hash.sh, which the submission event pins it by.
 
 Options:
@@ -38,7 +38,7 @@ case ${report} in /*) ;; *) refuse '--report must be an absolute file' ;; esac
 [ -f "${report}" ] && [ ! -L "${report}" ] || refuse "${report} is not a file"
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-report_hash="${self%/*/*/*/*/*}/agent-jobs/scripts/internal/report-hash.sh"
-[ -f "${report_hash}" ] || refuse "agent-jobs isn't beside this skill (expected ${report_hash}); install first"
+report_hash="${self%/*/*/*/*/*}/jobs-track/scripts/internal/report-hash.sh"
+[ -f "${report_hash}" ] || refuse "jobs-track isn't beside this skill (expected ${report_hash}); install first"
 chmod 444 "${report}" || refuse "could not make ${report} read-only"
 sh "${report_hash}" --report "${report}" || exit 2

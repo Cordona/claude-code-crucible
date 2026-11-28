@@ -1,7 +1,6 @@
 ---
 name: agent-conduct
 description: How an agent treats what it reads, secrets, customer data and work that comes back. Loaded by agents through their frontmatter; never used directly.
-disable-model-invocation: true
 user-invocable: false
 ---
 

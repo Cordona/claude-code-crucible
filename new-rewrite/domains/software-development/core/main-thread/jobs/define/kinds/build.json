@@ -1,0 +1,20 @@
+{
+  "agent": "code-builder",
+  "part": "build",
+  "input_refs": {
+    "context": {
+      "event": "context.cut",
+      "required": true
+    },
+    "spec": {
+      "event": "spec.approved"
+    },
+    "grills": {
+      "event": "grill.ended",
+      "list": true
+    }
+  },
+  "tree": ["cut", "use"],
+  "known_failures": true,
+  "write_scope": "tree"
+}

@@ -1,1 +1,7 @@
-{"event": "test.submitted", "commit": true, "rules": "code-tester/scripts/lib/test-report", "problems": "test_report_problems", "facts": "code-tester/scripts/internal/tester-facts.sh", "writes": "tree"}
+{
+  "event": "test.submitted",
+  "commit": true,
+  "rules": "code-tester/scripts/lib/test-report",
+  "problems": "test_report_problems",
+  "facts": "code-tester/scripts/internal/tester-facts.sh"
+}

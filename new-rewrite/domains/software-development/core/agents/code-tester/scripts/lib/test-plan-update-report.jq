@@ -1,7 +1,7 @@
 # A test plan rework's rules, a jq module: load it with jq -L <the skills
 # folder> and include "code-tester/scripts/lib/test-plan-update-report".
 # The whole plan again, by the plan's rules, and one answer per challenge
-# the job carries. An applied challenge that asks to add a test needs a T-
+# the job's challenge ref names. An applied challenge that asks to add a test needs a T-
 # test the reworked plan didn't have.
 include "code-tester/scripts/lib/tester-common";
 include "code-tester/scripts/lib/test-plan-report";
@@ -9,7 +9,7 @@ include "code-tester/scripts/lib/test-plan-report";
 def tu_challenge_answers: ["applied", "cannot"];
 
 def tu_answer_rules:
-	(.job.challenges // []) as $challenges
+	(.facts.challenges // []) as $challenges
 	| [$challenges[].id] as $ids
 	| [tc_entries("answers") | select((.v | type) == "object" and (.v.id | type) == "string")] as $given
 	| [(.facts.plan.tests // [])[] | objects | .id] as $before

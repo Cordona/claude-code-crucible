@@ -1,0 +1,21 @@
+{
+  "agent": "code-tester",
+  "part": "test",
+  "input_refs": {
+    "context": {
+      "event": "context.cut",
+      "required": true
+    },
+    "spec": {
+      "event": "spec.approved"
+    },
+    "grills": {
+      "event": "grill.ended",
+      "list": true
+    }
+  },
+  "tree": [
+    "use"
+  ],
+  "write_scope": "report"
+}

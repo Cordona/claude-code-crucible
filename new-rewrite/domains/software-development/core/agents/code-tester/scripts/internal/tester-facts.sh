@@ -14,13 +14,14 @@ names it; not for main to call.
 
 Options:
   --effort FOLDER  the effort's folder, absolute
-  --job FILE       the job, as agent-jobs' job-of.sh prints it
-Reads:     the effort's events and pinned reports, through agent-jobs'
+  --job FILE       the job, as jobs-track's job-of.sh prints it
+Reads:     the effort's events and pinned reports, through jobs-track's
            events-view.sh; each submission's job, through job-of.sh; the
            commits and the tree, through git
 Writes:    nothing
-Stdout:    one JSON object {plan, build_files, changed}: plan the pinned
-           report of the plan event the job names, null when it names none;
+Stdout:    one JSON object {plan, challenges, build_files, changed}: plan
+           the pinned report of the job's plan ref, null with none;
+           challenges those of its challenge ref's pinned report, [] with none;
            build_files every file a commit of the build under test changed:
            the commits on the job's tree in its iteration of the builder's
            build and build-fix jobs; changed every path with an uncommitted
@@ -58,27 +59,31 @@ case ${effort} in /*) ;; *) refuse '--effort must be an absolute folder' ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 skills=${self%/*/*/*/*}
-view="${skills}/agent-jobs/scripts/internal/events-view.sh"
-job_of="${skills}/agent-jobs/scripts/internal/job-of.sh"
+view="${skills}/jobs-track/scripts/internal/events-view.sh"
+job_of="${skills}/jobs-track/scripts/internal/job-of.sh"
 for need in "${view}" "${job_of}"; do
-	[ -f "${need}" ] || refuse "agent-jobs isn't beside this skill (expected ${need}); install first"
+	[ -f "${need}" ] || refuse "jobs-track isn't beside this skill (expected ${need}); install first"
 done
 tree=$(jq -r '.tree // empty' "${job}")
 case ${tree} in /*) ;; *) refuse '--job names no absolute tree' ;; esac
 [ -d "${tree}" ] || refuse "the job's tree ${tree} is not a folder"
 iteration=$(jq -r '.iteration' "${job}")
-# The challenges a rework answers: each asks to add, change, remove or prove.
-bad=$(jq -r '[.challenges // [] | .[] | select((.ask | IN("add", "change", "remove", "prove")) | not) | .id] | join(", ")' "${job}")
-[ -z "${bad}" ] || refuse "the job's challenges ${bad} ask nothing a rework can apply: add, change, remove or prove"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/tester-facts.XXXXXX") || refuse 'mktemp could not make a work folder'
 trap 'rm -rf -- "${work}"' EXIT
 sh "${view}" --effort "${effort}" >"${work}/events" || refuse 'events-view.sh refused the effort; a human must look'
 
-# The plan the job names.
-jq --slurpfile job "${job}" '$job[0].plan as $p | if $p == null then null
+# The plan the job's plan ref names, and the challenges its challenge ref
+# names: each from its event's pinned report.
+jq --slurpfile job "${job}" '$job[0].refs.plan as $p | if $p == null then null
 	else [.[] | select(.seq == $p) | .report] | first end' "${work}/events" >"${work}/plan" \
 	|| refuse 'jq could not read the plan'
+jq --slurpfile job "${job}" '$job[0].refs.challenge as $c | if $c == null then []
+	else [.[] | select(.seq == $c) | .report.challenges // []] | first // [] end' "${work}/events" >"${work}/challenges" \
+	|| refuse 'jq could not read the challenges'
+# The challenges a rework answers: each asks to add, change, remove or prove.
+bad=$(jq -r '[.[] | select((.ask | IN("add", "change", "remove", "prove")) | not) | .id] | join(", ")' "${work}/challenges")
+[ -z "${bad}" ] || refuse "the job's challenges ${bad} ask nothing a rework can apply: add, change, remove or prove"
 
 # The build under test: the commits of the submissions on the job's tree in
 # its iteration by build and build-fix jobs, the builder's kinds.
@@ -99,6 +104,6 @@ git -C "${tree}" -c core.fsmonitor=false status --porcelain -z --untracked-files
 	|| refuse "git could not read the tree ${tree}"
 tr '\000' '\n' <"${work}/status" | awk 'skip { skip = 0; next } { print substr($0, 4); if ($0 ~ /^[RC]/) skip = 1 }' >"${work}/changed"
 
-jq -n --slurpfile plan "${work}/plan" --rawfile build "${work}/build-files" --rawfile changed "${work}/changed" '
+jq -n --slurpfile plan "${work}/plan" --slurpfile challenges "${work}/challenges" --rawfile build "${work}/build-files" --rawfile changed "${work}/changed" '
 	def lines: split("\n") | map(select(length > 0)) | unique;
-	{plan: $plan[0], build_files: ($build | lines), changed: ($changed | lines)}'
+	{plan: $plan[0], challenges: $challenges[0], build_files: ($build | lines), changed: ($changed | lines)}'

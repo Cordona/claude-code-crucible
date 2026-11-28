@@ -1,0 +1,6 @@
+{
+  "pre-tool-use/start-from-door.sh": "Agent",
+  "worktree-create/job-tree.sh": null,
+  "subagent-start/job-assigned.sh": null,
+  "post-tool-use/job-sent.sh": "SendMessage"
+}

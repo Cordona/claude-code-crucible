@@ -45,7 +45,9 @@ esac
 case ${agent_type} in '' | *[!a-z0-9-]*) exit 0 ;; *) ;; esac
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
-[ -d "${self%/*/*/*/*}/${agent_type}/submissions" ] || exit 0
+. "${self%/*/*/*/*}/jobs-agent-init/scripts/lib/agent-type.sh"
+# shellcheck disable=SC2310 # at_base is a test, called for its status
+at_base "${agent_type}" "${self%/*/*/*/*}" >/dev/null || exit 0
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/job-agent-tools.XXXXXX")
 printf '%s' "${input}" >"${work}/input"

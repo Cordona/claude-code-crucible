@@ -60,23 +60,20 @@ while [ $# -gt 0 ]; do
 done
 [ -n "${url}" ] || usage_error '--url missing'
 
-# This script's own input check, before the URL goes on gh's or glab's
-# command line: only a plain http(s) link of these characters is taken.
-printf '%s' "${url}" | grep -Eq '^[Hh][Tt][Tt][Pp][Ss]?://[A-Za-z0-9.-]+(:[0-9]+)?([/?#][A-Za-z0-9._~/?#=%:+,@-]*)?$' \
-	|| fail 2 'the URL is not of the accepted form; expected an http(s) link of letters, digits and . _ ~ / ? # = % : + , @ - only'
 command -v jq >/dev/null 2>&1 || fail 1 'jq missing; expected jq 1.6 or later on PATH'
 # dev-base is found as a neighbour skill: this script's skills folder, cut
 # from its own path as text, so a skill link holds.
 self=$0
 case ${self} in /*) ;; *) self="$(pwd)/${self}" ;; esac
 run_timed_script="${self%/*/*/*/*}/dev-base/scripts/internal/run-timed.sh"
-[ -f "${run_timed_script}" ] || fail 2 "dev-base isn't beside this skill (expected ${run_timed_script}); install first"
+safe_link_script="${self%/*/*/*/*}/dev-base/scripts/internal/safe-link.sh"
+[ -f "${run_timed_script}" ] && [ -f "${safe_link_script}" ] || fail 2 "dev-base isn't beside this skill (expected ${run_timed_script}); install first"
 
-rest=${url#*://}
-authority=$(printf '%s' "${rest%%[/?#]*}" | tr '[:upper:]' '[:lower:]')
-path=${rest#"${rest%%[/?#]*}"}
-path=${path%%[?#]*}
-host=${authority%%:*}
+# The link checked before it goes on gh's or glab's command line.
+link=$(sh "${safe_link_script}" --url "${url}") || exit 2
+authority=$(printf '%s' "${link}" | jq -r '.authority')
+host=$(printf '%s' "${link}" | jq -r '.host')
+path=$(printf '%s' "${link}" | jq -r '.path')
 
 kind=other
 if [ "${authority}" = github.com ] && printf '%s' "${path}" | grep -Eq '^/[^/]+/[^/]+/issues/[0-9]+/?$'; then
