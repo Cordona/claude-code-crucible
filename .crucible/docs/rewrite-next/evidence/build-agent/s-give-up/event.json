@@ -1,7 +1,7 @@
 {
   "type": "job.ended",
   "seq": 59,
-  "at": "2026-11-25T16:16:01Z",
+  "at": "2026-11-28T07:41:18Z",
   "by": "recover-submission.sh",
   "claude_session_id": "sess-ba",
   "body": {

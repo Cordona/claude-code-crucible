@@ -164,9 +164,9 @@ check "an agent's Bash naming a lib denied" denied
 call Glob "$P" "$(jq -cn --arg p "$C/crucible-effort/scripts/main" '{pattern: "*.sh", path: $p}')" "$AG"
 check "an agent's Glob in scripts/main/ denied" denied
 check "an agent's deny says it needs no framework script" sh -c 'echo "$1" | grep -q "an agent works in its tree and writes its report"' _ "$out"
-call Read "$P" "$(path file_path "$R/domains/software-development/plugins/tech/languages/shell/references/build.md")" "$AG"
+call Read "$P" "$(path file_path "$R/domains/software-development/core/agents/plugins/tech/languages/shell/references/build.md")" "$AG"
 check "an agent reads a plugin's references/" allowed
-call Read "$P" "$(path file_path "$R/domains/software-development/core/plugins/standards/security/SKILL.md")" "$AG"
+call Read "$P" "$(path file_path "$R/domains/software-development/core/agents/plugins/standards/security/SKILL.md")" "$AG"
 check "an agent reads a plugin's SKILL.md" allowed
 call Read "$P" "$(path file_path "$K/code-builder/code-builder.md")" "$AG"
 check "an agent reads an agent definition" allowed

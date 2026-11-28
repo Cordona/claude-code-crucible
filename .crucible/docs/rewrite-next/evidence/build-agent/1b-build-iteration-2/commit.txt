@@ -2,14 +2,14 @@ crucible(build): log each upload retry with its attempt number
 
 log each upload retry with its attempt number
 
-Effort: 20261125T161540-1845-upload-retries
+Effort: 20261128T074056-af5d-upload-retries
 Job: 13 build-php-b71e0c
 Iteration: 2
 Language: php
 Framework: laravel
 Standards: security, observability, persistence
 
-commit 2718ecbc41b3afe60dd9b8aa96e240692c5f62f0
+commit 874002a59668bc4954f427da00bb6845a9efaadf
 Author: Build Agent <build-agent@example.test>
 Signed: N
 

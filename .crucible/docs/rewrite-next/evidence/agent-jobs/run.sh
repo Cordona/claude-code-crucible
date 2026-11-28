@@ -33,21 +33,21 @@ has() { printf '%s' "$1" | grep -qF -- "$2"; }
 
 EW="${K}/crucible-events/scripts/internal/event-write.sh"
 ER="${K}/crucible-events/scripts/internal/events-read.sh"
-JOB_OF="${K}/agent-jobs/scripts/internal/job-of.sh"
-GONE="${K}/agent-jobs/hooks/stop/end-gone-jobs.sh"
-END_JOB="${K}/agent-jobs/scripts/main/end-job.sh"
+JOB_OF="${K}/jobs-track/scripts/internal/job-of.sh"
+GONE="${K}/jobs-track/hooks/stop/end-gone-jobs.sh"
+END_JOB="${K}/jobs-track/scripts/main/end-job.sh"
 
 echo "=== install: install-entries.sh's own links and settings"
 sh "${R}/framework/core/install/install-entries.sh" | sed -n '/^# Links/,/^$/p' | sed '1d' >"${S}/links.sh"
 sh "${R}/framework/core/install/install-entries.sh" | sed -n '/^# Settings/,/^$/p' | sed '1d' >"${S}/settings.json"
 sh "${S}/links.sh"
-check 'main'"'"'s Stop hook end-gone-jobs.sh is registered' jq -e 'any(.hooks.Stop[].hooks[]; .command | endswith("/skills/agent-jobs/hooks/stop/end-gone-jobs.sh'"'"'"))' "${S}/settings.json"
-for script in "${JOB_OF}" "${K}/agent-jobs/scripts/internal/agent-had-job.sh" "${GONE}" "${END_JOB}"; do
+check 'main'"'"'s Stop hook end-gone-jobs.sh is registered' jq -e 'any(.hooks.Stop[].hooks[]; .command | endswith("/skills/jobs-track/hooks/stop/end-gone-jobs.sh'"'"'"))' "${S}/settings.json"
+for script in "${JOB_OF}" "${K}/jobs-track/scripts/internal/agent-had-job.sh" "${GONE}" "${END_JOB}"; do
 	out=$(sh "${script}" --help 2>&1); rc=$?
 	check "${script##*/} --help" sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
 done
 check 'end-job.sh'"'"'s help leaves another session'"'"'s job to the human' has "$(sh "${END_JOB}" --help)" "call, never main's"
-check 'agent-jobs knows no agent kind' sh -c '! grep -rqE "code-builder|code-tester|code-reviewer" "$1"' _ "${R}/domains/software-development/core/main-thread/agent-jobs"
+check 'jobs-track knows no agent kind' sh -c '! grep -rqE "code-builder|code-tester|code-reviewer" "$1"' _ "${R}/domains/software-development/core/main-thread/jobs/track"
 
 effort=$(sh "${K}/crucible-effort/scripts/main/effort-start.sh" --name 'job model') || { echo 'effort-start failed'; exit 1; }
 other=$(sh "${K}/crucible-effort/scripts/main/effort-start.sh" --name 'another effort') || { echo 'effort-start failed'; exit 1; }
@@ -217,13 +217,13 @@ sh "${END_JOB}" --effort "${effort}" --job "${JOB}" --note 'its session died' --
 show <"${S}/work/end.err" | sed 's/^/    /'
 check 'another session'"'"'s job with its report pinned is recorded stalled, not ended' sh -c '[ "$1" -eq 0 ] && [ "$(sh "$2" --effort "$3" --job "$4" | jq -r .state)" = stalled ]' _ "${rc}" "${JOB_OF}" "${effort}" "${JOB}"
 check 'main is told so in one line, naming where to finish it' sh -c '[ "$(wc -l <"$1" | tr -d " ")" -eq 1 ] && grep -qF "recorded stalled, not ended" "$1" && grep -qF "scripts/main/recover-submission.sh" "$1" && [ "$(wc -l <"$2" | tr -d " ")" -eq 1 ]' _ "${S}/work/end.err" "${S}/work/end.out"
-check 'end-job.sh and end-gone-jobs.sh share one pinned test, in the agent-jobs lib' sh -c 'grep -q "lib/pinned.sh" "$1" && grep -q "lib/pinned.sh" "$2" && ! grep -q "^pinned()" "$1" && ! grep -q "^pinned()" "$2"' _ "${END_JOB}" "${GONE}"
+check 'end-job.sh and end-gone-jobs.sh share one pinned test, in the jobs-track lib' sh -c 'grep -q "lib/pinned.sh" "$1" && grep -q "lib/pinned.sh" "$2" && ! grep -q "^pinned()" "$1" && ! grep -q "^pinned()" "$2"' _ "${END_JOB}" "${GONE}"
 check 'end-job.sh'"'"'s help claims no record of the human'"'"'s call' sh -c '! sh "$1" --help | grep -q "records that"' _ "${END_JOB}"
 said=$(sh "${END_JOB}" --effort "${effort}" --job "${JOB}" --note 'again' --other-session 2>&1); rc=$?
 check 'a stalled job is refused: it is finished or given up instead' sh -c '[ "$1" -eq 2 ] && printf "%s" "$2" | grep -qF "is stalled"' _ "${rc}" "${said}"
 
 echo "=== agent-job.sh: one agent's open job, across the efforts"
-AGENT_JOB="${K}/agent-jobs/scripts/internal/agent-job.sh"
+AGENT_JOB="${K}/jobs-track/scripts/internal/agent-job.sh"
 out=$(sh "${AGENT_JOB}" --help 2>&1); rc=$?
 check 'agent-job.sh --help' sh -c '[ "$1" -eq 0 ] && printf "%s" "$2" | grep -q "^usage: " && printf "%s" "$2" | grep -q "^Exit:"' _ "${rc}" "${out}"
 found=$(sh "${AGENT_JOB}" --agent e0000001); rc=$?
@@ -238,7 +238,7 @@ waited=$(($(date +%s) - started))
 check 'an agent never assigned: exit 4, after looking again for 2 seconds' sh -c '[ "$1" -eq 4 ] && [ "$2" -ge 2 ] && [ "$2" -lt 10 ]' _ "${rc}" "${waited}"
 sh "${AGENT_JOB}" --agent 'bad id' >/dev/null 2>&1; rc=$?
 check 'a malformed id is refused: exit 2' is "${rc}" 2
-check 'the stop hook and the write scope both use it, and neither searches the efforts itself' sh -c 'for f in "$1/agent-submission/hooks/subagent-stop/submit-agent-work.sh" "$1/agent-submission/hooks/pre-tool-use/steps/write-scope.sh"; do grep -q "agent-jobs/scripts/internal/agent-job.sh" "$f" && ! grep -q "efforts/\*" "$f" || exit 1; done' _ "${K}"
+check 'the stop hook and the write scope both use it, and neither searches the efforts itself' sh -c 'for f in "$1/agent-submission/hooks/subagent-stop/submit-agent-work.sh" "$1/agent-submission/hooks/pre-tool-use/steps/write-scope.sh"; do grep -q "jobs-track/scripts/internal/agent-job.sh" "$f" && ! grep -q "efforts/\*" "$f" || exit 1; done' _ "${K}"
 
 echo
 echo "=== ${pass} PASS, ${fail} FAIL"

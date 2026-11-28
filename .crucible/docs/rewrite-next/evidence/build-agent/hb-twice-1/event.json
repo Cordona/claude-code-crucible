@@ -1,0 +1,19 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 151,
+    "at": "2026-11-28T07:42:59Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 148,
+      "iteration": 4,
+      "agent": "hb00000002",
+      "try": 1,
+      "lines": [
+        "unknown key \"verification\"; the keys are summary, gates, decisions, impact, noticed, questions, blockers",
+        "gates[0] is not_run: add a note saying why"
+      ]
+    }
+  }
+]

@@ -36,7 +36,7 @@ has() { printf '%s' "$1" | grep -qF -- "$2"; }
 
 EW="${K}/crucible-events/scripts/internal/event-write.sh"
 ER="${K}/crucible-events/scripts/internal/events-read.sh"
-JOB_OF="${K}/agent-jobs/scripts/internal/job-of.sh"
+JOB_OF="${K}/jobs-track/scripts/internal/job-of.sh"
 HOOK="${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
 CHECK="${K}/agent-submission/hooks/subagent-stop/steps/report-validation.sh"
 CR="${R}/domains/software-development/core/agents/code-reviewer"
@@ -52,10 +52,10 @@ for pair in review:review.submitted test-plan-challenge:test-plan.challenged ext
 	kind=${pair%%:*} event=${pair#*:}
 	check "submissions/${kind}.json: ${event}, no commit, its rules, facts and stamps installed" sh -c 'f="$1/code-reviewer/submissions/$2.json"; jq -e --arg e "$3" ".event == \$e and .commit == false" "$f" && [ -f "$1/$(jq -r .rules "$f").jq" ] && [ -f "$1/$(jq -r .facts "$f")" ] && [ -f "$1/$(jq -r .stamps.rules "$f").jq" ] && [ -f "$1/code-reviewer/events/$3.jq" ]' _ "${K}" "${kind}" "${event}"
 done
-check 'code-reviewer owns its rules: a common lib, one rules file per kind, its stamps' sh -c 'cd "$1/code-reviewer/scripts/lib" && [ "$(ls)" = "$(printf "external-review-report.jq\nforeign-review-report.jq\nreview-report.jq\nreviewer-common.jq\nreviewer-stamps.jq\ntest-plan-challenge-report.jq")" ]' _ "${K}"
-check 'no agent includes another agent'"'"'s rules: every reviewer include is its own' sh -c '! grep -rh "^include" "$1/scripts/lib" "$1/events" | grep -vqE "include \"(code-reviewer|agent-jobs)/"' _ "${CR}"
+check 'code-reviewer owns its rules: a common lib, one rules file per kind, its stamps, the threads it judges' sh -c 'cd "$1/code-reviewer/scripts/lib" && [ "$(ls)" = "$(printf "external-review-report.jq\nforeign-review-report.jq\nreview-report.jq\nreview-threads.jq\nreviewer-common.jq\nreviewer-stamps.jq\ntest-plan-challenge-report.jq")" ]' _ "${K}"
+check 'no agent includes another agent'"'"'s rules: every reviewer include is its own' sh -c '! grep -rh "^include" "$1/scripts/lib" "$1/events" | grep -vqE "include \"(code-reviewer|jobs-track)/"' _ "${CR}"
 check 'the reviewer names no other agent'"'"'s component' sh -c '! grep -rqE "code-(builder|tester)" "$1"' _ "${CR}"
-check 'nothing in agent-submission or agent-jobs names a reviewer kind, or any agent' sh -c '! grep -rqE "code-(builder|tester|reviewer)|foreign-review|external-review|test-plan-challenge|\"review\"" "$1/agents/agent-submission" "$1/main-thread/agent-jobs"' _ "${R}/domains/software-development/core"
+check 'nothing in agent-submission or jobs-track names a reviewer kind, or any agent' sh -c '! grep -rqE "code-(builder|tester|reviewer)|foreign-review|external-review|test-plan-challenge|\"review\"" "$1/agents/agent-submission" "$1/main-thread/jobs/track"' _ "${R}/domains/software-development/core"
 check 'the stop hook has its own lock, not the events lock' sh -c 'grep -q "stops/.lock" "$1" && ! grep -q "events/.lock" "$1"' _ "${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
 for script in "${K}"/code-reviewer/scripts/internal/*.sh "${K}"/agent-submission/hooks/subagent-stop/steps/report-stamp.sh; do
 	out=$(sh "${script}" --help 2>&1); rc=$?
@@ -95,7 +95,120 @@ events_count() { sh "${ER}" --effort "${effort}" --paths | wc -l | tr -d ' '; }
 # job.assigned through the real event writer; the iteration is the tree's
 # (the next for a build, none on a tree with no build). Sets JOB, AGENT,
 # AGENT_TYPE, TREE and REPORT; returns 1 when refused, the reason in SAID.
+# A jobs gate, the job.defined, then what the start hook writes: the
+# writers' names stand in for jobs-define's and jobs-assign's scripts.
+new_chain() { # new_chain KIND BASE TREE_NAME AGENT INPUT_REFS RANGE_OR_NULL
+	printf '%s\n' '{"record": "jobs", "subject": "x", "question": "Approve?", "accept": "Approve", "answer": "Approve", "accepted": true}' >"${S}/work/gate.json"
+	sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/gate.json" >/dev/null
+	ng=$(events_count)
+	NT=$(sh "${ER}" --effort "${effort}" --type worktree.cut | jq --arg n "$3" '[.[] | select(.body.name == $n)] | last | .seq')
+	NI=$(sh "${ER}" --effort "${effort}" | jq --argjson t "${NT}" '1 + ([.[] | select(.type == "job.defined" and .body.kind == "build" and .body.work.tree.use == $t)] | length)')
+	jq -n --arg k "$1" --argjson g "${ng}" --argjson t "${NT}" --argjson i "${NI}" --argjson setup "${SETUP}" --argjson refs "$5" --argjson range "$6" \
+		'{kind: $k, approval_gate: {ref: $g, position: 1}, plugins: $setup, input_refs: $refs,
+		  work: ({tree: {use: $t}, loop: {iteration: $i}} + (if $range == null then {} else {range: $range} end)
+			+ (if $k == "review" then {} else {known_failures: []} end))}' >"${S}/work/defined.json"
+	SAID=$(sh "${EW}" --effort "${effort}" --type job.defined --by job-define.sh --body-file "${S}/work/defined.json" 2>&1) || { echo "    job.defined refused: ${SAID}"; return 1; }
+	JOB=$(events_count) AGENT=$4 AGENT_TYPE="$2-$(printf '%s' "${SETUP}" | jq -r '[.language] + (.frameworks // []) + .standards | join("-")')"
+	printf '%s\n' "{\"agent\": \"${AGENT}\", \"base\": \"$2\", \"type\": \"${AGENT_TYPE}\", \"plugins\": [\"language-x\"]}" >"${S}/work/init.json"
+	sh "${ER}" --effort "${effort}" --type agent.initialized | jq -e --arg a "${AGENT}" 'any(.[]; .body.agent == $a)' >/dev/null \
+		|| sh "${EW}" --effort "${effort}" --type agent.initialized --by job-assigned.sh --body-file "${S}/work/init.json" >/dev/null || { echo '    agent.initialized refused'; return 1; }
+	printf '%s\n' "{\"job\": ${JOB}, \"agent\": \"${AGENT}\", \"tree\": ${NT}}" >"${S}/work/assigned.json"
+	sh "${EW}" --effort "${effort}" --type job.assigned --by job-assigned.sh --body-file "${S}/work/assigned.json" >/dev/null || { echo '    job.assigned refused'; return 1; }
+	TREE=$(tree_of "$3") REPORT="${effort}/reports/$1/${JOB}.json"
+}
+
+# fetched_change REPO_DIR: a remote-change.fetched for the repo's HEAD, its
+# text pinned, as change-fetch.sh writes it; CHANGE is its seq.
+pin_next() { # pin_next KIND FILE: the next seq's pinned copy; sets PIN_REL and PIN_SHA
+	pn=$(($(events_count) + 1)); PIN_REL="reports/$1/${pn}.json"
+	mkdir -p "${effort}/reports/$1"; cp -- "$2" "${effort}/${PIN_REL}"; chmod 444 "${effort}/${PIN_REL}"
+	PIN_SHA=$(shasum -a 256 "${effort}/${PIN_REL}" | cut -d ' ' -f 1)
+}
+fetched_change() { # fetched_change REPO_DIR [BASE HEAD]
+	printf '%s\n' '{"title": "Upload retries", "description": "Retry uploads on 503.", "base_branch": "main", "state": "open"}' >"${S}/work/change-text.json"
+	pin_next remote-change "${S}/work/change-text.json"
+	h=${3:-$(git -C "$1" rev-parse HEAD)} b=${2:-${h}}
+	jq -n --arg repo "$1" --arg b "${b}" --arg h "${h}" --arg p "${PIN_REL}" --arg sha "${PIN_SHA}" '{host: "gitlab", url: "https://gitlab.example.test/acme/upload/-/merge_requests/42",
+		repo: $repo, number: 42, base: $b, head: $h, author: "fixer", report: {path: $p, sha256: $sha}}' >"${S}/work/change.json"
+	sh "${EW}" --effort "${effort}" --type remote-change.fetched --by change-fetch.sh --body-file "${S}/work/change.json" >/dev/null || { echo '    remote-change.fetched refused'; return 1; }
+	CHANGE=$(events_count)
+}
+# fetched_review OLD_THREADS_FILE: the old fixture's threads in the fetch's
+# shape (each the opening comment of its thread), pinned as review-fetch.sh
+# writes them; REVIEW is its seq.
+fetched_review() {
+	jq '{threads: [.threads[] | {id, resolved: false,
+		comments: ([{id: "\(.id)-1", role: "reviewer", updated: "2026-01-01T00:00:00Z", body} + (if has("source") then {source} else {} end)] + (.more // []))}]}' "$1" >"${S}/work/fetch.json"
+	pin_next remote-review "${S}/work/fetch.json"
+	jq -n --argjson c "${CHANGE}" --arg h "$(git -C "${repo}" rev-parse HEAD)" --arg p "${PIN_REL}" --arg sha "${PIN_SHA}" \
+		'{change: $c, head: $h, threads: 6, bots: [], report: {path: $p, sha256: $sha}}' >"${S}/work/review.json"
+	sh "${EW}" --effort "${effort}" --type remote-review.fetched --by review-fetch.sh --body-file "${S}/work/review.json" >/dev/null || { echo '    remote-review.fetched refused'; return 1; }
+	REVIEW=$(events_count)
+}
+# foreign_chain AGENT: a foreign review on the new chain: a tree cut from the
+# change's head, the job defined with the change ref and its range.
+foreign_chain() {
+	h=$(sh "${ER}" --effort "${effort}" --type remote-change.fetched | jq -r --argjson c "${CHANGE}" '.[] | select(.seq == $c) | .body.head')
+	b=$(sh "${ER}" --effort "${effort}" --type remote-change.fetched | jq -r --argjson c "${CHANGE}" '.[] | select(.seq == $c) | .body.base')
+	fname="foreign-$(events_count)"
+	sh "${K}/git-worktree/scripts/main/worktree-cut.sh" --effort "${effort}" --repo "${repo}" --name "${fname}" --from "ref:${h}" >/dev/null || { SAID='worktree-cut refused'; return 1; }
+	NT=$(events_count)
+	printf '%s\n' '{"record": "jobs", "subject": "x", "question": "Approve?", "accept": "Approve", "answer": "Approve", "accepted": true}' >"${S}/work/gate.json"
+	sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/gate.json" >/dev/null
+	ng=$(events_count)
+	jq -n --argjson g "${ng}" --argjson c "${CHANGE}" --arg repo "${repo}" --arg h "${h}" --arg b "${b}" \
+		'{kind: "foreign-review", approval_gate: {ref: $g, position: 1}, plugins: {language: "shell", standards: ["shell"]}, input_refs: {change: $c},
+		  work: {tree: {cut: {repo: $repo, from: "ref:\($h)"}}, range: {base: $b, head: $h}, loop: {iteration: 1}}}' >"${S}/work/defined.json"
+	SAID=$(sh "${EW}" --effort "${effort}" --type job.defined --by job-define.sh --body-file "${S}/work/defined.json" 2>&1) || return 1
+	JOB=$(events_count) AGENT=$1 AGENT_TYPE=code-reviewer-shell-shell
+	printf '%s\n' "{\"agent\": \"${AGENT}\", \"base\": \"code-reviewer\", \"type\": \"${AGENT_TYPE}\", \"plugins\": [\"language-x\"]}" >"${S}/work/init.json"
+	sh "${EW}" --effort "${effort}" --type agent.initialized --by job-assigned.sh --body-file "${S}/work/init.json" >/dev/null || { SAID='agent.initialized refused'; return 1; }
+	printf '%s\n' "{\"job\": ${JOB}, \"agent\": \"${AGENT}\", \"tree\": ${NT}}" >"${S}/work/assigned.json"
+	SAID=$(sh "${EW}" --effort "${effort}" --type job.assigned --by job-assigned.sh --body-file "${S}/work/assigned.json" 2>&1) || return 1
+	TREE=$(tree_of "${fname}") REPORT="${effort}/reports/foreign-review/${JOB}.json"
+}
+
+# A kind defined through jobs-define starts on the new chain: the old
+# dispatch's plan becomes a plan ref, inline challenges a challenge event
+# with its pinned report, the human's words a gate.
+to_refs() { # to_refs EXTRA TREE_NAME: prints the job's input refs
+	[ -n "$1" ] || set -- "{}" "$2"
+	refs=$(printf '%s' "$1" | jq -c 'if has("plan") then {plan} else {} end')
+	if printf '%s' "$1" | jq -e 'has("challenges")' >/dev/null; then
+		s_job=${JOB-} s_agent=${AGENT-} s_type=${AGENT_TYPE-} s_tree=${TREE-} s_report=${REPORT-}
+		new_chain test-plan-challenge code-reviewer "$2" "fc$(events_count)0000000" "$(printf '%s' "$1" | jq -c '{plan}')" null >/dev/null || return 1
+		mkdir -p "${REPORT%/*}" && printf '%s' "$1" | jq '{challenges}' >"${REPORT}" && chmod 444 "${REPORT}"
+		jq -n --argjson j "${JOB}" --arg a "${AGENT}" --arg p "reports/test-plan-challenge/${JOB}.json" --arg sha "$(shasum -a 256 "${REPORT}" | cut -d " " -f 1)" \
+			--argjson i "$(sh "${ER}" --effort "${effort}" | jq --argjson j "${JOB}" '.[] | select(.seq == $j) | .body.work.loop.iteration')" \
+			'{job: $j, iteration: $i, agent: $a, report: {path: $p, sha256: $sha}}' >"${S}/work/challenged.json"
+		sh "${EW}" --effort "${effort}" --type test-plan.challenged --by submission-event.sh --body-file "${S}/work/challenged.json" >/dev/null || return 1
+		refs=$(printf '%s' "${refs}" | jq -c --argjson c "$(events_count)" '. + {challenge: $c}')
+		JOB=${s_job} AGENT=${s_agent} AGENT_TYPE=${s_type} TREE=${s_tree} REPORT=${s_report}
+	fi
+	if printf '%s' "$1" | jq -e 'has("words")' >/dev/null; then
+		printf '%s' "$1" | jq '{record: "jobs", subject: "words", question: "Rework the plan?", answer: .words}' >"${S}/work/words.json"
+		sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/words.json" >/dev/null || return 1
+		refs=$(printf '%s' "${refs}" | jq -c --argjson w "$(events_count)" '. + {words: $w}')
+	fi
+	printf '%s\n' "${refs}"
+}
 dispatch() {
+	case $1 in
+		external-review)
+			fetched_review "$(printf '%s' "${6-}" | jq -r '.threads')" || { SAID='the threads could not be fetched'; return 1; }
+			# The earlier judgement of the same change, as resolve's same picks it.
+			earlier=$(sh "${ER}" --effort "${effort}" | jq --argjson c "${CHANGE}" '. as $all | [.[] | select(.type == "external-review.submitted") | . as $s
+				| select(first($all[] | select(.seq == $s.body.job and .type == "job.defined")).body.input_refs.change == $c) | .seq] | last')
+			new_chain "$1" "$2" "$3" "$4" "$(jq -cn --argjson r "${REVIEW}" --argjson c "${CHANGE}" --argjson e "${earlier}" '{review: $r, change: $c} + (if $e == null then {} else {earlier: $e} end)')" null; return $? ;;
+		foreign-review)
+			foreign_chain "$4"; return $? ;;
+		test-plan | test-plan-update | test-plan-challenge)
+			refs=$(to_refs "${6-}" "$3") || { SAID='the old dispatch could not be made refs'; DISPATCH_SAID=${SAID}; return 1; }
+			new_chain "$1" "$2" "$3" "$4" "${refs}" null; rc=$?
+			DISPATCH_SAID=${SAID-}
+			return "${rc}" ;;
+		*) ;;
+	esac
 	JOB=$(($(events_count) + 1)) AGENT_TYPE=$2 TREE=$(tree_of "$3") AGENT=$4
 	extra=${6-}
 	[ -n "${extra}" ] || extra='{}'
@@ -252,9 +365,12 @@ write_report clean
 stop 8-empty-challenge
 check 'accepted: test-plan.challenged, the report {}' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"test-plan.challenged\"" && [ "$(jq -c . "$3")" = "{}" ]' _ "${HOOK_OUT}" "${EVENT}" "${REPORT}"
 
+fetched_change "${repo}" || exit 1
 echo "=== 9: an external review with all six verdicts"
 dispatch external-review code-reviewer upload x9x9x9x9x9 external-review-x9x9x9 "{\"lens\": \"security\", \"threads\": \"${THREADS}\"}" || echo "    external review refused: ${SAID}"
 write_report external-9
+# A source the agent wrote, and wrong: no refusal; the stamp replaces it.
+jq '.items[0].source = "human"' "${REPORT}" >"${REPORT}.w" && mv -f -- "${REPORT}.w" "${REPORT}"
 stop 9-external-review
 check 'accepted: external-review.submitted, iteration 1' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"external-review.submitted\" and .body.iteration == 1"' _ "${HOOK_OUT}" "${EVENT}"
 check 'every item'"'"'s source stamped from the threads file' is "$(jq -r '[.items[] | "\(.thread)=\(.source)"] | unique | join(" ")' "${REPORT}")" 'description=human n11370=bot n11371=human n11372=bot n11373=human n11374=human'
@@ -262,21 +378,28 @@ check 'the valid findings'"'"' IDs from the job'"'"'s lens: SECURITY-01, SECURIT
 check 'all six verdicts, an out_of_scope valid finding, and a noted with a reply' jq -e '([.items[].verdict] | unique) == ["already-fixed", "answered", "deferred", "noted", "rejected", "valid"]
 	and any(.items[]; .finding.out_of_scope) and any(.items[]; .verdict == "noted" and has("reply"))' "${REPORT}"
 
-echo "=== 10: an external review missing a thread, or with a reply on valid: refused"
-dispatch external-review code-reviewer upload x0x0x0x0x0 external-review-x0x0x0 "{\"lens\": \"security\", \"threads\": \"${THREADS}\"}" || echo "    external review refused: ${SAID}"
+echo "=== 10: the review read again, one thread changed since 9: only it must be judged; missing it, or a reply on valid: refused"
+jq '.threads |= map(if .id == "n11373" then .more = [{id: "n11373-2", source: "human", role: "author", updated: "2026-01-02T00:00:00Z", body: "Fixed in the next commit."}] else . end)' "${THREADS}" >"${S}/threads-moved.json"
+dispatch external-review code-reviewer upload x0x0x0x0x0 external-review-x0x0x0 "{\"lens\": \"security\", \"threads\": \"${S}/threads-moved.json\"}" || echo "    external review refused: ${SAID}"
 jq '.items |= (map(select(.thread != "n11373")) | .[0].reply = "will fix")' "${F}/reports/external-9.json" >"${S}/work/ext-bad.json"
 mkdir -p "${REPORT%/*}"; cp -- "${S}/work/ext-bad.json" "${REPORT}"
 stop 10-external-refused
 r=$(reason)
 check 'held: the thread left unjudged' has "${r}" 'judge thread n11373: valid, rejected, already-fixed, deferred, answered or noted'
 check 'held: the reply on valid' has "${r}" "items[0] is valid: remove its reply; it's drafted from the fix"
+check 'the threads judged in 9 and unmoved are not asked for again' sh -c '! printf "%s" "$1" | grep -q "judge thread n1137[0124]"' _ "${r}"
 
 echo "=== 11: a foreign review with a note at a line"
+# Someone else's change: lines 20 and 42 of Client.kt, committed in the foreign tree.
+ft=$(tree_of foreign); fb=$(git -C "${ft}" rev-parse HEAD)
+edit "${ft}" src/upload/Client.kt 20 '// Client.kt retry'; edit "${ft}" src/upload/Client.kt 42 '// Client.kt backoff'
+git -C "${ft}" -c user.name=Other -c user.email=other@example.test -c commit.gpgsign=false commit -qam 'their change'
+fetched_change "${repo}" "${fb}" "$(git -C "${ft}" rev-parse HEAD)" || exit 1
 dispatch foreign-review code-reviewer foreign f1f1f1f1f1 foreign-review-f1f1f1 '{"lens": "shell", "foreign": "acme/upload!42"}' || echo "    foreign review refused: ${SAID}"
-check 'a job on a tree with no build has no iteration' sh -c 'sh "$1" --effort "$2" --job "$3" | jq -e "has(\"iteration\") | not"' _ "${JOB_OF}" "${effort}" "${JOB}"
+check 'a foreign review, on its own tree cut from the change, is iteration 1 with the change'"'"'s range' sh -c 'sh "$1" --effort "$2" --job "$3" | jq -e --arg b "$4" ".iteration == 1 and .base == \$b and .refs.change != null"' _ "${JOB_OF}" "${effort}" "${JOB}" "${fb}"
 write_report foreign-11
 stop 11a-foreign-review
-check 'accepted: foreign-review.submitted with no iteration' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"foreign-review.submitted\" and (.body | has(\"iteration\") | not)"' _ "${HOOK_OUT}" "${EVENT}"
+check 'accepted: foreign-review.submitted, iteration 1' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"foreign-review.submitted\" and .body.iteration == 1"' _ "${HOOK_OUT}" "${EVENT}"
 check 'its IDs numbered in the job, from 01' is "$(ids)" 'SHELL-01'
 check 'the note keeps its line' jq -e '.notes[0].at == "src/upload/Client.kt:42"' "${REPORT}"
 dispatch foreign-review code-reviewer foreign f2f2f2f2f2 foreign-review-f2f2f2 '{"lens": "shell", "foreign": "acme/upload!42"}' || echo "    foreign review refused: ${SAID}"
@@ -333,6 +456,9 @@ fault 'an earlier finding with no fixer'"'"'s status: the check can'"'"'t run' '
 echo "=== every repair line of review-agent.md section 6 (fixtures/repair-lines.json)"
 build_on rows b4b4b4b4b4 || exit 1
 ROWS=$(tree_of rows) ROWS_BASE=${BUILD_BASE} ROWS_HEAD=${BUILD_HEAD}
+# The rows' external reviews read a change of their own, reviewed by none yet.
+fetched_change "${repo}" && fetched_review "${THREADS}" || exit 1
+ROWS_REVIEW=${REVIEW}
 rows=$(jq 'length' "${F}/repair-lines.json")
 : >"${E}/repair-lines.txt"
 i=0
@@ -347,12 +473,12 @@ while [ "${i}" -lt "${rows}" ]; do
 	mkdir -p "${row_report%/*}"; rm -f -- "${row_report}"
 	if jq -e 'has("report")' "${S}/work/row.json" >/dev/null; then jq '.report' "${S}/work/row.json" >"${row_report}"; fi
 	jq --arg tree "${ROWS}" --argjson job "${row_job}" --arg base "${ROWS_BASE}" --arg head "${ROWS_HEAD}" \
-		--arg threads "${THREADS}" --argjson plan "${PLAN}" '{job: $job, state: "assigned", kind, agent_type: "code-reviewer",
+		--argjson review "${ROWS_REVIEW}" --argjson plan "${PLAN}" '{job: $job, state: "assigned", kind, agent_type: "code-reviewer",
 		tree: $tree, report: "reports/\(.kind)/\($job).json"}
 		+ (if .kind == "review" or .kind == "foreign-review" then {lens: "shell", base: $base, head: $head} else {} end)
 		+ (if has("earlier") then {earlier} else {} end)
-		+ (if .kind == "test-plan-challenge" then {plan: $plan} else {} end)
-		+ (if .kind == "external-review" then {lens: "security", threads: $threads} else {} end)
+		+ (if .kind == "test-plan-challenge" then {refs: {plan: $plan}} else {} end)
+		+ (if .kind == "external-review" then {lens: "security", refs: {review: $review}} else {} end)
 		+ {known_failures: []} + (if .kind == "foreign-review" then {} else {iteration: 1} end)
 		+ {setup: {language: "shell", standards: ["security"]}}' "${S}/work/row.json" >"${S}/work/row-job.json"
 	got=$(sh "${CHECK}" --effort "${effort}" --job "${S}/work/row-job.json" 2>&1); rc=$?
@@ -379,6 +505,14 @@ for type in review.submitted foreign-review.submitted test-plan.challenged exter
 	check "${type}: its pinned report stamped again is byte for byte the same" sh -c '[ "$1" -eq 0 ] && cmp -s "$2" "$3"' _ "${rc}" "${again}" "${effort}/$(printf '%s' "${sub}" | jq -r '.body.report.path')"
 	rm -f -- "${again}"
 done
+
+echo "=== the new chain: a review defined, assigned to an agent started from its agent file, handed in unchanged"
+new_chain review code-reviewer upload rn00000001 '{}' "{\"base\": \"${BASE}\", \"head\": \"${HEAD}\"}" || echo '    new chain refused'
+got=$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" 2>&1)
+check 'job-of.sh shows it as the agent side reads a review: base, range, lens, tree' sh -c 'printf "%s" "$1" | jq -e --arg b "$2" --arg h "$3" --arg t "$4" ".agent_type == \"code-reviewer\" and .base == \$b and .head == \$h and .lens == \"security\" and .tree == \$t and .state == \"assigned\""' _ "${got}" "${BASE}" "${HEAD}" "${TREE}"
+write_report review-1
+stop new-chain-review
+check 'accepted: review.submitted for the defined job, its findings stamped from its lens' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e --argjson j "$3" ".type == \"review.submitted\" and .body.job == \$j" && jq -e "all(.findings[]; .id | startswith(\"SECURITY-\"))" "$4"' _ "${HOOK_OUT}" "${EVENT}" "${JOB}" "${REPORT}"
 
 echo
 echo "=== ${pass} PASS, ${fail} FAIL"

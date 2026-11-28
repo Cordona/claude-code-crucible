@@ -37,8 +37,8 @@ sum256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut
 
 EW="${K}/crucible-events/scripts/internal/event-write.sh"
 ER="${K}/crucible-events/scripts/internal/events-read.sh"
-JOB_OF="${K}/agent-jobs/scripts/internal/job-of.sh"
-VIEW="${K}/agent-jobs/scripts/internal/events-view.sh"
+JOB_OF="${K}/jobs-track/scripts/internal/job-of.sh"
+VIEW="${K}/jobs-track/scripts/internal/events-view.sh"
 HOOK="${K}/agent-submission/hooks/subagent-stop/submit-agent-work.sh"
 VAL="${K}/code-tester/scripts/internal"
 
@@ -60,8 +60,8 @@ check 'code-tester owns its rules: a common lib and one rules file per kind' sh 
 check 'code-tester holds no per-kind scripts: its kinds are data' sh -c '[ "$(ls "$1/code-tester/scripts/internal")" = tester-facts.sh ]' _ "${K}"
 check 'the kind and its event are paired only in the submission file' sh -c '! grep -rqE "jobs_submission_problems\(" "$1/code-tester/events"' _ "${K}"
 check 'neither agent names the other component; the tester names only the builder'"'"'s kinds' sh -c '! grep -rq "code-builder" "$1/code-tester/" && ! grep -rq "code-tester" "$1/code-builder/" && ! grep -rqE "code-(builder|tester)" "$1/agent-submission/"' _ "${K}"
-check 'no agent includes another agent'"'"'s rules: every tester include is its own' sh -c 'grep -rh "^include" "$1/code-tester/scripts/lib" "$1/code-tester/events" | grep -vE "include \"(code-tester|agent-jobs)/" | grep -q . && exit 1; exit 0' _ "${K}"
-check 'nothing in agent-submission or agent-jobs names an agent or one of its kinds, but build' sh -c '! grep -rqE "code-builder|code-tester|build-fix|test-fix|test-plan|\"test\"|\"fix\"" "$1/agents/agent-submission" "$1/main-thread/agent-jobs"' _ "${R}/domains/software-development/core"
+check 'no agent includes another agent'"'"'s rules: every tester include is its own' sh -c 'grep -rh "^include" "$1/code-tester/scripts/lib" "$1/code-tester/events" | grep -vE "include \"(code-tester|jobs-track)/" | grep -q . && exit 1; exit 0' _ "${K}"
+check 'nothing in agent-submission or jobs-track names an agent or one of its kinds, but build' sh -c '! grep -rqE "code-builder|code-tester|build-fix|test-fix|test-plan|\"test\"|\"fix\"" "$1/agents/agent-submission" "$1/main-thread/jobs/track"' _ "${R}/domains/software-development/core"
 
 echo "=== every tester script answers --help"
 for script in "${VAL}"/*.sh; do
@@ -99,7 +99,61 @@ events_count() { sh "${ER}" --effort "${effort}" --paths | wc -l | tr -d ' '; }
 # job.dispatched and job.assigned through the real event writer; sets JOB,
 # AGENT, AGENT_TYPE, TREE and REPORT. Returns 1 when the dispatch is refused,
 # its reason in DISPATCH_SAID.
+# A jobs gate, the job.defined, then what the start hook writes: the
+# writers' names stand in for jobs-define's and jobs-assign's scripts.
+new_chain() { # new_chain KIND BASE TREE_NAME AGENT INPUT_REFS RANGE_OR_NULL
+	printf '%s\n' '{"record": "jobs", "subject": "x", "question": "Approve?", "accept": "Approve", "answer": "Approve", "accepted": true}' >"${S}/work/gate.json"
+	sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/gate.json" >/dev/null
+	ng=$(events_count)
+	NT=$(sh "${ER}" --effort "${effort}" --type worktree.cut | jq --arg n "$3" '[.[] | select(.body.name == $n)] | last | .seq')
+	NI=$(sh "${ER}" --effort "${effort}" | jq --argjson t "${NT}" '1 + ([.[] | select(.type == "job.defined" and .body.kind == "build" and .body.work.tree.use == $t)] | length)')
+	jq -n --arg k "$1" --argjson g "${ng}" --argjson t "${NT}" --argjson i "${NI}" --argjson setup "${SETUP}" --argjson refs "$5" --argjson range "$6" \
+		'{kind: $k, approval_gate: {ref: $g, position: 1}, plugins: $setup, input_refs: $refs,
+		  work: ({tree: {use: $t}, loop: {iteration: $i}} + (if $range == null then {} else {range: $range} end)
+			+ (if $k == "review" then {} else {known_failures: []} end))}' >"${S}/work/defined.json"
+	SAID=$(sh "${EW}" --effort "${effort}" --type job.defined --by job-define.sh --body-file "${S}/work/defined.json" 2>&1) || { echo "    job.defined refused: ${SAID}"; return 1; }
+	JOB=$(events_count) AGENT=$4 AGENT_TYPE="$2-$(printf '%s' "${SETUP}" | jq -r '[.language] + (.frameworks // []) + .standards | join("-")')"
+	printf '%s\n' "{\"agent\": \"${AGENT}\", \"base\": \"$2\", \"type\": \"${AGENT_TYPE}\", \"plugins\": [\"language-x\"]}" >"${S}/work/init.json"
+	sh "${ER}" --effort "${effort}" --type agent.initialized | jq -e --arg a "${AGENT}" 'any(.[]; .body.agent == $a)' >/dev/null \
+		|| sh "${EW}" --effort "${effort}" --type agent.initialized --by job-assigned.sh --body-file "${S}/work/init.json" >/dev/null || { echo '    agent.initialized refused'; return 1; }
+	printf '%s\n' "{\"job\": ${JOB}, \"agent\": \"${AGENT}\", \"tree\": ${NT}}" >"${S}/work/assigned.json"
+	sh "${EW}" --effort "${effort}" --type job.assigned --by job-assigned.sh --body-file "${S}/work/assigned.json" >/dev/null || { echo '    job.assigned refused'; return 1; }
+	TREE=$(tree_of "$3") REPORT="${effort}/reports/$1/${JOB}.json"
+}
+
+# A kind defined through jobs-define starts on the new chain: the old
+# dispatch's plan becomes a plan ref, inline challenges a challenge event
+# with its pinned report, the human's words a gate.
+to_refs() { # to_refs EXTRA TREE_NAME: prints the job's input refs
+	[ -n "$1" ] || set -- "{}" "$2"
+	refs=$(printf '%s' "$1" | jq -c 'if has("plan") then {plan} else {} end')
+	if printf '%s' "$1" | jq -e 'has("challenges")' >/dev/null; then
+		s_job=${JOB-} s_agent=${AGENT-} s_type=${AGENT_TYPE-} s_tree=${TREE-} s_report=${REPORT-}
+		new_chain test-plan-challenge code-reviewer "$2" "fc$(events_count)0000000" "$(printf '%s' "$1" | jq -c '{plan}')" null >/dev/null || return 1
+		mkdir -p "${REPORT%/*}" && printf '%s' "$1" | jq '{challenges}' >"${REPORT}" && chmod 444 "${REPORT}"
+		jq -n --argjson j "${JOB}" --arg a "${AGENT}" --arg p "reports/test-plan-challenge/${JOB}.json" --arg sha "$(sum256 "${REPORT}")" \
+			--argjson i "$(sh "${ER}" --effort "${effort}" | jq --argjson j "${JOB}" '.[] | select(.seq == $j) | .body.work.loop.iteration')" \
+			'{job: $j, iteration: $i, agent: $a, report: {path: $p, sha256: $sha}}' >"${S}/work/challenged.json"
+		sh "${EW}" --effort "${effort}" --type test-plan.challenged --by submission-event.sh --body-file "${S}/work/challenged.json" >/dev/null || return 1
+		refs=$(printf '%s' "${refs}" | jq -c --argjson c "$(events_count)" '. + {challenge: $c}')
+		JOB=${s_job} AGENT=${s_agent} AGENT_TYPE=${s_type} TREE=${s_tree} REPORT=${s_report}
+	fi
+	if printf '%s' "$1" | jq -e 'has("words")' >/dev/null; then
+		printf '%s' "$1" | jq '{record: "jobs", subject: "words", question: "Rework the plan?", answer: .words}' >"${S}/work/words.json"
+		sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/words.json" >/dev/null || return 1
+		refs=$(printf '%s' "${refs}" | jq -c --argjson w "$(events_count)" '. + {words: $w}')
+	fi
+	printf '%s\n' "${refs}"
+}
 dispatch() {
+	case $1 in
+		test-plan | test-plan-update | test-plan-challenge | test)
+			refs=$(to_refs "${7-}" "$3") || { SAID='the old dispatch could not be made refs'; DISPATCH_SAID=${SAID}; return 1; }
+			new_chain "$1" "$2" "$3" "$4" "${refs}" null; rc=$?
+			DISPATCH_SAID=${SAID-}
+			return "${rc}" ;;
+		*) ;;
+	esac
 	JOB=$(($(events_count) + 1)) AGENT_TYPE=$2 TREE=$(tree_of "$3") AGENT=$4
 	extra=${7-}
 	[ -n "${extra}" ] || extra='{}'
@@ -220,7 +274,7 @@ dispatch test-plan-update code-tester upload fa17fa17fa test-plan-update-php-fa1
 	"{\"plan\": ${U1}, \"challenges\": [{\"id\": \"C-9\", \"ask\": \"fix\"}]}" || echo "    rework refused: ${DISPATCH_SAID}"
 write_report plan-1-update
 stop rework-bad-ask
-check 'job.dispatched leaves the ask to the tester: the job was written' is "$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" | jq -r '.challenges[0].ask')" fix
+check 'the job is written with the challenge as a ref; the ask is the tester'"'"'s facts'"'"' to judge' sh -c 'sh "$1" --effort "$2" --job "$3" | jq -e ".refs.challenge | type == \"number\""' _ "${JOB_OF}" "${effort}" "${JOB}"
 check 'the stop goes through with the fault told to the human' sh -c '[ "$2" -eq 0 ] && ! printf "%s" "$1" | jq -e ".decision" >/dev/null && printf "%s" "$1" | jq -r .systemMessage | grep -qF "ask nothing a rework can apply"' _ "${HOOK_OUT}" "${HOOK_RC}"
 check 'a fault before acceptance: job.ended fault at step check, no refusal' is "$(jq -r '[.[] | "\(.type) \(.body.reason) \(.body.step)"] | join(",")' "${E}/rework-bad-ask/event.json")" 'job.ended fault check'
 
@@ -258,7 +312,7 @@ approve "${U2}"
 
 echo "=== 5: the tests written: test.submitted and its commit"
 dispatch test code-tester upload "${TESTER}" test-php-77de01 1 "{\"plan\": ${U2}}" || echo "    test refused: ${DISPATCH_SAID}"
-check 'the approved newest plan starts the test job' is "$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" | jq -r '.plan')" "${U2}"
+check 'the approved newest plan starts the test job' is "$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" | jq -r '.refs.plan')" "${U2}"
 work_on tests/Upload/UploadClientTest.php tests/fixtures/503.json
 git -C "${TREE}" rm -q tests/Upload/OldClientTest.php
 write_report test-5
@@ -270,7 +324,7 @@ check 'the commit: crucible(test), Effort, Job, Iteration and the setup' is "$(m
 cover the retry limit and the 4xx case
 
 Effort: ${effort_name}
-Job: ${JOB} test-php-77de01
+Job: ${JOB} test-${JOB}
 Iteration: 1
 Language: php
 Framework: laravel
@@ -359,9 +413,15 @@ while [ "${i}" -lt "${rows}" ]; do
 	row_report="${effort}/reports/${kind}/${row_job}.json"
 	mkdir -p "${row_report%/*}"
 	jq '.report' "${S}/work/row.json" >"${row_report}"
-	jq --arg tree "${ROWS}" --argjson plan "${PLAN_ROWS}" --argjson job "${row_job}" '{job: $job, state: "assigned", kind, agent_type: "code-tester",
-		tree: $tree, report: "reports/\(.kind)/\($job).json"} + (.job // {})
-		+ (if .kind == "test" or .kind == "test-fix" or .kind == "test-plan-update" then {plan: $plan} else {} end)
+	# A row's challenges are a challenge event with its pinned report, as on
+	# the new chain; the row's job then names it by ref.
+	row_refs='{}'
+	if jq -e '.job | has("challenges")' "${S}/work/row.json" >/dev/null; then
+		row_refs=$(to_refs "$(jq -c --argjson p "${PLAN_ROWS}" '{plan: $p, challenges: .job.challenges}' "${S}/work/row.json")" rows)
+	fi
+	jq --arg tree "${ROWS}" --argjson plan "${PLAN_ROWS}" --argjson job "${row_job}" --argjson rrefs "${row_refs}" '{job: $job, state: "assigned", kind, agent_type: "code-tester",
+		tree: $tree, report: "reports/\(.kind)/\($job).json"} + (.job // {} | del(.challenges))
+		+ (if .kind == "test" or .kind == "test-fix" or .kind == "test-plan-update" then {refs: ({plan: $plan} + $rrefs)} else {} end)
 		+ {known_failures: (.job.known_failures // []), iteration: 1}
 		+ (if .kind == "test-fix" then {fix_round: 1} else {} end)
 		+ {setup: {language: "php", standards: ["testing"]}}' "${S}/work/row.json" >"${S}/work/row-job.json"
@@ -373,6 +433,54 @@ while [ "${i}" -lt "${rows}" ]; do
 	check "${rule}" sh -c '[ "$1" -eq "$2" ] && [ "$3" = "$4" ]' _ "${rc}" "${want_rc}" "${got}" "${expected}"
 	i=$((i + 1))
 done
+
+echo "=== the new chain: a test defined on the approved plan, assigned to an agent started from its agent file, handed in unchanged"
+new_chain test code-tester upload tn00000001 "{\"plan\": ${U2}}" null || echo '    new chain refused'
+got=$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" 2>&1)
+check 'job-of.sh shows it as the agent side reads a test: base, its plan, its tree' sh -c 'printf "%s" "$1" | jq -e --argjson p "$2" --arg t "$3" ".agent_type == \"code-tester\" and .refs.plan == \$p and .tree == \$t and .state == \"assigned\""' _ "${got}" "${U2}" "${TREE}"
+# The plan removes the old tests, which case 5 already removed: back in the
+# tree first, so this job can remove them again.
+git -C "${TREE}" show "$(git -C "${TREE}" rev-list -n 1 HEAD -- tests/Upload/OldClientTest.php)^:tests/Upload/OldClientTest.php" >"${TREE}/tests/Upload/OldClientTest.php"
+git -C "${TREE}" add tests/Upload/OldClientTest.php && git -C "${TREE}" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -qm 'fixture: the old tests back' >/dev/null
+work_on tests/Upload/UploadClientTest.php tests/fixtures/503.json
+git -C "${TREE}" rm -q tests/Upload/OldClientTest.php
+write_report test-5
+stop new-chain-test
+check 'accepted: test.submitted for the defined job, committed' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e --argjson j "$3" ".type == \"test.submitted\" and .body.job == \$j and (.body.commit | type) == \"string\""' _ "${HOOK_OUT}" "${EVENT}" "${JOB}"
+check 'its commit names the job by its readable name' has "$(message_of)" "Job: ${JOB} test-${JOB}"
+
+echo "=== the new chain: the test-plan trio, plan, challenge and rework, each defined and handed in unchanged"
+new_chain test-plan code-tester upload tp00000001 '{}' null || echo '    plan refused'
+write_report plan-1
+stop new-chain-plan
+check 'the plan: test-plan.submitted for the defined job' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e --argjson j "$3" ".type == \"test-plan.submitted\" and .body.job == \$j"' _ "${HOOK_OUT}" "${EVENT}" "${JOB}"
+NP=$(ev '.seq')
+new_chain test-plan-challenge code-reviewer upload tc00000001 "{\"plan\": ${NP}}" null || echo '    challenge refused'
+check 'the challenge job shows its plan ref' is "$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}" | jq -r '.refs.plan')" "${NP}"
+mkdir -p "${REPORT%/*}"
+jq -n '{challenges: [{target: "B-1", ask: "add", title: "the limit itself is never tested", why: "the plan names the limit, and no test hits it"},
+	{target: "N-1", ask: "prove", title: "the untested case is assumed safe", why: "the plan gives no proof for it"}]}' >"${REPORT}"; chmod 600 "${REPORT}"
+stop new-chain-challenge
+check 'the challenge: test-plan.challenged for the defined job, its two challenges stamped' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e --argjson j "$3" ".type == \"test-plan.challenged\" and .body.job == \$j" && jq -e "[.challenges[].id | test(\"^C-[0-9]+$\")] == [true, true]" "$4"' _ "${HOOK_OUT}" "${EVENT}" "${JOB}" "${REPORT}"
+CIDS=$(jq -c '[.challenges[].id]' "${REPORT}")
+NC=$(ev '.seq')
+new_chain test-plan-update code-tester upload tu00000001 "{\"plan\": ${NP}, \"challenge\": ${NC}}" null || echo '    rework refused'
+got=$(sh "${JOB_OF}" --effort "${effort}" --job "${JOB}")
+check 'the rework'"'"'s view: its refs by name, the plan and the challenge, nothing read for it' sh -c 'printf "%s" "$1" | jq -e --argjson p "$2" --argjson c "$3" ".refs == {plan: \$p, challenge: \$c} and (has(\"challenges\") | not)"' _ "${got}" "${NP}" "${NC}"
+check 'the tester'"'"'s facts read the challenges from the challenge'"'"'s pinned report' sh -c 'printf "%s" "$1" >"$2/job.json"; sh "$3/code-tester/scripts/internal/tester-facts.sh" --effort "$4" --job "$2/job.json" | jq -e --argjson ids "$5" "[.challenges[] | .id] == \$ids and [.challenges[] | .ask] == [\"add\", \"prove\"]"' _ "${got}" "${S}/work" "${K}" "${effort}" "${CIDS}"
+write_report plan-1-update
+jq --argjson ids "${CIDS}" '.answers |= [to_entries[] | .value + {id: $ids[.key]}]' "${REPORT}" >"${REPORT}.new" && mv -f "${REPORT}.new" "${REPORT}"
+stop new-chain-rework
+check 'the rework: test-plan.updated for the defined job' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e --argjson j "$3" ".type == \"test-plan.updated\" and .body.job == \$j"' _ "${HOOK_OUT}" "${EVENT}" "${JOB}"
+NU=$(ev '.seq')
+printf '%s\n' '{"record": "jobs", "subject": "y", "question": "Rework the plan?", "answer": "make the 429 test end to end"}' >"${S}/work/words.json"
+sh "${EW}" --effort "${effort}" --type gate.answered --by record-gate-answer.sh --body-file "${S}/work/words.json" >/dev/null
+NW=$(events_count)
+new_chain test-plan-update code-tester upload tw00000001 "{\"plan\": ${NU}, \"words\": ${NW}}" null || echo '    words rework refused'
+check 'a rework from the human'"'"'s words: its words ref is the gate whose answer they are' sh -c '[ "$(sh "$1" --effort "$2" --job "$3" | jq -r .refs.words)" = "$4" ] && sh "$5" --effort "$2" | jq -e --argjson w "$4" ".[] | select(.seq == \$w) | .body.answer == \"make the 429 test end to end\""' _ "${JOB_OF}" "${effort}" "${JOB}" "${NW}" "${ER}"
+write_report plan-9-words
+stop new-chain-words
+check 'accepted: test-plan.updated' sh -c '[ -z "$1" ] && printf "%s" "$2" | jq -e ".type == \"test-plan.updated\""' _ "${HOOK_OUT}" "${EVENT}"
 
 echo
 echo "=== ${pass} PASS, ${fail} FAIL"

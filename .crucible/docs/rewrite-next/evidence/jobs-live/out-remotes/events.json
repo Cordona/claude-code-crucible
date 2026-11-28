@@ -1,0 +1,890 @@
+[
+  {
+    "seq": 1,
+    "type": "effort.opened",
+    "by": "effort-start.sh",
+    "body": {
+      "name": "greet shout"
+    }
+  },
+  {
+    "seq": 2,
+    "type": "identity.set",
+    "by": "identity-set.sh",
+    "body": {
+      "repo": "<L>/run/repo",
+      "name": "Jobs Live",
+      "email": "jobs-live@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "seq": 3,
+    "type": "grill.ended",
+    "by": "grill-end.sh",
+    "body": {
+      "number": 1,
+      "topic": "the shout flag",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Flag name?",
+          "recommendation": {
+            "text": "--shout",
+            "reason": "Plain and clear"
+          },
+          "status": "settled",
+          "answers": [
+            {
+              "text": "Yes, --shout, before the name"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "context-done",
+      "subject": "6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 5,
+    "type": "context.cut",
+    "by": "context-cut.sh",
+    "body": {
+      "version": 1,
+      "paths": []
+    }
+  },
+  {
+    "seq": 6,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "spec-approval",
+      "subject": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 7,
+    "type": "spec.approved",
+    "by": "spec-approve.sh",
+    "body": {
+      "sha256": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "answer": 6,
+      "path": "<L>/run/space/efforts/20261127T152329-61ab-greet-shout/spec/1.md"
+    }
+  },
+  {
+    "seq": 8,
+    "type": "remote-change.fetched",
+    "by": "change-fetch.sh",
+    "body": {
+      "host": "gitlab",
+      "url": "https://gitlab.example.test/acme/greet/-/merge_requests/42",
+      "repo": "<L>/run/repo",
+      "number": 42,
+      "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+      "head": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "author": "fixer",
+      "report": {
+        "path": "reports/remote-change/8.json",
+        "sha256": "4c23e5f4c8532120c739dea1a44bd14ec850332cda18afb37fcba391364597f6"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "a693d16b8f608e16c8e7a76314746fca5712f2fd5b8a4cdf970bb2ee71e6cd8c",
+      "question": "MR 42 changes only bin/greet.sh (+6/−2). One job will review it as shell code against the clean-code standard, using the greet shout context. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 10,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "foreign-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:add060148d74dba8262ff7fc28bf2057cf073a7b"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 9,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "mr-42-review",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261127T152329-61ab-greet-shout/worktrees/mr-42-review",
+      "branch": "crucible/20261127T152329-61ab-greet-shout/mr-42-review",
+      "base": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "from": "ref:add060148d74dba8262ff7fc28bf2057cf073a7b"
+    }
+  },
+  {
+    "seq": 12,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a354fa8cc8a9d88ca",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 13,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 10,
+      "agent": "a354fa8cc8a9d88ca",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 14,
+    "type": "foreign-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 10,
+      "iteration": 1,
+      "agent": "a354fa8cc8a9d88ca",
+      "report": {
+        "path": "reports/foreign-review/10.json",
+        "sha256": "a7321cecffbe736615b6e663845039c23b50cf06b32cccce051bffc4740d8f0d"
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/15.json",
+        "sha256": "bae1e09e7f3de1d733f0ab628e37d5cab7e8999fe62808cedf83c47b976ef67f"
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "379765df777ca19f6d60a0aed49915529f9fad4f49fe7359e5c1c5f6571d8247",
+      "question": "MR 42's outside review has 4 threads, from review-bot (AI) and a human. One job will judge each point against our code at the MR head (add0601) through the clean-code lens, writing only a report. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 17,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 15,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 16,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a37dc42c0ea128ba7",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 19,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 17,
+      "agent": "a37dc42c0ea128ba7",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 20,
+    "type": "job.refused",
+    "by": "held-stop.sh",
+    "body": {
+      "job": 17,
+      "iteration": 1,
+      "agent": "a37dc42c0ea128ba7",
+      "try": 1,
+      "lines": [
+        "items[1].finding.at bin/greet.sh:9 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof",
+        "items[2].finding.at bin/greet.sh:8 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
+      ]
+    }
+  },
+  {
+    "seq": 21,
+    "type": "job.ended",
+    "by": "end-gone-jobs.sh",
+    "body": {
+      "job": 17,
+      "iteration": 1,
+      "agent": "a37dc42c0ea128ba7",
+      "reason": "no-stop"
+    }
+  },
+  {
+    "seq": 22,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/22.json",
+        "sha256": "bae1e09e7f3de1d733f0ab628e37d5cab7e8999fe62808cedf83c47b976ef67f"
+      }
+    }
+  },
+  {
+    "seq": 23,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "9a83a8465b163892fca0397c5402ad46d1c6d6e77cd3f9b7fe0ef5f1c1a9d5d0",
+      "question": "The new fetch of MR 42's review (fetch 22) is identical to the one job 17 judged: same 4 threads, same head add0601. One job will judge it again through the clean-code lens, writing only a report. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 24,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 22,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 23,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 25,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a9ee11c53d6291a65",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 26,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 24,
+      "agent": "a9ee11c53d6291a65",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 27,
+    "type": "job.refused",
+    "by": "held-stop.sh",
+    "body": {
+      "job": 24,
+      "iteration": 1,
+      "agent": "a9ee11c53d6291a65",
+      "try": 1,
+      "lines": [
+        "items[1].finding.at bin/greet.sh:9 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
+      ]
+    }
+  },
+  {
+    "seq": 28,
+    "type": "job.ended",
+    "by": "end-gone-jobs.sh",
+    "body": {
+      "job": 24,
+      "iteration": 1,
+      "agent": "a9ee11c53d6291a65",
+      "reason": "no-stop"
+    }
+  },
+  {
+    "seq": 29,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "942feb777ecd0e98c2e55c7cd2c3586b845167eb2245753e5bc1aa531beaa954",
+      "question": "Jobs 17 and 24 had their reports refused over an empty range. This new job judges MR 42's review (fetch 22, 4 threads) through the clean-code lens, now over the MR's full change df95a67..add0601, writing only a report. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 30,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 22,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 29,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 31,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a042a9dc1ee294bfc",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 32,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 30,
+      "agent": "a042a9dc1ee294bfc",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 33,
+    "type": "external-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 30,
+      "iteration": 1,
+      "agent": "a042a9dc1ee294bfc",
+      "report": {
+        "path": "reports/external-review/30.json",
+        "sha256": "8ed831be9bb9f946473fc79e35f80690de7c4a80814cccae55acd4d6696970ea"
+      }
+    }
+  },
+  {
+    "seq": 34,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/34.json",
+        "sha256": "bae1e09e7f3de1d733f0ab628e37d5cab7e8999fe62808cedf83c47b976ef67f"
+      }
+    }
+  },
+  {
+    "seq": 35,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "20584240b6af8a547ed641e0d1fd6facc4fde78cf0268ced4d2ec2c739dffa3e",
+      "question": "Fetch 34 of MR 42's review is identical to fetch 22, which job 30 judged and had accepted. This job judges it again through the clean-code lens over df95a67..add0601, as iteration 1 with no link to job 30's report, so it will likely judge the threads fresh. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 36,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 34,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 35,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 37,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a051447fe95458708",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 38,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 36,
+      "agent": "a051447fe95458708",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 39,
+    "type": "external-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 36,
+      "iteration": 1,
+      "agent": "a051447fe95458708",
+      "report": {
+        "path": "reports/external-review/36.json",
+        "sha256": "95e4dc745c7b6faf62d6098da29d8cd750a0793bd0fec200daf0c9afd5ee34d7"
+      }
+    }
+  },
+  {
+    "seq": 40,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "add060148d74dba8262ff7fc28bf2057cf073a7b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/40.json",
+        "sha256": "5d8d4da7628ce0b66dbdf57937d9e984cdb2a5228371d40f3e85fc08590fe9ee"
+      }
+    }
+  },
+  {
+    "seq": 41,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "55045ccf50aca6c1dce23d5ebccb5c161a22f7f87b9db8eef2f010024bdecb19",
+      "question": "MR 42's review moved: review-bot added a point on bin/greet.sh:5 (flag held as a string), and the human asked for a test of --shout with no name. The code is unchanged at add0601. This job judges fetch 40 through the clean-code lens, linked to job 36's accepted report, and writes only a report. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 42,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 40,
+        "change": 8,
+        "earlier": 39
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 41,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 43,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a743c4c38a08ca41c",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 44,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 42,
+      "agent": "a743c4c38a08ca41c",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 45,
+    "type": "job.refused",
+    "by": "held-stop.sh",
+    "body": {
+      "job": 42,
+      "iteration": 1,
+      "agent": "a743c4c38a08ca41c",
+      "try": 1,
+      "lines": [
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you",
+        "remove \"source\": this is filled in for you"
+      ]
+    }
+  },
+  {
+    "seq": 46,
+    "type": "job.ended",
+    "by": "end-gone-jobs.sh",
+    "body": {
+      "job": 42,
+      "iteration": 1,
+      "agent": "a743c4c38a08ca41c",
+      "reason": "no-stop"
+    }
+  },
+  {
+    "seq": 47,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "55045ccf50aca6c1dce23d5ebccb5c161a22f7f87b9db8eef2f010024bdecb19",
+      "question": "Job 42's report on fetch 40 was refused and never handed in. This new job judges fetch 40 again (review-bot's new point on bin/greet.sh:5 and the human's test request included), linked to job 36's accepted report, through the clean-code lens, writing only a report. Start it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 48,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 40,
+        "change": 8,
+        "earlier": 39
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "df95a67f71af732a22c3114e6cee4fb7611b0e50",
+          "head": "add060148d74dba8262ff7fc28bf2057cf073a7b"
+        }
+      },
+      "approval_gate": {
+        "ref": 47,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 49,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "aae1d2eb8510f55e7",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 50,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 48,
+      "agent": "aae1d2eb8510f55e7",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 51,
+    "type": "job.refused",
+    "by": "held-stop.sh",
+    "body": {
+      "job": 48,
+      "iteration": 1,
+      "agent": "aae1d2eb8510f55e7",
+      "try": 1,
+      "lines": [
+        "items[5].finding.at tests/greet_test.sh:3 is outside this change: add relates_to, the changed line it relates to, or out_of_scope with its proof"
+      ]
+    }
+  },
+  {
+    "seq": 52,
+    "type": "job.ended",
+    "by": "end-gone-jobs.sh",
+    "body": {
+      "job": 48,
+      "iteration": 1,
+      "agent": "aae1d2eb8510f55e7",
+      "reason": "no-stop"
+    }
+  }
+]

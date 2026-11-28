@@ -2,7 +2,7 @@
   {
     "type": "job.stalled",
     "seq": 68,
-    "at": "2026-11-25T16:16:04Z",
+    "at": "2026-11-28T07:41:23Z",
     "by": "fault-stalled.sh",
     "claude_session_id": "sess-ba",
     "body": {
@@ -10,7 +10,7 @@
       "iteration": 1,
       "agent": "fp00000001",
       "step": "pin",
-      "fault": "job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261125T161540-1845-upload-retries/reports/build/66.json read-only"
+      "fault": "job 66 (build-php-fp0000)'s report could not be pinned: report-pin.sh: could not make <S>/space/efforts/20261128T074056-af5d-upload-retries/reports/build/66.json read-only"
     }
   }
 ]

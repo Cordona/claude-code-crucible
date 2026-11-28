@@ -2,7 +2,7 @@
   {
     "type": "job.refused",
     "seq": 31,
-    "at": "2026-11-25T16:19:18Z",
+    "at": "2026-11-28T07:45:35Z",
     "by": "held-stop.sh",
     "claude_session_id": "sess-ra",
     "body": {

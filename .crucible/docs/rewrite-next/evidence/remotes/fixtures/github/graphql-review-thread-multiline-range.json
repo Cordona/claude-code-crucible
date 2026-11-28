@@ -1,0 +1,211 @@
+{
+  "data": {
+    "node": {
+      "__typename": "PullRequestReviewThread",
+      "id": "PRRT_kwDOAAAAAAAAAAAA",
+      "isResolved": true,
+      "isOutdated": false,
+      "isCollapsed": true,
+      "resolvedBy": {
+        "login": "example-user-1"
+      },
+      "viewerCanResolve": false,
+      "path": "src/example/file6.ts",
+      "line": 3,
+      "startLine": 2,
+      "originalLine": 4,
+      "originalStartLine": 3,
+      "diffSide": "RIGHT",
+      "startDiffSide": "RIGHT",
+      "subjectType": "LINE",
+      "pullRequest": {
+        "number": 8
+      },
+      "comments": {
+        "totalCount": 2,
+        "pageInfo": {
+          "hasNextPage": false,
+          "hasPreviousPage": false,
+          "startCursor": "Y3Vyc29yOnYyOpEB",
+          "endCursor": "Y3Vyc29yOnYyOpEB"
+        },
+        "nodes": [
+          {
+            "id": "PRRC_kwDOAAAAAAAAAAAA",
+            "databaseId": 1023,
+            "author": {
+              "__typename": "Bot",
+              "login": "copilot-pull-request-reviewer"
+            },
+            "authorAssociation": "NONE",
+            "body": "Example synthetic review text.",
+            "bodyText": "Example synthetic review text.",
+            "createdAt": "2024-01-04T01:44:00Z",
+            "updatedAt": "2024-01-04T01:44:00Z",
+            "lastEditedAt": null,
+            "publishedAt": "2024-01-04T01:44:00Z",
+            "replyTo": null,
+            "pullRequestReview": {
+              "id": "PRR_kwDOAAAAAAAAAAAA",
+              "state": "COMMENTED"
+            },
+            "isMinimized": false,
+            "minimizedReason": null,
+            "outdated": false,
+            "path": "src/example/file6.ts",
+            "line": 3,
+            "startLine": 2,
+            "originalLine": 4,
+            "originalStartLine": 3,
+            "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+            "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1023",
+            "commit": {
+              "oid": "0000000000000000000000000000000000abc007"
+            },
+            "originalCommit": {
+              "oid": "0000000000000000000000000000000000abc003"
+            },
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "THUMBS_DOWN",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "LAUGH",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HOORAY",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "CONFUSED",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HEART",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "ROCKET",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "EYES",
+                "reactors": {
+                  "totalCount": 0
+                }
+              }
+            ]
+          },
+          {
+            "id": "PRRC_kwDOAAAAAAAAAAAA",
+            "databaseId": 1056,
+            "author": {
+              "__typename": "User",
+              "login": "example-user-1"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Example synthetic review text.",
+            "bodyText": "Example synthetic review text.",
+            "createdAt": "2024-01-04T02:19:00Z",
+            "updatedAt": "2024-01-04T02:19:00Z",
+            "lastEditedAt": null,
+            "publishedAt": "2024-01-04T02:19:00Z",
+            "replyTo": {
+              "id": "PRRC_kwDOAAAAAAAAAAAA"
+            },
+            "pullRequestReview": {
+              "id": "PRR_kwDOAAAAAAAAAAAA",
+              "state": "COMMENTED"
+            },
+            "isMinimized": false,
+            "minimizedReason": null,
+            "outdated": false,
+            "path": "src/example/file6.ts",
+            "line": 3,
+            "startLine": 2,
+            "originalLine": 4,
+            "originalStartLine": 3,
+            "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+            "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1056",
+            "commit": {
+              "oid": "0000000000000000000000000000000000abc007"
+            },
+            "originalCommit": {
+              "oid": "0000000000000000000000000000000000abc003"
+            },
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "THUMBS_DOWN",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "LAUGH",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HOORAY",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "CONFUSED",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "HEART",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "ROCKET",
+                "reactors": {
+                  "totalCount": 0
+                }
+              },
+              {
+                "content": "EYES",
+                "reactors": {
+                  "totalCount": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

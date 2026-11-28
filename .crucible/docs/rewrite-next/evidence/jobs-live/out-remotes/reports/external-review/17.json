@@ -1,0 +1,47 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "verdict": "rejected",
+      "reply": "This is as specified: --shout goes before the name (spec and the settled design question both say so), so `greet.sh ada --shout` printing `hello ada` is the intended behaviour. Other flag positions are out of scope for this MR."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "verdict": "valid",
+      "finding": {
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:6 takes any argument as the name; with sh as dash/macOS sh, `sh bin/greet.sh 'a\\tb\\c'` now prints a tab and drops the newline, where the previous version printed the name verbatim.",
+        "claim": "`echo` interprets backslash escapes under POSIX sh, so a name containing `\\` is altered even without --shout, breaking 'without --shout nothing changes'.",
+        "suggestion": "Replace `echo \"${line}\"` with `printf '%s\\n' \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "verdict": "valid",
+      "finding": {
+        "severity": "low",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:6 accepts any name; `sh bin/greet.sh --shout josé` prints `HELLO JOSé`. Nothing in the code or spec limits names to ASCII.",
+        "claim": "`tr a-z A-Z` upper-cases only ASCII letters, so non-ASCII names come out half-capitalised under --shout.",
+        "suggestion": "Use `tr '[:lower:]' '[:upper:]'`, which follows the locale where tr supports it (macOS tr does; GNU tr remains byte-based).",
+        "at": "bin/greet.sh:8"
+      }
+    },
+    {
+      "thread": "d-line",
+      "verdict": "answered",
+      "reply": "Checked: `sh bin/greet.sh --shout` prints `HELLO WORLD`. The shift on line 5 empties $1, so line 6 falls back to world, and line 8 capitalises it."
+    },
+    {
+      "thread": "d-done",
+      "verdict": "noted",
+      "reply": "The commit message reads `Add --shout`; we see no typo there, and the thread is already resolved."
+    }
+  ],
+  "noticed": []
+}

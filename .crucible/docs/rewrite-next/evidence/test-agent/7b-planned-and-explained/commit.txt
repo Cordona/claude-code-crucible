@@ -2,14 +2,14 @@ crucible(test): cover the retry limit
 
 cover the retry limit
 
-Effort: 20261125T161720-82bf-upload-retries
-Job: 73 test-php-7d7d7d
+Effort: 20261128T074304-4337-upload-retries
+Job: 107 test-107
 Iteration: 1
 Language: php
 Framework: laravel
 Standards: testing, security
 
-commit d6438a740a5fa44739e411c43fe35e2a1307e6fb
+commit 5dc5ad8f3ffe11d28a43b7703dc8e97b2ac36a9e
 Author: Test Agent <test-agent@example.test>
 Signed: N
 

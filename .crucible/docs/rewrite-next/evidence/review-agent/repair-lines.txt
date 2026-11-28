@@ -1,5 +1,5 @@
 every kind: the file is missing
-  exit 1: write your report as one JSON object to <S>/space/efforts/20261125T161906-bc08-upload-retries/reports/review/9000.json
+  exit 1: write your report as one JSON object to <S>/space/efforts/20261128T074524-44a8-upload-retries/reports/review/9000.json
 every kind: a key only a script fills in
   exit 1: remove "id": this is filled in for you
 every kind: a stamped key at the top
@@ -78,8 +78,8 @@ external: a reply on valid
   exit 1: items[0] is valid: remove its reply; it's drafted from the fix
 external: the same item label twice in one thread
   exit 1: thread n11370 has item F-03a twice: give each point its own label
-external: a stamped source written by the agent
-  exit 1: remove "source": this is filled in for you
+external: a source the agent wrote is no refusal: the stamp replaces it
+  exit 0: (accepted)
 external: a valid finding's own text rules
   exit 1: items[0].finding.severity "major" is not critical, high, medium or low
 external: a noticed instruction

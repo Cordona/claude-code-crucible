@@ -1264,7 +1264,7 @@
     "expected": "thread n11370 has item F-03a twice: give each point its own label"
   },
   {
-    "rule": "external: a stamped source written by the agent",
+    "rule": "external: a source the agent wrote is no refusal: the stamp replaces it",
     "kind": "external-review",
     "report": {
       "items": [
@@ -1322,7 +1322,7 @@
           "thread": "n11373",
           "verdict": "answered",
           "reply": "No migration in this change, only the new env var, which is already in the values.",
-          "source": "human"
+          "source": "bot"
         },
         {
           "thread": "description",
@@ -1331,7 +1331,7 @@
         }
       ]
     },
-    "expected": "remove \"source\": this is filled in for you"
+    "expected": ""
   },
   {
     "rule": "external: a valid finding's own text rules",

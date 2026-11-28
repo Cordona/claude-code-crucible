@@ -1,2 +1,2 @@
-{"systemMessage":"crucible: job 22 (build-php-e1a835) gave up: its report was refused twice. Its tree <S>/space/efforts/20261125T161540-1845-upload-retries/worktrees/retry is kept for the next job."}
+{"systemMessage":"crucible: job 22 (build-php-e1a835) gave up: its report was refused twice. Its tree <S>/space/efforts/20261128T074056-af5d-upload-retries/worktrees/retry is kept for the next job."}
 exit 0

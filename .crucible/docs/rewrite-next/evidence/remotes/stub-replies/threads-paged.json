@@ -1,0 +1,2320 @@
+[
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "id": "PR_kwDOAAAAAAAAAAAA",
+          "number": 8,
+          "state": "MERGED",
+          "author": {
+            "__typename": "User",
+            "login": "example-user-1"
+          },
+          "reviewThreads": {
+            "totalCount": 9,
+            "pageInfo": {
+              "hasNextPage": true,
+              "endCursor": "Y3Vyc29yOnYyOpEB"
+            },
+            "nodes": [
+              {
+                "id": "PRRT_0",
+                "isResolved": true,
+                "isOutdated": true,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file2.ts",
+                "line": null,
+                "startLine": null,
+                "originalLine": 5,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1008,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T01:37:00Z",
+                      "updatedAt": "2024-01-04T01:44:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_0",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 5,
+                      "diffHunk": "@@ -0,0 +1,5 @@\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1008",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1005,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T01:51:00Z",
+                      "updatedAt": "2024-01-04T01:51:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_0",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 5,
+                      "diffHunk": "@@ -0,0 +1,5 @@\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1005",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_1",
+                "isResolved": true,
+                "isOutdated": true,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file6.ts",
+                "line": 3,
+                "startLine": 3,
+                "originalLine": 4,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1095,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T01:44:00Z",
+                      "updatedAt": "2024-01-04T01:44:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_1",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file6.ts",
+                      "line": 3,
+                      "originalLine": 4,
+                      "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1095",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1096,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T01:58:00Z",
+                      "updatedAt": "2024-01-04T02:05:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_1",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file6.ts",
+                      "line": 3,
+                      "originalLine": 4,
+                      "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1096",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_2",
+                "isResolved": true,
+                "isOutdated": false,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file6.ts",
+                "line": 3,
+                "startLine": 2,
+                "originalLine": 4,
+                "originalStartLine": 3,
+                "diffSide": "RIGHT",
+                "startDiffSide": "RIGHT",
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1023,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T01:44:00Z",
+                      "updatedAt": "2024-01-04T01:44:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_2",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file6.ts",
+                      "line": 3,
+                      "originalLine": 4,
+                      "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1023",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1056,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T02:19:00Z",
+                      "updatedAt": "2024-01-04T02:19:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_2",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file6.ts",
+                      "line": 3,
+                      "originalLine": 4,
+                      "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1056",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_3",
+                "isResolved": true,
+                "isOutdated": true,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file2.ts",
+                "line": null,
+                "startLine": null,
+                "originalLine": 8,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1097,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:01:00Z",
+                      "updatedAt": "2024-01-04T03:08:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_3",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 8,
+                      "diffHunk": "@@ -0,0 +1,8 @@\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1097",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1098,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:15:00Z",
+                      "updatedAt": "2024-01-04T03:15:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_3",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 8,
+                      "diffHunk": "@@ -0,0 +1,8 @@\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1098",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_4",
+                "isResolved": true,
+                "isOutdated": false,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file2.ts",
+                "line": 2,
+                "startLine": 1,
+                "originalLine": 3,
+                "originalStartLine": 2,
+                "diffSide": "RIGHT",
+                "startDiffSide": "RIGHT",
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1099,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:01:00Z",
+                      "updatedAt": "2024-01-04T03:08:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_4",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file2.ts",
+                      "line": 2,
+                      "originalLine": 3,
+                      "diffHunk": "@@ -0,0 +1,3 @@\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1099",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1100,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:22:00Z",
+                      "updatedAt": "2024-01-04T03:22:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_4",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file2.ts",
+                      "line": 2,
+                      "originalLine": 3,
+                      "diffHunk": "@@ -0,0 +1,3 @@\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1100",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 18,
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "Y3Vyc29yOnYyOpEB"
+            },
+            "nodes": [
+              {
+                "id": "PRR_0",
+                "databaseId": 1012,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\r\n\r\nSecond synthetic paragraph.\r\n\r\n## Example heading\r\n\r\n- first example item\n- second example item\r\n\r\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\r\n\r\n| col a | col b |\n|---|---|\n| one | two |\r\n\r\n![example image](https://example.com/x.png)\r\n\r\nSee https://example.com/x\r\n\r\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T01:37:00Z",
+                "submittedAt": "2024-01-04T01:44:00Z",
+                "updatedAt": "2024-01-04T01:44:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc003"
+                },
+                "comments": {
+                  "totalCount": 3
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1012"
+              },
+              {
+                "id": "PRR_1",
+                "databaseId": 1006,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T01:51:00Z",
+                "submittedAt": "2024-01-04T01:51:00Z",
+                "updatedAt": "2024-01-04T01:51:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1006"
+              },
+              {
+                "id": "PRR_2",
+                "databaseId": 1077,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T01:58:00Z",
+                "submittedAt": "2024-01-04T02:05:00Z",
+                "updatedAt": "2024-01-04T02:05:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1077"
+              },
+              {
+                "id": "PRR_3",
+                "databaseId": 1078,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T02:12:00Z",
+                "submittedAt": "2024-01-04T02:19:00Z",
+                "updatedAt": "2024-01-04T02:19:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1078"
+              },
+              {
+                "id": "PRR_4",
+                "databaseId": 1079,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-2"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.",
+                "createdAt": "2024-01-04T02:26:00Z",
+                "submittedAt": "2024-01-04T02:26:00Z",
+                "updatedAt": "2024-01-04T02:26:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1079"
+              },
+              {
+                "id": "PRR_5",
+                "databaseId": 1080,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n- first example item\n- second example item\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\n\n![example image](https://example.com/x.png)\n\nSee https://example.com/x\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T02:54:00Z",
+                "submittedAt": "2024-01-04T03:08:00Z",
+                "updatedAt": "2024-01-04T03:08:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 4
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1080"
+              },
+              {
+                "id": "PRR_6",
+                "databaseId": 1081,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:15:00Z",
+                "submittedAt": "2024-01-04T03:15:00Z",
+                "updatedAt": "2024-01-04T03:15:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1081"
+              },
+              {
+                "id": "PRR_7",
+                "databaseId": 1082,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:22:00Z",
+                "submittedAt": "2024-01-04T03:22:00Z",
+                "updatedAt": "2024-01-04T03:22:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1082"
+              },
+              {
+                "id": "PRR_8",
+                "databaseId": 1083,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:29:00Z",
+                "submittedAt": "2024-01-04T03:29:00Z",
+                "updatedAt": "2024-01-04T03:29:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1083"
+              },
+              {
+                "id": "PRR_9",
+                "databaseId": 1084,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:36:00Z",
+                "submittedAt": "2024-01-04T03:36:00Z",
+                "updatedAt": "2024-01-04T03:36:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1084"
+              },
+              {
+                "id": "PRR_10",
+                "databaseId": 1085,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n- first example item\n- second example item\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\n\n![example image](https://example.com/x.png)\n\nSee https://example.com/x\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T03:50:00Z",
+                "submittedAt": "2024-01-04T03:50:00Z",
+                "updatedAt": "2024-01-04T03:50:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1085"
+              },
+              {
+                "id": "PRR_11",
+                "databaseId": 1086,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T03:57:00Z",
+                "submittedAt": "2024-01-04T03:57:00Z",
+                "updatedAt": "2024-01-04T03:57:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01b"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1086"
+              },
+              {
+                "id": "PRR_12",
+                "databaseId": 1087,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:11:00Z",
+                "submittedAt": "2024-01-04T04:18:00Z",
+                "updatedAt": "2024-01-04T04:18:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01c"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1087"
+              },
+              {
+                "id": "PRR_13",
+                "databaseId": 1088,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:25:00Z",
+                "submittedAt": "2024-01-04T04:25:00Z",
+                "updatedAt": "2024-01-04T04:25:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01d"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1088"
+              },
+              {
+                "id": "PRR_14",
+                "databaseId": 1089,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:39:00Z",
+                "submittedAt": "2024-01-04T04:39:00Z",
+                "updatedAt": "2024-01-04T04:39:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01e"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1089"
+              },
+              {
+                "id": "PRR_15",
+                "databaseId": 1090,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:46:00Z",
+                "submittedAt": "2024-01-04T04:46:00Z",
+                "updatedAt": "2024-01-04T04:46:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1090"
+              },
+              {
+                "id": "PRR_16",
+                "databaseId": 1017,
+                "state": "APPROVED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-3"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T07:13:00Z",
+                "submittedAt": "2024-01-04T07:13:00Z",
+                "updatedAt": "2024-01-04T07:13:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 2
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1017"
+              },
+              {
+                "id": "PRR_17",
+                "databaseId": 1091,
+                "state": "APPROVED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-2"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.",
+                "createdAt": "2024-01-04T07:48:00Z",
+                "submittedAt": "2024-01-04T07:48:00Z",
+                "updatedAt": "2024-01-04T07:48:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1091"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "id": "PR_kwDOAAAAAAAAAAAA",
+          "number": 8,
+          "state": "MERGED",
+          "author": {
+            "__typename": "User",
+            "login": "example-user-1"
+          },
+          "reviewThreads": {
+            "totalCount": 9,
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "Y3Vyc29yOnYyOpEB"
+            },
+            "nodes": [
+              {
+                "id": "PRRT_5",
+                "isResolved": true,
+                "isOutdated": true,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file2.ts",
+                "line": null,
+                "startLine": null,
+                "originalLine": 6,
+                "originalStartLine": 5,
+                "diffSide": "RIGHT",
+                "startDiffSide": "RIGHT",
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1101,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:08:00Z",
+                      "updatedAt": "2024-01-04T03:08:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_5",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 6,
+                      "diffHunk": "@@ -0,0 +1,6 @@\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1101",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1102,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:29:00Z",
+                      "updatedAt": "2024-01-04T03:29:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_5",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 6,
+                      "diffHunk": "@@ -0,0 +1,6 @@\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1102",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_6",
+                "isResolved": true,
+                "isOutdated": true,
+                "isCollapsed": true,
+                "resolvedBy": {
+                  "login": "example-user-1"
+                },
+                "path": "src/example/file2.ts",
+                "line": null,
+                "startLine": null,
+                "originalLine": 3,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 2,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1103,
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:08:00Z",
+                      "updatedAt": "2024-01-04T03:08:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_6",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 3,
+                      "diffHunk": "@@ -0,0 +1,3 @@\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1103",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1104,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-1"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.",
+                      "createdAt": "2024-01-04T03:36:00Z",
+                      "updatedAt": "2024-01-04T03:36:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": {
+                        "id": "PRRC_kwDOAAAAAAAAAAAA"
+                      },
+                      "pullRequestReview": {
+                        "id": "PRR_6",
+                        "state": "COMMENTED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": true,
+                      "path": "src/example/file2.ts",
+                      "line": null,
+                      "originalLine": 3,
+                      "diffHunk": "@@ -0,0 +1,3 @@\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1104",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_7",
+                "isResolved": false,
+                "isOutdated": false,
+                "isCollapsed": false,
+                "resolvedBy": null,
+                "path": "src/example/file6.ts",
+                "line": 4,
+                "startLine": 4,
+                "originalLine": 4,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 1,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1016,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-3"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n- first example item\n- second example item\n\n```\nexample code line\n```\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>",
+                      "createdAt": "2024-01-04T07:13:00Z",
+                      "updatedAt": "2024-01-04T07:13:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_7",
+                        "state": "APPROVED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file6.ts",
+                      "line": 4,
+                      "originalLine": 4,
+                      "diffHunk": "@@ -0,0 +1,4 @@\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1016",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "PRRT_8",
+                "isResolved": false,
+                "isOutdated": false,
+                "isCollapsed": false,
+                "resolvedBy": null,
+                "path": "src/example/file2.ts",
+                "line": 8,
+                "startLine": 8,
+                "originalLine": 8,
+                "originalStartLine": null,
+                "diffSide": "RIGHT",
+                "startDiffSide": null,
+                "subjectType": "LINE",
+                "comments": {
+                  "totalCount": 1,
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "Y3Vyc29yOnYyOpEB"
+                  },
+                  "nodes": [
+                    {
+                      "id": "PRRC_kwDOAAAAAAAAAAAA",
+                      "databaseId": 1105,
+                      "author": {
+                        "__typename": "User",
+                        "login": "example-user-3"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n- first example item\n- second example item\n\n```\nexample code line\n```\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>",
+                      "createdAt": "2024-01-04T07:13:00Z",
+                      "updatedAt": "2024-01-04T07:13:00Z",
+                      "lastEditedAt": null,
+                      "replyTo": null,
+                      "pullRequestReview": {
+                        "id": "PRR_8",
+                        "state": "APPROVED"
+                      },
+                      "isMinimized": false,
+                      "minimizedReason": null,
+                      "outdated": false,
+                      "path": "src/example/file2.ts",
+                      "line": 8,
+                      "originalLine": 8,
+                      "diffHunk": "@@ -0,0 +1,8 @@\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line\n+added line",
+                      "url": "https://github.com/example-org/example-repo/pull/8#discussion_r1105",
+                      "reactionGroups": [
+                        {
+                          "content": "THUMBS_UP",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "THUMBS_DOWN",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "LAUGH",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HOORAY",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "CONFUSED",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "HEART",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "ROCKET",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        },
+                        {
+                          "content": "EYES",
+                          "reactors": {
+                            "totalCount": 0
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "totalCount": 18,
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "Y3Vyc29yOnYyOpEB"
+            },
+            "nodes": [
+              {
+                "id": "PRR_0",
+                "databaseId": 1012,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\r\n\r\nSecond synthetic paragraph.\r\n\r\n## Example heading\r\n\r\n- first example item\n- second example item\r\n\r\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\r\n\r\n| col a | col b |\n|---|---|\n| one | two |\r\n\r\n![example image](https://example.com/x.png)\r\n\r\nSee https://example.com/x\r\n\r\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T01:37:00Z",
+                "submittedAt": "2024-01-04T01:44:00Z",
+                "updatedAt": "2024-01-04T01:44:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc003"
+                },
+                "comments": {
+                  "totalCount": 3
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1012"
+              },
+              {
+                "id": "PRR_1",
+                "databaseId": 1006,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T01:51:00Z",
+                "submittedAt": "2024-01-04T01:51:00Z",
+                "updatedAt": "2024-01-04T01:51:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1006"
+              },
+              {
+                "id": "PRR_2",
+                "databaseId": 1077,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T01:58:00Z",
+                "submittedAt": "2024-01-04T02:05:00Z",
+                "updatedAt": "2024-01-04T02:05:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1077"
+              },
+              {
+                "id": "PRR_3",
+                "databaseId": 1078,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T02:12:00Z",
+                "submittedAt": "2024-01-04T02:19:00Z",
+                "updatedAt": "2024-01-04T02:19:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1078"
+              },
+              {
+                "id": "PRR_4",
+                "databaseId": 1079,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-2"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.",
+                "createdAt": "2024-01-04T02:26:00Z",
+                "submittedAt": "2024-01-04T02:26:00Z",
+                "updatedAt": "2024-01-04T02:26:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1079"
+              },
+              {
+                "id": "PRR_5",
+                "databaseId": 1080,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n- first example item\n- second example item\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\n\n![example image](https://example.com/x.png)\n\nSee https://example.com/x\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T02:54:00Z",
+                "submittedAt": "2024-01-04T03:08:00Z",
+                "updatedAt": "2024-01-04T03:08:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc00e"
+                },
+                "comments": {
+                  "totalCount": 4
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1080"
+              },
+              {
+                "id": "PRR_6",
+                "databaseId": 1081,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:15:00Z",
+                "submittedAt": "2024-01-04T03:15:00Z",
+                "updatedAt": "2024-01-04T03:15:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1081"
+              },
+              {
+                "id": "PRR_7",
+                "databaseId": 1082,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:22:00Z",
+                "submittedAt": "2024-01-04T03:22:00Z",
+                "updatedAt": "2024-01-04T03:22:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1082"
+              },
+              {
+                "id": "PRR_8",
+                "databaseId": 1083,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:29:00Z",
+                "submittedAt": "2024-01-04T03:29:00Z",
+                "updatedAt": "2024-01-04T03:29:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1083"
+              },
+              {
+                "id": "PRR_9",
+                "databaseId": 1084,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-1"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T03:36:00Z",
+                "submittedAt": "2024-01-04T03:36:00Z",
+                "updatedAt": "2024-01-04T03:36:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 1
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1084"
+              },
+              {
+                "id": "PRR_10",
+                "databaseId": 1085,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n- first example item\n- second example item\n\n<details>\n<summary>Example summary</summary>\n\nHidden synthetic text.\n</details>\n\n![example image](https://example.com/x.png)\n\nSee https://example.com/x\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T03:50:00Z",
+                "submittedAt": "2024-01-04T03:50:00Z",
+                "updatedAt": "2024-01-04T03:50:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01a"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1085"
+              },
+              {
+                "id": "PRR_11",
+                "databaseId": 1086,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T03:57:00Z",
+                "submittedAt": "2024-01-04T03:57:00Z",
+                "updatedAt": "2024-01-04T03:57:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01b"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1086"
+              },
+              {
+                "id": "PRR_12",
+                "databaseId": 1087,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:11:00Z",
+                "submittedAt": "2024-01-04T04:18:00Z",
+                "updatedAt": "2024-01-04T04:18:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01c"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1087"
+              },
+              {
+                "id": "PRR_13",
+                "databaseId": 1088,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:25:00Z",
+                "submittedAt": "2024-01-04T04:25:00Z",
+                "updatedAt": "2024-01-04T04:25:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01d"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1088"
+              },
+              {
+                "id": "PRR_14",
+                "databaseId": 1089,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:39:00Z",
+                "submittedAt": "2024-01-04T04:39:00Z",
+                "updatedAt": "2024-01-04T04:39:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc01e"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1089"
+              },
+              {
+                "id": "PRR_15",
+                "databaseId": 1090,
+                "state": "COMMENTED",
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.\n\n## Example heading\n\n<!-- example hidden marker -->",
+                "createdAt": "2024-01-04T04:46:00Z",
+                "submittedAt": "2024-01-04T04:46:00Z",
+                "updatedAt": "2024-01-04T04:46:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1090"
+              },
+              {
+                "id": "PRR_16",
+                "databaseId": 1017,
+                "state": "APPROVED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-3"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "createdAt": "2024-01-04T07:13:00Z",
+                "submittedAt": "2024-01-04T07:13:00Z",
+                "updatedAt": "2024-01-04T07:13:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 2
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1017"
+              },
+              {
+                "id": "PRR_17",
+                "databaseId": 1091,
+                "state": "APPROVED",
+                "author": {
+                  "__typename": "User",
+                  "login": "example-user-2"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Example synthetic review text.\n\nSecond synthetic paragraph.",
+                "createdAt": "2024-01-04T07:48:00Z",
+                "submittedAt": "2024-01-04T07:48:00Z",
+                "updatedAt": "2024-01-04T07:48:00Z",
+                "commit": {
+                  "oid": "0000000000000000000000000000000000abc007"
+                },
+                "comments": {
+                  "totalCount": 0
+                },
+                "isMinimized": false,
+                "url": "https://github.com/example-org/example-repo/pull/8#pullrequestreview-1091"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

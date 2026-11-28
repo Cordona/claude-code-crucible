@@ -1,0 +1,19 @@
+crucible(test): cover the retry limit and the 4xx case
+
+cover the retry limit and the 4xx case
+
+Effort: 20261128T074304-4337-upload-retries
+Job: 139 test-139
+Iteration: 1
+Language: php
+Framework: laravel
+Standards: testing, security
+
+commit 7617302a698b1036d7ed89b0574e0b40372560ed
+Author: Test Agent <test-agent@example.test>
+Signed: N
+
+ tests/Upload/OldClientTest.php    | 1 -
+ tests/Upload/UploadClientTest.php | 1 +
+ tests/fixtures/503.json           | 1 +
+ 3 files changed, 2 insertions(+), 1 deletion(-)

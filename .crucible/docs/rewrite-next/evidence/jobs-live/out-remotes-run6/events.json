@@ -1,0 +1,217 @@
+[
+  {
+    "seq": 1,
+    "type": "effort.opened",
+    "by": "effort-start.sh",
+    "body": {
+      "name": "greet shout"
+    }
+  },
+  {
+    "seq": 2,
+    "type": "identity.set",
+    "by": "identity-set.sh",
+    "body": {
+      "repo": "<L>/run/repo",
+      "name": "Jobs Live",
+      "email": "jobs-live@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "seq": 3,
+    "type": "grill.ended",
+    "by": "grill-end.sh",
+    "body": {
+      "number": 1,
+      "topic": "the shout flag",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Flag name?",
+          "recommendation": {
+            "text": "--shout",
+            "reason": "Plain and clear"
+          },
+          "status": "settled",
+          "answers": [
+            {
+              "text": "Yes, --shout, before the name"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "context-done",
+      "subject": "6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 5,
+    "type": "context.cut",
+    "by": "context-cut.sh",
+    "body": {
+      "version": 1,
+      "paths": []
+    }
+  },
+  {
+    "seq": 6,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "spec-approval",
+      "subject": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 7,
+    "type": "spec.approved",
+    "by": "spec-approve.sh",
+    "body": {
+      "sha256": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "answer": 6,
+      "path": "<L>/run/space/efforts/20261128T070504-f514-greet-shout/spec/1.md"
+    }
+  },
+  {
+    "seq": 8,
+    "type": "remote-change.fetched",
+    "by": "change-fetch.sh",
+    "body": {
+      "host": "gitlab",
+      "url": "https://gitlab.example.test/acme/greet/-/merge_requests/42",
+      "repo": "<L>/run/repo",
+      "number": 42,
+      "base": "087a01f5d447acefa65c42e84311b81b7a1a3826",
+      "head": "6636b10c66d6b96dc6e56cfa80d799843a0d9ccd",
+      "author": "fixer",
+      "report": {
+        "path": "reports/remote-change/8.json",
+        "sha256": "4c23e5f4c8532120c739dea1a44bd14ec850332cda18afb37fcba391364597f6"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "d6868e616566b1aeb57a0cfc8e36d664bc795c7a1cb19325cdad0188a86b1b5e",
+      "question": "MR !42 (\"Add --shout\") changes only bin/greet.sh (+6/−2). The job above has a shell code reviewer check it against the testing standard, in its own tree cut at the MR's head. It writes only a report and posts nothing to GitLab. Approve it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 10,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "foreign-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "testing"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:6636b10c66d6b96dc6e56cfa80d799843a0d9ccd"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "087a01f5d447acefa65c42e84311b81b7a1a3826",
+          "head": "6636b10c66d6b96dc6e56cfa80d799843a0d9ccd"
+        }
+      },
+      "approval_gate": {
+        "ref": 9,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "mr-42-testing-review",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261128T070504-f514-greet-shout/worktrees/mr-42-testing-review",
+      "branch": "crucible/20261128T070504-f514-greet-shout/mr-42-testing-review",
+      "base": "6636b10c66d6b96dc6e56cfa80d799843a0d9ccd",
+      "from": "ref:6636b10c66d6b96dc6e56cfa80d799843a0d9ccd"
+    }
+  },
+  {
+    "seq": 12,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "ac56ee61cbc113070",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-testing",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-testing",
+        "standard-testing-review"
+      ]
+    }
+  },
+  {
+    "seq": 13,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 10,
+      "agent": "ac56ee61cbc113070",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 14,
+    "type": "foreign-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 10,
+      "iteration": 1,
+      "agent": "ac56ee61cbc113070",
+      "report": {
+        "path": "reports/foreign-review/10.json",
+        "sha256": "311f87bea893e5dbfe7aaa3cbcfc6327aa6151a9335a8cc78444496992640a58"
+      }
+    }
+  }
+]

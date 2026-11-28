@@ -12,7 +12,7 @@
   PASS: the kind and its event are paired only in the submission file
   PASS: neither agent names the other component; the tester names only the builder's kinds
   PASS: no agent includes another agent's rules: every tester include is its own
-  PASS: nothing in agent-submission or agent-jobs names an agent or one of its kinds, but build
+  PASS: nothing in agent-submission or jobs-track names an agent or one of its kinds, but build
 === every tester script answers --help
   PASS: tester-facts.sh --help
 === set-up: a scratch repository, an effort, its identity (no key), five trees, each with a real build
@@ -21,7 +21,7 @@ method cp -c
 method cp -c
 method cp -c
 method cp -c
-    plans approved: scope 13, bug 20, mutation 27, rows 34
+    plans approved: scope 15, bug 24, mutation 33, rows 42
     exit 0
   PASS: the build under test: build.submitted, iteration 1, committed
 === 2: a plan with no_tests
@@ -39,14 +39,14 @@ method cp -c
   PASS: its answers: C-1 applied, C-2 cannot
   PASS: its report is at reports/test-plan-update/<job seq>.json
 === a rework whose challenge asks nothing a rework can apply: a job fault for the human
-    {"systemMessage":"crucible: the report check of job 48 (test-plan-update-php-fa17fa) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in"}
-    stderr: submit-agent-work.sh: the report check of job 48 (test-plan-update-php-fa17fa) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in
+    {"systemMessage":"crucible: the report check of job 71 (test-plan-update-71) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in"}
+    stderr: submit-agent-work.sh: the report check of job 71 (test-plan-update-71) can't run: report-validation.sh: tester-facts.sh failed: tester-facts.sh: the job's challenges C-9 ask nothing a rework can apply: add, change, remove or prove; the job ends, nothing handed in
     exit 0
-  PASS: job.dispatched leaves the ask to the tester: the job was written
+  PASS: the job is written with the challenge as a ref; the ask is the tester's facts' to judge
   PASS: the stop goes through with the fault told to the human
   PASS: a fault before acceptance: job.ended fault at step check, no refusal
 === 3: a refused plan, with its repair lines
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test-plan/51.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ntests[0].why names T-2: say it in words; the IDs are for scripts\ntests[0].guards names B-9, which isn't a behaviour in this plan\ntests[1] modifies a test: add keeps, what it must still assert"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test-plan/76.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\ntests[0].why names T-2: say it in words; the IDs are for scripts\ntests[0].guards names B-9, which isn't a behaviour in this plan\ntests[1] modifies a test: add keeps, what it must still assert"}
     exit 0
   PASS: held
   PASS: the line for the missing keeps
@@ -54,7 +54,7 @@ method cp -c
   PASS: the line for the internal ID in human text
   PASS: only job.refused try 1: no submission
 === 4: a plan job that changed the tree: refused
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test-plan/54.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\na plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test-plan/81.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\na plan job changes nothing in the tree: undo the change to tests/Upload/Scratch.php"}
     exit 0
   PASS: held, naming the file to undo
   PASS: only job.refused try 1, no commit
@@ -88,7 +88,7 @@ method cp -c
   PASS: the red test is committed
   PASS: the pinned report holds the production_bug
 === 7: the plan as scope
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test/73.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test/107.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nyou changed app/Upload/Client.php, which the build under test changed and the plan doesn't name: undo it, and say what you need in a question or a cannot blocker"}
     exit 0
   PASS: held: an unplanned file the build changed
   PASS: the planned file the build also changed draws no line
@@ -96,7 +96,7 @@ method cp -c
   PASS: accepted: the planned file, and a file outside the plan explained in decisions
   PASS: test.submitted, committing both
 === 10: the mutation gate
-    {"decision":"block","reason":"Your report <S>/space/efforts/20261125T161149-f675-upload-retries/reports/test/77.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
+    {"decision":"block","reason":"Your report <S>/space/efforts/20261127T151852-2992-upload-retries/reports/test/113.json was not accepted. Repair each line, then stop again; a second refusal ends this job.\nlist the mutation gate: pass with a note, fail with what survived, or not_run with why"}
     exit 0
   PASS: held: the mutation gate missing
     exit 0
@@ -154,5 +154,23 @@ method cp -c
   PASS: test-fix: a tester's fix is the plan as scope too
   PASS: test-fix: a tester's fix with done and mutation, accepted
   PASS: plan: a noticed entry with no at is accepted
+=== the new chain: a test defined on the approved plan, assigned to an agent started from its agent file, handed in unchanged
+  PASS: job-of.sh shows it as the agent side reads a test: base, its plan, its tree
+    exit 0
+  PASS: accepted: test.submitted for the defined job, committed
+  PASS: its commit names the job by its readable name
+=== the new chain: the test-plan trio, plan, challenge and rework, each defined and handed in unchanged
+    exit 0
+  PASS: the plan: test-plan.submitted for the defined job
+  PASS: the challenge job shows its plan ref
+    exit 0
+  PASS: the challenge: test-plan.challenged for the defined job, its two challenges stamped
+  PASS: the rework's view: its refs by name, the plan and the challenge, nothing read for it
+  PASS: the tester's facts read the challenges from the challenge's pinned report
+    exit 0
+  PASS: the rework: test-plan.updated for the defined job
+  PASS: a rework from the human's words: its words ref is the gate whose answer they are
+    exit 0
+  PASS: accepted: test-plan.updated
 
-=== 110 PASS, 0 FAIL
+=== 121 PASS, 0 FAIL

@@ -1,0 +1,46 @@
+{
+  "findings": [
+    {
+      "id": "CLEAN-CODE-01",
+      "severity": "high",
+      "realism": "edge-case",
+      "proof": "bin/greet.sh:9 passes the user's name to echo. On macOS /bin/sh, and dash on Debian/Ubuntu, echo expands backslash escapes. `sh bin/greet.sh 'a\\tb\\cZ'` printed a tab and dropped 'Z' and the trailing newline.",
+      "claim": "Switching from printf to `echo \"${line}\"` makes names that contain backslashes print wrong: `\\t` and `\\n` get expanded, and `\\c` cuts the output short with no newline. This hits plain greetings too, not just --shout.",
+      "suggestion": "Keep printf for output: `printf '%s\\n' \"${line}\"`.",
+      "at": "bin/greet.sh:9"
+    },
+    {
+      "id": "CLEAN-CODE-02",
+      "severity": "low",
+      "realism": "realistic",
+      "claim": "`tr a-z A-Z` only uppercases ASCII, so `--shout 'é'` prints `HELLO é`. shellcheck -o all reports SC2018 and SC2019 here, and the README asks for shellcheck to pass.",
+      "suggestion": "Use `tr '[:lower:]' '[:upper:]'`.",
+      "at": "bin/greet.sh:8"
+    },
+    {
+      "id": "CLEAN-CODE-03",
+      "severity": "low",
+      "realism": "realistic",
+      "claim": "The header comment says \"--shout first prints it in capitals\". It reads as if the script prints twice, when it means --shout has to be the first argument.",
+      "suggestion": "Reword it, e.g. \"Prints a greeting for the name given; a leading --shout prints it in capitals.\"",
+      "at": "bin/greet.sh:2"
+    }
+  ],
+  "noticed": [
+    {
+      "at": "tests/greet_test.sh:3",
+      "text": "No test covers --shout or a name with special characters. The only test checks `hello ada`.",
+      "for": "tests"
+    }
+  ],
+  "notes": [
+    {
+      "text": "Parsing the flag with `[ ... ] && { ...; }` is safe under `set -e` here: a false test on the left of && does not exit, and `${1-}` keeps `set -u` happy when no argument is given.",
+      "at": "bin/greet.sh:5"
+    },
+    {
+      "text": "Every expansion is quoted, and the script uses only POSIX sh features, as its `#!/bin/sh` shebang requires.",
+      "at": "bin/greet.sh"
+    }
+  ]
+}

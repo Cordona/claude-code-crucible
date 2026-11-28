@@ -1,0 +1,539 @@
+[
+  {
+    "seq": 1,
+    "type": "effort.opened",
+    "by": "effort-start.sh",
+    "body": {
+      "name": "greet shout"
+    }
+  },
+  {
+    "seq": 2,
+    "type": "identity.set",
+    "by": "identity-set.sh",
+    "body": {
+      "repo": "<L>/run/repo",
+      "name": "Jobs Live",
+      "email": "jobs-live@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "seq": 3,
+    "type": "grill.ended",
+    "by": "grill-end.sh",
+    "body": {
+      "number": 1,
+      "topic": "the shout flag",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Flag name?",
+          "recommendation": {
+            "text": "--shout",
+            "reason": "Plain and clear"
+          },
+          "status": "settled",
+          "answers": [
+            {
+              "text": "Yes, --shout, before the name"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "context-done",
+      "subject": "6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 5,
+    "type": "context.cut",
+    "by": "context-cut.sh",
+    "body": {
+      "version": 1,
+      "paths": []
+    }
+  },
+  {
+    "seq": 6,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "spec-approval",
+      "subject": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 7,
+    "type": "spec.approved",
+    "by": "spec-approve.sh",
+    "body": {
+      "sha256": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "answer": 6,
+      "path": "<L>/run/space/efforts/20261128T064232-da05-greet-shout/spec/1.md"
+    }
+  },
+  {
+    "seq": 8,
+    "type": "remote-change.fetched",
+    "by": "change-fetch.sh",
+    "body": {
+      "host": "gitlab",
+      "url": "https://gitlab.example.test/acme/greet/-/merge_requests/42",
+      "repo": "<L>/run/repo",
+      "number": 42,
+      "base": "7e3ad21db05a7a8b1b8906a7a81b26cd8acca6d4",
+      "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b",
+      "author": "fixer",
+      "report": {
+        "path": "reports/remote-change/8.json",
+        "sha256": "4c23e5f4c8532120c739dea1a44bd14ec850332cda18afb37fcba391364597f6"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "566303fe4bef44e2f6e6db5a2d8ba110238ae0ee8a33b818d29ce417baed23f2",
+      "question": "MR 42 changes only bin/greet.sh (+6/−2). Should one shell reviewer check it against the clean-code standard? It works in its own worktree and writes only a report.",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 10,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "foreign-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:c3d2d62b420e24f98d8d9752ade379510bbca33b"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "7e3ad21db05a7a8b1b8906a7a81b26cd8acca6d4",
+          "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b"
+        }
+      },
+      "approval_gate": {
+        "ref": 9,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 11,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "mr-42-review",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261128T064232-da05-greet-shout/worktrees/mr-42-review",
+      "branch": "crucible/20261128T064232-da05-greet-shout/mr-42-review",
+      "base": "c3d2d62b420e24f98d8d9752ade379510bbca33b",
+      "from": "ref:c3d2d62b420e24f98d8d9752ade379510bbca33b"
+    }
+  },
+  {
+    "seq": 12,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a3094b35ed1f9e80c",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 13,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 10,
+      "agent": "a3094b35ed1f9e80c",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 14,
+    "type": "foreign-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 10,
+      "iteration": 1,
+      "agent": "a3094b35ed1f9e80c",
+      "report": {
+        "path": "reports/foreign-review/10.json",
+        "sha256": "db5ae3f77c777526b7a0e6cc8955029c1a32da8a3dc1951d4763b784b2e99940"
+      }
+    }
+  },
+  {
+    "seq": 15,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/15.json",
+        "sha256": "09c8fde2542bae5f93912c260f9df7f7540b3ec1b6c2e8a5e132b80a16b567a9"
+      }
+    }
+  },
+  {
+    "seq": 16,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "2c58def0f5a4c776f68f674783d6c3929f95927f61bb4a605ff16f285d31c4a1",
+      "question": "MR 42 has 4 review threads, from review-bot (AI) and a human reviewer. Should one shell reviewer judge each thread against our code through the clean-code lens? It works in the MR's tree that's already cut and writes only a report.",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 17,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 15,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "7e3ad21db05a7a8b1b8906a7a81b26cd8acca6d4",
+          "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b"
+        }
+      },
+      "approval_gate": {
+        "ref": 16,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a2051568b88642379",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 19,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 17,
+      "agent": "a2051568b88642379",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 20,
+    "type": "external-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 17,
+      "iteration": 1,
+      "agent": "a2051568b88642379",
+      "report": {
+        "path": "reports/external-review/17.json",
+        "sha256": "3d585360ab7ab3936bc6ae4ca15f7f840fc194cd19a94ae6d4b128f787438657"
+      }
+    }
+  },
+  {
+    "seq": 21,
+    "type": "remote-review.fetched",
+    "by": "review-fetch.sh",
+    "body": {
+      "change": 8,
+      "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b",
+      "threads": 4,
+      "bots": [
+        "review-bot"
+      ],
+      "report": {
+        "path": "reports/remote-review/21.json",
+        "sha256": "a662b09e56bbff9b056c3fc2c2ecc7e1165ffccd0d1370fb20eeb0a412be58d1"
+      }
+    }
+  },
+  {
+    "seq": 22,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "da5688d1378211da19bdaff2c3f8b5e3e66da9bf582cd2005e9f0e1724d5e1ff",
+      "question": "MR 42's review has 2 new items since the last judgement: review-bot's 4th point (the flag at bin/greet.sh:5 is held as a string) and the human's request for a test of `--shout` with no name. The code itself hasn't changed. Should a reviewer judge the updated review through the clean-code lens, building on the earlier judgement?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 23,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "external-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ],
+        "review": 21,
+        "change": 8,
+        "earlier": 20
+      },
+      "work": {
+        "tree": {
+          "use": 11
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "7e3ad21db05a7a8b1b8906a7a81b26cd8acca6d4",
+          "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b"
+        }
+      },
+      "approval_gate": {
+        "ref": 22,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 24,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a2b2016e7c35d9107",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-clean-code",
+        "standard-clean-code-review"
+      ]
+    }
+  },
+  {
+    "seq": 25,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 23,
+      "agent": "a2b2016e7c35d9107",
+      "tree": 11
+    }
+  },
+  {
+    "seq": 26,
+    "type": "external-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 23,
+      "iteration": 1,
+      "agent": "a2b2016e7c35d9107",
+      "report": {
+        "path": "reports/external-review/23.json",
+        "sha256": "f9c1e3f8c63999bde3a8b48270451280ba3f7ece48cc8fb12587c470b5dab42f"
+      }
+    }
+  },
+  {
+    "seq": 27,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "367eeebd2dd40f440ebf3e6ba87c1b6e6b9be808f3aac0df4cec0b17d1974d87",
+      "question": "Should a shell reviewer review MR 42 for its author through the testing lens, on a new tree cut from the MR head (c3d2d62b420e)? It writes only a report.",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 28,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "foreign-review",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "testing"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "change": 8
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:c3d2d62b420e24f98d8d9752ade379510bbca33b"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "range": {
+          "base": "7e3ad21db05a7a8b1b8906a7a81b26cd8acca6d4",
+          "head": "c3d2d62b420e24f98d8d9752ade379510bbca33b"
+        }
+      },
+      "approval_gate": {
+        "ref": 27,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 29,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "mr-42-testing",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261128T064232-da05-greet-shout/worktrees/mr-42-testing",
+      "branch": "crucible/20261128T064232-da05-greet-shout/mr-42-testing",
+      "base": "c3d2d62b420e24f98d8d9752ade379510bbca33b",
+      "from": "ref:c3d2d62b420e24f98d8d9752ade379510bbca33b"
+    }
+  },
+  {
+    "seq": 30,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a801ff12f00bec645",
+      "base": "code-reviewer",
+      "type": "code-reviewer-shell-testing",
+      "plugins": [
+        "language-shell",
+        "language-shell-review",
+        "standard-testing",
+        "standard-testing-review"
+      ]
+    }
+  },
+  {
+    "seq": 31,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 28,
+      "agent": "a801ff12f00bec645",
+      "tree": 29
+    }
+  },
+  {
+    "seq": 32,
+    "type": "foreign-review.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 28,
+      "iteration": 1,
+      "agent": "a801ff12f00bec645",
+      "report": {
+        "path": "reports/foreign-review/28.json",
+        "sha256": "f0c75b152b3d8759b852a4d6c41833b7d2d0961b9fbcf71a85e22ee40c2965d3"
+      }
+    }
+  }
+]

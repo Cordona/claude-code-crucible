@@ -1,0 +1,73 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "This is by design: the spec puts --shout before the name, and other argument orders are out of scope. `greet.sh ada --shout` prints `hello ada`, the same as before the change."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "source": "bot",
+      "verdict": "valid",
+      "finding": {
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 runs `echo \"${line}\"` on a name taken from argv. Under macOS /bin/sh, `sh bin/greet.sh 'a\\tb'` prints a real tab; before the change printf printed a backslash and a t.",
+        "claim": "`echo` expands backslash sequences in the name on some POSIX sh builds, so output without --shout changes for such names, against the spec's 'without --shout nothing changes'.",
+        "suggestion": "Replace `echo \"${line}\"` with `printf '%s\\n' \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "source": "bot",
+      "verdict": "deferred",
+      "note": "True: `tr a-z A-Z` (now bin/greet.sh:8) uppercases ASCII only, and its ranges are unspecified outside the C locale. The author limits names to ASCII and the spec asks no more; `tr '[:lower:]' '[:upper:]'` is the portable form if that changes."
+    },
+    {
+      "thread": "d-bot",
+      "item": "4",
+      "source": "bot",
+      "verdict": "rejected",
+      "reply": "POSIX sh has no boolean type, so a string flag is the usual form. The script also shifts --shout off at line 5 before reading the name, so by line 8 there is no argument left to test; holding the result in `shout` is what keeps that working."
+    },
+    {
+      "thread": "d-line",
+      "item": "103",
+      "source": "human",
+      "verdict": "noted",
+      "reply": "Checked: `sh bin/greet.sh --shout` with no name prints `HELLO WORLD`, as the author said."
+    },
+    {
+      "thread": "d-line",
+      "item": "107",
+      "source": "human",
+      "verdict": "valid",
+      "finding": {
+        "severity": "medium",
+        "realism": "realistic",
+        "claim": "No test covers --shout: tests/greet_test.sh only checks the plain greeting, so neither `--shout` alone (HELLO WORLD) nor the spec's `--shout ada` (HELLO ADA) is guarded.",
+        "suggestion": "Add checks to tests/greet_test.sh that `greet.sh --shout` prints `HELLO WORLD` and `greet.sh --shout ada` prints `HELLO ADA`.",
+        "at": "tests/greet_test.sh:3",
+        "relates_to": "bin/greet.sh:5"
+      }
+    },
+    {
+      "thread": "d-done",
+      "source": "human",
+      "verdict": "noted"
+    }
+  ],
+  "noticed": [
+    {
+      "text": "The author said in thread d-reply they would switch to printf, but the commit under review (add0601) still ends in `echo`; nothing has changed since the earlier judgment."
+    },
+    {
+      "text": "The MR's only commit message is `Add --shout` and has no typo; the resolved typo thread matches nothing in the commit as it is now."
+    }
+  ]
+}

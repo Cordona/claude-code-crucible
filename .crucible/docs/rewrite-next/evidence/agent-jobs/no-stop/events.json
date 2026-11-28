@@ -2,7 +2,7 @@
   {
     "type": "job.ended",
     "seq": 30,
-    "at": "2026-11-25T16:20:20Z",
+    "at": "2026-11-28T07:38:24Z",
     "by": "end-gone-jobs.sh",
     "claude_session_id": "sess-main",
     "body": {
@@ -15,7 +15,7 @@
   {
     "type": "job.ended",
     "seq": 31,
-    "at": "2026-11-25T16:20:20Z",
+    "at": "2026-11-28T07:38:24Z",
     "by": "end-gone-jobs.sh",
     "claude_session_id": "sess-main",
     "body": {
@@ -28,7 +28,7 @@
   {
     "type": "job.stalled",
     "seq": 32,
-    "at": "2026-11-25T16:20:20Z",
+    "at": "2026-11-28T07:38:24Z",
     "by": "end-gone-jobs.sh",
     "claude_session_id": "sess-main",
     "body": {

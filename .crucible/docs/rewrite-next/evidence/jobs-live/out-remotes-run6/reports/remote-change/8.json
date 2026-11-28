@@ -1,0 +1,6 @@
+{
+  "title": "Add --shout",
+  "description": "Adds a --shout flag that prints the greeting in capitals.",
+  "base_branch": "main",
+  "state": "open"
+}

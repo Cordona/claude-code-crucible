@@ -1,12 +1,12 @@
 [
   {
     "type": "job.refused",
-    "seq": 48,
-    "at": "2026-11-25T16:19:25Z",
+    "seq": 67,
+    "at": "2026-11-28T07:45:45Z",
     "by": "held-stop.sh",
     "claude_session_id": "sess-ra",
     "body": {
-      "job": 46,
+      "job": 64,
       "iteration": 1,
       "agent": "x0x0x0x0x0",
       "try": 1,

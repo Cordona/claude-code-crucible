@@ -1,0 +1,200 @@
+[
+  {
+    "seq": 1,
+    "type": "effort.opened",
+    "by": "effort-start.sh",
+    "body": {
+      "name": "greet shout"
+    }
+  },
+  {
+    "seq": 2,
+    "type": "identity.set",
+    "by": "identity-set.sh",
+    "body": {
+      "repo": "<L>/run/repo",
+      "name": "Jobs Live",
+      "email": "jobs-live@example.test",
+      "signing": {
+        "format": "ssh",
+        "key": "/nonexistent/fixture-key.pub"
+      },
+      "fingerprint": "",
+      "answer": 1
+    }
+  },
+  {
+    "seq": 3,
+    "type": "grill.ended",
+    "by": "grill-end.sh",
+    "body": {
+      "number": 1,
+      "topic": "the shout flag",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "Flag name?",
+          "recommendation": {
+            "text": "--shout",
+            "reason": "Plain and clear"
+          },
+          "status": "settled",
+          "answers": [
+            {
+              "text": "Yes, --shout, before the name"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "seq": 4,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "context-done",
+      "subject": "6d65b9a83922d10b79c727ada523433e3805b30a67b12e8883215fa569713df7",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 5,
+    "type": "context.cut",
+    "by": "context-cut.sh",
+    "body": {
+      "version": 1,
+      "paths": []
+    }
+  },
+  {
+    "seq": 6,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "spec-approval",
+      "subject": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "question": "Decide?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 7,
+    "type": "spec.approved",
+    "by": "spec-approve.sh",
+    "body": {
+      "sha256": "78fe8c643b5ccf9bdad19c3eb0234625916fb372124833ccfca84b9bef549240",
+      "answer": 6,
+      "path": "<L>/run/space/efforts/20261127T102326-0225-greet-shout/spec/1.md"
+    }
+  },
+  {
+    "seq": 8,
+    "type": "gate.answered",
+    "by": "record-gate-answer.sh",
+    "body": {
+      "record": "jobs",
+      "subject": "9471bc98c4a4008c01608148bce48bd4bafe563c90ff3d1989a07e557c3e853f",
+      "question": "One build job: shell, clean-code, in a new tree cut from main in the repo, using context 5, spec 7 and grills 3. Approving it records the job but doesn't start its agent. Define it?",
+      "accept": "Approve (Recommended)",
+      "answer": "Approve (Recommended)",
+      "accepted": true
+    }
+  },
+  {
+    "seq": 9,
+    "type": "job.defined",
+    "by": "job-define.sh",
+    "body": {
+      "kind": "build",
+      "plugins": {
+        "language": "shell",
+        "standards": [
+          "clean-code"
+        ]
+      },
+      "input_refs": {
+        "context": 5,
+        "spec": 7,
+        "grills": [
+          3
+        ]
+      },
+      "work": {
+        "tree": {
+          "cut": {
+            "repo": "<L>/run/repo",
+            "from": "ref:main"
+          }
+        },
+        "loop": {
+          "iteration": 1
+        },
+        "known_failures": []
+      },
+      "approval_gate": {
+        "ref": 8,
+        "position": 1
+      }
+    }
+  },
+  {
+    "seq": 10,
+    "type": "worktree.cut",
+    "by": "worktree-cut.sh",
+    "body": {
+      "name": "greet-shout-build",
+      "repo": "<L>/run/repo",
+      "path": "<L>/run/space/efforts/20261127T102326-0225-greet-shout/worktrees/greet-shout-build",
+      "branch": "crucible/20261127T102326-0225-greet-shout/greet-shout-build",
+      "base": "76d473929bb95926ec29bfa86453f9b5fdaaf1d3",
+      "from": "ref:main"
+    }
+  },
+  {
+    "seq": 11,
+    "type": "agent.initialized",
+    "by": "job-assigned.sh",
+    "body": {
+      "agent": "a0208aa058bcad3cd",
+      "base": "code-builder",
+      "type": "code-builder-shell-clean-code",
+      "plugins": [
+        "language-shell",
+        "language-shell-build",
+        "standard-clean-code",
+        "standard-clean-code-build"
+      ]
+    }
+  },
+  {
+    "seq": 12,
+    "type": "job.assigned",
+    "by": "job-assigned.sh",
+    "body": {
+      "job": 9,
+      "agent": "a0208aa058bcad3cd",
+      "tree": 10
+    }
+  },
+  {
+    "seq": 13,
+    "type": "build.submitted",
+    "by": "submission-event.sh",
+    "body": {
+      "job": 9,
+      "iteration": 1,
+      "agent": "a0208aa058bcad3cd",
+      "report": {
+        "path": "reports/build/9.json",
+        "sha256": "f807ca9a103aef3db2fa81d25cf17a77f9989fcecca25be80798d16f5e60315c"
+      },
+      "commit": "6cdec954db263c5dadc36770e229a2ce0f593095"
+    }
+  }
+]

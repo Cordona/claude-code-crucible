@@ -1,16 +1,16 @@
 [
   {
     "type": "job.stalled",
-    "seq": 72,
-    "at": "2026-11-25T16:19:37Z",
+    "seq": 101,
+    "at": "2026-11-28T07:46:01Z",
     "by": "fault-stalled.sh",
     "claude_session_id": "sess-ra",
     "body": {
-      "job": 70,
-      "iteration": 2,
+      "job": 98,
+      "iteration": 1,
       "agent": "n2n2n2n2n2",
       "step": "stamp",
-      "fault": "job 70 (external-review-n2n2n2)'s report could not be stamped: report-stamp.sh: thread description has no source, human or bot, in the job's threads file"
+      "fault": "job 98 (external-review-98)'s report could not be stamped: report-stamp.sh: thread description has no source, human or bot, in the job's threads file"
     }
   }
 ]

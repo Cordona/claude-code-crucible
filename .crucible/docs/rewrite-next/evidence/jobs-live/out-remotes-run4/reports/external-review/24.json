@@ -1,0 +1,39 @@
+{
+  "items": [
+    {
+      "thread": "d-bot",
+      "item": "1",
+      "verdict": "rejected",
+      "reply": "This is as specified: --shout goes before the name, and the script already ignored extra arguments before this change. Rejecting a trailing --shout would mean reworking argument handling, which this MR leaves out of scope."
+    },
+    {
+      "thread": "d-bot",
+      "item": "2",
+      "verdict": "valid",
+      "finding": {
+        "severity": "high",
+        "realism": "edge-case",
+        "proof": "bin/greet.sh:9 passes the name to sh's echo, which expands backslash escapes. `sh bin/greet.sh 'a\\tb'` now prints a real tab; on main it printed `a\\tb` as typed.",
+        "claim": "echo expands backslashes in the name, so output changes even without --shout, which breaks the spec's 'without --shout nothing changes'.",
+        "suggestion": "Replace `echo \"${line}\"` with `printf '%s\\n' \"${line}\"`.",
+        "at": "bin/greet.sh:9"
+      }
+    },
+    {
+      "thread": "d-bot",
+      "item": "3",
+      "verdict": "rejected",
+      "reply": "Agreed that tr won't uppercase non-ASCII letters, but POSIX sh has no portable fix: `tr '[:lower:]' '[:upper:]'` still works byte by byte with GNU tr. The spec only covers ASCII names, so we're keeping `tr a-z A-Z`."
+    },
+    {
+      "thread": "d-line",
+      "verdict": "answered",
+      "reply": "Checked: `sh bin/greet.sh --shout` prints HELLO WORLD. The shift empties $1, so the name falls back to world before it is uppercased."
+    },
+    {
+      "thread": "d-done",
+      "verdict": "noted"
+    }
+  ],
+  "noticed": []
+}

@@ -1,20 +1,20 @@
 [
   {
     "type": "test-fix.submitted",
-    "seq": 69,
-    "at": "2026-11-25T16:17:47Z",
+    "seq": 100,
+    "at": "2026-11-28T07:43:36Z",
     "by": "submission-event.sh",
     "claude_session_id": "sess-ta",
     "body": {
-      "job": 67,
+      "job": 98,
       "iteration": 1,
       "fix_round": 1,
       "agent": "77de01a0b1",
       "report": {
-        "path": "reports/test-fix/67.json",
+        "path": "reports/test-fix/98.json",
         "sha256": "e8f4f2379df7a129dd18cffe5bbbebb89b262c8d315a02aa89ae02b830447473"
       },
-      "commit": "462cf9d92357316f3d760bfb12fdbeecadf6aa5f"
+      "commit": "8b6d0cb278b96b35b26821d249176e4ca767ce61"
     }
   }
 ]

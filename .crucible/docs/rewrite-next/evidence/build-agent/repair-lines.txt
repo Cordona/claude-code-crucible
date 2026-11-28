@@ -1,7 +1,7 @@
 the file is missing
-  exit 1: write your report as one JSON object to <S>/space/efforts/20261125T161540-1845-upload-retries/reports/build/9000.json
+  exit 1: write your report as one JSON object to <S>/space/efforts/20261128T074056-af5d-upload-retries/reports/build/9000.json
 the file isn't one JSON object
-  exit 1: write your report as one JSON object to <S>/space/efforts/20261125T161540-1845-upload-retries/reports/build/9001.json
+  exit 1: write your report as one JSON object to <S>/space/efforts/20261128T074056-af5d-upload-retries/reports/build/9001.json
 a key only a script fills in
   exit 1: remove "commit": this is filled in for you
 an unknown key

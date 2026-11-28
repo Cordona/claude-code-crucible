@@ -2,15 +2,15 @@ crucible(test-fix): assert the 4xx rows by status, not by message
 
 assert the 4xx rows by status, not by message
 
-Effort: 20261125T161720-82bf-upload-retries
-Job: 67 test-fix-php-77de01
+Effort: 20261128T074304-4337-upload-retries
+Job: 98 test-fix-php-77de01
 Iteration: 1
 Fix-Round: 1
 Language: php
 Framework: laravel
 Standards: testing, security
 
-commit 462cf9d92357316f3d760bfb12fdbeecadf6aa5f
+commit 8b6d0cb278b96b35b26821d249176e4ca767ce61
 Author: Test Agent <test-agent@example.test>
 Signed: N
 

@@ -2,14 +2,14 @@ crucible(test): cover the retry limit and the 4xx case
 
 cover the retry limit and the 4xx case
 
-Effort: 20261125T161720-82bf-upload-retries
-Job: 61 test-php-77de01
+Effort: 20261128T074304-4337-upload-retries
+Job: 92 test-92
 Iteration: 1
 Language: php
 Framework: laravel
 Standards: testing, security
 
-commit 4c94931ed08542507d0ef75b38e027b7e1a6ca82
+commit a3a09d8f233e737b58799480b3fc235cb8060b25
 Author: Test Agent <test-agent@example.test>
 Signed: N
 

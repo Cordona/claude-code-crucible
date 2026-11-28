@@ -1,0 +1,1 @@
+api --hostname gitlab.example.test projects/acme%2Fgreet/merge_requests/42

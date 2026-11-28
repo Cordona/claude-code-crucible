@@ -1,0 +1,31 @@
+[
+  {
+    "type": "job.refused",
+    "seq": 152,
+    "at": "2026-11-28T07:42:59Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 148,
+      "iteration": 4,
+      "agent": "hb00000002",
+      "try": 2,
+      "lines": [
+        "gates[0] is not_run: add a note saying why"
+      ]
+    }
+  },
+  {
+    "type": "job.ended",
+    "seq": 153,
+    "at": "2026-11-28T07:42:59Z",
+    "by": "held-stop.sh",
+    "claude_session_id": "sess-ba",
+    "body": {
+      "job": 148,
+      "iteration": 4,
+      "agent": "hb00000002",
+      "reason": "gave-up"
+    }
+  }
+]

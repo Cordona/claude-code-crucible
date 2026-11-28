@@ -1,18 +1,18 @@
 [
   {
     "type": "job.ended",
-    "seq": 75,
-    "at": "2026-11-25T16:19:38Z",
+    "seq": 104,
+    "at": "2026-11-28T07:46:02Z",
     "by": "fault-ended.sh",
     "claude_session_id": "sess-ra",
     "body": {
-      "job": 73,
+      "job": 102,
       "iteration": 2,
       "fix_round": 1,
       "agent": "n3n3n3n3n3",
       "reason": "fault",
       "step": "check",
-      "fault": "the report check of job 73 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined"
+      "fault": "the report check of job 102 (review-shell-n3n3n3) can't run: report-validation.sh: reviewer-facts.sh failed: reviewer-facts.sh: the job's earlier findings SHELL-01 have no fixer's status of done, partly or declined"
     }
   }
 ]
